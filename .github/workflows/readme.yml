@@ -1,7 +1,7 @@
-name: README Auto-Update
+name: README Auto-Update (PR/Manual)
 
 on:
-  push:
+  pull_request:
     branches: [ "main" ]
   workflow_dispatch:
 
@@ -14,16 +14,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      # Für PRs: nutze den letzten Tag als Referenzversion (falls vorhanden),
+      # im Release setzt semantic-release die korrekte nextRelease.version.
+      - name: Determine version (latest tag)
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "RELEASE_VERSION=$TAG" >> "$GITHUB_ENV"
+
       - name: Generate README.MD
         run: python scripts/generate_readme.py
 
-      - name: Commit README changes (if any)
+      # Bei manueller Ausführung dürfen Änderungen automatisch committed werden
+      - name: Commit README changes (manual runs only)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           if [[ -n "$(git status --porcelain README.MD)" ]]; then
             git config user.name "github-actions[bot]"
@@ -33,4 +44,13 @@ jobs:
             git push
           else
             echo "No README changes."
+          fi
+
+      # Bei PRs nur prüfen und ggf. fehlschlagen, ohne zu committen
+      - name: Fail if README is out-of-date (PRs)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          if [[ -n "$(git status --porcelain README.MD)" ]]; then
+            echo "README.MD ist nicht aktuell. Bitte README generieren (manuell) oder den PR entsprechend aktualisieren."
+            exit 1
           fi
