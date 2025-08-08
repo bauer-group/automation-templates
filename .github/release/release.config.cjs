@@ -7,6 +7,13 @@ module.exports = {
     "@semantic-release/release-notes-generator",
     ["@semantic-release/changelog", { changelogFile: "CHANGELOG.MD" }],
     [
+      "@semantic-release/exec",
+      {        
+        prepareCmd:
+          "RELEASE_VERSION=${nextRelease.version} python scripts/generate_readme.py"
+      }
+    ],
+    [
       "@semantic-release/git",
       {
         assets: ["CHANGELOG.MD", "README.MD"],

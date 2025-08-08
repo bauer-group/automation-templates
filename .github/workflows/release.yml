@@ -1,4 +1,4 @@
-name: Release
+name: Release Automation
 
 on:
   push:
@@ -12,6 +12,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Optional: gewünschte Startversion überschreiben (z.B. 1.0.0)
+    # env:
+    #   INIT_VERSION: "1.0.0"
 
     steps:
       - name: Checkout
@@ -29,9 +32,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Generate README.md from template
-        run: python scripts/generate_readme.py
-
       - name: Configure Git user
         run: |
           git config user.name "github-actions[bot]"
@@ -45,6 +45,7 @@ jobs:
                 -p @semantic-release/commit-analyzer \
                 -p @semantic-release/release-notes-generator \
                 -p @semantic-release/changelog \
+                -p @semantic-release/exec \
                 -p @semantic-release/git \
                 -p @semantic-release/github \
               semantic-release --extends ./.github/release/release.config.cjs
