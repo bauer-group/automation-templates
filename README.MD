@@ -2,12 +2,11 @@
 
 # BAUER GROUP – Automation Templates
 
-Status: Version 0.1.0 (2025-08-08)
+Status: Version 0.0.0 (2025-08-08)
 
 Dieses Repository enthält zentralisierte, wiederverwendbare Automations-Templates für GitHub Actions (CI/CD) mit Fokus auf Skalierbarkeit, Wartbarkeit und Konsistenz.
 
-[![README Auto-Update](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml)
-[![Release Automation](https://github.com/bauer-group/automation-templates/actions/workflows/release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/release.yml)
+[![Create Release](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml)
 
 ## Features
 - Einheitliche Release-Strategie via Conventional Commits
