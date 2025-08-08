@@ -1,5 +1,4 @@
-// Central semantic-release config kept in a subfolder.
-// Using CJS so --extends can import it reliably.
+// central semantic-release configuration in subfolder (CJS)
 module.exports = {
   branches: ["main"],
   plugins: [
