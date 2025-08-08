@@ -1,4 +1,5 @@
-// central semantic-release configuration in subfolder (CJS)
+// Central semantic-release config.
+// Using CJS for reliable import.
 module.exports = {
   branches: ["main"],
   plugins: [
@@ -7,7 +8,7 @@ module.exports = {
     ["@semantic-release/changelog", { changelogFile: "CHANGELOG.MD" }],
     [
       "@semantic-release/exec",
-      {        
+      {
         prepareCmd:
           "RELEASE_VERSION=${nextRelease.version} python scripts/generate_readme.py"
       }
