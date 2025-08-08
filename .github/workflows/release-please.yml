@@ -19,10 +19,6 @@ jobs:
   release-please:
     name: Prepare Release
     runs-on: ubuntu-latest
-    outputs:
-      release_created: ${{ steps.rp.outputs.release_created }}
-      tag_name: ${{ steps.rp.outputs.tag_name }}
-      version: ${{ steps.rp.outputs.version }}    
     steps:
       - name: Create/Update Release (auto semantic versioning)        
         uses: googleapis/release-please-action@v4
