@@ -54,7 +54,7 @@ def main():
         "DATE": date
     })
 
-    banner = "<!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.md instead. -->\n\n"
+    banner = "<!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->\n\n"
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         f.write(banner + content)
 
