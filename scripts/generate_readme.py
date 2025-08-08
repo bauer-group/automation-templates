@@ -5,8 +5,8 @@ import subprocess
 from datetime import datetime, timezone
 from typing import Optional
 
-TEMPLATE_PATH = "docs/README.template.md"
-OUTPUT_PATH = "README.md"
+TEMPLATE_PATH = "docs/README.template.MD"
+OUTPUT_PATH = "README.MD"
 
 def get_initial_version() -> str:
     """
