@@ -1,8 +1,8 @@
-<!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
+<!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.md instead. -->
 
 # BAUER GROUP – Automation Templates
 
-Status: Version 0.0.0 (2025-08-08)
+Status: Version 0.1.0 (2025-08-08)
 
 Dieses Repository enthält zentralisierte, wiederverwendbare Automations-Templates für GitHub Actions (CI/CD) mit Fokus auf Skalierbarkeit, Wartbarkeit und Konsistenz.
 
