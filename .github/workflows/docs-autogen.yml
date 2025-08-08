@@ -1,0 +1,42 @@
+name: Generate Docs
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - ".github/workflows/*.yml"
+      - "scripts/generate_docs.py"
+  workflow_dispatch: {}
+
+jobs:
+  autogen:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install pyyaml
+
+      - name: Generate docs
+        env:
+          ORG: bauer-group
+          REPO: automation-templates
+        run: python scripts/generate_docs.py
+
+      - name: Commit changes (if any)
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add README.md docs/usage.md
+            git commit -m "chore(docs): auto-generate README & usage"
+            git push
+          fi

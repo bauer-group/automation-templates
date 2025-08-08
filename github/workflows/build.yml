@@ -1,0 +1,41 @@
+name: Build (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        required: false
+        type: string
+        default: "20"
+        description: "Node.js version to use"
+      run-tests:
+        required: false
+        type: boolean
+        default: true
+        description: "Run test step"
+    secrets:
+      NPM_TOKEN:
+        required: false
+        description: "Token for private registry (optional)"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        if: ${{ inputs.run-tests }}
+        run: npm test --if-present
+
+      - name: Build
+        run: npm run build --if-present
