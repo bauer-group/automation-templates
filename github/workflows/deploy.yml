@@ -1,0 +1,23 @@
+name: Deploy (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+        description: "Target environment (e.g., staging|production)"
+    secrets:
+      DEPLOY_TOKEN:
+        required: true
+        description: "Deployment token/credential"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        run: |
+          echo "Deploying to ${{ inputs.environment }}..."
