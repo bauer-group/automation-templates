@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/bauer-group/automation-templates/compare/v0.1.4...v0.1.5) (2025-08-08)
+
+
+### Chores
+
+* aktualisiere Workflow für Release-Management und setze Ziel-Branch auf 'main' ([e1d185d](https://github.com/bauer-group/automation-templates/commit/e1d185deaba4984db402d71fc9e19eb0a0466002))
+
 ## [0.1.4](https://github.com/bauer-group/automation-templates/compare/v0.1.3...v0.1.4) (2025-08-08)
 
 
