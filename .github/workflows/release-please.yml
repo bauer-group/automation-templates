@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    types: [closed]      
   workflow_dispatch:
 
 permissions:
@@ -17,6 +19,10 @@ concurrency:
 
 jobs:
   release-please:
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'    
     name: Prepare Release
     runs-on: ubuntu-latest
     steps:
@@ -26,4 +32,5 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: .github/config/release-please-config.json
           manifest-file: .github/config/.release-please-manifest.json
-          target-branch: ${{ github.ref_name }}
+          target-branch: main
+          #target-branch: ${{ github.ref_name }}
