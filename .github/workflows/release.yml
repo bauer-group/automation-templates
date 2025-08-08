@@ -9,15 +9,27 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Optional: gewünschte Startversion überschreiben (z.B. 1.0.0)
+    # env:
+    #   INIT_VERSION: "1.0.0"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -30,17 +42,14 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Semantic Release
-        uses: cycjimmy/semantic-release-action@v4
-        with:
-          # Plugins werden lokal installiert, damit semantic-release sie im CWD findet
-          extra_plugins: |
-            @semantic-release/commit-analyzer
-            @semantic-release/release-notes-generator
-            @semantic-release/changelog
-            @semantic-release/exec
-            @semantic-release/git
-            @semantic-release/github
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional: initiale Version überschreiben, falls gewünscht
-          # INIT_VERSION: "1.0.0"
+        run: |
+          npx -y -p semantic-release@^24 \
+                -p @semantic-release/commit-analyzer \
+                -p @semantic-release/release-notes-generator \
+                -p @semantic-release/changelog \
+                -p @semantic-release/exec \
+                -p @semantic-release/git \
+                -p @semantic-release/github \
+              semantic-release --extends ./.github/release/release.config.cjs
