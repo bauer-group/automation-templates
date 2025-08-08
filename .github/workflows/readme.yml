@@ -1,0 +1,36 @@
+name: README Auto-Update
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate README.MD
+        run: python scripts/generate_readme.py
+
+      - name: Commit README changes (if any)
+        run: |
+          if [[ -n "$(git status --porcelain README.MD)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add README.MD
+            git commit -m "docs(readme): auto-generate README [skip ci]"
+            git push
+          else
+            echo "No README changes."
+          fi
