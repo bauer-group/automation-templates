@@ -22,8 +22,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Für PRs: nutze den letzten Tag als Referenzversion (falls vorhanden),
-      # im Release setzt semantic-release die korrekte nextRelease.version.
+      # Für PRs: bestmögliche Version ermitteln (letzter Tag, wenn vorhanden).
+      # Im Release setzt semantic-release die korrekte nextRelease.version.
       - name: Determine version (latest tag)
         run: |
           TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -32,7 +32,7 @@ jobs:
       - name: Generate README.MD
         run: python scripts/generate_readme.py
 
-      # Bei manueller Ausführung dürfen Änderungen automatisch committed werden
+      # Bei manueller Ausführung Änderungen committen
       - name: Commit README changes (manual runs only)
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
@@ -46,7 +46,7 @@ jobs:
             echo "No README changes."
           fi
 
-      # Bei PRs nur prüfen und ggf. fehlschlagen, ohne zu committen
+      # Bei PRs nur validieren, ob README aktuell wäre (kein Commit)
       - name: Fail if README is out-of-date (PRs)
         if: ${{ github.event_name == 'pull_request' }}
         run: |
