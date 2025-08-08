@@ -1,0 +1,65 @@
+name: Create Release (PR/Direct)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      direct_release:
+        description: Create a release immediately (without release PR)
+        type: boolean
+        default: false
+      release_as:
+        description: >-
+          Version for direct release (e.g., 1.2.3). Only if direct_release=true.
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Prepare Release (PR or direct)
+    runs-on: ubuntu-latest
+    steps:
+      # Standard: PR-based release (for push and if no direct release is requested)
+      - name: Create/Update Release PR (auto semantic versioning)
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.direct_release) }}
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: .github/config/release-please-config.json
+          manifest-file: .github/config/.release-please-manifest.json
+          target-branch: ${{ github.ref_name }}
+          command: manifest-pr
+
+      # Direct release without PR – automatic version (determined from commits)
+      - name: Direct Release (auto semantic version)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.direct_release && inputs.release_as == '' }}
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: .github/config/release-please-config.json
+          manifest-file: .github/config/.release-please-manifest.json
+          target-branch: ${{ github.ref_name }}
+          command: manifest-release
+
+      # Direct release without PR – explicit version
+      - name: Direct Release (explicit version)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.direct_release && inputs.release_as != '' }}
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: .github/config/release-please-config.json
+          manifest-file: .github/config/.release-please-manifest.json
+          target-branch: ${{ github.ref_name }}
+          command: manifest-release
+          release-as: ${{ inputs.release_as }}
