@@ -36,8 +36,8 @@ def render_template(template: str, vars: dict) -> str:
     return out
 
 def main():
-    # Priority order:
-    # 1) RELEASE_VERSION (from semantic-release prepare step)
+    # Priority:
+    # 1) RELEASE_VERSION from semantic-release prepare step
     # 2) latest git tag
     # 3) initial fallback (INIT_VERSION or 0.1.0)
     version = os.getenv("RELEASE_VERSION")
