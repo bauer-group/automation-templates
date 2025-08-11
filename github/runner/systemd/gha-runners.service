@@ -1,0 +1,14 @@
+[Unit]
+Description=GitHub Actions Runners (Docker Compose)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/gha/runner
+ExecStart=/opt/gha/runner/scripts/manage.sh
+ExecStop=/usr/bin/docker compose -f /opt/gha/runner/docker-compose.yml down
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
