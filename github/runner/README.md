@@ -54,8 +54,7 @@ Nutze `cloud-init/user-data.yaml`. Beim ersten Boot werden Repo‑Inhalte nach `
 ## Windows‑Build‑Runner: VS Build Tools & MSBuild
 
 ### Warum Vorinstallation notwendig ist
-Die Action `microsoft/setup-msbuild` **installiert MSBuild nicht**, sondern fügt lediglich eine vorhandene MSBuild‑Installation dem `PATH` hinzu. Für klassische Windows‑Builds (.NET Framework, WinForms, WPF) müssen die **Visual Studio Build Tools** (inkl. MSBuild) **vorab** installiert sein. Für moderne .NET‑SDK‑Builds auf Linux/Windows empfiehlt sich zur Laufzeit `actions/setup-dotnet`.  
-**Quellen:** Siehe offizielle Repos/Docs der Actions und GitHub‑Dokumentation.
+Die Action `microsoft/setup-msbuild` **installiert MSBuild nicht**, sondern fügt lediglich eine vorhandene MSBuild‑Installation dem `PATH` hinzu. Für klassische Windows‑Builds (.NET Framework, WinForms, WPF) müssen die **Visual Studio Build Tools** (inkl. MSBuild) **vorab** installiert sein. Für moderne .NET‑SDK‑Builds auf Linux/Windows empfiehlt sich zur Laufzeit `actions/setup-dotnet`.
 
 ### Beispiel‑Bootstrap (PowerShell, Admin)
 ```powershell
