@@ -1,0 +1,46 @@
+version: "3.9"
+services:
+  runner:
+    image: myoung34/github-runner:latest
+    restart: always
+    environment:
+      # --- Target scope ---
+      RUNNER_SCOPE: ${RUNNER_SCOPE}        # org | repo | enterprise
+      ORG_NAME: ${ORG_NAME}
+      REPO_URL: ${REPO_URL}
+      ENTERPRISE_NAME: ${ENTERPRISE_NAME}
+
+      # --- Auth: choose ONE ---
+      ACCESS_TOKEN: ${GITHUB_PAT}          # Personal Access Token (PAT)
+      APP_ID: ${APP_ID}                    # GitHub App (optional)
+      APP_PRIVATE_KEY: ${APP_PRIVATE_KEY}
+      APP_LOGIN: ${APP_LOGIN}
+
+      # --- Runner behavior ---
+      EPHEMERAL: "1"                       # fresh runner per job
+      RUNNER_NAME_PREFIX: linux            # as requested
+      TZ: ${TZ}
+
+    # docker-outside-of-docker for jobs that use Docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    # Per-runner resource limits
+    cpus: "2.0"
+    mem_limit: "8g"
+
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_ROLLING_RESTART: "true"
+      WATCHTOWER_LABEL_ENABLE: "true"
+      # Weekly, Saturday 03:30 local time (cron with seconds)
+      WATCHTOWER_SCHEDULE: "0 30 3 * * 6"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
