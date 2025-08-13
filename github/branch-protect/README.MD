@@ -53,6 +53,8 @@ Du musst ENTWEDER `ORG` ODER `REPO_LIST` setzen (wenn beide gesetzt sind, gewinn
 | `RESTRICT_TEAMS`                  | Teams mit Push-/Bypass-Rechten                                                                        | –        |
 | `RESTRICT_USERS`                  | Benutzer mit Push-/Bypass-Rechten                                                                     | –        |
 | `REQUIRE_SIGNED_COMMITS`          | Signierte Commits erzwingen (`true/false`)                                                            | `false`  |
+| (Python) `--delete`               | Protection entfernen (CLI Flag)                                                                      | –        |
+| (Python) `--dry-run`              | Nur anzeigen, keine Änderungen                                                                       | –        |
 
 Hinweis: Für `STATUS_CHECKS`, `RESTRICT_TEAMS`, `RESTRICT_USERS` einfach durch Leerzeichen trennen oder multiline export nutzen.
 
@@ -66,11 +68,23 @@ export ORG="mein-org"
 bash protect-main.sh
 ```
 
+Python (plattformunabhängig):
+```bash
+export GITHUB_TOKEN=ghp_xxx
+python src/protect_main.py --org mein-org
+```
+
 ### 2. Organisation + Status-Checks
 ```bash
 export ORG="mein-org"
 export STATUS_CHECKS="ci/test lint build"  # Leerzeichen-getrennt
 bash protect-main.sh
+```
+
+Python:
+```bash
+export GITHUB_TOKEN=ghp_xxx
+python src/protect_main.py --org mein-org --status-check ci/test --status-check lint --status-check build
 ```
 
 ### 3. Team-Einschränkungen
@@ -94,6 +108,12 @@ export REPO_LIST="owner1/repoA owner2/repoB"
 bash protect-main.sh
 ```
 
+Python:
+```bash
+export GITHUB_TOKEN=ghp_xxx
+python src/protect_main.py --repos owner1/repoA owner2/repoB
+```
+
 Multiline Variante (bessere Lesbarkeit):
 ```bash
 unset ORG
@@ -108,6 +128,16 @@ export REPO_LIST=$'owner/repo1\nowner/repo2'
 export STATUS_CHECKS="build lint test"
 export REQUIRE_SIGNED_COMMITS=true
 bash protect-main.sh
+```
+
+Python Delete / Dry-Run Beispiele:
+```bash
+# Schutz entfernen
+export GITHUB_TOKEN=ghp_xxx
+python src/protect_main.py --repos owner1/repoA --delete
+
+# Dry-Run (zeigt nur geplante Requests)
+python src/protect_main.py --org mein-org --dry-run
 ```
 
 ---
@@ -162,3 +192,4 @@ Damit die Branch-Protection-Regeln auch im Alltag eingehalten werden, sollte das
 * Falls `ORG` leer ist, MUSS `REPO_LIST` über die Umgebung gesetzt werden – das Script bricht sonst ab.
 * Bei gleichzeitiger Angabe von `ORG` und `REPO_LIST` wird `REPO_LIST` ignoriert.
 * Script-Ausgabe enthält Warnungen, falls ein Branch nicht existiert oder Rechte fehlen.
+* Python-Version: Wrapper `run_protection.sh` installiert Abhängigkeiten automatisch.
