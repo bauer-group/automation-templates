@@ -1,7 +1,7 @@
-# protect-main.sh – GitHub Branch-Protection Automation
+# Branch Protection Automation (Python CLI)
 
-Dieses Script setzt **Branch-Protection-Regeln** für den `main`-Branch in allen Repositories einer GitHub-Organisation oder einer definierten Repo-Liste.  
-Es nutzt die **GitHub CLI** (`gh`) und konfiguriert den Branch so, dass er nur noch über geprüfte Pull Requests verändert werden kann.
+Dieses Tool setzt oder aktualisiert **Branch-Protection-Regeln** für einen Ziel-Branch (Standard `main`) in allen Repositories einer GitHub-Organisation oder in einer expliziten Repo-Liste.  
+Es verwendet direkte GitHub REST-API Aufrufe (Token-basiert) und kann optional Protection wieder entfernen.
 
 ---
 
@@ -12,35 +12,37 @@ Es nutzt die **GitHub CLI** (`gh`) und konfiguriert den Branch so, dass er nur n
 - Alte Reviews werden ungültig, wenn neue Commits kommen
 - Branch muss **up-to-date** mit `main` sein, bevor gemergt werden darf
 - Offene Diskussionen in PRs müssen gelöst sein
-- Optionale **Status-Checks** erzwingen (z. B. CI-Builds)
-- Optionale **Push-Restrictions** für bestimmte Teams/Benutzer
+- Optionale **Status-Checks** (Kontextnamen)
+- Optionale **Push-Restrictions** (Teams/Benutzer)
 - Optional **signierte Commits** erzwingen
 - Option, Admins in den Schutz einzubeziehen
+- Idempotentes Re-Apply (einfach erneut ausführen)
+- Entfernen der Protection (`--delete`)
+- Dry-Run zur sicheren Vorschau
 
 ---
 
 ## 📦 Voraussetzungen
 
-- **GitHub CLI** installiert:  
-  [Installation](https://cli.github.com/manual/installation)
-- Bei GitHub eingeloggt:  
-  ```bash
-  gh auth login
-````
+Python (protect_main.py):
+- Python 3.9+
+- Paket `requests` (wird vom Wrapper automatisch installiert)
+- Personal Access Token: `export GITHUB_TOKEN=...` (oder `GH_TOKEN`)
 
-* Admin- oder Maintainer-Rechte auf den Ziel-Repos
+Allgemein:
+- Admin / Maintain Rechte auf den Repositories
+- Branch muss existieren (sonst Warnung)
 
 ---
 
 ## ⚙️ Konfiguration
 
-Die Konfiguration erfolgt ausschließlich über Umgebungsvariablen.
-Du musst ENTWEDER `ORG` ODER `REPO_LIST` setzen (wenn beide gesetzt sind, gewinnt `ORG`). Sind beide leer, bricht das Script mit einer Usage-Ausgabe ab.
+Konfiguration ausschließlich über Flags / Environment. Du musst ENTWEDER Organisation ODER Repo-Liste definieren. Bei beidem gewinnt die Organisation.
 
 | Variable                          | Beschreibung                                                                                          | Standard |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------- | -------- |
-| `ORG`                             | Name der GitHub Organisation. Wird ignoriert, wenn leer.                                              | –        |
-| `REPO_LIST`                       | Whitespace- oder zeilen-separierte Liste `owner/repo`. Nur nutzen, wenn `ORG` leer ist.               | –        |
+| `ORG` / `--org`                   | Name der GitHub Organisation. Wird ignoriert, wenn leer.                                              | –        |
+| `REPO_LIST` / `--repos`           | Whitespace- oder zeilen-separierte Liste `owner/repo`. Nur nutzen, wenn `ORG` leer ist.               | –        |
 | `BRANCH`                          | Zu schützender Branch                                                                                 | `main`   |
 | `REVIEWS`                         | Anzahl benötigter Reviews                                                                             | `2`      |
 | `INCLUDE_ADMINS`                  | Admins in den Schutz einbeziehen (`true/false`)                                                       | `true`   |
@@ -53,10 +55,31 @@ Du musst ENTWEDER `ORG` ODER `REPO_LIST` setzen (wenn beide gesetzt sind, gewinn
 | `RESTRICT_TEAMS`                  | Teams mit Push-/Bypass-Rechten                                                                        | –        |
 | `RESTRICT_USERS`                  | Benutzer mit Push-/Bypass-Rechten                                                                     | –        |
 | `REQUIRE_SIGNED_COMMITS`          | Signierte Commits erzwingen (`true/false`)                                                            | `false`  |
-| (Python) `--delete`               | Protection entfernen (CLI Flag)                                                                      | –        |
-| (Python) `--dry-run`              | Nur anzeigen, keine Änderungen                                                                       | –        |
+| `--delete`                        | Protection entfernen (statt setzen)                                                                  | –        |
+| `--dry-run`                       | Nur anzeigen, keine Änderungen                                                                       | –        |
 
-Hinweis: Für `STATUS_CHECKS`, `RESTRICT_TEAMS`, `RESTRICT_USERS` einfach durch Leerzeichen trennen oder multiline export nutzen.
+### Wichtige Flags (Kurzreferenz)
+
+| Flag / Env                         | Wirkung                                          |
+| ---------------------------------- | ------------------------------------------------- |
+| --org ORG                          | Alle Repos der Organisation                       |
+| --repos r1 r2                      | Explizite Liste (owner/repo)                      |
+| --branch main                      | Ziel-Branch                                       |
+| --reviews 2                        | Anzahl benötigter Reviews                         |
+| --status-check build (repeatable)  | Status-Check Kontexte hinzufügen                  |
+| --team t1 (repeatable)             | Team mit Push-/Bypass-Rechten                     |
+| --user u1 (repeatable)             | Benutzer mit Push-/Bypass-Rechten                 |
+| --require-signed-commits           | Signierte Commits erzwingen                       |
+| --allow-force-pushes               | Force-Pushes erlauben                             |
+| --allow-deletions                  | Branch-Löschung erlauben                          |
+| --no-include-admins                | Admins nicht einbeziehen                          |
+| --no-linear-history                | Lineare Historie NICHT erzwingen                  |
+| --no-require-conversation-resolution | Gesprächsauflösung nicht erzwingen             |
+| --no-strict-up-to-date             | Up-to-date Pflicht deaktivieren                   |
+| --delete                           | Protection komplett entfernen                     |
+| --dry-run                          | Nur anzeigen (keine Änderungen)                   |
+
+Hinweis: Mehrfach-Flags (`--status-check`, `--team`, `--user`) einfach wiederholen.
 
 ---
 
@@ -64,24 +87,11 @@ Hinweis: Für `STATUS_CHECKS`, `RESTRICT_TEAMS`, `RESTRICT_USERS` einfach durch 
 
 ### 1. Alle Repos einer Organisation
 ```bash
-export ORG="mein-org"
-bash protect-main.sh
-```
-
-Python (plattformunabhängig):
-```bash
 export GITHUB_TOKEN=ghp_xxx
 python src/protect_main.py --org mein-org
 ```
 
 ### 2. Organisation + Status-Checks
-```bash
-export ORG="mein-org"
-export STATUS_CHECKS="ci/test lint build"  # Leerzeichen-getrennt
-bash protect-main.sh
-```
-
-Python:
 ```bash
 export GITHUB_TOKEN=ghp_xxx
 python src/protect_main.py --org mein-org --status-check ci/test --status-check lint --status-check build
@@ -89,26 +99,17 @@ python src/protect_main.py --org mein-org --status-check ci/test --status-check 
 
 ### 3. Team-Einschränkungen
 ```bash
-export ORG="mein-org"
-export RESTRICT_TEAMS="maintainers release-managers"
-bash protect-main.sh
+export GITHUB_TOKEN=ghp_xxx
+python src/protect_main.py --org mein-org --team maintainers --team release-managers
 ```
 
 ### 4. Signierte Commits erzwingen
 ```bash
-export ORG="mein-org"
-export REQUIRE_SIGNED_COMMITS=true
-bash protect-main.sh
+export GITHUB_TOKEN=ghp_xxx
+python src/protect_main.py --org mein-org --require-signed-commits
 ```
 
 ### 5. Konkrete Repo-Liste statt Organisation
-```bash
-unset ORG
-export REPO_LIST="owner1/repoA owner2/repoB"
-bash protect-main.sh
-```
-
-Python:
 ```bash
 export GITHUB_TOKEN=ghp_xxx
 python src/protect_main.py --repos owner1/repoA owner2/repoB
@@ -116,28 +117,29 @@ python src/protect_main.py --repos owner1/repoA owner2/repoB
 
 Multiline Variante (bessere Lesbarkeit):
 ```bash
-unset ORG
-export REPO_LIST=$'owner1/repoA\nowner2/repoB\nowner3/repoC'
-bash protect-main.sh
+export GITHUB_TOKEN=ghp_xxx
+python src/protect_main.py --repos owner1/repoA owner2/repoB owner3/repoC
 ```
 
 ### 6. Kombination: Repo-Liste + Status-Checks + Signaturen
 ```bash
-unset ORG
-export REPO_LIST=$'owner/repo1\nowner/repo2'
-export STATUS_CHECKS="build lint test"
-export REQUIRE_SIGNED_COMMITS=true
-bash protect-main.sh
+export GITHUB_TOKEN=ghp_xxx
+python src/protect_main.py --repos owner/repo1 owner/repo2 --status-check build --status-check lint --status-check test --require-signed-commits
 ```
 
-Python Delete / Dry-Run Beispiele:
+### 7. Entfernen & Dry-Run
 ```bash
-# Schutz entfernen
+# Schutz entfernen (alle Regeln des Branches)
 export GITHUB_TOKEN=ghp_xxx
 python src/protect_main.py --repos owner1/repoA --delete
 
-# Dry-Run (zeigt nur geplante Requests)
+# Dry-Run (zeigt geplante REST-Calls)
 python src/protect_main.py --org mein-org --dry-run
+
+### 8. Wrapper verwenden (führt Auto-Install aus)
+```bash
+./run_protection.sh --org mein-org --status-check build --status-check test
+```
 ```
 
 ---
@@ -192,4 +194,7 @@ Damit die Branch-Protection-Regeln auch im Alltag eingehalten werden, sollte das
 * Falls `ORG` leer ist, MUSS `REPO_LIST` über die Umgebung gesetzt werden – das Script bricht sonst ab.
 * Bei gleichzeitiger Angabe von `ORG` und `REPO_LIST` wird `REPO_LIST` ignoriert.
 * Script-Ausgabe enthält Warnungen, falls ein Branch nicht existiert oder Rechte fehlen.
-* Python-Version: Wrapper `run_protection.sh` installiert Abhängigkeiten automatisch.
+* Wrapper `run_protection.sh` installiert Abhängigkeiten automatisch.
+* Entfernen einzelner Teilaspekte (z. B. nur Signaturen) wird von der GitHub API nicht granulär angeboten – `--delete` entfernt die komplette Protection-Konfiguration für den Branch.
+* Re-Apply ist idempotent: unveränderte Regeln verursachen keinen Fehler.
+* Für sehr große Organisationen kann Paging > 100 Repos erforderlich sein (Python paged; Shell nutzt `gh repo list --limit 1000`).
