@@ -2,20 +2,24 @@ name: Create Release
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    types: [closed]      
+    types: [ closed ]
   workflow_dispatch:
+    inputs:
+      direct-release:
+        description: "Create direct release without PR"
+        type: boolean
+        default: false
+      package-name:
+        description: "Override package name (optional)"
+        type: string
+        default: ""
 
 permissions:
   contents: write
   pull-requests: write  
   issues: write
-
-concurrency:
-  group: release-please-${{ github.ref }}
-  cancel-in-progress: false
 
 jobs:
   release-please:
@@ -23,14 +27,13 @@ jobs:
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
       github.event_name == 'workflow_dispatch'    
-    name: Prepare Release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create/Update Release (auto semantic versioning)        
-        uses: googleapis/release-please-action@v4
-        with:
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
-          config-file: .github/config/release-please-config.json
-          manifest-file: .github/config/.release-please-manifest.json
-          target-branch: main
-          #target-branch: ${{ github.ref_name }}
+    uses: ./github/workflows/release-please.yml
+    with:
+      target-branch: "main"
+      package-name: ${{ inputs.package-name || 'automation-templates' }}
+      release-type: "simple"
+      direct-release: ${{ inputs.direct-release || false }}
+      config-file: ".github/config/release-please-config.json"
+      manifest-file: ".github/config/.release-please-manifest.json"
+    secrets:
+      RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}

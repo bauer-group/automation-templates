@@ -1,0 +1,77 @@
+name: Release Please (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      target-branch:
+        description: "Target branch for releases"
+        type: string
+        default: "main"
+      package-name:
+        description: "Package name for the release"
+        type: string
+        default: ""
+      release-type:
+        description: "Release type (simple, node, python, etc.)"
+        type: string
+        default: "simple"
+      direct-release:
+        description: "Create direct release without PR"
+        type: boolean
+        default: false
+      config-file:
+        description: "Path to release-please config file"
+        type: string
+        default: ".github/config/release-please-config.json"
+      manifest-file:
+        description: "Path to release-please manifest file"
+        type: string
+        default: ".github/config/.release-please-manifest.json"
+    secrets:
+      RELEASE_PLEASE_TOKEN:
+        description: "Token for release-please (optional, falls back to GITHUB_TOKEN)"
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write  
+  issues: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Process Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create/Update Release PR (default mode)
+        if: ${{ !inputs.direct-release }}
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          release-type: ${{ inputs.release-type }}
+          package-name: ${{ inputs.package-name || github.event.repository.name }}
+          target-branch: ${{ inputs.target-branch }}
+          config-file: ${{ inputs.config-file }}
+          manifest-file: ${{ inputs.manifest-file }}
+          include-component-in-tag: false
+
+      - name: Create Direct Release (direct mode)
+        if: ${{ inputs.direct-release }}
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          command: github-release
+          release-type: ${{ inputs.release-type }}
+          package-name: ${{ inputs.package-name || github.event.repository.name }}
+          target-branch: ${{ inputs.target-branch }}
+          config-file: ${{ inputs.config-file }}
+          manifest-file: ${{ inputs.manifest-file }}
+          include-component-in-tag: false
