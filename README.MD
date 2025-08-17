@@ -1,7 +1,10 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-17 00:10:35 UTC -->
+<!-- Generated on 2025-08-17 00:19:35 UTC -->
 
-# {{COMPANY_NAME}} – {{PROJECT_NAME}}
+# {{COMPANY_NAME}} – {{P└── github/workflows/           # Wiederverwendbare Workflows
+    ├── readme.yml             # Erweiterte README-Generierung
+    ├── release-please.yml     # Release-Please mit automatischen PRs
+    └── README.md              # Detaillierte Workflow-DokumentationT_NAME}}
 
 **Status:** Version 0.1.5 (2025-08-17)  
 **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)  
@@ -27,7 +30,6 @@
 │
 ├── github/workflows/           # Wiederverwendbare Workflows
 │   ├── readme.yml             # Erweiterte README-Generierung
-│   ├── release.yml            # Release-Management
 │   ├── release-please.yml     # Release-Please mit automatischen PRs
 │   └── README.md              # Detaillierte Workflow-Dokumentation
 │
@@ -48,7 +50,7 @@ Das README-Template-System unterstützt zahlreiche Platzhalter:
 
 - `0.1.5` - Aktuelle Version (aus Git Tags oder Umgebung)
 - `2025-08-17` - Aktuelles Datum (YYYY-MM-DD)
-- `2025-08-17 00:10:35 UTC` - Datum und Zeit (YYYY-MM-DD HH:MM:SS UTC)
+- `2025-08-17 00:19:35 UTC` - Datum und Zeit (YYYY-MM-DD HH:MM:SS UTC)
 - `2025` - Aktuelles Jahr
 
 #### Repository-Informationen
@@ -77,10 +79,7 @@ Das README-Template-System unterstützt zahlreiche Platzhalter:
 
 #### Workflow-Badges (automatisch generiert)
 
-- `[![Build](https://github.com/bauer-group/automation-templates/actions/workflows/build.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/build.yml)` - Build-Status Badge
 - `[![Release](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml)` - Release-Status Badge
-- `[![Security](https://github.com/bauer-group/automation-templates/actions/workflows/security-scan.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/security-scan.yml)` - Security-Scan Badge
-- `[![Deploy](https://github.com/bauer-group/automation-templates/actions/workflows/deploy.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/deploy.yml)` - Deploy-Status Badge
 
 ### In anderen Projekten verwenden
 
@@ -162,4 +161,4 @@ Siehe [github/workflows/README.md](github/workflows/README.md) für detaillierte
 
 ---
 
-*Dieses README wurde automatisch generiert am 2025-08-17 00:10:35 UTC aus [docs/README.template.MD](docs/README.template.MD)*
+*Dieses README wurde automatisch generiert am 2025-08-17 00:19:35 UTC aus [docs/README.template.MD](docs/README.template.MD)*

@@ -1,106 +1,41 @@
 # Wiederverwendbare GitHub Workflows
 
-Dieses Repository enthält eine Sammlung von wiederverwendbaren GitHub Actions Workflows, die in anderen Projekten eingesetzt werden können.
+Diese Sammlung bietet professionelle, wiederverwendbare GitHub Actions Workflows für moderne Entwicklungsprozesse.
 
-## Struktur
+## 🎯 Verfügbare Workflows
 
-### 📁 `github/workflows/` (Wiederverwendbare Workflows)
-Enthält die eigentlichen wiederverwendbaren Workflow-Definitionen:
-- `readme.yml` - Professionelle README-Generierung aus Templates
-- `release.yml` - Release-Management mit semantic versioning
-- `release-please.yml` - Release-Please Workflow für automatische PRs und Releases
+### 📄 README Auto-Update (`readme.yml`)
 
-### 📁 `.github/workflows/` (Caller Workflows)
-Enthält die Caller-Workflows, die die wiederverwendbaren Workflows aufrufen:
-- `readme.yml` - Ruft `github/workflows/readme.yml` auf
-- `release-please.yml` - Ruft `github/workflows/release-please.yml` auf
+Erweiterte README-Generierung aus Templates mit umfangreichen Platzhaltern und automatischer Repository-Information.
 
-## Verwendung in anderen Projekten
+**Trigger:**
+- Pull Requests (Validierung)
+- Manual dispatch (Generierung + Commit)
+- Workflow calls (wiederverwendbar)
 
-### Option 1: Direkte Verwendung der wiederverwendbaren Workflows
+**Key Features:**
+- 🔄 **Script-Download**: Lädt automatisch die neueste Version des Generator-Scripts
+- 📝 **40+ Template-Platzhalter**: Umfassende Variablen-Unterstützung  
+- 🔍 **Git-Auto-Detection**: Automatische Repository-Informationen
+- 📦 **Package Integration**: Support für package.json, requirements.txt
+- 🏷️ **Workflow-Badges**: Automatische Badge-Generierung
+- ⚡ **Conditional Blocks**: `{{#IF VARIABLE}}content{{/IF}}` Syntax
+- ✅ **PR-Validierung**: Fails wenn README nicht aktuell
+- 🤖 **Auto-Commit**: Bei manueller Ausführung
 
-```yaml
-name: Build
-on:
-  push:
-    branches: [ main ]
+### 🚀 Release Please (`release-please.yml`)
 
-jobs:
-  build:
-    uses: bauer-group/automation-templates/.github/workflows/build.yml@main
-    with:
-      node-version: "18"
-      run-tests: true
-    secrets:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-```
+Automatisches Release-Management mit semantic versioning und GitHub Releases.
 
-### Option 2: Lokale Anpassung
+**Trigger:**
+- Workflow calls (wiederverwendbar)
 
-1. Kopieren Sie die gewünschten Workflows aus `github/workflows/` in Ihr Projekt
-2. Passen Sie sie nach Bedarf an
-3. Erstellen Sie eigene Caller-Workflows in `.github/workflows/`
-
-## Verfügbare Workflows
-
-###  README Workflow
-
-- **Datei**: `github/workflows/readme.yml`
-- **Zweck**: Professionelle README-Generierung aus Templates
-- **Parameter**:
-  - `template-path`: Pfad zur README-Template-Datei (Standard: "docs/README.template.MD")
-  - `output-path`: Pfad zur Ausgabe-README-Datei (Standard: "README.MD")
-  - `python-version`: Python-Version (Standard: "3.12")
-  - `commit-message`: Commit-Message für README-Updates
-  - `fail-on-pr`: PR fehlschlagen lassen, wenn README veraltet ist
-  - `auto-commit`: Automatisches Committen bei workflow_dispatch
-  - `project-name`: Projektname (überschreibt automatische Erkennung)
-  - `project-description`: Projektbeschreibung
-  - `company-name`: Firmenname
-  - `contact-email`: Kontakt E-Mail
-  - `documentation-url`: Dokumentations-URL
-  - `support-url`: Support-URL
-- **Outputs**:
-  - `readme-updated`: Ob README aktualisiert wurde
-  - `version-used`: Verwendete Version
-- **Features**:
-  - Umfangreiche Platzhalter-Unterstützung ({{VERSION}}, {{DATE}}, {{REPO_URL}}, etc.)
-  - Automatische Repository-Informationen-Erkennung
-  - Package.json Integration
-  - Workflow-Badges-Generierung
-  - Bedingte Blöcke: {{#IF VARIABLE}}content{{/IF}}
-  - GitHub API Integration für Contributors
-  - Fehlerbehandlung und Validierung
-  - Fallback-Implementierung für fehlende Scripts
-
-### 🏷️ Release Workflow
-- **Datei**: `github/workflows/release.yml`
-- **Zweck**: Automatisches Release-Management
-- **Parameter**:
-  - `direct_release`: Direktes Release ohne PR
-  - `release_as`: Spezifische Versionsnummer
-  - `package_name`: Name des Pakets
-- **Features**:
-  - Semantic Versioning
-  - Release Notes
-  - GitHub Releases
-
-### 🤖 Release-Please Workflow
-- **Datei**: `github/workflows/release-please.yml`
-- **Zweck**: Automatische Release-PRs und Releases mit release-please
-- **Parameter**:
-  - `target-branch`: Ziel-Branch für Releases (Standard: "main")
-  - `package-name`: Name des Pakets (Standard: Repository-Name)
-  - `release-type`: Release-Typ (simple, node, python, etc.)
-  - `direct-release`: Direktes Release ohne PR (Standard: false)
-  - `config-file`: Pfad zur release-please Konfiguration
-  - `manifest-file`: Pfad zum release-please Manifest
-- **Features**:
-  - Automatische Release-PRs basierend auf Conventional Commits
-  - Semantic Versioning ohne "v" Präfix
-  - Wahlweise direkte Releases
-  - Konfigurierbare Changelog-Sections
-  - Unterstützung für verschiedene Release-Typen
+**Key Features:**
+- 📋 **Conventional Commits**: Automatische Changelog-Generierung
+- 🏷️ **Semantic Versioning**: feat/fix/BREAKING CHANGE Support
+- 📦 **GitHub Releases**: Automatische Release-Erstellung
+- 🔄 **Flexible Modi**: PR-basiert oder direkte Releases
+- ⚙️ **Konfigurierbar**: Custom Release-Typen und Pakete
 
 ## Best Practices
 
