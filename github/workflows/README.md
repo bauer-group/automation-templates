@@ -6,22 +6,14 @@ Dieses Repository enthält eine Sammlung von wiederverwendbaren GitHub Actions W
 
 ### 📁 `github/workflows/` (Wiederverwendbare Workflows)
 Enthält die eigentlichen wiederverwendbaren Workflow-Definitionen:
-- `build.yml` - Build-Prozess für Node.js Projekte
-- `deploy.yml` - Deployment in verschiedene Umgebungen
-- `readme.yml` - Automatische README-Generierung
+- `readme.yml` - Professionelle README-Generierung aus Templates
 - `release.yml` - Release-Management mit semantic versioning
 - `release-please.yml` - Release-Please Workflow für automatische PRs und Releases
-- `security-scan.yml` - Sicherheitsscans (CodeQL, Trivy)
 
 ### 📁 `.github/workflows/` (Caller Workflows)
 Enthält die Caller-Workflows, die die wiederverwendbaren Workflows aufrufen:
-- `build.yml` - Ruft `github/workflows/build.yml` auf
-- `deploy.yml` - Ruft `github/workflows/deploy.yml` auf
 - `readme.yml` - Ruft `github/workflows/readme.yml` auf
-- `release.yml` - Ruft `github/workflows/release.yml` auf
 - `release-please.yml` - Ruft `github/workflows/release-please.yml` auf
-- `security-scan.yml` - Ruft `github/workflows/security-scan.yml` auf
-- `release-please.yml` - Bestehender Release-Please Workflow
 
 ## Verwendung in anderen Projekten
 
@@ -51,24 +43,8 @@ jobs:
 
 ## Verfügbare Workflows
 
-### 🔨 Build Workflow
-- **Datei**: `github/workflows/build.yml`
-- **Zweck**: Node.js Build-Prozess mit Tests
-- **Parameter**:
-  - `node-version`: Node.js Version (Standard: "20")
-  - `run-tests`: Tests ausführen (Standard: true)
-- **Secrets**:
-  - `NPM_TOKEN`: Optional für private NPM Registry
+###  README Workflow
 
-### 🚀 Deploy Workflow
-- **Datei**: `github/workflows/deploy.yml`
-- **Zweck**: Deployment in verschiedene Umgebungen
-- **Parameter**:
-  - `environment`: Zielumgebung (staging|production)
-- **Secrets**:
-  - `DEPLOY_TOKEN`: Deployment-Credentials (erforderlich)
-
-### 📖 README Workflow
 - **Datei**: `github/workflows/readme.yml`
 - **Zweck**: Professionelle README-Generierung aus Templates
 - **Parameter**:
@@ -126,16 +102,6 @@ jobs:
   - Konfigurierbare Changelog-Sections
   - Unterstützung für verschiedene Release-Typen
 
-### 🔒 Security Scan Workflow
-- **Datei**: `github/workflows/security-scan.yml`
-- **Zweck**: Sicherheitsanalyse
-- **Parameter**:
-  - `enable-codeql`: CodeQL Analyse aktivieren
-  - `enable-trivy`: Trivy Container-Scan aktivieren
-- **Features**:
-  - CodeQL für JavaScript/TypeScript
-  - Trivy für Container-Sicherheit
-
 ## Best Practices
 
 1. **Versionierung**: Verwenden Sie Tags oder Branches für stabile Versionen
@@ -157,35 +123,21 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
-    uses: bauer-group/automation-templates/.github/workflows/build.yml@main
+  readme-update:
+    uses: bauer-group/automation-templates/github/workflows/readme.yml@main
     with:
-      node-version: "20"
-      run-tests: true
+      project-name: "Mein Projekt"
+      company-name: "Meine Firma"
+      project-description: "Beschreibung meines Projekts"
 
-  security:
-    uses: bauer-group/automation-templates/.github/workflows/security-scan.yml@main
-    with:
-      enable-codeql: true
-      enable-trivy: false
-
-  deploy-staging:
-    if: github.ref == 'refs/heads/develop'
-    needs: [build, security]
-    uses: bauer-group/automation-templates/.github/workflows/deploy.yml@main
-    with:
-      environment: staging
-    secrets:
-      DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
-
-  deploy-production:
+  release:
     if: github.ref == 'refs/heads/main'
-    needs: [build, security]
-    uses: bauer-group/automation-templates/.github/workflows/deploy.yml@main
+    uses: bauer-group/automation-templates/github/workflows/release-please.yml@main
     with:
-      environment: production
-    secrets:
-      DEPLOY_TOKEN: ${{ secrets.PRODUCTION_DEPLOY_TOKEN }}
+      target-branch: "main"
+      package-name: "mein-projekt"
+      release-type: "simple"
+```
 ```
 
 ## Contribution

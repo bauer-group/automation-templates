@@ -7,35 +7,25 @@
 {{PROJECT_DESCRIPTION}}
 
 [![Create Release]({{REPO_URL}}/actions/workflows/release-please.yml/badge.svg)]({{REPO_URL}}/actions/workflows/release-please.yml)
-[![Build]({{REPO_URL}}/actions/workflows/build.yml/badge.svg)]({{REPO_URL}}/actions/workflows/build.yml)
-[![Security Scan]({{REPO_URL}}/actions/workflows/security-scan.yml/badge.svg)]({{REPO_URL}}/actions/workflows/security-scan.yml)
 
 ## 🎯 Features
 
-- **Zentralisierte Workflows**: Wiederverwendbare GitHub Actions Templates
+- **Wiederverwendbare Workflows**: Zentralisierte GitHub Actions Templates
 - **Automatisches Release-Management**: Semantic Versioning mit Release-Please
 - **README-Generierung**: Automatische Erstellung aus Templates mit umfangreichen Platzhaltern
-- **Sicherheitsscans**: CodeQL und Trivy Integration
-- **Deployment-Pipelines**: Flexible Deployment-Workflows für verschiedene Umgebungen
+- **Template-System**: Extensibles Template-System mit 40+ Platzhaltern
 
 ## 📁 Struktur
 
 ```text
 ├── .github/workflows/          # Caller Workflows (ausführbare Workflows)
-│   ├── build.yml              # → ruft github/workflows/build.yml auf
-│   ├── deploy.yml             # → ruft github/workflows/deploy.yml auf
 │   ├── readme.yml             # → ruft github/workflows/readme.yml auf
-│   ├── release.yml            # → ruft github/workflows/release.yml auf
-│   ├── release-please.yml     # → ruft github/workflows/release-please.yml auf
-│   └── security-scan.yml      # → ruft github/workflows/security-scan.yml auf
+│   └── release-please.yml     # → ruft github/workflows/release-please.yml auf
 │
 ├── github/workflows/           # Wiederverwendbare Workflows
-│   ├── build.yml              # Build-Prozess für verschiedene Sprachen
-│   ├── deploy.yml             # Deployment in verschiedene Umgebungen
 │   ├── readme.yml             # Erweiterte README-Generierung
 │   ├── release.yml            # Release-Management
 │   ├── release-please.yml     # Release-Please mit automatischen PRs
-│   ├── security-scan.yml      # Sicherheitsanalyse
 │   └── README.md              # Detaillierte Workflow-Dokumentation
 │
 ├── docs/                      # Dokumentation und Templates
