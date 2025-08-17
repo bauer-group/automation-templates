@@ -21,7 +21,7 @@ jobs:
   release-please:
     name: Release Management
     if: |
-      github.event_name == 'push' ||
+      (github.event_name == 'push' && !contains(github.event.head_commit.message, 'chore(main): release')) ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
