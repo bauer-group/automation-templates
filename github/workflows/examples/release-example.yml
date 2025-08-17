@@ -1,10 +1,8 @@
-name: Create Release
+name: Release Management Example
 
 on:
   push:
     branches: [ main ]
-  pull_request:
-    types: [ closed ]
   workflow_dispatch:
     inputs:
       direct-release:
@@ -22,7 +20,6 @@ jobs:
     name: Release Management
     if: |
       github.event_name == 'push' ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -32,11 +29,9 @@ jobs:
           fetch-depth: 0
 
       - name: Run Release Please
-        uses: ./.github/actions/release-please
+        uses: bauer-group/automation-templates/.github/actions/release-please@main
         with:
           target-branch: "main"
           release-type: "simple"
           direct-release: ${{ inputs.direct-release }}
-          config-file: ".github/config/release-please-config.json"
-          manifest-file: ".github/config/.release-please-manifest.json"
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}

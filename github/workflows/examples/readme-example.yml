@@ -1,0 +1,40 @@
+name: README Update Example
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      auto-commit:
+        description: "Auto-commit changes"
+        type: boolean
+        default: true
+      project-name:
+        description: "Project name (override)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  readme-update:
+    name: Generate README
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Generate README
+        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
+        with:
+          template-path: "docs/README.template.md"
+          output-path: "README.md"
+          project-name: ${{ inputs.project-name || github.event.repository.name }}
+          company-name: "Ihre Firma"
+          project-description: "Beschreibung Ihres Projekts"
+          auto-commit: ${{ inputs.auto-commit }}
+          fail-on-pr: 'true'
