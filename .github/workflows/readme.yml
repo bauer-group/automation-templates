@@ -1,0 +1,32 @@
+name: README Auto-Update
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      auto-commit:
+        description: "Auto-commit changes"
+        type: boolean
+        default: true
+      project-name:
+        description: "Project name (optional override)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  readme-update:
+    uses: ./github/workflows/readme.yml
+    with:
+      template-path: "docs/README.template.MD"
+      output-path: "README.MD"
+      python-version: "3.12"
+      commit-message: "docs(readme): auto-generate README [skip ci]"
+      fail-on-pr: true
+      auto-commit: ${{ inputs.auto-commit != false }}
+      project-name: ${{ inputs.project-name || 'automation-templates' }}
+      company-name: "BAUER GROUP"
+      project-description: "Zentralisierte, wiederverwendbare Automations-Templates für GitHub Actions"

@@ -70,12 +70,32 @@ jobs:
 
 ### 📖 README Workflow
 - **Datei**: `github/workflows/readme.yml`
-- **Zweck**: Automatische README-Generierung
-- **Trigger**: Pull Requests und manuelle Ausführung
+- **Zweck**: Professionelle README-Generierung aus Templates
+- **Parameter**:
+  - `template-path`: Pfad zur README-Template-Datei (Standard: "docs/README.template.MD")
+  - `output-path`: Pfad zur Ausgabe-README-Datei (Standard: "README.MD")
+  - `python-version`: Python-Version (Standard: "3.12")
+  - `commit-message`: Commit-Message für README-Updates
+  - `fail-on-pr`: PR fehlschlagen lassen, wenn README veraltet ist
+  - `auto-commit`: Automatisches Committen bei workflow_dispatch
+  - `project-name`: Projektname (überschreibt automatische Erkennung)
+  - `project-description`: Projektbeschreibung
+  - `company-name`: Firmenname
+  - `contact-email`: Kontakt E-Mail
+  - `documentation-url`: Dokumentations-URL
+  - `support-url`: Support-URL
+- **Outputs**:
+  - `readme-updated`: Ob README aktualisiert wurde
+  - `version-used`: Verwendete Version
 - **Features**:
-  - Generiert README aus Template
-  - Validiert bei PRs
-  - Committet automatisch bei manueller Ausführung
+  - Umfangreiche Platzhalter-Unterstützung ({{VERSION}}, {{DATE}}, {{REPO_URL}}, etc.)
+  - Automatische Repository-Informationen-Erkennung
+  - Package.json Integration
+  - Workflow-Badges-Generierung
+  - Bedingte Blöcke: {{#IF VARIABLE}}content{{/IF}}
+  - GitHub API Integration für Contributors
+  - Fehlerbehandlung und Validierung
+  - Fallback-Implementierung für fehlende Scripts
 
 ### 🏷️ Release Workflow
 - **Datei**: `github/workflows/release.yml`
