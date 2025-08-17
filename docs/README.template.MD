@@ -1,27 +1,176 @@
-# BAUER GROUP – Automation Templates
+# {{COMPANY_NAME}} – {{PROJECT_NAME}}
 
-Status: Version {{VERSION}} ({{DATE}})
+**Status:** Version {{VERSION}} ({{DATE}})  
+**Repository:** [{{REPO_FULL_NAME}}]({{REPO_URL}})  
+**Branch:** {{CURRENT_BRANCH}}
 
-Dieses Repository enthält zentralisierte, wiederverwendbare Automations-Templates für GitHub Actions (CI/CD) mit Fokus auf Skalierbarkeit, Wartbarkeit und Konsistenz.
+{{PROJECT_DESCRIPTION}}
 
-[![Create Release](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml)
+[![Create Release]({{REPO_URL}}/actions/workflows/release-please.yml/badge.svg)]({{REPO_URL}}/actions/workflows/release-please.yml)
+[![Build]({{REPO_URL}}/actions/workflows/build.yml/badge.svg)]({{REPO_URL}}/actions/workflows/build.yml)
+[![Security Scan]({{REPO_URL}}/actions/workflows/security-scan.yml/badge.svg)]({{REPO_URL}}/actions/workflows/security-scan.yml)
 
-## Features
-- Einheitliche Release-Strategie via Conventional Commits
-- Automatische Generierung von CHANGELOG.md
-- Automatisch erzeugtes README aus Template
-- Vorlagen für wiederverwendbare Workflows
+## 🎯 Features
 
-## Verwendung
-1. README anpassen: docs/README.template.md ändern, nicht die generierte README.md.
-2. Commits nach Conventional-Commits-Schema verfassen (feat:, fix:, chore:, docs:, etc.).
-3. Merge nach main triggert die Release-Pipeline.
+- **Zentralisierte Workflows**: Wiederverwendbare GitHub Actions Templates
+- **Automatisches Release-Management**: Semantic Versioning mit Release-Please
+- **README-Generierung**: Automatische Erstellung aus Templates mit umfangreichen Platzhaltern
+- **Sicherheitsscans**: CodeQL und Trivy Integration
+- **Deployment-Pipelines**: Flexible Deployment-Workflows für verschiedene Umgebungen
 
-## Releasing
-- semantic-release analysiert Commits und bestimmt automatisch die nächste Version.
-- CHANGELOG.md und README.md werden aktualisiert und zurück ins Repo committed.
-- Ein GitHub-Release mit Notes wird erstellt.
+## 📁 Struktur
 
-## Entwicklung
-- Python-Skript zum Bauen der README: scripts/generate_readme.py
-- Release-Konfigurationen liegen unter .github/release/
+```text
+├── .github/workflows/          # Caller Workflows (ausführbare Workflows)
+│   ├── build.yml              # → ruft github/workflows/build.yml auf
+│   ├── deploy.yml             # → ruft github/workflows/deploy.yml auf
+│   ├── readme.yml             # → ruft github/workflows/readme.yml auf
+│   ├── release.yml            # → ruft github/workflows/release.yml auf
+│   ├── release-please.yml     # → ruft github/workflows/release-please.yml auf
+│   └── security-scan.yml      # → ruft github/workflows/security-scan.yml auf
+│
+├── github/workflows/           # Wiederverwendbare Workflows
+│   ├── build.yml              # Build-Prozess für verschiedene Sprachen
+│   ├── deploy.yml             # Deployment in verschiedene Umgebungen
+│   ├── readme.yml             # Erweiterte README-Generierung
+│   ├── release.yml            # Release-Management
+│   ├── release-please.yml     # Release-Please mit automatischen PRs
+│   ├── security-scan.yml      # Sicherheitsanalyse
+│   └── README.md              # Detaillierte Workflow-Dokumentation
+│
+├── docs/                      # Dokumentation und Templates
+│   └── README.template.MD     # README-Template mit Platzhaltern
+│
+└── scripts/                   # Automatisierungs-Skripte
+    └── generate_readme.py     # Erweiterter README-Generator
+```
+
+## 🚀 Verwendung
+
+### README-Template System
+
+Das README-Template-System unterstützt zahlreiche Platzhalter:
+
+#### Basis-Informationen
+
+- `{{VERSION}}` - Aktuelle Version (aus Git Tags oder Umgebung)
+- `{{DATE}}` - Aktuelles Datum (YYYY-MM-DD)
+- `{{DATETIME}}` - Datum und Zeit (YYYY-MM-DD HH:MM:SS UTC)
+- `{{YEAR}}` - Aktuelles Jahr
+
+#### Repository-Informationen
+
+- `{{REPO_FULL_NAME}}` - Repository Name (owner/repo)
+- `{{REPO_URL}}` - Repository URL
+- `{{REPO_OWNER}}` - Repository Owner
+- `{{REPO_NAME}}` - Repository Name
+- `{{CURRENT_BRANCH}}` - Aktueller Branch
+
+#### Projekt-Informationen
+
+- `{{PROJECT_NAME}}` - Projektname
+- `{{PROJECT_DESCRIPTION}}` - Projektbeschreibung
+- `{{COMPANY_NAME}}` - Firmenname
+- `{{CONTACT_EMAIL}}` - Kontakt E-Mail
+- `{{DOCUMENTATION_URL}}` - Dokumentations-URL
+- `{{SUPPORT_URL}}` - Support-URL
+
+#### Package-Informationen (automatisch erkannt)
+
+- `{{PACKAGE_NAME}}` - Paketname (aus package.json, etc.)
+- `{{PACKAGE_VERSION}}` - Paketversion
+- `{{PACKAGE_AUTHOR}}` - Autor
+- `{{PACKAGE_LICENSE}}` - Lizenz
+
+#### Workflow-Badges (automatisch generiert)
+
+- `{{BADGE_BUILD}}` - Build-Status Badge
+- `{{BADGE_RELEASE}}` - Release-Status Badge
+- `{{BADGE_SECURITY}}` - Security-Scan Badge
+- `{{BADGE_DEPLOY}}` - Deploy-Status Badge
+
+### In anderen Projekten verwenden
+
+```yaml
+# .github/workflows/readme.yml
+name: README Update
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  readme:
+    uses: {{REPO_FULL_NAME}}/github/workflows/readme.yml@main
+    with:
+      template-path: "docs/README.template.md"
+      output-path: "README.md"
+      project-name: "Mein Projekt"
+      company-name: "Meine Firma"
+      project-description: "Beschreibung meines Projekts"
+      contact-email: "support@example.com"
+```
+
+### Lokale README-Generierung
+
+```bash
+# README manuell generieren
+python scripts/generate_readme.py
+
+# Mit benutzerdefinierten Umgebungsvariablen
+PROJECT_NAME="Mein Projekt" \
+COMPANY_NAME="Meine Firma" \
+python scripts/generate_readme.py
+```
+
+## 🔄 Automatisches Release-Management
+
+Das Projekt verwendet **Release-Please** für automatisches Release-Management:
+
+1. **Conventional Commits** verwenden (feat:, fix:, chore:, docs:, etc.)
+2. **Push nach main** triggert Release-Please
+3. **Release-PR** wird automatisch erstellt
+4. **Merge des Release-PR** erstellt das GitHub Release
+
+### Unterstützte Commit-Typen
+
+- `feat:` - Neue Features (minor version bump)
+- `fix:` - Bugfixes (patch version bump)
+- `feat!:` oder `BREAKING CHANGE:` - Breaking Changes (major version bump)
+- `docs:`, `chore:`, `ci:`, `refactor:` - Keine Version-Änderung
+
+## 🛠️ Entwicklung
+
+### Voraussetzungen
+
+- Python 3.12+
+- Git
+- GitHub Repository mit Actions aktiviert
+
+### Setup
+
+1. Repository klonen
+2. Template in `docs/README.template.MD` anpassen
+3. Workflows nach Bedarf konfigurieren
+4. README generieren: `python scripts/generate_readme.py`
+
+### Verfügbare Workflows
+
+Siehe [github/workflows/README.md](github/workflows/README.md) für detaillierte Dokumentation aller verfügbaren Workflows.
+
+## 📞 Support
+
+{{#IF CONTACT_EMAIL}}
+**Kontakt:** [{{CONTACT_EMAIL}}](mailto:{{CONTACT_EMAIL}})
+{{/IF}}
+
+{{#IF SUPPORT_URL}}
+**Support:** [{{SUPPORT_URL}}]({{SUPPORT_URL}})
+{{/IF}}
+
+**Issues:** [GitHub Issues]({{REPO_URL}}/issues)
+
+---
+
+*Dieses README wurde automatisch generiert am {{DATETIME}} aus [docs/README.template.MD](docs/README.template.MD)*

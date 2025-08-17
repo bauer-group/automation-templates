@@ -14,11 +14,12 @@
 └── github/workflows/           # Wiederverwendbare Workflows (ohne Punkt)
     ├── build.yml              # Build-Prozess für Node.js
     ├── deploy.yml             # Deployment-Workflow
-    ├── readme.yml             # README-Generierung
+    ├── readme.yml             # Erweiterte README-Generierung mit Templates
     ├── release.yml            # Release-Management
     ├── release-please.yml     # Release-Please mit automatischen PRs
     ├── security-scan.yml      # Sicherheitsscans
-    └── README.md              # Detaillierte Dokumentation
+    ├── README.md              # Detaillierte Dokumentation
+    └── README-CONFIGURATION.md # Konfigurationsleitfaden für README-Workflow
 ```
 
 ## 🎯 Konzept
