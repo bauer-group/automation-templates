@@ -4,20 +4,13 @@
 
 ```
 ├── .github/workflows/          # Caller Workflows (mit Punkt)
-│   ├── build.yml              # → ruft github/workflows/build.yml auf
-│   ├── deploy.yml             # → ruft github/workflows/deploy.yml auf
 │   ├── readme.yml             # → ruft github/workflows/readme.yml auf
-│   ├── release.yml            # → ruft github/workflows/release.yml auf
-│   ├── release-please.yml     # → ruft github/workflows/release-please.yml auf
-│   └── security-scan.yml      # → ruft github/workflows/security-scan.yml auf
+│   └── release-please.yml     # → ruft github/workflows/release-please.yml auf
 │
 └── github/workflows/           # Wiederverwendbare Workflows (ohne Punkt)
-    ├── build.yml              # Build-Prozess für Node.js
-    ├── deploy.yml             # Deployment-Workflow
     ├── readme.yml             # Erweiterte README-Generierung mit Templates
     ├── release.yml            # Release-Management
     ├── release-please.yml     # Release-Please mit automatischen PRs
-    ├── security-scan.yml      # Sicherheitsscans
     ├── README.md              # Detaillierte Dokumentation
     └── README-CONFIGURATION.md # Konfigurationsleitfaden für README-Workflow
 ```

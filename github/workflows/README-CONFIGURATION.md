@@ -2,6 +2,9 @@
 
 Diese Datei zeigt, wie der erweiterte README-Workflow konfiguriert werden kann.
 
+> **Hinweis**: Dieses Repository fokussiert sich auf README-Generierung und Release-Management. 
+> Build-, Deploy- und Security-Scan-Workflows wurden entfernt, um sich auf die Kernfunktionalitäten zu konzentrieren.
+
 ## Minimale Konfiguration
 
 ```yaml

@@ -38,7 +38,7 @@ on:
       company-name:
         description: "Company name"
         type: string
-        default: ""
+        default: "BAUER GROUP"
       contact-email:
         description: "Contact email"
         type: string
