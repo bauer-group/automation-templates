@@ -112,22 +112,19 @@ jobs:
             exit 1
           fi
 
-      - name: Generate README
+      - name: Download README generator script
         run: |
-          # Create a temporary script if the default one doesn't exist
-          if [[ ! -f "scripts/generate_readme.py" ]]; then
-            mkdir -p scripts
+          # Download the latest version of the script from the repository
+          mkdir -p scripts
+          if ! curl -fsSL https://raw.githubusercontent.com/bauer-group/automation-templates/main/scripts/generate_readme.py -o scripts/generate_readme.py; then
+            echo "Warning: Could not download script from repository, using local fallback"
+            # Create minimal fallback script if download fails
             cat > scripts/generate_readme.py << 'EOF'
           #!/usr/bin/env python3
           import os
-          import json
           import subprocess
           from datetime import datetime, timezone
-          from typing import Optional, Dict
           import re
-          
-          TEMPLATE_PATH = "${{ inputs.template-path }}"
-          OUTPUT_PATH = "${{ inputs.output-path }}"
           
           def get_latest_tag():
               try:
@@ -159,13 +156,29 @@ jobs:
               except:
                   return {"REPO_FULL_NAME": "unknown/unknown", "CURRENT_BRANCH": "unknown", "REPO_URL": "unknown"}
           
-          def render_template(template, vars):
-              out = template
-              for k, v in vars.items():
-                  out = out.replace("{{" + k + "}}", str(v))
-              return out
+          def render_template(template, variables):
+              content = template
+              for key, value in variables.items():
+                  content = content.replace("{{" + key + "}}", str(value))
+              
+              # Handle conditional blocks {{#IF VARIABLE}}content{{/IF}}
+              import re
+              while True:
+                  match = re.search(r'\{\{#IF\s+(\w+)\}\}(.*?)\{\{/IF\}\}', content, re.DOTALL)
+                  if not match:
+                      break
+                  var_name, block_content = match.groups()
+                  if variables.get(var_name):
+                      content = content.replace(match.group(0), block_content)
+                  else:
+                      content = content.replace(match.group(0), '')
+              
+              return content
           
           def main():
+              TEMPLATE_PATH = "${{ inputs.template-path }}"
+              OUTPUT_PATH = "${{ inputs.output-path }}"
+              
               version = os.getenv("RELEASE_VERSION") or get_latest_tag() or "0.1.0"
               now = datetime.now(timezone.utc)
               
@@ -180,11 +193,15 @@ jobs:
               
               # Add environment variables
               for key, value in os.environ.items():
-                  if key.startswith(("PROJECT_", "COMPANY_", "CONTACT_", "DOCUMENTATION_", "SUPPORT_")):
+                  if value and key.startswith(("PROJECT_", "COMPANY_", "CONTACT_", "DOCUMENTATION_", "SUPPORT_")):
                       variables[key] = value
               
-              with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
-                  template = f.read()
+              try:
+                  with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
+                      template = f.read()
+              except FileNotFoundError:
+                  print(f"Error: Template file {TEMPLATE_PATH} not found")
+                  exit(1)
               
               content = render_template(template, variables)
               banner = f"<!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit {TEMPLATE_PATH} instead. -->\n<!-- Generated on {variables['DATETIME']} -->\n\n"
@@ -198,7 +215,10 @@ jobs:
               main()
           EOF
           fi
-          
+          chmod +x scripts/generate_readme.py
+
+      - name: Generate README
+        run: |
           python scripts/generate_readme.py
 
       - name: Check for README changes

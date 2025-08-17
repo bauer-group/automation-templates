@@ -157,10 +157,7 @@ def get_workflow_badges(repo_full_name: str) -> Dict[str, str]:
     base_url = f"https://github.com/{repo_full_name}"
     
     return {
-        "BADGE_BUILD": f"[![Build]({base_url}/actions/workflows/build.yml/badge.svg)]({base_url}/actions/workflows/build.yml)",
-        "BADGE_RELEASE": f"[![Release]({base_url}/actions/workflows/release-please.yml/badge.svg)]({base_url}/actions/workflows/release-please.yml)", 
-        "BADGE_SECURITY": f"[![Security]({base_url}/actions/workflows/security-scan.yml/badge.svg)]({base_url}/actions/workflows/security-scan.yml)",
-        "BADGE_DEPLOY": f"[![Deploy]({base_url}/actions/workflows/deploy.yml/badge.svg)]({base_url}/actions/workflows/deploy.yml)"
+        "BADGE_RELEASE": f"[![Release]({base_url}/actions/workflows/release-please.yml/badge.svg)]({base_url}/actions/workflows/release-please.yml)"
     }
 
 def get_contributors_info(repo_full_name: str) -> Dict[str, str]:

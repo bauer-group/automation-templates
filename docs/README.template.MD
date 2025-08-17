@@ -1,4 +1,7 @@
-# {{COMPANY_NAME}} – {{PROJECT_NAME}}
+# {{COMPANY_NAME}} – {{P└── github/workflows/           # Wiederverwendbare Workflows
+    ├── readme.yml             # Erweiterte README-Generierung
+    ├── release-please.yml     # Release-Please mit automatischen PRs
+    └── README.md              # Detaillierte Workflow-DokumentationT_NAME}}
 
 **Status:** Version {{VERSION}} ({{DATE}})  
 **Repository:** [{{REPO_FULL_NAME}}]({{REPO_URL}})  
@@ -24,7 +27,6 @@
 │
 ├── github/workflows/           # Wiederverwendbare Workflows
 │   ├── readme.yml             # Erweiterte README-Generierung
-│   ├── release.yml            # Release-Management
 │   ├── release-please.yml     # Release-Please mit automatischen PRs
 │   └── README.md              # Detaillierte Workflow-Dokumentation
 │
@@ -74,10 +76,7 @@ Das README-Template-System unterstützt zahlreiche Platzhalter:
 
 #### Workflow-Badges (automatisch generiert)
 
-- `{{BADGE_BUILD}}` - Build-Status Badge
 - `{{BADGE_RELEASE}}` - Release-Status Badge
-- `{{BADGE_SECURITY}}` - Security-Scan Badge
-- `{{BADGE_DEPLOY}}` - Deploy-Status Badge
 
 ### In anderen Projekten verwenden
 
