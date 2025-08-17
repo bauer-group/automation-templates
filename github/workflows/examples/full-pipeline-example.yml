@@ -1,0 +1,63 @@
+name: Full CI/CD Pipeline Example
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      auto-commit-readme:
+        description: "Auto-commit README changes"
+        type: boolean
+        default: true
+      direct-release:
+        description: "Create direct release without PR"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write  
+  issues: write
+
+jobs:
+  readme-update:
+    name: Update README
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Generate README
+        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
+        with:
+          template-path: "docs/README.template.md"
+          output-path: "README.md"
+          project-name: ${{ github.event.repository.name }}
+          company-name: "Ihre Firma"
+          project-description: "Beschreibung Ihres Projekts"
+          auto-commit: ${{ inputs.auto-commit-readme }}
+          fail-on-pr: 'true'
+
+  release-management:
+    name: Release Management
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Release Please
+        uses: bauer-group/automation-templates/.github/actions/release-please@main
+        with:
+          target-branch: "main"
+          release-type: "simple"
+          direct-release: ${{ inputs.direct-release }}
+          token: ${{ secrets.GITHUB_TOKEN }}
