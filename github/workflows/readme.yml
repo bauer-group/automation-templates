@@ -66,8 +66,8 @@ jobs:
   generate-readme:
     runs-on: ubuntu-latest
     outputs:
-      readme-updated: ${{ steps.check-changes.outputs.readme-updated }}
-      version-used: ${{ steps.determine-version.outputs.version }}
+      readme-updated: ${{ steps.readme.outputs.readme-updated }}
+      version-used: ${{ steps.readme.outputs.version-used }}
     
     steps:
       - name: Checkout
@@ -76,201 +76,17 @@ jobs:
           fetch-depth: 0
           token: ${{ github.token }}
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Generate README using Composite Action
+        id: readme
+        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
         with:
-          python-version: ${{ inputs.python-version }}
-
-      - name: Determine version (latest tag or fallback)
-        id: determine-version
-        shell: bash
-        run: |
-          TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
-          if [[ -n "$TAG" ]]; then
-            TAG="${TAG#v}"
-            echo "RELEASE_VERSION=$TAG" >> "$GITHUB_ENV"
-            echo "version=$TAG" >> "$GITHUB_OUTPUT"
-          else
-            VERSION="${INIT_VERSION:-0.1.0}"
-            echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Set environment variables
-        run: |
-          echo "PROJECT_NAME=${{ inputs.project-name }}" >> "$GITHUB_ENV"
-          echo "PROJECT_DESCRIPTION=${{ inputs.project-description }}" >> "$GITHUB_ENV"
-          echo "COMPANY_NAME=${{ inputs.company-name }}" >> "$GITHUB_ENV"
-          echo "CONTACT_EMAIL=${{ inputs.contact-email }}" >> "$GITHUB_ENV"
-          echo "DOCUMENTATION_URL=${{ inputs.documentation-url }}" >> "$GITHUB_ENV"
-          echo "SUPPORT_URL=${{ inputs.support-url }}" >> "$GITHUB_ENV"
-
-      - name: Validate template file exists
-        run: |
-          if [[ ! -f "${{ inputs.template-path }}" ]]; then
-            echo "Error: Template file ${{ inputs.template-path }} not found"
-            exit 1
-          fi
-
-      - name: Download README generator script
-        run: |
-          # Download the latest version of the script from the repository
-          mkdir -p scripts
-          if ! curl -fsSL https://raw.githubusercontent.com/bauer-group/automation-templates/main/scripts/generate_readme.py -o scripts/generate_readme.py; then
-            echo "Warning: Could not download script from repository, using local fallback"
-            # Create minimal fallback script if download fails
-            cat > scripts/generate_readme.py << 'EOF'
-          #!/usr/bin/env python3
-          import os
-          import subprocess
-          from datetime import datetime, timezone
-          import re
-          
-          def get_latest_tag():
-              try:
-                  tag = subprocess.check_output(["git", "describe", "--tags", "--abbrev=0"], stderr=subprocess.STDOUT).decode().strip()
-                  return tag.lstrip("v")
-              except:
-                  return None
-          
-          def get_git_info():
-              try:
-                  remote_url = subprocess.check_output(["git", "config", "--get", "remote.origin.url"], stderr=subprocess.STDOUT).decode().strip()
-                  current_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], stderr=subprocess.STDOUT).decode().strip()
-                  
-                  repo_full_name = "unknown/unknown"
-                  if "github.com" in remote_url:
-                      if remote_url.startswith("git@"):
-                          match = re.search(r"github\.com:([^/]+)/(.+?)(?:\.git)?$", remote_url)
-                      else:
-                          match = re.search(r"github\.com/([^/]+)/(.+?)(?:\.git)?$", remote_url)
-                      if match:
-                          owner, repo = match.groups()
-                          repo_full_name = f"{owner}/{repo}"
-                  
-                  return {
-                      "REPO_FULL_NAME": repo_full_name,
-                      "CURRENT_BRANCH": current_branch,
-                      "REPO_URL": f"https://github.com/{repo_full_name}" if repo_full_name != "unknown/unknown" else remote_url
-                  }
-              except:
-                  return {"REPO_FULL_NAME": "unknown/unknown", "CURRENT_BRANCH": "unknown", "REPO_URL": "unknown"}
-          
-          def render_template(template, variables):
-              content = template
-              for key, value in variables.items():
-                  content = content.replace("{{" + key + "}}", str(value))
-              
-              # Handle conditional blocks {{#IF VARIABLE}}content{{/IF}}
-              import re
-              while True:
-                  match = re.search(r'\{\{#IF\s+(\w+)\}\}(.*?)\{\{/IF\}\}', content, re.DOTALL)
-                  if not match:
-                      break
-                  var_name, block_content = match.groups()
-                  if variables.get(var_name):
-                      content = content.replace(match.group(0), block_content)
-                  else:
-                      content = content.replace(match.group(0), '')
-              
-              return content
-          
-          def main():
-              TEMPLATE_PATH = "${{ inputs.template-path }}"
-              OUTPUT_PATH = "${{ inputs.output-path }}"
-              
-              version = os.getenv("RELEASE_VERSION") or get_latest_tag() or "0.1.0"
-              now = datetime.now(timezone.utc)
-              
-              variables = {
-                  "VERSION": version,
-                  "DATE": now.strftime("%Y-%m-%d"),
-                  "DATETIME": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
-                  "YEAR": now.strftime("%Y")
-              }
-              
-              variables.update(get_git_info())
-              
-              # Add environment variables
-              for key, value in os.environ.items():
-                  if value and key.startswith(("PROJECT_", "COMPANY_", "CONTACT_", "DOCUMENTATION_", "SUPPORT_")):
-                      variables[key] = value
-              
-              try:
-                  with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
-                      template = f.read()
-              except FileNotFoundError:
-                  print(f"Error: Template file {TEMPLATE_PATH} not found")
-                  exit(1)
-              
-              content = render_template(template, variables)
-              banner = f"<!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit {TEMPLATE_PATH} instead. -->\n<!-- Generated on {variables['DATETIME']} -->\n\n"
-              
-              with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-                  f.write(banner + content)
-              
-              print(f"README generated successfully: {OUTPUT_PATH}")
-          
-          if __name__ == "__main__":
-              main()
-          EOF
-          fi
-          chmod +x scripts/generate_readme.py
-
-      - name: Generate README
-        run: |
-          python scripts/generate_readme.py
-
-      - name: Check for README changes
-        id: check-changes
-        run: |
-          if [[ -n "$(git status --porcelain ${{ inputs.output-path }})" ]]; then
-            echo "readme-updated=true" >> "$GITHUB_OUTPUT"
-            echo "README changes detected"
-          else
-            echo "readme-updated=false" >> "$GITHUB_OUTPUT"
-            echo "No README changes"
-          fi
-
-      - name: Commit README changes (manual runs only)
-        if: |
-          steps.check-changes.outputs.readme-updated == 'true' &&
-          github.event_name == 'workflow_dispatch' &&
-          inputs.auto-commit == true
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ${{ inputs.output-path }}
-          git commit -m "${{ inputs.commit-message }}"
-          git push
-
-      - name: Fail if README is out-of-date (PRs)
-        if: |
-          steps.check-changes.outputs.readme-updated == 'true' &&
-          github.event_name == 'pull_request' &&
-          inputs.fail-on-pr == true
-        run: |
-          echo "❌ README ist nicht aktuell!"
-          echo ""
-          echo "Der ${{ inputs.output-path }} muss aktualisiert werden."
-          echo "Führen Sie den README-Generierungs-Workflow manuell aus oder"
-          echo "aktualisieren Sie das Template ${{ inputs.template-path }} und committen Sie die Änderungen."
-          echo ""
-          echo "Verfügbare Platzhalter:"
-          echo "- {{VERSION}} - Aktuelle Version"
-          echo "- {{DATE}} - Aktuelles Datum (YYYY-MM-DD)"
-          echo "- {{DATETIME}} - Datum und Zeit (YYYY-MM-DD HH:MM:SS UTC)"
-          echo "- {{YEAR}} - Aktuelles Jahr"
-          echo "- {{REPO_FULL_NAME}} - Repository Name (owner/repo)"
-          echo "- {{REPO_URL}} - Repository URL"
-          echo "- {{CURRENT_BRANCH}} - Aktueller Branch"
-          echo "- {{PROJECT_NAME}} - Projektname"
-          echo "- {{PROJECT_DESCRIPTION}} - Projektbeschreibung"
-          echo "- {{COMPANY_NAME}} - Firmenname"
-          echo "- {{CONTACT_EMAIL}} - Kontakt E-Mail"
-          echo "- {{DOCUMENTATION_URL}} - Dokumentations-URL"
-          echo "- {{SUPPORT_URL}} - Support-URL"
-          exit 1
+          template-path: ${{ inputs.template-path }}
+          output-path: ${{ inputs.output-path }}
+          project-name: ${{ inputs.project-name }}
+          company-name: ${{ inputs.company-name }}
+          project-description: ${{ inputs.project-description }}
+          auto-commit: ${{ inputs.auto-commit }}
+          fail-on-pr: ${{ inputs.fail-on-pr }}
 
       - name: Summary
         run: |
@@ -278,6 +94,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Template**: ${{ inputs.template-path }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Output**: ${{ inputs.output-path }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version**: ${{ steps.determine-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Updated**: ${{ steps.check-changes.outputs.readme-updated }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ steps.readme.outputs.version-used }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Updated**: ${{ steps.readme.outputs.readme-updated }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Event**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY

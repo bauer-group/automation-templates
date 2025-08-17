@@ -1,54 +1,78 @@
 # GitHub Workflows Übersicht
 
-## 📋 Aktuelle Struktur
+## 📋 Professionelle Architektur
 
 ```
-├── .github/workflows/          # Caller Workflows (mit Punkt)
-│   ├── readme.yml             # → ruft github/workflows/readme.yml auf
-│   └── release-please.yml     # → ruft github/workflows/release-please.yml auf
+├── .github/
+│   ├── actions/                    # Wiederverwendbare Composite Actions
+│   │   ├── readme-generate/       # README-Generator Logic
+│   │   │   └── action.yml
+│   │   └── release-please/        # Release-Please Logic  
+│   │       └── action.yml
+│   │
+│   └── workflows/                  # Lokale Workflows (für dieses Repository)
+│       ├── readme.yml             # README-Update (nutzt Composite Action)
+│       └── release-please.yml     # Release-Management (nutzt Composite Action)
 │
-└── github/workflows/           # Wiederverwendbare Workflows (ohne Punkt)
-    ├── readme.yml             # Erweiterte README-Generierung mit Templates
-    ├── release-please.yml     # Release-Please mit automatischen PRs
-    ├── README.md              # Detaillierte Dokumentation
-    └── README-CONFIGURATION.md # Konfigurationsleitfaden für README-Workflow
+└── github/workflows/               # Wiederverwendbare Workflows (für externe Verwendung)
+    ├── readme.yml                 # Erweiterte README-Generierung
+    ├── release-please.yml         # Release-Please mit automatischen PRs
+    ├── README.md                  # Detaillierte Dokumentation
+    └── README-CONFIGURATION.md   # Konfigurationsleitfaden
 ```
+
+## 🏗️ **DRY-Prinzip (Don't Repeat Yourself)**
+
+**Problem gelöst:** Keine Code-Duplikation mehr!
+
+### **Composite Actions (Single Source of Truth):**
+- 📄 **`.github/actions/readme-generate/`** - Zentrale README-Generator Logik
+- 🚀 **`.github/actions/release-please/`** - Zentrale Release-Please Logik
+
+### **Workflow-Layer:**
+- **Lokal** (`.github/workflows/`) - Nutzt lokale Composite Actions
+- **Wiederverwendbar** (`github/workflows/`) - Nutzt externe Composite Actions via `@main`
 
 ## 🎯 Verfügbare Workflows
 
-### 📄 README Generation (`readme.yml`)
-**Zweck:** Automatische README-Generierung aus Templates mit umfangreichen Platzhaltern  
+### 📄 README Generation
+**Composite Action:** `.github/actions/readme-generate/action.yml`  
+**Lokaler Workflow:** `.github/workflows/readme.yml`  
+**Wiederverwendbarer Workflow:** `github/workflows/readme.yml`
+
 **Features:**
 - 40+ Template-Platzhalter
 - Automatische Git-Repository-Information
-- Package.json Integration
-- Workflow-Badge-Generierung
+- Script-Download-Mechanismus
 - Conditional Template-Blöcke
-- Automatisches Commit bei manueller Ausführung
-- PR-Validierung (fails wenn README veraltet)
+- PR-Validierung und Auto-Commit
 
-### 🚀 Release Management (`release-please.yml`)
-**Zweck:** Automatisches Release-Management mit semantic versioning  
+### 🚀 Release Management
+**Composite Action:** `.github/actions/release-please/action.yml`  
+**Lokaler Workflow:** `.github/workflows/release-please.yml`  
+**Wiederverwendbarer Workflow:** `github/workflows/release-please.yml`
+
 **Features:**
 - Conventional Commits Support
 - Automatische Changelog-Generierung
 - GitHub Release-Erstellung
 - PR-basierte oder direkte Releases
-- Konfigurierbare Release-Typen
-- Multi-Package Support
 
-## 🔄 Konzept
+## 🔄 Architektur-Vorteile
 
-**Zweistufiges System:**
-1. **Wiederverwendbare Workflows** (`github/workflows/`) - Die eigentlichen Workflow-Logiken
-2. **Caller Workflows** (`.github/workflows/`) - Rufen die wiederverwendbaren Workflows auf
+### **✅ Keine Code-Duplikation:**
+- Composite Actions als Single Source of Truth
+- Workflows rufen nur Actions auf
+- Zentrale Wartung und Updates
 
-**Vorteile:**
-- ✅ Zentrale Wartung der Workflow-Logik
-- ✅ Einfache Wiederverwendung in anderen Projekten
-- ✅ Klare Trennung zwischen Interface und Implementierung
-- ✅ Versionierung und Stabilität
-- ✅ Keine Code-Duplikation durch dynamischen Script-Download
+### **✅ Flexible Verwendung:**
+- **Intern:** Lokale Actions ohne Versionsprobleme
+- **Extern:** Actions via `@main` oder `@v1.0.0`
+
+### **✅ Professionelle Struktur:**
+- Klare Trennung von Logik und Interface
+- Wartungsfreundliche Architektur
+- Skalierbare Lösung
 
 ## 🔄 Verwendung
 

@@ -1,0 +1,59 @@
+name: 'Release Please'
+description: 'Automated release management with semantic versioning'
+inputs:
+  target-branch:
+    description: 'Target branch for releases'
+    required: false
+    default: 'main'
+  package-name:
+    description: 'Package name for the release'
+    required: false
+    default: ''
+  release-type:
+    description: 'Release type (simple, node, python, etc.)'
+    required: false
+    default: 'simple'
+  direct-release:
+    description: 'Create direct release without PR'
+    required: false
+    default: 'false'
+  config-file:
+    description: 'Path to release-please config file'
+    required: false
+    default: '.github/config/release-please-config.json'
+  manifest-file:
+    description: 'Path to release-please manifest file'
+    required: false
+    default: '.github/config/.release-please-manifest.json'
+  token:
+    description: 'Token for release-please'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Create/Update Release PR (default mode)
+      if: inputs.direct-release != 'true'
+      uses: googleapis/release-please-action@v4
+      with:
+        token: ${{ inputs.token || github.token }}
+        release-type: ${{ inputs.release-type }}
+        package-name: ${{ inputs.package-name || github.event.repository.name }}
+        target-branch: ${{ inputs.target-branch }}
+        config-file: ${{ inputs.config-file }}
+        manifest-file: ${{ inputs.manifest-file }}
+        include-component-in-tag: false
+
+    - name: Create Direct Release (direct mode)
+      if: inputs.direct-release == 'true'
+      uses: googleapis/release-please-action@v4
+      with:
+        token: ${{ inputs.token || github.token }}
+        command: github-release
+        release-type: ${{ inputs.release-type }}
+        package-name: ${{ inputs.package-name || github.event.repository.name }}
+        target-branch: ${{ inputs.target-branch }}
+        config-file: ${{ inputs.config-file }}
+        manifest-file: ${{ inputs.manifest-file }}
+        include-component-in-tag: false

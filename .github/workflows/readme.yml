@@ -19,14 +19,26 @@ permissions:
 
 jobs:
   readme-update:
-    uses: ./github/workflows/readme.yml
-    with:
-      template-path: "docs/README.template.MD"
-      output-path: "README.MD"
-      python-version: "3.12"
-      commit-message: "docs(readme): auto-generate README [skip ci]"
-      fail-on-pr: true
-      auto-commit: ${{ inputs.auto-commit != false }}
-      project-name: ${{ inputs.project-name || 'automation-templates' }}
-      company-name: "BAUER GROUP"
-      project-description: "Zentralisierte, wiederverwendbare Automations-Templates für GitHub Actions"
+    name: Generate README
+    runs-on: ubuntu-latest
+    outputs:
+      readme-updated: ${{ steps.readme.outputs.readme-updated }}
+      version-used: ${{ steps.readme.outputs.version-used }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Generate README
+        id: readme
+        uses: ./.github/actions/readme-generate
+        with:
+          template-path: "docs/README.template.MD"
+          output-path: "README.MD"
+          project-name: ${{ inputs.project-name || 'automation-templates' }}
+          company-name: "BAUER GROUP"
+          project-description: "Zentralisierte, wiederverwendbare Automations-Templates für GitHub Actions"
+          auto-commit: ${{ inputs.auto-commit }}
+          fail-on-pr: 'true'

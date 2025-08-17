@@ -51,27 +51,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create/Update Release PR (default mode)
-        if: ${{ !inputs.direct-release }}
-        uses: googleapis/release-please-action@v4
+      - name: Run Release Please using Composite Action
+        uses: bauer-group/automation-templates/.github/actions/release-please@main
         with:
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
-          release-type: ${{ inputs.release-type }}
-          package-name: ${{ inputs.package-name || github.event.repository.name }}
           target-branch: ${{ inputs.target-branch }}
+          package-name: ${{ inputs.package-name }}
+          release-type: ${{ inputs.release-type }}
+          direct-release: ${{ inputs.direct-release }}
           config-file: ${{ inputs.config-file }}
           manifest-file: ${{ inputs.manifest-file }}
-          include-component-in-tag: false
-
-      - name: Create Direct Release (direct mode)
-        if: ${{ inputs.direct-release }}
-        uses: googleapis/release-please-action@v4
-        with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
-          command: github-release
-          release-type: ${{ inputs.release-type }}
-          package-name: ${{ inputs.package-name || github.event.repository.name }}
-          target-branch: ${{ inputs.target-branch }}
-          config-file: ${{ inputs.config-file }}
-          manifest-file: ${{ inputs.manifest-file }}
-          include-component-in-tag: false

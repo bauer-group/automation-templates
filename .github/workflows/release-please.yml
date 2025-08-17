@@ -23,17 +23,25 @@ permissions:
 
 jobs:
   release-please:
+    name: Release Management
     if: |
       github.event_name == 'push' ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
-      github.event_name == 'workflow_dispatch'    
-    uses: ./github/workflows/release-please.yml
-    with:
-      target-branch: "main"
-      package-name: ${{ inputs.package-name || 'automation-templates' }}
-      release-type: "simple"
-      direct-release: ${{ inputs.direct-release || false }}
-      config-file: ".github/config/release-please-config.json"
-      manifest-file: ".github/config/.release-please-manifest.json"
-    secrets:
-      RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Release Please
+        uses: ./.github/actions/release-please
+        with:
+          target-branch: "main"
+          package-name: ${{ inputs.package-name || 'automation-templates' }}
+          release-type: "simple"
+          direct-release: ${{ inputs.direct-release }}
+          config-file: ".github/config/release-please-config.json"
+          manifest-file: ".github/config/.release-please-manifest.json"
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
