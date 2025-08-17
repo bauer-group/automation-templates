@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.6](https://github.com/bauer-group/automation-templates/compare/v0.1.5...v0.1.6) (2025-08-11)
+
+
+### Features
+
+* füge automatisiertes Setup-Skript für Windows-Runner hinzu ([5fb7eac](https://github.com/bauer-group/automation-templates/commit/5fb7eac502a3bfbbbd9f1beba9e53ed0ae01d475))
+* füge vollständige Konfiguration für GitHub Actions Runner hinzu ([9d756b1](https://github.com/bauer-group/automation-templates/commit/9d756b15b5906a4964052eb119529158f6fd8bde))
+
+
+### Documentation
+
+* entferne redundante Quelle für MSBuild-Installation im README ([609bc13](https://github.com/bauer-group/automation-templates/commit/609bc131dba7cce4883d140a7c31b899849f6b45))
+
 ## [0.1.5](https://github.com/bauer-group/automation-templates/compare/v0.1.4...v0.1.5) (2025-08-08)
 
 
