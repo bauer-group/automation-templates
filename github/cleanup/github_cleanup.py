@@ -29,6 +29,13 @@ from typing import List, Dict, Optional
 import requests
 from datetime import datetime
 
+try:
+    from github_auth import get_authenticated_github
+    from github import Github
+    HAS_OAUTH = True
+except ImportError:
+    HAS_OAUTH = False
+
 
 class GitHubCleanup:
     """GitHub Repository Cleanup Tool"""
@@ -75,7 +82,7 @@ class GitHubCleanup:
             self.log(f"Request failed: {str(e)}", "ERROR")
             return None
     
-    def get_paginated_results(self, url: str, per_page: int = 100) -> List[Dict]:
+    def get_paginated_results(self, url: str, per_page: int = 100, data_key: str = None) -> List[Dict]:
         """Get all results from a paginated GitHub API endpoint"""
         results = []
         page = 1
@@ -87,7 +94,19 @@ class GitHubCleanup:
             if not response:
                 break
                 
-            data = response.json()
+            json_data = response.json()
+            if not json_data:
+                break
+            
+            # Extract data from the correct key if specified
+            if data_key and data_key in json_data:
+                data = json_data[data_key]
+            elif isinstance(json_data, list):
+                data = json_data
+            else:
+                # Try common keys
+                data = json_data.get('workflow_runs') or json_data.get('items') or []
+                
             if not data:
                 break
                 
@@ -105,7 +124,7 @@ class GitHubCleanup:
         self.log("🏃 Starting workflow runs cleanup...")
         
         url = f"{self.base_url}/repos/{self.owner}/{self.repo}/actions/runs"
-        workflow_runs = self.get_paginated_results(url)
+        workflow_runs = self.get_paginated_results(url, data_key='workflow_runs')
         
         self.log(f"Found {len(workflow_runs)} workflow runs")
         
@@ -271,24 +290,49 @@ Examples:
   python github_cleanup.py --owner myorg --repo myrepo --token ghp_xxxx
   python github_cleanup.py --owner myorg --repo myrepo --dry-run
   python github_cleanup.py --owner myorg --repo myrepo (uses GITHUB_TOKEN env var)
+  python github_cleanup.py --owner myorg --repo myrepo --oauth (browser login)
         """
     )
     
     parser.add_argument("--owner", required=True, help="GitHub repository owner/organization")
     parser.add_argument("--repo", required=True, help="GitHub repository name")
     parser.add_argument("--token", help="GitHub Personal Access Token (or use GITHUB_TOKEN env var)")
+    parser.add_argument("--oauth", action="store_true", help="Use browser-based OAuth authentication")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be deleted without actually deleting")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
     
     args = parser.parse_args()
     
-    # Get token from argument or environment variable
-    token = args.token or os.getenv("GITHUB_TOKEN")
-    if not token:
-        print("❌ Error: GitHub token is required. Provide it via --token argument or GITHUB_TOKEN environment variable.")
-        print("🔗 Create a token at: https://github.com/settings/tokens")
-        print("📋 Required permissions: repo, actions, admin:repo_hook")
-        sys.exit(1)
+    # Handle authentication
+    token = None
+    
+    if args.oauth:
+        if not HAS_OAUTH:
+            print("❌ OAuth-Authentifizierung nicht verfügbar.")
+            print("💡 Installieren Sie die erforderlichen Pakete: pip install -r requirements.txt")
+            sys.exit(1)
+            
+        print("🔐 Starte OAuth-Authentifizierung...")
+        try:
+            github_client, token = get_authenticated_github(use_device_flow=True)
+            user = github_client.get_user()
+            print(f"✅ Erfolgreich angemeldet als: {user.login} ({user.name})")
+        except Exception as e:
+            print(f"❌ OAuth-Authentifizierung fehlgeschlagen: {e}")
+            sys.exit(1)
+    else:
+        # Get token from argument or environment variable
+        token = args.token or os.getenv("GITHUB_TOKEN")
+        if not token:
+            print("❌ Error: GitHub token is required.")
+            print("💡 Optionen:")
+            print("   1. --token <your_token>")
+            print("   2. GITHUB_TOKEN environment variable")
+            if HAS_OAUTH:
+                print("   3. --oauth (browser login)")
+            print("🔗 Token erstellen: https://github.com/settings/tokens")
+            print("📋 Benötigte Berechtigungen: repo, actions, admin:repo_hook")
+            sys.exit(1)
     
     # Confirm destructive operation
     if not args.dry_run:

@@ -1,6 +1,6 @@
 # GitHub Repository Cleanup Tool
 
-Ein plattformunabhängiges Python-Tool zur umfassenden Bereinigung von GitHub-Repositories.
+Ein plattformunabhängiges Python-Tool zur umfassenden Bereinigung von GitHub-Repositories mit komfortabler OAuth-Authentifizierung.
 
 ## Features
 
@@ -10,13 +10,28 @@ Das Tool entfernt automatisch:
 - ✅ Alle Tags
 - ✅ Alle Branches (außer `main` und `master`)
 
+## Authentifizierungs-Methoden
+
+### 🔐 OAuth Browser-Login (Empfohlen)
+- Keine manuelle Token-Erstellung erforderlich
+- Sichere Browser-basierte Anmeldung
+- Automatische Berechtigung aller erforderlichen Scopes
+
+### 🔑 Personal Access Token
+- Traditionelle Token-basierte Authentifizierung
+- Manuell erstellter Token erforderlich
+- Für Automatisierung und CI/CD geeignet
+
 ## Voraussetzungen
 
 - Python 3.6 oder höher
-- GitHub Personal Access Token mit folgenden Berechtigungen:
-  - `repo` (Full control of private repositories)
-  - `actions` (Access to GitHub Actions)
-  - `admin:repo_hook` (Admin access to repository hooks)
+- Internetverbindung für OAuth oder GitHub Token
+
+### Für Personal Access Token:
+GitHub Personal Access Token mit folgenden Berechtigungen:
+- `repo` (Full control of private repositories)
+- `actions` (Access to GitHub Actions)
+- `admin:repo_hook` (Admin access to repository hooks)
 
 ## Installation
 
@@ -25,27 +40,38 @@ Das Tool entfernt automatisch:
    pip install -r requirements.txt
    ```
 
-2. **GitHub Token erstellen:**
+2. **Optional: GitHub Token erstellen (nur für Token-basierte Auth):**
    - Gehen Sie zu [GitHub Settings > Personal Access Tokens](https://github.com/settings/tokens)
    - Erstellen Sie einen neuen Token mit den oben genannten Berechtigungen
    - Kopieren Sie den Token für die spätere Verwendung
 
 ## Verwendung
 
-### Grundlegende Syntax
+### OAuth-Authentifizierung (Empfohlen)
 
 ```bash
-python github_cleanup.py --owner <owner> --repo <repo> [--token <token>] [--dry-run]
+python github_cleanup.py --owner <owner> --repo <repo> --oauth [--dry-run]
+```
+
+### Token-basierte Authentifizierung
+
+```bash
+python github_cleanup.py --owner <owner> --repo <repo> --token <token> [--dry-run]
 ```
 
 ### Beispiele
 
-1. **Dry-Run (Simulation ohne Löschung):**
+1. **OAuth Dry-Run (Simulation ohne Löschung):**
    ```bash
-   python github_cleanup.py --owner bauer-group --repo automation-templates --dry-run
+   python github_cleanup.py --owner bauer-group --repo automation-templates --oauth --dry-run
    ```
 
-2. **Echte Bereinigung mit Token als Parameter:**
+2. **OAuth echte Bereinigung:**
+   ```bash
+   python github_cleanup.py --owner bauer-group --repo automation-templates --oauth
+   ```
+
+3. **Token-basierte Bereinigung:**
    ```bash
    python github_cleanup.py --owner bauer-group --repo automation-templates --token ghp_xxxxxxxxxxxx
    ```
