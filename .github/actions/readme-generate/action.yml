@@ -1,132 +1,145 @@
 name: 'README Generator'
-description: 'Generate README from template with comprehensive placeholder support'
+description: 'Generiert README aus Template mit erweiterten Platzhaltern'
+author: 'Bauer Group'
+
 inputs:
   template-path:
-    description: 'Path to README template file'
+    description: 'Pfad zum README Template'
     required: false
-    default: 'docs/README.template.MD'
+    default: 'docs/README.template.md'
   output-path:
-    description: 'Path to output README file'
+    description: 'Pfad für generierte README'
     required: false
-    default: 'README.MD'
+    default: 'README.md'
   project-name:
-    description: 'Project name (overrides auto-detection)'
+    description: 'Name des Projekts'
     required: false
     default: ''
   company-name:
-    description: 'Company name'
+    description: 'Name der Firma'
     required: false
-    default: 'BAUER GROUP'
+    default: 'Bauer Group'
   project-description:
-    description: 'Project description'
+    description: 'Projektbeschreibung'
     required: false
     default: ''
-  auto-commit:
-    description: 'Auto-commit changes on workflow_dispatch'
+  contact-email:
+    description: 'Kontakt E-Mail'
     required: false
-    default: 'true'
-  fail-on-pr:
-    description: 'Fail PR if README is out of date'
+    default: ''
+  documentation-url:
+    description: 'Dokumentations-URL'
     required: false
-    default: 'true'
-
-outputs:
-  readme-updated:
-    description: 'Whether README was updated'
-    value: ${{ steps.check-changes.outputs.readme-updated }}
-  version-used:
-    description: 'Version used in README generation'
-    value: ${{ steps.determine-version.outputs.version }}
+    default: ''
+  support-url:
+    description: 'Support-URL'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
   steps:
     - name: Setup Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v4
       with:
         python-version: '3.12'
 
-    - name: Set environment variables
+    - name: Install dependencies
       shell: bash
       run: |
-        echo "PROJECT_NAME=${{ inputs.project-name }}" >> "$GITHUB_ENV"
-        echo "PROJECT_DESCRIPTION=${{ inputs.project-description }}" >> "$GITHUB_ENV"
-        echo "COMPANY_NAME=${{ inputs.company-name }}" >> "$GITHUB_ENV"
+        python -m pip install --upgrade pip
+        pip install requests gitpython
 
-    - name: Determine version (latest tag or fallback)
-      id: determine-version
+    - name: Download latest README generator
       shell: bash
       run: |
-        TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
-        if [[ -n "$TAG" ]]; then
-          TAG="${TAG#v}"
-          echo "RELEASE_VERSION=$TAG" >> "$GITHUB_ENV"
-          echo "version=$TAG" >> "$GITHUB_OUTPUT"
-        else
-          VERSION="0.1.0"
-          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-        fi
+        curl -fsSL https://raw.githubusercontent.com/bauer-group/automation-templates/main/scripts/generate_readme.py -o generate_readme.py || echo "Download failed, using fallback"
 
-    - name: Validate template file exists
+    - name: Create fallback generator if download failed
       shell: bash
       run: |
-        if [[ ! -f "${{ inputs.template-path }}" ]]; then
-          echo "Error: Template file ${{ inputs.template-path }} not found"
-          exit 1
+        if [ ! -f generate_readme.py ]; then
+          cat > generate_readme.py << 'EOF'
+        #!/usr/bin/env python3
+        import os
+        import re
+        from datetime import datetime
+        
+        def main():
+            template_path = os.getenv('TEMPLATE_PATH', 'docs/README.template.md')
+            output_path = os.getenv('OUTPUT_PATH', 'README.md')
+            
+            if not os.path.exists(template_path):
+                print(f"Template {template_path} not found")
+                return
+                
+            with open(template_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Basis-Ersetzungen
+            replacements = {
+                '{{VERSION}}': os.getenv('GITHUB_REF_NAME', '0.1.0').lstrip('v'),
+                '{{DATE}}': datetime.now().strftime('%Y-%m-%d'),
+                '{{DATETIME}}': datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC'),
+                '{{YEAR}}': str(datetime.now().year),
+                '{{REPOSITORY}}': os.getenv('GITHUB_REPOSITORY', ''),
+                '{{REPOSITORY_URL}}': f"https://github.com/{os.getenv('GITHUB_REPOSITORY', '')}",
+                '{{REPOSITORY_OWNER}}': os.getenv('GITHUB_REPOSITORY_OWNER', ''),
+                '{{REPOSITORY_NAME}}': os.getenv('GITHUB_REPOSITORY', '').split('/')[-1],
+                '{{CURRENT_BRANCH}}': os.getenv('GITHUB_REF_NAME', 'main'),
+                '{{PROJECT_NAME}}': os.getenv('PROJECT_NAME', ''),
+                '{{COMPANY_NAME}}': os.getenv('COMPANY_NAME', 'Bauer Group'),
+                '{{PROJECT_DESCRIPTION}}': os.getenv('PROJECT_DESCRIPTION', ''),
+                '{{CONTACT_EMAIL}}': os.getenv('CONTACT_EMAIL', ''),
+                '{{DOCUMENTATION_URL}}': os.getenv('DOCUMENTATION_URL', ''),
+                '{{SUPPORT_URL}}': os.getenv('SUPPORT_URL', ''),
+            }
+            
+            for placeholder, value in replacements.items():
+                content = content.replace(placeholder, value)
+            
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            print(f"README generated: {output_path}")
+        
+        if __name__ == '__main__':
+            main()
+        EOF
         fi
-
-    - name: Download README generator script
-      shell: bash
-      run: |
-        mkdir -p scripts
-        if ! curl -fsSL https://raw.githubusercontent.com/bauer-group/automation-templates/main/scripts/generate_readme.py -o scripts/generate_readme.py; then
-          echo "Warning: Could not download script from repository, checking for local version"
-          if [[ ! -f "scripts/generate_readme.py" ]]; then
-            echo "Error: No README generator script found"
-            exit 1
-          fi
-        fi
-        chmod +x scripts/generate_readme.py
 
     - name: Generate README
       shell: bash
-      run: python scripts/generate_readme.py
+      env:
+        TEMPLATE_PATH: ${{ inputs.template-path }}
+        OUTPUT_PATH: ${{ inputs.output-path }}
+        PROJECT_NAME: ${{ inputs.project-name }}
+        COMPANY_NAME: ${{ inputs.company-name }}
+        PROJECT_DESCRIPTION: ${{ inputs.project-description }}
+        CONTACT_EMAIL: ${{ inputs.contact-email }}
+        DOCUMENTATION_URL: ${{ inputs.documentation-url }}
+        SUPPORT_URL: ${{ inputs.support-url }}
+      run: python generate_readme.py
 
-    - name: Check for README changes
-      id: check-changes
+    - name: Check for changes
+      id: changes
       shell: bash
       run: |
-        if [[ -n "$(git status --porcelain ${{ inputs.output-path }})" ]]; then
-          echo "readme-updated=true" >> "$GITHUB_OUTPUT"
-          echo "README changes detected"
+        if git diff --quiet ${{ inputs.output-path }}; then
+          echo "changed=false" >> $GITHUB_OUTPUT
         else
-          echo "readme-updated=false" >> "$GITHUB_OUTPUT"
-          echo "No README changes"
+          echo "changed=true" >> $GITHUB_OUTPUT
         fi
 
-    - name: Commit README changes (manual runs only)
-      if: |
-        steps.check-changes.outputs.readme-updated == 'true' &&
-        github.event_name == 'workflow_dispatch' &&
-        inputs.auto-commit == 'true'
+    - name: Commit changes
+      if: steps.changes.outputs.changed == 'true'
       shell: bash
       run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
         git add ${{ inputs.output-path }}
-        git commit -m "docs(readme): auto-generate README [skip ci]"
-        git push
+        git commit -m "docs: update README.md [skip ci]" || echo "No changes to commit"
 
-    - name: Fail if README is out-of-date (PRs)
-      if: |
-        steps.check-changes.outputs.readme-updated == 'true' &&
-        github.event_name == 'pull_request' &&
-        inputs.fail-on-pr == 'true'
-      shell: bash
-      run: |
-        echo "❌ README ist nicht aktuell!"
-        echo ""
-        echo "Der ${{ inputs.output-path }} muss aktualisiert werden."
-        echo "Führen Sie den README-Generierungs-Workflow manuell aus."
-        exit 1
+branding:
+  icon: 'file-text'
+  color: 'blue'

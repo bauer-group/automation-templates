@@ -1,208 +1,208 @@
-# Automation Templates - GitHub Actions
+# 🚀 Automation Templates - Workflows & Actions
 
-Diese Sammlung bietet professionelle GitHub Actions Templates für moderne Entwicklungsprozesse.
+**Zentrale GitHub Actions und Workflows für automatisierte Entwicklungsprozesse**
 
-## �️ Architektur
+## 🏗️ Architektur
 
-### **Composite Actions (Wiederverwendbare Logik):**
-- `.github/actions/readme-generate/` - README-Generator mit umfangreichen Features
-- `.github/actions/release-please/` - Release-Management mit semantic versioning
+```
+├── .github/
+│   ├── actions/                    # 🔧 Wiederverwendbare Composite Actions
+│   │   ├── readme-generate/       # 📄 README-Generator
+│   │   └── release-please/        # 🚀 Release-Management
+│   │
+│   └── workflows/                  # 🎯 Lokale Workflows (für dieses Repository)
+│       ├── readme.yml             # → nutzt lokale Action
+│       └── release.yml            # → nutzt lokale Action
+│
+└── github/workflows/              # 📚 Für externe Repositories
+    ├── readme.yml                 # 🔄 Wiederverwendbarer README-Workflow
+    ├── release-please.yml         # 🔄 Wiederverwendbarer Release-Workflow
+    └── examples/                  # 📋 Kopierbare Beispiele
+        ├── readme-example.yml
+        ├── release-example.yml
+        └── full-pipeline-example.yml
+```
 
-### **Beispiel-Workflows:**
-- `examples/readme-example.yml` - README-Update für externe Projekte
-- `examples/release-example.yml` - Release-Management für externe Projekte  
-- `examples/full-pipeline-example.yml` - Vollständige CI/CD-Pipeline
+## 🎯 Verwendung
 
-## 🚀 Schnellstart
+### 🔧 Composite Actions (Empfohlen)
 
-### 1. README-Generierung hinzufügen
+Für maximale Flexibilität verwende die Composite Actions direkt:
 
 ```yaml
-# .github/workflows/readme.yml
-name: README Update
-on:
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+- name: Generate README
+  uses: bauer-group/automation-templates/.github/actions/readme-generate@main
+  with:
+    project-name: "Mein Projekt"
+    company-name: "Meine Firma"
+
+- name: Release Please
+  uses: bauer-group/automation-templates/.github/actions/release-please@main
+  with:
+    release-type: "simple"
+    token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### 🔄 Wiederverwendbare Workflows
+
+Für komplette Workflow-Orchestrierung:
+
+```yaml
 jobs:
   readme:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: bauer-group/automation-templates/.github/actions/readme-generate@main
-        with:
-          project-name: "Mein Projekt"
-          company-name: "Meine Firma"
-```
-
-### 2. Release-Management hinzufügen
-
-```yaml
-# .github/workflows/release.yml
-name: Release
-on:
-  push:
-    branches: [ main ]
-jobs:
+    uses: bauer-group/automation-templates/github/workflows/readme.yml@main
+    with:
+      project-name: "Mein Projekt"
+      
   release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: bauer-group/automation-templates/.github/actions/release-please@main
-        with:
-          release-type: "simple"
+    uses: bauer-group/automation-templates/github/workflows/release-please.yml@main
+    with:
+      release-type: "simple"
 ```
 
-## 🎯 Features
+## 📄 README-Generator
 
-### � README-Generator
-- **40+ Template-Platzhalter** - Umfassende Variablen-Unterstützung
-- **Git-Auto-Detection** - Automatische Repository-Informationen
-- **Conditional Blocks** - `{{#IF VARIABLE}}content{{/IF}}` Syntax
-- **Script-Download** - Immer aktuelle Generator-Version
-- **PR-Validierung** - Fails wenn README nicht aktuell
-
-### 🚀 Release-Please
-- **Conventional Commits** - Automatische Changelog-Generierung
-- **Semantic Versioning** - feat/fix/BREAKING CHANGE Support
-- **GitHub Releases** - Automatische Release-Erstellung
-- **Flexible Modi** - PR-basiert oder direkte Releases
-
-## 📋 Voraussetzungen
-
-### Für README-Generierung:
-- Template-Datei (z.B. `docs/README.template.md`)
-- Python wird automatisch installiert
-
-### Für Release-Please:
-- Conventional Commit Messages
-- Optional: Release-Please Konfigurationsdateien
-
-## 🔧 Konfiguration
-
-### README-Template Beispiel:
-```markdown
-# {{COMPANY_NAME}} - {{PROJECT_NAME}}
-
-**Version:** {{VERSION}}  
-**Repository:** {{REPO_URL}}
-
-{{PROJECT_DESCRIPTION}}
-
-{{#IF BADGE_RELEASE}}
-{{BADGE_RELEASE}}
-{{/IF}}
-```
+### Features:
+- ✅ 40+ Template-Platzhalter
+- ✅ Automatische Git-Repository-Erkennung
+- ✅ Package.json/pyproject.toml Auto-Detection
+- ✅ Workflow-Status-Badges
+- ✅ Conditional Template-Blöcke
+- ✅ Script-Download-Mechanismus
 
 ### Verfügbare Platzhalter:
-- `{{VERSION}}` - Aktuelle Version (Git Tag oder 0.1.0)
+
+#### Basis-Informationen:
+- `{{VERSION}}` - Git Tag oder Umgebungsvariable
 - `{{DATE}}` - Aktuelles Datum (YYYY-MM-DD)
-- `{{REPO_URL}}` - Repository URL
+- `{{DATETIME}}` - Datum und Zeit (YYYY-MM-DD HH:MM:SS UTC)
+- `{{YEAR}}` - Aktuelles Jahr
+
+#### Repository-Informationen:
+- `{{REPOSITORY}}` - owner/repo
+- `{{REPOSITORY_URL}}` - GitHub URL
+- `{{REPOSITORY_OWNER}}` - Repository Owner
+- `{{REPOSITORY_NAME}}` - Repository Name
+- `{{CURRENT_BRANCH}}` - Aktueller Branch
+
+#### Projekt-Informationen:
 - `{{PROJECT_NAME}}` - Projektname
+- `{{PROJECT_DESCRIPTION}}` - Projektbeschreibung
 - `{{COMPANY_NAME}}` - Firmenname
-- ... und 35+ weitere
+- `{{CONTACT_EMAIL}}` - Kontakt E-Mail
+- `{{DOCUMENTATION_URL}}` - Dokumentations-URL
+- `{{SUPPORT_URL}}` - Support-URL
 
-Siehe [README-CONFIGURATION.md](README-CONFIGURATION.md) für vollständige Liste.
+## 🚀 Release-Management
 
-## 📁 Repository-Struktur für externe Projekte
+### Features:
+- ✅ **Release-Please** Integration
+- ✅ **Conventional Commits** Support
+- ✅ **Semantic Versioning**
+- ✅ Automatische GitHub Releases
+- ✅ Changelog-Generierung
+- ✅ Flexible Release-Types
 
+### Unterstützte Commit-Types:
+- `feat:` → Minor Version Bump
+- `fix:` → Patch Version Bump
+- `feat!:` oder `BREAKING CHANGE:` → Major Version Bump
+- `docs:`, `chore:`, `ci:`, `refactor:` → Keine Version-Änderung
+
+### Release-Types:
+- `simple` - Einfache Projekte ohne Package-Management
+- `node` - Node.js Projekte (package.json)
+- `python` - Python Projekte (pyproject.toml, setup.py)
+- `rust` - Rust Projekte (Cargo.toml)
+- `java` - Java Projekte
+- `go` - Go Module
+
+## 📋 Schnellstart
+
+### 1. README-Template erstellen:
+
+```markdown
+<!-- docs/README.template.md -->
+# {{PROJECT_NAME}}
+
+**{{PROJECT_DESCRIPTION}}**
+
+Version: {{VERSION}} | Datum: {{DATE}}
+
+Repository: [{{REPOSITORY}}]({{REPOSITORY_URL}})
 ```
-your-project/
-├── .github/
-│   └── workflows/
-│       ├── readme.yml              # README-Update
-│       └── release.yml             # Release-Management
-├── docs/
-│   └── README.template.md          # README-Template
-└── README.md                       # Generierte README
+
+### 2. Workflow hinzufügen:
+
+Kopiere `examples/readme-example.yml` oder `examples/release-example.yml` in dein `.github/workflows/` Verzeichnis.
+
+### 3. Konfigurieren:
+
+Passe die Parameter in den Workflow-Dateien an deine Bedürfnisse an.
+
+## 🔧 Erweiterte Konfiguration
+
+### README-Generator mit Custom Script:
+
+```yaml
+- name: Custom README Generation
+  uses: bauer-group/automation-templates/.github/actions/readme-generate@main
+  with:
+    template-path: "custom/template.md"
+    output-path: "docs/generated.md"
+    project-name: ${{ env.PROJECT_NAME }}
 ```
 
-## 🌟 Erweiterte Beispiele
+### Release-Please mit Custom Config:
 
-Siehe [examples/](examples/) für vollständige Workflow-Beispiele:
-- Einfache README-Generierung
-- Release-Management Setup
-- Vollständige CI/CD-Pipeline mit beiden Features
+```yaml
+- name: Custom Release
+  uses: bauer-group/automation-templates/.github/actions/release-please@main
+  with:
+    release-type: "node"
+    package-name: "@company/my-package"
+    bump-minor-pre-major: false
+```
 
-## 🤝 Contributing
+## 🛠️ Entwicklung
 
-1. Testen Sie Änderungen in einem Feature-Branch
-2. Aktualisieren Sie die Dokumentation
-3. Erstellen Sie einen Pull Request
+### Lokale Tests:
+
+```bash
+# README lokal generieren
+python scripts/generate_readme.py
+
+# Mit Custom-Umgebungsvariablen
+PROJECT_NAME="Test" COMPANY_NAME="Test Corp" python scripts/generate_readme.py
+```
+
+### Action-Updates:
+
+Änderungen an den Composite Actions werden automatisch für alle Nutzer verfügbar, da sie immer die `@main` Version verwenden.
 
 ## 📞 Support
 
 - **Issues:** [GitHub Issues](https://github.com/bauer-group/automation-templates/issues)
-- **Dokumentation:** [README-CONFIGURATION.md](README-CONFIGURATION.md)
+- **Diskussionen:** [GitHub Discussions](https://github.com/bauer-group/automation-templates/discussions)
+- **Wiki:** [Detaillierte Dokumentation](https://github.com/bauer-group/automation-templates/wiki)
 
-## Best Practices
+## 🔄 Migration
 
-1. **Versionierung**: Verwenden Sie Tags oder Branches für stabile Versionen
-2. **Secrets**: Definieren Sie Secrets auf Repository- oder Organization-Ebene
-3. **Permissions**: Setzen Sie minimale erforderliche Permissions
-4. **Dokumentation**: Dokumentieren Sie alle Parameter und Secrets
-5. **Testing**: Testen Sie Workflows in Feature-Branches vor dem Merge
+### Von v0.1.x zu v0.2.x:
 
-## Beispiel-Integration
+Die neuen Composite Actions sind abwärtskompatibel. Bestehende Workflows funktionieren weiterhin, aber für neue Projekte wird die Verwendung der Composite Actions empfohlen.
 
 ```yaml
-# .github/workflows/ci.yml
-name: CI/CD Pipeline
+# Alt (funktioniert weiterhin):
+uses: bauer-group/automation-templates/github/workflows/readme.yml@main
 
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  readme-update:
-    uses: bauer-group/automation-templates/github/workflows/readme.yml@main
-    with:
-      project-name: "Mein Projekt"
-      company-name: "Meine Firma"
-      project-description: "Beschreibung meines Projekts"
-
-  release:
-    if: github.ref == 'refs/heads/main'
-    uses: bauer-group/automation-templates/github/workflows/release-please.yml@main
-    with:
-      target-branch: "main"
-      package-name: "mein-projekt"
-      release-type: "simple"
-```
+# Neu (empfohlen):
+uses: bauer-group/automation-templates/.github/actions/readme-generate@main
 ```
 
-## Contribution
+---
 
-Bei Änderungen an den wiederverwendbaren Workflows:
-1. Erstellen Sie einen Feature-Branch
-2. Testen Sie die Änderungen
-3. Aktualisieren Sie diese Dokumentation
-4. Erstellen Sie einen Pull Request
-
-## Support
-
-Bei Fragen oder Problemen erstellen Sie bitte ein Issue in diesem Repository.
-
-## Release-Please Beispiel
-
-```yaml
-# .github/workflows/release.yml
-name: Release
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-    inputs:
-      direct-release:
-        description: "Create direct release"
-        type: boolean
+**Diese Workflows folgen GitHub Actions Best Practices und sind production-ready! 🌟**
         default: false
 
 jobs:

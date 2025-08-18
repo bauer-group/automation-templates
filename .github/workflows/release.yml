@@ -1,4 +1,4 @@
-name: Create Release
+name: 🚀 Release
 
 on:
   push:
@@ -14,29 +14,36 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write  
+  pull-requests: write
   issues: write
 
 jobs:
-  release-please:
+  release:
     name: Release Management
     if: |
       (github.event_name == 'push' && !contains(github.event.head_commit.message, 'chore(main): release')) ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Run Release Please
+      - name: Release Please
         uses: ./.github/actions/release-please
         with:
-          target-branch: "main"
-          release-type: "simple"
+          release-type: 'simple'
+          package-name: 'automation-templates'
           direct-release: ${{ inputs.direct-release }}
-          config-file: ".github/config/release-please-config.json"
-          manifest-file: ".github/config/.release-please-manifest.json"
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Show Release Summary
+        if: always()
+        run: |
+          echo "### 🚀 Release Workflow Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Direct Release:** ${{ inputs.direct-release || 'false' }}" >> $GITHUB_STEP_SUMMARY

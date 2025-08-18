@@ -1,0 +1,76 @@
+name: 📄 README Generator (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      template-path:
+        description: 'Pfad zum README Template'
+        required: false
+        type: string
+        default: 'docs/README.template.md'
+      output-path:
+        description: 'Pfad für generierte README'
+        required: false
+        type: string
+        default: 'README.md'
+      project-name:
+        description: 'Name des Projekts'
+        required: false
+        type: string
+        default: ''
+      company-name:
+        description: 'Name der Firma'
+        required: false
+        type: string
+        default: 'Bauer Group'
+      project-description:
+        description: 'Projektbeschreibung'
+        required: false
+        type: string
+        default: ''
+      contact-email:
+        description: 'Kontakt E-Mail'
+        required: false
+        type: string
+        default: ''
+      documentation-url:
+        description: 'Dokumentations-URL'
+        required: false
+        type: string
+        default: ''
+      support-url:
+        description: 'Support-URL'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  generate-readme:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate README
+        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
+        with:
+          template-path: ${{ inputs.template-path }}
+          output-path: ${{ inputs.output-path }}
+          project-name: ${{ inputs.project-name }}
+          company-name: ${{ inputs.company-name }}
+          project-description: ${{ inputs.project-description }}
+          contact-email: ${{ inputs.contact-email }}
+          documentation-url: ${{ inputs.documentation-url }}
+          support-url: ${{ inputs.support-url }}
+
+      - name: Push changes
+        run: |
+          if ! git diff --quiet; then
+            git push
+          fi

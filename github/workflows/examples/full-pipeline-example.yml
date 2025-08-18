@@ -1,4 +1,7 @@
-name: Full CI/CD Pipeline Example
+# Beispiel: Vollständige Pipeline mit README und Release
+# Dieses Beispiel zeigt, wie beide Workflows zusammen verwendet werden
+
+name: 🔄 Complete Pipeline
 
 on:
   push:
@@ -6,40 +9,37 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      auto-commit-readme:
-        description: "Auto-commit README changes"
-        type: boolean
-        default: true
-      direct-release:
-        description: "Create direct release without PR"
-        type: boolean
-        default: false
-
-permissions:
-  contents: write
-  pull-requests: write  
-  issues: write
 
 jobs:
+  # README aktualisieren bei Änderungen am Template
   readme-update:
-    name: Update README
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: contains(github.event.head_commit.modified, 'docs/README.template.md') || github.event_name == 'workflow_dispatch'
+    uses: bauer-group/automation-templates/github/workflows/readme.yml@main
+    with:
+      project-name: "Mein Vollständiges Projekt"
+      company-name: "Meine Firma"
+      project-description: "Ein Beispielprojekt mit vollständiger CI/CD Pipeline"
+      contact-email: "support@example.com"
+
+  # Release nur bei Push auf main
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: readme-update  # README erst aktualisieren, dann Release
+    uses: bauer-group/automation-templates/github/workflows/release-please.yml@main
+    with:
+      release-type: "simple"
+      package-name: "mein-vollstaendiges-projekt"
+
+  # Deployment oder weitere Aktionen nach erfolgreichem Release
+  deploy:
+    if: needs.release.outputs.release_created
+    needs: release
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ github.token }}
-
-      - name: Generate README
-        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
-        with:
-          template-path: "docs/README.template.md"
-          output-path: "README.md"
-          project-name: ${{ github.event.repository.name }}
-          company-name: "Ihre Firma"
+      - name: Deploy Application
+        run: |
+          echo "Deploying version ${{ needs.release.outputs.version }}"
+          # Hier würde das Deployment stattfinden
           project-description: "Beschreibung Ihres Projekts"
           auto-commit: ${{ inputs.auto-commit-readme }}
           fail-on-pr: 'true'

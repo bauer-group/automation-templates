@@ -12,7 +12,7 @@
 │   │
 │   └── workflows/                  # 🎯 Lokale Workflows (für dieses Repository)
 │       ├── readme.yml             # → nutzt lokale Action
-│       └── release-please.yml     # → nutzt lokale Action
+│       └── release.yml            # → nutzt lokale Action (einziger Release-Workflow)
 │
 └── github/
     ├── branch-protect/            # 🛡️ Branch-Protection Tools
@@ -26,17 +26,16 @@
         └── README-CONFIGURATION.md # ⚙️ Konfigurationsleitfaden
 ```
 
-## ✅ **Problem-Lösung: DRY-Prinzip umgesetzt**
+## ✅ **Klare Workflow-Struktur**
 
-### **Vorher (❌ Code-Duplikation):**
-- Wiederverwendbare Workflows mit dupliziertem Code
-- Wartung an mehreren Stellen erforderlich
-- Inkonsistenzen zwischen Implementierungen
+### **Ein Workflow pro Zweck:**
+- **`readme.yml`** - README-Generierung und -Updates
+- **`release.yml`** - Release-Management (einziger Release-Workflow)
 
-### **Nachher (✅ Single Source of Truth):**
-- **Composite Actions** als zentrale Logik
-- **Workflows** als dünne Interface-Layer
-- **Beispiele** für externe Verwendung
+### **Keine Duplikation:**
+- Jeder Workflow hat eine klare, einzigartige Verantwortlichkeit
+- Composite Actions als zentrale Logik-Implementierung
+- Workflows als dünne Interface-Layer
 
 ## 🎯 **Verwendung**
 
@@ -123,3 +122,28 @@ https://raw.githubusercontent.com/bauer-group/automation-templates/main/scripts/
 ## 📚 Weitere Informationen
 
 Siehe `github/workflows/README.md` für detaillierte Dokumentation aller verfügbaren Workflows, Parameter und Beispiele.
+
+## 🚀 **Workflow-Details**
+
+### **📄 README-Workflow (`readme.yml`):**
+- Automatische README-Generierung aus Templates
+- Trigger: Änderungen an Template-Dateien
+- Nutzt: `.github/actions/readme-generate`
+
+### **🚀 Release-Workflow (`release.yml`):**
+- Automatisches Release-Management mit Release-Please
+- Trigger: Push zu main, PR-Merge, manuell
+- Nutzt: `.github/actions/release-please`
+- Features: Conventional Commits, Semantic Versioning, GitHub Releases
+
+## 📋 **Warum nur ein Release-Workflow?**
+
+### **❌ Problem der Duplikation:**
+- Mehrere Release-Workflows führen zu Konflikten
+- Unklare Verantwortlichkeiten
+- Schwierige Wartung und Debugging
+
+### **✅ Lösung - Ein zentraler Workflow:**
+- **`release.yml`** als einziger Release-Workflow
+- Alle Release-Features in einem Workflow konsolidiert
+- Klare, nachvollziehbare Release-Pipeline
