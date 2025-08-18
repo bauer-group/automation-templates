@@ -55,6 +55,14 @@ inputs:
     description: 'Security scanning engine (gitleaks, gitguardian, both)'
     required: false
     default: 'both'
+  gitleaks-license:
+    description: 'Gitleaks Pro license key for Organizations'
+    required: false
+    default: ''
+  gitguardian-api-key:
+    description: 'GitGuardian API key for enhanced scanning'
+    required: false
+    default: ''
   cleanup-release-branch:
     description: 'Delete release branch after successful merge'
     required: false
@@ -156,8 +164,11 @@ runs:
         (inputs.force-release == 'true' || steps.check-eligibility.outputs.eligible == 'true')
       uses: ./.github/actions/security-scan
       with:
+        scan-engine: ${{ inputs.security-scan-engine }}
         scan-type: 'all'
         fail-on-findings: 'false'
+        gitleaks-license: ${{ inputs.gitleaks-license }}
+        gitguardian-api-key: ${{ inputs.gitguardian-api-key }}
         token: ${{ inputs.token }}
 
     - name: 📋 License Compliance Check

@@ -1,6 +1,20 @@
 # 🚀 Enhanced Release Workflow
 
-Diese Sammlung enthält das vollständige Enhanced Release Management System mit **googleapis/release-please** Integration.
+Diese Sammlung enthält das volls### 4. Repository Secrets (optional)
+
+Für erweiterte Features konfiguriere optional:
+
+**Gitleaks Pro (für Organisationen):**
+- `GITLEAKS_LICENSE`: Gitleaks Pro Lizenzschlüssel für erweiterte Features
+
+**GitGuardian Enterprise:**
+- `GITGUARDIAN_API_KEY`: GitGuardian API Schlüssel für Enterprise-Features
+
+**Package Publishing:**
+- `NPM_TOKEN`: Für NPM Package Publishing
+- `DOCKER_REGISTRY_TOKEN`: Für Docker Image Publishing
+
+**Hinweis:** Der Workflow funktioniert vollständig mit nur `GITHUB_TOKEN` (automatisch verfügbar)hanced Release Management System mit **googleapis/release-please** Integration.
 
 ## 📦 Workflow Features
 

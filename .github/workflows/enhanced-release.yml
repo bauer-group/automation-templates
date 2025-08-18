@@ -189,6 +189,8 @@ jobs:
           auto-merge-enabled: ${{ env.ENABLE_AUTO_MERGE }}
           cleanup-release-branch: ${{ env.CLEANUP_RELEASE_BRANCH }}
           force-release: ${{ inputs.force-release || 'false' }}
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🏷️ Validate Release Semantics

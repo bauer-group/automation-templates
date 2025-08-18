@@ -27,6 +27,10 @@ inputs:
     description: 'GitGuardian API key (required for GitGuardian scanning)'
     required: false
     default: ''
+  gitleaks-license:
+    description: 'Gitleaks Pro license key (required for Organizations)'
+    required: false
+    default: ''
   minimum-severity:
     description: 'Minimum severity level for GitGuardian (low, medium, high, critical)'
     required: false
@@ -95,42 +99,24 @@ runs:
       uses: gitleaks/gitleaks-action@v2
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
-        GITLEAKS_ENABLE_SUMMARY: true
+        GITLEAKS_LICENSE: ${{ inputs.gitleaks-license }}
       continue-on-error: true
 
-    - name: 🔐 Fallback Gitleaks Scan
-      id: fallback-gitleaks
-      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both') && steps.gitleaks-scan.outcome == 'failure'
-      uses: ./.github/actions/gitleaks-scan
-      with:
-        fail-on-findings: 'false'
-        format: 'json'
-        verbose: 'true'
-        github-token: ${{ inputs.token }}
-      continue-on-error: true
-
-    - name: 📊 Process Gitleaks Results
+    - name: 📊 Process Gitleaks Results  
       id: process-gitleaks
       if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both')
       shell: bash
       run: |
         echo "📊 Processing Gitleaks results..."
         
-        # Check results from both potential sources
-        SECRETS_FOUND=false
-        
-        # Check primary gitleaks-action
+        # Check if gitleaks found any secrets
         if [ "${{ steps.gitleaks-scan.outcome }}" == "failure" ]; then
-          echo "❌ Gitleaks (primary) detected secrets!"
-          SECRETS_FOUND=true
-        elif [ "${{ steps.fallback-gitleaks.outputs.secrets-found }}" == "true" ]; then
-          echo "❌ Gitleaks (fallback) detected secrets!"
-          SECRETS_FOUND=true
+          echo "❌ Gitleaks detected secrets!"
+          echo "secrets-found=true" >> $GITHUB_OUTPUT
         else
-          echo "✅ No secrets detected by Gitleaks"
+          echo "✅ No secrets detected by Gitleaks" 
+          echo "secrets-found=false" >> $GITHUB_OUTPUT
         fi
-        
-        echo "secrets-found=$SECRETS_FOUND" >> $GITHUB_OUTPUT
         
         # Create security reports directory
         mkdir -p security-reports/gitleaks
@@ -139,9 +125,6 @@ runs:
         if [ -f "results.sarif" ]; then
           cp results.sarif security-reports/gitleaks/gitleaks-results.sarif
           echo "📄 Gitleaks SARIF report saved"
-        elif [ "${{ steps.fallback-gitleaks.outputs.report-path }}" != "" ]; then
-          cp "${{ steps.fallback-gitleaks.outputs.report-path }}" security-reports/gitleaks/
-          echo "📄 Fallback Gitleaks report saved"
         fi
 
     - name: 🛡️ GitGuardian Security Scan
