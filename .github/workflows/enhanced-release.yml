@@ -2,7 +2,7 @@ name: 🚀 Enhanced Release Management
 
 on:
   push:
-    branches: [ main ]
+    branches: [ $default-branch ]
     paths-ignore:
       - '**.MD'
       - 'docs/**'
@@ -10,7 +10,7 @@ on:
       - '.github/actions/**'
   pull_request:
     types: [ closed ]
-    branches: [ main ]
+    branches: [ $default-branch ]
   workflow_dispatch:
     inputs:
       release-type:
@@ -30,10 +30,14 @@ on:
         description: "Force create release (skip conventional commit check)"
         type: boolean
         default: false
-      security-scan:
-        description: "Enable security scanning"
-        type: boolean
-        default: true
+      security-scan-engine:
+        description: "Security scanning engine"
+        type: choice
+        default: 'both'
+        options:
+          - gitleaks
+          - gitguardian  
+          - both
       license-check:
         description: "Enable license compliance check"
         type: boolean
@@ -46,6 +50,10 @@ on:
         description: "Auto-merge release PR when created"
         type: boolean
         default: false
+      cleanup-release-branch:
+        description: "Delete release branch after merge"
+        type: boolean
+        default: true
       artifact-types:
         description: "Types of artifacts to generate"
         type: choice
@@ -66,10 +74,12 @@ permissions:
 
 env:
   # Global configuration
-  ENABLE_SECURITY_SCAN: ${{ github.event_name == 'workflow_dispatch' && inputs.security-scan || 'true' }}
+  ENABLE_SECURITY_SCAN: ${{ github.event_name == 'workflow_dispatch' && inputs.security-scan-engine != '' || 'true' }}
+  SECURITY_SCAN_ENGINE: ${{ github.event_name == 'workflow_dispatch' && inputs.security-scan-engine || 'both' }}
   ENABLE_LICENSE_CHECK: ${{ github.event_name == 'workflow_dispatch' && inputs.license-check || 'true' }}
   ENABLE_ARTIFACTS: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact-generation || 'true' }}
   ENABLE_AUTO_MERGE: ${{ github.event_name == 'workflow_dispatch' && inputs.auto-merge-pr || 'false' }}
+  CLEANUP_RELEASE_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.cleanup-release-branch || 'true' }}
   RELEASE_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.release-type || 'simple' }}
   ARTIFACT_TYPES: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact-types || 'source' }}
 
@@ -89,15 +99,16 @@ jobs:
       - name: 📋 Validate Conventional Commits
         uses: wagoid/commitlint-github-action@v5
         with:
-          configFile: commitlint.config.js
+          configFile: .github/config/commitlint.config.js
 
       - name: 🛡️ Security Pre-Check
         if: env.ENABLE_SECURITY_SCAN == 'true'
-        uses: ./.github/actions/security-scan
+        uses: ./.github/actions/security-scan-meta
         with:
+          scan-engine: ${{ env.SECURITY_SCAN_ENGINE }}
           scan-type: 'secrets'
           fail-on-findings: 'true'
-          token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📋 License Pre-Check
         if: env.ENABLE_LICENSE_CHECK == 'true'
@@ -165,10 +176,12 @@ jobs:
         uses: ./.github/actions/release-please
         with:
           release-type: ${{ env.RELEASE_TYPE }}
+          security-scan-engine: ${{ env.SECURITY_SCAN_ENGINE }}
           security-scan-enabled: ${{ env.ENABLE_SECURITY_SCAN }}
           license-check-enabled: ${{ env.ENABLE_LICENSE_CHECK }}
           artifact-generation-enabled: ${{ env.ENABLE_ARTIFACTS }}
           auto-merge-enabled: ${{ env.ENABLE_AUTO_MERGE }}
+          cleanup-release-branch: ${{ env.CLEANUP_RELEASE_BRANCH }}
           force-release: ${{ inputs.force-release || 'false' }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -460,3 +473,97 @@ jobs:
           name: release-report-${{ needs.release-management.outputs.version }}
           path: reports/
           retention-days: 90
+
+  # Cleanup job for release branches
+  cleanup-release-branch:
+    name: 🧹 Cleanup Release Branch
+    if: |
+      needs.release-management.outputs.release_created == 'true' && 
+      needs.release-management.outputs.pr_merged == 'true' &&
+      github.event.inputs.cleanup-release-branch != 'false'
+    needs: [release-management, extended-artifacts]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🧹 Delete Release Branch
+        run: |
+          echo "🧹 Starting release branch cleanup..."
+          
+          # Get the PR number from release management
+          PR_NUMBER="${{ needs.release-management.outputs.pr_number }}"
+          
+          if [ -n "$PR_NUMBER" ]; then
+            echo "🔍 Looking for release branch from PR #$PR_NUMBER"
+            
+            # Get PR details to find the head branch
+            BRANCH_NAME=$(gh pr view $PR_NUMBER --json headRefName --jq '.headRefName' 2>/dev/null || echo "")
+            
+            if [ -n "$BRANCH_NAME" ]; then
+              echo "🎯 Found release branch: $BRANCH_NAME"
+              
+              # Check if it's a release-please branch
+              if [[ "$BRANCH_NAME" == release-please* ]]; then
+                echo "✅ Confirmed release-please branch, proceeding with deletion"
+                
+                # Delete the remote branch
+                if git push origin --delete "$BRANCH_NAME" 2>/dev/null; then
+                  echo "✅ Successfully deleted remote branch: $BRANCH_NAME"
+                else
+                  echo "⚠️ Remote branch $BRANCH_NAME may already be deleted or not found"
+                fi
+                
+                # Clean up any local references
+                git branch -D "$BRANCH_NAME" 2>/dev/null || echo "ℹ️ Local branch not found (expected)"
+                git remote prune origin
+                
+                echo "🧹 Release branch cleanup completed successfully"
+              else
+                echo "⚠️ Branch $BRANCH_NAME is not a release-please branch, skipping deletion"
+              fi
+            else
+              echo "⚠️ Could not determine branch name from PR #$PR_NUMBER"
+            fi
+          else
+            echo "ℹ️ No PR number available, checking for release-please branches"
+            
+            # Alternative: Find and delete any release-please branches
+            RELEASE_BRANCHES=$(git branch -r | grep "origin/release-please" | sed 's/origin\///' | tr -d ' ' || echo "")
+            
+            if [ -n "$RELEASE_BRANCHES" ]; then
+              echo "🔍 Found release-please branches:"
+              echo "$RELEASE_BRANCHES"
+              
+              echo "$RELEASE_BRANCHES" | while read -r branch; do
+                if [ -n "$branch" ]; then
+                  echo "🧹 Deleting branch: $branch"
+                  git push origin --delete "$branch" 2>/dev/null || echo "⚠️ Could not delete $branch"
+                fi
+              done
+            else
+              echo "ℹ️ No release-please branches found for cleanup"
+            fi
+          fi
+          
+          echo "✅ Branch cleanup process completed"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📊 Cleanup Summary
+        run: |
+          echo "### 🧹 Release Branch Cleanup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Cleanup Enabled** | ✅ ${{ env.CLEANUP_RELEASE_BRANCH }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Release Created** | ✅ ${{ needs.release-management.outputs.release_created }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **PR Merged** | ✅ ${{ needs.release-management.outputs.pr_merged }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **PR Number** | #${{ needs.release-management.outputs.pr_number || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Automatic cleanup of release-please branches completed." >> $GITHUB_STEP_SUMMARY
+          echo "This helps keep the repository clean by removing temporary release branches." >> $GITHUB_STEP_SUMMARY
