@@ -1,8 +1,12 @@
-name: 'Security Scan'
-description: 'Comprehensive security scanning including secrets detection and vulnerability analysis'
+name: 'Dual Security Scan'
+description: 'Comprehensive security scanning with Gitleaks and GitGuardian ggshield options'
 author: 'BAUER GROUP'
 
 inputs:
+  scan-engine:
+    description: 'Security scan engine (gitleaks, gitguardian, both)'
+    required: false
+    default: 'both'
   scan-type:
     description: 'Type of security scan (secrets, vulnerabilities, all)'
     required: false
@@ -19,14 +23,28 @@ inputs:
     description: 'Additional custom patterns for secrets detection'
     required: false
     default: ''
+  gitguardian-api-key:
+    description: 'GitGuardian API key (required for GitGuardian scanning)'
+    required: false
+    default: ''
+  minimum-severity:
+    description: 'Minimum severity level for GitGuardian (low, medium, high, critical)'
+    required: false
+    default: 'medium'
   token:
     description: 'GitHub Token for API access'
     required: true
 
 outputs:
-  secrets-found:
-    description: 'Whether secrets were found'
-    value: ${{ steps.secrets-scan.outputs.secrets-found }}
+  gitleaks-secrets-found:
+    description: 'Whether secrets were found by Gitleaks'
+    value: ${{ steps.gitleaks-scan.outputs.secrets-found }}
+  gitguardian-secrets-found:
+    description: 'Number of secrets found by GitGuardian'
+    value: ${{ steps.gitguardian-scan.outputs.secrets-found }}
+  gitguardian-policy-violations:
+    description: 'Number of policy violations found by GitGuardian'
+    value: ${{ steps.gitguardian-scan.outputs.policy-violations }}
   vulnerabilities-found:
     description: 'Whether vulnerabilities were found'
     value: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found }}
@@ -36,24 +54,47 @@ outputs:
   security-score:
     description: 'Overall security score (0-100)'
     value: ${{ steps.summary.outputs.security-score }}
+  best-engine-score:
+    description: 'Best security score from available engines'
+    value: ${{ steps.summary.outputs.best-engine-score }}
+  engines-used:
+    description: 'List of security engines used'
+    value: ${{ steps.summary.outputs.engines-used }}
 
 runs:
   using: 'composite'
   steps:
-    - name: 🔍 Setup Security Scanning
+    - name: �️ Setup Dual Security Scanning
       shell: bash
       run: |
-        echo "🛡️ Initializing Security Scan"
+        echo "🛡️ Initializing Dual Security Scan"
+        echo "Scan Engine: ${{ inputs.scan-engine }}"
         echo "Scan Type: ${{ inputs.scan-type }}"
         echo "Fail on Findings: ${{ inputs.fail-on-findings }}"
         echo "Excluded Paths: ${{ inputs.exclude-paths }}"
+        echo "Minimum Severity: ${{ inputs.minimum-severity }}"
+        
+        mkdir -p security-reports
+        
+        # Validate GitGuardian API key if needed
+        if [[ "${{ inputs.scan-engine }}" == "gitguardian" || "${{ inputs.scan-engine }}" == "both" ]]; then
+          if [ -z "${{ inputs.gitguardian-api-key }}" ]; then
+            echo "⚠️ GitGuardian API key not provided - skipping GitGuardian scan"
+            echo "SKIP_GITGUARDIAN=true" >> $GITHUB_ENV
+          else
+            echo "✅ GitGuardian API key provided"
+            echo "SKIP_GITGUARDIAN=false" >> $GITHUB_ENV
+          fi
+        else
+          echo "SKIP_GITGUARDIAN=true" >> $GITHUB_ENV
+        fi
 
-    - name: 🔐 Secrets Detection
-      id: secrets-scan
-      if: inputs.scan-type == 'all' || inputs.scan-type == 'secrets'
+    - name: 🔐 Gitleaks Secrets Detection
+      id: gitleaks-scan
+      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both')
       shell: bash
       run: |
-        echo "🔍 Running secrets detection..."
+        echo "🔍 Running Gitleaks secrets detection..."
         
         # Install gitleaks if not available
         if ! command -v gitleaks &> /dev/null; then
@@ -134,8 +175,34 @@ runs:
         
         # Store report as artifact
         if [ -f gitleaks-report.json ]; then
-          mkdir -p security-reports
-          cp gitleaks-report.json security-reports/
+          mkdir -p security-reports/gitleaks
+          cp gitleaks-report.json security-reports/gitleaks/
+        fi
+
+    - name: 🛡️ GitGuardian Security Scan
+      id: gitguardian-scan
+      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitguardian' || inputs.scan-engine == 'both') && env.SKIP_GITGUARDIAN != 'true'
+      uses: ./.github/actions/gitguardian-scan
+      with:
+        scan-mode: 'ci'
+        fail-on-findings: 'false'
+        minimum-severity: ${{ inputs.minimum-severity }}
+        exclude-paths: ${{ inputs.exclude-paths }}
+        gitguardian-api-key: ${{ inputs.gitguardian-api-key }}
+        all-policies: 'true'
+        verbose: 'false'
+        output-format: 'json'
+        token: ${{ inputs.token }}
+
+    - name: 📋 Copy GitGuardian Reports
+      if: steps.gitguardian-scan.outputs.report-path != ''
+      shell: bash
+      run: |
+        echo "📋 Copying GitGuardian reports..."
+        if [ -d "${{ steps.gitguardian-scan.outputs.report-path }}" ]; then
+          mkdir -p security-reports/gitguardian
+          cp -r ${{ steps.gitguardian-scan.outputs.report-path }}/* security-reports/gitguardian/ 2>/dev/null || echo "No files to copy"
+          echo "✅ GitGuardian reports copied"
         fi
 
     - name: 🛡️ Vulnerability Scanning
@@ -160,8 +227,8 @@ runs:
           "serialize-javascript.*['\"][12]\."
         )
         
-        mkdir -p security-reports
-        echo "[]" > security-reports/vulnerabilities.json
+        mkdir -p security-reports/vulnerabilities
+        echo "[]" > security-reports/vulnerabilities/vulnerabilities.json
         
         for pattern in "${VULN_PATTERNS[@]}"; do
           if grep -r -E "$pattern" . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=vendor 2>/dev/null; then
@@ -189,82 +256,251 @@ runs:
         
         echo "vulnerabilities-found=$VULNERABILITIES_FOUND" >> $GITHUB_OUTPUT
 
-    - name: 📊 Generate Security Summary
+    - name: 📊 Generate Dual Security Summary
       id: summary
       shell: bash
       run: |
-        echo "📊 Generating security summary..."
+        echo "📊 Generating dual security summary..."
         
-        SECRETS_FOUND="${{ steps.secrets-scan.outputs.secrets-found || 'false' }}"
+        GITLEAKS_SECRETS="${{ steps.gitleaks-scan.outputs.secrets-found || 'false' }}"
+        GITGUARDIAN_SECRETS="${{ steps.gitguardian-scan.outputs.secrets-found || '0' }}"
+        GITGUARDIAN_POLICIES="${{ steps.gitguardian-scan.outputs.policy-violations || '0' }}"
         VULNS_FOUND="${{ steps.vulnerability-scan.outputs.vulnerabilities-found || 'false' }}"
         
-        # Calculate security score
-        SCORE=100
-        if [ "$SECRETS_FOUND" == "true" ]; then
-          SCORE=$((SCORE - 50))
+        # Determine which engines were used
+        ENGINES_USED=""
+        if [[ "${{ inputs.scan-engine }}" == "gitleaks" || "${{ inputs.scan-engine }}" == "both" ]]; then
+          ENGINES_USED="gitleaks"
         fi
+        if [[ "${{ inputs.scan-engine }}" == "gitguardian" || "${{ inputs.scan-engine }}" == "both" ]] && [ "${{ env.SKIP_GITGUARDIAN }}" != "true" ]; then
+          if [ -n "$ENGINES_USED" ]; then
+            ENGINES_USED="$ENGINES_USED,gitguardian"
+          else
+            ENGINES_USED="gitguardian"
+          fi
+        fi
+        
+        # Calculate overall security score
+        GITLEAKS_SCORE=100
+        GITGUARDIAN_SCORE=100
+        
+        # Gitleaks scoring
+        if [ "$GITLEAKS_SECRETS" == "true" ]; then
+          GITLEAKS_SCORE=50
+        fi
+        
+        # GitGuardian scoring (from action output or calculate)
+        if [ -n "${{ steps.gitguardian-scan.outputs.security-score }}" ]; then
+          GITGUARDIAN_SCORE="${{ steps.gitguardian-scan.outputs.security-score }}"
+        else
+          # Calculate based on findings
+          if [ "$GITGUARDIAN_SECRETS" != "0" ]; then
+            SECRETS_PENALTY=$((GITGUARDIAN_SECRETS * 20))
+            if [ $SECRETS_PENALTY -gt 60 ]; then
+              SECRETS_PENALTY=60
+            fi
+            GITGUARDIAN_SCORE=$((GITGUARDIAN_SCORE - SECRETS_PENALTY))
+          fi
+          
+          if [ "$GITGUARDIAN_POLICIES" != "0" ]; then
+            POLICY_PENALTY=$((GITGUARDIAN_POLICIES * 10))
+            if [ $POLICY_PENALTY -gt 30 ]; then
+              POLICY_PENALTY=30
+            fi
+            GITGUARDIAN_SCORE=$((GITGUARDIAN_SCORE - POLICY_PENALTY))
+          fi
+        fi
+        
+        # Vulnerability penalty
         if [ "$VULNS_FOUND" == "true" ]; then
-          SCORE=$((SCORE - 30))
+          GITLEAKS_SCORE=$((GITLEAKS_SCORE - 20))
+          GITGUARDIAN_SCORE=$((GITGUARDIAN_SCORE - 20))
+        fi
+        
+        # Ensure scores don't go below 0
+        if [ $GITLEAKS_SCORE -lt 0 ]; then
+          GITLEAKS_SCORE=0
+        fi
+        if [ $GITGUARDIAN_SCORE -lt 0 ]; then
+          GITGUARDIAN_SCORE=0
+        fi
+        
+        # Calculate combined score (average of available engines)
+        COMBINED_SCORE=0
+        ENGINE_COUNT=0
+        
+        if [[ "$ENGINES_USED" == *"gitleaks"* ]]; then
+          COMBINED_SCORE=$((COMBINED_SCORE + GITLEAKS_SCORE))
+          ENGINE_COUNT=$((ENGINE_COUNT + 1))
+        fi
+        
+        if [[ "$ENGINES_USED" == *"gitguardian"* ]]; then
+          COMBINED_SCORE=$((COMBINED_SCORE + GITGUARDIAN_SCORE))
+          ENGINE_COUNT=$((ENGINE_COUNT + 1))
+        fi
+        
+        if [ $ENGINE_COUNT -gt 0 ]; then
+          COMBINED_SCORE=$((COMBINED_SCORE / ENGINE_COUNT))
+        else
+          COMBINED_SCORE=100
+        fi
+        
+        # Determine best engine score
+        BEST_SCORE=$COMBINED_SCORE
+        if [[ "$ENGINES_USED" == *"gitleaks"* ]] && [[ "$ENGINES_USED" == *"gitguardian"* ]]; then
+          if [ $GITLEAKS_SCORE -gt $GITGUARDIAN_SCORE ]; then
+            BEST_SCORE=$GITLEAKS_SCORE
+          else
+            BEST_SCORE=$GITGUARDIAN_SCORE
+          fi
         fi
         
         # Generate summary
-        SUMMARY="Security Scan Complete"
-        if [ "$SECRETS_FOUND" == "true" ] || [ "$VULNS_FOUND" == "true" ]; then
+        SUMMARY="Dual Security Scan Complete"
+        if [[ "$GITLEAKS_SECRETS" == "true" || "$GITGUARDIAN_SECRETS" != "0" || "$GITGUARDIAN_POLICIES" != "0" || "$VULNS_FOUND" == "true" ]]; then
           SUMMARY="Security Issues Found"
         fi
         
-        echo "security-score=$SCORE" >> $GITHUB_OUTPUT
+        echo "security-score=$COMBINED_SCORE" >> $GITHUB_OUTPUT
+        echo "best-engine-score=$BEST_SCORE" >> $GITHUB_OUTPUT
         echo "scan-results=$SUMMARY" >> $GITHUB_OUTPUT
+        echo "engines-used=$ENGINES_USED" >> $GITHUB_OUTPUT
         
-        # Create summary report
-        cat > security-reports/summary.md << EOF
-        # 🛡️ Security Scan Summary
+        # Create comprehensive summary report
+        cat > security-reports/dual-security-summary.md << EOF
+        # 🛡️ Dual Security Scan Summary
         
-        **Overall Score:** $SCORE/100
+        **Scan Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        **Engines Used:** $ENGINES_USED
+        **Combined Score:** $COMBINED_SCORE/100
+        **Best Engine Score:** $BEST_SCORE/100
         
-        ## 🔍 Scan Results
+        ## 🔍 Engine Results
         
-        | Check | Status | Result |
-        |-------|--------|--------|
-        | Secrets Detection | ${{ inputs.scan-type == 'all' || inputs.scan-type == 'secrets' && '✅ Completed' || '⏭️ Skipped' }} | $SECRETS_FOUND |
-        | Vulnerability Scan | ${{ inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities' && '✅ Completed' || '⏭️ Skipped' }} | $VULNS_FOUND |
+        | Engine | Enabled | Score | Secrets Found | Policy Violations |
+        |--------|---------|-------|---------------|-------------------|
+        | **Gitleaks** | $([[ "$ENGINES_USED" == *"gitleaks"* ]] && echo "✅" || echo "❌") | $GITLEAKS_SCORE/100 | $GITLEAKS_SECRETS | N/A |
+        | **GitGuardian** | $([[ "$ENGINES_USED" == *"gitguardian"* ]] && echo "✅" || echo "❌") | $GITGUARDIAN_SCORE/100 | $GITGUARDIAN_SECRETS | $GITGUARDIAN_POLICIES |
+        
+        ## 📊 Findings Summary
+        
+        ### � Secrets Detection
+        
+        EOF
+        
+        if [ "$GITLEAKS_SECRETS" == "true" ] || [ "$GITGUARDIAN_SECRETS" != "0" ]; then
+          cat >> security-reports/dual-security-summary.md << EOF
+        **Secrets detected in codebase:**
+        
+        - **Gitleaks:** $([[ "$GITLEAKS_SECRETS" == "true" ]] && echo "Found secrets" || echo "No secrets found")
+        - **GitGuardian:** $GITGUARDIAN_SECRETS secret(s) found
+        
+        **🚨 Immediate Actions Required:**
+        1. Review detailed scan reports in artifacts
+        2. Rotate any exposed credentials immediately
+        3. Remove secrets from code and use secure storage
+        4. Implement secret scanning in CI/CD pipeline
+        
+        EOF
+        else
+          cat >> security-reports/dual-security-summary.md << EOF
+        ✅ **No secrets detected by any engine**
+        
+        EOF
+        fi
+        
+        if [ "$GITGUARDIAN_POLICIES" != "0" ]; then
+          cat >> security-reports/dual-security-summary.md << EOF
+        ### ⚖️ Policy Violations
+        
+        **$GITGUARDIAN_POLICIES policy violation(s) detected by GitGuardian:**
+        
+        **🔧 Recommended Actions:**
+        1. Review GitGuardian policy reports
+        2. Update configurations to comply with security policies
+        3. Implement Infrastructure as Code security scanning
+        
+        EOF
+        fi
+        
+        if [ "$VULNS_FOUND" == "true" ]; then
+          cat >> security-reports/dual-security-summary.md << EOF
+        ### 🛡️ Vulnerabilities
+        
+        **Vulnerabilities detected in dependencies or configurations:**
+        
+        **🔧 Recommended Actions:**
+        1. Update vulnerable dependencies
+        2. Review security configurations
+        3. Apply security patches
+        
+        EOF
+        fi
+        
+        cat >> security-reports/dual-security-summary.md << EOF
+        ## 🔧 Engine Comparison
+        
+        | Aspect | Gitleaks | GitGuardian |
+        |--------|----------|-------------|
+        | **Type** | Open Source | Commercial |
+        | **Secrets Detection** | ✅ Pattern-based | ✅ ML-enhanced |
+        | **Policy Enforcement** | ❌ Limited | ✅ Comprehensive |
+        | **IaC Scanning** | ❌ No | ✅ Yes |
+        | **API Integration** | ❌ Local only | ✅ Cloud-based |
+        | **Custom Rules** | ✅ Yes | ✅ Yes |
         
         ## 📋 Recommendations
         
         EOF
         
-        if [ "$SECRETS_FOUND" == "true" ]; then
-          cat >> security-reports/summary.md << EOF
-        - **🔐 Secrets Found**: Review and remove any hardcoded secrets
-        - Consider using environment variables or secret management systems
-        - Rotate any exposed credentials immediately
+        if [[ "$ENGINES_USED" == *"gitleaks"* ]] && [[ "$ENGINES_USED" == *"gitguardian"* ]]; then
+          cat >> security-reports/dual-security-summary.md << EOF
+        **Dual Engine Setup (Recommended):**
+        - Use both engines for comprehensive coverage
+        - Gitleaks for fast local scanning
+        - GitGuardian for advanced policy enforcement
+        - Compare results to eliminate false positives
+        
+        EOF
+        elif [[ "$ENGINES_USED" == *"gitguardian"* ]]; then
+          cat >> security-reports/dual-security-summary.md << EOF
+        **GitGuardian Only:**
+        - Consider adding Gitleaks for additional coverage
+        - Excellent for enterprise policy enforcement
+        - Best for Infrastructure as Code security
+        
+        EOF
+        else
+          cat >> security-reports/dual-security-summary.md << EOF
+        **Gitleaks Only:**
+        - Consider adding GitGuardian for advanced features
+        - Great for basic secrets detection
+        - Perfect for open source projects
         
         EOF
         fi
         
-        if [ "$VULNS_FOUND" == "true" ]; then
-          cat >> security-reports/summary.md << EOF
-        - **🛡️ Vulnerabilities Found**: Update dependencies to latest secure versions
-        - Review file permissions for sensitive files
-        - Consider implementing additional security controls
+        cat >> security-reports/dual-security-summary.md << EOF
+        ## 🔗 Resources
         
-        EOF
-        fi
+        - [Gitleaks Documentation](https://github.com/gitleaks/gitleaks)
+        - [GitGuardian Documentation](https://docs.gitguardian.com/)
+        - [Security Best Practices](https://docs.gitguardian.com/secrets-detection/introduction)
         
-        cat >> security-reports/summary.md << EOF
-        ## 🔧 Next Steps
+        ---
         
-        1. Review detailed reports in the security-reports artifacts
-        2. Address any critical findings before release
-        3. Consider implementing automated security checks in CI/CD
-        4. Regularly update dependencies and security tools
+        *Generated by Dual Security Scan Action*
         EOF
         
         echo ""
-        echo "🛡️ Security Scan Summary:"
-        echo "  • Overall Score: $SCORE/100"
-        echo "  • Secrets Found: $SECRETS_FOUND"
-        echo "  • Vulnerabilities Found: $VULNS_FOUND"
+        echo "🛡️ Dual Security Scan Summary:"
+        echo "  • Engines Used: $ENGINES_USED"
+        echo "  • Combined Score: $COMBINED_SCORE/100"
+        echo "  • Best Engine Score: $BEST_SCORE/100"
+        echo "  • Gitleaks Secrets: $GITLEAKS_SECRETS"
+        echo "  • GitGuardian Secrets: $GITGUARDIAN_SECRETS"
+        echo "  • GitGuardian Policies: $GITGUARDIAN_POLICIES"
+        echo "  • Vulnerabilities: $VULNS_FOUND"
         echo "  • Status: $SUMMARY"
 
     - name: 📤 Upload Security Reports

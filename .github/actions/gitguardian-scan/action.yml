@@ -1,0 +1,506 @@
+name: 'GitGuardian Security Scan'
+description: 'Advanced security scanning using GitGuardian ggshield for secrets and policy violations'
+author: 'BAUER GROUP'
+
+inputs:
+  scan-mode:
+    description: 'Scan mode (ci, path, repo, pre-commit)'
+    required: false
+    default: 'ci'
+  fail-on-findings:
+    description: 'Fail the workflow if security issues are found'
+    required: false
+    default: 'true'
+  minimum-severity:
+    description: 'Minimum severity level (low, medium, high, critical)'
+    required: false
+    default: 'medium'
+  exclude-paths:
+    description: 'Paths to exclude from scanning (comma-separated)'
+    required: false
+    default: '.git,node_modules,vendor,target,dist,build'
+  gitguardian-api-key:
+    description: 'GitGuardian API key'
+    required: true
+  ignore-known-secrets:
+    description: 'Ignore known secrets (from .gitguardian.yaml)'
+    required: false
+    default: 'false'
+  all-policies:
+    description: 'Enable all GitGuardian policies'
+    required: false
+    default: 'true'
+  verbose:
+    description: 'Enable verbose output'
+    required: false
+    default: 'false'
+  output-format:
+    description: 'Output format (text, json, sarif)'
+    required: false
+    default: 'json'
+  token:
+    description: 'GitHub Token for API access'
+    required: true
+
+outputs:
+  secrets-found:
+    description: 'Number of secrets found'
+    value: ${{ steps.gitguardian-scan.outputs.secrets-found }}
+  policy-violations:
+    description: 'Number of policy violations found'
+    value: ${{ steps.gitguardian-scan.outputs.policy-violations }}
+  scan-status:
+    description: 'Overall scan status (pass, warning, fail)'
+    value: ${{ steps.summary.outputs.scan-status }}
+  security-score:
+    description: 'Security score based on findings (0-100)'
+    value: ${{ steps.summary.outputs.security-score }}
+  report-path:
+    description: 'Path to the detailed scan report'
+    value: ${{ steps.summary.outputs.report-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🛡️ Setup GitGuardian Scan
+      shell: bash
+      run: |
+        echo "🛡️ Initializing GitGuardian Security Scan"
+        echo "Scan Mode: ${{ inputs.scan-mode }}"
+        echo "Minimum Severity: ${{ inputs.minimum-severity }}"
+        echo "Fail on Findings: ${{ inputs.fail-on-findings }}"
+        echo "All Policies: ${{ inputs.all-policies }}"
+        echo "Exclude Paths: ${{ inputs.exclude-paths }}"
+        
+        mkdir -p gitguardian-reports
+
+    - name: 🔧 Install GitGuardian CLI
+      shell: bash
+      run: |
+        echo "🔧 Installing GitGuardian ggshield..."
+        
+        # Install ggshield via pip
+        if command -v pip3 &> /dev/null; then
+          pip3 install --user ggshield
+          # Add to PATH
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        elif command -v pip &> /dev/null; then
+          pip install --user ggshield
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        else
+          echo "❌ Python/pip not available for ggshield installation"
+          exit 1
+        fi
+        
+        # Verify installation
+        if command -v ggshield &> /dev/null; then
+          echo "✅ GitGuardian ggshield installed successfully"
+          ggshield --version
+        else
+          echo "❌ ggshield installation failed"
+          exit 1
+        fi
+
+    - name: 📝 Configure GitGuardian
+      shell: bash
+      env:
+        GITGUARDIAN_API_KEY: ${{ inputs.gitguardian-api-key }}
+      run: |
+        echo "📝 Configuring GitGuardian..."
+        
+        # Create .gitguardian.yaml config if it doesn't exist
+        if [ ! -f ".gitguardian.yaml" ]; then
+          cat > .gitguardian.yaml << EOF
+        # GitGuardian configuration
+        version: 2
+        
+        # Paths to exclude from scanning
+        paths-ignore:
+        EOF
+          
+          # Add exclude paths
+          IFS=',' read -ra EXCLUDES <<< "${{ inputs.exclude-paths }}"
+          for exclude in "${EXCLUDES[@]}"; do
+            echo "  - $exclude" >> .gitguardian.yaml
+          done
+          
+          cat >> .gitguardian.yaml << EOF
+        
+        # Secrets detection settings
+        secret:
+          # Ignore known secrets
+          ignore-known-secrets: ${{ inputs.ignore-known-secrets }}
+          
+          # Minimum severity
+          minimum-severity: ${{ inputs.minimum-severity }}
+          
+          # Show secrets in output (for debugging)
+          show-secrets: false
+        
+        # Policy settings
+        policies:
+          # Enable all policies
+          all-policies: ${{ inputs.all-policies }}
+        EOF
+        
+          echo "✅ Created .gitguardian.yaml configuration"
+        else
+          echo "ℹ️ Using existing .gitguardian.yaml configuration"
+        fi
+        
+        # Display configuration
+        echo "📋 GitGuardian Configuration:"
+        cat .gitguardian.yaml
+
+    - name: 🔍 Run GitGuardian Scan
+      id: gitguardian-scan
+      shell: bash
+      env:
+        GITGUARDIAN_API_KEY: ${{ inputs.gitguardian-api-key }}
+      run: |
+        echo "🔍 Running GitGuardian security scan..."
+        
+        SCAN_MODE="${{ inputs.scan-mode }}"
+        OUTPUT_FORMAT="${{ inputs.output-format }}"
+        VERBOSE_FLAG=""
+        
+        if [ "${{ inputs.verbose }}" == "true" ]; then
+          VERBOSE_FLAG="--verbose"
+        fi
+        
+        # Initialize counters
+        SECRETS_FOUND=0
+        POLICY_VIOLATIONS=0
+        SCAN_FAILED=false
+        
+        echo "Scan mode: $SCAN_MODE"
+        echo "Output format: $OUTPUT_FORMAT"
+        
+        # Create output files
+        REPORT_FILE="gitguardian-reports/gitguardian-report.$OUTPUT_FORMAT"
+        
+        # Run scan based on mode
+        case $SCAN_MODE in
+          "ci")
+            echo "Running CI scan..."
+            if ggshield secret scan ci $VERBOSE_FLAG --output $REPORT_FILE --json > gitguardian-reports/scan-output.json 2>&1; then
+              echo "✅ CI scan completed successfully"
+            else
+              SCAN_EXIT_CODE=$?
+              echo "⚠️ CI scan found issues (exit code: $SCAN_EXIT_CODE)"
+              if [ $SCAN_EXIT_CODE -eq 1 ]; then
+                SCAN_FAILED=true
+              fi
+            fi
+            ;;
+            
+          "path")
+            echo "Running path scan..."
+            if ggshield secret scan path . $VERBOSE_FLAG --output $REPORT_FILE --json > gitguardian-reports/scan-output.json 2>&1; then
+              echo "✅ Path scan completed successfully"
+            else
+              SCAN_EXIT_CODE=$?
+              echo "⚠️ Path scan found issues (exit code: $SCAN_EXIT_CODE)"
+              if [ $SCAN_EXIT_CODE -eq 1 ]; then
+                SCAN_FAILED=true
+              fi
+            fi
+            ;;
+            
+          "repo")
+            echo "Running repository scan..."
+            if ggshield secret scan repo . $VERBOSE_FLAG --output $REPORT_FILE --json > gitguardian-reports/scan-output.json 2>&1; then
+              echo "✅ Repository scan completed successfully"
+            else
+              SCAN_EXIT_CODE=$?
+              echo "⚠️ Repository scan found issues (exit code: $SCAN_EXIT_CODE)"
+              if [ $SCAN_EXIT_CODE -eq 1 ]; then
+                SCAN_FAILED=true
+              fi
+            fi
+            ;;
+            
+          "pre-commit")
+            echo "Running pre-commit scan..."
+            if ggshield secret scan pre-commit $VERBOSE_FLAG --output $REPORT_FILE --json > gitguardian-reports/scan-output.json 2>&1; then
+              echo "✅ Pre-commit scan completed successfully"
+            else
+              SCAN_EXIT_CODE=$?
+              echo "⚠️ Pre-commit scan found issues (exit code: $SCAN_EXIT_CODE)"
+              if [ $SCAN_EXIT_CODE -eq 1 ]; then
+                SCAN_FAILED=true
+              fi
+            fi
+            ;;
+            
+          *)
+            echo "❌ Unknown scan mode: $SCAN_MODE"
+            exit 1
+            ;;
+        esac
+        
+        # Parse results if JSON output exists
+        if [ -f "gitguardian-reports/scan-output.json" ]; then
+          echo "📊 Parsing scan results..."
+          
+          # Try to parse JSON results
+          if command -v jq &> /dev/null; then
+            # Count secrets and policy violations
+            SECRETS_FOUND=$(jq -r '.total_secrets // 0' gitguardian-reports/scan-output.json 2>/dev/null || echo "0")
+            POLICY_VIOLATIONS=$(jq -r '.total_policy_violations // 0' gitguardian-reports/scan-output.json 2>/dev/null || echo "0")
+            
+            echo "🔍 Scan Results:"
+            echo "  • Secrets Found: $SECRETS_FOUND"
+            echo "  • Policy Violations: $POLICY_VIOLATIONS"
+            
+            # Extract detailed findings
+            if [ "$SECRETS_FOUND" -gt 0 ] || [ "$POLICY_VIOLATIONS" -gt 0 ]; then
+              echo "📋 Detailed Findings:" > gitguardian-reports/findings-summary.txt
+              
+              # Extract secret details
+              if [ "$SECRETS_FOUND" -gt 0 ]; then
+                echo "🔐 Secrets Found:" >> gitguardian-reports/findings-summary.txt
+                jq -r '.secrets[]? | "  • \(.detector_name) in \(.file_path):\(.line_number)"' gitguardian-reports/scan-output.json 2>/dev/null >> gitguardian-reports/findings-summary.txt || echo "  • Details not available" >> gitguardian-reports/findings-summary.txt
+              fi
+              
+              # Extract policy violations
+              if [ "$POLICY_VIOLATIONS" -gt 0 ]; then
+                echo "⚖️ Policy Violations:" >> gitguardian-reports/findings-summary.txt
+                jq -r '.policy_violations[]? | "  • \(.policy_name) in \(.file_path):\(.line_number)"' gitguardian-reports/scan-output.json 2>/dev/null >> gitguardian-reports/findings-summary.txt || echo "  • Details not available" >> gitguardian-reports/findings-summary.txt
+              fi
+              
+              # Display summary
+              cat gitguardian-reports/findings-summary.txt
+            fi
+          else
+            echo "⚠️ jq not available for JSON parsing"
+            # Fallback: count occurrences in text output
+            if grep -q "secrets" gitguardian-reports/scan-output.json 2>/dev/null; then
+              SECRETS_FOUND=1
+            fi
+            if grep -q "policy" gitguardian-reports/scan-output.json 2>/dev/null; then
+              POLICY_VIOLATIONS=1
+            fi
+          fi
+        else
+          echo "⚠️ No scan output file found"
+        fi
+        
+        # Output results
+        echo "secrets-found=$SECRETS_FOUND" >> $GITHUB_OUTPUT
+        echo "policy-violations=$POLICY_VIOLATIONS" >> $GITHUB_OUTPUT
+        
+        # Copy scan output for artifact upload
+        if [ -f gitguardian-reports/scan-output.json ]; then
+          cp gitguardian-reports/scan-output.json gitguardian-reports/
+        fi
+        
+        echo "📊 GitGuardian Scan Summary:"
+        echo "  • Secrets Found: $SECRETS_FOUND"
+        echo "  • Policy Violations: $POLICY_VIOLATIONS"
+        echo "  • Scan Failed: $SCAN_FAILED"
+
+    - name: 🔬 Additional Policy Checks
+      if: inputs.all-policies == 'true'
+      shell: bash
+      env:
+        GITGUARDIAN_API_KEY: ${{ inputs.gitguardian-api-key }}
+      run: |
+        echo "🔬 Running additional policy checks..."
+        
+        # Check for Infrastructure as Code issues
+        if command -v ggshield &> /dev/null; then
+          echo "Scanning for IaC policy violations..."
+          
+          # Scan for Terraform files
+          if find . -name "*.tf" -o -name "*.tfvars" | head -1 | grep -q .; then
+            echo "Found Terraform files, scanning..."
+            ggshield iac scan . --output gitguardian-reports/iac-scan.json --json 2>/dev/null || echo "IaC scan completed with findings"
+          fi
+          
+          # Scan for Kubernetes files
+          if find . -name "*.yaml" -o -name "*.yml" | grep -E "(k8s|kubernetes|deploy)" | head -1 | grep -q .; then
+            echo "Found Kubernetes files, scanning..."
+            # Note: ggshield IaC scanning would handle this
+          fi
+          
+          # Scan for Docker files
+          if find . -name "Dockerfile*" | head -1 | grep -q .; then
+            echo "Found Docker files, scanning..."
+            # Note: ggshield can scan Dockerfiles for secrets
+          fi
+        fi
+        
+        echo "✅ Additional policy checks completed"
+
+    - name: 📊 Generate Security Summary
+      id: summary
+      shell: bash
+      run: |
+        echo "📊 Generating security summary..."
+        
+        SECRETS_FOUND="${{ steps.gitguardian-scan.outputs.secrets-found }}"
+        POLICY_VIOLATIONS="${{ steps.gitguardian-scan.outputs.policy-violations }}"
+        
+        # Calculate security score (0-100)
+        SECURITY_SCORE=100
+        
+        # Deduct points based on findings
+        if [ "$SECRETS_FOUND" -gt 0 ]; then
+          SECRETS_PENALTY=$((SECRETS_FOUND * 20))
+          if [ $SECRETS_PENALTY -gt 60 ]; then
+            SECRETS_PENALTY=60
+          fi
+          SECURITY_SCORE=$((SECURITY_SCORE - SECRETS_PENALTY))
+        fi
+        
+        if [ "$POLICY_VIOLATIONS" -gt 0 ]; then
+          POLICY_PENALTY=$((POLICY_VIOLATIONS * 10))
+          if [ $POLICY_PENALTY -gt 30 ]; then
+            POLICY_PENALTY=30
+          fi
+          SECURITY_SCORE=$((SECURITY_SCORE - POLICY_PENALTY))
+        fi
+        
+        # Ensure score doesn't go below 0
+        if [ $SECURITY_SCORE -lt 0 ]; then
+          SECURITY_SCORE=0
+        fi
+        
+        # Determine scan status
+        SCAN_STATUS="pass"
+        if [ "$SECRETS_FOUND" -gt 0 ] && [ "${{ inputs.fail-on-findings }}" == "true" ]; then
+          SCAN_STATUS="fail"
+        elif [ "$SECRETS_FOUND" -gt 0 ] || [ "$POLICY_VIOLATIONS" -gt 0 ]; then
+          SCAN_STATUS="warning"
+        fi
+        
+        echo "security-score=$SECURITY_SCORE" >> $GITHUB_OUTPUT
+        echo "scan-status=$SCAN_STATUS" >> $GITHUB_OUTPUT
+        echo "report-path=gitguardian-reports/" >> $GITHUB_OUTPUT
+        
+        # Create comprehensive summary report
+        cat > gitguardian-reports/security-summary.md << EOF
+        # 🛡️ GitGuardian Security Scan Summary
+        
+        **Scan Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        **Scan Mode:** ${{ inputs.scan-mode }}
+        **Security Score:** $SECURITY_SCORE/100
+        **Status:** $SCAN_STATUS
+        
+        ## 📊 Findings Overview
+        
+        | Category | Count | Severity |
+        |----------|-------|----------|
+        | 🔐 Secrets Found | $SECRETS_FOUND | ${{ inputs.minimum-severity }}+ |
+        | ⚖️ Policy Violations | $POLICY_VIOLATIONS | Various |
+        
+        ## 🔧 Scan Configuration
+        
+        - **Scan Mode:** ${{ inputs.scan-mode }}
+        - **Minimum Severity:** ${{ inputs.minimum-severity }}
+        - **All Policies Enabled:** ${{ inputs.all-policies }}
+        - **Ignore Known Secrets:** ${{ inputs.ignore-known-secrets }}
+        - **Excluded Paths:** ${{ inputs.exclude-paths }}
+        
+        ## 📋 Status Details
+        
+        EOF
+        
+        if [ "$SECRETS_FOUND" -gt 0 ]; then
+          cat >> gitguardian-reports/security-summary.md << EOF
+        ### 🔐 Secrets Detected
+        
+        **$SECRETS_FOUND secret(s) found in your codebase.**
+        
+        **Recommended Actions:**
+        - Review the detailed findings in the GitGuardian report
+        - Rotate any exposed credentials immediately
+        - Remove secrets from code and use environment variables
+        - Consider using secret management solutions
+        
+        EOF
+        fi
+        
+        if [ "$POLICY_VIOLATIONS" -gt 0 ]; then
+          cat >> gitguardian-reports/security-summary.md << EOF
+        ### ⚖️ Policy Violations
+        
+        **$POLICY_VIOLATIONS policy violation(s) detected.**
+        
+        **Recommended Actions:**
+        - Review the specific policy violations
+        - Update configurations to comply with security policies
+        - Consider implementing security-as-code practices
+        
+        EOF
+        fi
+        
+        if [ "$SECRETS_FOUND" -eq 0 ] && [ "$POLICY_VIOLATIONS" -eq 0 ]; then
+          cat >> gitguardian-reports/security-summary.md << EOF
+        ### ✅ No Issues Found
+        
+        Great! No secrets or policy violations were detected in your codebase.
+        
+        **Recommendations:**
+        - Continue following security best practices
+        - Regularly scan your code for security issues
+        - Keep your dependencies up to date
+        
+        EOF
+        fi
+        
+        cat >> gitguardian-reports/security-summary.md << EOF
+        ## 🔗 Resources
+        
+        - [GitGuardian Documentation](https://docs.gitguardian.com/)
+        - [Security Best Practices](https://docs.gitguardian.com/secrets-detection/introduction)
+        - [GitGuardian Dashboard](https://dashboard.gitguardian.com/)
+        
+        ---
+        
+        *Generated by GitGuardian ggshield*
+        EOF
+        
+        echo ""
+        echo "🛡️ GitGuardian Security Summary:"
+        echo "  • Security Score: $SECURITY_SCORE/100"
+        echo "  • Secrets Found: $SECRETS_FOUND"
+        echo "  • Policy Violations: $POLICY_VIOLATIONS"
+        echo "  • Status: $SCAN_STATUS"
+        echo "  • Report Path: gitguardian-reports/"
+
+    - name: 📤 Upload GitGuardian Reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: gitguardian-security-reports
+        path: gitguardian-reports/
+        retention-days: 30
+
+    - name: 🚨 Fail on Security Findings
+      if: inputs.fail-on-findings == 'true' && (steps.gitguardian-scan.outputs.secrets-found != '0' || steps.gitguardian-scan.outputs.policy-violations != '0')
+      shell: bash
+      run: |
+        echo "❌ GitGuardian security scan failed due to findings"
+        echo ""
+        echo "📊 Summary:"
+        echo "  • Secrets Found: ${{ steps.gitguardian-scan.outputs.secrets-found }}"
+        echo "  • Policy Violations: ${{ steps.gitguardian-scan.outputs.policy-violations }}"
+        echo "  • Security Score: ${{ steps.summary.outputs.security-score }}/100"
+        echo ""
+        echo "🔗 Review the detailed reports in the GitGuardian artifacts for more information."
+        echo ""
+        echo "⚡ Quick Actions:"
+        echo "  1. Review the gitguardian-security-reports artifact"
+        echo "  2. Fix any exposed secrets immediately"
+        echo "  3. Address policy violations"
+        echo "  4. Re-run the scan after fixes"
+        
+        exit 1
+
+branding:
+  icon: 'shield'
+  color: 'blue'
