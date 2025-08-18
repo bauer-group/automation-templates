@@ -1,5 +1,5 @@
 name: 'README Generator'
-description: 'Generiert README aus Template mit erweiterten Platzhaltern'
+description: 'Professioneller README-Generator mit erweiterten Template-Features und Validierung'
 author: 'BAUER GROUP'
 
 inputs:
@@ -18,7 +18,7 @@ inputs:
   company-name:
     description: 'Name der Firma'
     required: false
-    default: 'Bauer Group'
+    default: 'BAUER GROUP'
   project-description:
     description: 'Projektbeschreibung'
     required: false
@@ -35,80 +35,224 @@ inputs:
     description: 'Support-URL'
     required: false
     default: ''
+  force-update:
+    description: 'README auch ohne Änderungen aktualisieren'
+    required: false
+    default: 'false'
+  custom-version:
+    description: 'Benutzerdefinierte Version (überschreibt Git Tag)'
+    required: false
+    default: ''
+  validate-output:
+    description: 'Generierte README validieren'
+    required: false
+    default: 'true'
+
+outputs:
+  readme_updated:
+    description: 'Ob README aktualisiert wurde'
+    value: ${{ steps.commit.outputs.committed }}
+  changes_detected:
+    description: 'Ob Änderungen erkannt wurden'
+    value: ${{ steps.changes.outputs.changed }}
+  validation_passed:
+    description: 'Ob Validierung erfolgreich war'
+    value: ${{ steps.validate.outputs.passed }}
+  file_size:
+    description: 'Größe der generierten README-Datei'
+    value: ${{ steps.validate.outputs.file_size }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Setup Python
+    - name: 🐍 Setup Python Environment
       uses: actions/setup-python@v4
       with:
         python-version: '3.12'
+        cache: 'pip'
 
-    - name: Install dependencies
+    - name: 📦 Install Dependencies
       shell: bash
       run: |
         python -m pip install --upgrade pip
-        pip install requests gitpython
+        pip install requests gitpython python-dateutil
 
-    - name: Download latest README generator
+    - name: 🔧 Prepare Environment
       shell: bash
       run: |
-        curl -fsSL https://raw.githubusercontent.com/bauer-group/automation-templates/main/scripts/generate_readme.py -o generate_readme.py || echo "Download failed, using fallback"
+        # Create backup of existing README if it exists
+        if [ -f "${{ inputs.output-path }}" ]; then
+          cp "${{ inputs.output-path }}" "${{ inputs.output-path }}.backup"
+          echo "📄 Created backup: ${{ inputs.output-path }}.backup"
+        fi
+        
+        # Set version from input or git tag
+        if [ -n "${{ inputs.custom-version }}" ]; then
+          echo "RELEASE_VERSION=${{ inputs.custom-version }}" >> $GITHUB_ENV
+          echo "🏷️ Using custom version: ${{ inputs.custom-version }}"
+        else
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.1.0")
+          echo "RELEASE_VERSION=${LATEST_TAG#v}" >> $GITHUB_ENV
+          echo "🏷️ Using git tag version: ${LATEST_TAG#v}"
+        fi
 
-    - name: Create fallback generator if download failed
+    - name: 🔄 Download Latest Generator
+      shell: bash
+      run: |
+        echo "📥 Downloading latest README generator..."
+        if curl -fsSL --max-time 10 \
+          "https://raw.githubusercontent.com/bauer-group/automation-templates/main/scripts/generate_readme.py" \
+          -o generate_readme.py; then
+          echo "✅ Generator downloaded successfully"
+          chmod +x generate_readme.py
+        else
+          echo "⚠️ Download failed, will use fallback generator"
+        fi
+
+    - name: 🛠️ Create Enhanced Fallback Generator
       shell: bash
       run: |
         if [ ! -f generate_readme.py ]; then
+          echo "🔧 Creating enhanced fallback generator..."
           cat > generate_readme.py << 'EOF'
         #!/usr/bin/env python3
         import os
         import re
-        from datetime import datetime
+        import json
+        import subprocess
+        from datetime import datetime, timezone
+        from typing import Dict, Any
+        
+        def get_git_info() -> Dict[str, str]:
+            """Get git repository information"""
+            try:
+                # Get remote URL
+                remote_url = subprocess.check_output(
+                    ["git", "config", "--get", "remote.origin.url"],
+                    stderr=subprocess.STDOUT,
+                ).decode().strip()
+                
+                # Parse GitHub URL
+                if "github.com" in remote_url:
+                    if remote_url.startswith("git@"):
+                        match = re.search(r"github\.com:([^/]+)/(.+?)(?:\.git)?$", remote_url)
+                    else:
+                        match = re.search(r"github\.com/([^/]+)/(.+?)(?:\.git)?$", remote_url)
+                    
+                    if match:
+                        owner, repo = match.groups()
+                        return {
+                            "REPO_OWNER": owner,
+                            "REPO_NAME": repo,
+                            "REPO_URL": f"https://github.com/{owner}/{repo}",
+                            "REPO_FULL_NAME": f"{owner}/{repo}"
+                        }
+                
+                # Get current branch
+                current_branch = subprocess.check_output(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    stderr=subprocess.STDOUT,
+                ).decode().strip()
+                
+                return {
+                    "REPO_OWNER": "unknown",
+                    "REPO_NAME": "unknown", 
+                    "REPO_URL": remote_url,
+                    "REPO_FULL_NAME": "unknown/unknown",
+                    "CURRENT_BRANCH": current_branch
+                }
+                
+            except Exception as e:
+                print(f"Warning: Could not get git info: {e}")
+                return {
+                    "REPO_OWNER": "unknown",
+                    "REPO_NAME": "unknown",
+                    "REPO_URL": "unknown",
+                    "REPO_FULL_NAME": "unknown/unknown",
+                    "CURRENT_BRANCH": "unknown"
+                }
+        
+        def render_template(template: str, vars: dict) -> str:
+            """Render template with variable substitution"""
+            out = template
+            
+            # Simple variable substitution
+            for k, v in vars.items():
+                out = out.replace("{{" + k + "}}", str(v))
+            
+            return out
         
         def main():
             template_path = os.getenv('TEMPLATE_PATH', 'docs/README.template.MD')
             output_path = os.getenv('OUTPUT_PATH', 'README.MD')
             
             if not os.path.exists(template_path):
-                print(f"Template {template_path} not found")
-                return
+                print(f"❌ Template {template_path} not found")
+                return 1
                 
             with open(template_path, 'r', encoding='utf-8') as f:
-                content = f.read()
+                template = f.read()
             
-            # Basis-Ersetzungen
-            replacements = {
-                '{{VERSION}}': os.getenv('GITHUB_REF_NAME', '0.1.0').lstrip('v'),
-                '{{DATE}}': datetime.now().strftime('%Y-%m-%d'),
-                '{{DATETIME}}': datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC'),
-                '{{YEAR}}': str(datetime.now().year),
-                '{{REPOSITORY}}': os.getenv('GITHUB_REPOSITORY', ''),
-                '{{REPOSITORY_URL}}': f"https://github.com/{os.getenv('GITHUB_REPOSITORY', '')}",
-                '{{REPOSITORY_OWNER}}': os.getenv('GITHUB_REPOSITORY_OWNER', ''),
-                '{{REPOSITORY_NAME}}': os.getenv('GITHUB_REPOSITORY', '').split('/')[-1],
-                '{{CURRENT_BRANCH}}': os.getenv('GITHUB_REF_NAME', 'main'),
-                '{{PROJECT_NAME}}': os.getenv('PROJECT_NAME', ''),
-                '{{COMPANY_NAME}}': os.getenv('COMPANY_NAME', 'Bauer Group'),
-                '{{PROJECT_DESCRIPTION}}': os.getenv('PROJECT_DESCRIPTION', ''),
-                '{{CONTACT_EMAIL}}': os.getenv('CONTACT_EMAIL', ''),
-                '{{DOCUMENTATION_URL}}': os.getenv('DOCUMENTATION_URL', ''),
-                '{{SUPPORT_URL}}': os.getenv('SUPPORT_URL', ''),
+            # Get current date and time
+            now = datetime.now(timezone.utc)
+            
+            # Collect all variables
+            variables = {
+                "VERSION": os.getenv("RELEASE_VERSION", "0.1.0"),
+                "DATE": now.strftime("%Y-%m-%d"),
+                "DATETIME": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                "YEAR": now.strftime("%Y"),
+                "PROJECT_NAME": os.getenv('PROJECT_NAME', ''),
+                "COMPANY_NAME": os.getenv('COMPANY_NAME', 'BAUER GROUP'),
+                "PROJECT_DESCRIPTION": os.getenv('PROJECT_DESCRIPTION', ''),
+                "CONTACT_EMAIL": os.getenv('CONTACT_EMAIL', ''),
+                "DOCUMENTATION_URL": os.getenv('DOCUMENTATION_URL', ''),
+                "SUPPORT_URL": os.getenv('SUPPORT_URL', ''),
             }
             
-            for placeholder, value in replacements.items():
-                content = content.replace(placeholder, value)
+            # Add git information
+            variables.update(get_git_info())
+            
+            # Add GitHub Actions variables
+            github_vars = ["GITHUB_REPOSITORY", "GITHUB_REPOSITORY_OWNER", "GITHUB_REF_NAME"]
+            for var in github_vars:
+                if os.getenv(var):
+                    variables[var] = os.getenv(var)
+            
+            # Override with GitHub values if available
+            if os.getenv("GITHUB_REPOSITORY"):
+                variables["REPO_FULL_NAME"] = os.getenv("GITHUB_REPOSITORY")
+                parts = os.getenv("GITHUB_REPOSITORY").split("/")
+                if len(parts) == 2:
+                    variables["REPO_OWNER"] = parts[0]
+                    variables["REPO_NAME"] = parts[1]
+                variables["REPO_URL"] = f"https://github.com/{os.getenv('GITHUB_REPOSITORY')}"
+            
+            if os.getenv("GITHUB_REF_NAME"):
+                variables["CURRENT_BRANCH"] = os.getenv("GITHUB_REF_NAME")
+            
+            # Render template
+            content = render_template(template, variables)
+            
+            # Write output with generation header
+            banner = f"<!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit {template_path} instead. -->\n"
+            banner += f"<!-- Generated on {variables['DATETIME']} -->\n\n"
             
             with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(content)
+                f.write(banner + content)
             
-            print(f"README generated: {output_path}")
+            print(f"✅ README generated successfully: {output_path}")
+            return 0
         
         if __name__ == '__main__':
-            main()
+            exit(main())
         EOF
+        
+          chmod +x generate_readme.py
+          echo "✅ Enhanced fallback generator created"
         fi
 
-    - name: Generate README
+    - name: 📝 Generate README
       shell: bash
       env:
         TEMPLATE_PATH: ${{ inputs.template-path }}
@@ -119,26 +263,114 @@ runs:
         CONTACT_EMAIL: ${{ inputs.contact-email }}
         DOCUMENTATION_URL: ${{ inputs.documentation-url }}
         SUPPORT_URL: ${{ inputs.support-url }}
-      run: python generate_readme.py
+      run: |
+        echo "🔄 Generating README..."
+        echo "📄 Template: ${{ inputs.template-path }}"
+        echo "📤 Output: ${{ inputs.output-path }}"
+        
+        if python generate_readme.py; then
+          echo "✅ README generation completed"
+        else
+          echo "❌ README generation failed"
+          exit 1
+        fi
 
-    - name: Check for changes
+    - name: 🔍 Validate Generated README
+      id: validate
+      if: inputs.validate-output == 'true'
+      shell: bash
+      run: |
+        README_FILE="${{ inputs.output-path }}"
+        
+        if [ ! -f "$README_FILE" ]; then
+          echo "❌ Generated README not found"
+          echo "passed=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        # Get file size
+        FILE_SIZE=$(wc -c < "$README_FILE")
+        echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
+        
+        # Validate file size
+        if [ "$FILE_SIZE" -lt 100 ]; then
+          echo "❌ Generated README is too small (${FILE_SIZE} bytes)"
+          echo "passed=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+        # Check for unresolved placeholders
+        UNRESOLVED=$(grep -o "{{[^}]*}}" "$README_FILE" | wc -l || echo "0")
+        
+        if [ "$UNRESOLVED" -gt 0 ]; then
+          echo "⚠️ Found $UNRESOLVED unresolved placeholders:"
+          grep -o "{{[^}]*}}" "$README_FILE" | sort | uniq | head -5
+        fi
+        
+        # Basic content validation
+        if ! grep -q "^#" "$README_FILE"; then
+          echo "⚠️ No main heading found"
+        fi
+        
+        echo "✅ README validation completed"
+        echo "📊 File size: ${FILE_SIZE} bytes"
+        echo "🔧 Unresolved placeholders: $UNRESOLVED"
+        echo "passed=true" >> $GITHUB_OUTPUT
+
+    - name: 📊 Check for Changes
       id: changes
       shell: bash
       run: |
-        if git diff --quiet ${{ inputs.output-path }}; then
+        if [ "${{ inputs.force-update }}" = "true" ]; then
+          echo "🔄 Force update enabled - treating as changed"
+          echo "changed=true" >> $GITHUB_OUTPUT
+        elif git diff --quiet "${{ inputs.output-path }}"; then
+          echo "ℹ️ No changes detected in README"
           echo "changed=false" >> $GITHUB_OUTPUT
         else
+          echo "✅ Changes detected in README"
           echo "changed=true" >> $GITHUB_OUTPUT
+          
+          # Show diff summary
+          echo "📋 Change summary:"
+          git diff --stat "${{ inputs.output-path }}" || true
         fi
 
-    - name: Commit changes
+    - name: 🚀 Commit Changes
+      id: commit
       if: steps.changes.outputs.changed == 'true'
       shell: bash
       run: |
         git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add ${{ inputs.output-path }}
-        git commit -m "docs: update README.MD [skip ci]" || echo "No changes to commit"
+        git config --local user.name "📄 README Generator"
+        
+        if git add "${{ inputs.output-path }}" && git commit -m "docs: update ${{ inputs.output-path }} [skip ci]"; then
+          echo "✅ README changes committed"
+          echo "committed=true" >> $GITHUB_OUTPUT
+          
+          # Clean up backup
+          if [ -f "${{ inputs.output-path }}.backup" ]; then
+            rm "${{ inputs.output-path }}.backup"
+          fi
+        else
+          echo "ℹ️ No changes to commit"
+          echo "committed=false" >> $GITHUB_OUTPUT
+          
+          # Restore backup if commit failed
+          if [ -f "${{ inputs.output-path }}.backup" ]; then
+            mv "${{ inputs.output-path }}.backup" "${{ inputs.output-path }}"
+            echo "🔄 Restored backup due to commit failure"
+          fi
+        fi
+
+    - name: 🧹 Cleanup
+      if: always()
+      shell: bash
+      run: |
+        # Clean up temporary files
+        [ -f "generate_readme.py" ] && rm -f generate_readme.py
+        [ -f "${{ inputs.output-path }}.backup" ] && rm -f "${{ inputs.output-path }}.backup"
+        echo "🧹 Cleanup completed"
 
 branding:
   icon: 'file-text'

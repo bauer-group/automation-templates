@@ -22,7 +22,7 @@ on:
         description: 'Name der Firma'
         required: false
         type: string
-        default: 'Bauer Group'
+        default: 'BAUER GROUP'
       project-description:
         description: 'Projektbeschreibung'
         required: false
@@ -43,21 +43,69 @@ on:
         required: false
         type: string
         default: ''
+      force-update:
+        description: 'README auch ohne Änderungen aktualisieren'
+        required: false
+        type: boolean
+        default: false
+      validate-output:
+        description: 'Generierte README validieren'
+        required: false
+        type: boolean
+        default: true
+      auto-commit:
+        description: 'Änderungen automatisch committen'
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      readme_updated:
+        description: 'Ob README aktualisiert wurde'
+        value: ${{ jobs.generate-readme.outputs.readme_updated }}
+      changes_detected:
+        description: 'Ob Änderungen erkannt wurden'
+        value: ${{ jobs.generate-readme.outputs.changes_detected }}
+      validation_passed:
+        description: 'Ob Validierung erfolgreich war'
+        value: ${{ jobs.generate-readme.outputs.validation_passed }}
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   generate-readme:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
+    outputs:
+      readme_updated: ${{ steps.generate.outputs.readme_updated }}
+      changes_detected: ${{ steps.generate.outputs.changes_detected }}
+      validation_passed: ${{ steps.generate.outputs.validation_passed }}
     
     steps:
-      - name: Checkout
+      - name: 🚀 Checkout Repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
-      - name: Generate README
+      - name: 🔍 Validate Template
+        run: |
+          TEMPLATE_FILE="${{ inputs.template-path }}"
+          
+          if [ ! -f "$TEMPLATE_FILE" ]; then
+            echo "❌ Template file not found: $TEMPLATE_FILE"
+            echo "💡 Create a template file with placeholders like {{PROJECT_NAME}}, {{VERSION}}, etc."
+            exit 1
+          fi
+          
+          echo "✅ Template file found: $TEMPLATE_FILE"
+          
+          # Check for placeholders
+          PLACEHOLDER_COUNT=$(grep -o "{{[^}]*}}" "$TEMPLATE_FILE" | wc -l || echo "0")
+          echo "🔧 Found $PLACEHOLDER_COUNT placeholders in template"
+
+      - name: 📝 Generate README
+        id: generate
         uses: bauer-group/automation-templates/.github/actions/readme-generate@main
         with:
           template-path: ${{ inputs.template-path }}
@@ -68,9 +116,38 @@ jobs:
           contact-email: ${{ inputs.contact-email }}
           documentation-url: ${{ inputs.documentation-url }}
           support-url: ${{ inputs.support-url }}
+          force-update: ${{ inputs.force-update }}
+          validate-output: ${{ inputs.validate-output }}
 
-      - name: Push changes
+      - name: 📤 Push Changes
+        if: steps.generate.outputs.changes_detected == 'true' && inputs.auto-commit
         run: |
           if ! git diff --quiet; then
+            echo "🚀 Pushing README changes..."
             git push
+          else
+            echo "ℹ️ No changes to push"
+          fi
+
+      - name: 📋 Summary
+        run: |
+          echo "### 📄 README Generation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Template** | \`${{ inputs.template-path }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Output** | \`${{ inputs.output-path }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Project** | ${{ inputs.project-name || 'Auto-detected' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Company** | ${{ inputs.company-name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Changes Detected** | ${{ steps.generate.outputs.changes_detected }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Validation Passed** | ${{ steps.generate.outputs.validation_passed }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **README Updated** | ${{ steps.generate.outputs.readme_updated }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **File Size** | ${{ steps.generate.outputs.file_size }} bytes |" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.generate.outputs.changes_detected }}" = "true" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **README successfully generated and updated!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **README is already up to date**" >> $GITHUB_STEP_SUMMARY
           fi
