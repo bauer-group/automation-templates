@@ -220,7 +220,7 @@ GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}        # GitGuardian Ent
 
 ## Konfigurationsdateien
 
-### .github/config/enhanced-release-please-config.json
+### .github/config/release-please-config.json
 
 ```json
 {

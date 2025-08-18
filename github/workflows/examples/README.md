@@ -45,7 +45,7 @@ Kopiere den Enhanced Release Workflow in dein Repository:
 ```bash
 # Enhanced Release Workflow
 .github/workflows/enhanced-release.yml
-.github/config/enhanced-release-please-config.json
+.github/config/release-please-config.json
 .github/config/.release-please-manifest.json
 .github/config/commitlint.config.js
 
@@ -59,7 +59,7 @@ Kopiere den Enhanced Release Workflow in dein Repository:
 
 Passe die Konfigurationsdateien an dein Projekt an:
 
-- **enhanced-release-please-config.json**: Projekt-Name, Release-Type, Changelog-Sections
+- **release-please-config.json**: Projekt-Name, Release-Type, Changelog-Sections
 - **commitlint.config.js**: Commit-Regeln (optional anpassbar)
 - **.gitleaks.toml**: Security-Patterns (optional)
 - **.gitguardian.yml**: Security-Regeln (optional)
@@ -111,7 +111,7 @@ cp path/to/examples/enhanced-release-example.md .github/workflows/enhanced-relea
 cp -r path/to/.github/actions/* .github/actions/
 
 # Basis-Konfiguration erstellen
-echo '{"packages": {".": {"release-type": "simple", "package-name": "my-project"}}}' > .github/config/enhanced-release-please-config.json
+echo '{"packages": {".": {"release-type": "simple", "package-name": "my-project"}}}' > .github/config/release-please-config.json
 echo '{".": "0.1.0"}' > .github/config/.release-please-manifest.json
 
 # Erstes Release vorbereiten
@@ -124,16 +124,16 @@ git push origin main
 
 ```bash
 # Node.js Projekt
-echo '{"packages": {".": {"release-type": "node", "package-name": "my-node-app"}}}' > .github/config/enhanced-release-please-config.json
+echo '{"packages": {".": {"release-type": "node", "package-name": "my-node-app"}}}' > .github/config/release-please-config.json
 
 # Python Projekt  
-echo '{"packages": {".": {"release-type": "python", "package-name": "my-python-app"}}}' > .github/config/enhanced-release-please-config.json
+echo '{"packages": {".": {"release-type": "python", "package-name": "my-python-app"}}}' > .github/config/release-please-config.json
 
 # Go Projekt
-echo '{"packages": {".": {"release-type": "go", "package-name": "my-go-app"}}}' > .github/config/enhanced-release-please-config.json
+echo '{"packages": {".": {"release-type": "go", "package-name": "my-go-app"}}}' > .github/config/release-please-config.json
 
 # Simple/Generic Projekt
-echo '{"packages": {".": {"release-type": "simple", "package-name": "my-project"}}}' > .github/config/enhanced-release-please-config.json
+echo '{"packages": {".": {"release-type": "simple", "package-name": "my-project"}}}' > .github/config/release-please-config.json
 ```
 
 ## 🔄 Migration Path
