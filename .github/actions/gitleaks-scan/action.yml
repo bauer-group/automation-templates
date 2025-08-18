@@ -1,0 +1,571 @@
+name: 'Gitleaks Security Scan'
+description: 'Fast secrets detection using Gitleaks for open source and enterprise repositories'
+author: 'BAUER GROUP'
+
+inputs:
+  fail-on-findings:
+    description: 'Fail the workflow if secrets are found'
+    required: false
+    default: 'true'
+  config-path:
+    description: 'Path to custom Gitleaks configuration file'
+    required: false
+    default: ''
+  exclude-paths:
+    description: 'Paths to exclude from scanning (comma-separated)'
+    required: false
+    default: '.git,node_modules,vendor,target,dist,build'
+  scan-history:
+    description: 'Scan entire git history'
+    required: false
+    default: 'false'
+  redact-secrets:
+    description: 'Redact secrets in output'
+    required: false
+    default: 'true'
+  verbose:
+    description: 'Enable verbose output'
+    required: false
+    default: 'false'
+  gitleaks-version:
+    description: 'Gitleaks version to use'
+    required: false
+    default: 'latest'
+  github-token:
+    description: 'GitHub Token for API access (required for org repos)'
+    required: false
+    default: ''
+  baseline-path:
+    description: 'Path to baseline file for ignore existing findings'
+    required: false
+    default: ''
+  format:
+    description: 'Output format (json, csv, junit, sarif)'
+    required: false
+    default: 'json'
+
+outputs:
+  secrets-found:
+    description: 'Whether secrets were found (true/false)'
+    value: ${{ steps.gitleaks-scan.outputs.secrets-found }}
+  secrets-count:
+    description: 'Number of secrets found'
+    value: ${{ steps.gitleaks-scan.outputs.secrets-count }}
+  scan-status:
+    description: 'Overall scan status (pass, warning, fail)'
+    value: ${{ steps.summary.outputs.scan-status }}
+  security-score:
+    description: 'Security score based on findings (0-100)'
+    value: ${{ steps.summary.outputs.security-score }}
+  report-path:
+    description: 'Path to the detailed scan report'
+    value: ${{ steps.summary.outputs.report-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🛡️ Setup Gitleaks Scan
+      shell: bash
+      run: |
+        echo "🛡️ Initializing Gitleaks Security Scan"
+        echo "Version: ${{ inputs.gitleaks-version }}"
+        echo "Scan History: ${{ inputs.scan-history }}"
+        echo "Fail on Findings: ${{ inputs.fail-on-findings }}"
+        echo "Redact Secrets: ${{ inputs.redact-secrets }}"
+        echo "Format: ${{ inputs.format }}"
+        echo "Exclude Paths: ${{ inputs.exclude-paths }}"
+        
+        mkdir -p gitleaks-reports
+
+    - name: 🔧 Install Gitleaks
+      shell: bash
+      run: |
+        echo "🔧 Installing Gitleaks..."
+        
+        # Determine version to install
+        GITLEAKS_VERSION="${{ inputs.gitleaks-version }}"
+        if [ "$GITLEAKS_VERSION" == "latest" ]; then
+          # Get latest version from GitHub API
+          if [ -n "${{ inputs.github-token }}" ]; then
+            GITLEAKS_VERSION=$(curl -s -H "Authorization: token ${{ inputs.github-token }}" \
+              https://api.github.com/repos/gitleaks/gitleaks/releases/latest | \
+              grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          else
+            GITLEAKS_VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | \
+              grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          fi
+          
+          if [ -z "$GITLEAKS_VERSION" ]; then
+            echo "⚠️ Could not determine latest version, using v8.18.4"
+            GITLEAKS_VERSION="8.18.4"
+          fi
+        fi
+        
+        echo "Installing Gitleaks version: $GITLEAKS_VERSION"
+        
+        # Detect OS and architecture
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        ARCH=$(uname -m)
+        
+        case $ARCH in
+          x86_64)
+            ARCH="x64"
+            ;;
+          aarch64|arm64)
+            ARCH="arm64"
+            ;;
+          *)
+            echo "❌ Unsupported architecture: $ARCH"
+            exit 1
+            ;;
+        esac
+        
+        # Download Gitleaks
+        DOWNLOAD_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${OS}_${ARCH}.tar.gz"
+        echo "Downloading from: $DOWNLOAD_URL"
+        
+        curl -L "$DOWNLOAD_URL" -o gitleaks.tar.gz
+        tar -xzf gitleaks.tar.gz
+        chmod +x gitleaks
+        
+        # Move to PATH
+        sudo mv gitleaks /usr/local/bin/ 2>/dev/null || mv gitleaks $HOME/.local/bin/ 2>/dev/null || {
+          mkdir -p $HOME/bin
+          mv gitleaks $HOME/bin/
+          echo "$HOME/bin" >> $GITHUB_PATH
+        }
+        
+        # Verify installation
+        if command -v gitleaks &> /dev/null; then
+          echo "✅ Gitleaks installed successfully"
+          gitleaks version
+        else
+          echo "❌ Gitleaks installation failed"
+          exit 1
+        fi
+        
+        # Cleanup
+        rm -f gitleaks.tar.gz
+
+    - name: 📝 Configure Gitleaks
+      shell: bash
+      run: |
+        echo "📝 Configuring Gitleaks..."
+        
+        # Use custom config if provided
+        if [ -n "${{ inputs.config-path }}" ] && [ -f "${{ inputs.config-path }}" ]; then
+          echo "ℹ️ Using custom configuration: ${{ inputs.config-path }}"
+          CONFIG_PATH="${{ inputs.config-path }}"
+        else
+          # Create default .gitleaks.toml if it doesn't exist
+          if [ ! -f ".gitleaks.toml" ]; then
+            echo "📝 Creating default Gitleaks configuration..."
+            
+            cat > .gitleaks.toml << EOF
+        # Gitleaks configuration file
+        title = "Gitleaks Configuration"
+        
+        # Global settings
+        [extend]
+        # Use default Gitleaks rules
+        useDefault = true
+        
+        # Allowlist configuration
+        [allowlist]
+        description = "Global allowlist"
+        
+        # Paths to ignore
+        paths = [
+        EOF
+            
+            # Add exclude paths
+            IFS=',' read -ra EXCLUDES <<< "${{ inputs.exclude-paths }}"
+            for exclude in "${EXCLUDES[@]}"; do
+              echo "  \"$exclude\"," >> .gitleaks.toml
+            done
+            
+            cat >> .gitleaks.toml << EOF
+        ]
+        
+        # Common false positives to ignore
+        regexes = [
+          '''password\s*=\s*["']?example["']?''',
+          '''password\s*=\s*["']?test(123)?["']?''',
+          '''password\s*=\s*["']?dummy["']?''',
+          '''password\s*=\s*["']?fake["']?''',
+          '''secret\s*=\s*["']?example["']?''',
+          '''key\s*=\s*["']?your[_-]?key[_-]?here["']?''',
+          '''token\s*=\s*["']?your[_-]?token[_-]?here["']?''',
+        ]
+        
+        # Entropy settings for generic secrets
+        [rules.entropy]
+        description = "Custom entropy rules"
+        
+        [[rules.entropy.groups]]
+        name = "base64"
+        regex = '''[A-Za-z0-9+/]{20,}={0,2}'''
+        entropy = 4.5
+        
+        [[rules.entropy.groups]]
+        name = "hex"
+        regex = '''[a-fA-F0-9]{20,}'''
+        entropy = 3.5
+        EOF
+            
+            echo "✅ Created default .gitleaks.toml configuration"
+          else
+            echo "ℹ️ Using existing .gitleaks.toml configuration"
+          fi
+          
+          CONFIG_PATH=".gitleaks.toml"
+        fi
+        
+        # Display configuration summary
+        echo "📋 Gitleaks Configuration Summary:"
+        if [ -f "$CONFIG_PATH" ]; then
+          echo "  • Config File: $CONFIG_PATH"
+          echo "  • File Size: $(wc -c < "$CONFIG_PATH") bytes"
+          if grep -q "useDefault" "$CONFIG_PATH"; then
+            echo "  • Using Default Rules: Yes"
+          fi
+          if grep -q "paths.*=" "$CONFIG_PATH"; then
+            echo "  • Excluded Paths: Configured"
+          fi
+        fi
+
+    - name: 🔍 Run Gitleaks Scan
+      id: gitleaks-scan
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        echo "🔍 Running Gitleaks security scan..."
+        
+        # Prepare scan parameters
+        SCAN_ARGS=""
+        OUTPUT_FILE="gitleaks-reports/gitleaks-report.${{ inputs.format }}"
+        
+        # Add configuration file
+        if [ -f ".gitleaks.toml" ]; then
+          SCAN_ARGS="$SCAN_ARGS --config=.gitleaks.toml"
+        elif [ -n "${{ inputs.config-path }}" ] && [ -f "${{ inputs.config-path }}" ]; then
+          SCAN_ARGS="$SCAN_ARGS --config=${{ inputs.config-path }}"
+        fi
+        
+        # Add baseline file if provided
+        if [ -n "${{ inputs.baseline-path }}" ] && [ -f "${{ inputs.baseline-path }}" ]; then
+          SCAN_ARGS="$SCAN_ARGS --baseline-path=${{ inputs.baseline-path }}"
+          echo "📋 Using baseline file: ${{ inputs.baseline-path }}"
+        fi
+        
+        # Add verbose flag
+        if [ "${{ inputs.verbose }}" == "true" ]; then
+          SCAN_ARGS="$SCAN_ARGS --verbose"
+        fi
+        
+        # Add redact flag
+        if [ "${{ inputs.redact-secrets }}" == "true" ]; then
+          SCAN_ARGS="$SCAN_ARGS --redact"
+        fi
+        
+        # Add format
+        SCAN_ARGS="$SCAN_ARGS --format=${{ inputs.format }}"
+        
+        # Add output file
+        SCAN_ARGS="$SCAN_ARGS --report-path=$OUTPUT_FILE"
+        
+        echo "Scan arguments: $SCAN_ARGS"
+        
+        # Initialize results
+        SECRETS_FOUND="false"
+        SECRETS_COUNT=0
+        SCAN_EXIT_CODE=0
+        
+        # Run appropriate scan command
+        if [ "${{ inputs.scan-history }}" == "true" ]; then
+          echo "🕒 Scanning entire git history..."
+          if ! gitleaks detect $SCAN_ARGS .; then
+            SCAN_EXIT_CODE=$?
+            echo "⚠️ Gitleaks found issues in git history (exit code: $SCAN_EXIT_CODE)"
+            if [ $SCAN_EXIT_CODE -eq 1 ]; then
+              SECRETS_FOUND="true"
+            fi
+          else
+            echo "✅ No secrets found in git history"
+          fi
+        else
+          echo "📁 Scanning current working directory..."
+          if ! gitleaks detect --source=. $SCAN_ARGS; then
+            SCAN_EXIT_CODE=$?
+            echo "⚠️ Gitleaks found issues in working directory (exit code: $SCAN_EXIT_CODE)"
+            if [ $SCAN_EXIT_CODE -eq 1 ]; then
+              SECRETS_FOUND="true"
+            fi
+          else
+            echo "✅ No secrets found in working directory"
+          fi
+        fi
+        
+        # Parse results if report file exists
+        if [ -f "$OUTPUT_FILE" ]; then
+          echo "📊 Parsing scan results..."
+          
+          # Count secrets based on format
+          case "${{ inputs.format }}" in
+            "json")
+              if command -v jq &> /dev/null; then
+                # Try to count secrets from JSON
+                SECRETS_COUNT=$(jq '. | length' "$OUTPUT_FILE" 2>/dev/null || echo "0")
+                if [ "$SECRETS_COUNT" -gt 0 ]; then
+                  SECRETS_FOUND="true"
+                  echo "🔍 Found $SECRETS_COUNT secret(s) in JSON report"
+                  
+                  # Extract secret summaries
+                  echo "📋 Secret Summary:" > gitleaks-reports/secrets-summary.txt
+                  jq -r '.[] | "• \(.RuleID) in \(.File):\(.StartLine) - \(.Description)"' "$OUTPUT_FILE" 2>/dev/null >> gitleaks-reports/secrets-summary.txt || {
+                    echo "• Details available in full report" >> gitleaks-reports/secrets-summary.txt
+                  }
+                  
+                  # Display summary
+                  cat gitleaks-reports/secrets-summary.txt
+                fi
+              else
+                echo "⚠️ jq not available for JSON parsing"
+                # Fallback: check if file contains secrets
+                if [ -s "$OUTPUT_FILE" ] && grep -q '"' "$OUTPUT_FILE"; then
+                  SECRETS_FOUND="true"
+                  SECRETS_COUNT=1  # At least one
+                fi
+              fi
+              ;;
+              
+            "csv")
+              # Count lines (excluding header)
+              if [ -f "$OUTPUT_FILE" ]; then
+                SECRETS_COUNT=$(tail -n +2 "$OUTPUT_FILE" | wc -l)
+                if [ "$SECRETS_COUNT" -gt 0 ]; then
+                  SECRETS_FOUND="true"
+                  echo "🔍 Found $SECRETS_COUNT secret(s) in CSV report"
+                fi
+              fi
+              ;;
+              
+            "sarif")
+              if command -v jq &> /dev/null; then
+                # Count SARIF results
+                SECRETS_COUNT=$(jq '.runs[0].results | length' "$OUTPUT_FILE" 2>/dev/null || echo "0")
+                if [ "$SECRETS_COUNT" -gt 0 ]; then
+                  SECRETS_FOUND="true"
+                  echo "🔍 Found $SECRETS_COUNT secret(s) in SARIF report"
+                fi
+              else
+                # Fallback for SARIF
+                if [ -s "$OUTPUT_FILE" ] && grep -q '"results"' "$OUTPUT_FILE"; then
+                  SECRETS_FOUND="true"
+                  SECRETS_COUNT=1
+                fi
+              fi
+              ;;
+              
+            *)
+              # Generic text/other format
+              if [ -s "$OUTPUT_FILE" ]; then
+                SECRETS_FOUND="true"
+                SECRETS_COUNT=$(wc -l < "$OUTPUT_FILE")
+                echo "🔍 Found content in report file ($SECRETS_COUNT lines)"
+              fi
+              ;;
+          esac
+        else
+          echo "ℹ️ No report file generated (clean scan)"
+        fi
+        
+        # Output results
+        echo "secrets-found=$SECRETS_FOUND" >> $GITHUB_OUTPUT
+        echo "secrets-count=$SECRETS_COUNT" >> $GITHUB_OUTPUT
+        
+        echo "📊 Gitleaks Scan Results:"
+        echo "  • Secrets Found: $SECRETS_FOUND"
+        echo "  • Secrets Count: $SECRETS_COUNT"
+        echo "  • Exit Code: $SCAN_EXIT_CODE"
+        echo "  • Report File: $OUTPUT_FILE"
+
+    - name: 📊 Generate Security Summary
+      id: summary
+      shell: bash
+      run: |
+        echo "📊 Generating security summary..."
+        
+        SECRETS_FOUND="${{ steps.gitleaks-scan.outputs.secrets-found }}"
+        SECRETS_COUNT="${{ steps.gitleaks-scan.outputs.secrets-count }}"
+        
+        # Calculate security score (0-100)
+        SECURITY_SCORE=100
+        
+        # Deduct points based on findings
+        if [ "$SECRETS_FOUND" == "true" ] && [ "$SECRETS_COUNT" -gt 0 ]; then
+          # Deduct 20 points per secret, max 80 points
+          PENALTY=$((SECRETS_COUNT * 20))
+          if [ $PENALTY -gt 80 ]; then
+            PENALTY=80
+          fi
+          SECURITY_SCORE=$((SECURITY_SCORE - PENALTY))
+        fi
+        
+        # Ensure score doesn't go below 0
+        if [ $SECURITY_SCORE -lt 0 ]; then
+          SECURITY_SCORE=0
+        fi
+        
+        # Determine scan status
+        SCAN_STATUS="pass"
+        if [ "$SECRETS_FOUND" == "true" ] && [ "${{ inputs.fail-on-findings }}" == "true" ]; then
+          SCAN_STATUS="fail"
+        elif [ "$SECRETS_FOUND" == "true" ]; then
+          SCAN_STATUS="warning"
+        fi
+        
+        echo "security-score=$SECURITY_SCORE" >> $GITHUB_OUTPUT
+        echo "scan-status=$SCAN_STATUS" >> $GITHUB_OUTPUT
+        echo "report-path=gitleaks-reports/" >> $GITHUB_OUTPUT
+        
+        # Create comprehensive summary report
+        cat > gitleaks-reports/security-summary.md << EOF
+        # 🛡️ Gitleaks Security Scan Summary
+        
+        **Scan Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        **Security Score:** $SECURITY_SCORE/100
+        **Status:** $SCAN_STATUS
+        
+        ## 📊 Findings Overview
+        
+        | Category | Count | Status |
+        |----------|-------|--------|
+        | 🔐 Secrets Found | $SECRETS_COUNT | $([[ "$SECRETS_FOUND" == "true" ]] && echo "❌ Found" || echo "✅ None") |
+        
+        ## 🔧 Scan Configuration
+        
+        - **Gitleaks Version:** ${{ inputs.gitleaks-version }}
+        - **Scan History:** ${{ inputs.scan-history }}
+        - **Output Format:** ${{ inputs.format }}
+        - **Redact Secrets:** ${{ inputs.redact-secrets }}
+        - **Excluded Paths:** ${{ inputs.exclude-paths }}
+        - **Custom Config:** $([[ -n "${{ inputs.config-path }}" ]] && echo "Yes (${{ inputs.config-path }})" || echo "Default")
+        - **Baseline Used:** $([[ -n "${{ inputs.baseline-path }}" ]] && echo "Yes (${{ inputs.baseline-path }})" || echo "No")
+        
+        ## 📋 Results Details
+        
+        EOF
+        
+        if [ "$SECRETS_FOUND" == "true" ]; then
+          cat >> gitleaks-reports/security-summary.md << EOF
+        ### 🔐 Secrets Detected
+        
+        **$SECRETS_COUNT secret(s) found in your codebase.**
+        
+        **🚨 Immediate Actions Required:**
+        1. Review the detailed findings in the Gitleaks report
+        2. Rotate any exposed credentials immediately  
+        3. Remove secrets from code and git history
+        4. Use environment variables or secret management
+        5. Add secrets to .gitleaks.toml allowlist if false positives
+        
+        **🛠️ Prevention Tips:**
+        - Use pre-commit hooks with Gitleaks
+        - Implement secret scanning in CI/CD pipeline
+        - Use secret management tools (HashiCorp Vault, AWS Secrets Manager)
+        - Train team on secure coding practices
+        
+        EOF
+          
+          # Include summary if available
+          if [ -f "gitleaks-reports/secrets-summary.txt" ]; then
+            cat >> gitleaks-reports/security-summary.md << EOF
+        ### 📝 Secret Details
+        
+        EOF
+            cat gitleaks-reports/secrets-summary.txt >> gitleaks-reports/security-summary.md
+            echo "" >> gitleaks-reports/security-summary.md
+          fi
+        else
+          cat >> gitleaks-reports/security-summary.md << EOF
+        ### ✅ No Secrets Found
+        
+        Excellent! No secrets were detected in your codebase.
+        
+        **🔒 Security Recommendations:**
+        - Continue following secure coding practices
+        - Regularly scan your code with Gitleaks
+        - Implement pre-commit hooks for continuous protection
+        - Keep your dependencies and tools updated
+        - Consider periodic security audits
+        
+        EOF
+        fi
+        
+        cat >> gitleaks-reports/security-summary.md << EOF
+        ## 🎯 Gitleaks Features
+        
+        | Feature | Description | Status |
+        |---------|-------------|---------|
+        | **Speed** | Fast regex-based scanning | ✅ Active |
+        | **Git History** | Scan entire repository history | $([[ "${{ inputs.scan-history }}" == "true" ]] && echo "✅ Enabled" || echo "❌ Disabled") |
+        | **Custom Rules** | Configurable detection patterns | $([[ -f ".gitleaks.toml" ]] && echo "✅ Configured" || echo "⚠️ Default") |
+        | **Multiple Formats** | JSON, CSV, SARIF, JUnit output | ✅ Available |
+        | **Baseline Support** | Ignore existing findings | $([[ -n "${{ inputs.baseline-path }}" ]] && echo "✅ Used" || echo "❌ Not Used") |
+        | **Pre-commit Hook** | Git hook integration | ⚡ Available |
+        
+        ## 🔗 Resources
+        
+        - [Gitleaks Documentation](https://github.com/gitleaks/gitleaks)
+        - [Configuration Guide](https://github.com/gitleaks/gitleaks#configuration)
+        - [Pre-commit Integration](https://github.com/gitleaks/gitleaks#pre-commit)
+        - [Rule Customization](https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml)
+        
+        ---
+        
+        *Generated by Gitleaks Security Scanner*
+        EOF
+        
+        echo ""
+        echo "🛡️ Gitleaks Security Summary:"
+        echo "  • Security Score: $SECURITY_SCORE/100"
+        echo "  • Secrets Found: $SECRETS_FOUND"
+        echo "  • Secrets Count: $SECRETS_COUNT"
+        echo "  • Status: $SCAN_STATUS"
+        echo "  • Report Path: gitleaks-reports/"
+
+    - name: 📤 Upload Gitleaks Reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: gitleaks-security-reports
+        path: gitleaks-reports/
+        retention-days: 30
+
+    - name: 🚨 Fail on Security Findings
+      if: inputs.fail-on-findings == 'true' && steps.gitleaks-scan.outputs.secrets-found == 'true'
+      shell: bash
+      run: |
+        echo "❌ Gitleaks security scan failed due to secrets detection"
+        echo ""
+        echo "📊 Summary:"
+        echo "  • Secrets Found: ${{ steps.gitleaks-scan.outputs.secrets-found }}"
+        echo "  • Secrets Count: ${{ steps.gitleaks-scan.outputs.secrets-count }}"
+        echo "  • Security Score: ${{ steps.summary.outputs.security-score }}/100"
+        echo ""
+        echo "🔗 Review the detailed reports in the Gitleaks artifacts for more information."
+        echo ""
+        echo "⚡ Quick Actions:"
+        echo "  1. Download the gitleaks-security-reports artifact"
+        echo "  2. Review the gitleaks-report.${{ inputs.format }} file"
+        echo "  3. Remove or rotate any exposed secrets"
+        echo "  4. Update .gitleaks.toml to ignore false positives"
+        echo "  5. Re-run the scan after fixes"
+        
+        exit 1
+
+branding:
+  icon: 'search'
+  color: 'red'

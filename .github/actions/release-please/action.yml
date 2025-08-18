@@ -51,6 +51,14 @@ inputs:
     description: 'Force create release (skip conventional commit check)'
     required: false
     default: 'false'
+  security-scan-engine:
+    description: 'Security scanning engine (gitleaks, gitguardian, both)'
+    required: false
+    default: 'both'
+  cleanup-release-branch:
+    description: 'Delete release branch after successful merge'
+    required: false
+    default: 'true'
   config-file:
     description: 'Path to release-please config file'
     required: false
