@@ -28,7 +28,7 @@ def get_authenticated_github():
         headers={'Accept': 'application/json'},
         data={
             'client_id': 'Iv1.b507a08c87ecfe98',  # GitHub CLI client ID (public)
-            'scope': 'repo workflow delete_repo'
+            'scope': 'repo workflow delete_repo admin:repo_hook actions'
         }
     )
     

@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 REM GitHub Repository Cleanup Tool - Batch Wrapper
 REM This script provides a convenient way to run the Python cleanup tool on Windows
 
