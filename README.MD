@@ -1,217 +1,168 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-17 00:19:35 UTC -->
+<!-- Generated on 2025-08-18 13:56:24 UTC -->
 
-# {{COMPANY_NAME}} – Automation Templates
+# BAUER GROUP – {{P└── github/workflows/           # Wiederverwendbare Workflows
+    ├── readme.yml             # Erweiterte README-Generierung
+    ├── release-please.yml     # Release-Please mit automatischen PRs
+    └── README.md              # Detaillierte Workflow-DokumentationT_NAME}}
 
-**Status:** Version 0.2.0 (2025-08-17)  
+**Status:** Version 0.2.0 (2025-08-18)  
 **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)  
 **Branch:** {{CURRENT_BRANCH}}
 
-{{PROJECT_DESCRIPTION}}
+Zentrale GitHub Actions Templates und Workflows für automatisierte Entwicklungsprozesse
 
-[![Create Release](https://github.com/bauer-group/automation-templates/actions/workflows/release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/release.yml)
-[![README Update](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml)
+[![Create Release](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml)
 
 ## 🎯 Features
 
-- **🔧 Composite Actions**: Wiederverwendbare GitHub Actions für zentrale Logik
-- **🔄 Wiederverwendbare Workflows**: Komplexe Workflow-Orchestrierung
-- **📄 README-Generator**: Automatische Generierung aus Templates mit 40+ Platzhaltern  
-- **🚀 Release-Management**: Automatische Releases mit Release-Please und Conventional Commits
-- **📋 Kopierbare Beispiele**: Sofort einsetzbare Workflow-Templates
+- **Wiederverwendbare Workflows**: Zentralisierte GitHub Actions Templates
+- **Automatisches Release-Management**: Semantic Versioning mit Release-Please
+- **README-Generierung**: Automatische Erstellung aus Templates mit umfangreichen Platzhaltern
+- **Template-System**: Extensibles Template-System mit 40+ Platzhaltern
 
-## 🏗️ Architektur
+## 📁 Struktur
 
 ```text
-├── .github/
-│   ├── actions/                    # 🔧 Composite Actions (Single Source of Truth)
-│   │   ├── readme-generate/       # 📄 README-Generator
-│   │   │   └── action.yml
-│   │   └── release-please/        # 🚀 Release-Management  
-│   │       └── action.yml
-│   │
-│   └── workflows/                  # 🎯 Lokale Workflows (für dieses Repository)
-│       ├── readme.yml             # → nutzt lokale Action
-│       └── release.yml            # → nutzt lokale Action
+├── .github/workflows/          # Caller Workflows (ausführbare Workflows)
+│   ├── readme.yml             # → ruft github/workflows/readme.yml auf
+│   └── release-please.yml     # → ruft github/workflows/release-please.yml auf
 │
-├── github/workflows/              # 📚 Für externe Repositories
-│   ├── readme.yml                 # 🔄 Wiederverwendbarer README-Workflow
-│   ├── release-please.yml         # 🔄 Wiederverwendbarer Release-Workflow
-│   ├── examples/                  # 📋 Kopierbare Beispiele
-│   │   ├── readme-example.yml
-│   │   ├── release-example.yml
-│   │   └── full-pipeline-example.yml
-│   └── README.md                  # 📖 Detaillierte Dokumentation
+├── github/workflows/           # Wiederverwendbare Workflows
+│   ├── readme.yml             # Erweiterte README-Generierung
+│   ├── release-please.yml     # Release-Please mit automatischen PRs
+│   └── README.md              # Detaillierte Workflow-Dokumentation
 │
-├── docs/                          # 📄 Templates und Dokumentation
-│   └── README.template.md         # README-Template mit Platzhaltern
+├── docs/                      # Dokumentation und Templates
+│   └── README.template.MD     # README-Template mit Platzhaltern
 │
-└── scripts/                       # 🛠️ Automatisierungs-Skripte
-    └── generate_readme.py         # Erweiterter README-Generator
+└── scripts/                   # Automatisierungs-Skripte
+    └── generate_readme.py     # Erweiterter README-Generator
 ```
 
-## 🚀 Schnellstart
+## 🚀 Verwendung
 
-### 🔧 Composite Actions (Empfohlen)
+### README-Template System
 
-Für maximale Flexibilität und Performance:
+Das README-Template-System unterstützt zahlreiche Platzhalter:
 
-```yaml
-# README-Generierung hinzufügen
-- name: Generate README  
-  uses: bauer-group/automation-templates/.github/actions/readme-generate@main
-  with:
-    project-name: "Mein Projekt"
-    company-name: "Meine Firma"
-    project-description: "Projektbeschreibung"
+#### Basis-Informationen
 
-# Release-Management hinzufügen
-- name: Release Please
-  uses: bauer-group/automation-templates/.github/actions/release-please@main  
-  with:
-    release-type: "simple"
-    token: ${{ secrets.GITHUB_TOKEN }}
-```
+- `0.2.0` - Aktuelle Version (aus Git Tags oder Umgebung)
+- `2025-08-18` - Aktuelles Datum (YYYY-MM-DD)
+- `2025-08-18 13:56:24 UTC` - Datum und Zeit (YYYY-MM-DD HH:MM:SS UTC)
+- `2025` - Aktuelles Jahr
 
-### 🔄 Wiederverwendbare Workflows
+#### Repository-Informationen
 
-Für komplette Workflow-Orchestrierung:
+- `bauer-group/automation-templates` - Repository Name (owner/repo)
+- `https://github.com/bauer-group/automation-templates` - Repository URL
+- `bauer-group` - Repository Owner
+- `automation-templates` - Repository Name
+- `{{CURRENT_BRANCH}}` - Aktueller Branch
+
+#### Projekt-Informationen
+
+- `Automation Templates` - Projektname
+- `Zentrale GitHub Actions Templates und Workflows für automatisierte Entwicklungsprozesse` - Projektbeschreibung
+- `BAUER GROUP` - Firmenname
+- `support@bauer-group.com` - Kontakt E-Mail
+- `https://github.com/bauer-group/automation-templates/wiki` - Dokumentations-URL
+- `https://github.com/bauer-group/automation-templates/issues` - Support-URL
+
+#### Package-Informationen (automatisch erkannt)
+
+- `` - Paketname (aus package.json, etc.)
+- `` - Paketversion
+- `` - Autor
+- `` - Lizenz
+
+#### Workflow-Badges (automatisch generiert)
+
+- `[![Release](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml)` - Release-Status Badge
+
+### In anderen Projekten verwenden
 
 ```yaml
 # .github/workflows/readme.yml
+name: README Update
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
 jobs:
   readme:
     uses: bauer-group/automation-templates/github/workflows/readme.yml@main
     with:
+      template-path: "docs/README.template.md"
+      output-path: "README.md"
       project-name: "Mein Projekt"
       company-name: "Meine Firma"
-
-# .github/workflows/release.yml  
-jobs:
-  release:
-    uses: bauer-group/automation-templates/github/workflows/release-please.yml@main
-    with:
-      release-type: "simple"
+      project-description: "Beschreibung meines Projekts"
+      contact-email: "support@example.com"
 ```
 
-### 📋 Kopierbare Beispiele
-
-1. **Beispiel-Workflow kopieren**: `github/workflows/examples/`
-2. **Parameter anpassen**: Projektspezifische Werte eintragen
-3. **Committen**: Workflow wird automatisch aktiviert
-
-## 📄 README-Generator
-
-### Unterstützte Platzhalter:
-
-#### Basis-Informationen:
-- `{{VERSION}}` - Git Tag oder 0.1.0
-- `{{DATE}}` - 2025-08-17  
-- `{{DATETIME}}` - 2025-08-17 00:19:35 UTC
-- `{{YEAR}}` - 2025
-
-#### Repository-Informationen:
-- `{{REPOSITORY}}` - bauer-group/automation-templates
-- `{{REPOSITORY_URL}}` - https://github.com/bauer-group/automation-templates
-- `{{REPOSITORY_OWNER}}` - bauer-group
-- `{{REPOSITORY_NAME}}` - automation-templates
-- `{{CURRENT_BRANCH}}` - {{CURRENT_BRANCH}}
-
-#### Projekt-Informationen:
-- `{{PROJECT_NAME}}` - Projektname (konfigurierbar)
-- `{{PROJECT_DESCRIPTION}}` - Projektbeschreibung (konfigurierbar)
-- `{{COMPANY_NAME}}` - Firmenname (konfigurierbar)
-- `{{CONTACT_EMAIL}}` - Kontakt E-Mail (konfigurierbar)
-
-### Template erstellen:
-
-```markdown
-<!-- docs/README.template.md -->
-# {{PROJECT_NAME}}
-
-**{{PROJECT_DESCRIPTION}}**
-
-Version: {{VERSION}} | Stand: {{DATE}}  
-Repository: [{{REPOSITORY}}]({{REPOSITORY_URL}})
-Firma: {{COMPANY_NAME}}
-```
-
-## 🚀 Release-Management
-
-### Workflow-Prozess:
-
-1. **Conventional Commits** verwenden:
-   - `feat:` → Minor Version (0.1.0 → 0.2.0)
-   - `fix:` → Patch Version (0.1.0 → 0.1.1)  
-   - `feat!:` → Major Version (0.1.0 → 1.0.0)
-
-2. **Push nach main** → Release-Please erstellt Release-PR
-
-3. **Release-PR mergen** → GitHub Release wird erstellt
-
-### Beispiel Commits:
+### Lokale README-Generierung
 
 ```bash
-git commit -m "feat: neue README-Template-Engine"
-git commit -m "fix: korrigiere Platzhalter-Ersetzung"  
-git commit -m "feat!: neue API für Composite Actions"
-git commit -m "docs: aktualisiere Dokumentation"
-```
-
-## 🛠️ Lokale Entwicklung
-
-```bash
-# Repository klonen
-git clone https://github.com/bauer-group/automation-templates.git
-cd automation-templates
-
-# README lokal generieren
+# README manuell generieren
 python scripts/generate_readme.py
 
-# Mit Custom-Variablen
-PROJECT_NAME="Test" COMPANY_NAME="Test Corp" python scripts/generate_readme.py
+# Mit benutzerdefinierten Umgebungsvariablen
+PROJECT_NAME="Mein Projekt" \
+COMPANY_NAME="Meine Firma" \
+python scripts/generate_readme.py
 ```
 
-## 💡 Warum Composite Actions?
+## 🔄 Automatisches Release-Management
 
-### ✅ Vorteile:
-- **Single Source of Truth**: Logik nur einmal definiert
-- **Automatische Updates**: Alle Nutzer erhalten Updates ohne Änderungen
-- **Bessere Performance**: Weniger Netzwerk-Overhead
-- **Flexibilität**: Einfache Integration in bestehende Workflows
+Das Projekt verwendet **Release-Please** für automatisches Release-Management:
 
-### 📊 Vergleich:
+1. **Conventional Commits** verwenden (feat:, fix:, chore:, docs:, etc.)
+2. **Push nach main** triggert Release-Please
+3. **Release-PR** wird automatisch erstellt
+4. **Merge des Release-PR** erstellt das GitHub Release
 
-| Feature | Composite Actions | Wiederverwendbare Workflows |
-|---------|-------------------|------------------------------|
-| Performance | ⚡ Schnell | 🐌 Langsamer |
-| Updates | 🔄 Automatisch | 📝 Manuell |
-| Flexibilität | 🎯 Hoch | 📋 Medium |
-| Komplexität | 🎨 Einfach | 🔧 Komplex |
+### Unterstützte Commit-Typen
+
+- `feat:` - Neue Features (minor version bump)
+- `fix:` - Bugfixes (patch version bump)
+- `feat!:` oder `BREAKING CHANGE:` - Breaking Changes (major version bump)
+- `docs:`, `chore:`, `ci:`, `refactor:` - Keine Version-Änderung
+
+## 🛠️ Entwicklung
+
+### Voraussetzungen
+
+- Python 3.12+
+- Git
+- GitHub Repository mit Actions aktiviert
+
+### Setup
+
+1. Repository klonen
+2. Template in `docs/README.template.MD` anpassen
+3. Workflows nach Bedarf konfigurieren
+4. README generieren: `python scripts/generate_readme.py`
+
+### Verfügbare Workflows
+
+Siehe [github/workflows/README.md](github/workflows/README.md) für detaillierte Dokumentation aller verfügbaren Workflows.
 
 ## 📞 Support
 
-- **Dokumentation**: [github/workflows/README.md](github/workflows/README.md)
-- **Beispiele**: [github/workflows/examples/](github/workflows/examples/)
-- **Issues**: [GitHub Issues](https://github.com/bauer-group/automation-templates/issues)
-- **Wiki**: [Detaillierte Anleitungen](https://github.com/bauer-group/automation-templates/wiki)
 
-## 🔄 Migration Guide
+**Kontakt:** [support@bauer-group.com](mailto:support@bauer-group.com)
 
-### Von v0.1.x auf v0.2.x:
 
-**Bestehende Workflows funktionieren weiterhin!** Für neue Projekte empfehlen wir Composite Actions:
 
-```yaml
-# Alt (funktioniert weiterhin):
-uses: bauer-group/automation-templates/github/workflows/readme.yml@main
+**Support:** [https://github.com/bauer-group/automation-templates/issues](https://github.com/bauer-group/automation-templates/issues)
 
-# Neu (empfohlen):  
-uses: bauer-group/automation-templates/.github/actions/readme-generate@main
-```
+
+**Issues:** [GitHub Issues](https://github.com/bauer-group/automation-templates/issues)
 
 ---
 
-*Dieses README wurde automatisch generiert am 2025-08-17 00:19:35 UTC aus [docs/README.template.MD](docs/README.template.MD)*
-
-**🌟 Production-Ready GitHub Actions Templates - Folgt Best Practices! 🌟**
+*Dieses README wurde automatisch generiert am 2025-08-18 13:56:24 UTC aus [docs/README.template.MD](docs/README.template.MD)*
