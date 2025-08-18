@@ -5,6 +5,7 @@ Ein plattformunabhängiges Tool zur vollständigen Bereinigung von GitHub Reposi
 ## Features
 
 - 🧹 **Bereinigt Workflow Runs**: Löscht alle GitHub Actions Workflow-Läufe
+- 🔀 **Schließt Pull Requests**: Schließt alle **offenen** PRs (geschlossene PRs bleiben unberührt)
 - 🏷️ **Entfernt Tags**: Löscht alle Git-Tags und deren GitHub-Releases
 - 🌿 **Löscht Branches**: Entfernt alle Branches außer `main` und `master`
 - 🔐 **Automatische Authentifizierung**: Device Flow für sichere Browser-basierte Anmeldung
@@ -56,7 +57,6 @@ Für vollständige Repository-Bereinigung mit allen Berechtigungen:
 3. Wählen Sie diese Scopes:
    - ✅ `repo` (Full control of private repositories)
    - ✅ `workflow` (Update GitHub Action workflows)
-   - ✅ `delete_repo` (Delete repositories)
    - ✅ `admin:repo_hook` (Admin access to repository hooks)
 4. Verwenden Sie den Token:
 

@@ -260,45 +260,35 @@ class GitHubCleanup:
                 time.sleep(0.1)
     
     def cleanup_pull_requests(self):
-        """Clean up all pull requests (open and closed)"""
+        """Clean up open pull requests by closing them"""
         self.log("🔀 Starting pull requests cleanup...")
         
-        # Get all pull requests (open and closed)
-        prs = []
-        for state in ['open', 'closed']:
-            url = f"{self.base_url}/repos/{self.owner}/{self.repo}/pulls"
-            state_prs = self.get_paginated_results(f"{url}?state={state}")
-            prs.extend(state_prs)
+        # Get only open pull requests
+        url = f"{self.base_url}/repos/{self.owner}/{self.repo}/pulls"
+        open_prs = self.get_paginated_results(f"{url}?state=open")
         
-        if not prs:
-            self.log("No pull requests found")
+        if not open_prs:
+            self.log("No open pull requests found")
             return
         
-        self.log(f"Found {len(prs)} pull requests")
+        self.log(f"Found {len(open_prs)} open pull requests")
         
-        for pr in prs:
+        for pr in open_prs:
             pr_number = pr['number']
             pr_title = pr['title']
-            pr_state = pr['state']
             
             if self.dry_run:
-                self.log(f"Would delete PR #{pr_number}: {pr_title} ({pr_state})")
+                self.log(f"Would close PR #{pr_number}: {pr_title}")
             else:
-                # Close PR if it's open
-                if pr_state == 'open':
-                    close_url = f"{self.base_url}/repos/{self.owner}/{self.repo}/pulls/{pr_number}"
-                    close_response = self.make_request("PATCH", close_url, 
-                                                     json={"state": "closed"})
-                    
-                    if close_response and close_response.status_code == 200:
-                        self.log(f"✅ Closed PR #{pr_number}: {pr_title}")
-                    else:
-                        self.log(f"❌ Failed to close PR #{pr_number}: {pr_title}", "ERROR")
-                        continue
+                # Close the open PR
+                close_url = f"{self.base_url}/repos/{self.owner}/{self.repo}/pulls/{pr_number}"
+                close_response = self.make_request("PATCH", close_url, 
+                                                 json={"state": "closed"})
                 
-                # Note: GitHub doesn't allow deleting PRs via API
-                # They can only be closed
-                self.log(f"✅ Processed PR #{pr_number}: {pr_title} (closed)")
+                if close_response and close_response.status_code == 200:
+                    self.log(f"✅ Closed PR #{pr_number}: {pr_title}")
+                else:
+                    self.log(f"❌ Failed to close PR #{pr_number}: {pr_title}", "ERROR")
                 
                 time.sleep(0.1)
     
@@ -348,7 +338,6 @@ class GitHubCleanup:
                 print("✅ Erforderliche Scopes:")
                 print("   • repo (Full control of private repositories)")
                 print("   • workflow (Update GitHub Action workflows)")  
-                print("   • delete_repo (Delete repositories)")
                 print("   • admin:repo_hook (Admin access to repository hooks)")
                 print("\n🚀 Verwendung mit Token:")
                 print(f"   python github_cleanup.py --owner {self.owner} --repo {self.repo} --token YOUR_TOKEN")
@@ -420,7 +409,6 @@ Examples:
                 print("3. Wählen Sie diese Scopes:")
                 print("   ✅ repo (Full control of private repositories)")
                 print("   ✅ workflow (Update GitHub Action workflows)")
-                print("   ✅ delete_repo (Delete repositories)")
                 print("   ✅ admin:repo_hook (Admin access to repository hooks)")
                 print("4. Kopieren Sie den Token und fügen Sie ihn hier ein")
                 
