@@ -1,10 +1,7 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-18 15:24:19 UTC -->
+<!-- Generated on 2025-08-18 22:36:34 UTC -->
 
-# BAUER GROUP – github/workflows/           # Wiederverwendbare Workflows
-    ├── readme.yml             # Erweiterte README-Generierung
-    ├── release-please.yml     # Release-Please mit automatischen PRs
-    └── README.md              # Detaillierte Workflow-DokumentationT_NAME}}
+# BAUER GROUP - Automation Templates
 
 **Status:** Version 0.1.0 (2025-08-18)  
 **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)  
@@ -12,46 +9,206 @@
 
 Zentrale GitHub Actions Templates und Workflows für automatisierte Entwicklungsprozesse
 
-[![Create Release](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml)
+[![Enhanced Release](https://github.com/bauer-group/automation-templates/actions/workflows/enhanced-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/enhanced-release.yml)
 
-## 🎯 Features
+## 🛡️ Security Scanning - Dual Engine Approach
 
-- **Wiederverwendbare Workflows**: Zentralisierte GitHub Actions Templates
-- **Automatisches Release-Management**: Semantic Versioning mit Release-Please
-- **README-Generierung**: Automatische Erstellung aus Templates mit umfangreichen Platzhaltern
-- **Template-System**: Extensibles Template-System mit 40+ Platzhaltern
+### Meta Package (Empfohlen)
+```yaml
+- name: 🛡️ Comprehensive Security Scan
+  uses: ./.github/actions/security-scan-meta
+  with:
+    scan-engine: both              # gitleaks, gitguardian, both
+    scan-type: all                 # secrets, vulnerabilities, all
+    fail-on-findings: true
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}  # Optional
+```
+
+### Einzelne Engines
+
+#### Gitleaks (Open Source)
+```yaml
+- name: ⚡ Fast Secrets Scan
+  uses: ./.github/actions/gitleaks-scan
+  with:
+    scan-history: false
+    github-token: ${{ secrets.GITHUB_TOKEN }}  # Optional für org repos
+    format: json
+```
+
+#### GitGuardian (Enterprise)
+```yaml
+- name: 🛡️ Advanced Security Scan
+  uses: ./.github/actions/gitguardian-scan
+  with:
+    scan-mode: ci
+    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+    minimum-severity: medium
+    all-policies: true
+```
+
+## 📦 Enhanced Release Management
+
+### Vollständiger Release Workflow
+```yaml
+name: 🚀 Production Release
+
+on:
+  push:
+    branches: [ $default-branch ]
+  workflow_dispatch:
+    inputs:
+      security-scan-engine:
+        type: choice
+        default: 'both'
+        options: [gitleaks, gitguardian, both]
+      cleanup-release-branch:
+        type: boolean
+        default: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: 🚀 Enhanced Release Please
+        uses: ./.github/actions/release-please
+        with:
+          release-type: simple
+          security-scan-engine: ${{ inputs.security-scan-engine || 'both' }}
+          cleanup-release-branch: ${{ inputs.cleanup-release-branch || 'true' }}
+          auto-merge-enabled: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+## 🏗️ Modulare Actions Übersicht
+
+### �️ Security Actions
+
+| Action | Zweck | Engine | Geschwindigkeit | Enterprise Features |
+|--------|-------|---------|----------------|---------------------|
+| **security-scan-meta** | Meta Package für alle Engines | Beide | ⚡⚡⚡ | ✅ Umfassend |
+| **gitleaks-scan** | Schnelle Pattern-Erkennung | Gitleaks | ⚡⚡⚡⚡ | ❌ Basic |
+| **gitguardian-scan** | ML-basierte Erkennung | GitGuardian | ⚡⚡ | ✅ Advanced |
+
+### ⚖️ Compliance & Quality
+
+```yaml
+# License Compliance mit SPDX & FOSSA
+- uses: ./.github/actions/license-compliance
+  with:
+    fossa-api-key: ${{ secrets.FOSSA_API_KEY }}
+    fail-on-issues: true
+
+# Artifact Generation  
+- uses: ./.github/actions/artifact-generator
+  with:
+    artifact-types: source,docker
+    include-checksums: true
+
+# Auto-Merge mit Bedingungen
+- uses: ./.github/actions/auto-merge
+  with:
+    require-reviews: 2
+    merge-method: squash
+```
 
 ## 📁 Struktur
 
 ```text
-├── .github/workflows/          # Caller Workflows (ausführbare Workflows)
-│   ├── readme.yml             # → ruft github/workflows/readme.yml auf
-│   └── release-please.yml     # → ruft github/workflows/release-please.yml auf
-│
-├── github/workflows/           # Wiederverwendbare Workflows
-│   ├── readme.yml             # Erweiterte README-Generierung
-│   ├── release-please.yml     # Release-Please mit automatischen PRs
-│   └── README.md              # Detaillierte Workflow-Dokumentation
-│
-├── docs/                      # Dokumentation und Templates
-│   └── README.template.MD     # README-Template mit Platzhaltern
-│
-└── scripts/                   # Automatisierungs-Skripte
-    └── generate_readme.py     # Erweiterter README-Generator
+├── .github/
+│   ├── actions/               # Wiederverwendbare Actions
+│   │   ├── security-scan-meta/ # Meta Package für Security Scans
+│   │   ├── gitleaks-scan/     # Gitleaks Security Scanner
+│   │   ├── gitguardian-scan/  # GitGuardian Security Scanner  
+│   │   ├── license-compliance/ # SPDX License Compliance
+│   │   ├── artifact-generator/ # Multi-Format Artifacts
+│   │   ├── auto-merge/        # Intelligent Auto-Merge
+│   │   └── release-please/    # Enhanced Release Management
+│   ├── config/               # Konfigurationsdateien
+│   │   └── commitlint.config.js # Commit-Linting-Regeln
+│   └── workflows/            # Workflow-Templates
+│       └── enhanced-release.yml # Haupt-Release-Workflow
+├── docs/                     # Dokumentation
+└── scripts/                  # Hilfsskripte
 ```
 
-## 🚀 Verwendung
+## 🔧 Konfiguration
 
-### README-Template System
+### Commitlint Setup
+Die Commitlint-Konfiguration wurde nach `.github/config/` verschoben:
 
-Das README-Template-System unterstützt zahlreiche Platzhalter:
+**`.github/config/commitlint.config.js`**
+```javascript
+module.exports = {
+  extends: ['@commitlint/config-conventional'],
+  rules: {
+    'type-enum': [2, 'always', [
+      'feat', 'fix', 'docs', 'style', 'refactor',
+      'test', 'chore', 'ci', 'build', 'revert', 'perf'
+    ]]
+  }
+};
+```
 
-#### Basis-Informationen
+### Security Engine Konfiguration
 
-- `0.1.0` - Aktuelle Version (aus Git Tags oder Umgebung)
-- `2025-08-18` - Aktuelles Datum (YYYY-MM-DD)
-- `2025-08-18 15:24:19 UTC` - Datum und Zeit (YYYY-MM-DD HH:MM:SS UTC)
-- `2025` - Aktuelles Jahr
+#### Gitleaks (.gitleaks.toml)
+```toml
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  ".git/",
+  "node_modules/",
+  "vendor/"
+]
+
+regexes = [
+  '''password\s*=\s*["']?test["']?''',
+  '''key\s*=\s*["']?your[_-]?key[_-]?here["']?'''
+]
+```
+
+#### GitGuardian (.gitguardian.yaml)
+```yaml
+version: 2
+paths-ignore:
+  - .git
+  - node_modules
+  
+secret:
+  minimum-severity: medium
+  ignore-known-secrets: false
+  
+policies:
+  all-policies: true
+```
+
+## 🚀 Best Practices
+
+### 1. **Dual Engine Security**
+- **Entwicklung**: Gitleaks für schnelle Pre-Commit-Checks
+- **CI/CD**: Beide Engines für maximale Abdeckung
+- **Production**: GitGuardian für Policy-Enforcement
+
+### 2. **Branch Management**
+- `$default-branch` statt hardcodierter `main`
+- Automatisches Cleanup von Release-Branches
+- Konfigurierbare Auto-Merge-Bedingungen
+
+### 3. **API Key Management**
+```yaml
+secrets:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}           # Immer verfügbar
+  GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }} # Optional
+  FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}         # Für License-Compliance
+```
 
 #### Repository-Informationen
 
@@ -165,4 +322,4 @@ Siehe [github/workflows/README.md](github/workflows/README.md) für detaillierte
 
 ---
 
-*Dieses README wurde automatisch generiert am 2025-08-18 15:24:19 UTC aus [docs/README.template.MD](docs/README.template.MD)*
+*Dieses README wurde automatisch generiert am 2025-08-18 22:36:34 UTC aus [docs/README.template.MD](docs/README.template.MD)*
