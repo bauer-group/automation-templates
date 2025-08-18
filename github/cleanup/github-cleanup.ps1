@@ -81,8 +81,7 @@ function Invoke-Cleanup {
     $args = @(
         $scriptFile,
         "--owner", $Owner,
-        "--repo", $Repo,
-        "--device-auth"
+        "--repo", $Repo
     )
     
     if ($IsDryRun) {
