@@ -47,6 +47,7 @@ class GitHubCleanup:
         self.token = token
         self.dry_run = dry_run
         self.base_url = "https://api.github.com"
+        self.log_messages = []  # Store log messages for later analysis
         self.headers = {
             "Authorization": f"token {token}",
             "Accept": "application/vnd.github.v3+json",
@@ -59,7 +60,9 @@ class GitHubCleanup:
         """Log a message with timestamp"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         prefix = "🔍 [DRY-RUN]" if self.dry_run else "🔧"
-        print(f"{prefix} [{timestamp}] {level}: {message}")
+        log_message = f"{prefix} [{timestamp}] {level}: {message}"
+        self.log_messages.append(log_message)  # Store for later analysis
+        print(log_message)
     
     def make_request(self, method: str, url: str, silent_404: bool = False, **kwargs) -> Optional[requests.Response]:
         """Make a GitHub API request with error handling"""
@@ -73,6 +76,11 @@ class GitHubCleanup:
                 self.log(f"Rate limit reached. Waiting {wait_time} seconds...", "WARNING")
                 time.sleep(wait_time)
                 return self.make_request(method, url, silent_404=silent_404, **kwargs)
+            
+            # Handle permission errors
+            if response.status_code == 403 and "not accessible by integration" in response.text.lower():
+                self.log(f"⚠️  Permission denied - Token needs additional scopes for this operation", "WARNING")
+                return response
             
             if response.status_code >= 400:
                 if response.status_code == 404 and silent_404:
@@ -144,6 +152,9 @@ class GitHubCleanup:
                 
                 if response and response.status_code == 204:
                     self.log(f"✅ Deleted workflow run: {run_name} (ID: {run_id})")
+                elif response and response.status_code == 403:
+                    self.log(f"⚠️  Workflow run deletion requires admin permissions: {run_name} (ID: {run_id})", "WARNING")
+                    self.log("💡 Lösung: Verwenden Sie einen Personal Access Token mit 'workflow' scope", "INFO")
                 else:
                     self.log(f"❌ Failed to delete workflow run: {run_name} (ID: {run_id})", "ERROR")
                 
@@ -240,8 +251,54 @@ class GitHubCleanup:
                 
                 if response and response.status_code == 204:
                     self.log(f"✅ Deleted branch: {branch_name}")
+                elif response and response.status_code == 403:
+                    self.log(f"⚠️  Branch deletion requires admin permissions: {branch_name}", "WARNING")
+                    self.log("💡 Lösung: Verwenden Sie einen Personal Access Token mit 'repo' scope", "INFO")
                 else:
                     self.log(f"❌ Failed to delete branch: {branch_name}", "ERROR")
+                
+                time.sleep(0.1)
+    
+    def cleanup_pull_requests(self):
+        """Clean up all pull requests (open and closed)"""
+        self.log("🔀 Starting pull requests cleanup...")
+        
+        # Get all pull requests (open and closed)
+        prs = []
+        for state in ['open', 'closed']:
+            url = f"{self.base_url}/repos/{self.owner}/{self.repo}/pulls"
+            state_prs = self.get_paginated_results(f"{url}?state={state}")
+            prs.extend(state_prs)
+        
+        if not prs:
+            self.log("No pull requests found")
+            return
+        
+        self.log(f"Found {len(prs)} pull requests")
+        
+        for pr in prs:
+            pr_number = pr['number']
+            pr_title = pr['title']
+            pr_state = pr['state']
+            
+            if self.dry_run:
+                self.log(f"Would delete PR #{pr_number}: {pr_title} ({pr_state})")
+            else:
+                # Close PR if it's open
+                if pr_state == 'open':
+                    close_url = f"{self.base_url}/repos/{self.owner}/{self.repo}/pulls/{pr_number}"
+                    close_response = self.make_request("PATCH", close_url, 
+                                                     json={"state": "closed"})
+                    
+                    if close_response and close_response.status_code == 200:
+                        self.log(f"✅ Closed PR #{pr_number}: {pr_title}")
+                    else:
+                        self.log(f"❌ Failed to close PR #{pr_number}: {pr_title}", "ERROR")
+                        continue
+                
+                # Note: GitHub doesn't allow deleting PRs via API
+                # They can only be closed
+                self.log(f"✅ Processed PR #{pr_number}: {pr_title} (closed)")
                 
                 time.sleep(0.1)
     
@@ -275,11 +332,30 @@ class GitHubCleanup:
         try:
             # Run cleanup operations
             self.cleanup_workflow_runs()
+            self.cleanup_pull_requests()
             self.cleanup_releases()
             self.cleanup_tags()
             self.cleanup_branches()
             
             self.log("✨ Cleanup completed successfully!")
+            
+            # Check if there were permission issues
+            if any("Permission denied" in line for line in self.log_messages if hasattr(self, 'log_messages')):
+                print("\n🔧 TROUBLESHOOTING - Permission-Probleme erkannt:")
+                print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                print("💡 Für vollständige Repository-Bereinigung benötigen Sie einen Personal Access Token")
+                print("🔗 Erstellen Sie einen Token: https://github.com/settings/tokens")
+                print("✅ Erforderliche Scopes:")
+                print("   • repo (Full control of private repositories)")
+                print("   • workflow (Update GitHub Action workflows)")  
+                print("   • delete_repo (Delete repositories)")
+                print("   • admin:repo_hook (Admin access to repository hooks)")
+                print("\n🚀 Verwendung mit Token:")
+                print(f"   python github_cleanup.py --owner {self.owner} --repo {self.repo} --token YOUR_TOKEN")
+                print("   oder")
+                print("   export GITHUB_TOKEN=YOUR_TOKEN")
+                print(f"   python github_cleanup.py --owner {self.owner} --repo {self.repo}")
+            
             return True
             
         except KeyboardInterrupt:
@@ -317,18 +393,46 @@ Examples:
     # Get token from argument or environment variable
     token = args.token or os.getenv("GITHUB_TOKEN")
     if not token:
-        # Use device flow if no token provided
-        try:
-            github_client, token = get_authenticated_github()
-            user = github_client.get_user()
-            print(f"✅ Erfolgreich angemeldet als: {user.login} ({user.name})")
-        except Exception as e:
-            print(f"❌ Device Flow Authentifizierung fehlgeschlagen: {e}")
-            print("💡 Alternativen:")
-            print("   1. --token <your_token>")
-            print("   2. GITHUB_TOKEN environment variable")
-            print("🔗 Token erstellen: https://github.com/settings/tokens")
-            sys.exit(1)
+        # Offer choice between device flow and manual token
+        print("\n🔐 GitHub Authentifizierung erforderlich")
+        print("1️⃣  Device Flow (Browser-Login) - Begrenzte Berechtigungen")
+        print("2️⃣  Personal Access Token - Volle Berechtigungen")
+        print("\n💡 Für vollständige Repository-Bereinigung wird Option 2 empfohlen!")
+        
+        while True:
+            choice = input("\nWählen Sie eine Option (1 oder 2): ").strip()
+            if choice == "1":
+                print("🔐 Starte GitHub Device Flow Authentifizierung...")
+                print("⚠️  Hinweis: Device Flow hat begrenzte Berechtigungen - möglicherweise können nicht alle Items gelöscht werden")
+                try:
+                    github_client, token = get_authenticated_github()
+                    user = github_client.get_user()
+                    print(f"✅ Erfolgreich angemeldet als: {user.login} ({user.name})")
+                    break
+                except Exception as e:
+                    print(f"❌ Device Flow fehlgeschlagen: {e}")
+                    print("💡 Versuchen Sie Option 2 (Personal Access Token)")
+                    continue
+            elif choice == "2":
+                print("\n📋 So erstellen Sie einen Personal Access Token:")
+                print("1. Gehen Sie zu: https://github.com/settings/tokens")
+                print("2. Klicken Sie auf 'Generate new token (classic)'")
+                print("3. Wählen Sie diese Scopes:")
+                print("   ✅ repo (Full control of private repositories)")
+                print("   ✅ workflow (Update GitHub Action workflows)")
+                print("   ✅ delete_repo (Delete repositories)")
+                print("   ✅ admin:repo_hook (Admin access to repository hooks)")
+                print("4. Kopieren Sie den Token und fügen Sie ihn hier ein")
+                
+                token = input("\n🔑 Geben Sie Ihren Personal Access Token ein: ").strip()
+                if token:
+                    break
+                else:
+                    print("❌ Kein Token eingegeben!")
+                    continue
+            else:
+                print("❌ Ungültige Auswahl! Bitte wählen Sie 1 oder 2.")
+                continue
     
     # Confirm destructive operation
     if not args.dry_run:

@@ -44,16 +44,26 @@ github-cleanup.bat --owner bauer-group --repo automation-templates --dry-run
 
 ## Authentifizierung
 
-Das Tool verwendet automatisch den GitHub Device Flow:
-1. Startet Browser-basierte Authentifizierung
-2. Sie loggen sich in GitHub ein
-3. Tool erhält temporären Zugriff
-4. Token wird automatisch für die Session gespeichert
+### 🔐 GitHub Device Flow (Einfach, aber begrenzte Berechtigungen)
+Das Tool startet automatisch den GitHub Device Flow für eine sichere Browser-basierte Anmeldung. 
+**Hinweis**: Device Flow hat begrenzte Berechtigungen - Workflow-Runs und Branches können möglicherweise nicht gelöscht werden.
 
-Alternativ können Sie einen Personal Access Token setzen:
+### 🔑 Personal Access Token (Empfohlen für vollständige Bereinigung)
+Für vollständige Repository-Bereinigung mit allen Berechtigungen:
+
+1. Gehen Sie zu [GitHub Settings > Personal Access Tokens](https://github.com/settings/tokens)
+2. Klicken Sie auf "Generate new token (classic)"
+3. Wählen Sie diese Scopes:
+   - ✅ `repo` (Full control of private repositories)
+   - ✅ `workflow` (Update GitHub Action workflows)
+   - ✅ `delete_repo` (Delete repositories)
+   - ✅ `admin:repo_hook` (Admin access to repository hooks)
+4. Verwenden Sie den Token:
+
 ```bash
 # Als Umgebungsvariable
 export GITHUB_TOKEN=ghp_your_token_here
+python github_cleanup.py --owner myorg --repo myrepo
 
 # Oder direkt als Parameter
 python github_cleanup.py --token ghp_your_token_here --owner myorg --repo myrepo
