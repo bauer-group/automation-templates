@@ -147,10 +147,20 @@ runs:
       shell: bash
       run: |
         echo "📋 Copying GitGuardian reports..."
-        if [ -d "${{ steps.gitguardian-scan.outputs.report-path }}" ]; then
-          mkdir -p security-reports/gitguardian
-          cp -r ${{ steps.gitguardian-scan.outputs.report-path }}/* security-reports/gitguardian/ 2>/dev/null || echo "No files to copy"
-          echo "✅ GitGuardian reports copied"
+        GITGUARDIAN_REPORT_PATH="${{ steps.gitguardian-scan.outputs.report-path }}"
+        TARGET_PATH="security-reports/gitguardian"
+        
+        if [ -d "$GITGUARDIAN_REPORT_PATH" ] && [ "$GITGUARDIAN_REPORT_PATH" != "$TARGET_PATH" ]; then
+          mkdir -p "$TARGET_PATH"
+          # Only copy if source and target are different
+          if [ "$(readlink -f "$GITGUARDIAN_REPORT_PATH")" != "$(readlink -f "$TARGET_PATH")" ]; then
+            cp -r "$GITGUARDIAN_REPORT_PATH"/* "$TARGET_PATH/" 2>/dev/null || echo "No files to copy"
+            echo "✅ GitGuardian reports copied from $GITGUARDIAN_REPORT_PATH to $TARGET_PATH"
+          else
+            echo "ℹ️ Source and target are the same, skipping copy"
+          fi
+        elif [ -d "$GITGUARDIAN_REPORT_PATH" ]; then
+          echo "ℹ️ Reports already in target location: $GITGUARDIAN_REPORT_PATH"
         fi
 
     - name: 🛡️ Vulnerability Scanning
