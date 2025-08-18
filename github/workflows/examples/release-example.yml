@@ -1,29 +1,29 @@
-name: Release Management Example
+name: 🚀 Release
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      direct-release:
-        description: "Create direct release without PR"
-        type: boolean
-        default: false
-
-permissions:
-  contents: write
-  pull-requests: write  
-  issues: write
 
 jobs:
-  release-please:
-    name: Release Management
-    if: |
-      github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch'
+  release:
+    uses: bauer-group/automation-templates/github/workflows/release-please.yml@main
+    with:
+      release-type: "simple"  # oder "node", "python", etc.
+      package-name: "mein-projekt"
+      bump-minor-pre-major: true
+      bump-patch-for-minor-pre-major: true
+
+  # Optional: weitere Jobs nach Release
+  post-release:
+    if: needs.release.outputs.release_created
+    needs: release
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Post-Release Actions
+        run: |
+          echo "Release ${{ needs.release.outputs.tag_name }} wurde erstellt!"
+          # Hier könnten weitere Aktionen folgen (Deploy, Notifications, etc.)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0

@@ -1,44 +1,47 @@
-name: README Auto-Update
+name: 📄 README Update
 
 on:
+  push:
+    branches: [ main ]
+    paths: 
+      - 'docs/README.template.md'
+      - 'scripts/generate_readme.py'
+      - '.github/workflows/readme.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'docs/README.template.md'
+      - 'scripts/generate_readme.py'
   workflow_dispatch:
-    inputs:
-      auto-commit:
-        description: "Auto-commit changes"
-        type: boolean
-        default: true
-      project-name:
-        description: "Project name (optional override)"
-        type: string
-        default: ""
-
-permissions:
-  contents: write
 
 jobs:
-  readme-update:
-    name: Generate README
+  update-readme:
     runs-on: ubuntu-latest
-    outputs:
-      readme-updated: ${{ steps.readme.outputs.readme-updated }}
-      version-used: ${{ steps.readme.outputs.version-used }}
+    permissions:
+      contents: write
+      pull-requests: write
+    
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          token: ${{ github.token }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate README
-        id: readme
         uses: ./.github/actions/readme-generate
         with:
-          template-path: "docs/README.template.MD"
-          output-path: "README.MD"
-          project-name: ${{ inputs.project-name || 'automation-templates' }}
-          company-name: "BAUER GROUP"
-          project-description: "Zentralisierte, wiederverwendbare Automations-Templates für GitHub Actions"
-          auto-commit: ${{ inputs.auto-commit }}
-          fail-on-pr: 'true'
+          template-path: 'docs/README.template.md'
+          output-path: 'README.md'
+          project-name: 'Automation Templates'
+          company-name: 'Bauer Group'
+          project-description: 'Zentrale GitHub Actions Templates und Workflows für automatisierte Entwicklungsprozesse'
+          contact-email: 'support@bauer-group.com'
+          documentation-url: 'https://github.com/bauer-group/automation-templates/wiki'
+          support-url: 'https://github.com/bauer-group/automation-templates/issues'
+
+      - name: Push changes
+        if: github.event_name != 'pull_request'
+        run: |
+          if ! git diff --quiet; then
+            git push
+          fi

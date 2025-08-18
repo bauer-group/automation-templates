@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+* Konsolidiere Release-Workflows zu einem einzigen `release.yml` für bessere Klarheit
+* Entferne redundanten `release-please.yml` Workflow
+
+### Removed
+* `.github/workflows/release-please.yml` - Funktionalität in `release.yml` konsolidiert
+
 ## [0.2.0](https://github.com/bauer-group/automation-templates/compare/v0.1.6...v0.2.0) (2025-08-17)
 
 

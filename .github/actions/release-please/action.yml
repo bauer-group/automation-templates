@@ -1,50 +1,60 @@
 name: 'Release Please'
-description: 'Automated release management with semantic versioning'
+description: 'Automatisches Release-Management mit Release-Please'
+author: 'Bauer Group'
+
 inputs:
-  target-branch:
-    description: 'Target branch for releases'
-    required: false
-    default: 'main'
   release-type:
-    description: 'Release type (simple, node, python, etc.)'
+    description: 'Release-Type (simple, node, python, etc.)'
     required: false
     default: 'simple'
-  direct-release:
-    description: 'Create direct release without PR'
-    required: false
-    default: 'false'
-  config-file:
-    description: 'Path to release-please config file'
-    required: false
-    default: '.github/config/release-please-config.json'
-  manifest-file:
-    description: 'Path to release-please manifest file'
-    required: false
-    default: '.github/config/.release-please-manifest.json'
-  token:
-    description: 'Token for release-please'
+  package-name:
+    description: 'Package Name für Release'
     required: false
     default: ''
+  bump-minor-pre-major:
+    description: 'Bump minor pre-major'
+    required: false
+    default: 'true'
+  bump-patch-for-minor-pre-major:
+    description: 'Bump patch for minor pre-major'
+    required: false
+    default: 'true'
+  token:
+    description: 'GitHub Token'
+    required: true
+
+outputs:
+  release_created:
+    description: 'Whether a release was created'
+    value: ${{ steps.release.outputs.release_created }}
+  tag_name:
+    description: 'The tag name of the release'
+    value: ${{ steps.release.outputs.tag_name }}
+  version:
+    description: 'The version of the release'
+    value: ${{ steps.release.outputs.version }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Create/Update Release PR (default mode)
-      if: inputs.direct-release != 'true'
-      uses: googleapis/release-please-action@v4
+    - name: Release Please
+      id: release
+      uses: google-github-actions/release-please-action@v4
       with:
-        token: ${{ inputs.token || github.token }}
         release-type: ${{ inputs.release-type }}
-        target-branch: ${{ inputs.target-branch }}
-        config-file: ${{ inputs.config-file }}
-        manifest-file: ${{ inputs.manifest-file }}
+        package-name: ${{ inputs.package-name }}
+        bump-minor-pre-major: ${{ inputs.bump-minor-pre-major }}
+        bump-patch-for-minor-pre-major: ${{ inputs.bump-patch-for-minor-pre-major }}
+        token: ${{ inputs.token }}
 
-    - name: Create Direct Release (direct mode)
-      if: inputs.direct-release == 'true'
-      uses: googleapis/release-please-action@v4
-      with:
-        token: ${{ inputs.token || github.token }}
-        release-type: ${{ inputs.release-type }}
-        target-branch: ${{ inputs.target-branch }}
-        config-file: ${{ inputs.config-file }}
-        manifest-file: ${{ inputs.manifest-file }}
+    - name: Show Release Info
+      if: steps.release.outputs.release_created
+      shell: bash
+      run: |
+        echo "🎉 Release created!"
+        echo "Tag: ${{ steps.release.outputs.tag_name }}"
+        echo "Version: ${{ steps.release.outputs.version }}"
+
+branding:
+  icon: 'package'
+  color: 'green'
