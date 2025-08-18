@@ -1,183 +1,187 @@
-# 📚 Workflow-Beispiele
+# 🚀 Workflow Examples
 
-Diese Beispiele zeigen verschiedene Anwendungsszenarien für die Automation-Templates.
+Diese Sammlung enthält vollständige Beispiele für die Verwendung der Automation Templates Workflows mit **googleapis/release-please** Integration.
 
-## 🔄 Vollständige Pipeline (full-pipeline-example.yml)
+## 📦 Verfügbare Beispiele
 
-Das umfassendste Beispiel mit allen Features:
+### [Standard Release Example](standard-release-example.md)
 
-- **📄 README-Management**: Automatische Dokumentation mit Validierung
-- **🚀 Release-Management**: Intelligente Releases mit Conventional Commits  
-- **🧪 Test-Integration**: Automatisierte Tests vor Deployments
-- **� Monitoring**: Umfassende Summaries und Metriken
-- **⏰ Scheduling**: Regelmäßige Updates via Cron
-- **🎯 Deployment**: Umgebungsbasierte Deployments
+Einfacher Release-Workflow für kleine bis mittlere Projekte mit googleapis/release-please.
 
-### Hauptfeatures
+**Features:**
 
-```yaml
-# Täglich um 02:00 UTC für README-Updates
-schedule:
-  - cron: '0 2 * * *'
+- ✅ Conventional Commit Validation
+- ✅ Automatische Releases mit googleapis/release-please
+- ✅ README Auto-Update
+- ✅ Basic Post-Release Actions
 
-# Bedingte Job-Ausführung
-readme-management:
-  if: |
-    github.event_name == 'schedule' ||
-    contains(github.event.head_commit.modified, 'docs/README.template.MD')
+**Geeignet für:**
 
-# Professionelle Summaries
-notification:
-  run: |
-    echo "### 🔄 Pipeline Execution Summary" >> $GITHUB_STEP_SUMMARY
-```
+- Kleine bis mittlere Projekte
+- Einfache Release-Anforderungen
+- Grundlegende Conventional Commit Validation
 
-## 📄 README-Beispiel (readme-example.yml)
+### [Enhanced Release Example](enhanced-release-example.md)
 
-Zeigt spezifische README-Funktionen:
+Enterprise-Workflow mit vollständigen Security-, Compliance- und Artifact-Features.
 
-- **Template-Validierung**: Syntax- und Placeholder-Checks
-- **Flexible Konfiguration**: Anpassbare Parameter
-- **Auto-Commit**: Automatische Commits bei Änderungen
-- **PR-Integration**: Previews in Pull Requests
+**Features:**
 
-```yaml
-uses: bauer-group/automation-templates/github/workflows/readme.yml@main
-with:
-  template-path: "docs/README.template.MD"
-  project-name: "Mein Projekt"
-  validate-output: true
-  auto-commit: true
-```
+- ✅ Dual-Engine Security Scanning (Gitleaks + GitGuardian)
+- ✅ SPDX License Compliance
+- ✅ Umfassende Artifact-Generierung
+- ✅ Automatisches PR-Management
+- ✅ Branch Cleanup
+- ✅ Detaillierte Reports
 
-## 🚀 Release-Beispiel (release-example.yml)
+**Geeignet für:**
 
-Demonstriert Release-Management:
+- Enterprise-Projekte
+- Security & Compliance kritische Anwendungen
+- Projekte mit umfassenden Artifact-Anforderungen
 
-- **Conventional Commits**: Automatische Versionierung
-- **Validierung**: Eligibility-Checks vor Release
-- **Post-Processing**: Aktionen nach Release-Erstellung
-- **Metriken**: Detaillierte Release-Statistiken
+## 🔧 Setup Instructions
 
-```yaml
-release-management:
-  uses: bauer-group/automation-templates/.github/workflows/release.yml@main
-  with:
-    release-type: "simple"
-    package-name: "mein-projekt"
-```
+### 1. Workflow auswählen
 
-## 📋 Verwendung der Beispiele
+Wähle den passenden Workflow basierend auf deinen Anforderungen:
 
-### 1. Kopieren und Anpassen
+- **Standard**: Für einfache Projekte ohne komplexe Security-Anforderungen
+- **Enhanced**: Für Enterprise-Projekte mit umfassenden Security & Compliance Features
+
+### 2. Dateien kopieren
+
+Kopiere die entsprechenden Workflow-Dateien in dein Repository:
 
 ```bash
-# Beispiel in Ihr Repository kopieren
-cp github/workflows/examples/full-pipeline-example.yml .github/workflows/
+# Standard Release
+.github/workflows/release.yml
+.github/config/release-please-config.json
+.github/config/.release-please-manifest.json
+.github/config/commitlint.config.js
+
+# Enhanced Release (zusätzlich)
+.github/actions/               # Alle modularen Actions
+.gitleaks.toml                 # Gitleaks Konfiguration
+.gitguardian.yml              # GitGuardian Konfiguration
 ```
 
-### 2. Parameter anpassen
+### 3. Konfiguration anpassen
 
-```yaml
-# Ihre spezifischen Werte einsetzen
-project-name: "Ihr Projektname"
-company-name: "Ihre Firma"
-contact-email: "ihre@email.com"
+Passe die Konfigurationsdateien an dein Projekt an:
+
+- **release-please-config.json**: Projekt-Name, Release-Type
+- **commitlint.config.js**: Commit-Regeln (optional)
+- **.gitleaks.toml**: Security-Patterns (optional)
+
+### 4. Repository Secrets
+
+Konfiguriere die erforderlichen Secrets:
+
+**Standard (automatisch verfügbar):**
+
+- `GITHUB_TOKEN`: Für GitHub API Zugriff
+
+**Enhanced (optional):**
+
+- `GITLEAKS_LICENSE_KEY`: Für Gitleaks Pro Features
+- `GITGUARDIAN_API_KEY`: Für GitGuardian Enterprise
+
+### 5. Erste Verwendung
+
+1. Erstelle einen Commit mit Conventional Commit Format
+2. Push auf den main Branch
+3. Der Workflow wird automatisch ausgeführt
+
+## 📊 Workflow Comparison
+
+| Feature | Standard | Enhanced |
+|---------|----------|----------|
+| **Release-Please** | ✅ googleapis/release-please | ✅ googleapis/release-please |
+| **Conventional Commits** | ✅ | ✅ |
+| **Security Scanning** | ❌ | ✅ (Dual-Engine) |
+| **License Compliance** | ❌ | ✅ (SPDX + SBOM) |
+| **Artifact Generation** | ❌ | ✅ (Multi-Format) |
+| **Auto-Merge** | ❌ | ✅ (Intelligent) |
+| **Branch Cleanup** | ❌ | ✅ |
+| **Detailed Reports** | ❌ | ✅ |
+| **Setup Complexity** | 🟢 Low | 🟡 Medium |
+| **Enterprise Ready** | 🟡 Basic | ✅ Full |
+
+## 🎯 Quick Start Commands
+
+### Standard Release Setup
+
+```bash
+# Kopiere Standard Release Beispiel
+cp examples/standard-release-example.md .github/workflows/release.yml
+
+# Erstelle Konfiguration
+mkdir -p .github/config
+echo '{"packages": {".": {"release-type": "simple", "package-name": "my-project"}}}' > .github/config/release-please-config.json
+echo '{".": "0.1.0"}' > .github/config/.release-please-manifest.json
 ```
 
-### 3. Permissions konfigurieren
+### Enhanced Release Setup
 
-```yaml
-permissions:
-  contents: write      # Für Commits und Releases
-  pull-requests: write # Für PR-Comments
-  issues: write        # Für Issue-Updates
+```bash
+# Kopiere Enhanced Release Beispiel
+cp examples/enhanced-release-example.md .github/workflows/enhanced-release.yml
+
+# Kopiere alle Actions
+cp -r ../../.github/actions .github/
+
+# Erstelle erweiterte Konfiguration
+cp examples/configs/.gitleaks.toml .
+cp examples/configs/.gitguardian.yml .
 ```
 
-## 🎯 Best Practices
+## 🔄 Migration Path
 
-### Job-Dependencies
+### Von Standard zu Enhanced
 
-```yaml
-# Korrekte Reihenfolge sicherstellen
-release-management:
-  needs: readme-management
+1. Behalte den bestehenden Standard-Workflow
+2. Füge den Enhanced-Workflow parallel hinzu
+3. Teste den Enhanced-Workflow mit Test-Releases
+4. Deaktiviere den Standard-Workflow wenn Enhanced stabil läuft
 
-deployment:
-  needs: [release-management, test-suite]
-```
+### Von anderen Release-Tools
 
-### Bedingte Ausführung
+1. Exportiere bestehende Release-Historie
+2. Konfiguriere Release-Please mit korrekter Startversion
+3. Migriere Conventional Commit Format falls nötig
+4. Teste mit einem Dummy-Release
 
-```yaml
-# Nur bei relevanten Änderungen ausführen
-if: |
-  contains(github.event.head_commit.modified, 'docs/') ||
-  github.event_name == 'workflow_dispatch'
-```
+## 📚 Weitere Ressourcen
 
-### Environment-Protection
+- **[googleapis/release-please](https://github.com/googleapis/release-please)**: Offizielle Release-Please Dokumentation
+- **[Conventional Commits](https://www.conventionalcommits.org/)**: Conventional Commit Specification
+- **[SPDX License List](https://spdx.org/licenses/)**: Standardisierte Lizenz-Identifier
+- **[Security Scanning Best Practices](https://docs.github.com/en/code-security)**: GitHub Security Features
 
-```yaml
-# Produktions-Deployments schützen
-deployment:
-  environment: production
-  needs: [release-management, test-suite]
-```
+## 🆘 Troubleshooting
 
-## 🔧 Erweiterte Konfiguration
+### Häufige Probleme
 
-### Custom Actions verwenden
+**Release wird nicht erstellt:**
 
-```yaml
-# Direkte Action-Nutzung für maximale Kontrolle
-- uses: bauer-group/automation-templates/.github/actions/readme-generate@main
-  with:
-    template-path: "custom/template.MD"
-    fallback-generator: true
-```
+- Prüfe Conventional Commit Format
+- Vergewissere dich, dass releasable Commits seit letztem Release vorhanden sind
+- Überprüfe .release-please-manifest.json
 
-### Multi-Environment Setup
+**Security Scan fehlgeschlagen:**
 
-```yaml
-# Verschiedene Umgebungen
-deploy-staging:
-  environment: staging
-  if: github.ref == 'refs/heads/develop'
+- Prüfe Repository Secrets (GITLEAKS_LICENSE_KEY, GITGUARDIAN_API_KEY)
+- Überprüfe .gitleaks.toml und .gitguardian.yml Konfiguration
+- Teste Security Scan lokal
 
-deploy-production:
-  environment: production
-  if: needs.release.outputs.release_created == 'true'
-```
+**Artifact Generation fehlgeschlagen:**
 
-## 📊 Monitoring und Debugging
+- Prüfe Build-Commands in artifact-generator Action
+- Vergewissere dich, dass Upload-Permissions korrekt sind
+- Überprüfe Docker Registry Credentials
 
-### Workflow-Summaries
+### Support
 
-Alle Beispiele generieren detaillierte Summaries im Actions-Tab:
-
-- 📋 Job-Status-Übersicht
-- 📊 Performance-Metriken
-- 🔍 Validation-Ergebnisse
-- 🎯 Release-Details
-
-### Debugging-Tipps
-
-```yaml
-# Debug-Modus aktivieren
-- name: Debug Information
-  run: |
-    echo "Event: ${{ github.event_name }}"
-    echo "Ref: ${{ github.ref }}"
-    echo "Modified files: ${{ toJson(github.event.head_commit.modified) }}"
-```
-
-## 🚀 Nächste Schritte
-
-1. **Beispiel auswählen**: Passend zu Ihren Anforderungen
-2. **Parameter anpassen**: Projektspezifische Werte einsetzen
-3. **Testen**: Mit `workflow_dispatch` manuell auslösen
-4. **Monitoring**: Summaries und Logs überwachen
-5. **Optimieren**: Basierend auf Erfahrungen anpassen
-
-Die Beispiele sind production-ready und können direkt verwendet werden! 🎉
+- **Issues**: [GitHub Issues](https://github.com/bauer-group/automation-templates/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/bauer-group/automation-templates/discussions)

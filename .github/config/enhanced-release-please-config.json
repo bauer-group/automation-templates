@@ -43,5 +43,5 @@
   "commit-search-depth": 500,
   
   "sequential-calls": true,
-  "group-pull-request-title-pattern": "chore: release ${version}"
+  "group-pull-request-title-pattern": "chore(${component}): release ${version} [skip ci]"
 }
