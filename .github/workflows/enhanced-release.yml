@@ -2,15 +2,14 @@ name: 🚀 Release Management
 
 on:
   push:
-    branches: [ $default-branch ]
+    branches: [ main ]
     paths-ignore:
       - '**.MD'
       - 'docs/**'
-      - '.github/workflows/**'
-      - '.github/actions/**'
+      - '.github/**'      
   pull_request:
     types: [ closed ]
-    branches: [ $default-branch ]
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       release-type:
