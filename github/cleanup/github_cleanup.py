@@ -32,9 +32,10 @@ from datetime import datetime
 try:
     from github_auth import get_authenticated_github
     from github import Github
-    HAS_OAUTH = True
 except ImportError:
-    HAS_OAUTH = False
+    print("❌ Erforderliche Module nicht gefunden.")
+    print("💡 Installieren Sie die Pakete: pip install -r requirements.txt")
+    sys.exit(1)
 
 
 class GitHubCleanup:
@@ -317,12 +318,6 @@ Examples:
     token = args.token or os.getenv("GITHUB_TOKEN")
     if not token:
         # Use device flow if no token provided
-        if not HAS_OAUTH:
-            print("❌ Device Flow Authentifizierung nicht verfügbar.")
-            print("💡 Installieren Sie die erforderlichen Pakete: pip install -r requirements.txt")
-            print("💡 Oder verwenden Sie --token <your_token>")
-            sys.exit(1)
-            
         try:
             github_client, token = get_authenticated_github()
             user = github_client.get_user()
