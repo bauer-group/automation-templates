@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/bauer-group/automation-templates/compare/v0.2.0...v0.2.1) (2025-08-18)
+
+
+### Features
+
+* aktualisiere README und entferne 'delete_repo' Scope; schließe nur offene Pull Requests ([9aae9a5](https://github.com/bauer-group/automation-templates/commit/9aae9a586f0b7650f6ac3ea736e07787a5a2ac47))
+* erweitere README mit Authentifizierungsoptionen und verbessere Token-Berechtigungen; füge Protokollierung für Berechtigungsprobleme hinzu ([b9c1d6c](https://github.com/bauer-group/automation-templates/commit/b9c1d6ce2a57179219a94dadd7baff178f75f78f))
+
 ## [0.2.0](https://github.com/bauer-group/automation-templates/compare/v0.1.0...v0.2.0) (2025-08-18)
 
 
