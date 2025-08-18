@@ -156,13 +156,27 @@ runs:
         
         if [ -n "$LICENSE_FILES" ]; then
           echo "📋 Found license files:"
-          echo "$LICENSE_FILES" | while read -r file; do
+          # Use a different approach to avoid subshell issues
+          OLD_IFS="$IFS"
+          IFS=$'\n'
+          for file in $LICENSE_FILES; do
             echo "  • $file"
             echo "- \`$file\`" >> license-reports/findings.md
             
             # Try to identify license
             if command -v licensee &> /dev/null; then
-              LICENSE_ID=$(licensee detect "$file" 2>/dev/null | grep "License:" | cut -d: -f2 | xargs || echo "Unknown")
+              # Get licensee output and clean it up
+              LICENSEE_OUTPUT=$(licensee detect "$file" 2>/dev/null)
+              if [ $? -eq 0 ] && [ -n "$LICENSEE_OUTPUT" ]; then
+                # Extract license ID and clean duplicates
+                LICENSE_ID=$(echo "$LICENSEE_OUTPUT" | grep "License:" | cut -d: -f2 | xargs | awk '{print $1}' || echo "Unknown")
+                # Fallback if still empty
+                if [ -z "$LICENSE_ID" ] || [ "$LICENSE_ID" = "" ]; then
+                  LICENSE_ID="Unknown"
+                fi
+              else
+                LICENSE_ID="Unknown"
+              fi
               echo "    License: $LICENSE_ID"
               echo "  - License: $LICENSE_ID" >> license-reports/findings.md
             else
@@ -181,6 +195,7 @@ runs:
               echo "  - License: $LICENSE_ID (basic detection)" >> license-reports/findings.md
             fi
           done
+          IFS="$OLD_IFS"
         else
           echo "⚠️ No license files found in project root"
           echo "- ⚠️ No license files found" >> license-reports/findings.md
@@ -195,7 +210,10 @@ runs:
         
         SPDX_COUNT=0
         if [ -n "$SOURCE_FILES" ]; then
-          echo "$SOURCE_FILES" | while read -r file; do
+          # Use for loop instead of while read to avoid subshell issues
+          OLD_IFS="$IFS"
+          IFS=$'\n'
+          for file in $SOURCE_FILES; do
             # Look for SPDX-License-Identifier
             SPDX_LICENSE=$(grep -i "SPDX-License-Identifier:" "$file" 2>/dev/null | head -1 | sed 's/.*SPDX-License-Identifier: *//i' | sed 's/[[:space:]]*$//' | tr -d '\r')
             
@@ -205,7 +223,9 @@ runs:
               SPDX_COUNT=$((SPDX_COUNT + 1))
               
               # Check against forbidden licenses
+              IFS_BACKUP="$IFS"
               IFS=',' read -ra FORBIDDEN <<< "${{ inputs.forbidden-licenses }}"
+              IFS="$IFS_BACKUP"
               for forbidden in "${FORBIDDEN[@]}"; do
                 if [[ "$SPDX_LICENSE" == *"$forbidden"* ]]; then
                   echo "❌ Forbidden license found: $SPDX_LICENSE in $file"
@@ -214,7 +234,9 @@ runs:
               done
               
               # Check against allowed licenses
+              IFS_BACKUP2="$IFS"
               IFS=',' read -ra ALLOWED <<< "${{ inputs.allowed-licenses }}"
+              IFS="$IFS_BACKUP2"
               LICENSE_ALLOWED=false
               for allowed in "${ALLOWED[@]}"; do
                 if [[ "$SPDX_LICENSE" == *"$allowed"* ]]; then
@@ -229,6 +251,7 @@ runs:
               fi
             fi
           done
+          IFS="$OLD_IFS"
         fi
         
         echo "📊 SPDX headers found in $SPDX_COUNT files"
@@ -279,9 +302,16 @@ runs:
           echo "" >> license-reports/findings.md
           
           if command -v go &> /dev/null; then
-            go list -m all 2>/dev/null | head -20 | while read -r dep; do
-              echo "- $dep" >> license-reports/findings.md
-            done
+            # Use for loop instead of while read
+            GO_DEPS=$(go list -m all 2>/dev/null | head -20)
+            if [ -n "$GO_DEPS" ]; then
+              OLD_IFS="$IFS"
+              IFS=$'\n'
+              for dep in $GO_DEPS; do
+                echo "- $dep" >> license-reports/findings.md
+              done
+              IFS="$OLD_IFS"
+            fi
           fi
         fi
 
