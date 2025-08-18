@@ -75,27 +75,64 @@ runs:
         if ! command -v licensee &> /dev/null; then
           echo "Installing licensee..."
           if command -v gem &> /dev/null; then
-            gem install licensee
+            # Try installing with sudo first, fallback to user install
+            if sudo gem install licensee 2>/dev/null; then
+              echo "✅ Licensee installed system-wide"
+            elif gem install --user-install licensee 2>/dev/null; then
+              echo "✅ Licensee installed for user"
+              # Add user gem bin to PATH
+              export PATH="$(ruby -e 'puts Gem.user_dir')/bin:$PATH"
+              echo "$(ruby -e 'puts Gem.user_dir')/bin" >> $GITHUB_PATH
+            else
+              echo "⚠️ Failed to install licensee, license detection may be limited"
+            fi
           else
-            echo "Ruby/gem not available, skipping licensee installation"
+            echo "⚠️ Ruby/gem not available, skipping licensee installation"
           fi
+        else
+          echo "✅ Licensee already available"
         fi
         
         # Install SPDX tools
         if ! command -v pip3 &> /dev/null && command -v python3 &> /dev/null; then
           echo "Installing pip..."
-          curl https://bootstrap.pypa.io/get-pip.py | python3
+          curl https://bootstrap.pypa.io/get-pip.py | python3 --user
         fi
         
         if command -v pip3 &> /dev/null; then
           echo "Installing SPDX tools..."
-          pip3 install spdx-tools reuse || echo "Failed to install SPDX tools"
+          if pip3 install --user spdx-tools reuse 2>/dev/null; then
+            echo "✅ SPDX tools installed successfully"
+            # Add user bin to PATH
+            export PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          else
+            echo "⚠️ Failed to install SPDX tools, some features may be limited"
+          fi
+        else
+          echo "⚠️ Python3/pip3 not available, skipping SPDX tools installation"
         fi
         
         # Install syft for SBOM generation
         if ! command -v syft &> /dev/null; then
           echo "Installing syft for SBOM generation..."
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          # Download and install syft binary
+          if curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sudo sh -s -- -b /usr/local/bin 2>/dev/null; then
+            echo "✅ Syft installed successfully"
+          else
+            echo "⚠️ Failed to install syft, trying alternative method..."
+            # Fallback: install to user directory
+            mkdir -p "$HOME/.local/bin"
+            if curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b "$HOME/.local/bin" 2>/dev/null; then
+              echo "✅ Syft installed to user directory"
+              export PATH="$HOME/.local/bin:$PATH"
+              echo "$HOME/.local/bin" >> $GITHUB_PATH
+            else
+              echo "⚠️ Syft installation failed, SBOM generation may be limited"
+            fi
+          fi
+        else
+          echo "✅ Syft already available"
         fi
 
     - name: 📄 Scan Project Licenses
@@ -128,6 +165,20 @@ runs:
               LICENSE_ID=$(licensee detect "$file" 2>/dev/null | grep "License:" | cut -d: -f2 | xargs || echo "Unknown")
               echo "    License: $LICENSE_ID"
               echo "  - License: $LICENSE_ID" >> license-reports/findings.md
+            else
+              # Fallback: basic pattern matching
+              LICENSE_ID="Unknown"
+              if grep -i "MIT License" "$file" >/dev/null 2>&1; then
+                LICENSE_ID="MIT"
+              elif grep -i "Apache License" "$file" >/dev/null 2>&1; then
+                LICENSE_ID="Apache-2.0"
+              elif grep -i "BSD" "$file" >/dev/null 2>&1; then
+                LICENSE_ID="BSD"
+              elif grep -i "GPL" "$file" >/dev/null 2>&1; then
+                LICENSE_ID="GPL"
+              fi
+              echo "    License: $LICENSE_ID (basic detection)"
+              echo "  - License: $LICENSE_ID (basic detection)" >> license-reports/findings.md
             fi
           done
         else
