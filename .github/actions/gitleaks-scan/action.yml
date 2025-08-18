@@ -124,9 +124,44 @@ runs:
         DOWNLOAD_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${OS}_${ARCH}.tar.gz"
         echo "Downloading from: $DOWNLOAD_URL"
         
-        curl -L "$DOWNLOAD_URL" -o gitleaks.tar.gz
-        tar -xzf gitleaks.tar.gz
-        chmod +x gitleaks
+        # Try download with retries
+        for i in {1..3}; do
+          if curl -fSL "$DOWNLOAD_URL" -o gitleaks.tar.gz; then
+            echo "✅ Download successful on attempt $i"
+            break
+          else
+            echo "⚠️ Download attempt $i failed"
+            if [ $i -eq 3 ]; then
+              echo "❌ All download attempts failed. Trying fallback URLs..."
+              
+              # Try alternative URLs
+              ALT_URLS=(
+                "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${OS}_${ARCH}.tar.gz"
+                "https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_${OS}_${ARCH}.tar.gz"
+              )
+              
+              for url in "${ALT_URLS[@]}"; do
+                echo "Trying fallback URL: $url"
+                if curl -fSL "$url" -o gitleaks.tar.gz; then
+                  echo "✅ Fallback download successful"
+                  break 2
+                fi
+              done
+              
+              echo "❌ All download methods failed"
+              exit 1
+            fi
+            sleep 2
+          fi
+        done
+        
+        # Extract and install
+        if tar -xzf gitleaks.tar.gz; then
+          chmod +x gitleaks
+        else
+          echo "❌ Failed to extract gitleaks archive"
+          exit 1
+        fi
         
         # Move to PATH
         sudo mv gitleaks /usr/local/bin/ 2>/dev/null || mv gitleaks $HOME/.local/bin/ 2>/dev/null || {

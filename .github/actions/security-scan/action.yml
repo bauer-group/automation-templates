@@ -38,7 +38,7 @@ inputs:
 outputs:
   gitleaks-secrets-found:
     description: 'Whether secrets were found by Gitleaks'
-    value: ${{ steps.gitleaks-scan.outputs.secrets-found }}
+    value: ${{ steps.process-gitleaks.outputs.secrets-found }}
   gitguardian-secrets-found:
     description: 'Number of secrets found by GitGuardian'
     value: ${{ steps.gitguardian-scan.outputs.secrets-found }}
@@ -92,91 +92,56 @@ runs:
     - name: 🔐 Gitleaks Secrets Detection
       id: gitleaks-scan
       if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both')
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        GITLEAKS_ENABLE_SUMMARY: true
+      continue-on-error: true
+
+    - name: 🔐 Fallback Gitleaks Scan
+      id: fallback-gitleaks
+      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both') && steps.gitleaks-scan.outcome == 'failure'
+      uses: ./.github/actions/gitleaks-scan
+      with:
+        fail-on-findings: 'false'
+        format: 'json'
+        verbose: 'true'
+        github-token: ${{ inputs.token }}
+      continue-on-error: true
+
+    - name: 📊 Process Gitleaks Results
+      id: process-gitleaks
+      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both')
       shell: bash
       run: |
-        echo "🔍 Running Gitleaks secrets detection..."
+        echo "📊 Processing Gitleaks results..."
         
-        # Install gitleaks if not available
-        if ! command -v gitleaks &> /dev/null; then
-          echo "Installing gitleaks..."
-          curl -sSfL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz | tar -xz
-          chmod +x gitleaks
-          sudo mv gitleaks /usr/local/bin/
-        fi
-        
-        # Create gitleaks config
-        cat > gitleaks.toml << 'EOF'
-        title = "Gitleaks Security Scan"
-        
-        [[rules]]
-        description = "AWS Access Key"
-        regex = '''AKIA[0-9A-Z]{16}'''
-        tags = ["key", "AWS"]
-        
-        [[rules]]
-        description = "AWS Secret Key" 
-        regex = '''(?i)aws(.{0,20})?(?-i)['\"][0-9a-zA-Z\/+]{40}['\"]'''
-        tags = ["key", "AWS"]
-        
-        [[rules]]
-        description = "GitHub Token"
-        regex = '''ghp_[0-9a-zA-Z]{36}'''
-        tags = ["key", "GitHub"]
-        
-        [[rules]]
-        description = "GitHub OAuth"
-        regex = '''gho_[0-9a-zA-Z]{36}'''
-        tags = ["key", "GitHub"]
-        
-        [[rules]]
-        description = "Generic API Key"
-        regex = '''(?i)(api[_-]?key|apikey)['"]*\s*[:=]\s*['"][0-9a-zA-Z\-_]{16,}['"]'''
-        tags = ["key", "API"]
-        
-        [[rules]]
-        description = "Generic Secret"
-        regex = '''(?i)(secret|password|pass|pwd)['"]*\s*[:=]\s*['"][^'"\s]{8,}['"]'''
-        tags = ["secret"]
-        
-        # Custom patterns from input
-        EOF
-        
-        # Add custom patterns if provided
-        if [ -n "${{ inputs.secrets-patterns }}" ]; then
-          echo "Adding custom patterns..."
-          IFS=',' read -ra PATTERNS <<< "${{ inputs.secrets-patterns }}"
-          for pattern in "${PATTERNS[@]}"; do
-            cat >> gitleaks.toml << EOF
-        
-        [[rules]]
-        description = "Custom Pattern"
-        regex = '''$pattern'''
-        tags = ["custom"]
-        EOF
-          done
-        fi
-        
-        # Run gitleaks scan
+        # Check results from both potential sources
         SECRETS_FOUND=false
-        if gitleaks detect --config gitleaks.toml --report-format json --report-path gitleaks-report.json --no-git; then
-          echo "✅ No secrets detected"
-        else
-          echo "❌ Secrets detected!"
+        
+        # Check primary gitleaks-action
+        if [ "${{ steps.gitleaks-scan.outcome }}" == "failure" ]; then
+          echo "❌ Gitleaks (primary) detected secrets!"
           SECRETS_FOUND=true
-          
-          # Show findings summary
-          if [ -f gitleaks-report.json ]; then
-            echo "🔍 Secrets Summary:"
-            jq -r '.[] | "  • \(.Description) at \(.File):\(.StartLine)"' gitleaks-report.json || echo "Could not parse results"
-          fi
+        elif [ "${{ steps.fallback-gitleaks.outputs.secrets-found }}" == "true" ]; then
+          echo "❌ Gitleaks (fallback) detected secrets!"
+          SECRETS_FOUND=true
+        else
+          echo "✅ No secrets detected by Gitleaks"
         fi
         
         echo "secrets-found=$SECRETS_FOUND" >> $GITHUB_OUTPUT
         
-        # Store report as artifact
-        if [ -f gitleaks-report.json ]; then
-          mkdir -p security-reports/gitleaks
-          cp gitleaks-report.json security-reports/gitleaks/
+        # Create security reports directory
+        mkdir -p security-reports/gitleaks
+        
+        # Store gitleaks results if available
+        if [ -f "results.sarif" ]; then
+          cp results.sarif security-reports/gitleaks/gitleaks-results.sarif
+          echo "📄 Gitleaks SARIF report saved"
+        elif [ "${{ steps.fallback-gitleaks.outputs.report-path }}" != "" ]; then
+          cp "${{ steps.fallback-gitleaks.outputs.report-path }}" security-reports/gitleaks/
+          echo "📄 Fallback Gitleaks report saved"
         fi
 
     - name: 🛡️ GitGuardian Security Scan
