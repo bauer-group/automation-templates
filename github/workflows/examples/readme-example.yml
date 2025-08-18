@@ -1,40 +1,28 @@
+# Beispiel: README-Generator in externem Projekt verwenden
+# Kopiere diese Datei als .github/workflows/readme.yml in dein Projekt
+
 name: 📄 README Update
 
 on:
   push:
     branches: [ main ]
     paths: 
-      - 'docs/README.template.md'
+      - 'docs/README.template.MD'
   pull_request:
     branches: [ main ]
     paths:
-      - 'docs/README.template.md'
+      - 'docs/README.template.MD'
   workflow_dispatch:
 
 jobs:
   readme:
     uses: bauer-group/automation-templates/github/workflows/readme.yml@main
     with:
-      template-path: "docs/README.template.md"
-      output-path: "README.md"
+      template-path: "docs/README.template.MD"
+      output-path: "README.MD"
       project-name: "Mein Projekt"
       company-name: "Meine Firma"
       project-description: "Beschreibung meines Projekts"
       contact-email: "support@example.com"
       documentation-url: "https://docs.example.com"
       support-url: "https://support.example.com"
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ github.token }}
-
-      - name: Generate README
-        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
-        with:
-          template-path: "docs/README.template.md"
-          output-path: "README.md"
-          project-name: ${{ inputs.project-name || github.event.repository.name }}
-          company-name: "Ihre Firma"
-          project-description: "Beschreibung Ihres Projekts"
-          auto-commit: ${{ inputs.auto-commit }}
-          fail-on-pr: 'true'

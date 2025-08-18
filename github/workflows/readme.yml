@@ -7,12 +7,12 @@ on:
         description: 'Pfad zum README Template'
         required: false
         type: string
-        default: 'docs/README.template.md'
+        default: 'docs/README.template.MD'
       output-path:
         description: 'Pfad für generierte README'
         required: false
         type: string
-        default: 'README.md'
+        default: 'README.MD'
       project-name:
         description: 'Name des Projekts'
         required: false

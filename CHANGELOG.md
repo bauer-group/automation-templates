@@ -2,11 +2,26 @@
 
 ## [Unreleased]
 
+### Added
+
+* Erweiterte Release-Workflow-Automatisierung mit intelligenter Release-Eligibilität-Prüfung
+* Conventional Commit-Validierung für Pull Requests mit detailliertem Feedback
+* Automatische README-Aktualisierung vor Release-Erstellung
+* Release-Metriken und detaillierte Post-Release-Aktionen
+* Release-Please-Konfiguration mit erweiterten Changelog-Sektionen
+* Dry-Run-Modus für Release-Testing ohne tatsächliche Release-Erstellung
+* Erweiterte Workflow-Trigger mit konfigurierbaren Release-Typen
+* Intelligente Release-Zusammenfassungen mit commit-basierten Metriken
+
 ### Changed
+
 * Konsolidiere Release-Workflows zu einem einzigen `release.yml` für bessere Klarheit
-* Entferne redundanten `release-please.yml` Workflow
+* Erweiterte Release-Please Composite Action mit zusätzlichen Outputs und Metriken
+* Verbesserte Fehlerbehandlung und Benutzer-Feedback in Release-Workflows
+* Optimierte Workflow-Triggers mit path-ignore für irrelevante Änderungen
 
 ### Removed
+
 * `.github/workflows/release-please.yml` - Funktionalität in `release.yml` konsolidiert
 
 ## [0.2.0](https://github.com/bauer-group/automation-templates/compare/v0.1.6...v0.2.0) (2025-08-17)
