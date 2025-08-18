@@ -1,12 +1,12 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-18 13:56:24 UTC -->
+<!-- Generated on 2025-08-18 15:24:19 UTC -->
 
-# BAUER GROUP – {{P└── github/workflows/           # Wiederverwendbare Workflows
+# BAUER GROUP – github/workflows/           # Wiederverwendbare Workflows
     ├── readme.yml             # Erweiterte README-Generierung
     ├── release-please.yml     # Release-Please mit automatischen PRs
     └── README.md              # Detaillierte Workflow-DokumentationT_NAME}}
 
-**Status:** Version 0.2.0 (2025-08-18)  
+**Status:** Version 0.1.0 (2025-08-18)  
 **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)  
 **Branch:** {{CURRENT_BRANCH}}
 
@@ -48,9 +48,9 @@ Das README-Template-System unterstützt zahlreiche Platzhalter:
 
 #### Basis-Informationen
 
-- `0.2.0` - Aktuelle Version (aus Git Tags oder Umgebung)
+- `0.1.0` - Aktuelle Version (aus Git Tags oder Umgebung)
 - `2025-08-18` - Aktuelles Datum (YYYY-MM-DD)
-- `2025-08-18 13:56:24 UTC` - Datum und Zeit (YYYY-MM-DD HH:MM:SS UTC)
+- `2025-08-18 15:24:19 UTC` - Datum und Zeit (YYYY-MM-DD HH:MM:SS UTC)
 - `2025` - Aktuelles Jahr
 
 #### Repository-Informationen
@@ -165,4 +165,4 @@ Siehe [github/workflows/README.md](github/workflows/README.md) für detaillierte
 
 ---
 
-*Dieses README wurde automatisch generiert am 2025-08-18 13:56:24 UTC aus [docs/README.template.MD](docs/README.template.MD)*
+*Dieses README wurde automatisch generiert am 2025-08-18 15:24:19 UTC aus [docs/README.template.MD](docs/README.template.MD)*
