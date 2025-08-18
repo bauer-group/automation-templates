@@ -1,4 +1,4 @@
-# {{COMPANY_NAME}} – {{P└── github/workflows/           # Wiederverwendbare Workflows
+# {{COMPANY_NAME}} – github/workflows/           # Wiederverwendbare Workflows
     ├── readme.yml             # Erweiterte README-Generierung
     ├── release-please.yml     # Release-Please mit automatischen PRs
     └── README.md              # Detaillierte Workflow-DokumentationT_NAME}}
