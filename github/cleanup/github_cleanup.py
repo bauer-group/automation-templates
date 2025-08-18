@@ -60,7 +60,7 @@ class GitHubCleanup:
         prefix = "🔍 [DRY-RUN]" if self.dry_run else "🔧"
         print(f"{prefix} [{timestamp}] {level}: {message}")
     
-    def make_request(self, method: str, url: str, **kwargs) -> Optional[requests.Response]:
+    def make_request(self, method: str, url: str, silent_404: bool = False, **kwargs) -> Optional[requests.Response]:
         """Make a GitHub API request with error handling"""
         try:
             response = self.session.request(method, url, **kwargs)
@@ -71,11 +71,13 @@ class GitHubCleanup:
                 wait_time = max(reset_time - int(time.time()), 60)
                 self.log(f"Rate limit reached. Waiting {wait_time} seconds...", "WARNING")
                 time.sleep(wait_time)
-                return self.make_request(method, url, **kwargs)
+                return self.make_request(method, url, silent_404=silent_404, **kwargs)
             
             if response.status_code >= 400:
+                if response.status_code == 404 and silent_404:
+                    return response  # Return 404 without logging error
                 self.log(f"API Error: {response.status_code} - {response.text}", "ERROR")
-                return None
+                return response if response.status_code == 404 else None
                 
             return response
         except Exception as e:
@@ -179,13 +181,20 @@ class GitHubCleanup:
         self.log("🏷️ Starting tags cleanup...")
         
         url = f"{self.base_url}/repos/{self.owner}/{self.repo}/git/refs/tags"
-        response = self.make_request("GET", url)
+        response = self.make_request("GET", url, silent_404=True)
         
         if not response:
             self.log("No tags found or error retrieving tags")
             return
+        
+        if response.status_code == 404:
+            self.log("No tags found in repository")
+            return
+        elif response.status_code != 200:
+            self.log(f"Error retrieving tags: {response.status_code}")
+            return
             
-        tags = response.json() if response.status_code == 200 else []
+        tags = response.json()
         self.log(f"Found {len(tags)} tags")
         
         for tag in tags:
@@ -297,7 +306,7 @@ Examples:
     parser.add_argument("--owner", required=True, help="GitHub repository owner/organization")
     parser.add_argument("--repo", required=True, help="GitHub repository name")
     parser.add_argument("--token", help="GitHub Personal Access Token (or use GITHUB_TOKEN env var)")
-    parser.add_argument("--oauth", action="store_true", help="Use browser-based OAuth authentication")
+    parser.add_argument("--device-auth", action="store_true", help="Use browser-based device flow authentication")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be deleted without actually deleting")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
     
@@ -306,19 +315,18 @@ Examples:
     # Handle authentication
     token = None
     
-    if args.oauth:
+    if args.device_auth:
         if not HAS_OAUTH:
-            print("❌ OAuth-Authentifizierung nicht verfügbar.")
+            print("❌ Device Flow Authentifizierung nicht verfügbar.")
             print("💡 Installieren Sie die erforderlichen Pakete: pip install -r requirements.txt")
             sys.exit(1)
             
-        print("🔐 Starte OAuth-Authentifizierung...")
         try:
-            github_client, token = get_authenticated_github(use_device_flow=True)
+            github_client, token = get_authenticated_github()
             user = github_client.get_user()
             print(f"✅ Erfolgreich angemeldet als: {user.login} ({user.name})")
         except Exception as e:
-            print(f"❌ OAuth-Authentifizierung fehlgeschlagen: {e}")
+            print(f"❌ Device Flow Authentifizierung fehlgeschlagen: {e}")
             sys.exit(1)
     else:
         # Get token from argument or environment variable
@@ -329,7 +337,7 @@ Examples:
             print("   1. --token <your_token>")
             print("   2. GITHUB_TOKEN environment variable")
             if HAS_OAUTH:
-                print("   3. --oauth (browser login)")
+                print("   3. --device-auth (browser login)")
             print("🔗 Token erstellen: https://github.com/settings/tokens")
             print("📋 Benötigte Berechtigungen: repo, actions, admin:repo_hook")
             sys.exit(1)
