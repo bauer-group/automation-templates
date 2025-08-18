@@ -72,7 +72,7 @@ runs:
         echo "All Policies: ${{ inputs.all-policies }}"
         echo "Exclude Paths: ${{ inputs.exclude-paths }}"
         
-        mkdir -p gitguardian-reports
+        mkdir -p security-reports/gitguardian
 
     - name: 🔧 Install GitGuardian CLI
       shell: bash
@@ -178,14 +178,16 @@ runs:
         echo "Scan mode: $SCAN_MODE"
         echo "Output format: $OUTPUT_FORMAT"
         
-        # Create output files
-        REPORT_FILE="gitguardian-reports/gitguardian-report.$OUTPUT_FORMAT"
+        # Create output files in separate directory
+        mkdir -p security-reports/gitguardian
+        REPORT_FILE="security-reports/gitguardian/gitguardian-report.$OUTPUT_FORMAT"
+        SCAN_OUTPUT_FILE="security-reports/gitguardian/scan-output.json"
         
         # Run scan based on mode
         case $SCAN_MODE in
           "ci")
             echo "Running CI scan..."
-            if ggshield secret scan ci $VERBOSE_FLAG --output $REPORT_FILE --json > gitguardian-reports/scan-output.json 2>&1; then
+            if ggshield secret scan ci $VERBOSE_FLAG --output $REPORT_FILE --json > "$SCAN_OUTPUT_FILE" 2>&1; then
               echo "✅ CI scan completed successfully"
             else
               SCAN_EXIT_CODE=$?
@@ -198,7 +200,7 @@ runs:
             
           "path")
             echo "Running path scan..."
-            if ggshield secret scan path . $VERBOSE_FLAG --output $REPORT_FILE --json > gitguardian-reports/scan-output.json 2>&1; then
+            if ggshield secret scan path . $VERBOSE_FLAG --output $REPORT_FILE --json > "$SCAN_OUTPUT_FILE" 2>&1; then
               echo "✅ Path scan completed successfully"
             else
               SCAN_EXIT_CODE=$?
@@ -211,7 +213,7 @@ runs:
             
           "repo")
             echo "Running repository scan..."
-            if ggshield secret scan repo . $VERBOSE_FLAG --output $REPORT_FILE --json > gitguardian-reports/scan-output.json 2>&1; then
+            if ggshield secret scan repo . $VERBOSE_FLAG --output $REPORT_FILE --json > "$SCAN_OUTPUT_FILE" 2>&1; then
               echo "✅ Repository scan completed successfully"
             else
               SCAN_EXIT_CODE=$?
@@ -224,7 +226,7 @@ runs:
             
           "pre-commit")
             echo "Running pre-commit scan..."
-            if ggshield secret scan pre-commit $VERBOSE_FLAG --output $REPORT_FILE --json > gitguardian-reports/scan-output.json 2>&1; then
+            if ggshield secret scan pre-commit $VERBOSE_FLAG --output $REPORT_FILE --json > "$SCAN_OUTPUT_FILE" 2>&1; then
               echo "✅ Pre-commit scan completed successfully"
             else
               SCAN_EXIT_CODE=$?
@@ -242,14 +244,14 @@ runs:
         esac
         
         # Parse results if JSON output exists
-        if [ -f "gitguardian-reports/scan-output.json" ]; then
+        if [ -f "$SCAN_OUTPUT_FILE" ]; then
           echo "📊 Parsing scan results..."
           
           # Try to parse JSON results
           if command -v jq &> /dev/null; then
             # Count secrets and policy violations
-            SECRETS_FOUND=$(jq -r '.total_secrets // 0' gitguardian-reports/scan-output.json 2>/dev/null || echo "0")
-            POLICY_VIOLATIONS=$(jq -r '.total_policy_violations // 0' gitguardian-reports/scan-output.json 2>/dev/null || echo "0")
+            SECRETS_FOUND=$(jq -r '.total_secrets // 0' security-reports/gitguardian/scan-output.json 2>/dev/null || echo "0")
+            POLICY_VIOLATIONS=$(jq -r '.total_policy_violations // 0' security-reports/gitguardian/scan-output.json 2>/dev/null || echo "0")
             
             echo "🔍 Scan Results:"
             echo "  • Secrets Found: $SECRETS_FOUND"
@@ -257,30 +259,30 @@ runs:
             
             # Extract detailed findings
             if [ "$SECRETS_FOUND" -gt 0 ] || [ "$POLICY_VIOLATIONS" -gt 0 ]; then
-              echo "📋 Detailed Findings:" > gitguardian-reports/findings-summary.txt
+              echo "📋 Detailed Findings:" > security-reports/gitguardian/findings-summary.txt
               
               # Extract secret details
               if [ "$SECRETS_FOUND" -gt 0 ]; then
-                echo "🔐 Secrets Found:" >> gitguardian-reports/findings-summary.txt
-                jq -r '.secrets[]? | "  • \(.detector_name) in \(.file_path):\(.line_number)"' gitguardian-reports/scan-output.json 2>/dev/null >> gitguardian-reports/findings-summary.txt || echo "  • Details not available" >> gitguardian-reports/findings-summary.txt
+                echo "🔐 Secrets Found:" >> security-reports/gitguardian/findings-summary.txt
+                jq -r '.secrets[]? | "  • \(.detector_name) in \(.file_path):\(.line_number)"' security-reports/gitguardian/scan-output.json 2>/dev/null >> security-reports/gitguardian/findings-summary.txt || echo "  • Details not available" >> security-reports/gitguardian/findings-summary.txt
               fi
               
               # Extract policy violations
               if [ "$POLICY_VIOLATIONS" -gt 0 ]; then
-                echo "⚖️ Policy Violations:" >> gitguardian-reports/findings-summary.txt
-                jq -r '.policy_violations[]? | "  • \(.policy_name) in \(.file_path):\(.line_number)"' gitguardian-reports/scan-output.json 2>/dev/null >> gitguardian-reports/findings-summary.txt || echo "  • Details not available" >> gitguardian-reports/findings-summary.txt
+                echo "⚖️ Policy Violations:" >> security-reports/gitguardian/findings-summary.txt
+                jq -r '.policy_violations[]? | "  • \(.policy_name) in \(.file_path):\(.line_number)"' security-reports/gitguardian/scan-output.json 2>/dev/null >> security-reports/gitguardian/findings-summary.txt || echo "  • Details not available" >> security-reports/gitguardian/findings-summary.txt
               fi
               
               # Display summary
-              cat gitguardian-reports/findings-summary.txt
+              cat security-reports/gitguardian/findings-summary.txt
             fi
           else
             echo "⚠️ jq not available for JSON parsing"
             # Fallback: count occurrences in text output
-            if grep -q "secrets" gitguardian-reports/scan-output.json 2>/dev/null; then
+            if grep -q "secrets" security-reports/gitguardian/scan-output.json 2>/dev/null; then
               SECRETS_FOUND=1
             fi
-            if grep -q "policy" gitguardian-reports/scan-output.json 2>/dev/null; then
+            if grep -q "policy" security-reports/gitguardian/scan-output.json 2>/dev/null; then
               POLICY_VIOLATIONS=1
             fi
           fi
@@ -292,9 +294,12 @@ runs:
         echo "secrets-found=$SECRETS_FOUND" >> $GITHUB_OUTPUT
         echo "policy-violations=$POLICY_VIOLATIONS" >> $GITHUB_OUTPUT
         
-        # Copy scan output for artifact upload
-        if [ -f gitguardian-reports/scan-output.json ]; then
-          cp gitguardian-reports/scan-output.json gitguardian-reports/
+        # Copy scan output for artifact upload (only if different paths)
+        if [ -f security-reports/gitguardian/scan-output.json ]; then
+          # Check if we need to copy to a different location
+          if [ "security-reports/gitguardian/scan-output.json" != "security-reports/gitguardian/scan-output.json" ]; then
+            cp security-reports/gitguardian/scan-output.json security-reports/gitguardian/
+          fi
         fi
         
         echo "📊 GitGuardian Scan Summary:"
@@ -317,7 +322,7 @@ runs:
           # Scan for Terraform files
           if find . -name "*.tf" -o -name "*.tfvars" | head -1 | grep -q .; then
             echo "Found Terraform files, scanning..."
-            ggshield iac scan . --output gitguardian-reports/iac-scan.json --json 2>/dev/null || echo "IaC scan completed with findings"
+            ggshield iac scan . --output security-reports/gitguardian/iac-scan.json --json 2>/dev/null || echo "IaC scan completed with findings"
           fi
           
           # Scan for Kubernetes files
@@ -379,10 +384,11 @@ runs:
         
         echo "security-score=$SECURITY_SCORE" >> $GITHUB_OUTPUT
         echo "scan-status=$SCAN_STATUS" >> $GITHUB_OUTPUT
-        echo "report-path=gitguardian-reports/" >> $GITHUB_OUTPUT
+        echo "report-path=security-reports/gitguardian/" >> $GITHUB_OUTPUT
         
         # Create comprehensive summary report
-        cat > gitguardian-reports/security-summary.md << EOF
+        mkdir -p security-reports/gitguardian
+        cat > security-reports/gitguardian/security-summary.md << EOF
         # 🛡️ GitGuardian Security Scan Summary
         
         **Scan Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
@@ -410,7 +416,7 @@ runs:
         EOF
         
         if [ "$SECRETS_FOUND" -gt 0 ]; then
-          cat >> gitguardian-reports/security-summary.md << EOF
+          cat >> security-reports/gitguardian/security-summary.md << EOF
         ### 🔐 Secrets Detected
         
         **$SECRETS_FOUND secret(s) found in your codebase.**
@@ -425,7 +431,7 @@ runs:
         fi
         
         if [ "$POLICY_VIOLATIONS" -gt 0 ]; then
-          cat >> gitguardian-reports/security-summary.md << EOF
+          cat >> security-reports/gitguardian/security-summary.md << EOF
         ### ⚖️ Policy Violations
         
         **$POLICY_VIOLATIONS policy violation(s) detected.**
@@ -439,7 +445,7 @@ runs:
         fi
         
         if [ "$SECRETS_FOUND" -eq 0 ] && [ "$POLICY_VIOLATIONS" -eq 0 ]; then
-          cat >> gitguardian-reports/security-summary.md << EOF
+          cat >> security-reports/gitguardian/security-summary.md << EOF
         ### ✅ No Issues Found
         
         Great! No secrets or policy violations were detected in your codebase.
@@ -452,7 +458,7 @@ runs:
         EOF
         fi
         
-        cat >> gitguardian-reports/security-summary.md << EOF
+        cat >> security-reports/gitguardian/security-summary.md << EOF
         ## 🔗 Resources
         
         - [GitGuardian Documentation](https://docs.gitguardian.com/)
@@ -470,14 +476,14 @@ runs:
         echo "  • Secrets Found: $SECRETS_FOUND"
         echo "  • Policy Violations: $POLICY_VIOLATIONS"
         echo "  • Status: $SCAN_STATUS"
-        echo "  • Report Path: gitguardian-reports/"
+        echo "  • Report Path: security-reports/gitguardian/"
 
     - name: 📤 Upload GitGuardian Reports
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: gitguardian-security-reports
-        path: gitguardian-reports/
+        path: security-reports/gitguardian/
         retention-days: 30
 
     - name: 🚨 Fail on Security Findings
