@@ -1,0 +1,426 @@
+name: 'License Compliance Check'
+description: 'SPDX license compliance checking with FOSSA integration and incompatible license detection'
+author: 'BAUER GROUP'
+
+inputs:
+  allowed-licenses:
+    description: 'Comma-separated list of allowed SPDX license identifiers'
+    required: false
+    default: 'MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,0BSD,CC0-1.0'
+  forbidden-licenses:
+    description: 'Comma-separated list of forbidden SPDX license identifiers'
+    required: false
+    default: 'GPL-2.0,GPL-3.0,AGPL-1.0,AGPL-3.0,LGPL-2.1,LGPL-3.0,SSPL-1.0'
+  fail-on-forbidden:
+    description: 'Fail the workflow if forbidden licenses are found'
+    required: false
+    default: 'true'
+  fail-on-unknown:
+    description: 'Fail the workflow if unknown licenses are found'
+    required: false
+    default: 'false'
+  fossa-api-key:
+    description: 'FOSSA API key for deep license analysis'
+    required: false
+    default: ''
+  scan-dependencies:
+    description: 'Scan project dependencies for licenses'
+    required: false
+    default: 'true'
+  generate-sbom:
+    description: 'Generate Software Bill of Materials (SBOM)'
+    required: false
+    default: 'true'
+  token:
+    description: 'GitHub Token for API access'
+    required: true
+
+outputs:
+  compliance-status:
+    description: 'Overall compliance status (pass, warning, fail)'
+    value: ${{ steps.compliance-check.outputs.compliance-status }}
+  forbidden-found:
+    description: 'Whether forbidden licenses were found'
+    value: ${{ steps.license-scan.outputs.forbidden-found }}
+  unknown-found:
+    description: 'Whether unknown licenses were found'
+    value: ${{ steps.license-scan.outputs.unknown-found }}
+  license-summary:
+    description: 'Summary of license findings'
+    value: ${{ steps.compliance-check.outputs.license-summary }}
+  sbom-generated:
+    description: 'Whether SBOM was generated'
+    value: ${{ steps.sbom-generation.outputs.sbom-generated }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 📋 Setup License Compliance Check
+      shell: bash
+      run: |
+        echo "📋 Initializing License Compliance Check"
+        echo "Allowed Licenses: ${{ inputs.allowed-licenses }}"
+        echo "Forbidden Licenses: ${{ inputs.forbidden-licenses }}"
+        echo "Scan Dependencies: ${{ inputs.scan-dependencies }}"
+        echo "Generate SBOM: ${{ inputs.generate-sbom }}"
+        
+        mkdir -p license-reports
+
+    - name: 🔍 Install License Scanning Tools
+      shell: bash
+      run: |
+        echo "🔧 Installing license scanning tools..."
+        
+        # Install licensee for license detection
+        if ! command -v licensee &> /dev/null; then
+          echo "Installing licensee..."
+          if command -v gem &> /dev/null; then
+            gem install licensee
+          else
+            echo "Ruby/gem not available, skipping licensee installation"
+          fi
+        fi
+        
+        # Install SPDX tools
+        if ! command -v pip3 &> /dev/null && command -v python3 &> /dev/null; then
+          echo "Installing pip..."
+          curl https://bootstrap.pypa.io/get-pip.py | python3
+        fi
+        
+        if command -v pip3 &> /dev/null; then
+          echo "Installing SPDX tools..."
+          pip3 install spdx-tools reuse || echo "Failed to install SPDX tools"
+        fi
+        
+        # Install syft for SBOM generation
+        if ! command -v syft &> /dev/null; then
+          echo "Installing syft for SBOM generation..."
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+        fi
+
+    - name: 📄 Scan Project Licenses
+      id: license-scan
+      shell: bash
+      run: |
+        echo "📄 Scanning project licenses..."
+        
+        # Initialize variables
+        FORBIDDEN_FOUND=false
+        UNKNOWN_FOUND=false
+        
+        # Create license findings file
+        echo "# License Scan Results" > license-reports/findings.md
+        echo "" >> license-reports/findings.md
+        echo "## Project License Files" >> license-reports/findings.md
+        echo "" >> license-reports/findings.md
+        
+        # Scan for license files
+        LICENSE_FILES=$(find . -maxdepth 2 -type f \( -iname "license*" -o -iname "licence*" -o -iname "copying*" \) -not -path "./.git/*")
+        
+        if [ -n "$LICENSE_FILES" ]; then
+          echo "📋 Found license files:"
+          echo "$LICENSE_FILES" | while read -r file; do
+            echo "  • $file"
+            echo "- \`$file\`" >> license-reports/findings.md
+            
+            # Try to identify license
+            if command -v licensee &> /dev/null; then
+              LICENSE_ID=$(licensee detect "$file" 2>/dev/null | grep "License:" | cut -d: -f2 | xargs || echo "Unknown")
+              echo "    License: $LICENSE_ID"
+              echo "  - License: $LICENSE_ID" >> license-reports/findings.md
+            fi
+          done
+        else
+          echo "⚠️ No license files found in project root"
+          echo "- ⚠️ No license files found" >> license-reports/findings.md
+        fi
+        
+        echo "" >> license-reports/findings.md
+        echo "## SPDX License Headers" >> license-reports/findings.md
+        echo "" >> license-reports/findings.md
+        
+        # Check for SPDX license identifiers in source files
+        SOURCE_FILES=$(find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.java" -o -name "*.cs" -o -name "*.cpp" -o -name "*.c" -o -name "*.go" -o -name "*.rs" \) -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./vendor/*" | head -50)
+        
+        SPDX_COUNT=0
+        if [ -n "$SOURCE_FILES" ]; then
+          echo "$SOURCE_FILES" | while read -r file; do
+            # Look for SPDX-License-Identifier
+            SPDX_LICENSE=$(grep -i "SPDX-License-Identifier:" "$file" 2>/dev/null | head -1 | sed 's/.*SPDX-License-Identifier: *//i' | sed 's/[[:space:]]*$//' | tr -d '\r')
+            
+            if [ -n "$SPDX_LICENSE" ]; then
+              echo "  • $file: $SPDX_LICENSE"
+              echo "- \`$file\`: $SPDX_LICENSE" >> license-reports/findings.md
+              SPDX_COUNT=$((SPDX_COUNT + 1))
+              
+              # Check against forbidden licenses
+              IFS=',' read -ra FORBIDDEN <<< "${{ inputs.forbidden-licenses }}"
+              for forbidden in "${FORBIDDEN[@]}"; do
+                if [[ "$SPDX_LICENSE" == *"$forbidden"* ]]; then
+                  echo "❌ Forbidden license found: $SPDX_LICENSE in $file"
+                  FORBIDDEN_FOUND=true
+                fi
+              done
+              
+              # Check against allowed licenses
+              IFS=',' read -ra ALLOWED <<< "${{ inputs.allowed-licenses }}"
+              LICENSE_ALLOWED=false
+              for allowed in "${ALLOWED[@]}"; do
+                if [[ "$SPDX_LICENSE" == *"$allowed"* ]]; then
+                  LICENSE_ALLOWED=true
+                  break
+                fi
+              done
+              
+              if [ "$LICENSE_ALLOWED" == "false" ]; then
+                echo "⚠️ Unknown/unverified license: $SPDX_LICENSE in $file"
+                UNKNOWN_FOUND=true
+              fi
+            fi
+          done
+        fi
+        
+        echo "📊 SPDX headers found in $SPDX_COUNT files"
+        echo "" >> license-reports/findings.md
+        echo "**SPDX Headers Found:** $SPDX_COUNT files" >> license-reports/findings.md
+        
+        echo "forbidden-found=$FORBIDDEN_FOUND" >> $GITHUB_OUTPUT
+        echo "unknown-found=$UNKNOWN_FOUND" >> $GITHUB_OUTPUT
+
+    - name: 📦 Scan Dependencies
+      id: dependency-scan
+      if: inputs.scan-dependencies == 'true'
+      shell: bash
+      run: |
+        echo "📦 Scanning dependencies for licenses..."
+        
+        echo "" >> license-reports/findings.md
+        echo "## Dependency Licenses" >> license-reports/findings.md
+        echo "" >> license-reports/findings.md
+        
+        # Scan different package manager files
+        if [ -f "package.json" ]; then
+          echo "📄 Found package.json - scanning npm dependencies"
+          echo "### NPM Dependencies" >> license-reports/findings.md
+          echo "" >> license-reports/findings.md
+          
+          # Use npm to list licenses if available
+          if command -v npm &> /dev/null && [ -f "package-lock.json" ]; then
+            npm install --package-lock-only 2>/dev/null || true
+            npx license-checker --summary 2>/dev/null | tee license-reports/npm-licenses.txt || echo "Could not scan npm licenses"
+          fi
+        fi
+        
+        if [ -f "requirements.txt" ] || [ -f "pyproject.toml" ]; then
+          echo "📄 Found Python dependencies"
+          echo "### Python Dependencies" >> license-reports/findings.md
+          echo "" >> license-reports/findings.md
+          
+          if command -v pip3 &> /dev/null; then
+            pip3 install pip-licenses 2>/dev/null || echo "Could not install pip-licenses"
+            pip-licenses --format=markdown 2>/dev/null >> license-reports/findings.md || echo "Could not scan Python licenses"
+          fi
+        fi
+        
+        if [ -f "go.mod" ]; then
+          echo "📄 Found go.mod - scanning Go dependencies"
+          echo "### Go Dependencies" >> license-reports/findings.md
+          echo "" >> license-reports/findings.md
+          
+          if command -v go &> /dev/null; then
+            go list -m all 2>/dev/null | head -20 | while read -r dep; do
+              echo "- $dep" >> license-reports/findings.md
+            done
+          fi
+        fi
+
+    - name: 🔬 FOSSA Integration
+      id: fossa-scan
+      if: inputs.fossa-api-key != ''
+      shell: bash
+      env:
+        FOSSA_API_KEY: ${{ inputs.fossa-api-key }}
+      run: |
+        echo "🔬 Running FOSSA license analysis..."
+        
+        # Install FOSSA CLI
+        curl -H 'Cache-Control: no-cache' https://raw.githubusercontent.com/fossas/fossa-cli/master/install-latest.sh | bash
+        
+        # Run FOSSA analysis
+        if command -v fossa &> /dev/null; then
+          echo "Running FOSSA scan..."
+          fossa analyze 2>&1 | tee license-reports/fossa-analysis.log || echo "FOSSA analysis failed"
+          
+          # Get FOSSA report
+          fossa report attribution --format json > license-reports/fossa-report.json 2>/dev/null || echo "Could not generate FOSSA report"
+          
+          echo "✅ FOSSA analysis complete"
+        else
+          echo "❌ FOSSA CLI installation failed"
+        fi
+
+    - name: 📋 Generate SBOM
+      id: sbom-generation
+      if: inputs.generate-sbom == 'true'
+      shell: bash
+      run: |
+        echo "📋 Generating Software Bill of Materials (SBOM)..."
+        
+        SBOM_GENERATED=false
+        
+        # Generate SBOM with syft
+        if command -v syft &> /dev/null; then
+          echo "Generating SBOM with syft..."
+          
+          # Generate SPDX format SBOM
+          syft . -o spdx-json=license-reports/sbom-spdx.json 2>/dev/null || echo "SPDX SBOM generation failed"
+          
+          # Generate CycloneDX format SBOM
+          syft . -o cyclonedx-json=license-reports/sbom-cyclonedx.json 2>/dev/null || echo "CycloneDX SBOM generation failed"
+          
+          # Generate table format for human reading
+          syft . -o table=license-reports/sbom-summary.txt 2>/dev/null || echo "Table SBOM generation failed"
+          
+          if [ -f "license-reports/sbom-spdx.json" ] || [ -f "license-reports/sbom-cyclonedx.json" ]; then
+            SBOM_GENERATED=true
+            echo "✅ SBOM generated successfully"
+          else
+            echo "❌ SBOM generation failed"
+          fi
+        else
+          echo "⚠️ syft not available for SBOM generation"
+        fi
+        
+        echo "sbom-generated=$SBOM_GENERATED" >> $GITHUB_OUTPUT
+
+    - name: ✅ Compliance Check
+      id: compliance-check
+      shell: bash
+      run: |
+        echo "✅ Performing compliance check..."
+        
+        FORBIDDEN_FOUND="${{ steps.license-scan.outputs.forbidden-found }}"
+        UNKNOWN_FOUND="${{ steps.license-scan.outputs.unknown-found }}"
+        
+        # Determine compliance status
+        COMPLIANCE_STATUS="pass"
+        if [ "$FORBIDDEN_FOUND" == "true" ]; then
+          COMPLIANCE_STATUS="fail"
+        elif [ "$UNKNOWN_FOUND" == "true" ]; then
+          COMPLIANCE_STATUS="warning"
+        fi
+        
+        # Generate summary
+        LICENSE_SUMMARY="License compliance check completed"
+        case $COMPLIANCE_STATUS in
+          "pass")
+            LICENSE_SUMMARY="✅ All licenses are compliant"
+            ;;
+          "warning")
+            LICENSE_SUMMARY="⚠️ Unknown licenses found - review required"
+            ;;
+          "fail")
+            LICENSE_SUMMARY="❌ Forbidden licenses detected"
+            ;;
+        esac
+        
+        echo "compliance-status=$COMPLIANCE_STATUS" >> $GITHUB_OUTPUT
+        echo "license-summary=$LICENSE_SUMMARY" >> $GITHUB_OUTPUT
+        
+        # Create comprehensive report
+        cat > license-reports/compliance-summary.md << EOF
+        # 📋 License Compliance Report
+        
+        **Status:** $COMPLIANCE_STATUS
+        **Summary:** $LICENSE_SUMMARY
+        
+        ## 📊 Compliance Results
+        
+        | Check | Result | Status |
+        |-------|--------|--------|
+        | Forbidden Licenses | $FORBIDDEN_FOUND | $( [ "$FORBIDDEN_FOUND" == "true" ] && echo "❌ FAIL" || echo "✅ PASS" ) |
+        | Unknown Licenses | $UNKNOWN_FOUND | $( [ "$UNKNOWN_FOUND" == "true" ] && echo "⚠️ WARNING" || echo "✅ PASS" ) |
+        | SBOM Generated | ${{ steps.sbom-generation.outputs.sbom-generated }} | $( [ "${{ steps.sbom-generation.outputs.sbom-generated }}" == "true" ] && echo "✅ SUCCESS" || echo "⏭️ SKIPPED" ) |
+        | FOSSA Analysis | ${{ inputs.fossa-api-key != '' && 'true' || 'false' }} | $( [ "${{ inputs.fossa-api-key }}" != "" ] && echo "✅ COMPLETED" || echo "⏭️ SKIPPED" ) |
+        
+        ## 🔧 Allowed Licenses
+        
+        \`\`\`
+        ${{ inputs.allowed-licenses }}
+        \`\`\`
+        
+        ## 🚫 Forbidden Licenses
+        
+        \`\`\`
+        ${{ inputs.forbidden-licenses }}
+        \`\`\`
+        
+        ## 📝 Recommendations
+        
+        EOF
+        
+        if [ "$FORBIDDEN_FOUND" == "true" ]; then
+          cat >> license-reports/compliance-summary.md << EOF
+        - **❌ Critical**: Remove or replace dependencies with forbidden licenses
+        - Review legal implications of current license usage
+        - Consider alternative dependencies with compatible licenses
+        
+        EOF
+        fi
+        
+        if [ "$UNKNOWN_FOUND" == "true" ]; then
+          cat >> license-reports/compliance-summary.md << EOF
+        - **⚠️ Warning**: Review unknown licenses for compatibility
+        - Add unknown licenses to allowed list if compliant
+        - Seek legal review for unclear license terms
+        
+        EOF
+        fi
+        
+        cat >> license-reports/compliance-summary.md << EOF
+        ## 📋 Next Steps
+        
+        1. Review detailed findings in license-reports artifacts
+        2. Address any forbidden license usage
+        3. Update project documentation with license information
+        4. Consider implementing automated license checks in CI/CD
+        EOF
+        
+        echo ""
+        echo "📋 License Compliance Summary:"
+        echo "  • Status: $COMPLIANCE_STATUS"
+        echo "  • Forbidden Found: $FORBIDDEN_FOUND"
+        echo "  • Unknown Found: $UNKNOWN_FOUND"
+        echo "  • Summary: $LICENSE_SUMMARY"
+
+    - name: 📤 Upload License Reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: license-compliance-reports
+        path: license-reports/
+        retention-days: 90
+
+    - name: 🚨 Fail on Forbidden Licenses
+      if: inputs.fail-on-forbidden == 'true' && steps.license-scan.outputs.forbidden-found == 'true'
+      shell: bash
+      run: |
+        echo "❌ License compliance check failed due to forbidden licenses"
+        echo ""
+        echo "Forbidden licenses were detected in the project."
+        echo "Review the license reports and remove or replace dependencies with forbidden licenses."
+        exit 1
+
+    - name: 🚨 Fail on Unknown Licenses
+      if: inputs.fail-on-unknown == 'true' && steps.license-scan.outputs.unknown-found == 'true'
+      shell: bash
+      run: |
+        echo "❌ License compliance check failed due to unknown licenses"
+        echo ""
+        echo "Unknown licenses were detected in the project."
+        echo "Review the license reports and verify compatibility of unknown licenses."
+        exit 1
+
+branding:
+  icon: 'file-text'
+  color: 'blue'

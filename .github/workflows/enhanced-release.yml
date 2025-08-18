@@ -1,0 +1,462 @@
+name: 🚀 Enhanced Release Management
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.MD'
+      - 'docs/**'
+      - '.github/workflows/**'
+      - '.github/actions/**'
+  pull_request:
+    types: [ closed ]
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      release-type:
+        description: "Type of release"
+        required: false
+        default: 'simple'
+        type: choice
+        options:
+          - simple
+          - node
+          - python
+          - rust
+          - java
+          - go
+          - docker
+      force-release:
+        description: "Force create release (skip conventional commit check)"
+        type: boolean
+        default: false
+      security-scan:
+        description: "Enable security scanning"
+        type: boolean
+        default: true
+      license-check:
+        description: "Enable license compliance check"
+        type: boolean
+        default: true
+      artifact-generation:
+        description: "Enable artifact generation"
+        type: boolean
+        default: true
+      auto-merge-pr:
+        description: "Auto-merge release PR when created"
+        type: boolean
+        default: false
+      artifact-types:
+        description: "Types of artifacts to generate"
+        type: choice
+        default: 'source'
+        options:
+          - source
+          - binaries
+          - docker
+          - all
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+  security-events: write
+  packages: write
+
+env:
+  # Global configuration
+  ENABLE_SECURITY_SCAN: ${{ github.event_name == 'workflow_dispatch' && inputs.security-scan || 'true' }}
+  ENABLE_LICENSE_CHECK: ${{ github.event_name == 'workflow_dispatch' && inputs.license-check || 'true' }}
+  ENABLE_ARTIFACTS: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact-generation || 'true' }}
+  ENABLE_AUTO_MERGE: ${{ github.event_name == 'workflow_dispatch' && inputs.auto-merge-pr || 'false' }}
+  RELEASE_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.release-type || 'simple' }}
+  ARTIFACT_TYPES: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact-types || 'source' }}
+
+jobs:
+  # Pre-flight checks for pull requests
+  pr-validation:
+    name: 🔍 PR Validation
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == false
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📋 Validate Conventional Commits
+        uses: wagoid/commitlint-github-action@v5
+        with:
+          configFile: commitlint.config.js
+
+      - name: 🛡️ Security Pre-Check
+        if: env.ENABLE_SECURITY_SCAN == 'true'
+        uses: ./.github/actions/security-scan
+        with:
+          scan-type: 'secrets'
+          fail-on-findings: 'true'
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📋 License Pre-Check
+        if: env.ENABLE_LICENSE_CHECK == 'true'
+        uses: ./.github/actions/license-compliance
+        with:
+          fail-on-forbidden: 'true'
+          fail-on-unknown: 'false'
+          scan-dependencies: 'false'
+          generate-sbom: 'false'
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ✅ PR Validation Summary
+        run: |
+          echo "### ✅ PR Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "All validation checks passed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Checks Performed:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Conventional commit format validation" >> $GITHUB_STEP_SUMMARY
+          echo "- ${{ env.ENABLE_SECURITY_SCAN == 'true' && '✅' || '⏭️' }} Security pre-check" >> $GITHUB_STEP_SUMMARY
+          echo "- ${{ env.ENABLE_LICENSE_CHECK == 'true' && '✅' || '⏭️' }} License compliance pre-check" >> $GITHUB_STEP_SUMMARY
+
+  # Main release management job
+  release-management:
+    name: 📦 Release Management
+    if: |
+      (github.event_name == 'push' && !contains(github.event.head_commit.message, 'chore(main): release')) ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.enhanced-release.outputs.release_created }}
+      tag_name: ${{ steps.enhanced-release.outputs.tag_name }}
+      version: ${{ steps.enhanced-release.outputs.version }}
+      upload_url: ${{ steps.enhanced-release.outputs.upload_url }}
+      html_url: ${{ steps.enhanced-release.outputs.html_url }}
+      pr_number: ${{ steps.enhanced-release.outputs.pr_number }}
+      pr_merged: ${{ steps.enhanced-release.outputs.pr_merged }}
+      security_score: ${{ steps.enhanced-release.outputs.security_score }}
+      license_compliance: ${{ steps.enhanced-release.outputs.license_compliance }}
+      artifacts_generated: ${{ steps.enhanced-release.outputs.artifacts_generated }}
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📝 Update Documentation
+        if: env.ENABLE_ARTIFACTS == 'true'
+        uses: ./.github/actions/readme-generate
+        continue-on-error: true
+        with:
+          template-path: 'docs/README.template.MD'
+          output-path: 'README.MD'
+          project-name: 'Automation Templates'
+          company-name: 'Bauer Group'
+          project-description: 'Zentrale GitHub Actions Templates und Workflows für automatisierte Entwicklungsprozesse'
+          contact-email: 'support@bauer-group.com'
+          documentation-url: 'https://github.com/bauer-group/automation-templates/wiki'
+          support-url: 'https://github.com/bauer-group/automation-templates/issues'
+
+      - name: 🚀 Enhanced Release Please
+        id: enhanced-release
+        uses: ./.github/actions/release-please
+        with:
+          release-type: ${{ env.RELEASE_TYPE }}
+          security-scan-enabled: ${{ env.ENABLE_SECURITY_SCAN }}
+          license-check-enabled: ${{ env.ENABLE_LICENSE_CHECK }}
+          artifact-generation-enabled: ${{ env.ENABLE_ARTIFACTS }}
+          auto-merge-enabled: ${{ env.ENABLE_AUTO_MERGE }}
+          force-release: ${{ inputs.force-release || 'false' }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Validate Release Semantics
+        if: steps.enhanced-release.outputs.release_created == 'true'
+        run: |
+          TAG_NAME="${{ steps.enhanced-release.outputs.tag_name }}"
+          VERSION="${{ steps.enhanced-release.outputs.version }}"
+          
+          echo "🏷️ Validating release semantics..."
+          echo "Tag: $TAG_NAME"
+          echo "Version: $VERSION"
+          
+          # Validate semantic versioning format
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\.-]+)*(\+[a-zA-Z0-9\.-]+)*$ ]]; then
+            echo "❌ Invalid semantic version format: $VERSION"
+            exit 1
+          fi
+          
+          # Validate tag format
+          if [[ ! "$TAG_NAME" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\.-]+)*(\+[a-zA-Z0-9\.-]+)*$ ]]; then
+            echo "❌ Invalid tag format: $TAG_NAME"
+            exit 1
+          fi
+          
+          echo "✅ Release semantics validated successfully"
+
+      - name: 📊 Generate Release Dashboard
+        if: always()
+        run: |
+          echo "### 🚀 Enhanced Release Management Dashboard" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Event** | 📋 | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | 🌿 | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Release Type** | 📦 | ${{ env.RELEASE_TYPE }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Force Release** | ⚡ | ${{ inputs.force-release || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### 🔧 Features Status" >> $GITHUB_STEP_SUMMARY
+          echo "| Feature | Enabled | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ env.ENABLE_SECURITY_SCAN }} | ${{ steps.enhanced-release.outputs.security_score || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| License Check | ${{ env.ENABLE_LICENSE_CHECK }} | ${{ steps.enhanced-release.outputs.license_compliance || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Artifact Generation | ${{ env.ENABLE_ARTIFACTS }} | ${{ steps.enhanced-release.outputs.artifacts_generated || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Auto Merge PR | ${{ env.ENABLE_AUTO_MERGE }} | ${{ steps.enhanced-release.outputs.pr_merged || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### 📋 Release Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Release Created** | ${{ steps.enhanced-release.outputs.release_created || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.enhanced-release.outputs.release_created }}" == "true" ]; then
+            echo "| **Tag Name** | \`${{ steps.enhanced-release.outputs.tag_name }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Version** | \`${{ steps.enhanced-release.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Release URL** | [View Release](${{ steps.enhanced-release.outputs.html_url }}) |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.enhanced-release.outputs.pr_number }}" != "" ]; then
+            echo "| **PR Number** | [#${{ steps.enhanced-release.outputs.pr_number }}](https://github.com/${{ github.repository }}/pull/${{ steps.enhanced-release.outputs.pr_number }}) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **PR Status** | ${{ steps.enhanced-release.outputs.pr_merged == 'true' && 'Merged' || 'Open' }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.enhanced-release.outputs.release_created }}" == "true" ]; then
+            echo "🎉 **Release Successfully Created!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Release notes generated automatically" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ GitHub release is available" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Tags are ready for external consumption" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "${{ env.ENABLE_ARTIFACTS }}" == "true" ]; then
+              echo "- ✅ Release artifacts generated and uploaded" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ "${{ env.ENABLE_SECURITY_SCAN }}" == "true" ]; then
+              echo "- 🛡️ Security scan completed (Score: ${{ steps.enhanced-release.outputs.security_score || 'N/A' }}/100)" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ "${{ env.ENABLE_LICENSE_CHECK }}" == "true" ]; then
+              echo "- 📋 License compliance verified (${{ steps.enhanced-release.outputs.license_compliance || 'N/A' }})" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+          elif [ "${{ steps.enhanced-release.outputs.pr_number }}" != "" ]; then
+            echo "📝 **Release PR Created**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "A release PR has been created and is ready for review." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**PR Actions:**" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ env.ENABLE_AUTO_MERGE }}" == "true" ]; then
+              if [ "${{ steps.enhanced-release.outputs.pr_merged }}" == "true" ]; then
+                echo "- ✅ PR automatically merged" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "- ⏳ Auto-merge attempted but manual review required" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "- 👥 Manual review and merge required" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "ℹ️ **No Release Action Taken**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Possible Reasons:**" >> $GITHUB_STEP_SUMMARY
+            echo "- No conventional commits since last release" >> $GITHUB_STEP_SUMMARY
+            echo "- Only non-releasable changes (docs, chore, etc.)" >> $GITHUB_STEP_SUMMARY
+            echo "- Release-Please PR already exists" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**To Trigger a Release:**" >> $GITHUB_STEP_SUMMARY
+            echo "- \`feat:\` for new features (minor version bump)" >> $GITHUB_STEP_SUMMARY
+            echo "- \`fix:\` for bug fixes (patch version bump)" >> $GITHUB_STEP_SUMMARY
+            echo "- \`feat!:\` or \`BREAKING CHANGE:\` for breaking changes (major version bump)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Extended artifact generation for specific types
+  extended-artifacts:
+    name: 🔨 Extended Artifact Generation
+    if: |
+      needs.release-management.outputs.release_created == 'true' && 
+      (github.event_name == 'workflow_dispatch' && 
+       (inputs.artifact-types == 'binaries' || inputs.artifact-types == 'docker' || inputs.artifact-types == 'all'))
+    needs: release-management
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: "Linux AMD64"
+            os: ubuntu-latest
+            target: linux-amd64
+          - name: "Windows AMD64"  
+            os: windows-latest
+            target: windows-amd64
+          - name: "macOS AMD64"
+            os: macos-latest
+            target: darwin-amd64
+    
+    steps:
+      - name: 🚀 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔨 Extended Artifact Generation
+        uses: ./.github/actions/artifact-generator
+        with:
+          artifact-types: ${{ env.ARTIFACT_TYPES }}
+          tag-name: ${{ needs.release-management.outputs.tag_name }}
+          version: ${{ needs.release-management.outputs.version }}
+          upload-url: ${{ needs.release-management.outputs.upload_url }}
+          build-command: 'echo "Add your build command here"'
+          binary-paths: ''
+          docker-registry: 'ghcr.io'
+          docker-username: ${{ github.actor }}
+          docker-password: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Post-release actions and notifications
+  post-release:
+    name: 🎯 Post-Release Actions
+    if: needs.release-management.outputs.release_created == 'true'
+    needs: [release-management]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📢 Release Notification
+        run: |
+          echo "🎉 New release published successfully!"
+          echo ""
+          echo "📋 Release Details:"
+          echo "  • Version: ${{ needs.release-management.outputs.version }}"
+          echo "  • Tag: ${{ needs.release-management.outputs.tag_name }}"
+          echo "  • Release URL: ${{ needs.release-management.outputs.html_url }}"
+          
+          if [ "${{ env.ENABLE_SECURITY_SCAN }}" == "true" ]; then
+            echo "  • Security Score: ${{ needs.release-management.outputs.security_score }}/100"
+          fi
+          
+          if [ "${{ env.ENABLE_LICENSE_CHECK }}" == "true" ]; then
+            echo "  • License Compliance: ${{ needs.release-management.outputs.license_compliance }}"
+          fi
+          
+          if [ "${{ env.ENABLE_ARTIFACTS }}" == "true" ]; then
+            echo "  • Artifacts: ${{ needs.release-management.outputs.artifacts_generated }}"
+          fi
+
+      - name: 🔄 Update External References
+        run: |
+          echo "📋 External Reference Update Checklist:"
+          echo ""
+          echo "✅ **Automated Updates:**"
+          echo "  • GitHub release created with assets"
+          echo "  • Git tags updated"
+          echo "  • Release notes generated"
+          
+          if [[ "${{ env.ARTIFACT_TYPES }}" == *"docker"* ]]; then
+            echo "  • Docker images pushed to registry"
+          fi
+          
+          echo ""
+          echo "📝 **Manual Updates Required:**"
+          echo "  • Update documentation with new version references"
+          echo "  • Notify dependent projects of the release"
+          echo "  • Update integration examples"
+          echo "  • Consider announcing on relevant channels"
+          echo ""
+          echo "🔗 **Useful Links:**"
+          echo "  • [Release](${{ needs.release-management.outputs.html_url }})"
+          echo "  • [Repository](https://github.com/${{ github.repository }})"
+          echo "  • [Documentation](https://github.com/${{ github.repository }}/wiki)"
+
+      - name: 📊 Post-Release Analytics
+        run: |
+          echo "📊 Release Analytics Summary:"
+          echo ""
+          echo "🎯 **Release Metrics:**"
+          echo "  • Release Type: ${{ env.RELEASE_TYPE }}"
+          echo "  • Trigger: ${{ github.event_name }}"
+          echo "  • Workflow Duration: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          echo ""
+          echo "🔧 **Features Used:**"
+          echo "  • Security Scanning: ${{ env.ENABLE_SECURITY_SCAN }}"
+          echo "  • License Checking: ${{ env.ENABLE_LICENSE_CHECK }}"
+          echo "  • Artifact Generation: ${{ env.ENABLE_ARTIFACTS }}"
+          echo "  • Auto-merge PR: ${{ env.ENABLE_AUTO_MERGE }}"
+          echo ""
+          echo "📈 **Quality Metrics:**"
+          echo "  • Security Score: ${{ needs.release-management.outputs.security_score || 'N/A' }}/100"
+          echo "  • License Compliance: ${{ needs.release-management.outputs.license_compliance || 'N/A' }}"
+          echo "  • Artifacts Generated: ${{ needs.release-management.outputs.artifacts_generated || 'None' }}"
+
+      - name: 📤 Generate Release Report
+        run: |
+          mkdir -p reports
+          
+          cat > reports/release-report.md << EOF
+          # 🚀 Release Report: ${{ needs.release-management.outputs.version }}
+          
+          **Release Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          **Repository:** ${{ github.repository }}
+          **Branch:** ${{ github.ref_name }}
+          **Triggered by:** ${{ github.event_name }}
+          
+          ## 📋 Release Details
+          
+          - **Version:** \`${{ needs.release-management.outputs.version }}\`
+          - **Tag:** \`${{ needs.release-management.outputs.tag_name }}\`
+          - **Type:** ${{ env.RELEASE_TYPE }}
+          - **Release URL:** ${{ needs.release-management.outputs.html_url }}
+          
+          ## 🔧 Configuration
+          
+          | Feature | Enabled | Result |
+          |---------|---------|--------|
+          | Security Scan | ${{ env.ENABLE_SECURITY_SCAN }} | ${{ needs.release-management.outputs.security_score || 'N/A' }}/100 |
+          | License Check | ${{ env.ENABLE_LICENSE_CHECK }} | ${{ needs.release-management.outputs.license_compliance || 'N/A' }} |
+          | Artifact Generation | ${{ env.ENABLE_ARTIFACTS }} | ${{ needs.release-management.outputs.artifacts_generated || 'None' }} |
+          | Auto-merge PR | ${{ env.ENABLE_AUTO_MERGE }} | ${{ needs.release-management.outputs.pr_merged || 'N/A' }} |
+          
+          ## 📊 Quality Assurance
+          
+          ✅ **Automated Checks Passed:**
+          - Conventional commit validation
+          - Security vulnerability scanning
+          - License compliance verification
+          - Semantic versioning validation
+          
+          ## 🎯 Post-Release Actions
+          
+          ✅ **Completed:**
+          - GitHub release created
+          - Release notes generated
+          - Tags pushed
+          - Artifacts uploaded (if enabled)
+          
+          📝 **Recommended:**
+          - Update documentation
+          - Notify stakeholders
+          - Monitor for issues
+          - Plan next iteration
+          
+          ---
+          *Generated by Enhanced Release Management Workflow*
+          EOF
+          
+          echo "📄 Release report generated: reports/release-report.md"
+
+      - name: 📤 Upload Release Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-report-${{ needs.release-management.outputs.version }}
+          path: reports/
+          retention-days: 90

@@ -1,0 +1,291 @@
+name: 'Security Scan'
+description: 'Comprehensive security scanning including secrets detection and vulnerability analysis'
+author: 'BAUER GROUP'
+
+inputs:
+  scan-type:
+    description: 'Type of security scan (secrets, vulnerabilities, all)'
+    required: false
+    default: 'all'
+  fail-on-findings:
+    description: 'Fail the workflow if security issues are found'
+    required: false
+    default: 'true'
+  exclude-paths:
+    description: 'Paths to exclude from scanning (comma-separated)'
+    required: false
+    default: '.git,node_modules,vendor'
+  secrets-patterns:
+    description: 'Additional custom patterns for secrets detection'
+    required: false
+    default: ''
+  token:
+    description: 'GitHub Token for API access'
+    required: true
+
+outputs:
+  secrets-found:
+    description: 'Whether secrets were found'
+    value: ${{ steps.secrets-scan.outputs.secrets-found }}
+  vulnerabilities-found:
+    description: 'Whether vulnerabilities were found'
+    value: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found }}
+  scan-results:
+    description: 'Summary of scan results'
+    value: ${{ steps.summary.outputs.scan-results }}
+  security-score:
+    description: 'Overall security score (0-100)'
+    value: ${{ steps.summary.outputs.security-score }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🔍 Setup Security Scanning
+      shell: bash
+      run: |
+        echo "🛡️ Initializing Security Scan"
+        echo "Scan Type: ${{ inputs.scan-type }}"
+        echo "Fail on Findings: ${{ inputs.fail-on-findings }}"
+        echo "Excluded Paths: ${{ inputs.exclude-paths }}"
+
+    - name: 🔐 Secrets Detection
+      id: secrets-scan
+      if: inputs.scan-type == 'all' || inputs.scan-type == 'secrets'
+      shell: bash
+      run: |
+        echo "🔍 Running secrets detection..."
+        
+        # Install gitleaks if not available
+        if ! command -v gitleaks &> /dev/null; then
+          echo "Installing gitleaks..."
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz | tar -xz
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/
+        fi
+        
+        # Create gitleaks config
+        cat > gitleaks.toml << 'EOF'
+        title = "Gitleaks Security Scan"
+        
+        [[rules]]
+        description = "AWS Access Key"
+        regex = '''AKIA[0-9A-Z]{16}'''
+        tags = ["key", "AWS"]
+        
+        [[rules]]
+        description = "AWS Secret Key" 
+        regex = '''(?i)aws(.{0,20})?(?-i)['\"][0-9a-zA-Z\/+]{40}['\"]'''
+        tags = ["key", "AWS"]
+        
+        [[rules]]
+        description = "GitHub Token"
+        regex = '''ghp_[0-9a-zA-Z]{36}'''
+        tags = ["key", "GitHub"]
+        
+        [[rules]]
+        description = "GitHub OAuth"
+        regex = '''gho_[0-9a-zA-Z]{36}'''
+        tags = ["key", "GitHub"]
+        
+        [[rules]]
+        description = "Generic API Key"
+        regex = '''(?i)(api[_-]?key|apikey)['"]*\s*[:=]\s*['"][0-9a-zA-Z\-_]{16,}['"]'''
+        tags = ["key", "API"]
+        
+        [[rules]]
+        description = "Generic Secret"
+        regex = '''(?i)(secret|password|pass|pwd)['"]*\s*[:=]\s*['"][^'"\s]{8,}['"]'''
+        tags = ["secret"]
+        
+        # Custom patterns from input
+        EOF
+        
+        # Add custom patterns if provided
+        if [ -n "${{ inputs.secrets-patterns }}" ]; then
+          echo "Adding custom patterns..."
+          IFS=',' read -ra PATTERNS <<< "${{ inputs.secrets-patterns }}"
+          for pattern in "${PATTERNS[@]}"; do
+            cat >> gitleaks.toml << EOF
+        
+        [[rules]]
+        description = "Custom Pattern"
+        regex = '''$pattern'''
+        tags = ["custom"]
+        EOF
+          done
+        fi
+        
+        # Run gitleaks scan
+        SECRETS_FOUND=false
+        if gitleaks detect --config gitleaks.toml --report-format json --report-path gitleaks-report.json --no-git; then
+          echo "✅ No secrets detected"
+        else
+          echo "❌ Secrets detected!"
+          SECRETS_FOUND=true
+          
+          # Show findings summary
+          if [ -f gitleaks-report.json ]; then
+            echo "🔍 Secrets Summary:"
+            jq -r '.[] | "  • \(.Description) at \(.File):\(.StartLine)"' gitleaks-report.json || echo "Could not parse results"
+          fi
+        fi
+        
+        echo "secrets-found=$SECRETS_FOUND" >> $GITHUB_OUTPUT
+        
+        # Store report as artifact
+        if [ -f gitleaks-report.json ]; then
+          mkdir -p security-reports
+          cp gitleaks-report.json security-reports/
+        fi
+
+    - name: 🛡️ Vulnerability Scanning
+      id: vulnerability-scan
+      if: inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities'
+      shell: bash
+      run: |
+        echo "🔍 Running vulnerability scan..."
+        
+        VULNERABILITIES_FOUND=false
+        
+        # Scan for known vulnerable files/patterns
+        echo "Checking for vulnerable patterns..."
+        
+        # Check for outdated dependencies (basic patterns)
+        VULN_PATTERNS=(
+          "jquery.*['\"]1\.[0-7]"
+          "jquery.*['\"]2\.[01]"
+          "lodash.*['\"][23]\."
+          "express.*['\"][23]\."
+          "minimist.*['\"]0\."
+          "serialize-javascript.*['\"][12]\."
+        )
+        
+        mkdir -p security-reports
+        echo "[]" > security-reports/vulnerabilities.json
+        
+        for pattern in "${VULN_PATTERNS[@]}"; do
+          if grep -r -E "$pattern" . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=vendor 2>/dev/null; then
+            echo "❌ Potentially vulnerable dependency found: $pattern"
+            VULNERABILITIES_FOUND=true
+          fi
+        done
+        
+        # Check for security-sensitive file permissions
+        echo "Checking file permissions..."
+        find . -type f \( -name "*.key" -o -name "*.pem" -o -name "*.p12" -o -name "*.pfx" \) -perm +044 2>/dev/null | while read file; do
+          echo "❌ Sensitive file with broad permissions: $file"
+          VULNERABILITIES_FOUND=true
+        done
+        
+        # Check for hardcoded IPs and sensitive URLs
+        echo "Checking for hardcoded sensitive data..."
+        if grep -r -E "([0-9]{1,3}\.){3}[0-9]{1,3}" . --exclude-dir=.git --exclude-dir=node_modules --include="*.js" --include="*.py" --include="*.java" --include="*.cs" 2>/dev/null | grep -v "0.0.0.0\|127.0.0.1\|localhost" | head -5; then
+          echo "⚠️ Hardcoded IP addresses found - review for sensitive data"
+        fi
+        
+        if [ "$VULNERABILITIES_FOUND" == "false" ]; then
+          echo "✅ No obvious vulnerabilities detected"
+        fi
+        
+        echo "vulnerabilities-found=$VULNERABILITIES_FOUND" >> $GITHUB_OUTPUT
+
+    - name: 📊 Generate Security Summary
+      id: summary
+      shell: bash
+      run: |
+        echo "📊 Generating security summary..."
+        
+        SECRETS_FOUND="${{ steps.secrets-scan.outputs.secrets-found || 'false' }}"
+        VULNS_FOUND="${{ steps.vulnerability-scan.outputs.vulnerabilities-found || 'false' }}"
+        
+        # Calculate security score
+        SCORE=100
+        if [ "$SECRETS_FOUND" == "true" ]; then
+          SCORE=$((SCORE - 50))
+        fi
+        if [ "$VULNS_FOUND" == "true" ]; then
+          SCORE=$((SCORE - 30))
+        fi
+        
+        # Generate summary
+        SUMMARY="Security Scan Complete"
+        if [ "$SECRETS_FOUND" == "true" ] || [ "$VULNS_FOUND" == "true" ]; then
+          SUMMARY="Security Issues Found"
+        fi
+        
+        echo "security-score=$SCORE" >> $GITHUB_OUTPUT
+        echo "scan-results=$SUMMARY" >> $GITHUB_OUTPUT
+        
+        # Create summary report
+        cat > security-reports/summary.md << EOF
+        # 🛡️ Security Scan Summary
+        
+        **Overall Score:** $SCORE/100
+        
+        ## 🔍 Scan Results
+        
+        | Check | Status | Result |
+        |-------|--------|--------|
+        | Secrets Detection | ${{ inputs.scan-type == 'all' || inputs.scan-type == 'secrets' && '✅ Completed' || '⏭️ Skipped' }} | $SECRETS_FOUND |
+        | Vulnerability Scan | ${{ inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities' && '✅ Completed' || '⏭️ Skipped' }} | $VULNS_FOUND |
+        
+        ## 📋 Recommendations
+        
+        EOF
+        
+        if [ "$SECRETS_FOUND" == "true" ]; then
+          cat >> security-reports/summary.md << EOF
+        - **🔐 Secrets Found**: Review and remove any hardcoded secrets
+        - Consider using environment variables or secret management systems
+        - Rotate any exposed credentials immediately
+        
+        EOF
+        fi
+        
+        if [ "$VULNS_FOUND" == "true" ]; then
+          cat >> security-reports/summary.md << EOF
+        - **🛡️ Vulnerabilities Found**: Update dependencies to latest secure versions
+        - Review file permissions for sensitive files
+        - Consider implementing additional security controls
+        
+        EOF
+        fi
+        
+        cat >> security-reports/summary.md << EOF
+        ## 🔧 Next Steps
+        
+        1. Review detailed reports in the security-reports artifacts
+        2. Address any critical findings before release
+        3. Consider implementing automated security checks in CI/CD
+        4. Regularly update dependencies and security tools
+        EOF
+        
+        echo ""
+        echo "🛡️ Security Scan Summary:"
+        echo "  • Overall Score: $SCORE/100"
+        echo "  • Secrets Found: $SECRETS_FOUND"
+        echo "  • Vulnerabilities Found: $VULNS_FOUND"
+        echo "  • Status: $SUMMARY"
+
+    - name: 📤 Upload Security Reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-scan-reports
+        path: security-reports/
+        retention-days: 30
+
+    - name: 🚨 Fail on Security Issues
+      if: inputs.fail-on-findings == 'true' && (steps.secrets-scan.outputs.secrets-found == 'true' || steps.vulnerability-scan.outputs.vulnerabilities-found == 'true')
+      shell: bash
+      run: |
+        echo "❌ Security scan failed due to findings"
+        echo "Secrets found: ${{ steps.secrets-scan.outputs.secrets-found }}"
+        echo "Vulnerabilities found: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found }}"
+        echo ""
+        echo "Review the security reports and address the issues before proceeding."
+        exit 1
+
+branding:
+  icon: 'shield'
+  color: 'red'

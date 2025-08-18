@@ -1,0 +1,542 @@
+name: 'Artifact Generator'
+description: 'Generate release artifacts including source archives, binaries, and Docker images'
+author: 'BAUER GROUP'
+
+inputs:
+  artifact-types:
+    description: 'Types of artifacts to generate (source,binaries,docker,all)'
+    required: false
+    default: 'source'
+  tag-name:
+    description: 'Release tag name'
+    required: true
+  version:
+    description: 'Release version'
+    required: true
+  upload-url:
+    description: 'GitHub release upload URL'
+    required: false
+    default: ''
+  source-formats:
+    description: 'Source archive formats (zip,tar.gz,tar.xz)'
+    required: false
+    default: 'zip,tar.gz'
+  exclude-paths:
+    description: 'Paths to exclude from source archives (comma-separated)'
+    required: false
+    default: '.git,.github/workflows,node_modules,vendor,target,dist,build'
+  docker-registry:
+    description: 'Docker registry URL'
+    required: false
+    default: 'ghcr.io'
+  docker-username:
+    description: 'Docker registry username'
+    required: false
+    default: ''
+  docker-password:
+    description: 'Docker registry password/token'
+    required: false
+    default: ''
+  build-command:
+    description: 'Command to build binaries'
+    required: false
+    default: ''
+  binary-paths:
+    description: 'Paths to compiled binaries (comma-separated)'
+    required: false
+    default: ''
+  checksum-algorithm:
+    description: 'Checksum algorithm (sha256,sha512,md5)'
+    required: false
+    default: 'sha256'
+  token:
+    description: 'GitHub Token'
+    required: true
+
+outputs:
+  artifacts-generated:
+    description: 'List of generated artifacts'
+    value: ${{ steps.summary.outputs.artifacts-generated }}
+  source-archives:
+    description: 'Generated source archive files'
+    value: ${{ steps.source-archives.outputs.source-archives }}
+  binary-archives:
+    description: 'Generated binary archive files'
+    value: ${{ steps.binary-archives.outputs.binary-archives }}
+  docker-images:
+    description: 'Generated Docker images'
+    value: ${{ steps.docker-build.outputs.docker-images }}
+  checksums-file:
+    description: 'Checksums file path'
+    value: ${{ steps.checksums.outputs.checksums-file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 📦 Setup Artifact Generation
+      shell: bash
+      run: |
+        echo "📦 Initializing Artifact Generation"
+        echo "Artifact Types: ${{ inputs.artifact-types }}"
+        echo "Tag Name: ${{ inputs.tag-name }}"
+        echo "Version: ${{ inputs.version }}"
+        echo "Source Formats: ${{ inputs.source-formats }}"
+        echo "Exclude Paths: ${{ inputs.exclude-paths }}"
+        
+        mkdir -p artifacts
+        mkdir -p checksums
+
+    - name: 🗂️ Generate Source Archives
+      id: source-archives
+      if: contains(inputs.artifact-types, 'source') || contains(inputs.artifact-types, 'all')
+      shell: bash
+      run: |
+        echo "🗂️ Generating source archives..."
+        
+        # Prepare exclude patterns for tar and zip
+        EXCLUDE_PATTERNS=""
+        IFS=',' read -ra EXCLUDES <<< "${{ inputs.exclude-paths }}"
+        for exclude in "${EXCLUDES[@]}"; do
+          EXCLUDE_PATTERNS="$EXCLUDE_PATTERNS --exclude=$exclude"
+        done
+        
+        # Get project name from repository
+        PROJECT_NAME=$(basename "$GITHUB_REPOSITORY" 2>/dev/null || echo "project")
+        VERSION="${{ inputs.version }}"
+        
+        # Generate different format archives
+        GENERATED_ARCHIVES=""
+        
+        IFS=',' read -ra FORMATS <<< "${{ inputs.source-formats }}"
+        for format in "${FORMATS[@]}"; do
+          case $format in
+            "zip")
+              echo "Creating ZIP archive..."
+              ARCHIVE_NAME="${PROJECT_NAME}-${VERSION}-source.zip"
+              
+              # Create temporary directory structure
+              TEMP_DIR="temp-${PROJECT_NAME}-${VERSION}"
+              mkdir -p "$TEMP_DIR"
+              
+              # Copy files excluding specified paths
+              rsync -av --exclude='.git' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g' | sed 's/^/--exclude=/') . "$TEMP_DIR/" || cp -r . "$TEMP_DIR/"
+              
+              # Create zip
+              (cd "$TEMP_DIR/.." && zip -r "artifacts/$ARCHIVE_NAME" "$TEMP_DIR")
+              rm -rf "$TEMP_DIR"
+              
+              GENERATED_ARCHIVES="$GENERATED_ARCHIVES,$ARCHIVE_NAME"
+              echo "✅ Created: $ARCHIVE_NAME"
+              ;;
+              
+            "tar.gz")
+              echo "Creating TAR.GZ archive..."
+              ARCHIVE_NAME="${PROJECT_NAME}-${VERSION}-source.tar.gz"
+              tar $EXCLUDE_PATTERNS -czf "artifacts/$ARCHIVE_NAME" . --transform "s,^,$PROJECT_NAME-$VERSION/," 2>/dev/null || {
+                # Fallback method
+                TEMP_DIR="temp-${PROJECT_NAME}-${VERSION}"
+                mkdir -p "$TEMP_DIR"
+                rsync -av --exclude='.git' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g' | sed 's/^/--exclude=/') . "$TEMP_DIR/"
+                tar -czf "artifacts/$ARCHIVE_NAME" "$TEMP_DIR"
+                rm -rf "$TEMP_DIR"
+              }
+              GENERATED_ARCHIVES="$GENERATED_ARCHIVES,$ARCHIVE_NAME"
+              echo "✅ Created: $ARCHIVE_NAME"
+              ;;
+              
+            "tar.xz")
+              echo "Creating TAR.XZ archive..."
+              ARCHIVE_NAME="${PROJECT_NAME}-${VERSION}-source.tar.xz"
+              tar $EXCLUDE_PATTERNS -cJf "artifacts/$ARCHIVE_NAME" . --transform "s,^,$PROJECT_NAME-$VERSION/," 2>/dev/null || {
+                # Fallback method
+                TEMP_DIR="temp-${PROJECT_NAME}-${VERSION}"
+                mkdir -p "$TEMP_DIR"
+                rsync -av --exclude='.git' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g' | sed 's/^/--exclude=/') . "$TEMP_DIR/"
+                tar -cJf "artifacts/$ARCHIVE_NAME" "$TEMP_DIR"
+                rm -rf "$TEMP_DIR"
+              }
+              GENERATED_ARCHIVES="$GENERATED_ARCHIVES,$ARCHIVE_NAME"
+              echo "✅ Created: $ARCHIVE_NAME"
+              ;;
+          esac
+        done
+        
+        # Remove leading comma
+        GENERATED_ARCHIVES="${GENERATED_ARCHIVES#,}"
+        echo "source-archives=$GENERATED_ARCHIVES" >> $GITHUB_OUTPUT
+        echo "📦 Source archives: $GENERATED_ARCHIVES"
+
+    - name: 🔨 Build Binaries
+      id: build-binaries
+      if: (contains(inputs.artifact-types, 'binaries') || contains(inputs.artifact-types, 'all')) && inputs.build-command != ''
+      shell: bash
+      run: |
+        echo "🔨 Building binaries..."
+        
+        # Execute build command
+        BUILD_CMD="${{ inputs.build-command }}"
+        echo "Executing: $BUILD_CMD"
+        
+        if eval "$BUILD_CMD"; then
+          echo "✅ Build completed successfully"
+          echo "build-success=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Build failed"
+          echo "build-success=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+
+    - name: 📦 Package Binary Archives
+      id: binary-archives
+      if: (contains(inputs.artifact-types, 'binaries') || contains(inputs.artifact-types, 'all')) && inputs.binary-paths != ''
+      shell: bash
+      run: |
+        echo "📦 Packaging binary archives..."
+        
+        PROJECT_NAME=$(basename "$GITHUB_REPOSITORY" 2>/dev/null || echo "project")
+        VERSION="${{ inputs.version }}"
+        
+        GENERATED_BINARIES=""
+        
+        # Package binaries for different platforms
+        IFS=',' read -ra BINARY_PATHS <<< "${{ inputs.binary-paths }}"
+        for binary_path in "${BINARY_PATHS[@]}"; do
+          if [ -f "$binary_path" ] || [ -d "$binary_path" ]; then
+            echo "Packaging: $binary_path"
+            
+            # Determine platform/arch from path or binary
+            PLATFORM="unknown"
+            if [[ "$binary_path" == *"linux"* ]]; then
+              PLATFORM="linux"
+            elif [[ "$binary_path" == *"darwin"* ]] || [[ "$binary_path" == *"macos"* ]]; then
+              PLATFORM="darwin"
+            elif [[ "$binary_path" == *"windows"* ]] || [[ "$binary_path" == *".exe"* ]]; then
+              PLATFORM="windows"
+            fi
+            
+            ARCH="unknown"
+            if [[ "$binary_path" == *"amd64"* ]] || [[ "$binary_path" == *"x86_64"* ]]; then
+              ARCH="amd64"
+            elif [[ "$binary_path" == *"arm64"* ]] || [[ "$binary_path" == *"aarch64"* ]]; then
+              ARCH="arm64"
+            elif [[ "$binary_path" == *"arm"* ]]; then
+              ARCH="arm"
+            fi
+            
+            # Create archive name
+            if [ "$PLATFORM" != "unknown" ] && [ "$ARCH" != "unknown" ]; then
+              ARCHIVE_NAME="${PROJECT_NAME}-${VERSION}-${PLATFORM}-${ARCH}"
+            else
+              ARCHIVE_NAME="${PROJECT_NAME}-${VERSION}-$(basename "$binary_path" | sed 's/\.[^.]*$//')"
+            fi
+            
+            # Create archive
+            if [ -f "$binary_path" ]; then
+              # Single binary file
+              if [[ "$PLATFORM" == "windows" ]]; then
+                zip "artifacts/${ARCHIVE_NAME}.zip" "$binary_path"
+                GENERATED_BINARIES="$GENERATED_BINARIES,${ARCHIVE_NAME}.zip"
+              else
+                tar -czf "artifacts/${ARCHIVE_NAME}.tar.gz" "$binary_path"
+                GENERATED_BINARIES="$GENERATED_BINARIES,${ARCHIVE_NAME}.tar.gz"
+              fi
+            else
+              # Directory with binaries
+              if [[ "$PLATFORM" == "windows" ]]; then
+                (cd "$binary_path" && zip -r "../artifacts/${ARCHIVE_NAME}.zip" .)
+                GENERATED_BINARIES="$GENERATED_BINARIES,${ARCHIVE_NAME}.zip"
+              else
+                tar -czf "artifacts/${ARCHIVE_NAME}.tar.gz" -C "$binary_path" .
+                GENERATED_BINARIES="$GENERATED_BINARIES,${ARCHIVE_NAME}.tar.gz"
+              fi
+            fi
+            
+            echo "✅ Created: ${ARCHIVE_NAME}"
+          else
+            echo "⚠️ Binary path not found: $binary_path"
+          fi
+        done
+        
+        # Remove leading comma
+        GENERATED_BINARIES="${GENERATED_BINARIES#,}"
+        echo "binary-archives=$GENERATED_BINARIES" >> $GITHUB_OUTPUT
+        echo "📦 Binary archives: $GENERATED_BINARIES"
+
+    - name: 🐳 Build Docker Images
+      id: docker-build
+      if: (contains(inputs.artifact-types, 'docker') || contains(inputs.artifact-types, 'all')) && inputs.docker-username != ''
+      shell: bash
+      run: |
+        echo "🐳 Building Docker images..."
+        
+        if ! command -v docker &> /dev/null; then
+          echo "❌ Docker not available"
+          echo "docker-images=" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        PROJECT_NAME=$(basename "$GITHUB_REPOSITORY" 2>/dev/null || echo "project")
+        VERSION="${{ inputs.version }}"
+        REGISTRY="${{ inputs.docker-registry }}"
+        USERNAME="${{ inputs.docker-username }}"
+        
+        # Login to registry
+        if [ -n "${{ inputs.docker-password }}" ]; then
+          echo "Logging into $REGISTRY..."
+          echo "${{ inputs.docker-password }}" | docker login "$REGISTRY" -u "$USERNAME" --password-stdin
+        fi
+        
+        DOCKER_IMAGES=""
+        
+        # Look for Dockerfile(s)
+        DOCKERFILES=$(find . -name "Dockerfile*" -type f | head -5)
+        
+        if [ -z "$DOCKERFILES" ]; then
+          echo "⚠️ No Dockerfile found"
+          echo "docker-images=" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        echo "$DOCKERFILES" | while read -r dockerfile; do
+          echo "Building from: $dockerfile"
+          
+          # Determine image name
+          if [[ "$dockerfile" == "./Dockerfile" ]]; then
+            IMAGE_NAME="$REGISTRY/$USERNAME/$PROJECT_NAME"
+          else
+            VARIANT=$(basename "$dockerfile" | sed 's/Dockerfile//' | sed 's/^.//')
+            IMAGE_NAME="$REGISTRY/$USERNAME/$PROJECT_NAME-$VARIANT"
+          fi
+          
+          # Build image
+          BUILD_CONTEXT=$(dirname "$dockerfile")
+          if docker build -f "$dockerfile" -t "$IMAGE_NAME:$VERSION" -t "$IMAGE_NAME:latest" "$BUILD_CONTEXT"; then
+            echo "✅ Built: $IMAGE_NAME:$VERSION"
+            
+            # Push image
+            if [ -n "${{ inputs.docker-password }}" ]; then
+              echo "Pushing $IMAGE_NAME:$VERSION..."
+              docker push "$IMAGE_NAME:$VERSION"
+              docker push "$IMAGE_NAME:latest"
+              echo "✅ Pushed: $IMAGE_NAME:$VERSION"
+            fi
+            
+            DOCKER_IMAGES="$DOCKER_IMAGES,$IMAGE_NAME:$VERSION"
+          else
+            echo "❌ Failed to build: $IMAGE_NAME"
+          fi
+        done
+        
+        # Remove leading comma
+        DOCKER_IMAGES="${DOCKER_IMAGES#,}"
+        echo "docker-images=$DOCKER_IMAGES" >> $GITHUB_OUTPUT
+        echo "🐳 Docker images: $DOCKER_IMAGES"
+
+    - name: 🔐 Generate Checksums
+      id: checksums
+      shell: bash
+      run: |
+        echo "🔐 Generating checksums..."
+        
+        ALGORITHM="${{ inputs.checksum-algorithm }}"
+        CHECKSUMS_FILE="checksums/checksums-$ALGORITHM.txt"
+        
+        # Generate checksums for all artifacts
+        if [ -d "artifacts" ] && [ "$(ls -A artifacts)" ]; then
+          echo "Generating $ALGORITHM checksums..."
+          
+          case $ALGORITHM in
+            "sha256")
+              (cd artifacts && sha256sum * > "../$CHECKSUMS_FILE")
+              ;;
+            "sha512")
+              (cd artifacts && sha512sum * > "../$CHECKSUMS_FILE")
+              ;;
+            "md5")
+              (cd artifacts && md5sum * > "../$CHECKSUMS_FILE")
+              ;;
+            *)
+              echo "⚠️ Unknown checksum algorithm: $ALGORITHM, defaulting to sha256"
+              (cd artifacts && sha256sum * > "../$CHECKSUMS_FILE")
+              ;;
+          esac
+          
+          echo "✅ Checksums generated: $CHECKSUMS_FILE"
+          echo "📋 Checksum contents:"
+          cat "$CHECKSUMS_FILE"
+          
+          # Copy checksums to artifacts directory
+          cp "$CHECKSUMS_FILE" "artifacts/"
+        else
+          echo "⚠️ No artifacts found for checksum generation"
+          touch "$CHECKSUMS_FILE"
+        fi
+        
+        echo "checksums-file=$CHECKSUMS_FILE" >> $GITHUB_OUTPUT
+
+    - name: 📤 Upload to GitHub Release
+      id: upload-release
+      if: inputs.upload-url != ''
+      shell: bash
+      run: |
+        echo "📤 Uploading artifacts to GitHub release..."
+        
+        UPLOAD_URL="${{ inputs.upload-url }}"
+        
+        if [ -d "artifacts" ] && [ "$(ls -A artifacts)" ]; then
+          for artifact in artifacts/*; do
+            if [ -f "$artifact" ]; then
+              echo "Uploading: $(basename "$artifact")"
+              
+              # Upload using GitHub API
+              curl -L \
+                -X POST \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer ${{ inputs.token }}" \
+                -H "Content-Type: application/octet-stream" \
+                "${UPLOAD_URL}?name=$(basename "$artifact")" \
+                --data-binary "@$artifact" \
+                --silent --show-error || echo "Failed to upload $(basename "$artifact")"
+            fi
+          done
+          echo "✅ Upload completed"
+        else
+          echo "⚠️ No artifacts to upload"
+        fi
+
+    - name: 📊 Generate Artifact Summary
+      id: summary
+      shell: bash
+      run: |
+        echo "📊 Generating artifact summary..."
+        
+        SOURCE_ARCHIVES="${{ steps.source-archives.outputs.source-archives }}"
+        BINARY_ARCHIVES="${{ steps.binary-archives.outputs.binary-archives }}"
+        DOCKER_IMAGES="${{ steps.docker-build.outputs.docker-images }}"
+        
+        # Combine all artifacts
+        ALL_ARTIFACTS=""
+        [ -n "$SOURCE_ARCHIVES" ] && ALL_ARTIFACTS="$ALL_ARTIFACTS,$SOURCE_ARCHIVES"
+        [ -n "$BINARY_ARCHIVES" ] && ALL_ARTIFACTS="$ALL_ARTIFACTS,$BINARY_ARCHIVES"
+        [ -n "$DOCKER_IMAGES" ] && ALL_ARTIFACTS="$ALL_ARTIFACTS,$DOCKER_IMAGES"
+        
+        # Remove leading comma
+        ALL_ARTIFACTS="${ALL_ARTIFACTS#,}"
+        
+        echo "artifacts-generated=$ALL_ARTIFACTS" >> $GITHUB_OUTPUT
+        
+        # Create detailed summary
+        cat > artifacts/artifact-summary.md << EOF
+        # 📦 Release Artifacts Summary
+        
+        **Release:** ${{ inputs.tag-name }} (${{ inputs.version }})
+        **Generated:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        
+        ## 📋 Generated Artifacts
+        
+        ### 🗂️ Source Archives
+        
+        EOF
+        
+        if [ -n "$SOURCE_ARCHIVES" ]; then
+          IFS=',' read -ra SOURCES <<< "$SOURCE_ARCHIVES"
+          for source in "${SOURCES[@]}"; do
+            SIZE=$(du -h "artifacts/$source" 2>/dev/null | cut -f1 || echo "unknown")
+            echo "- \`$source\` ($SIZE)" >> artifacts/artifact-summary.md
+          done
+        else
+          echo "- None generated" >> artifacts/artifact-summary.md
+        fi
+        
+        cat >> artifacts/artifact-summary.md << EOF
+        
+        ### 🔨 Binary Archives
+        
+        EOF
+        
+        if [ -n "$BINARY_ARCHIVES" ]; then
+          IFS=',' read -ra BINARIES <<< "$BINARY_ARCHIVES"
+          for binary in "${BINARIES[@]}"; do
+            SIZE=$(du -h "artifacts/$binary" 2>/dev/null | cut -f1 || echo "unknown")
+            echo "- \`$binary\` ($SIZE)" >> artifacts/artifact-summary.md
+          done
+        else
+          echo "- None generated" >> artifacts/artifact-summary.md
+        fi
+        
+        cat >> artifacts/artifact-summary.md << EOF
+        
+        ### 🐳 Docker Images
+        
+        EOF
+        
+        if [ -n "$DOCKER_IMAGES" ]; then
+          IFS=',' read -ra IMAGES <<< "$DOCKER_IMAGES"
+          for image in "${IMAGES[@]}"; do
+            echo "- \`$image\`" >> artifacts/artifact-summary.md
+          done
+        else
+          echo "- None generated" >> artifacts/artifact-summary.md
+        fi
+        
+        cat >> artifacts/artifact-summary.md << EOF
+        
+        ## 🔐 Checksums
+        
+        Checksums generated using: **${{ inputs.checksum-algorithm }}**
+        
+        \`\`\`
+        EOF
+        
+        if [ -f "${{ steps.checksums.outputs.checksums-file }}" ]; then
+          cat "${{ steps.checksums.outputs.checksums-file }}" >> artifacts/artifact-summary.md
+        fi
+        
+        cat >> artifacts/artifact-summary.md << EOF
+        \`\`\`
+        
+        ## 📝 Usage Instructions
+        
+        ### Download Source Code
+        
+        \`\`\`bash
+        # Download and extract source
+        wget https://github.com/$GITHUB_REPOSITORY/releases/download/${{ inputs.tag-name }}/[source-archive]
+        \`\`\`
+        
+        ### Docker Usage
+        
+        \`\`\`bash
+        # Pull and run Docker image
+        docker pull [docker-image]
+        docker run [docker-image]
+        \`\`\`
+        
+        ### Verify Checksums
+        
+        \`\`\`bash
+        # Verify file integrity
+        ${{ inputs.checksum-algorithm }}sum -c checksums-${{ inputs.checksum-algorithm }}.txt
+        \`\`\`
+        EOF
+        
+        echo ""
+        echo "📦 Artifact Generation Summary:"
+        echo "  • Source Archives: ${SOURCE_ARCHIVES:-none}"
+        echo "  • Binary Archives: ${BINARY_ARCHIVES:-none}"
+        echo "  • Docker Images: ${DOCKER_IMAGES:-none}"
+        echo "  • Total Artifacts: $(echo "$ALL_ARTIFACTS" | tr ',' '\n' | wc -l)"
+
+    - name: 📤 Upload Artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-artifacts
+        path: |
+          artifacts/
+          checksums/
+        retention-days: 90
+
+branding:
+  icon: 'package'
+  color: 'green'
