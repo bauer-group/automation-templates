@@ -137,7 +137,7 @@ jobs:
       - name: 📦 Run Release Please
         id: release
         if: steps.check-release.outputs.eligible == 'true' || inputs.force-release
-        uses: google-github-actions/release-please-action@v4
+        uses: googleapis/release-please-action@v4
         with:
           config-file: .github/config/release-please-config.json
           manifest-file: .github/config/.release-please-manifest.json
