@@ -4,13 +4,13 @@ on:
   push:
     branches: [ main ]
     paths: 
-      - 'docs/README.template.md'
+      - 'docs/README.template.MD'
       - 'scripts/generate_readme.py'
       - '.github/workflows/readme.yml'
   pull_request:
     branches: [ main ]
     paths:
-      - 'docs/README.template.md'
+      - 'docs/README.template.MD'
       - 'scripts/generate_readme.py'
   workflow_dispatch:
 
@@ -30,8 +30,8 @@ jobs:
       - name: Generate README
         uses: ./.github/actions/readme-generate
         with:
-          template-path: 'docs/README.template.md'
-          output-path: 'README.md'
+          template-path: 'docs/README.template.MD'
+          output-path: 'README.MD'
           project-name: 'Automation Templates'
           company-name: 'Bauer Group'
           project-description: 'Zentrale GitHub Actions Templates und Workflows für automatisierte Entwicklungsprozesse'

@@ -1,16 +1,16 @@
 name: 'README Generator'
 description: 'Generiert README aus Template mit erweiterten Platzhaltern'
-author: 'Bauer Group'
+author: 'BAUER GROUP'
 
 inputs:
   template-path:
     description: 'Pfad zum README Template'
     required: false
-    default: 'docs/README.template.md'
+    default: 'docs/README.template.MD'
   output-path:
     description: 'Pfad für generierte README'
     required: false
-    default: 'README.md'
+    default: 'README.MD'
   project-name:
     description: 'Name des Projekts'
     required: false
@@ -66,8 +66,8 @@ runs:
         from datetime import datetime
         
         def main():
-            template_path = os.getenv('TEMPLATE_PATH', 'docs/README.template.md')
-            output_path = os.getenv('OUTPUT_PATH', 'README.md')
+            template_path = os.getenv('TEMPLATE_PATH', 'docs/README.template.MD')
+            output_path = os.getenv('OUTPUT_PATH', 'README.MD')
             
             if not os.path.exists(template_path):
                 print(f"Template {template_path} not found")
@@ -138,7 +138,7 @@ runs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add ${{ inputs.output-path }}
-        git commit -m "docs: update README.md [skip ci]" || echo "No changes to commit"
+        git commit -m "docs: update README.MD [skip ci]" || echo "No changes to commit"
 
 branding:
   icon: 'file-text'

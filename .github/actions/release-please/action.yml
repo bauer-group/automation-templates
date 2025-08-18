@@ -1,6 +1,6 @@
 name: 'Release Please'
-description: 'Automatisches Release-Management mit Release-Please'
-author: 'Bauer Group'
+description: 'Automatisches Release-Management mit Release-Please und erweiterten Features'
+author: 'BAUER GROUP'
 
 inputs:
   release-type:
@@ -19,6 +19,18 @@ inputs:
     description: 'Bump patch for minor pre-major'
     required: false
     default: 'true'
+  include-component-in-tag:
+    description: 'Include component in tag'
+    required: false
+    default: 'false'
+  draft:
+    description: 'Create draft release'
+    required: false
+    default: 'false'
+  prerelease:
+    description: 'Mark as prerelease'
+    required: false
+    default: 'false'
   token:
     description: 'GitHub Token'
     required: true
@@ -33,27 +45,103 @@ outputs:
   version:
     description: 'The version of the release'
     value: ${{ steps.release.outputs.version }}
+  upload_url:
+    description: 'Upload URL for release assets'
+    value: ${{ steps.release.outputs.upload_url }}
+  html_url:
+    description: 'HTML URL of the release'
+    value: ${{ steps.release.outputs.html_url }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Release Please
+    - name: 🏷️ Get Previous Release Info
+      id: previous-release
+      shell: bash
+      run: |
+        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        if [ -n "$LAST_TAG" ]; then
+          echo "last-tag=$LAST_TAG" >> $GITHUB_OUTPUT
+          echo "Previous release: $LAST_TAG"
+        else
+          echo "last-tag=" >> $GITHUB_OUTPUT
+          echo "No previous release found"
+        fi
+
+    - name: 📦 Release Please
       id: release
       uses: google-github-actions/release-please-action@v4
       with:
-        release-type: ${{ inputs.release-type }}
-        package-name: ${{ inputs.package-name }}
-        bump-minor-pre-major: ${{ inputs.bump-minor-pre-major }}
-        bump-patch-for-minor-pre-major: ${{ inputs.bump-patch-for-minor-pre-major }}
+        config-file: .github/config/release-please-config.json
+        manifest-file: .github/config/.release-please-manifest.json
         token: ${{ inputs.token }}
 
-    - name: Show Release Info
-      if: steps.release.outputs.release_created
+    - name: 🎉 Release Success Notification
+      if: steps.release.outputs.release_created == 'true'
       shell: bash
       run: |
-        echo "🎉 Release created!"
-        echo "Tag: ${{ steps.release.outputs.tag_name }}"
-        echo "Version: ${{ steps.release.outputs.version }}"
+        echo "🎉 Release created successfully!"
+        echo "📋 Release Details:"
+        echo "   • Tag: ${{ steps.release.outputs.tag_name }}"
+        echo "   • Version: ${{ steps.release.outputs.version }}"
+        echo "   • Type: ${{ inputs.release-type }}"
+        echo "   • Package: ${{ inputs.package-name }}"
+        
+        if [ "${{ inputs.draft }}" == "true" ]; then
+          echo "   • Status: Draft Release"
+        elif [ "${{ inputs.prerelease }}" == "true" ]; then
+          echo "   • Status: Pre-release"
+        else
+          echo "   • Status: Full Release"
+        fi
+        
+        echo ""
+        echo "🔗 Release URL: ${{ steps.release.outputs.html_url }}"
+
+    - name: ℹ️ No Release Info
+      if: steps.release.outputs.release_created != 'true'
+      shell: bash
+      run: |
+        echo "ℹ️ No new release created"
+        echo "📋 Possible reasons:"
+        echo "   • No conventional commits since last release"
+        echo "   • Only non-releasable changes (docs, chore, etc.)"
+        echo "   • Release-Please PR already exists"
+        echo ""
+        echo "💡 To trigger a release, ensure commits follow conventional format:"
+        echo "   • feat: for new features"
+        echo "   • fix: for bug fixes"
+        echo "   • feat!: for breaking changes"
+
+    - name: 📊 Generate Release Metrics
+      if: steps.release.outputs.release_created == 'true'
+      shell: bash
+      run: |
+        LAST_TAG="${{ steps.previous-release.outputs.last-tag }}"
+        CURRENT_TAG="${{ steps.release.outputs.tag_name }}"
+        
+        if [ -n "$LAST_TAG" ] && [ "$LAST_TAG" != "$CURRENT_TAG" ]; then
+          echo "📈 Release Metrics ($LAST_TAG → $CURRENT_TAG):"
+          
+          # Count commits
+          COMMIT_COUNT=$(git rev-list --count $LAST_TAG..$CURRENT_TAG 2>/dev/null || echo "0")
+          echo "   • Commits: $COMMIT_COUNT"
+          
+          # Count contributors
+          CONTRIBUTOR_COUNT=$(git shortlog -sn $LAST_TAG..$CURRENT_TAG | wc -l 2>/dev/null || echo "0")
+          echo "   • Contributors: $CONTRIBUTOR_COUNT"
+          
+          # Categorize commits
+          FEAT_COUNT=$(git log $LAST_TAG..$CURRENT_TAG --oneline --grep="^feat" | wc -l 2>/dev/null || echo "0")
+          FIX_COUNT=$(git log $LAST_TAG..$CURRENT_TAG --oneline --grep="^fix" | wc -l 2>/dev/null || echo "0")
+          BREAKING_COUNT=$(git log $LAST_TAG..$CURRENT_TAG --oneline --grep="!" | wc -l 2>/dev/null || echo "0")
+          
+          echo "   • Features: $FEAT_COUNT"
+          echo "   • Bug Fixes: $FIX_COUNT"
+          echo "   • Breaking Changes: $BREAKING_COUNT"
+        else
+          echo "📈 First release - no comparison available"
+        fi
 
 branding:
   icon: 'package'

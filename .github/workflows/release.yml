@@ -1,14 +1,31 @@
-name: 🚀 Release
+name: 🚀 Release Management
 
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '**.MD'
+      - 'docs/**'
+      - '.github/**'
   pull_request:
     types: [ closed ]
+    branches: [ main ]
   workflow_dispatch:
     inputs:
-      direct-release:
-        description: "Create direct release without PR"
+      release-type:
+        description: "Type of release"
+        required: false
+        default: 'simple'
+        type: choice
+        options:
+          - simple
+          - node
+          - python
+          - rust
+          - java
+          - go
+      force-release:
+        description: "Force create release (skip conventional commit check)"
         type: boolean
         default: false
 
@@ -16,14 +33,13 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  actions: read
 
 jobs:
-  release:
-    name: Release Management
-    if: |
-      (github.event_name == 'push' && !contains(github.event.head_commit.message, 'chore(main): release')) ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
-      github.event_name == 'workflow_dispatch'
+  # Validate conventional commits on PR
+  validate-commits:
+    name: 🔍 Validate Commits
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == false
     runs-on: ubuntu-latest
     
     steps:
@@ -32,18 +48,193 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Release Please
-        uses: ./.github/actions/release-please
+      - name: Validate Conventional Commits
+        uses: wagoid/commitlint-github-action@v5
         with:
-          release-type: 'simple'
-          package-name: 'automation-templates'
-          direct-release: ${{ inputs.direct-release }}
+          configFile: |
+            module.exports = {
+              extends: ['@commitlint/config-conventional'],
+              rules: {
+                'type-enum': [2, 'always', [
+                  'feat', 'fix', 'docs', 'style', 'refactor', 
+                  'test', 'chore', 'ci', 'build', 'revert'
+                ]],
+                'subject-case': [2, 'never', ['start-case', 'pascal-case', 'upper-case']],
+                'subject-empty': [2, 'never'],
+                'subject-full-stop': [2, 'never', '.'],
+                'header-max-length': [2, 'always', 100]
+              }
+            };
+
+      - name: Show Commit Validation Summary
+        run: |
+          echo "### ✅ Commit Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "All commits follow conventional commit format" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Supported types:** feat, fix, docs, style, refactor, test, chore, ci, build, revert" >> $GITHUB_STEP_SUMMARY
+          echo "**Breaking changes:** Use 'feat!' or add 'BREAKING CHANGE:' in commit body" >> $GITHUB_STEP_SUMMARY
+
+  # Main release job
+  release:
+    name: 📦 Release Management
+    if: |
+      (github.event_name == 'push' && !contains(github.event.head_commit.message, 'chore(main): release')) ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+      upload_url: ${{ steps.release.outputs.upload_url }}
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Show Release Summary
+      - name: 🔍 Check Release Eligibility
+        id: check-release
+        if: github.event_name != 'workflow_dispatch' || !inputs.force-release
+        run: |
+          # Check if there are any feat: or fix: commits since last release
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$LAST_TAG" ]; then
+            echo "No previous tags found, proceeding with release"
+            echo "eligible=true" >> $GITHUB_OUTPUT
+          else
+            # Get commits since last tag
+            COMMITS=$(git log ${LAST_TAG}..HEAD --oneline --grep="^feat" --grep="^fix" --grep="^feat!" || true)
+            
+            if [ -n "$COMMITS" ]; then
+              echo "Found releasable commits since $LAST_TAG"
+              echo "eligible=true" >> $GITHUB_OUTPUT
+              echo "commits<<EOF" >> $GITHUB_OUTPUT
+              echo "$COMMITS" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+            else
+              echo "No releasable commits found since $LAST_TAG"
+              echo "eligible=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: 📝 Update README before Release
+        if: steps.check-release.outputs.eligible == 'true' || inputs.force-release
+        uses: ./.github/actions/readme-generate
+        with:
+          template-path: 'docs/README.template.MD'
+          output-path: 'README.MD'
+          project-name: 'Automation Templates'
+          company-name: 'Bauer Group'
+          project-description: 'Zentrale GitHub Actions Templates und Workflows für automatisierte Entwicklungsprozesse'
+          contact-email: 'support@bauer-group.com'
+          documentation-url: 'https://github.com/bauer-group/automation-templates/wiki'
+          support-url: 'https://github.com/bauer-group/automation-templates/issues'
+
+      - name: 📦 Run Release Please
+        id: release
+        if: steps.check-release.outputs.eligible == 'true' || inputs.force-release
+        uses: google-github-actions/release-please-action@v4
+        with:
+          config-file: .github/config/release-please-config.json
+          manifest-file: .github/config/.release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Validate Release Tag
+        if: steps.release.outputs.release_created == 'true'
+        run: |
+          TAG_NAME="${{ steps.release.outputs.tag_name }}"
+          VERSION="${{ steps.release.outputs.version }}"
+          
+          echo "Release created successfully!"
+          echo "Tag: $TAG_NAME"
+          echo "Version: $VERSION"
+          
+          # Validate semantic versioning format
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)*$ ]]; then
+            echo "❌ Invalid version format: $VERSION"
+            exit 1
+          fi
+          
+          echo "✅ Version format is valid"
+
+      - name: 📊 Generate Release Summary
         if: always()
         run: |
           echo "### 🚀 Release Workflow Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Direct Release:** ${{ inputs.direct-release || 'false' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Event** | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Branch** | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Release Type** | ${{ inputs.release-type || 'simple' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Force Release** | ${{ inputs.force-release || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Eligible** | ${{ steps.check-release.outputs.eligible || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Release Created** | ${{ steps.release.outputs.release_created || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.release.outputs.release_created }}" == "true" ]; then
+            echo "| **Tag Name** | ${{ steps.release.outputs.tag_name }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Version** | ${{ steps.release.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🎉 **Release successfully created!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Release notes have been generated automatically" >> $GITHUB_STEP_SUMMARY
+            echo "- GitHub release is now available" >> $GITHUB_STEP_SUMMARY
+            echo "- Tags are ready for external consumption" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.check-release.outputs.eligible }}" == "false" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **No release created - no releasable changes found**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**To trigger a release, create commits with:**" >> $GITHUB_STEP_SUMMARY
+            echo "- \`feat:\` for new features (minor version bump)" >> $GITHUB_STEP_SUMMARY
+            echo "- \`fix:\` for bug fixes (patch version bump)" >> $GITHUB_STEP_SUMMARY
+            echo "- \`feat!:\` or \`BREAKING CHANGE:\` for breaking changes (major version bump)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ -n "${{ steps.check-release.outputs.commits }}" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Releasable commits found:**" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "${{ steps.check-release.outputs.commits }}" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Post-release actions
+  post-release:
+    name: 🎯 Post-Release Actions
+    if: needs.release.outputs.release_created == 'true'
+    needs: release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 📢 Notify Release
+        run: |
+          echo "🎉 New release created: ${{ needs.release.outputs.tag_name }}"
+          echo "Version: ${{ needs.release.outputs.version }}"
+          echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ needs.release.outputs.tag_name }}"
+
+      - name: 🔄 Update External References
+        run: |
+          echo "ℹ️ Consider updating external references to use the new version:"
+          echo "- Update documentation that references specific versions"
+          echo "- Notify dependent projects of the new release"
+          echo "- Update examples to use the latest version"
+
+      - name: 📊 Post-Release Summary
+        run: |
+          echo "### 🎯 Post-Release Actions Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Release notification sent" >> $GITHUB_STEP_SUMMARY
+          echo "✅ External reference update guidance provided" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Release Details:**" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** ${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag:** ${{ needs.release.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release URL:** [View Release](https://github.com/${{ github.repository }}/releases/tag/${{ needs.release.outputs.tag_name }})" >> $GITHUB_STEP_SUMMARY
