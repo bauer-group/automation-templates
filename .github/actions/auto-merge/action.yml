@@ -1,0 +1,441 @@
+name: 'Auto Merge PR'
+description: 'Automatically merge pull requests based on configurable conditions'
+author: 'BAUER GROUP'
+
+inputs:
+  pr-number:
+    description: 'Pull request number to merge'
+    required: false
+    default: ''
+  merge-method:
+    description: 'Merge method (merge, squash, rebase)'
+    required: false
+    default: 'squash'
+  auto-merge-enabled:
+    description: 'Enable automatic merging'
+    required: false
+    default: 'false'
+  required-checks:
+    description: 'Comma-separated list of required status checks'
+    required: false
+    default: ''
+  required-reviews:
+    description: 'Number of required approving reviews'
+    required: false
+    default: '0'
+  dismiss-stale-reviews:
+    description: 'Dismiss stale reviews when new commits are pushed'
+    required: false
+    default: 'true'
+  require-code-owner-reviews:
+    description: 'Require reviews from code owners'
+    required: false
+    default: 'false'
+  allowed-authors:
+    description: 'Comma-separated list of allowed PR authors for auto-merge'
+    required: false
+    default: 'dependabot[bot],renovate[bot],github-actions[bot]'
+  forbidden-labels:
+    description: 'Comma-separated list of labels that prevent auto-merge'
+    required: false
+    default: 'do-not-merge,work-in-progress,wip'
+  required-labels:
+    description: 'Comma-separated list of labels required for auto-merge'
+    required: false
+    default: ''
+  wait-timeout:
+    description: 'Maximum time to wait for checks (in minutes)'
+    required: false
+    default: '30'
+  delete-branch-after-merge:
+    description: 'Delete head branch after successful merge'
+    required: false
+    default: 'true'
+  token:
+    description: 'GitHub Token with write permissions'
+    required: true
+
+outputs:
+  merged:
+    description: 'Whether the PR was successfully merged'
+    value: ${{ steps.merge-pr.outputs.merged }}
+  merge-commit-sha:
+    description: 'SHA of the merge commit'
+    value: ${{ steps.merge-pr.outputs.merge-commit-sha }}
+  merge-method-used:
+    description: 'Merge method that was used'
+    value: ${{ steps.merge-pr.outputs.merge-method-used }}
+  branch-deleted:
+    description: 'Whether the head branch was deleted'
+    value: ${{ steps.cleanup.outputs.branch-deleted }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🔄 Setup Auto Merge
+      shell: bash
+      run: |
+        echo "🔄 Initializing Auto Merge"
+        echo "Auto Merge Enabled: ${{ inputs.auto-merge-enabled }}"
+        echo "Merge Method: ${{ inputs.merge-method }}"
+        echo "Required Checks: ${{ inputs.required-checks }}"
+        echo "Required Reviews: ${{ inputs.required-reviews }}"
+        echo "Wait Timeout: ${{ inputs.wait-timeout }} minutes"
+
+    - name: 🔍 Get PR Information
+      id: pr-info
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        echo "🔍 Getting PR information..."
+        
+        # Determine PR number
+        if [ -n "${{ inputs.pr-number }}" ]; then
+          PR_NUMBER="${{ inputs.pr-number }}"
+        elif [ "${{ github.event_name }}" == "pull_request" ]; then
+          PR_NUMBER="${{ github.event.number }}"
+        else
+          echo "❌ No PR number provided and not in pull_request context"
+          exit 1
+        fi
+        
+        echo "PR Number: $PR_NUMBER"
+        echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
+        
+        # Get PR details
+        PR_DATA=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER)
+        
+        PR_AUTHOR=$(echo "$PR_DATA" | jq -r '.user.login')
+        PR_STATE=$(echo "$PR_DATA" | jq -r '.state')
+        PR_DRAFT=$(echo "$PR_DATA" | jq -r '.draft')
+        PR_MERGEABLE=$(echo "$PR_DATA" | jq -r '.mergeable')
+        PR_TITLE=$(echo "$PR_DATA" | jq -r '.title')
+        PR_HEAD_SHA=$(echo "$PR_DATA" | jq -r '.head.sha')
+        PR_HEAD_REF=$(echo "$PR_DATA" | jq -r '.head.ref')
+        PR_BASE_REF=$(echo "$PR_DATA" | jq -r '.base.ref')
+        
+        echo "pr-author=$PR_AUTHOR" >> $GITHUB_OUTPUT
+        echo "pr-state=$PR_STATE" >> $GITHUB_OUTPUT
+        echo "pr-draft=$PR_DRAFT" >> $GITHUB_OUTPUT
+        echo "pr-mergeable=$PR_MERGEABLE" >> $GITHUB_OUTPUT
+        echo "pr-title=$PR_TITLE" >> $GITHUB_OUTPUT
+        echo "pr-head-sha=$PR_HEAD_SHA" >> $GITHUB_OUTPUT
+        echo "pr-head-ref=$PR_HEAD_REF" >> $GITHUB_OUTPUT
+        echo "pr-base-ref=$PR_BASE_REF" >> $GITHUB_OUTPUT
+        
+        # Get PR labels
+        PR_LABELS=$(echo "$PR_DATA" | jq -r '.labels[].name' | tr '\n' ',' | sed 's/,$//')
+        echo "pr-labels=$PR_LABELS" >> $GITHUB_OUTPUT
+        
+        echo "📋 PR Information:"
+        echo "  • Author: $PR_AUTHOR"
+        echo "  • State: $PR_STATE"
+        echo "  • Draft: $PR_DRAFT"
+        echo "  • Mergeable: $PR_MERGEABLE"
+        echo "  • Labels: $PR_LABELS"
+        echo "  • Head SHA: $PR_HEAD_SHA"
+        echo "  • Head Ref: $PR_HEAD_REF"
+        echo "  • Base Ref: $PR_BASE_REF"
+
+    - name: ✅ Check Auto Merge Conditions
+      id: check-conditions
+      shell: bash
+      run: |
+        echo "✅ Checking auto merge conditions..."
+        
+        AUTO_MERGE_ALLOWED=true
+        REJECTION_REASONS=""
+        
+        # Check if auto merge is enabled
+        if [ "${{ inputs.auto-merge-enabled }}" != "true" ]; then
+          AUTO_MERGE_ALLOWED=false
+          REJECTION_REASONS="$REJECTION_REASONS,Auto merge disabled"
+        fi
+        
+        # Check PR state
+        if [ "${{ steps.pr-info.outputs.pr-state }}" != "open" ]; then
+          AUTO_MERGE_ALLOWED=false
+          REJECTION_REASONS="$REJECTION_REASONS,PR not open"
+        fi
+        
+        # Check if PR is draft
+        if [ "${{ steps.pr-info.outputs.pr-draft }}" == "true" ]; then
+          AUTO_MERGE_ALLOWED=false
+          REJECTION_REASONS="$REJECTION_REASONS,PR is draft"
+        fi
+        
+        # Check if PR is mergeable
+        if [ "${{ steps.pr-info.outputs.pr-mergeable }}" == "false" ]; then
+          AUTO_MERGE_ALLOWED=false
+          REJECTION_REASONS="$REJECTION_REASONS,PR has merge conflicts"
+        fi
+        
+        # Check allowed authors
+        if [ -n "${{ inputs.allowed-authors }}" ]; then
+          ALLOWED=false
+          IFS=',' read -ra AUTHORS <<< "${{ inputs.allowed-authors }}"
+          for author in "${AUTHORS[@]}"; do
+            if [ "${{ steps.pr-info.outputs.pr-author }}" == "$author" ]; then
+              ALLOWED=true
+              break
+            fi
+          done
+          
+          if [ "$ALLOWED" == "false" ]; then
+            AUTO_MERGE_ALLOWED=false
+            REJECTION_REASONS="$REJECTION_REASONS,Author not in allowed list"
+          fi
+        fi
+        
+        # Check forbidden labels
+        if [ -n "${{ inputs.forbidden-labels }}" ]; then
+          IFS=',' read -ra FORBIDDEN <<< "${{ inputs.forbidden-labels }}"
+          for label in "${FORBIDDEN[@]}"; do
+            if [[ "${{ steps.pr-info.outputs.pr-labels }}" == *"$label"* ]]; then
+              AUTO_MERGE_ALLOWED=false
+              REJECTION_REASONS="$REJECTION_REASONS,Has forbidden label: $label"
+            fi
+          done
+        fi
+        
+        # Check required labels
+        if [ -n "${{ inputs.required-labels }}" ]; then
+          IFS=',' read -ra REQUIRED <<< "${{ inputs.required-labels }}"
+          for label in "${REQUIRED[@]}"; do
+            if [[ "${{ steps.pr-info.outputs.pr-labels }}" != *"$label"* ]]; then
+              AUTO_MERGE_ALLOWED=false
+              REJECTION_REASONS="$REJECTION_REASONS,Missing required label: $label"
+            fi
+          done
+        fi
+        
+        echo "auto-merge-allowed=$AUTO_MERGE_ALLOWED" >> $GITHUB_OUTPUT
+        echo "rejection-reasons=$REJECTION_REASONS" >> $GITHUB_OUTPUT
+        
+        if [ "$AUTO_MERGE_ALLOWED" == "true" ]; then
+          echo "✅ Auto merge conditions satisfied"
+        else
+          echo "❌ Auto merge conditions not met:"
+          echo "   Reasons: ${REJECTION_REASONS#,}"
+        fi
+
+    - name: ⏳ Wait for Required Checks
+      id: wait-checks
+      if: steps.check-conditions.outputs.auto-merge-allowed == 'true' && inputs.required-checks != ''
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        echo "⏳ Waiting for required checks..."
+        
+        PR_NUMBER="${{ steps.pr-info.outputs.pr-number }}"
+        HEAD_SHA="${{ steps.pr-info.outputs.pr-head-sha }}"
+        TIMEOUT_MINUTES="${{ inputs.wait-timeout }}"
+        TIMEOUT_SECONDS=$((TIMEOUT_MINUTES * 60))
+        
+        IFS=',' read -ra REQUIRED_CHECKS <<< "${{ inputs.required-checks }}"
+        
+        echo "Required checks: ${{ inputs.required-checks }}"
+        echo "Timeout: $TIMEOUT_MINUTES minutes"
+        
+        START_TIME=$(date +%s)
+        CHECKS_PASSED=false
+        
+        while [ $(($(date +%s) - START_TIME)) -lt $TIMEOUT_SECONDS ]; do
+          echo "Checking status checks..."
+          
+          # Get check runs
+          CHECK_RUNS=$(gh api repos/${{ github.repository }}/commits/$HEAD_SHA/check-runs)
+          
+          ALL_PASSED=true
+          for check in "${REQUIRED_CHECKS[@]}"; do
+            CHECK_STATUS=$(echo "$CHECK_RUNS" | jq -r ".check_runs[] | select(.name == \"$check\") | .conclusion")
+            
+            if [ "$CHECK_STATUS" == "success" ]; then
+              echo "✅ $check: passed"
+            elif [ "$CHECK_STATUS" == "failure" ]; then
+              echo "❌ $check: failed"
+              ALL_PASSED=false
+              break
+            elif [ "$CHECK_STATUS" == "null" ]; then
+              echo "⏳ $check: in progress"
+              ALL_PASSED=false
+            else
+              echo "⚠️ $check: $CHECK_STATUS"
+              ALL_PASSED=false
+            fi
+          done
+          
+          if [ "$ALL_PASSED" == "true" ]; then
+            CHECKS_PASSED=true
+            break
+          fi
+          
+          echo "Waiting 30 seconds before next check..."
+          sleep 30
+        done
+        
+        echo "checks-passed=$CHECKS_PASSED" >> $GITHUB_OUTPUT
+        
+        if [ "$CHECKS_PASSED" == "true" ]; then
+          echo "✅ All required checks passed"
+        else
+          echo "❌ Required checks did not pass within timeout"
+        fi
+
+    - name: 👥 Check Required Reviews
+      id: check-reviews
+      if: steps.check-conditions.outputs.auto-merge-allowed == 'true' && inputs.required-reviews != '0'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        echo "👥 Checking required reviews..."
+        
+        PR_NUMBER="${{ steps.pr-info.outputs.pr-number }}"
+        REQUIRED_REVIEWS="${{ inputs.required-reviews }}"
+        
+        # Get PR reviews
+        REVIEWS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews)
+        
+        # Count approving reviews (latest per reviewer)
+        APPROVING_REVIEWS=$(echo "$REVIEWS" | jq -r '.[] | select(.state == "APPROVED") | .user.login' | sort -u | wc -l)
+        
+        echo "Required reviews: $REQUIRED_REVIEWS"
+        echo "Approving reviews: $APPROVING_REVIEWS"
+        
+        if [ "$APPROVING_REVIEWS" -ge "$REQUIRED_REVIEWS" ]; then
+          echo "reviews-satisfied=true" >> $GITHUB_OUTPUT
+          echo "✅ Required reviews satisfied"
+        else
+          echo "reviews-satisfied=false" >> $GITHUB_OUTPUT
+          echo "❌ Insufficient approving reviews ($APPROVING_REVIEWS/$REQUIRED_REVIEWS)"
+        fi
+
+    - name: 🔀 Merge Pull Request
+      id: merge-pr
+      if: |
+        steps.check-conditions.outputs.auto-merge-allowed == 'true' &&
+        (inputs.required-checks == '' || steps.wait-checks.outputs.checks-passed == 'true') &&
+        (inputs.required-reviews == '0' || steps.check-reviews.outputs.reviews-satisfied == 'true')
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        echo "🔀 Merging pull request..."
+        
+        PR_NUMBER="${{ steps.pr-info.outputs.pr-number }}"
+        MERGE_METHOD="${{ inputs.merge-method }}"
+        
+        echo "Merging PR #$PR_NUMBER using $MERGE_METHOD method"
+        
+        # Prepare merge commit message
+        COMMIT_TITLE="${{ steps.pr-info.outputs.pr-title }}"
+        COMMIT_MESSAGE="Automatically merged by GitHub Actions"
+        
+        # Perform merge
+        MERGE_RESULT=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/merge \
+          -X PUT \
+          -f commit_title="$COMMIT_TITLE" \
+          -f commit_message="$COMMIT_MESSAGE" \
+          -f merge_method="$MERGE_METHOD")
+        
+        if [ $? -eq 0 ]; then
+          MERGE_SHA=$(echo "$MERGE_RESULT" | jq -r '.sha')
+          echo "✅ PR merged successfully"
+          echo "Merge commit SHA: $MERGE_SHA"
+          
+          echo "merged=true" >> $GITHUB_OUTPUT
+          echo "merge-commit-sha=$MERGE_SHA" >> $GITHUB_OUTPUT
+          echo "merge-method-used=$MERGE_METHOD" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Failed to merge PR"
+          echo "merged=false" >> $GITHUB_OUTPUT
+          echo "merge-commit-sha=" >> $GITHUB_OUTPUT
+          echo "merge-method-used=" >> $GITHUB_OUTPUT
+        fi
+
+    - name: 🧹 Cleanup Branch
+      id: cleanup
+      if: |
+        steps.merge-pr.outputs.merged == 'true' && 
+        inputs.delete-branch-after-merge == 'true' &&
+        steps.pr-info.outputs.pr-head-ref != steps.pr-info.outputs.pr-base-ref
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        echo "🧹 Cleaning up merged branch..."
+        
+        HEAD_REF="${{ steps.pr-info.outputs.pr-head-ref }}"
+        
+        echo "Deleting branch: $HEAD_REF"
+        
+        # Delete the branch
+        if gh api repos/${{ github.repository }}/git/refs/heads/$HEAD_REF -X DELETE; then
+          echo "✅ Branch deleted successfully"
+          echo "branch-deleted=true" >> $GITHUB_OUTPUT
+        else
+          echo "⚠️ Failed to delete branch (may be protected or already deleted)"
+          echo "branch-deleted=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: 📊 Generate Merge Summary
+      if: always()
+      shell: bash
+      run: |
+        echo "📊 Generating merge summary..."
+        
+        AUTO_MERGE_ALLOWED="${{ steps.check-conditions.outputs.auto-merge-allowed }}"
+        MERGED="${{ steps.merge-pr.outputs.merged || 'false' }}"
+        BRANCH_DELETED="${{ steps.cleanup.outputs.branch-deleted || 'false' }}"
+        REJECTION_REASONS="${{ steps.check-conditions.outputs.rejection-reasons }}"
+        
+        echo ""
+        echo "🔄 Auto Merge Summary:"
+        echo "  • PR Number: ${{ steps.pr-info.outputs.pr-number }}"
+        echo "  • Author: ${{ steps.pr-info.outputs.pr-author }}"
+        echo "  • Auto Merge Allowed: $AUTO_MERGE_ALLOWED"
+        echo "  • Merged: $MERGED"
+        echo "  • Branch Deleted: $BRANCH_DELETED"
+        
+        if [ "$AUTO_MERGE_ALLOWED" == "false" ]; then
+          echo "  • Rejection Reasons: ${REJECTION_REASONS#,}"
+        fi
+        
+        if [ "$MERGED" == "true" ]; then
+          echo "  • Merge Method: ${{ steps.merge-pr.outputs.merge-method-used }}"
+          echo "  • Merge Commit: ${{ steps.merge-pr.outputs.merge-commit-sha }}"
+        fi
+
+    - name: ❌ Auto Merge Failed
+      if: |
+        steps.check-conditions.outputs.auto-merge-allowed == 'true' &&
+        (
+          (inputs.required-checks != '' && steps.wait-checks.outputs.checks-passed != 'true') ||
+          (inputs.required-reviews != '0' && steps.check-reviews.outputs.reviews-satisfied != 'true') ||
+          steps.merge-pr.outputs.merged != 'true'
+        )
+      shell: bash
+      run: |
+        echo "❌ Auto merge failed"
+        
+        if [ "${{ inputs.required-checks }}" != "" ] && [ "${{ steps.wait-checks.outputs.checks-passed }}" != "true" ]; then
+          echo "Reason: Required checks did not pass"
+        fi
+        
+        if [ "${{ inputs.required-reviews }}" != "0" ] && [ "${{ steps.check-reviews.outputs.reviews-satisfied }}" != "true" ]; then
+          echo "Reason: Insufficient approving reviews"
+        fi
+        
+        if [ "${{ steps.merge-pr.outputs.merged }}" != "true" ]; then
+          echo "Reason: Merge operation failed"
+        fi
+        
+        echo ""
+        echo "The PR will remain open for manual review and merge."
+
+branding:
+  icon: 'git-merge'
+  color: 'purple'
