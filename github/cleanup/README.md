@@ -1,134 +1,88 @@
 # GitHub Repository Cleanup Tool
 
-Ein plattformunabhängiges Python-Tool zur umfassenden Bereinigung von GitHub-Repositories mit komfortabler Device Flow Authentifizierung.
+Ein plattformunabhängiges Tool zur vollständigen Bereinigung von GitHub Repositories.
 
 ## Features
 
-Das Tool entfernt automatisch:
-- ✅ Alle Workflow-Runs (GitHub Actions)
-- ✅ Alle Releases
-- ✅ Alle Tags
-- ✅ Alle Branches (außer `main` und `master`)
+- 🧹 **Bereinigt Workflow Runs**: Löscht alle GitHub Actions Workflow-Läufe
+- 🏷️ **Entfernt Tags**: Löscht alle Git-Tags und deren GitHub-Releases
+- 🌿 **Löscht Branches**: Entfernt alle Branches außer `main` und `master`
+- 🔐 **Automatische Authentifizierung**: Device Flow für sichere Browser-basierte Anmeldung
+- 🎯 **Dry-Run Modus**: Sicherer Test-Modus ohne tatsächliche Änderungen
+- 💻 **Cross-Platform**: Wrapper-Skripte für Windows, Linux und macOS
+
+## Schnellstart
+
+### Option 1: Python direkt
+```bash
+# Installation der Dependencies
+pip install -r requirements.txt
+
+# Mit Dry-Run (empfohlen für ersten Test)
+python github_cleanup.py --owner bauer-group --repo automation-templates --dry-run
+
+# Echte Bereinigung
+python github_cleanup.py --owner bauer-group --repo automation-templates
+```
+
+### Option 2: Platform-spezifische Scripts
+
+**Windows PowerShell:**
+```powershell
+.\github-cleanup.ps1 --owner bauer-group --repo automation-templates --dry-run
+```
+
+**Linux/macOS Bash:**
+```bash
+./github-cleanup.sh --owner bauer-group --repo automation-templates --dry-run
+```
+
+**Windows Batch:**
+```batch
+github-cleanup.bat --owner bauer-group --repo automation-templates --dry-run
+```
 
 ## Authentifizierung
 
-### 🔐 GitHub Device Flow (Empfohlen)
-- Keine manuelle Token-Erstellung erforderlich
-- Sichere Browser-basierte Anmeldung
-- Automatische Berechtigung aller erforderlichen Scopes
-- Code wird automatisch in die Zwischenablage kopiert
+Das Tool verwendet automatisch den GitHub Device Flow:
+1. Startet Browser-basierte Authentifizierung
+2. Sie loggen sich in GitHub ein
+3. Tool erhält temporären Zugriff
+4. Token wird automatisch für die Session gespeichert
 
-### 🔑 Personal Access Token
-- Traditionelle Token-basierte Authentifizierung
-- Für Automatisierung und CI/CD geeignet
-
-## Voraussetzungen
-
-- Python 3.6 oder höher
-- Internetverbindung für Device Flow oder GitHub Token
-
-### Für Personal Access Token
-GitHub Personal Access Token mit folgenden Berechtigungen:
-- `repo` (Full control of private repositories)
-- `actions` (Access to GitHub Actions)
-- `admin:repo_hook` (Admin access to repository hooks)
-
-## Installation
-
-1. **Python-Abhängigkeiten installieren:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Optional: GitHub Token erstellen (nur für Token-basierte Auth):**
-   - Gehen Sie zu [GitHub Settings > Personal Access Tokens](https://github.com/settings/tokens)
-   - Erstellen Sie einen neuen Token mit den oben genannten Berechtigungen
-   - Kopieren Sie den Token für die spätere Verwendung
-
-## Verwendung
-
-### Device Flow Authentifizierung (Empfohlen)
+Alternativ können Sie einen Personal Access Token setzen:
 ```bash
-python github_cleanup.py --owner <owner> --repo <repo> --device-auth [--dry-run]
+# Als Umgebungsvariable
+export GITHUB_TOKEN=ghp_your_token_here
+
+# Oder direkt als Parameter
+python github_cleanup.py --token ghp_your_token_here --owner myorg --repo myrepo
 ```
 
-### Token-basierte Authentifizierung
+## Sicherheit
+
+- ⚠️ **Achtung**: Dieses Tool löscht dauerhaft Daten aus Ihrem Repository
+- 🧪 **Immer zuerst `--dry-run` verwenden** um zu sehen, was gelöscht würde
+- 🔒 Tokens werden nur in-memory gespeichert, nie auf der Festplatte
+- 🛡️ Device Flow bietet sicherere Authentifizierung als Personal Access Tokens
+
+## Beispiele
+
 ```bash
-python github_cleanup.py --owner <owner> --repo <repo> --token <token> [--dry-run]
+# Trockenlauf - zeigt was gelöscht würde, ohne zu löschen
+python github_cleanup.py --owner microsoft --repo typescript --dry-run
+
+# Bereinigung mit eigenem Token
+python github_cleanup.py --owner myorg --repo myrepo --token ghp_xxxxxxxxxxxx
+
+# Verwendung mit Umgebungsvariable
+export GITHUB_TOKEN=ghp_xxxxxxxxxxxx
+python github_cleanup.py --owner myorg --repo myrepo
 ```
 
-### PowerShell Schnellstart
-```powershell
-.\quick_cleanup.ps1 -Repository "owner/repo" -DryRun
-```
+## Requirements
 
-### Beispiele
-
-1. **Device Flow Dry-Run (Simulation ohne Löschung):**
-   ```bash
-   python github_cleanup.py --owner bauer-group --repo automation-templates --device-auth --dry-run
-   ```
-
-2. **Device Flow echte Bereinigung:**
-   ```bash
-   python github_cleanup.py --owner bauer-group --repo automation-templates --device-auth
-   ```
-
-3. **Token-basierte Bereinigung:**
-   ```bash
-   python github_cleanup.py --owner bauer-group --repo automation-templates --token ghp_xxxxxxxxxxxx
-   ```
-
-4. **Mit Environment Variable:**
-   ```bash
-   export GITHUB_TOKEN=ghp_xxxxxxxxxxxx
-   python github_cleanup.py --owner bauer-group --repo automation-templates --dry-run
-   ```
-
-## Sicherheitshinweise
-
-⚠️ **WARNUNG**: Dieses Tool löscht dauerhaft alle Workflow-Runs, Releases, Tags und Branches (außer main/master).
-
-- Verwenden Sie immer zuerst `--dry-run` um zu sehen, was gelöscht werden würde
-- Erstellen Sie Backups wichtiger Daten vor der Ausführung
-- Das Tool fragt vor destructiven Operationen nach Bestätigung
-
-## Troubleshooting
-
-### Device Flow Probleme
-- Stellen Sie sicher, dass alle Dependencies installiert sind
-- Überprüfen Sie Ihre Internetverbindung
-- Bei Firewall-Problemen: verwenden Sie Personal Access Token
-
-### Rate Limiting
-- Das Tool hat eingebaute Rate-Limit-Behandlung
-- Bei Überschreitung werden automatische Wartezeiten eingelegt
-
-### API-Fehler
-- Stellen Sie sicher, dass Sie die erforderlichen Berechtigungen haben
-- Überprüfen Sie Repository-Name und Owner
-
-## Logs und Debugging
-
-Das Tool gibt detaillierte Informationen über alle Aktionen aus:
-```
-🔐 Starte GitHub Device Flow Authentifizierung...
-📱 Bitte besuchen Sie: https://github.com/login/device
-🔢 Und geben Sie diesen Code ein: XXXX-XXXX
-⏳ Warte auf Autorisierung...
-✅ Authentifizierung erfolgreich!
-✅ Erfolgreich angemeldet als: username (Name)
-🔍 [DRY-RUN] Starting workflow runs cleanup...
-```
-
-## Unterstützung
-
-Bei Problemen:
-- Überprüfen Sie die Logs auf Fehlermeldungen
-- Stellen Sie sicher, dass alle Abhängigkeiten installiert sind
-- Testen Sie mit `--dry-run` Parameter
-- Öffnen Sie ein Issue im Repository
-
-## Lizenz
-
-MIT License - siehe LICENSE Datei für Details.
+- Python 3.6+
+- PyGithub >= 1.59.0
+- requests >= 2.28.0
+- pyperclip >= 1.8.0

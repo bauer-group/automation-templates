@@ -298,15 +298,13 @@ def main():
 Examples:
   python github_cleanup.py --owner myorg --repo myrepo --token ghp_xxxx
   python github_cleanup.py --owner myorg --repo myrepo --dry-run
-  python github_cleanup.py --owner myorg --repo myrepo (uses GITHUB_TOKEN env var)
-  python github_cleanup.py --owner myorg --repo myrepo --oauth (browser login)
+  python github_cleanup.py --owner myorg --repo myrepo (uses GITHUB_TOKEN env var or device flow)
         """
     )
     
     parser.add_argument("--owner", required=True, help="GitHub repository owner/organization")
     parser.add_argument("--repo", required=True, help="GitHub repository name")
     parser.add_argument("--token", help="GitHub Personal Access Token (or use GITHUB_TOKEN env var)")
-    parser.add_argument("--device-auth", action="store_true", help="Use browser-based device flow authentication")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be deleted without actually deleting")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
     
@@ -315,10 +313,14 @@ Examples:
     # Handle authentication
     token = None
     
-    if args.device_auth:
+    # Get token from argument or environment variable
+    token = args.token or os.getenv("GITHUB_TOKEN")
+    if not token:
+        # Use device flow if no token provided
         if not HAS_OAUTH:
             print("❌ Device Flow Authentifizierung nicht verfügbar.")
             print("💡 Installieren Sie die erforderlichen Pakete: pip install -r requirements.txt")
+            print("💡 Oder verwenden Sie --token <your_token>")
             sys.exit(1)
             
         try:
@@ -327,19 +329,10 @@ Examples:
             print(f"✅ Erfolgreich angemeldet als: {user.login} ({user.name})")
         except Exception as e:
             print(f"❌ Device Flow Authentifizierung fehlgeschlagen: {e}")
-            sys.exit(1)
-    else:
-        # Get token from argument or environment variable
-        token = args.token or os.getenv("GITHUB_TOKEN")
-        if not token:
-            print("❌ Error: GitHub token is required.")
-            print("💡 Optionen:")
+            print("💡 Alternativen:")
             print("   1. --token <your_token>")
             print("   2. GITHUB_TOKEN environment variable")
-            if HAS_OAUTH:
-                print("   3. --device-auth (browser login)")
             print("🔗 Token erstellen: https://github.com/settings/tokens")
-            print("📋 Benötigte Berechtigungen: repo, actions, admin:repo_hook")
             sys.exit(1)
     
     # Confirm destructive operation
