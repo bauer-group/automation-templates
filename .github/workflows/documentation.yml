@@ -10,7 +10,6 @@ on:
       - 'docs/README.template.MD'
       - '.github/actions/readme-generate/**'
       - '.github/workflows/documentation.yml'
-      - '.github/workflows/examples/readme.yml'
   pull_request:
     branches: [main]
     paths:
@@ -184,5 +183,5 @@ jobs:
           
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🧩 **Modular Components Used:**" >> $GITHUB_STEP_SUMMARY
-          echo "- README Generator Workflow: [examples/readme.yml](.github/workflows/examples/readme.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "- README Generator Workflow: [examples/readme.yml](github/workflows/examples/readme.yml)" >> $GITHUB_STEP_SUMMARY
           echo "- README Generator Action: [actions/readme-generate](.github/actions/readme-generate/)" >> $GITHUB_STEP_SUMMARY
