@@ -192,7 +192,7 @@ jobs:
             COMMIT_MSG="$COMMIT_MSG (version ${{ inputs.custom-version }})"
           fi
           
-          COMMIT_MSG="$COMMIT_MSG [skip ci]"
+          COMMIT_MSG="$COMMIT_MSG [automated]"
           
           git add README.MD
           git commit -m "$COMMIT_MSG" || echo "No changes to commit"
