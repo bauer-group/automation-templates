@@ -351,7 +351,7 @@ gh auth status --show-token
 ## 📚 Documentation
 
 - [GitHub Actions Documentation](.github/actions/README.md)
-- [Security Scan Action](.github/actions/security-scan/README.md)
+- [Security Scan Action](.github/actions/security-scan-meta/README.md)
 - [License Compliance Action](.github/actions/license-compliance/README.md)
 - [Artifact Generator Action](.github/actions/artifact-generator/README.md)
 - [README Generator Action](.github/actions/readme-generate/README.md)
