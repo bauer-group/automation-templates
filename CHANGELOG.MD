@@ -1,3 +1,20 @@
+## 🚀 What's Changed in v0.1.2
+
+### 📋 Changes since v0.1.1
+
+- fix: resolve manual release workflow action parameter mismatches
+- fix: ensure all security actions receive required secrets properly
+
+### 🔗 Full Changelog
+
+**Full Changelog**: https://github.com/owner/repo/compare/v0.1.1...v0.1.2
+
+---
+
+*This release was created using the Universal Release Script.*
+
+---
+
 ## 🚀 What's Changed in v0.1.1
 
 ### 📋 Changes since v0.1.0
