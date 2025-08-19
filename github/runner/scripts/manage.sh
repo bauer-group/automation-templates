@@ -9,3 +9,5 @@ docker compose pull
 
 docker compose up -d
 docker compose up -d --scale runner="${RUNNER_COUNT}"
+
+echo "Manage Completed!"
