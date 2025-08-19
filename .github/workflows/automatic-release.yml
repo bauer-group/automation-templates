@@ -257,20 +257,20 @@ jobs:
             
             console.log('✅ Release semantics validated successfully');
 
-      - name: � Universal Fallback Release
-        id: universal_fallback
+      - name: � Manual Fallback Release
+        id: manual_fallback
         if: |
           steps.enhanced-release.outputs.release_created != 'true' &&
           (env.FORCE_RELEASE == 'true' || inputs.force-release == true)
         shell: bash
         run: |
-          echo "🔄 Enhanced Release Please created no release, running Universal Fallback..."
+          echo "🔄 Enhanced Release Please created no release, running Manual Fallback..."
           
           # Make script executable
-          chmod +x scripts/universal-release.sh
+          chmod +x scripts/manual-release.sh
           
-          # Run universal release script
-          ./scripts/universal-release.sh
+          # Run manual release script
+          ./scripts/manual-release.sh
 
       - name: 📊 Generate Release Dashboard
         if: always()
@@ -278,10 +278,10 @@ jobs:
         with:
           script: |
             const releaseCreated = '${{ steps.enhanced-release.outputs.release_created }}';
-            const fallbackReleaseCreated = '${{ steps.universal_fallback.outputs.release_created }}';
-            const tagName = '${{ steps.enhanced-release.outputs.tag_name }}' || '${{ steps.universal_fallback.outputs.tag_name }}';
-            const version = '${{ steps.enhanced-release.outputs.version }}' || '${{ steps.universal_fallback.outputs.version }}';
-            const htmlUrl = '${{ steps.enhanced-release.outputs.html_url }}' || '${{ steps.universal_fallback.outputs.release_url }}';
+            const fallbackReleaseCreated = '${{ steps.manual_fallback.outputs.release_created }}';
+            const tagName = '${{ steps.enhanced-release.outputs.tag_name }}' || '${{ steps.manual_fallback.outputs.tag_name }}';
+            const version = '${{ steps.enhanced-release.outputs.version }}' || '${{ steps.manual_fallback.outputs.version }}';
+            const htmlUrl = '${{ steps.enhanced-release.outputs.html_url }}' || '${{ steps.manual_fallback.outputs.release_url }}';
             const prNumber = '${{ steps.enhanced-release.outputs.pr_number }}';
             const prMerged = '${{ steps.enhanced-release.outputs.pr_merged }}';
             const securityScore = '${{ steps.enhanced-release.outputs.security_score }}';
@@ -289,8 +289,8 @@ jobs:
             const artifactsGenerated = '${{ steps.enhanced-release.outputs.artifacts_generated }}';
             
             const anyReleaseCreated = releaseCreated === 'true' || fallbackReleaseCreated === 'true';
-            const releaseMethod = releaseCreated === 'true' ? 'Enhanced Release Please' : 
-                                 fallbackReleaseCreated === 'true' ? 'Universal Fallback' : 'None';
+            const releaseMethod = releaseCreated === 'true' ? 'Enhanced Release Please' :
+                                 fallbackReleaseCreated === 'true' ? 'Manual Fallback' : 'None';
             
             // Format security scan result
             let securityDisplay = 'N/A';
@@ -433,10 +433,10 @@ jobs:
               
             } else if (fallbackReleaseCreated === 'true') {
               summary.push(
-                '### 🎉 Universal Fallback Release Created!',
+                '### 🎉 Manual Fallback Release Created!',
                 '',
                 '**Next Steps:**',
-                '- ✅ Release created via universal script',
+                '- ✅ Release created via manual script',
                 '- ✅ GitHub release is available',
                 '- ✅ Tags are ready for external consumption'
               );

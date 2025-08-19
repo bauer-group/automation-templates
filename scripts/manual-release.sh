@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# 🚀 Universal Release Script
-# Works with ANY repository, regardless of commit history
+# 🚀 Manual Release Script
+# For creating releases manually when automatic release-please fails or is not suitable
 
 set -euo pipefail
 
