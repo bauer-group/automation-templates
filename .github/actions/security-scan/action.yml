@@ -96,7 +96,34 @@ runs:
     - name: 🔐 Gitleaks Secrets Detection
       id: gitleaks-scan
       if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both')
-      uses: gitleaks/gitleaks-action@v2
+      shell: bash
+      run: |
+        echo "🔍 Running Gitleaks scan..."
+        
+        # Download and install gitleaks if not available
+        if ! command -v gitleaks &> /dev/null; then
+          echo "📥 Installing Gitleaks..."
+          curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/scripts/install.sh | sh -s -- -b /usr/local/bin
+        fi
+        
+        # Create reports directory
+        mkdir -p security-reports
+        
+        # Run gitleaks scan and capture exit code
+        set +e
+        gitleaks detect --source . --report-format json --report-path security-reports/gitleaks-report.json --verbose
+        GITLEAKS_EXIT_CODE=$?
+        set -e
+        
+        echo "gitleaks-exit-code=$GITLEAKS_EXIT_CODE" >> $GITHUB_OUTPUT
+        
+        if [ $GITLEAKS_EXIT_CODE -eq 0 ]; then
+          echo "✅ No secrets detected by Gitleaks"
+          echo "gitleaks-outcome=success" >> $GITHUB_OUTPUT
+        else
+          echo "⚠️ Gitleaks found potential secrets"
+          echo "gitleaks-outcome=failure" >> $GITHUB_OUTPUT
+        fi
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
         GITLEAKS_LICENSE: ${{ inputs.gitleaks-license }}
@@ -110,7 +137,7 @@ runs:
         echo "📊 Processing Gitleaks results..."
         
         # Check if gitleaks found any secrets
-        if [ "${{ steps.gitleaks-scan.outcome }}" == "failure" ]; then
+        if [ "${{ steps.gitleaks-scan.outputs.gitleaks-outcome }}" == "failure" ]; then
           echo "❌ Gitleaks detected secrets!"
           echo "secrets-found=true" >> $GITHUB_OUTPUT
         else
