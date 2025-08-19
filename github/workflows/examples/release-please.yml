@@ -1,0 +1,60 @@
+name: 🚀 Release Please (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      release-type:
+        description: 'Release-Type (simple, node, python, etc.)'
+        required: false
+        type: string
+        default: 'simple'
+      package-name:
+        description: 'Package Name für Release'
+        required: false
+        type: string
+        default: ''
+      bump-minor-pre-major:
+        description: 'Bump minor pre-major'
+        required: false
+        type: boolean
+        default: true
+      bump-patch-for-minor-pre-major:
+        description: 'Bump patch for minor pre-major'
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      release_created:
+        description: 'Whether a release was created'
+        value: ${{ jobs.release.outputs.release_created }}
+      tag_name:
+        description: 'The tag name of the release'
+        value: ${{ jobs.release.outputs.tag_name }}
+      version:
+        description: 'The version of the release'
+        value: ${{ jobs.release.outputs.version }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Release Please
+        id: release
+        uses: bauer-group/automation-templates/.github/actions/release-please@main
+        with:
+          release-type: ${{ inputs.release-type }}
+          package-name: ${{ inputs.package-name }}
+          bump-minor-pre-major: ${{ inputs.bump-minor-pre-major }}
+          bump-patch-for-minor-pre-major: ${{ inputs.bump-patch-for-minor-pre-major }}
+          token: ${{ secrets.GITHUB_TOKEN }}
