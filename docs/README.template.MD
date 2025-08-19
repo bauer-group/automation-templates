@@ -350,12 +350,14 @@ gh auth status --show-token
 
 ## 📚 Documentation
 
-- [Security Scanning Action](.github/actions/security-scan/action.yml)
-- [Release Management Workflows](.github/workflows/README.MD)
-- [Branch Protection Tools](github/branch-protect/README.MD)
-- [Repository Cleanup Tools](github/cleanup/README.md)
-- [Self-Hosted Runner Setup](github/runner/README.MD)
-- [Workflow Examples](github/workflows/README.MD)
+- [GitHub Actions Overview](.github/actions/README.MD)
+- [Workflow Documentation](.github/workflows/README.md)
+- [GitHub Workflows Templates](github/workflows/README.MD)
+- [Workflow Examples](github/workflows/examples/README.MD)
+- [Branch Protection Tools](github/branch-protect/README.md)
+- [Repository Cleanup Tools](github/cleanup/README.MD)
+- [Self-Hosted Runner Setup](github/runner/README.md)
+- [Scripts Documentation](scripts/README.MD)
 
 ## 📞 Support
 
