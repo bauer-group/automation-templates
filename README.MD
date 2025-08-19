@@ -1,15 +1,15 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-19 10:32:50 UTC -->
+<!-- Generated on 2025-08-19 12:10:08 UTC -->
 
 # BAUER GROUP - Automation Templates
 
-**Status:** Version 0.1.2 (2025-08-19)  
+**Status:** Version 0.1.5 (2025-08-19)  
 **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)  
 **Branch:** {{CURRENT_BRANCH}}
 
 Zentrale GitHub Actions Templates und Workflows für automatisierte Entwicklungsprozesse
 
-[![Enhanced Release](https://github.com/bauer-group/automation-templates/actions/workflows/enhanced-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/enhanced-release.yml)
+[![🚀 Automatic Release Management](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
 
 ## 🛡️ Security Scanning - Dual Engine Approach
 
@@ -322,5 +322,4 @@ Siehe [github/workflows/README.md](github/workflows/README.md) für detaillierte
 
 ---
 
-*Dieses README wurde automatisch generiert am 2025-08-19 10:32:50 UTC aus [docs/README.template.MD](docs/README.template.MD)*
-# Test for summary display
+*Dieses README wurde automatisch generiert am 2025-08-19 12:10:08 UTC aus [docs/README.template.MD](docs/README.template.MD)*
