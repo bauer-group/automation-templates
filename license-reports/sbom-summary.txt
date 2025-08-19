@@ -1,0 +1,17 @@
+NAME                                  VERSION  TYPE                            
+./.github/actions/artifact-generator  UNKNOWN  github-action  (+1 duplicate)   
+./.github/actions/auto-merge          UNKNOWN  github-action                   
+./.github/actions/gitguardian-scan    UNKNOWN  github-action  (+1 duplicate)   
+./.github/actions/gitleaks-scan       UNKNOWN  github-action                   
+./.github/actions/license-compliance  UNKNOWN  github-action  (+2 duplicates)  
+./.github/actions/readme-generate     UNKNOWN  github-action  (+1 duplicate)   
+./.github/actions/release-please      UNKNOWN  github-action                   
+./.github/actions/security-scan       UNKNOWN  github-action  (+1 duplicate)   
+./.github/actions/security-scan-meta  UNKNOWN  github-action                   
+actions/checkout                      v4       github-action  (+2 duplicates)  
+actions/github-script                 v7       github-action  (+2 duplicates)  
+actions/setup-python                  v4       github-action                   
+actions/upload-artifact               v4       github-action  (+6 duplicates)  
+gitleaks/gitleaks-action              v2       github-action                   
+googleapis/release-please-action      v4       github-action                   
+wagoid/commitlint-github-action       v5       github-action                   
