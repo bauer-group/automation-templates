@@ -34,7 +34,7 @@ inputs:
   allowed-authors:
     description: 'Comma-separated list of allowed PR authors for auto-merge'
     required: false
-    default: 'dependabot[bot],renovate[bot],github-actions[bot]'
+    default: 'dependabot[bot],renovate[bot],github-actions[bot],release-please[bot]'
   forbidden-labels:
     description: 'Comma-separated list of labels that prevent auto-merge'
     required: false
@@ -103,8 +103,11 @@ runs:
         echo "PR Number: $PR_NUMBER"
         echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
         
-        # Get PR details
-        PR_DATA=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER)
+        # Get PR details using curl instead of gh
+        PR_DATA=$(curl -s \
+          -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER")
         
         PR_AUTHOR=$(echo "$PR_DATA" | jq -r '.user.login')
         PR_STATE=$(echo "$PR_DATA" | jq -r '.state')
@@ -245,8 +248,11 @@ runs:
         while [ $(($(date +%s) - START_TIME)) -lt $TIMEOUT_SECONDS ]; do
           echo "Checking status checks..."
           
-          # Get check runs
-          CHECK_RUNS=$(gh api repos/${{ github.repository }}/commits/$HEAD_SHA/check-runs)
+          # Get check runs using curl
+          CHECK_RUNS=$(curl -s \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/$HEAD_SHA/check-runs")
           
           ALL_PASSED=true
           for check in "${REQUIRED_CHECKS[@]}"; do
@@ -296,8 +302,11 @@ runs:
         PR_NUMBER="${{ steps.pr-info.outputs.pr-number }}"
         REQUIRED_REVIEWS="${{ inputs.required-reviews }}"
         
-        # Get PR reviews
-        REVIEWS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews)
+        # Get PR reviews using curl
+        REVIEWS=$(curl -s \
+          -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews")
         
         # Count approving reviews (latest per reviewer)
         APPROVING_REVIEWS=$(echo "$REVIEWS" | jq -r '.[] | select(.state == "APPROVED") | .user.login' | sort -u | wc -l)
@@ -334,15 +343,18 @@ runs:
         COMMIT_TITLE="${{ steps.pr-info.outputs.pr-title }}"
         COMMIT_MESSAGE="Automatically merged by GitHub Actions"
         
-        # Perform merge
-        MERGE_RESULT=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/merge \
+        # Perform merge using curl
+        MERGE_RESULT=$(curl -s \
           -X PUT \
-          -f commit_title="$COMMIT_TITLE" \
-          -f commit_message="$COMMIT_MESSAGE" \
-          -f merge_method="$MERGE_METHOD")
+          -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github.v3+json" \
+          -d "{\"commit_title\":\"$COMMIT_TITLE\",\"commit_message\":\"$COMMIT_MESSAGE\",\"merge_method\":\"$MERGE_METHOD\"}" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER/merge")
         
-        if [ $? -eq 0 ]; then
-          MERGE_SHA=$(echo "$MERGE_RESULT" | jq -r '.sha')
+        # Check if merge was successful
+        MERGE_SHA=$(echo "$MERGE_RESULT" | jq -r '.sha // empty')
+        
+        if [ -n "$MERGE_SHA" ] && [ "$MERGE_SHA" != "null" ]; then
           echo "✅ PR merged successfully"
           echo "Merge commit SHA: $MERGE_SHA"
           
@@ -351,6 +363,9 @@ runs:
           echo "merge-method-used=$MERGE_METHOD" >> $GITHUB_OUTPUT
         else
           echo "❌ Failed to merge PR"
+          ERROR_MESSAGE=$(echo "$MERGE_RESULT" | jq -r '.message // "Unknown error"')
+          echo "Error: $ERROR_MESSAGE"
+          
           echo "merged=false" >> $GITHUB_OUTPUT
           echo "merge-commit-sha=" >> $GITHUB_OUTPUT
           echo "merge-method-used=" >> $GITHUB_OUTPUT
@@ -372,12 +387,26 @@ runs:
         
         echo "Deleting branch: $HEAD_REF"
         
-        # Delete the branch
-        if gh api repos/${{ github.repository }}/git/refs/heads/$HEAD_REF -X DELETE; then
+        # Delete the branch using curl
+        DELETE_RESULT=$(curl -s \
+          -X DELETE \
+          -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/${{ github.repository }}/git/refs/heads/$HEAD_REF")
+        
+        # Check if deletion was successful (curl returns empty on success for DELETE)
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+          -X DELETE \
+          -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/${{ github.repository }}/git/refs/heads/$HEAD_REF")
+        
+        if [ "$HTTP_STATUS" == "204" ]; then
           echo "✅ Branch deleted successfully"
           echo "branch-deleted=true" >> $GITHUB_OUTPUT
         else
-          echo "⚠️ Failed to delete branch (may be protected or already deleted)"
+          echo "⚠️ Failed to delete branch (HTTP $HTTP_STATUS)"
+          echo "May be protected or already deleted"
           echo "branch-deleted=false" >> $GITHUB_OUTPUT
         fi
 
