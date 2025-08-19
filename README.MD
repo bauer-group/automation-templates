@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-19 14:59:15 UTC -->
+<!-- Generated on 2025-08-19 15:11:35 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -9,12 +9,12 @@ Professional automation templates and workflows for GitHub repositories, providi
 
 **Repository Information:**
 
-- **Version:** 0.1.5 (2025-08-19)
+- **Version:** 0.1.6 (2025-08-19)
 - **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)
 - **Branch:** main
 
-[![🚀 Automatic Release Management](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
-[![📄 README Documentation Management](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml)
+[![🚀 Release Management](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
+[![📄 Documentation Management](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml)
 
 ## 🛡️ Security Scanning
 
@@ -376,4 +376,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-08-19 14:59:15 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-08-19 15:11:35 UTC from [docs/README.template.MD](docs/README.template.MD)*
