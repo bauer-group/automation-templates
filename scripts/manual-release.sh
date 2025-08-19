@@ -229,6 +229,15 @@ EOF
     fi
     
     success "Release v$version created successfully!"
+    
+    # Set GitHub Actions outputs if in CI environment
+    if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+        echo "release_created=true" >> "$GITHUB_OUTPUT"
+        echo "tag_name=v$version" >> "$GITHUB_OUTPUT"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "release_url=https://github.com/${GITHUB_REPOSITORY:-}/releases/tag/v$version" >> "$GITHUB_OUTPUT"
+        log "✅ GitHub Actions outputs set"
+    fi
 }
 
 # Main function
