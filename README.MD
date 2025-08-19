@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-19 14:10:10 UTC -->
+<!-- Generated on 2025-08-19 14:18:11 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -353,14 +353,16 @@ gh auth status --show-token
 
 ## 📚 Documentation
 
-- [GitHub Actions Overview](.github/actions/README.MD)
-- [Workflow Documentation](.github/workflows/README.md)
-- [GitHub Workflows Templates](github/workflows/README.MD)
-- [Workflow Examples](github/workflows/examples/README.MD)
+- [GitHub Actions Documentation](.github/actions/README.md)
+- [Security Scan Action](.github/actions/security-scan/README.md)
+- [License Compliance Action](.github/actions/license-compliance/README.md)
+- [Artifact Generator Action](.github/actions/artifact-generator/README.md)
+- [README Generator Action](.github/actions/readme-generate/README.md)
+- [Release Please Action](.github/actions/release-please/README.md)
+- [Workflow Configuration](.github/config/README.md)
 - [Branch Protection Tools](github/branch-protect/README.md)
-- [Repository Cleanup Tools](github/cleanup/README.MD)
+- [Repository Cleanup Tools](github/cleanup/README.md)
 - [Self-Hosted Runner Setup](github/runner/README.md)
-- [Scripts Documentation](scripts/README.MD)
 
 ## 📞 Support
 
@@ -374,4 +376,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-08-19 14:10:10 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-08-19 14:18:11 UTC from [docs/README.template.MD](docs/README.template.MD)*
