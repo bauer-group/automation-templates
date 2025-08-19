@@ -143,12 +143,10 @@ jobs:
     if: |
       (github.event_name == 'push' && 
        !contains(github.event.head_commit.message, 'chore(main): release') &&
-       !contains(github.event.head_commit.message, 'chore(release)')) ||
+       !contains(github.event.head_commit.message, 'chore(release)') &&
+       !contains(github.event.head_commit.message, 'Merge pull request')) ||
       (github.event_name == 'pull_request' && 
-       github.event.pull_request.merged == true &&
-       !contains(github.event.pull_request.title, 'chore(main): release') &&
-       !contains(github.event.pull_request.title, 'chore(release)') &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please')) ||
+       github.event.pull_request.merged == true) ||
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
@@ -478,6 +476,32 @@ jobs:
             
             await core.summary.addRaw(summary.join('\n')).write();
 
+  # Auto-merge for release PRs
+  auto-merge-release-pr:
+    name: 🔄 Auto-Merge Release PR
+    if: |
+      needs.release-management.outputs.pr_number != '' &&
+      needs.release-management.outputs.release_created != 'true'
+    needs: release-management
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔄 Auto Merge PR
+        if: env.ENABLE_AUTO_MERGE == 'true'
+        uses: ./.github/actions/auto-merge
+        with:
+          pr-number: ${{ needs.release-management.outputs.pr_number }}
+          merge-method: 'squash'
+          auto-merge-enabled: 'true'
+          required-checks: ''
+          required-reviews: '0'
+          allowed-authors: 'github-actions[bot],release-please[bot]'
+          delete-branch-after-merge: 'true'
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   # Extended artifact generation for specific types
   extended-artifacts:
     name: 🔨 Extended Artifact Generation
@@ -485,7 +509,7 @@ jobs:
       needs.release-management.outputs.release_created == 'true' && 
       (github.event_name == 'workflow_dispatch' && 
        (inputs.artifact-types == 'binaries' || inputs.artifact-types == 'docker' || inputs.artifact-types == 'all'))
-    needs: release-management
+    needs: [release-management]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -710,10 +734,11 @@ jobs:
   cleanup-release-branch:
     name: 🧹 Cleanup Release Branch
     if: |
-      needs.release-management.outputs.release_created == 'true' && 
-      needs.release-management.outputs.pr_merged == 'true' &&
+      always() &&
+      (needs.release-management.outputs.release_created == 'true' || 
+       (needs.auto-merge-release-pr.result == 'success' && needs.release-management.outputs.pr_number != '')) &&
       github.event.inputs.cleanup-release-branch != 'false'
-    needs: [release-management, extended-artifacts]
+    needs: [release-management, extended-artifacts, auto-merge-release-pr]
     runs-on: ubuntu-latest
     
     steps:
