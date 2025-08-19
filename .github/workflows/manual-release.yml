@@ -143,6 +143,8 @@ jobs:
         with:
           minimum-severity: 'medium'
           fail-on-findings: false
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🛡️ GitGuardian Scan
@@ -150,6 +152,7 @@ jobs:
         with:
           gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
           fail-on-findings: false
+          minimum-severity: 'medium'
           token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: 📄 License Compliance
