@@ -10,9 +10,8 @@ Professional automation templates and workflows for GitHub repositories, providi
 - **Repository:** [{{REPO_FULL_NAME}}]({{REPO_URL}})
 - **Branch:** {{CURRENT_BRANCH}}
 
-[![🚀 Automatic Release](https://github.com/{{REPO_FULL_NAME}}/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/{{REPO_FULL_NAME}}/actions/workflows/automatic-release.yml)
-[![🛡️ Security Scan](https://github.com/{{REPO_FULL_NAME}}/actions/workflows/security-scan.yml/badge.svg)](https://github.com/{{REPO_FULL_NAME}}/actions/workflows/security-scan.yml)
-[![📄 Documentation](https://github.com/{{REPO_FULL_NAME}}/actions/workflows/readme.yml/badge.svg)](https://github.com/{{REPO_FULL_NAME}}/actions/workflows/readme.yml)
+[![🚀 Automatic Release Management](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
+[![📄 README Documentation Management](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml)
 
 ## 🛡️ Security Scanning
 
