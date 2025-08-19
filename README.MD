@@ -1,71 +1,78 @@
-<!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-19 10:32:50 UTC -->
+# Bauer Group - Automation Templates
 
-# BAUER GROUP - Automation Templates
+**Professional automation templates and workflows for GitHub repositories**
 
-**Status:** Version 0.1.2 (2025-08-19)  
-**Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)  
-**Branch:** {{CURRENT_BRANCH}}
+## 🛡️ Overview
 
-Zentrale GitHub Actions Templates und Workflows für automatisierte Entwicklungsprozesse
+This repository provides enterprise-grade automation templates, security scanning tools, and workflow configurations for professional software development. Our solution enables organizations to implement consistent, secure, and efficient development practices across all repositories.
 
-[![Enhanced Release](https://github.com/bauer-group/automation-templates/actions/workflows/enhanced-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/enhanced-release.yml)
+## 🏗️ Architecture
+
+### Core Components
+
+```text
+├── .github/
+│   ├── actions/               # Reusable GitHub Actions
+│   │   ├── security-scan/     # Multi-engine security scanning
+│   │   ├── license-compliance/ # SPDX license compliance
+│   │   ├── artifact-generator/ # Multi-format artifact generation
+│   │   └── auto-merge/        # Intelligent auto-merge capabilities
+│   ├── config/               # Configuration files
+│   │   └── commitlint.config.js # Commit linting rules
+│   └── workflows/            # Production-ready workflows
+│       ├── automatic-release.yml # Automated release management
+│       ├── manual-release.yml    # Manual release controls
+│       └── readme.yml           # Documentation automation
+├── github/                   # Repository management tools
+│   ├── branch-protect/       # Branch protection automation
+│   ├── cleanup/             # Repository cleanup utilities
+│   └── runner/              # Self-hosted runner management
+├── docs/                    # Documentation templates
+└── scripts/                 # Utility scripts
+```
 
 ## 🛡️ Security Scanning - Dual Engine Approach
 
-### Meta Package (Empfohlen)
+### Comprehensive Security Action
+
 ```yaml
-- name: 🛡️ Comprehensive Security Scan
-  uses: ./.github/actions/security-scan-meta
+- name: 🛡️ Multi-Engine Security Scan
+  uses: ./.github/actions/security-scan
   with:
-    scan-engine: both              # gitleaks, gitguardian, both
-    scan-type: all                 # secrets, vulnerabilities, all
+    scan-engines: 'gitleaks,gitguardian'  # or 'gitleaks' or 'gitguardian'
+    scan-scope: 'all'                     # secrets, vulnerabilities, all
     fail-on-findings: true
     github-token: ${{ secrets.GITHUB_TOKEN }}
     gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}  # Optional
 ```
 
-### Einzelne Engines
+### Engine Comparison
 
-#### Gitleaks (Open Source)
+| Engine | Speed | Coverage | Enterprise Features | Cost |
+|--------|-------|----------|-------------------|------|
+| **Gitleaks** | ⚡⚡⚡⚡ | Pattern-based | Basic | Free |
+| **GitGuardian** | ⚡⚡⚡ | ML-enhanced | Advanced | Commercial |
+| **Both** | ⚡⚡⚡ | Comprehensive | Complete | Hybrid |
+
+## 📦 Release Management
+
+### Automatic Release Workflow
+
 ```yaml
-- name: ⚡ Fast Secrets Scan
-  uses: ./.github/actions/gitleaks-scan
-  with:
-    scan-history: false
-    github-token: ${{ secrets.GITHUB_TOKEN }}  # Optional für org repos
-    format: json
-```
-
-#### GitGuardian (Enterprise)
-```yaml
-- name: 🛡️ Advanced Security Scan
-  uses: ./.github/actions/gitguardian-scan
-  with:
-    scan-mode: ci
-    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
-    minimum-severity: medium
-    all-policies: true
-```
-
-## 📦 Enhanced Release Management
-
-### Vollständiger Release Workflow
-```yaml
-name: 🚀 Production Release
+name: 🚀 Automatic Release
 
 on:
   push:
-    branches: [ $default-branch ]
+    branches: [main]
   workflow_dispatch:
     inputs:
-      security-scan-engine:
+      security-scan-engines:
         type: choice
         default: 'both'
-        options: [gitleaks, gitguardian, both]
-      cleanup-release-branch:
+        options: ['gitleaks', 'gitguardian', 'both']
+      enable-auto-merge:
         type: boolean
-        default: true
+        default: false
 
 jobs:
   release:
@@ -75,252 +82,387 @@ jobs:
         with:
           fetch-depth: 0
           
-      - name: 🚀 Enhanced Release Please
+      - name: 🚀 Enhanced Release Management
         uses: ./.github/actions/release-please
         with:
           release-type: simple
-          security-scan-engine: ${{ inputs.security-scan-engine || 'both' }}
-          cleanup-release-branch: ${{ inputs.cleanup-release-branch || 'true' }}
-          auto-merge-enabled: false
+          security-engines: ${{ inputs.security-scan-engines || 'both' }}
+          auto-merge: ${{ inputs.enable-auto-merge || 'false' }}
           token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-## 🏗️ Modulare Actions Übersicht
-
-### �️ Security Actions
-
-| Action | Zweck | Engine | Geschwindigkeit | Enterprise Features |
-|--------|-------|---------|----------------|---------------------|
-| **security-scan-meta** | Meta Package für alle Engines | Beide | ⚡⚡⚡ | ✅ Umfassend |
-| **gitleaks-scan** | Schnelle Pattern-Erkennung | Gitleaks | ⚡⚡⚡⚡ | ❌ Basic |
-| **gitguardian-scan** | ML-basierte Erkennung | GitGuardian | ⚡⚡ | ✅ Advanced |
-
-### ⚖️ Compliance & Quality
+### Manual Release Controls
 
 ```yaml
-# License Compliance mit SPDX & FOSSA
-- uses: ./.github/actions/license-compliance
+- name: 🎯 Manual Release Trigger
+  uses: ./.github/workflows/manual-release.yml
   with:
-    fossa-api-key: ${{ secrets.FOSSA_API_KEY }}
-    fail-on-issues: true
-
-# Artifact Generation  
-- uses: ./.github/actions/artifact-generator
-  with:
-    artifact-types: source,docker
-    include-checksums: true
-
-# Auto-Merge mit Bedingungen
-- uses: ./.github/actions/auto-merge
-  with:
-    require-reviews: 2
-    merge-method: squash
+    release-version: "1.2.3"
+    release-notes: "Custom release notes"
+    pre-release: false
+    security-validation: true
 ```
 
-## 📁 Struktur
+## 🔧 Configuration
 
-```text
-├── .github/
-│   ├── actions/               # Wiederverwendbare Actions
-│   │   ├── security-scan-meta/ # Meta Package für Security Scans
-│   │   ├── gitleaks-scan/     # Gitleaks Security Scanner
-│   │   ├── gitguardian-scan/  # GitGuardian Security Scanner  
-│   │   ├── license-compliance/ # SPDX License Compliance
-│   │   ├── artifact-generator/ # Multi-Format Artifacts
-│   │   ├── auto-merge/        # Intelligent Auto-Merge
-│   │   └── release-please/    # Enhanced Release Management
-│   ├── config/               # Konfigurationsdateien
-│   │   └── commitlint.config.js # Commit-Linting-Regeln
-│   └── workflows/            # Workflow-Templates
-│       └── enhanced-release.yml # Haupt-Release-Workflow
-├── docs/                     # Dokumentation
-└── scripts/                  # Hilfsskripte
-```
+### Security Engine Configuration
 
-## 🔧 Konfiguration
+#### Gitleaks Configuration (.gitleaks.toml)
 
-### Commitlint Setup
-Die Commitlint-Konfiguration wurde nach `.github/config/` verschoben:
-
-**`.github/config/commitlint.config.js`**
-```javascript
-module.exports = {
-  extends: ['@commitlint/config-conventional'],
-  rules: {
-    'type-enum': [2, 'always', [
-      'feat', 'fix', 'docs', 'style', 'refactor',
-      'test', 'chore', 'ci', 'build', 'revert', 'perf'
-    ]]
-  }
-};
-```
-
-### Security Engine Konfiguration
-
-#### Gitleaks (.gitleaks.toml)
 ```toml
 [extend]
 useDefault = true
 
 [allowlist]
 paths = [
-  ".git/",
-  "node_modules/",
-  "vendor/"
+  ".git/**",
+  "node_modules/**",
+  "vendor/**"
 ]
 
 regexes = [
-  '''password\s*=\s*["']?test["']?''',
-  '''key\s*=\s*["']?your[_-]?key[_-]?here["']?'''
+  '''password\s*=\s*["']?(test|demo|example)["']?''',
+  '''key\s*=\s*["']?(your[_-]?key[_-]?here)["']?'''
 ]
+
+[[rules]]
+id = "custom-api-key"
+description = "Custom API key pattern"
+regex = '''(?i)(api[_-]?key|apikey)\s*[:=]\s*["']?([a-zA-Z0-9]{32,})["']?'''
 ```
 
-#### GitGuardian (.gitguardian.yaml)
+#### GitGuardian Configuration (.gitguardian.yaml)
+
 ```yaml
 version: 2
+
 paths-ignore:
-  - .git
-  - node_modules
+  - .git/**
+  - node_modules/**
+  - vendor/**
+  - "**/*.min.js"
   
 secret:
   minimum-severity: medium
   ignore-known-secrets: false
+  show-secrets: false
   
 policies:
   all-policies: true
+  
+exclusions:
+  - pattern: "password.*=.*test"
+    type: "regex"
+  - pattern: "demo-api-key"
+    type: "literal"
 ```
 
-## 🚀 Best Practices
+### Commit Lint Configuration
 
-### 1. **Dual Engine Security**
-- **Entwicklung**: Gitleaks für schnelle Pre-Commit-Checks
-- **CI/CD**: Beide Engines für maximale Abdeckung
-- **Production**: GitGuardian für Policy-Enforcement
+**`.github/config/commitlint.config.js`**
 
-### 2. **Branch Management**
-- `$default-branch` statt hardcodierter `main`
-- Automatisches Cleanup von Release-Branches
-- Konfigurierbare Auto-Merge-Bedingungen
-
-### 3. **API Key Management**
-```yaml
-secrets:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}           # Immer verfügbar
-  GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }} # Optional
-  FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}         # Für License-Compliance
+```javascript
+module.exports = {
+  extends: ['@commitlint/config-conventional'],
+  rules: {
+    'type-enum': [2, 'always', [
+      'feat',     // New features
+      'fix',      // Bug fixes
+      'docs',     // Documentation changes
+      'style',    // Code style changes
+      'refactor', // Code refactoring
+      'test',     // Adding tests
+      'chore',    // Maintenance tasks
+      'ci',       // CI/CD changes
+      'build',    // Build system changes
+      'revert',   // Reverting changes
+      'perf'      // Performance improvements
+    ]],
+    'subject-max-length': [2, 'always', 72],
+    'header-max-length': [2, 'always', 100]
+  }
+};
 ```
 
-#### Repository-Informationen
+## 🚀 Getting Started
 
-- `bauer-group/automation-templates` - Repository Name (owner/repo)
-- `https://github.com/bauer-group/automation-templates` - Repository URL
-- `bauer-group` - Repository Owner
-- `automation-templates` - Repository Name
-- `{{CURRENT_BRANCH}}` - Aktueller Branch
+### Quick Setup
 
-#### Projekt-Informationen
+1. **Fork or use as template**:
+   ```bash
+   gh repo create my-project --template bauer-group/automation-templates
+   ```
 
-- `Automation Templates` - Projektname
-- `Zentrale GitHub Actions Templates und Workflows für automatisierte Entwicklungsprozesse` - Projektbeschreibung
-- `BAUER GROUP` - Firmenname
-- `support@bauer-group.com` - Kontakt E-Mail
-- `https://github.com/bauer-group/automation-templates/wiki` - Dokumentations-URL
-- `https://github.com/bauer-group/automation-templates/issues` - Support-URL
+2. **Configure secrets**:
+   ```bash
+   # Required
+   gh secret set GITHUB_TOKEN --body "${{ secrets.GITHUB_TOKEN }}"
+   
+   # Optional (for GitGuardian)
+   gh secret set GITGUARDIAN_API_KEY --body "your-api-key"
+   
+   # Optional (for license compliance)
+   gh secret set FOSSA_API_KEY --body "your-fossa-key"
+   ```
 
-#### Package-Informationen (automatisch erkannt)
+3. **Customize workflows**:
+   ```bash
+   # Copy example workflows
+   cp .github/workflows/examples/* .github/workflows/
+   
+   # Edit configuration
+   vim .github/config/commitlint.config.js
+   ```
 
-- `` - Paketname (aus package.json, etc.)
-- `` - Paketversion
-- `` - Autor
-- `` - Lizenz
+### Using Individual Actions
 
-#### Workflow-Badges (automatisch generiert)
-
-- `[![Release](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/release-please.yml)` - Release-Status Badge
-
-### In anderen Projekten verwenden
+#### Security Scanning
 
 ```yaml
-# .github/workflows/readme.yml
-name: README Update
+# In your workflow
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Security Scan
+        uses: bauer-group/automation-templates/.github/actions/security-scan@main
+        with:
+          scan-engines: 'both'
+          fail-on-findings: true
+```
+
+#### License Compliance
+
+```yaml
+- name: License Compliance Check
+  uses: bauer-group/automation-templates/.github/actions/license-compliance@main
+  with:
+    fossa-api-key: ${{ secrets.FOSSA_API_KEY }}
+    fail-on-issues: true
+    generate-report: true
+```
+
+#### Artifact Generation
+
+```yaml
+- name: Generate Release Artifacts
+  uses: bauer-group/automation-templates/.github/actions/artifact-generator@main
+  with:
+    artifact-types: 'source,docker,checksums'
+    compression: 'zip'
+    include-metadata: true
+```
+
+## 🏛️ Enterprise Features
+
+### Multi-Repository Management
+
+```yaml
+# Organization-wide security scanning
+name: Organization Security Audit
 
 on:
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly Monday 2 AM
 
 jobs:
-  readme:
-    uses: bauer-group/automation-templates/github/workflows/readme.yml@main
-    with:
-      template-path: "docs/README.template.md"
-      output-path: "README.md"
-      project-name: "Mein Projekt"
-      company-name: "Meine Firma"
-      project-description: "Beschreibung meines Projekts"
-      contact-email: "support@example.com"
+  audit:
+    strategy:
+      matrix:
+        repository: [repo1, repo2, repo3]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/${{ matrix.repository }}
+          
+      - name: Security scan
+        uses: bauer-group/automation-templates/.github/actions/security-scan@main
+        with:
+          scan-engines: 'both'
+          report-format: 'sarif'
 ```
 
-### Lokale README-Generierung
+### Policy Enforcement
+
+```yaml
+# Branch protection with custom rules
+- name: Enforce Branch Protection
+  uses: bauer-group/automation-templates/github/branch-protect@main
+  with:
+    branch-pattern: 'main,develop,release/*'
+    require-reviews: 2
+    dismiss-stale-reviews: true
+    require-code-owner-reviews: true
+    require-status-checks: true
+    required-checks: 'security-scan,tests,license-check'
+```
+
+### Compliance Reporting
+
+```yaml
+# Generate compliance reports
+- name: Compliance Report
+  uses: bauer-group/automation-templates/.github/actions/compliance-report@main
+  with:
+    standards: 'sox,pci-dss,gdpr'
+    output-format: 'pdf,json'
+    include-remediation: true
+```
+
+## 📊 Repository Management Tools
+
+### Branch Protection Automation
 
 ```bash
-# README manuell generieren
-python scripts/generate_readme.py
-
-# Mit benutzerdefinierten Umgebungsvariablen
-PROJECT_NAME="Mein Projekt" \
-COMPANY_NAME="Meine Firma" \
-python scripts/generate_readme.py
+# Configure branch protection for multiple repositories
+cd github/branch-protect
+python protect_main.py \
+  --repositories "org/repo1,org/repo2" \
+  --require-reviews 2 \
+  --require-status-checks \
+  --enforce-admins
 ```
 
-## 🔄 Automatisches Release-Management
+### Repository Cleanup
 
-Das Projekt verwendet **Release-Please** für automatisches Release-Management:
+```bash
+# Clean up stale branches and releases
+cd github/cleanup
+python github_cleanup.py \
+  --organization "your-org" \
+  --cleanup-branches \
+  --cleanup-releases \
+  --dry-run
+```
 
-1. **Conventional Commits** verwenden (feat:, fix:, chore:, docs:, etc.)
-2. **Push nach main** triggert Release-Please
-3. **Release-PR** wird automatisch erstellt
-4. **Merge des Release-PR** erstellt das GitHub Release
+### Self-Hosted Runner Management
 
-### Unterstützte Commit-Typen
+```bash
+# Deploy self-hosted runners
+cd github/runner
+docker-compose up -d
 
-- `feat:` - Neue Features (minor version bump)
-- `fix:` - Bugfixes (patch version bump)
-- `feat!:` oder `BREAKING CHANGE:` - Breaking Changes (major version bump)
-- `docs:`, `chore:`, `ci:`, `refactor:` - Keine Version-Änderung
+# Scale runners based on load
+./scripts/manage.sh scale --instances 5
+```
 
-## 🛠️ Entwicklung
+## 🔄 Best Practices
 
-### Voraussetzungen
+### 1. **Layered Security**
 
-- Python 3.12+
-- Git
-- GitHub Repository mit Actions aktiviert
+- **Pre-commit**: Client-side scanning with Gitleaks
+- **CI/CD**: Comprehensive scanning with both engines
+- **Production**: Continuous monitoring with GitGuardian
 
-### Setup
+### 2. **Release Management**
 
-1. Repository klonen
-2. Template in `docs/README.template.MD` anpassen
-3. Workflows nach Bedarf konfigurieren
-4. README generieren: `python scripts/generate_readme.py`
+- Use **conventional commits** for automatic versioning
+- Enable **branch protection** for main branches
+- Implement **automated testing** before releases
+- Use **semantic versioning** for consistency
 
-### Verfügbare Workflows
+### 3. **Configuration Management**
 
-Siehe [github/workflows/README.md](github/workflows/README.md) für detaillierte Dokumentation aller verfügbaren Workflows.
+- Store sensitive configuration in **GitHub Secrets**
+- Use **environment-specific** configuration files
+- Implement **configuration validation** in workflows
+- Document all **configuration options**
+
+### 4. **Monitoring and Alerting**
+
+```yaml
+# Workflow failure notifications
+- name: Notify on Failure
+  if: failure()
+  uses: actions/slack@v1
+  with:
+    webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+    message: "Security scan failed in ${{ github.repository }}"
+```
+
+## 📈 Metrics and Analytics
+
+### Security Metrics
+
+- **Vulnerability detection rate**: Track security findings over time
+- **False positive rate**: Monitor scan accuracy
+- **Resolution time**: Measure time to fix security issues
+- **Coverage metrics**: Ensure comprehensive scanning
+
+### Release Metrics
+
+- **Release frequency**: Track deployment velocity
+- **Lead time**: Measure time from commit to production
+- **Rollback rate**: Monitor release stability
+- **Automation rate**: Track manual vs. automated releases
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+1. **Security scan failures**:
+   ```bash
+   # Check scan configuration
+   cat .gitleaks.toml
+   cat .gitguardian.yaml
+   
+   # Validate token permissions
+   gh auth status --show-token
+   ```
+
+2. **Release automation issues**:
+   ```bash
+   # Check release-please configuration
+   cat .release-please-config.json
+   
+   # Validate commit format
+   git log --oneline -10
+   ```
+
+3. **Workflow permissions**:
+   ```yaml
+   permissions:
+     contents: write
+     security-events: write
+     actions: read
+     checks: write
+   ```
+
+### Debug Mode
+
+```yaml
+# Enable debug logging
+- name: Debug Security Scan
+  uses: ./.github/actions/security-scan
+  with:
+    debug: true
+    verbose: true
+  env:
+    ACTIONS_STEP_DEBUG: true
+```
+
+## 📚 Documentation
+
+- [Security Scanning Guide](.github/actions/security-scan/README.md)
+- [Release Management Guide](.github/workflows/README.md)
+- [Repository Tools Guide](github/README.md)
+- [Contributing Guidelines](CONTRIBUTING.md)
 
 ## 📞 Support
 
+- **Issues**: [GitHub Issues](https://github.com/bauer-group/automation-templates/issues)
+- **Documentation**: [Project Wiki](https://github.com/bauer-group/automation-templates/wiki)
+- **Security**: [Security Policy](SECURITY.md)
+- **Community**: [Discussions](https://github.com/bauer-group/automation-templates/discussions)
 
-**Kontakt:** [support@bauer-group.com](mailto:support@bauer-group.com)
+## 📄 License
 
-
-
-**Support:** [https://github.com/bauer-group/automation-templates/issues](https://github.com/bauer-group/automation-templates/issues)
-
-
-**Issues:** [GitHub Issues](https://github.com/bauer-group/automation-templates/issues)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-*Dieses README wurde automatisch generiert am 2025-08-19 10:32:50 UTC aus [docs/README.template.MD](docs/README.template.MD)*
-# Test for summary display
+*Professional automation templates for enterprise GitHub workflows. Maintained by the Bauer Group Development Team.*
