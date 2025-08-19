@@ -82,25 +82,31 @@ inputs:
 outputs:
   release_created:
     description: 'Whether a release was created'
-    value: ${{ steps.release.outputs.release_created }}
+    value: ${{ steps.release.outputs.release_created || steps.release-retry.outputs.release_created }}
   tag_name:
     description: 'The tag name of the release'
-    value: ${{ steps.release.outputs.tag_name }}
+    value: ${{ steps.release.outputs.tag_name || steps.release-retry.outputs.tag_name }}
   version:
     description: 'The version of the release'
-    value: ${{ steps.release.outputs.version }}
+    value: ${{ steps.release.outputs.version || steps.release-retry.outputs.version }}
   upload_url:
     description: 'Upload URL for release assets'
-    value: ${{ steps.release.outputs.upload_url }}
+    value: ${{ steps.release.outputs.upload_url || steps.release-retry.outputs.upload_url }}
   html_url:
     description: 'HTML URL of the release'
-    value: ${{ steps.release.outputs.html_url }}
+    value: ${{ steps.release.outputs.html_url || steps.release-retry.outputs.html_url }}
   pr_number:
     description: 'Release PR number (if created or found)'
-    value: ${{ steps.release.outputs.pr_number || steps.find-pr.outputs.existing-pr }}
+    value: ${{ steps.release.outputs.pr_number || steps.release-retry.outputs.pr_number || steps.find-pr.outputs.existing-pr }}
   pr_merged:
     description: 'Whether release PR was merged'
     value: ${{ steps.auto-merge.outputs.merged }}
+  error_recovered:
+    description: 'Whether errors were automatically recovered'
+    value: ${{ steps.handle-errors.outputs.missing-release-created }}
+  recovery_version:
+    description: 'Version created during error recovery'
+    value: ${{ steps.handle-errors.outputs.created-version }}
   security_score:
     description: 'Security scan score'
     value: ${{ steps.security-scan.outputs.security-score }}
@@ -206,6 +212,73 @@ runs:
         config-file: ${{ inputs.config-file }}
         manifest-file: ${{ inputs.manifest-file }}
         token: ${{ inputs.token }}
+      continue-on-error: true
+
+    - name: 🔍 Handle Release Please Errors
+      id: handle-errors
+      if: steps.release.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "⚠️ Release-Please failed, attempting error recovery..."
+        
+        # Check for merged release PRs without corresponding releases
+        MERGED_PRS=$(curl -s -H "Authorization: token ${{ inputs.token }}" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls?state=closed" | \
+          jq -r '.[] | select(.merged_at != null and (.title | test("chore: release"))) | "\(.number)|\(.title)|\(.merge_commit_sha)"' | head -5)
+        
+        if [ -n "$MERGED_PRS" ]; then
+          echo "🔍 Found merged release PRs, checking for missing releases..."
+          
+          while IFS='|' read -r pr_number pr_title merge_sha; do
+            # Extract version from PR title
+            VERSION=$(echo "$pr_title" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            
+            if [ -n "$VERSION" ]; then
+              # Check if release exists
+              RELEASE_EXISTS=$(curl -s -H "Authorization: token ${{ inputs.token }}" \
+                "https://api.github.com/repos/${{ github.repository }}/releases/tags/v$VERSION" | \
+                jq -r '.tag_name // empty')
+              
+              if [ -z "$RELEASE_EXISTS" ]; then
+                echo "🚀 Creating missing release v$VERSION for merged PR #$pr_number"
+                
+                # Create the missing release
+                curl -s -X POST \
+                  -H "Authorization: token ${{ inputs.token }}" \
+                  -H "Content-Type: application/json" \
+                  "https://api.github.com/repos/${{ github.repository }}/releases" \
+                  -d "{
+                    \"tag_name\": \"v$VERSION\",
+                    \"name\": \"v$VERSION\",
+                    \"body\": \"Release $VERSION\\n\\nAutomatically created for merged PR #$pr_number\\n\\nFull Changelog: https://github.com/${{ github.repository }}/compare/v$(echo $VERSION | awk -F. '{print $1\".\"$2\".\"$3-1}')...v$VERSION\",
+                    \"draft\": false,
+                    \"prerelease\": false
+                  }"
+                
+                echo "✅ Created release v$VERSION"
+                echo "missing-release-created=true" >> $GITHUB_OUTPUT
+                echo "created-version=$VERSION" >> $GITHUB_OUTPUT
+                break
+              else
+                echo "ℹ️ Release v$VERSION already exists"
+              fi
+            fi
+          done <<< "$MERGED_PRS"
+        fi
+        
+        # Retry release-please after cleanup
+        echo "🔄 Retrying release-please after error recovery..."
+        echo "retry-needed=true" >> $GITHUB_OUTPUT
+
+    - name: 🔄 Retry Release Please
+      id: release-retry
+      if: steps.handle-errors.outputs.retry-needed == 'true'
+      uses: googleapis/release-please-action@v4
+      with:
+        config-file: ${{ inputs.config-file }}
+        manifest-file: ${{ inputs.manifest-file }}
+        token: ${{ inputs.token }}
+      continue-on-error: true
 
     - name: � Find Existing Release PR
       id: find-pr
