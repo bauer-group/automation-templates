@@ -117,7 +117,90 @@ jobs:
 
 ---
 
-## 🚀 Enhanced Release Workflow
+## 🧩 Modulare Workflow-Beispiele
+
+Die folgenden Beispiele zeigen, wie die **modularen Workflow-Komponenten** für verschiedene Projekttypen und Anwendungsfälle verwendet werden können.
+
+### 📋 Verfügbare Beispiele
+
+| Beispiel | Beschreibung | Zielgruppe |
+|----------|-------------|-----------|
+| **[readme.yml](../../.github/workflows/readme.yml)** | README-Generator Workflow | Alle Projekttypen |
+| **[simple-release.yml](./simple-release.yml)** | Einfacher Release-Workflow | Kleine Projekte, Prototypen |
+| **[comprehensive-ci-cd.yml](./comprehensive-ci-cd.yml)** | Vollständige CI/CD-Pipeline | Enterprise-Projekte |
+| **[security-focused.yml](./security-focused.yml)** | Security-zentrierte Pipeline | Sicherheitskritische Anwendungen |
+| **[nodejs-project.yml](./nodejs-project.yml)** | Node.js-spezifischer Workflow | JavaScript/TypeScript-Projekte |
+
+### 🎯 Modulare Architektur
+
+Anstatt monolithischer Workflows (wie der ursprüngliche 870-Zeilen automatic-release.yml) verwenden wir **komponierbare Module**:
+
+```
+🧩 Modulare Komponenten (.github/modules/):
+├── 🛡️ security-scan.yml      → Sicherheitsanalyse
+├── 📋 license-compliance.yml → Lizenz-Compliance
+├── 🚀 release-management.yml → Release-Automatisierung
+├── 🔨 artifact-generation.yml → Artefakt-Erstellung
+└── 🔍 pr-validation.yml      → Pull Request-Validierung
+```
+
+### 🚀 Quick Start
+
+**1. Einfacher Release-Workflow:**
+```yaml
+jobs:
+  release:
+    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    with:
+      release-type: 'simple'
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**2. Mit Security-Scan:**
+```yaml
+jobs:
+  security:
+    uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+  
+  release:
+    needs: security
+    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+```
+
+**3. PR-Validierung:**
+```yaml
+jobs:
+  pr-check:
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/modules/pr-validation.yml@main
+    with:
+      enable-security-scan: true
+      enable-license-check: true
+```
+
+### 💡 Vorteile der modularen Architektur
+
+- ✅ **Wiederverwendbarkeit:** Ein Modul, viele Projekte
+- ✅ **Flexibilität:** Nur die benötigten Komponenten verwenden
+- ✅ **Wartbarkeit:** Einzelne Module unabhängig aktualisieren
+- ✅ **Testbarkeit:** Jedes Modul isoliert testbar
+- ✅ **Performance:** Parallel ausführbare Module
+
+### 🔗 Weiterführende Dokumentation
+
+- **[Modulare Komponenten](../../.github/modules/README.md)** - Detaillierte Dokumentation der einzelnen Module
+- **[Migration Guide](../../.github/modules/README.md#migration-von-monolithen)** - Von monolithischen zu modularen Workflows
+- **[Best Practices](../../.github/modules/README.md#best-practices)** - Empfehlungen für die Workflow-Komposition
+- **[Actions Documentation](../../.github/actions/README.MD)** - Übersicht über verfügbare GitHub Actions
+- **[Repository Workflows](../../.github/workflows/README.md)** - Interne Workflow-Dokumentation
+
+---
+
+## 🚀 Enhanced Release Workflow (Legacy)
+
+> **⚠️ Hinweis:** Der Enhanced Release Workflow wird durch die modularen Komponenten ersetzt. 
+> Für neue Projekte empfehlen wir die Verwendung der modularen Beispiele oben.
 
 ## 📦 Workflow Features
 

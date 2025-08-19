@@ -1,0 +1,252 @@
+name: 🔍 Pull Request Validation
+
+on:
+  workflow_call:
+    inputs:
+      enable-security-scan:
+        description: 'Enable security scanning on PRs'
+        required: false
+        type: boolean
+        default: true
+      enable-license-check:
+        description: 'Enable license compliance check on PRs'
+        required: false
+        type: boolean
+        default: true
+      enable-commit-lint:
+        description: 'Enable conventional commit validation'
+        required: false
+        type: boolean
+        default: true
+      security-scan-engine:
+        description: 'Security scan engine for PR validation'
+        required: false
+        type: string
+        default: 'gitleaks'
+      fail-on-security-issues:
+        description: 'Fail PR validation on security issues'
+        required: false
+        type: boolean
+        default: true
+      fail-on-license-issues:
+        description: 'Fail PR validation on license issues'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      GITHUB_TOKEN:
+        description: 'GitHub token for repository access'
+        required: true
+      GITGUARDIAN_API_KEY:
+        description: 'GitGuardian API key'
+        required: false
+      GITLEAKS_LICENSE:
+        description: 'Gitleaks Pro license key'
+        required: false
+    outputs:
+      validation-passed:
+        description: 'Whether all validations passed'
+        value: ${{ jobs.pr-validation.outputs.validation-passed }}
+      security-score:
+        description: 'Security scan score'
+        value: ${{ jobs.pr-validation.outputs.security-score }}
+      license-compliance:
+        description: 'License compliance status'
+        value: ${{ jobs.pr-validation.outputs.license-compliance }}
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+  checks: write
+
+jobs:
+  pr-validation:
+    name: 🔍 PR Quality Gates
+    runs-on: ubuntu-latest
+    outputs:
+      validation-passed: ${{ steps.summary.outputs.validation-passed }}
+      security-score: ${{ steps.security.outputs.security-score }}
+      license-compliance: ${{ steps.license.outputs.compliance-status }}
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 📋 Validate Conventional Commits
+        id: commits
+        if: inputs.enable-commit-lint == true
+        continue-on-error: true
+        uses: wagoid/commitlint-github-action@v5
+        with:
+          configFile: .github/config/commitlint.config.js
+          failOnWarnings: false
+
+      - name: 🛡️ Security Pre-Check
+        id: security
+        if: inputs.enable-security-scan == true
+        continue-on-error: ${{ inputs.fail-on-security-issues == false }}
+        uses: bauer-group/automation-templates/.github/workflows/security-scan.yml@main
+        with:
+          scan-engine: ${{ inputs.security-scan-engine }}
+          scan-type: 'secrets'
+          fail-on-findings: ${{ inputs.fail-on-security-issues }}
+        secrets:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+      - name: 📋 License Pre-Check
+        id: license
+        if: inputs.enable-license-check == true
+        continue-on-error: ${{ inputs.fail-on-license-issues == false }}
+        uses: bauer-group/automation-templates/.github/workflows/license-compliance.yml@main
+        with:
+          fail-on-forbidden: ${{ inputs.fail-on-license-issues }}
+          fail-on-unknown: false
+          scan-dependencies: false
+          generate-sbom: false
+        secrets:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📊 Validation Summary
+        id: summary
+        if: always()
+        run: |
+          # Determine overall validation status
+          VALIDATION_PASSED="true"
+          
+          # Check commit validation
+          COMMIT_STATUS="${{ steps.commits.outcome }}"
+          if [ "${{ inputs.enable-commit-lint }}" = "true" ] && [ "$COMMIT_STATUS" = "failure" ]; then
+            VALIDATION_PASSED="false"
+          fi
+          
+          # Check security validation
+          SECURITY_STATUS="${{ steps.security.result }}"
+          if [ "${{ inputs.enable-security-scan }}" = "true" ] && [ "${{ inputs.fail-on-security-issues }}" = "true" ] && [ "$SECURITY_STATUS" = "failure" ]; then
+            VALIDATION_PASSED="false"
+          fi
+          
+          # Check license validation
+          LICENSE_STATUS="${{ steps.license.result }}"
+          if [ "${{ inputs.enable-license-check }}" = "true" ] && [ "${{ inputs.fail-on-license-issues }}" = "true" ] && [ "$LICENSE_STATUS" = "failure" ]; then
+            VALIDATION_PASSED="false"
+          fi
+          
+          echo "validation-passed=$VALIDATION_PASSED" >> $GITHUB_OUTPUT
+          
+          # Generate PR comment with validation results
+          echo "### 🔍 PR Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Validation Check | Enabled | Status | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------------|---------|---------|---------|" >> $GITHUB_STEP_SUMMARY
+          
+          # Conventional Commits
+          if [ "${{ inputs.enable-commit-lint }}" = "true" ]; then
+            COMMIT_ICON="${{ steps.commits.outcome == 'success' && '✅' || '❌' }}"
+            echo "| **Conventional Commits** | ✅ | $COMMIT_ICON | ${{ steps.commits.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Conventional Commits** | ⏭️ | ⏭️ | Disabled |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Security Scan
+          if [ "${{ inputs.enable-security-scan }}" = "true" ]; then
+            SECURITY_ICON="${{ steps.security.result == 'success' && '✅' || '❌' }}"
+            SECURITY_SCORE="${{ steps.security.outputs.security-score || 'N/A' }}"
+            echo "| **Security Scan** | ✅ | $SECURITY_ICON | Score: $SECURITY_SCORE/100 |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Security Scan** | ⏭️ | ⏭️ | Disabled |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # License Check
+          if [ "${{ inputs.enable-license-check }}" = "true" ]; then
+            LICENSE_ICON="${{ steps.license.result == 'success' && '✅' || '❌' }}"
+            LICENSE_STATUS="${{ steps.license.outputs.compliance-status || 'N/A' }}"
+            echo "| **License Compliance** | ✅ | $LICENSE_ICON | Status: $LICENSE_STATUS |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **License Compliance** | ⏭️ | ⏭️ | Disabled |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$VALIDATION_PASSED" = "true" ]; then
+            echo "🎉 **All validation checks passed!** This PR is ready for review." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Some validation checks failed.** Please address the issues before merging." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Common fixes:**" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "$COMMIT_STATUS" = "failure" ]; then
+              echo "- Use conventional commit format (feat:, fix:, docs:, etc.)" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ "$SECURITY_STATUS" = "failure" ]; then
+              echo "- Review and address security findings" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [ "$LICENSE_STATUS" = "failure" ]; then
+              echo "- Review license compliance issues" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+      - name: 📝 Comment on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const validationPassed = '${{ steps.summary.outputs.validation-passed }}';
+            const securityScore = '${{ steps.security.outputs.security-score }}';
+            const licenseCompliance = '${{ steps.license.outputs.compliance-status }}';
+            
+            const body = `
+            ## 🔍 PR Validation Report
+            
+            **Overall Status:** ${validationPassed === 'true' ? '✅ PASSED' : '❌ FAILED'}
+            
+            ### Validation Results
+            
+            | Check | Status | Details |
+            |-------|--------|---------|
+            | Conventional Commits | ${{ inputs.enable-commit-lint == true && (steps.commits.outcome == 'success' ? '✅ PASS' : '❌ FAIL') || '⏭️ SKIP' }} | ${{ steps.commits.outcome || 'Disabled' }} |
+            | Security Scan | ${{ inputs.enable-security-scan == true && (steps.security.result == 'success' ? '✅ PASS' : '❌ FAIL') || '⏭️ SKIP' }} | ${securityScore ? `Score: ${securityScore}/100` : 'Disabled'} |
+            | License Compliance | ${{ inputs.enable-license-check == true && (steps.license.result == 'success' ? '✅ PASS' : '❌ FAIL') || '⏭️ SKIP' }} | ${licenseCompliance || 'Disabled'} |
+            
+            ${validationPassed === 'true' 
+              ? '🎉 **Great job!** All validation checks passed. This PR is ready for review.' 
+              : '⚠️ **Action needed:** Please address the failing checks before this PR can be merged.'}
+            
+            ---
+            *Automated validation by [Automation Templates](https://github.com/bauer-group/automation-templates)*
+            `;
+            
+            // Create or update comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.login === 'github-actions[bot]' && 
+              comment.body.includes('PR Validation Report')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }

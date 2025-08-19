@@ -1,257 +1,127 @@
-# GitHub Workflows - Enterprise Automation Templates
+# Repository Workflows
 
-**Professional CI/CD workflow templates for enterprise-grade development processes**
+Diese Workflows sind speziell für das `automation-templates` Repository entwickelt und demonstrieren die Verwendung der modularen Workflow-Komponenten.
 
-## 📋 Overview
+## 📁 Workflow-Dateien
 
-This directory contains production-ready GitHub Actions workflows that implement industry best practices for continuous integration, security, and release management.
+### 🔄 [ci-cd.yml](./ci-cd.yml) - Haupt CI/CD Pipeline
+**Zweck:** Hauptpipeline für Pull Requests und Main Branch  
+**Zeilen:** 147 (vs. 870 im ursprünglichen automatic-release.yml)  
+**Module verwendet:** pr-validation, security-scan, license-compliance, release-management, artifact-generation
 
-## 🚀 Available Workflows
+**Features:**
+- PR-Validierung mit Quality Gates
+- Umfassende Security-Analysen für Main Branch
+- Automatische Release-Erstellung
+- Modulare Artefakt-Generierung
 
-### Core Workflows
+### 📄 [documentation.yml](./documentation.yml) - Dokumentations-Management
+**Zweck:** README-Generierung und Dokumentationsvalidierung  
+**Zeilen:** 141 (vs. 309 im ursprünglichen readme.yml)  
+**Module verwendet:** readme-generate action (direkt)
 
-| Workflow | Purpose | Trigger | Features |
-|----------|---------|---------|----------|
-| [`automatic-release.yml`](./automatic-release.yml) | Automated semantic releases | Push to main, PR merge | Security scanning, auto-merge, artifacts |
-| [`manual-release.yml`](./manual-release.yml) | Manual release management | Workflow dispatch | Version control, security validation |
+**Features:**
+- Template-basierte README-Generierung
+- Dokumentations-Struktur-Validierung
+- Link-Checking für interne Verweise
+- Automatische Updates bei Template-Änderungen
 
-### Workflow Features
+### 📦 [manual-release.yml](./manual-release.yml) - Manuelle Release-Erstellung
+**Zweck:** Kontrollierte, manuelle Release-Erstellung  
+**Zeilen:** 346 (vs. 313 im ursprünglichen manual-release.yml)  
+**Module verwendet:** security-scan, license-compliance, artifact-generation
 
-#### Automatic Release Management
-- **Semantic versioning** with conventional commits
-- **Dual-engine security scanning** (Gitleaks + GitGuardian)
-- **License compliance checking** with SPDX validation
-- **Intelligent auto-merge** for release PRs
-- **Multi-format artifact generation**
-- **Branch cleanup automation**
+**Features:**
+- Flexible Versionierung (major, minor, patch, custom)
+- Optionale Security- und Compliance-Checks
+- Konfigurierbare Artefakt-Generierung
+- Detaillierte Release-Dokumentation
 
-#### Manual Release Management
-- **Custom version specification** (major, minor, patch)
-- **Security pre-validation** before release
-- **Configurable scanning engines**
-- **License compliance checks**
-- **Debug information** for troubleshooting
+## 🧩 Modulare Architektur
 
-## 🔧 Configuration
+### Vorher (Legacy-Workflows)
+- `automatic-release.yml`: **870 Zeilen** - Monolithisch
+- `manual-release.yml`: **313 Zeilen** - Eigenständig
+- `readme.yml`: **309 Zeilen** - Isoliert
 
-### Required Repository Secrets
+**Gesamt:** 1.492 Zeilen in 3 separaten, nicht wiederverwendbaren Workflows
 
-```yaml
-secrets:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}           # Automatically provided
-  GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }} # Optional - for GitGuardian scanning
-  GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}   # Optional - for Gitleaks Pro features
-  FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}         # Optional - for license compliance
-```
+### Nachher (Modulare Workflows)
+- `ci-cd.yml`: **147 Zeilen** - Komponiert aus 5 Modulen
+- `documentation.yml`: **141 Zeilen** - Nutzt wiederverwendbare Komponenten
+- `manual-release.yml`: **346 Zeilen** - Komponiert aus 3 Modulen
 
-### Repository Permissions
+**Gesamt:** 634 Zeilen in 3 komponierten Workflows + 5 wiederverwendbare Module
 
-```yaml
-permissions:
-  contents: write           # For creating releases and updating files
-  pull-requests: write      # For managing release PRs
-  security-events: write    # For SARIF uploads
-  packages: write          # For artifact publishing
-  actions: read           # For workflow status checks
-  issues: write           # For creating issues (if needed)
-```
+### 💡 Verbesserungen
 
-## 🛡️ Security Features
+**Reduzierte Komplexität:**
+- ✅ **57% weniger Code** in Repository-Workflows (634 vs. 1.492 Zeilen)
+- ✅ **Wiederverwendbare Module** für externe Repositories
+- ✅ **Bessere Wartbarkeit** durch Modularisierung
+- ✅ **Parallel ausführbar** für bessere Performance
 
-### Multi-Engine Scanning
-- **Gitleaks**: Fast pattern-based secret detection
-- **GitGuardian**: ML-enhanced secret detection with policy enforcement
-- **Configurable engines**: Choose between gitleaks, gitguardian, or both
-- **SARIF integration**: Results appear in GitHub Security tab
+**Erweiterte Funktionalität:**
+- ✅ **Flexiblere Konfiguration** durch modulare Parameter
+- ✅ **Bessere Fehlerbehandlung** in einzelnen Modulen
+- ✅ **Detailliertere Berichte** und Monitoring
+- ✅ **Konsistente Interfaces** zwischen Modulen
 
-### Compliance Validation
-- **License scanning**: SPDX-compliant license detection
-- **Dependency analysis**: Security vulnerability assessment
-- **Policy enforcement**: Configurable compliance rules
+## 🔗 Integration mit Modularen Komponenten
 
-## 🚀 Usage Examples
-
-### Basic Automatic Release
+Diese Repository-Workflows demonstrieren die optimale Nutzung der modularen Komponenten:
 
 ```yaml
-name: Release Management
-
-on:
-  push:
-    branches: [ main ]
-
+# Beispiel: CI/CD Pipeline mit modularen Komponenten
 jobs:
-  release:
-    uses: bauer-group/automation-templates/.github/workflows/automatic-release.yml@main
-    secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
-```
-
-### Advanced Configuration
-
-```yaml
-name: Advanced Release
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-    inputs:
-      security-scan-engine:
-        type: choice
-        default: 'both'
-        options: [gitleaks, gitguardian, both]
-      auto-merge-pr:
-        type: boolean
-        default: true
-
-jobs:
-  release:
-    uses: bauer-group/automation-templates/.github/workflows/automatic-release.yml@main
+  security-scan:
+    uses: ./.github/modules/security-scan.yml
     with:
-      security-scan-engine: ${{ inputs.security-scan-engine || 'both' }}
-      auto-merge-pr: ${{ inputs.auto-merge-pr || true }}
+      scan-engine: 'both'
     secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
-      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-```
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-### Manual Release Workflow
-
-```yaml
-name: Manual Release
-
-on:
-  workflow_dispatch:
-    inputs:
-      version_bump:
-        description: 'Version bump type'
-        type: choice
-        default: 'patch'
-        options: [major, minor, patch]
-      security_scan_engine:
-        description: 'Security scanning engine'
-        type: choice
-        default: 'both'
-        options: [gitleaks, gitguardian, both]
-
-jobs:
-  manual-release:
-    uses: bauer-group/automation-templates/.github/workflows/manual-release.yml@main
+  release-management:
+    needs: security-scan
+    uses: ./.github/modules/release-management.yml
     with:
-      version_bump: ${{ inputs.version_bump }}
-      security_scan_engine: ${{ inputs.security_scan_engine }}
+      release-type: 'simple'
     secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-## 🔄 Workflow Triggers
+## 📊 Workflow-Matrix
 
-### Automatic Release Triggers
-- **Push to main**: Initiates release process for new commits
-- **PR merge**: Processes merged release PRs
-- **Workflow dispatch**: Manual trigger with configuration options
+| Workflow | Trigger | Module-Anzahl | Primärer Zweck |
+|----------|---------|---------------|----------------|
+| **ci-cd.yml** | Push (main), PR | 5 Module | Kontinuierliche Integration |
+| **documentation.yml** | Docs-Änderungen | 1 Workflow | Dokumentations-Management |
+| **manual-release.yml** | Workflow Dispatch | 3 Module | Kontrollierte Releases |
 
-### Manual Release Triggers
-- **Workflow dispatch only**: Provides full control over release process
+## 🚀 Verwendung für externe Repositories
 
-## 📊 Workflow Outputs
+Externe Repositories können diese Workflows als Vorlage verwenden:
 
-### Release Information
-- `release_created`: Boolean indicating if release was created
-- `tag_name`: Git tag of the release
-- `version`: Semantic version number
-- `html_url`: GitHub release URL
-- `upload_url`: URL for uploading release assets
+1. **Kopiere die Workflow-Dateien** in dein Repository
+2. **Ändere die Module-Referenzen** von `./` zu `bauer-group/automation-templates/`
+3. **Passe die Parameter** an deine Projektanforderungen an
+4. **Konfiguriere Repository-Secrets** falls erforderlich
 
-### Security & Compliance
-- `security_score`: Overall security assessment score
-- `license_compliance`: License compliance status
-- `artifacts_generated`: Artifact generation status
+**Beispiel-Anpassung:**
+```yaml
+# Von (intern):
+uses: ./.github/modules/security-scan.yml
 
-## 🏗️ Integration Patterns
-
-### Repository Setup
-
-1. **Copy workflows** to your `.github/workflows/` directory
-2. **Configure secrets** in repository settings
-3. **Set permissions** for the GITHUB_TOKEN
-4. **Customize inputs** as needed for your project
-
-### Conventional Commits
-
-Use conventional commit messages for automatic version bumping:
-
-```
-feat: add new feature (minor version bump)
-fix: resolve bug (patch version bump)
-feat!: breaking change (major version bump)
-docs: update documentation (no version bump)
-chore: maintenance tasks (no version bump)
+# Zu (extern):
+uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
 ```
 
-### Branch Protection
+## 📚 Weitere Dokumentation
 
-Recommended branch protection rules:
-
-- **Require status checks**: Ensure security scans pass
-- **Require reviews**: At least 1 reviewer for release PRs
-- **Restrict pushes**: Only allow through pull requests
-- **Include administrators**: Apply rules to repository admins
-
-## 🔧 Customization
-
-### Workflow Modification
-
-1. **Fork this repository** or copy workflows
-2. **Modify parameters** in workflow files
-3. **Adjust triggers** based on your branching strategy
-4. **Configure actions** with your specific requirements
-
-### Action Customization
-
-Workflows use modular actions that can be customized:
-
-- **Security scanning**: Modify `.github/actions/security-scan/`
-- **Release management**: Customize `.github/actions/release-please/`
-- **Auto-merge logic**: Adjust `.github/actions/auto-merge/`
-
-## 📚 Documentation
-
-### Detailed Guides
-- [Action Documentation](../.github/actions/README.md)
-- [Security Configuration](../docs/security-setup.md)
-- [Release Process Guide](../docs/release-guide.md)
-
-### Best Practices
-- **Semantic versioning**: Follow semver.org specifications
-- **Conventional commits**: Use standardized commit messages
-- **Security scanning**: Enable both engines for comprehensive coverage
-- **Branch protection**: Implement proper access controls
-
-## 🛠️ Troubleshooting
-
-### Common Issues
-
-1. **Permission errors**: Verify repository permissions and secrets
-2. **Security scan failures**: Check API keys and network access
-3. **Release creation failures**: Validate conventional commit format
-4. **Auto-merge issues**: Review branch protection rules
-
-### Debug Information
-
-Both workflows include comprehensive debug logging. Enable by:
-
-1. Setting repository variable `ACTIONS_STEP_DEBUG=true`
-2. Reviewing workflow run logs for detailed information
-3. Checking action outputs for specific error messages
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/bauer-group/automation-templates/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/bauer-group/automation-templates/discussions)
-- **Enterprise Support**: Contact your GitHub Enterprise administrator
+- **[Modulare Komponenten](./modules/README.md)** - Detaillierte Modul-Dokumentation
+- **[Workflow-Beispiele](./examples/README.MD)** - Verwendungsbeispiele für externe Repositories
+- **[GitHub Actions](../actions/README.MD)** - Verfügbare Action-Komponenten
 
 ---
 
-*These workflows are production-tested and used in enterprise environments. They follow security best practices and industry standards.*
+*Diese Workflows demonstrieren die Transformation von monolithischen zu modularen, wiederverwendbaren CI/CD-Pipelines.* 🧩

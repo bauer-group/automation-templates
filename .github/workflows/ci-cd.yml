@@ -1,0 +1,148 @@
+name: 🔄 CI/CD Pipeline
+
+# Main CI/CD pipeline using modular workflow components
+# This demonstrates the new modular approach for this repository
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '*.MD'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      security-engine:
+        description: 'Security scan engine'
+        type: choice
+        default: 'both'
+        options: ['gitleaks', 'gitguardian', 'both']
+      force-release:
+        description: 'Force create release'
+        type: boolean
+        default: false
+      artifact-types:
+        description: 'Artifact types to generate'
+        type: choice
+        default: 'source'
+        options: ['source', 'binaries', 'docker', 'all']
+
+jobs:
+  # PR validation for pull requests
+  pr-validation:
+    name: PR Quality Gate
+    if: github.event_name == 'pull_request'
+    uses: ./.github/modules/pr-validation.yml
+    with:
+      enable-security-scan: true
+      enable-license-check: true
+      enable-commit-lint: true
+      security-scan-engine: 'gitleaks'
+      fail-on-security-issues: true
+      fail-on-license-issues: false
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # Comprehensive security scan for main branch
+  security-scan:
+    name: Security Analysis
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/modules/security-scan.yml
+    with:
+      scan-engine: ${{ inputs.security-engine || 'both' }}
+      scan-type: 'all'
+      fail-on-findings: false
+      minimum-severity: 'medium'
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # License compliance check
+  license-compliance:
+    name: License Compliance
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/modules/license-compliance.yml
+    with:
+      fail-on-forbidden: false
+      fail-on-unknown: false
+      scan-dependencies: true
+      generate-sbom: true
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+
+  # Release management
+  release-management:
+    name: Release Management
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [security-scan, license-compliance]
+    uses: ./.github/modules/release-management.yml
+    with:
+      release-type: 'simple'
+      force-release: ${{ inputs.force-release || false }}
+      auto-merge-enabled: true
+      cleanup-release-branch: true
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # Artifact generation for releases
+  artifact-generation:
+    name: Generate Artifacts
+    if: needs.release-management.outputs.release-created == 'true'
+    needs: release-management
+    uses: ./.github/modules/artifact-generation.yml
+    with:
+      artifact-types: ${{ inputs.artifact-types || 'source' }}
+      tag-name: ${{ needs.release-management.outputs.tag-name }}
+      version: ${{ needs.release-management.outputs.version }}
+      release-url: ${{ needs.release-management.outputs.release-url }}
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Pipeline summary
+  pipeline-summary:
+    name: Pipeline Summary
+    if: always() && (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: [security-scan, license-compliance, release-management, artifact-generation]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📊 Generate Pipeline Summary
+        run: |
+          echo "### 🔄 Modular CI/CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** automation-templates" >> $GITHUB_STEP_SUMMARY
+          echo "**Architecture:** Modular Workflow Components" >> $GITHUB_STEP_SUMMARY
+          echo "**Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "| Module | Status | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Score: ${{ needs.security-scan.outputs.security-score || 'N/A' }}/100 |" >> $GITHUB_STEP_SUMMARY
+          echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Status: ${{ needs.license-compliance.outputs.compliance-status || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Release Management** | ${{ needs.release-management.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Created: ${{ needs.release-management.outputs.release-created || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Artifact Generation** | ${{ needs.artifact-generation.result == 'success' && '✅ PASS' || needs.artifact-generation.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Generated: ${{ needs.artifact-generation.outputs.artifacts-generated || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.release-management.outputs.release-created }}" = "true" ]; then
+            echo "🎉 **Release ${{ needs.release-management.outputs.version }} created successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Release Information:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Version: ${{ needs.release-management.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Tag: ${{ needs.release-management.outputs.tag-name }}" >> $GITHUB_STEP_SUMMARY
+            echo "- URL: ${{ needs.release-management.outputs.release-url }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ **No release created.** Pipeline completed successfully." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Powered by modular workflow components* 🧩" >> $GITHUB_STEP_SUMMARY

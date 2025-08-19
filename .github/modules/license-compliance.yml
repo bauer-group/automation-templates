@@ -1,0 +1,122 @@
+name: 📋 License Compliance
+
+on:
+  workflow_call:
+    inputs:
+      fail-on-forbidden:
+        description: 'Fail on forbidden licenses'
+        required: false
+        type: boolean
+        default: true
+      fail-on-unknown:
+        description: 'Fail on unknown licenses'
+        required: false
+        type: boolean
+        default: false
+      scan-dependencies:
+        description: 'Scan project dependencies'
+        required: false
+        type: boolean
+        default: true
+      generate-sbom:
+        description: 'Generate SBOM (Software Bill of Materials)'
+        required: false
+        type: boolean
+        default: true
+      allowed-licenses:
+        description: 'Comma-separated list of allowed license patterns'
+        required: false
+        type: string
+        default: 'MIT,Apache-2.0,BSD-*,ISC,CC0-1.0'
+      forbidden-licenses:
+        description: 'Comma-separated list of forbidden license patterns'
+        required: false
+        type: string
+        default: 'GPL-*,AGPL-*,SSPL-*'
+    secrets:
+      GITHUB_TOKEN:
+        description: 'GitHub token for repository access'
+        required: true
+      FOSSA_API_KEY:
+        description: 'FOSSA API key for enterprise license scanning'
+        required: false
+    outputs:
+      compliance-status:
+        description: 'License compliance status (pass/fail)'
+        value: ${{ jobs.license-check.outputs.compliance-status }}
+      forbidden-count:
+        description: 'Number of forbidden licenses found'
+        value: ${{ jobs.license-check.outputs.forbidden-count }}
+      unknown-count:
+        description: 'Number of unknown licenses found'
+        value: ${{ jobs.license-check.outputs.unknown-count }}
+      sbom-generated:
+        description: 'Whether SBOM was generated'
+        value: ${{ jobs.license-check.outputs.sbom-generated }}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  license-check:
+    name: 📄 License Analysis
+    runs-on: ubuntu-latest
+    outputs:
+      compliance-status: ${{ steps.license.outputs.license_compliance }}
+      forbidden-count: ${{ steps.license.outputs.forbidden_licenses }}
+      unknown-count: ${{ steps.license.outputs.unknown_licenses }}
+      sbom-generated: ${{ steps.license.outputs.sbom_generated }}
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 📋 Run License Compliance Check
+        id: license
+        uses: bauer-group/automation-templates/.github/actions/license-compliance@main
+        with:
+          fail-on-forbidden: ${{ inputs.fail-on-forbidden }}
+          fail-on-unknown: ${{ inputs.fail-on-unknown }}
+          scan-dependencies: ${{ inputs.scan-dependencies }}
+          generate-sbom: ${{ inputs.generate-sbom }}
+          allowed-licenses: ${{ inputs.allowed-licenses }}
+          forbidden-licenses: ${{ inputs.forbidden-licenses }}
+          fossa-api-key: ${{ secrets.FOSSA_API_KEY }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📊 License Compliance Report
+        if: always()
+        run: |
+          echo "### 📋 License Compliance Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Compliance Status** | ${{ steps.license.outputs.license_compliance }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Dependencies Scanned** | ${{ inputs.scan-dependencies }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Forbidden Licenses** | ${{ steps.license.outputs.forbidden_licenses || '0' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Unknown Licenses** | ${{ steps.license.outputs.unknown_licenses || '0' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **SBOM Generated** | ${{ steps.license.outputs.sbom_generated }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.license.outputs.license_compliance }}" = "pass" ]; then
+            echo "✅ **All licenses are compliant!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **License compliance issues found.**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Action Required:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Review license reports in artifacts" >> $GITHUB_STEP_SUMMARY
+            echo "- Update dependencies with non-compliant licenses" >> $GITHUB_STEP_SUMMARY
+            echo "- Add exceptions to allowed licenses if needed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📤 Upload License Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-compliance-report
+          path: license-reports/
+          retention-days: 30

@@ -1,0 +1,112 @@
+name: 🛡️ Security Scanning
+
+on:
+  workflow_call:
+    inputs:
+      scan-engine:
+        description: 'Security scan engine (gitleaks, gitguardian, both)'
+        required: false
+        type: string
+        default: 'both'
+      scan-type:
+        description: 'Type of security scan (secrets, vulnerabilities, all)'
+        required: false
+        type: string
+        default: 'all'
+      fail-on-findings:
+        description: 'Fail the workflow if security issues are found'
+        required: false
+        type: boolean
+        default: true
+      minimum-severity:
+        description: 'Minimum severity level for GitGuardian (low, medium, high, critical)'
+        required: false
+        type: string
+        default: 'medium'
+      exclude-paths:
+        description: 'Paths to exclude from scanning (comma-separated)'
+        required: false
+        type: string
+        default: '.git,node_modules,vendor'
+    secrets:
+      GITHUB_TOKEN:
+        description: 'GitHub token for repository access'
+        required: true
+      GITGUARDIAN_API_KEY:
+        description: 'GitGuardian API key (required for GitGuardian scanning)'
+        required: false
+      GITLEAKS_LICENSE:
+        description: 'Gitleaks Pro license key'
+        required: false
+    outputs:
+      secrets-found:
+        description: 'Whether secrets were found'
+        value: ${{ jobs.security-scan.outputs.secrets-found }}
+      vulnerabilities-found:
+        description: 'Whether vulnerabilities were found'
+        value: ${{ jobs.security-scan.outputs.vulnerabilities-found }}
+      security-score:
+        description: 'Overall security score (0-100)'
+        value: ${{ jobs.security-scan.outputs.security-score }}
+      scan-results:
+        description: 'Summary of scan results'
+        value: ${{ jobs.security-scan.outputs.scan-results }}
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  security-scan:
+    name: 🔐 Security Analysis
+    runs-on: ubuntu-latest
+    outputs:
+      secrets-found: ${{ steps.security.outputs.gitleaks-secrets-found == 'true' || steps.security.outputs.gitguardian-secrets-found != '0' }}
+      vulnerabilities-found: ${{ steps.security.outputs.vulnerabilities-found }}
+      security-score: ${{ steps.security.outputs.security-score }}
+      scan-results: ${{ steps.security.outputs.scan-results }}
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 🛡️ Run Security Scan
+        id: security
+        uses: bauer-group/automation-templates/.github/actions/security-scan@main
+        with:
+          scan-engine: ${{ inputs.scan-engine }}
+          scan-type: ${{ inputs.scan-type }}
+          fail-on-findings: ${{ inputs.fail-on-findings }}
+          minimum-severity: ${{ inputs.minimum-severity }}
+          exclude-paths: ${{ inputs.exclude-paths }}
+          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📊 Security Report Summary
+        if: always()
+        run: |
+          echo "### 🛡️ Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Engine Used** | ${{ inputs.scan-engine }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Scan Type** | ${{ inputs.scan-type }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Security Score** | ${{ steps.security.outputs.security-score }}/100 |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Secrets Found** | ${{ steps.security.outputs.gitleaks-secrets-found == 'true' || steps.security.outputs.gitguardian-secrets-found != '0' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Vulnerabilities** | ${{ steps.security.outputs.vulnerabilities-found }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | ${{ steps.security.outputs.scan-results }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          SCORE="${{ steps.security.outputs.security-score }}"
+          if [ "$SCORE" -ge 95 ]; then
+            echo "✅ **Excellent security posture!**" >> $GITHUB_STEP_SUMMARY
+          elif [ "$SCORE" -ge 80 ]; then
+            echo "⚠️ **Good security with room for improvement.**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Security issues require attention.**" >> $GITHUB_STEP_SUMMARY
+          fi

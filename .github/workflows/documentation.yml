@@ -1,0 +1,191 @@
+name: 📄 Documentation Management
+
+# Documentation management workflow using modular components
+# Replaces the legacy readme.yml workflow
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/README.template.MD'
+      - '.github/actions/readme-generate/**'
+      - '.github/workflows/documentation.yml'
+      - '.github/workflows/examples/readme.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/README.template.MD'
+  workflow_dispatch:
+    inputs:
+      force-update:
+        description: 'Force README update even without changes'
+        type: boolean
+        default: false
+      custom-version:
+        description: 'Custom version for README'
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # Generate README using the readme-generate action directly
+  generate-documentation:
+    name: Generate Documentation
+    runs-on: ubuntu-latest
+    outputs:
+      readme_updated: ${{ steps.generate.outputs.readme_updated }}
+      changes_detected: ${{ steps.generate.outputs.changes_detected }}
+      validation_passed: ${{ steps.generate.outputs.validation_passed }}
+      file_size: ${{ steps.generate.outputs.file_size }}
+      unresolved_placeholders: ${{ steps.generate.outputs.unresolved_placeholders }}
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 🔍 Validate Prerequisites
+        run: |
+          TEMPLATE_FILE="${{ inputs.template-path || 'docs/README.template.MD' }}"
+          
+          if [ ! -f "$TEMPLATE_FILE" ]; then
+            echo "❌ Template file not found: $TEMPLATE_FILE"
+            echo "💡 Available template files:"
+            find . -name "*.template.*" -type f | head -10
+            exit 1
+          fi
+          
+          echo "✅ Template file found: $TEMPLATE_FILE"
+
+      - name: 📝 Generate Professional README
+        id: generate
+        uses: ./.github/actions/readme-generate
+        with:
+          template-path: 'docs/README.template.MD'
+          output-path: 'README.MD'
+          project-name: 'Automation Templates'
+          company-name: 'BAUER GROUP'
+          project-description: 'Professional automation templates and workflows with modular, reusable components for GitHub repositories'
+          contact-email: 'support@bauer-group.com'
+          documentation-url: 'https://github.com/bauer-group/automation-templates/wiki'
+          support-url: 'https://github.com/bauer-group/automation-templates/issues'
+          force-update: ${{ inputs.force-update || false }}
+          custom-version: ${{ inputs.custom-version }}
+
+      - name: 📄 Commit and Push Changes
+        if: steps.generate.outputs.changes_detected == 'true' && github.event_name != 'pull_request'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "📄 README Bot"
+          
+          COMMIT_MSG="docs: update README.MD"
+          
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            COMMIT_MSG="$COMMIT_MSG (scheduled update)"
+          elif [ "${{ inputs.force-update }}" = "true" ]; then
+            COMMIT_MSG="$COMMIT_MSG (forced update)"
+          elif [ -n "${{ inputs.custom-version }}" ]; then
+            COMMIT_MSG="$COMMIT_MSG (version ${{ inputs.custom-version }})"
+          fi
+          
+          COMMIT_MSG="$COMMIT_MSG [automated]"
+          
+          git add README.MD
+          git commit -m "$COMMIT_MSG" || echo "No changes to commit"
+          git push
+
+  # Validate documentation links and structure
+  validate-documentation:
+    name: Validate Documentation
+    needs: generate-documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🔍 Validate Documentation Structure
+        run: |
+          echo "🔍 Validating documentation structure..."
+          
+          # Check for required documentation files
+          REQUIRED_DOCS=(
+            "README.MD"
+            "docs/README.template.MD"
+            ".github/modules/README.md"
+            ".github/workflows/examples/README.MD"
+            ".github/actions/README.MD"
+          )
+          
+          MISSING_DOCS=()
+          for doc in "${REQUIRED_DOCS[@]}"; do
+            if [ ! -f "$doc" ]; then
+              MISSING_DOCS+=("$doc")
+            fi
+          done
+          
+          if [ ${#MISSING_DOCS[@]} -gt 0 ]; then
+            echo "❌ Missing documentation files:"
+            for doc in "${MISSING_DOCS[@]}"; do
+              echo "  - $doc"
+            done
+            exit 1
+          else
+            echo "✅ All required documentation files found"
+          fi
+
+      - name: 🔗 Check Documentation Links
+        run: |
+          echo "🔗 Checking internal documentation links..."
+          
+          # Check for broken internal links in README.MD
+          if [ -f "README.MD" ]; then
+            echo "Checking README.MD for broken internal links..."
+            
+            # Extract relative links
+            grep -o "]\(\./[^)]*\)" README.MD | while read -r link; do
+              file_path=$(echo "$link" | sed 's/](\.\///; s/)//')
+              
+              # Skip anchor links for now
+              if [[ "$file_path" == *"#"* ]]; then
+                file_path=$(echo "$file_path" | cut -d'#' -f1)
+              fi
+              
+              if [ -n "$file_path" ] && [ ! -f "$file_path" ] && [ ! -d "$file_path" ]; then
+                echo "⚠️ Potentially broken link: $link -> $file_path"
+              fi
+            done || echo "No relative links found or all links valid"
+          fi
+
+      - name: 📊 Documentation Summary
+        run: |
+          echo "### 📄 Documentation Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **README Generated** | ${{ needs.generate-documentation.outputs.readme_updated && '✅ Updated' || '⏭️ No changes' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Template Validation** | ${{ needs.generate-documentation.outputs.validation_passed && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Link Validation** | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Structure Check** | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.generate-documentation.outputs.readme_updated }}" = "true" ]; then
+            echo "📝 **Documentation updated successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Changes include:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Updated version and date information" >> $GITHUB_STEP_SUMMARY
+            echo "- Current repository metadata" >> $GITHUB_STEP_SUMMARY
+            echo "- Modular workflow architecture documentation" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ **No documentation updates required**" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🧩 **Modular Components Used:**" >> $GITHUB_STEP_SUMMARY
+          echo "- README Generator Workflow: [examples/readme.yml](.github/workflows/examples/readme.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "- README Generator Action: [actions/readme-generate](.github/actions/readme-generate/)" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,216 @@
+name: 📦 Node.js Project Example
+
+# This example shows how to use the modular workflows for a Node.js project
+# Includes testing, building, and publishing to npm
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      npm-publish:
+        description: 'Publish to NPM registry'
+        type: boolean
+        default: false
+
+jobs:
+  # Test the Node.js application
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    
+    steps:
+      - name: 🚀 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: 📥 Install Dependencies
+        run: npm ci
+
+      - name: 🧪 Run Tests
+        run: npm test
+
+      - name: 🔍 Run Linting
+        run: npm run lint
+
+      - name: 🏗️ Build Project
+        run: npm run build
+
+  # PR validation with Node.js-specific checks
+  pr-validation:
+    name: PR Validation
+    if: github.event_name == 'pull_request'
+    needs: test
+    uses: bauer-group/automation-templates/.github/modules/pr-validation.yml@main
+    with:
+      enable-security-scan: true
+      enable-license-check: true
+      enable-commit-lint: true
+      security-scan-engine: 'gitleaks'
+      fail-on-security-issues: true
+      fail-on-license-issues: false
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+
+  # Security scan for Node.js dependencies
+  security-scan:
+    name: Security & Dependencies
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+    with:
+      scan-engine: 'both'
+      scan-type: 'all'
+      fail-on-findings: false
+      exclude-paths: 'node_modules,dist,build,.nyc_output,coverage'
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+
+  # License compliance for Node.js packages
+  license-compliance:
+    name: License Compliance
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: bauer-group/automation-templates/.github/modules/license-compliance.yml@main
+    with:
+      fail-on-forbidden: false
+      scan-dependencies: true
+      generate-sbom: true
+      allowed-licenses: 'MIT,Apache-2.0,BSD-*,ISC,CC0-1.0,Unlicense'
+      forbidden-licenses: 'GPL-*,AGPL-*'
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Release management for Node.js projects
+  release:
+    name: Release Management
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, security-scan, license-compliance]
+    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    with:
+      release-type: 'node'  # Node.js-specific release type
+      auto-merge-enabled: true
+      cleanup-release-branch: true
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Build and publish artifacts
+  build-and-publish:
+    name: Build & Publish
+    if: needs.release.outputs.release-created == 'true'
+    needs: release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: 📥 Install Dependencies
+        run: npm ci
+
+      - name: 🏗️ Build Project
+        run: npm run build
+
+      - name: 🧪 Run Tests
+        run: npm test
+
+      - name: 📊 Generate Test Coverage
+        run: npm run coverage || echo "Coverage script not available"
+
+      - name: 📦 Prepare NPM Package
+        run: |
+          # Ensure version in package.json matches release
+          VERSION="${{ needs.release.outputs.version }}"
+          npm version $VERSION --no-git-tag-version
+          
+          # Create tarball for inspection
+          npm pack
+
+      - name: 🚀 Publish to NPM
+        if: inputs.npm-publish == true
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Generate comprehensive artifacts
+  artifacts:
+    name: Generate Artifacts
+    if: needs.release.outputs.release-created == 'true'
+    needs: [release, build-and-publish]
+    uses: bauer-group/automation-templates/.github/modules/artifact-generation.yml@main
+    with:
+      artifact-types: 'source'
+      tag-name: ${{ needs.release.outputs.tag-name }}
+      version: ${{ needs.release.outputs.version }}
+      release-url: ${{ needs.release.outputs.release-url }}
+      build-command: 'npm ci && npm run build'
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Project summary
+  nodejs-summary:
+    name: Node.js Pipeline Summary
+    if: always() && (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: [test, security-scan, license-compliance, release, build-and-publish, artifacts]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📊 Generate Node.js Summary
+        run: |
+          echo "### 📦 Node.js Project Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Project Type:** Node.js Application/Package" >> $GITHUB_STEP_SUMMARY
+          echo "**Node.js Versions Tested:** 18, 20, 22" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "| Stage | Status | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Tests** | ${{ needs.test.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Multi-version testing |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Dependencies & code |" >> $GITHUB_STEP_SUMMARY
+          echo "| **License Check** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | NPM packages |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Release** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Created: ${{ needs.release.outputs.release-created }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build & Publish** | ${{ needs.build-and-publish.result == 'success' && '✅ PASS' || needs.build-and-publish.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | NPM: ${{ inputs.npm-publish && 'Published' || 'Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Artifacts** | ${{ needs.artifacts.result == 'success' && '✅ PASS' || needs.artifacts.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Release assets |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.release.outputs.release-created }}" = "true" ]; then
+            echo "🎉 **Node.js Release ${{ needs.release.outputs.version }} Successfully Created!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Release Information:**" >> $GITHUB_STEP_SUMMARY
+            echo "- **Version:** ${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **GitHub Release:** ${{ needs.release.outputs.release-url }}" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "${{ inputs.npm-publish }}" = "true" ]; then
+              echo "- **NPM Package:** \`npm install ${{ github.event.repository.name }}@${{ needs.release.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- **NPM Publishing:** Skipped (enable with workflow_dispatch input)" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+            echo "- 📖 Update documentation if needed" >> $GITHUB_STEP_SUMMARY
+            echo "- 🔄 Test the published package" >> $GITHUB_STEP_SUMMARY
+            echo "- 📢 Announce the release to users" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ **No release created.** Common reasons:" >> $GITHUB_STEP_SUMMARY
+            echo "- No conventional commits since last release" >> $GITHUB_STEP_SUMMARY
+            echo "- Only documentation or configuration changes" >> $GITHUB_STEP_SUMMARY
+            echo "- Release PR already exists and pending review" >> $GITHUB_STEP_SUMMARY
+          fi

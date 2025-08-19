@@ -94,8 +94,20 @@ jobs:
 │   ├── config/               # Configuration files
 │   │   └── commitlint.config.js # Commit linting rules
 │   └── workflows/            # Production-ready workflows
-│       ├── automatic-release.yml # Automated release management
-│       ├── manual-release.yml    # Manual release controls
+│       ├── modules/          # 🧩 Modulare Workflow-Komponenten
+│       │   ├── security-scan.yml      # Sicherheitsanalyse
+│       │   ├── license-compliance.yml # Lizenz-Compliance
+│       │   ├── release-management.yml # Release-Automatisierung
+│       │   ├── artifact-generation.yml # Artefakt-Erstellung
+│       │   └── pr-validation.yml      # Pull Request-Validierung
+│       ├── examples/         # 📋 Verwendungsbeispiele
+│       │   ├── simple-release.yml     # Einfacher Release-Workflow
+│       │   ├── comprehensive-ci-cd.yml # Vollständige CI/CD-Pipeline
+│       │   ├── security-focused.yml   # Security-zentrierte Pipeline
+│       │   ├── nodejs-project.yml     # Node.js-spezifischer Workflow
+│       │   └── readme.yml             # README-Generator
+│       ├── automatic-release.yml # Legacy: Monolithischer Workflow
+│       ├── manual-release.yml    # Legacy: Manual release controls
 │       └── readme.yml           # Documentation automation
 ├── github/                   # Repository management tools
 │   ├── branch-protect/       # Branch protection automation
@@ -104,6 +116,45 @@ jobs:
 ├── docs/                    # Documentation templates
 └── scripts/                 # Utility scripts
 ```
+
+## 🧩 Modulare Workflow-Architektur
+
+**NEU:** Dieses Repository bietet jetzt **modulare, wiederverwendbare Workflow-Komponenten** anstatt monolithischer Workflows.
+
+### Verfügbare Module
+
+| Modul | Zweck | Verwendung |
+|-------|-------|------------|
+| **🛡️ security-scan.yml** | Sicherheitsanalyse | `uses: {{REPO_FULL_NAME}}/.github/modules/security-scan.yml@main` |
+| **📋 license-compliance.yml** | Lizenz-Compliance | `uses: {{REPO_FULL_NAME}}/.github/modules/license-compliance.yml@main` |
+| **🚀 release-management.yml** | Release-Automatisierung | `uses: {{REPO_FULL_NAME}}/.github/modules/release-management.yml@main` |
+| **🔨 artifact-generation.yml** | Artefakt-Erstellung | `uses: {{REPO_FULL_NAME}}/.github/modules/artifact-generation.yml@main` |
+| **🔍 pr-validation.yml** | Pull Request-Validierung | `uses: {{REPO_FULL_NAME}}/.github/modules/pr-validation.yml@main` |
+
+### Quick Start: Einfacher Release-Workflow
+
+```yaml
+name: 🚀 Simple Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    uses: {{REPO_FULL_NAME}}/.github/modules/release-management.yml@main
+    with:
+      release-type: 'simple'
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### Beispiele für verschiedene Projekttypen
+
+- **[Simple Release](https://github.com/{{REPO_FULL_NAME}}/blob/main/github/workflows/examples/simple-release.yml)** - Minimaler Release-Workflow
+- **[Comprehensive CI/CD](https://github.com/{{REPO_FULL_NAME}}/blob/main/github/workflows/examples/comprehensive-ci-cd.yml)** - Vollständige Pipeline
+- **[Security-Focused](https://github.com/{{REPO_FULL_NAME}}/blob/main/github/workflows/examples/security-focused.yml)** - Security-zentriert
+- **[Node.js Project](https://github.com/{{REPO_FULL_NAME}}/blob/main/github/workflows/examples/nodejs-project.yml)** - Node.js-spezifisch
 
 ## 🔧 Configuration
 

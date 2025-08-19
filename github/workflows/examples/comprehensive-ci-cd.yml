@@ -1,0 +1,137 @@
+name: 🔄 Comprehensive CI/CD Example
+
+# This example shows how to compose multiple modular workflows
+# for a complete CI/CD pipeline with security, compliance, and release management
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release-type:
+        description: 'Type of release'
+        type: choice
+        default: 'simple'
+        options: ['simple', 'node', 'python', 'go', 'docker']
+      artifact-types:
+        description: 'Artifact types to generate'
+        type: choice
+        default: 'source'
+        options: ['source', 'binaries', 'docker', 'all']
+      security-scan-engine:
+        description: 'Security scan engine'
+        type: choice
+        default: 'both'
+        options: ['gitleaks', 'gitguardian', 'both']
+
+jobs:
+  # PR validation for pull requests
+  pr-validation:
+    name: PR Validation
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/modules/pr-validation.yml@main
+    with:
+      enable-security-scan: true
+      enable-license-check: true
+      enable-commit-lint: true
+      security-scan-engine: 'gitleaks'  # Faster for PRs
+      fail-on-security-issues: true
+      fail-on-license-issues: false
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # Comprehensive security scan for main branch
+  security-scan:
+    name: Security Scan
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+    with:
+      scan-engine: ${{ inputs.security-scan-engine || 'both' }}
+      scan-type: 'all'
+      fail-on-findings: false  # Don't block releases, but report issues
+      minimum-severity: 'medium'
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # License compliance check
+  license-compliance:
+    name: License Compliance
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: bauer-group/automation-templates/.github/modules/license-compliance.yml@main
+    with:
+      fail-on-forbidden: false  # Report but don't block
+      fail-on-unknown: false
+      scan-dependencies: true
+      generate-sbom: true
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+
+  # Release management
+  release:
+    name: Release Management
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [security-scan, license-compliance]
+    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    with:
+      release-type: ${{ inputs.release-type || 'simple' }}
+      auto-merge-enabled: true
+      cleanup-release-branch: true
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # Artifact generation for releases
+  artifacts:
+    name: Artifact Generation
+    if: needs.release.outputs.release-created == 'true'
+    needs: release
+    uses: bauer-group/automation-templates/.github/modules/artifact-generation.yml@main
+    with:
+      artifact-types: ${{ inputs.artifact-types || 'source' }}
+      tag-name: ${{ needs.release.outputs.tag-name }}
+      version: ${{ needs.release.outputs.version }}
+      release-url: ${{ needs.release.outputs.release-url }}
+      docker-registry: 'ghcr.io'
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DOCKER_USERNAME: ${{ github.actor }}
+      DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+
+  # Final summary
+  pipeline-summary:
+    name: Pipeline Summary
+    if: always() && (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: [security-scan, license-compliance, release, artifacts]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📊 Generate Pipeline Summary
+        run: |
+          echo "### 🔄 CI/CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Score: ${{ needs.security-scan.outputs.security-score || 'N/A' }}/100 |" >> $GITHUB_STEP_SUMMARY
+          echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Status: ${{ needs.license-compliance.outputs.compliance-status || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Release Management** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Created: ${{ needs.release.outputs.release-created || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Artifact Generation** | ${{ needs.artifacts.result == 'success' && '✅ PASS' || needs.artifacts.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Generated: ${{ needs.artifacts.outputs.artifacts-generated || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.release.outputs.release-created }}" = "true" ]; then
+            echo "🎉 **Release ${{ needs.release.outputs.version }} created successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Release Details:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Version: ${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Tag: ${{ needs.release.outputs.tag-name }}" >> $GITHUB_STEP_SUMMARY
+            echo "- URL: ${{ needs.release.outputs.release-url }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ **No release created.** This usually means no releasable changes were found." >> $GITHUB_STEP_SUMMARY
+          fi
