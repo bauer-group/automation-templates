@@ -8,6 +8,7 @@ systemctl stop gha-runners.service || true
 systemctl disable gha-runners.service || true
 
 docker compose -f "$REPO_DIR/docker-compose.yml" down || true
+
 rm -f /etc/systemd/system/gha-runners.service
 
 systemctl daemon-reload
