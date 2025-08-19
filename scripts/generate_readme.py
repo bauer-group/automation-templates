@@ -226,9 +226,10 @@ def render_template(template: str, vars: dict) -> str:
     """
     out = template
     
-    # Simple variable substitution
+    # Simple variable substitution - only replace variables that have values
     for k, v in vars.items():
-        out = out.replace("{{" + k + "}}", str(v))
+        if v and str(v).strip():  # Only replace if value is not empty
+            out = out.replace("{{" + k + "}}", str(v))
     
     # Conditional blocks: {{#IF VARIABLE}}content{{/IF}}
     import re
@@ -238,7 +239,7 @@ def render_template(template: str, vars: dict) -> str:
     matches = re.findall(if_pattern, out, re.DOTALL)
     
     for var_name, content in matches:
-        if vars.get(var_name) and vars.get(var_name) != "":
+        if vars.get(var_name) and str(vars.get(var_name)).strip():
             # Variable exists and is not empty, keep content
             out = re.sub(
                 r'\{\{#IF\s+' + re.escape(var_name) + r'\}\}.*?\{\{/IF\}\}',
@@ -255,7 +256,25 @@ def render_template(template: str, vars: dict) -> str:
                 flags=re.DOTALL
             )
     
-    return out
+    # Remove any remaining unresolved placeholders
+    out = re.sub(r'\{\{[^}]*\}\}', '', out)
+    
+    # Clean up extra whitespace and empty lines
+    lines = out.split('\n')
+    cleaned_lines = []
+    prev_empty = False
+    
+    for line in lines:
+        is_empty = not line.strip()
+        
+        if not is_empty:
+            cleaned_lines.append(line)
+            prev_empty = False
+        elif not prev_empty:  # Keep only one empty line
+            cleaned_lines.append('')
+            prev_empty = True
+    
+    return '\n'.join(cleaned_lines).strip() + '\n'
 
 def main():
     # Priority:
@@ -293,8 +312,25 @@ def main():
     # Add contributors info
     variables.update(get_contributors_info(variables.get("REPO_FULL_NAME", "")))
     
-    # Add environment variables
-    variables.update(get_environment_vars())
+    # Add environment variables with defaults for missing variables
+    env_vars = get_environment_vars()
+    variables.update(env_vars)
+    
+    # Set default values for commonly missing variables
+    defaults = {
+        "COMPANY_NAME": "BAUER GROUP",
+        "PROJECT_NAME": variables.get("REPO_NAME", ""),
+        "PROJECT_DESCRIPTION": "",
+        "CONTACT_EMAIL": "",
+        "DOCUMENTATION_URL": "",
+        "SUPPORT_URL": "",
+        "CURRENT_BRANCH": variables.get("CURRENT_BRANCH", "main")
+    }
+    
+    # Only set defaults for variables that are empty or missing
+    for key, default_value in defaults.items():
+        if not variables.get(key) or not str(variables.get(key)).strip():
+            variables[key] = default_value
     
     # Read template
     try:

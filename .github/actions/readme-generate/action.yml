@@ -58,9 +58,9 @@ outputs:
   validation_passed:
     description: 'Ob Validierung erfolgreich war'
     value: ${{ steps.validate.outputs.passed }}
-  file_size:
-    description: 'Größe der generierten README-Datei'
-    value: ${{ steps.validate.outputs.file_size }}
+  unresolved_placeholders:
+    description: 'Number of unresolved placeholders found'
+    value: ${{ steps.validate.outputs.unresolved_placeholders }}
 
 runs:
   using: 'composite'
@@ -176,11 +176,27 @@ runs:
             """Render template with variable substitution"""
             out = template
             
-            # Simple variable substitution
+            # Simple variable substitution - only replace variables that have values
             for k, v in vars.items():
-                out = out.replace("{{" + k + "}}", str(v))
+                if v and str(v).strip():  # Only replace if value is not empty
+                    out = out.replace("{{" + k + "}}", str(v))
             
-            return out
+            # Remove any remaining empty placeholder patterns
+            import re
+            # Remove placeholders with empty or whitespace values
+            out = re.sub(r'\{\{[^}]*\}\}', '', out)
+            
+            # Clean up extra whitespace and empty lines
+            lines = out.split('\n')
+            cleaned_lines = []
+            for line in lines:
+                # Keep line if it's not just whitespace or doesn't become empty after placeholder removal
+                if line.strip():
+                    cleaned_lines.append(line)
+                elif not cleaned_lines or cleaned_lines[-1].strip():  # Keep one empty line between content
+                    cleaned_lines.append('')
+            
+            return '\n'.join(cleaned_lines)
         
         def main():
             template_path = os.getenv('TEMPLATE_PATH', 'docs/README.template.MD')
@@ -202,12 +218,12 @@ runs:
                 "DATE": now.strftime("%Y-%m-%d"),
                 "DATETIME": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "YEAR": now.strftime("%Y"),
-                "PROJECT_NAME": os.getenv('PROJECT_NAME', ''),
-                "COMPANY_NAME": os.getenv('COMPANY_NAME', 'BAUER GROUP'),
-                "PROJECT_DESCRIPTION": os.getenv('PROJECT_DESCRIPTION', ''),
-                "CONTACT_EMAIL": os.getenv('CONTACT_EMAIL', ''),
-                "DOCUMENTATION_URL": os.getenv('DOCUMENTATION_URL', ''),
-                "SUPPORT_URL": os.getenv('SUPPORT_URL', ''),
+                "PROJECT_NAME": os.getenv('PROJECT_NAME', '').strip(),
+                "COMPANY_NAME": os.getenv('COMPANY_NAME', 'BAUER GROUP').strip(),
+                "PROJECT_DESCRIPTION": os.getenv('PROJECT_DESCRIPTION', '').strip(),
+                "CONTACT_EMAIL": os.getenv('CONTACT_EMAIL', '').strip(),
+                "DOCUMENTATION_URL": os.getenv('DOCUMENTATION_URL', '').strip(),
+                "SUPPORT_URL": os.getenv('SUPPORT_URL', '').strip(),
             }
             
             # Add git information
@@ -301,10 +317,21 @@ runs:
         
         # Check for unresolved placeholders
         UNRESOLVED=$(grep -o "{{[^}]*}}" "$README_FILE" | wc -l || echo "0")
+        echo "unresolved_placeholders=$UNRESOLVED" >> $GITHUB_OUTPUT
         
         if [ "$UNRESOLVED" -gt 0 ]; then
           echo "⚠️ Found $UNRESOLVED unresolved placeholders:"
           grep -o "{{[^}]*}}" "$README_FILE" | sort | uniq | head -5
+          
+          # Create a cleaned version without unresolved placeholders
+          echo "🔧 Removing unresolved placeholders..."
+          sed 's/{{[^}]*}}//g' "$README_FILE" > "${README_FILE}.clean"
+          mv "${README_FILE}.clean" "$README_FILE"
+          
+          # Update file size after cleaning
+          FILE_SIZE=$(wc -c < "$README_FILE")
+          echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
+          echo "✅ Removed unresolved placeholders, new size: ${FILE_SIZE} bytes"
         fi
         
         # Basic content validation

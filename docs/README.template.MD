@@ -1,68 +1,71 @@
 # {{COMPANY_NAME}} - Automation Templates
 
-**Status:** Version {{VERSION}} ({{DATE}})  
-**Repository:** [{{REPO_FULL_NAME}}]({{REPO_URL}})  
-**Branch:** {{CURRENT_BRANCH}}
+## Overview
 
-{{PROJECT_DESCRIPTION}}
+Professional automation templates and workflows for GitHub repositories, providing enterprise-grade security scanning, release management, and repository maintenance tools.
 
-[![🚀 Automatic Release Management](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
+**Repository Information:**
 
-## 🛡️ Security Scanning - Dual Engine Approach
+- **Version:** {{VERSION}} ({{DATE}})
+- **Repository:** [{{REPO_FULL_NAME}}]({{REPO_URL}})
+- **Branch:** {{CURRENT_BRANCH}}
 
-### Meta Package (Empfohlen)
+[![🚀 Automatic Release](https://github.com/{{REPO_FULL_NAME}}/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/{{REPO_FULL_NAME}}/actions/workflows/automatic-release.yml)
+[![🛡️ Security Scan](https://github.com/{{REPO_FULL_NAME}}/actions/workflows/security-scan.yml/badge.svg)](https://github.com/{{REPO_FULL_NAME}}/actions/workflows/security-scan.yml)
+[![📄 Documentation](https://github.com/{{REPO_FULL_NAME}}/actions/workflows/readme.yml/badge.svg)](https://github.com/{{REPO_FULL_NAME}}/actions/workflows/readme.yml)
+
+## 🛡️ Security Scanning
+
+### Comprehensive Security Action
+
 ```yaml
-- name: 🛡️ Comprehensive Security Scan
-  uses: ./.github/actions/security-scan-meta
+- name: 🛡️ Multi-Engine Security Scan
+  uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
   with:
-    scan-engine: both              # gitleaks, gitguardian, both
-    scan-type: all                 # secrets, vulnerabilities, all
+    scan-engines: 'gitleaks,gitguardian'
+    scan-scope: 'all'
     fail-on-findings: true
     github-token: ${{ secrets.GITHUB_TOKEN }}
-    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}  # Optional
+    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
 ```
 
-### Einzelne Engines
+### Individual Engines
 
 #### Gitleaks (Open Source)
+
 ```yaml
 - name: ⚡ Fast Secrets Scan
-  uses: ./.github/actions/gitleaks-scan
-  with:
-    scan-history: false
-    github-token: ${{ secrets.GITHUB_TOKEN }}  # Optional für org repos
-    format: json
+  uses: gitleaks/gitleaks-action@v2
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 #### GitGuardian (Enterprise)
+
 ```yaml
 - name: 🛡️ Advanced Security Scan
-  uses: ./.github/actions/gitguardian-scan
+  uses: GitGuardian/ggshield-action@v1
   with:
-    scan-mode: ci
-    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
-    minimum-severity: medium
-    all-policies: true
+    api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+    args: secret scan path .
 ```
 
-## 📦 Enhanced Release Management
+## 📦 Release Management
 
-### Vollständiger Release Workflow
+### Automatic Release Workflow
+
 ```yaml
-name: 🚀 Production Release
+name: 🚀 Automatic Release
 
 on:
   push:
-    branches: [ $default-branch ]
+    branches: [main]
   workflow_dispatch:
     inputs:
-      security-scan-engine:
+      security-scan-engines:
         type: choice
         default: 'both'
-        options: [gitleaks, gitguardian, both]
-      cleanup-release-branch:
-        type: boolean
-        default: true
+        options: ['gitleaks', 'gitguardian', 'both']
 
 jobs:
   release:
@@ -72,112 +75,69 @@ jobs:
         with:
           fetch-depth: 0
           
-      - name: 🚀 Enhanced Release Please
-        uses: ./.github/actions/release-please
+      - name: 🚀 Enhanced Release Management
+        uses: {{REPO_FULL_NAME}}/.github/actions/release-please@main
         with:
           release-type: simple
-          security-scan-engine: ${{ inputs.security-scan-engine || 'both' }}
-          cleanup-release-branch: ${{ inputs.cleanup-release-branch || 'true' }}
-          auto-merge-enabled: false
+          security-engines: ${{ inputs.security-scan-engines || 'both' }}
           token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-## 🏗️ Modulare Actions Übersicht
-
-### �️ Security Actions
-
-| Action | Zweck | Engine | Geschwindigkeit | Enterprise Features |
-|--------|-------|---------|----------------|---------------------|
-| **security-scan-meta** | Meta Package für alle Engines | Beide | ⚡⚡⚡ | ✅ Umfassend |
-| **gitleaks-scan** | Schnelle Pattern-Erkennung | Gitleaks | ⚡⚡⚡⚡ | ❌ Basic |
-| **gitguardian-scan** | ML-basierte Erkennung | GitGuardian | ⚡⚡ | ✅ Advanced |
-
-### ⚖️ Compliance & Quality
-
-```yaml
-# License Compliance mit SPDX & FOSSA
-- uses: ./.github/actions/license-compliance
-  with:
-    fossa-api-key: ${{ secrets.FOSSA_API_KEY }}
-    fail-on-issues: true
-
-# Artifact Generation  
-- uses: ./.github/actions/artifact-generator
-  with:
-    artifact-types: source,docker
-    include-checksums: true
-
-# Auto-Merge mit Bedingungen
-- uses: ./.github/actions/auto-merge
-  with:
-    require-reviews: 2
-    merge-method: squash
-```
-
-## 📁 Struktur
+## 🏗️ Repository Structure
 
 ```text
 ├── .github/
-│   ├── actions/               # Wiederverwendbare Actions
-│   │   ├── security-scan-meta/ # Meta Package für Security Scans
-│   │   ├── gitleaks-scan/     # Gitleaks Security Scanner
-│   │   ├── gitguardian-scan/  # GitGuardian Security Scanner  
-│   │   ├── license-compliance/ # SPDX License Compliance
-│   │   ├── artifact-generator/ # Multi-Format Artifacts
-│   │   ├── auto-merge/        # Intelligent Auto-Merge
-│   │   └── release-please/    # Enhanced Release Management
-│   ├── config/               # Konfigurationsdateien
-│   │   └── commitlint.config.js # Commit-Linting-Regeln
-│   └── workflows/            # Workflow-Templates
-│       └── enhanced-release.yml # Haupt-Release-Workflow
-├── docs/                     # Dokumentation
-└── scripts/                  # Hilfsskripte
+│   ├── actions/               # Reusable GitHub Actions
+│   │   ├── security-scan/     # Multi-engine security scanning
+│   │   ├── license-compliance/ # SPDX license compliance
+│   │   ├── artifact-generator/ # Multi-format artifact generation
+│   │   └── readme-generate/   # Professional README generation
+│   ├── config/               # Configuration files
+│   │   └── commitlint.config.js # Commit linting rules
+│   └── workflows/            # Production-ready workflows
+│       ├── automatic-release.yml # Automated release management
+│       ├── manual-release.yml    # Manual release controls
+│       └── readme.yml           # Documentation automation
+├── github/                   # Repository management tools
+│   ├── branch-protect/       # Branch protection automation
+│   ├── cleanup/             # Repository cleanup utilities
+│   └── runner/              # Self-hosted runner management
+├── docs/                    # Documentation templates
+└── scripts/                 # Utility scripts
 ```
 
-## 🔧 Konfiguration
+## 🔧 Configuration
 
-### Commitlint Setup
-Die Commitlint-Konfiguration wurde nach `.github/config/` verschoben:
+### Security Engine Configuration
 
-**`.github/config/commitlint.config.js`**
-```javascript
-module.exports = {
-  extends: ['@commitlint/config-conventional'],
-  rules: {
-    'type-enum': [2, 'always', [
-      'feat', 'fix', 'docs', 'style', 'refactor',
-      'test', 'chore', 'ci', 'build', 'revert', 'perf'
-    ]]
-  }
-};
-```
+#### Gitleaks Configuration (.gitleaks.toml)
 
-### Security Engine Konfiguration
-
-#### Gitleaks (.gitleaks.toml)
 ```toml
 [extend]
 useDefault = true
 
 [allowlist]
 paths = [
-  ".git/",
-  "node_modules/",
-  "vendor/"
+  ".git/**",
+  "node_modules/**",
+  "vendor/**"
 ]
 
 regexes = [
-  '''password\s*=\s*["']?test["']?''',
-  '''key\s*=\s*["']?your[_-]?key[_-]?here["']?'''
+  '''password\s*=\s*["']?(test|demo|example)["']?''',
+  '''key\s*=\s*["']?(your[_-]?key[_-]?here)["']?'''
 ]
 ```
 
-#### GitGuardian (.gitguardian.yaml)
+#### GitGuardian Configuration (.gitguardian.yaml)
+
 ```yaml
 version: 2
+
 paths-ignore:
-  - .git
-  - node_modules
+  - .git/**
+  - node_modules/**
+  - vendor/**
   
 secret:
   minimum-severity: medium
@@ -187,136 +147,225 @@ policies:
   all-policies: true
 ```
 
-## 🚀 Best Practices
+### Commit Lint Configuration
 
-### 1. **Dual Engine Security**
-- **Entwicklung**: Gitleaks für schnelle Pre-Commit-Checks
-- **CI/CD**: Beide Engines für maximale Abdeckung
-- **Production**: GitGuardian für Policy-Enforcement
+**.github/config/commitlint.config.js**
 
-### 2. **Branch Management**
-- `$default-branch` statt hardcodierter `main`
-- Automatisches Cleanup von Release-Branches
-- Konfigurierbare Auto-Merge-Bedingungen
-
-### 3. **API Key Management**
-```yaml
-secrets:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}           # Immer verfügbar
-  GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }} # Optional
-  FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}         # Für License-Compliance
+```javascript
+module.exports = {
+  extends: ['@commitlint/config-conventional'],
+  rules: {
+    'type-enum': [2, 'always', [
+      'feat', 'fix', 'docs', 'style', 'refactor',
+      'test', 'chore', 'ci', 'build', 'revert', 'perf'
+    ]],
+    'subject-max-length': [2, 'always', 72],
+    'header-max-length': [2, 'always', 100]
+  }
+};
 ```
 
-#### Repository-Informationen
+## 🚀 Getting Started
 
-- `{{REPO_FULL_NAME}}` - Repository Name (owner/repo)
-- `{{REPO_URL}}` - Repository URL
-- `{{REPO_OWNER}}` - Repository Owner
-- `{{REPO_NAME}}` - Repository Name
-- `{{CURRENT_BRANCH}}` - Aktueller Branch
+### Quick Setup
 
-#### Projekt-Informationen
+1. **Use as template:**
 
-- `{{PROJECT_NAME}}` - Projektname
-- `{{PROJECT_DESCRIPTION}}` - Projektbeschreibung
-- `{{COMPANY_NAME}}` - Firmenname
-- `{{CONTACT_EMAIL}}` - Kontakt E-Mail
-- `{{DOCUMENTATION_URL}}` - Dokumentations-URL
-- `{{SUPPORT_URL}}` - Support-URL
+   ```bash
+   gh repo create my-project --template {{REPO_FULL_NAME}}
+   ```
 
-#### Package-Informationen (automatisch erkannt)
+2. **Configure secrets:**
 
-- `{{PACKAGE_NAME}}` - Paketname (aus package.json, etc.)
-- `{{PACKAGE_VERSION}}` - Paketversion
-- `{{PACKAGE_AUTHOR}}` - Autor
-- `{{PACKAGE_LICENSE}}` - Lizenz
+   ```bash
+   # Required
+   gh secret set GITHUB_TOKEN --body "${{ secrets.GITHUB_TOKEN }}"
+   
+   # Optional (for GitGuardian)
+   gh secret set GITGUARDIAN_API_KEY --body "your-api-key"
+   ```
 
-#### Workflow-Badges (automatisch generiert)
+3. **Customize workflows:**
 
-- `{{BADGE_RELEASE}}` - Release-Status Badge
+   ```bash
+   # Copy example workflows
+   cp .github/workflows/examples/* .github/workflows/
+   
+   # Edit configuration
+   vim .github/config/commitlint.config.js
+   ```
 
-### In anderen Projekten verwenden
+### Using Individual Actions
+
+#### Security Scanning
 
 ```yaml
-# .github/workflows/readme.yml
-name: README Update
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Security Scan
+        uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
+        with:
+          scan-engines: 'both'
+          fail-on-findings: true
+```
+
+#### License Compliance
+
+```yaml
+- name: License Compliance Check
+  uses: {{REPO_FULL_NAME}}/.github/actions/license-compliance@main
+  with:
+    fossa-api-key: ${{ secrets.FOSSA_API_KEY }}
+    fail-on-issues: true
+```
+
+#### README Generation
+
+```yaml
+- name: Generate README
+  uses: {{REPO_FULL_NAME}}/.github/actions/readme-generate@main
+  with:
+    template-path: 'docs/README.template.MD'
+    project-name: 'My Project'
+    company-name: 'My Company'
+```
+
+## 🔄 Best Practices
+
+### Security
+
+- **Layered approach**: Use multiple scanning engines for comprehensive coverage
+- **Pre-commit hooks**: Implement client-side scanning with Gitleaks
+- **Continuous monitoring**: Enable GitGuardian for production environments
+- **Secret management**: Store all sensitive data in GitHub Secrets
+
+### Release Management
+
+- **Conventional commits**: Use structured commit messages for automatic versioning
+- **Branch protection**: Enable required status checks and reviews
+- **Automated testing**: Implement comprehensive test suites
+- **Semantic versioning**: Follow semver principles for version numbering
+
+### Documentation
+
+- **Template-based**: Use consistent documentation templates
+- **Auto-generation**: Automate README updates with workflows
+- **Comprehensive coverage**: Document all features and configurations
+- **Regular updates**: Keep documentation current with changes
+
+## 🏛️ Enterprise Features
+
+### Multi-Repository Management
+
+```yaml
+# Organization-wide security scanning
+name: Organization Security Audit
 
 on:
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly Monday 2 AM
 
 jobs:
-  readme:
-    uses: {{REPO_FULL_NAME}}/github/workflows/readme.yml@main
-    with:
-      template-path: "docs/README.template.md"
-      output-path: "README.md"
-      project-name: "Mein Projekt"
-      company-name: "Meine Firma"
-      project-description: "Beschreibung meines Projekts"
-      contact-email: "support@example.com"
+  audit:
+    strategy:
+      matrix:
+        repository: [repo1, repo2, repo3]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Security scan
+        uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
+        with:
+          scan-engines: 'both'
+          report-format: 'sarif'
 ```
 
-### Lokale README-Generierung
+### Policy Enforcement
+
+- **Branch protection**: Automated branch protection rules
+- **Required checks**: Enforce security and quality gates
+- **Compliance reporting**: Generate audit-ready reports
+- **Custom policies**: Implement organization-specific rules
+
+## 📊 Repository Management Tools
+
+### Branch Protection
 
 ```bash
-# README manuell generieren
-python scripts/generate_readme.py
-
-# Mit benutzerdefinierten Umgebungsvariablen
-PROJECT_NAME="Mein Projekt" \
-COMPANY_NAME="Meine Firma" \
-python scripts/generate_readme.py
+# Configure branch protection for multiple repositories
+cd github/branch-protect
+python protect_main.py \
+  --repositories "org/repo1,org/repo2" \
+  --require-reviews 2 \
+  --require-status-checks
 ```
 
-## 🔄 Automatisches Release-Management
+### Repository Cleanup
 
-Das Projekt verwendet **Release-Please** für automatisches Release-Management:
+```bash
+# Clean up stale branches and releases
+cd github/cleanup
+python github_cleanup.py \
+  --organization "your-org" \
+  --cleanup-branches \
+  --cleanup-releases \
+  --dry-run
+```
 
-1. **Conventional Commits** verwenden (feat:, fix:, chore:, docs:, etc.)
-2. **Push nach main** triggert Release-Please
-3. **Release-PR** wird automatisch erstellt
-4. **Merge des Release-PR** erstellt das GitHub Release
+### Self-Hosted Runner Management
 
-### Unterstützte Commit-Typen
+```bash
+# Deploy self-hosted runners
+cd github/runner
+docker-compose up -d
 
-- `feat:` - Neue Features (minor version bump)
-- `fix:` - Bugfixes (patch version bump)
-- `feat!:` oder `BREAKING CHANGE:` - Breaking Changes (major version bump)
-- `docs:`, `chore:`, `ci:`, `refactor:` - Keine Version-Änderung
+# Scale runners based on load
+./scripts/manage.sh scale --instances 5
+```
 
-## 🛠️ Entwicklung
+## 🔧 Troubleshooting
 
-### Voraussetzungen
+### Common Issues
 
-- Python 3.12+
-- Git
-- GitHub Repository mit Actions aktiviert
+1. **Security scan failures**: Check scan configuration and token permissions
+2. **Release automation issues**: Validate commit format and release-please configuration
+3. **Workflow permissions**: Ensure proper GITHUB_TOKEN permissions
+4. **Template rendering**: Verify all required variables are provided
 
-### Setup
+### Debug Commands
 
-1. Repository klonen
-2. Template in `docs/README.template.MD` anpassen
-3. Workflows nach Bedarf konfigurieren
-4. README generieren: `python scripts/generate_readme.py`
+```bash
+# Test security scan configuration
+cat .gitleaks.toml
+cat .gitguardian.yaml
 
-### Verfügbare Workflows
+# Validate commit format
+git log --oneline -10
 
-Siehe [github/workflows/README.md](github/workflows/README.md) für detaillierte Dokumentation aller verfügbaren Workflows.
+# Check workflow permissions
+gh auth status --show-token
+```
+
+## 📚 Documentation
+
+- [Security Scanning Guide](.github/actions/security-scan/README.md)
+- [Release Management Guide](.github/workflows/README.md)
+- [Repository Tools Guide](github/README.md)
+- [Contributing Guidelines](CONTRIBUTING.md)
 
 ## 📞 Support
 
-{{#IF CONTACT_EMAIL}}
-**Kontakt:** [{{CONTACT_EMAIL}}](mailto:{{CONTACT_EMAIL}})
-{{/IF}}
+- **Issues:** [GitHub Issues]({{REPO_URL}}/issues)
+- **Documentation:** [Project Wiki]({{REPO_URL}}/wiki)
+- **Security:** [Security Policy]({{REPO_URL}}/security/policy)
 
-{{#IF SUPPORT_URL}}
-**Support:** [{{SUPPORT_URL}}]({{SUPPORT_URL}})
-{{/IF}}
+## 📄 License
 
-**Issues:** [GitHub Issues]({{REPO_URL}}/issues)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-*Dieses README wurde automatisch generiert am {{DATETIME}} aus [docs/README.template.MD](docs/README.template.MD)*
+*Professional automation templates for enterprise GitHub workflows. Generated on {{DATETIME}} from [docs/README.template.MD](docs/README.template.MD)*
