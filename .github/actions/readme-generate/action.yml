@@ -257,7 +257,7 @@ runs:
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(banner + content)
             
-            print(f"✅ README generated successfully: {output_path}")
+            print(f"README generated successfully: {output_path}")
             return 0
         
         if __name__ == '__main__':
@@ -305,21 +305,22 @@ runs:
         fi
         
         # Get file size
-        FILE_SIZE=$(wc -c < "$README_FILE")
+        FILE_SIZE=$(wc -c < "$README_FILE" | tr -d '\n\r' | tr -d ' ')
         echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
         
         # Validate file size
-        if [ "$FILE_SIZE" -lt 100 ]; then
+        if [ "$FILE_SIZE" -lt 100 ] 2>/dev/null; then
           echo "❌ Generated README is too small (${FILE_SIZE} bytes)"
           echo "passed=false" >> $GITHUB_OUTPUT
           exit 1
         fi
         
         # Check for unresolved placeholders
-        UNRESOLVED=$(grep -o "{{[^}]*}}" "$README_FILE" | wc -l || echo "0")
+        UNRESOLVED=$(grep -o "{{[^}]*}}" "$README_FILE" | wc -l 2>/dev/null || echo "0")
+        UNRESOLVED=$(echo "$UNRESOLVED" | tr -d '\n\r' | tr -d ' ')
         echo "unresolved_placeholders=$UNRESOLVED" >> $GITHUB_OUTPUT
         
-        if [ "$UNRESOLVED" -gt 0 ]; then
+        if [ "$UNRESOLVED" -gt 0 ] 2>/dev/null; then
           echo "⚠️ Found $UNRESOLVED unresolved placeholders:"
           grep -o "{{[^}]*}}" "$README_FILE" | sort | uniq | head -5
           
@@ -329,9 +330,13 @@ runs:
           mv "${README_FILE}.clean" "$README_FILE"
           
           # Update file size after cleaning
-          FILE_SIZE=$(wc -c < "$README_FILE")
+          FILE_SIZE=$(wc -c < "$README_FILE" | tr -d '\n\r' | tr -d ' ')
           echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
           echo "✅ Removed unresolved placeholders, new size: ${FILE_SIZE} bytes"
+          
+          # Reset unresolved count to 0 after cleaning
+          UNRESOLVED="0"
+          echo "unresolved_placeholders=$UNRESOLVED" >> $GITHUB_OUTPUT
         fi
         
         # Basic content validation
@@ -341,7 +346,7 @@ runs:
         
         echo "✅ README validation completed"
         echo "📊 File size: ${FILE_SIZE} bytes"
-        echo "🔧 Unresolved placeholders: $UNRESOLVED"
+        echo "🔧 Unresolved placeholders: ${UNRESOLVED}"
         echo "passed=true" >> $GITHUB_OUTPUT
 
     - name: 📊 Check for Changes
