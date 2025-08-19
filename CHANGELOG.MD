@@ -1,3 +1,9 @@
+# Changelog
+
+## 0.1.2 (2025-08-19)
+
+**Full Changelog**: https://github.com/bauer-group/automation-templates/compare/v0.1.1...v0.1.2
+
 ## 🚀 What's Changed in v0.1.1
 
 ### 📋 Changes since v0.1.0
@@ -125,4 +131,3 @@
 *This release was created manually using the Enhanced Release Management workflow.*
 
 ---
-
