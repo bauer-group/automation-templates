@@ -6,7 +6,7 @@
 
 {{PROJECT_DESCRIPTION}}
 
-[![Enhanced Release]({{REPO_URL}}/actions/workflows/enhanced-release.yml/badge.svg)]({{REPO_URL}}/actions/workflows/enhanced-release.yml)
+[![🚀 Automatic Release Management](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
 
 ## 🛡️ Security Scanning - Dual Engine Approach
 
