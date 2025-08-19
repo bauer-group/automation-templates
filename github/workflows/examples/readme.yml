@@ -1,7 +1,21 @@
 name: 📄 Professional README Generator
 
+# This workflow can be used by external repositories to generate professional README files
+# Example usage in your repository:
+#   - name: Generate README
+#     uses: bauer-group/automation-templates/.github/workflows/readme.yml@main
+#     with:
+#       template-path: 'docs/README.template.MD'
+#       project-name: 'My Project'
+#       company-name: 'My Company'
+
 on:
   workflow_call:
+    # Secrets are passed through from calling repository
+    secrets:
+      GITHUB_TOKEN:
+        description: 'GitHub token for repository access'
+        required: true
     inputs:
       template-path:
         description: 'Path to README template file'
@@ -101,6 +115,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          # Checkout the calling repository, not automation-templates
 
       - name: 🔍 Validate Prerequisites
         run: |
@@ -131,7 +146,7 @@ jobs:
 
       - name: 📝 Generate Professional README
         id: generate
-        uses: ./.github/actions/readme-generate
+        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
         with:
           template-path: ${{ inputs.template-path }}
           output-path: ${{ inputs.output-path }}

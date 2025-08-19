@@ -1,20 +1,123 @@
-# 🚀 Enhanced Release Workflow
+# 📄 Beispiel-Workflows für externe Repositories
 
-Diese Sammlung enthält das volls### 4. Repository Secrets (optional)
+Diese Workflows können von anderen Repositories als zentrale Vorlagen verwendet werden.
 
-Für erweiterte Features konfiguriere optional:
+## 📄 README Generator Workflow
 
-**Gitleaks Pro (für Organisationen):**
-- `GITLEAKS_LICENSE`: Gitleaks Pro Lizenzschlüssel für erweiterte Features
+### Verwendung in externen Repositories
 
-**GitGuardian Enterprise:**
-- `GITGUARDIAN_API_KEY`: GitGuardian API Schlüssel für Enterprise-Features
+Erstelle eine Datei `.github/workflows/readme.yml` in deinem Repository:
 
-**Package Publishing:**
-- `NPM_TOKEN`: Für NPM Package Publishing
-- `DOCKER_REGISTRY_TOKEN`: Für Docker Image Publishing
+```yaml
+name: 📄 README Generator
 
-**Hinweis:** Der Workflow funktioniert vollständig mit nur `GITHUB_TOKEN` (automatisch verfügbar)hanced Release Management System mit **googleapis/release-please** Integration.
+on:
+  push:
+    branches: [main]
+    paths: ['docs/README.template.MD']
+  workflow_dispatch:
+
+jobs:
+  generate-readme:
+    name: Generate README
+    uses: bauer-group/automation-templates/.github/workflows/readme.yml@main
+    with:
+      template-path: 'docs/README.template.MD'
+      output-path: 'README.MD'
+      project-name: 'Mein Projekt'
+      company-name: 'Meine Firma'
+      project-description: 'Beschreibung meines Projekts'
+      contact-email: 'support@meinefirma.de'
+      auto-commit: true
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### Template-Datei erstellen
+
+Erstelle eine Datei `docs/README.template.MD` mit Platzhaltern:
+
+```markdown
+# {{PROJECT_NAME}}
+
+**{{PROJECT_DESCRIPTION}}**
+
+- Version: {{VERSION}}
+- Repository: {{REPOSITORY_URL}}
+- Company: {{COMPANY_NAME}}
+- Contact: {{CONTACT_EMAIL}}
+
+Generated on: {{GENERATION_DATE}}
+```
+
+### Verfügbare Platzhalter
+
+| Platzhalter | Beschreibung | Automatisch erkannt |
+|-------------|-------------|-------------------|
+| `{{PROJECT_NAME}}` | Projektname | ✅ Aus Repository-Name |
+| `{{PROJECT_DESCRIPTION}}` | Projektbeschreibung | ✅ Aus Repository-Description |
+| `{{VERSION}}` | Version | ✅ Aus Git-Tags |
+| `{{COMPANY_NAME}}` | Firmenname | ❌ Parameter erforderlich |
+| `{{CONTACT_EMAIL}}` | Kontakt-Email | ❌ Parameter erforderlich |
+| `{{REPOSITORY_URL}}` | Repository-URL | ✅ Automatisch |
+| `{{GENERATION_DATE}}` | Generierungsdatum | ✅ Automatisch |
+| `{{BRANCH}}` | Aktueller Branch | ✅ Automatisch |
+
+## Konfigurationsoptionen
+
+### Workflow-Inputs
+
+- `template-path`: Pfad zur Template-Datei (Standard: `docs/README.template.MD`)
+- `output-path`: Ausgabedatei (Standard: `README.MD`)
+- `project-name`: Projektname (automatisch erkannt wenn leer)
+- `company-name`: Firmenname (erforderlich für saubere Ausgabe)
+- `project-description`: Projektbeschreibung (automatisch erkannt)
+- `auto-commit`: Automatisches Committen der Änderungen (Standard: `true`)
+- `force-update`: Update erzwingen auch ohne Änderungen (Standard: `false`)
+
+### Workflow-Outputs
+
+- `readme_updated`: Ob README aktualisiert wurde
+- `changes_detected`: Ob Änderungen erkannt wurden
+- `validation_passed`: Ob Validierung erfolgreich war
+- `file_size`: Größe der generierten Datei
+- `unresolved_placeholders`: Anzahl unaufgelöster Platzhalter
+
+### Beispiel für verschiedene Trigger
+
+```yaml
+name: 📄 README Management
+
+on:
+  # Bei Änderungen am Template
+  push:
+    branches: [main]
+    paths: ['docs/README.template.MD', 'docs/**']
+  
+  # Bei neuen Releases
+  release:
+    types: [published]
+  
+  # Manueller Trigger
+  workflow_dispatch:
+    inputs:
+      force-update:
+        description: 'README auch ohne Änderungen aktualisieren'
+        type: boolean
+        default: false
+
+jobs:
+  update-readme:
+    uses: bauer-group/automation-templates/.github/workflows/readme.yml@main
+    with:
+      force-update: ${{ inputs.force-update || false }}
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+---
+
+## 🚀 Enhanced Release Workflow
 
 ## 📦 Workflow Features
 
