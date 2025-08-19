@@ -153,16 +153,17 @@ jobs:
       github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.enhanced-release.outputs.release_created }}
-      tag_name: ${{ steps.enhanced-release.outputs.tag_name }}
-      version: ${{ steps.enhanced-release.outputs.version }}
-      upload_url: ${{ steps.enhanced-release.outputs.upload_url }}
-      html_url: ${{ steps.enhanced-release.outputs.html_url }}
+      release_created: ${{ steps.enhanced-release.outputs.release_created == 'true' || steps.manual_fallback.outputs.release_created == 'true' }}
+      tag_name: ${{ steps.enhanced-release.outputs.tag_name || steps.manual_fallback.outputs.tag_name }}
+      version: ${{ steps.enhanced-release.outputs.version || steps.manual_fallback.outputs.version }}
+      upload_url: ${{ steps.enhanced-release.outputs.upload_url || steps.manual_fallback.outputs.release_url }}
+      html_url: ${{ steps.enhanced-release.outputs.html_url || steps.manual_fallback.outputs.release_url }}
       pr_number: ${{ steps.enhanced-release.outputs.pr_number }}
       pr_merged: ${{ steps.enhanced-release.outputs.pr_merged }}
       security_score: ${{ steps.enhanced-release.outputs.security_score }}
       license_compliance: ${{ steps.enhanced-release.outputs.license_compliance }}
       artifacts_generated: ${{ steps.enhanced-release.outputs.artifacts_generated }}
+      fallback_used: ${{ steps.manual_fallback.outputs.release_created == 'true' }}
     
     steps:
       - name: 🚀 Checkout Repository
@@ -341,7 +342,9 @@ jobs:
             // Format auto merge result
             let autoMergeDisplay = 'N/A';
             if ('${{ env.ENABLE_AUTO_MERGE }}' === 'true') {
-              if (prMerged === 'true') {
+              if (fallbackReleaseCreated === 'true') {
+                autoMergeDisplay = '✅ N/A (Direct Release)';
+              } else if (prMerged === 'true') {
                 autoMergeDisplay = '✅ Merged';
               } else if (prNumber) {
                 autoMergeDisplay = '⏳ Pending';
@@ -355,7 +358,11 @@ jobs:
             // Format branch cleanup result
             let cleanupDisplay = 'N/A';
             if ('${{ env.CLEANUP_RELEASE_BRANCH }}' === 'true') {
-              cleanupDisplay = anyReleaseCreated ? '✅ Scheduled' : '⏭️ Pending';
+              if (fallbackReleaseCreated === 'true') {
+                cleanupDisplay = '✅ N/A (Direct Release)';
+              } else {
+                cleanupDisplay = anyReleaseCreated ? '✅ Scheduled' : '⏭️ Pending';
+              }
             } else {
               cleanupDisplay = '⏭️ Disabled';
             }
