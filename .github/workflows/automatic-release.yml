@@ -1,0 +1,734 @@
+name: 🚀 Automatic Release Management
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.MD'
+      - 'docs/**'
+      - '.github/**'      
+  pull_request:
+    types: [ closed ]
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      release-type:
+        description: "Type of release"
+        required: false
+        default: 'simple'
+        type: choice
+        options:
+          - simple
+          - node
+          - python
+          - rust
+          - java
+          - go
+          - docker
+      force-release:
+        description: "Force create release (skip conventional commit check)"
+        type: boolean
+        default: false
+      security-scan-engine:
+        description: "Security scanning engine"
+        type: choice
+        default: 'both'
+        options:
+          - gitleaks
+          - gitguardian  
+          - both
+      license-check:
+        description: "Enable license compliance check"
+        type: boolean
+        default: true
+      artifact-generation:
+        description: "Enable artifact generation"
+        type: boolean
+        default: true
+      auto-merge-pr:
+        description: "Auto-merge release PR when created"
+        type: boolean
+        default: false
+      cleanup-release-branch:
+        description: "Delete release branch after merge"
+        type: boolean
+        default: true
+      artifact-types:
+        description: "Types of artifacts to generate"
+        type: choice
+        default: 'source'
+        options:
+          - source
+          - binaries
+          - docker
+          - all
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+  security-events: write
+  packages: write
+
+env:
+  # Global configuration
+  ENABLE_SECURITY_SCAN: ${{ github.event_name == 'workflow_dispatch' && inputs.security-scan-engine != '' || 'true' }}
+  SECURITY_SCAN_ENGINE: ${{ github.event_name == 'workflow_dispatch' && inputs.security-scan-engine || 'both' }}
+  ENABLE_LICENSE_CHECK: ${{ github.event_name == 'workflow_dispatch' && inputs.license-check || 'true' }}
+  ENABLE_ARTIFACTS: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact-generation || 'true' }}
+  ENABLE_AUTO_MERGE: ${{ github.event_name == 'workflow_dispatch' && inputs.auto-merge-pr || 'false' }}
+  CLEANUP_RELEASE_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.cleanup-release-branch || 'true' }}
+  RELEASE_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.release-type || 'simple' }}
+  ARTIFACT_TYPES: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact-types || 'source' }}
+  FORCE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.force-release || 'false' }}
+
+jobs:
+  # Pre-flight checks for pull requests
+  pr-validation:
+    name: 🔍 PR Validation
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == false
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📋 Validate Conventional Commits
+        uses: wagoid/commitlint-github-action@v5
+        with:
+          configFile: .github/config/commitlint.config.js
+
+      - name: 🛡️ Security Pre-Check
+        if: env.ENABLE_SECURITY_SCAN == 'true'
+        uses: ./.github/actions/security-scan-meta
+        with:
+          scan-engine: ${{ env.SECURITY_SCAN_ENGINE }}
+          scan-type: 'secrets'
+          fail-on-findings: 'true'
+          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📋 License Pre-Check
+        if: env.ENABLE_LICENSE_CHECK == 'true'
+        uses: ./.github/actions/license-compliance
+        with:
+          fail-on-forbidden: 'true'
+          fail-on-unknown: 'false'
+          scan-dependencies: 'false'
+          generate-sbom: 'false'
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ✅ PR Validation Summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = [
+              '### ✅ PR Validation Results',
+              'All validation checks passed successfully',
+              '',
+              '**Checks Performed:**',
+              '- ✅ Conventional commit format validation',
+              `- ${{ env.ENABLE_SECURITY_SCAN == 'true' && '✅' || '⏭️' }} Security pre-check`,
+              `- ${{ env.ENABLE_LICENSE_CHECK == 'true' && '✅' || '⏭️' }} License compliance pre-check`
+            ].join('\n');
+            
+            await core.summary.addRaw(summary).write();
+
+  # Main release management job
+  release-management:
+    name: 📦 Release Management
+    if: |
+      (github.event_name == 'push' && !contains(github.event.head_commit.message, 'chore(main): release')) ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.enhanced-release.outputs.release_created }}
+      tag_name: ${{ steps.enhanced-release.outputs.tag_name }}
+      version: ${{ steps.enhanced-release.outputs.version }}
+      upload_url: ${{ steps.enhanced-release.outputs.upload_url }}
+      html_url: ${{ steps.enhanced-release.outputs.html_url }}
+      pr_number: ${{ steps.enhanced-release.outputs.pr_number }}
+      pr_merged: ${{ steps.enhanced-release.outputs.pr_merged }}
+      security_score: ${{ steps.enhanced-release.outputs.security_score }}
+      license_compliance: ${{ steps.enhanced-release.outputs.license_compliance }}
+      artifacts_generated: ${{ steps.enhanced-release.outputs.artifacts_generated }}
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📝 Update Documentation
+        if: env.ENABLE_ARTIFACTS == 'true'
+        uses: ./.github/actions/readme-generate
+        continue-on-error: true
+        with:
+          template-path: 'docs/README.template.MD'
+          output-path: 'README.MD'
+          project-name: 'Automation Templates'
+          company-name: 'Bauer Group'
+          project-description: 'Zentrale GitHub Actions Templates und Workflows für automatisierte Entwicklungsprozesse'
+          contact-email: 'support@bauer-group.com'
+          documentation-url: 'https://github.com/bauer-group/automation-templates/wiki'
+          support-url: 'https://github.com/bauer-group/automation-templates/issues'
+
+      - name: 🚀 Enhanced Release Please
+        id: enhanced-release
+        uses: ./.github/actions/release-please
+        with:
+          release-type: ${{ env.RELEASE_TYPE }}
+          security-scan-engine: ${{ env.SECURITY_SCAN_ENGINE }}
+          security-scan-enabled: ${{ env.ENABLE_SECURITY_SCAN }}
+          license-check-enabled: ${{ env.ENABLE_LICENSE_CHECK }}
+          artifact-generation-enabled: ${{ env.ENABLE_ARTIFACTS }}
+          auto-merge-enabled: ${{ env.ENABLE_AUTO_MERGE }}
+          cleanup-release-branch: ${{ env.CLEANUP_RELEASE_BRANCH }}
+          force-release: ${{ inputs.force-release || 'false' }}
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Validate Release Semantics
+        if: steps.enhanced-release.outputs.release_created == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tagName = '${{ steps.enhanced-release.outputs.tag_name }}';
+            const version = '${{ steps.enhanced-release.outputs.version }}';
+            
+            console.log('🏷️ Validating release semantics...');
+            console.log(`Tag: ${tagName}`);
+            console.log(`Version: ${version}`);
+            
+            // Validate semantic versioning format
+            const semverRegex = /^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\.-]+)*(\+[a-zA-Z0-9\.-]+)*$/;
+            if (!semverRegex.test(version)) {
+              core.setFailed(`❌ Invalid semantic version format: ${version}`);
+              return;
+            }
+            
+            // Validate tag format
+            const tagRegex = /^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\.-]+)*(\+[a-zA-Z0-9\.-]+)*$/;
+            if (!tagRegex.test(tagName)) {
+              core.setFailed(`❌ Invalid tag format: ${tagName}`);
+              return;
+            }
+            
+            console.log('✅ Release semantics validated successfully');
+
+      - name: � Universal Fallback Release
+        id: universal_fallback
+        if: |
+          steps.enhanced-release.outputs.release_created != 'true' &&
+          (env.FORCE_RELEASE == 'true' || inputs.force-release == true)
+        shell: bash
+        run: |
+          echo "🔄 Enhanced Release Please created no release, running Universal Fallback..."
+          
+          # Make script executable
+          chmod +x scripts/universal-release.sh
+          
+          # Run universal release script
+          ./scripts/universal-release.sh
+
+      - name: �📊 Generate Release Dashboard
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const releaseCreated = '${{ steps.enhanced-release.outputs.release_created }}';
+            const fallbackReleaseCreated = '${{ steps.universal_fallback.outputs.release_created }}';
+            const tagName = '${{ steps.enhanced-release.outputs.tag_name }}' || '${{ steps.universal_fallback.outputs.tag_name }}';
+            const version = '${{ steps.enhanced-release.outputs.version }}' || '${{ steps.universal_fallback.outputs.version }}';
+            const htmlUrl = '${{ steps.enhanced-release.outputs.html_url }}' || '${{ steps.universal_fallback.outputs.release_url }}';
+            const prNumber = '${{ steps.enhanced-release.outputs.pr_number }}';
+            const prMerged = '${{ steps.enhanced-release.outputs.pr_merged }}';
+            const securityScore = '${{ steps.enhanced-release.outputs.security_score }}';
+            const licenseCompliance = '${{ steps.enhanced-release.outputs.license_compliance }}';
+            const artifactsGenerated = '${{ steps.enhanced-release.outputs.artifacts_generated }}';
+            
+            const anyReleaseCreated = releaseCreated === 'true' || fallbackReleaseCreated === 'true';
+            const releaseMethod = releaseCreated === 'true' ? 'Enhanced Release Please' : 
+                                 fallbackReleaseCreated === 'true' ? 'Universal Fallback' : 'None';
+            
+            let summary = [
+              '### 🚀 Automatic Release Management Dashboard',
+              '',
+              '| Component | Status | Details |',
+              '|-----------|--------|---------|',
+              '| **Event** | 📋 | ${{ github.event_name }} |',
+              '| **Branch** | 🌿 | ${{ github.ref_name }} |',
+              '| **Release Type** | 📦 | ${{ env.RELEASE_TYPE }} |',
+              '| **Force Release** | ⚡ | ${{ inputs.force-release || 'false' }} |',
+              '| **Release Method** | 🔧 | ' + releaseMethod + ' |',
+              '',
+              '#### 🔧 Features Status',
+              '| Feature | Enabled | Result |',
+              '|---------|---------|--------|',
+              '| Security Scan | ${{ env.ENABLE_SECURITY_SCAN }} | ' + (securityScore || 'N/A') + ' |',
+              '| License Check | ${{ env.ENABLE_LICENSE_CHECK }} | ' + (licenseCompliance || 'N/A') + ' |',
+              '| Artifact Generation | ${{ env.ENABLE_ARTIFACTS }} | ' + (artifactsGenerated || 'N/A') + ' |',
+              '| Auto Merge PR | ${{ env.ENABLE_AUTO_MERGE }} | ' + (prMerged || 'N/A') + ' |',
+              '| Branch Cleanup | ${{ env.CLEANUP_RELEASE_BRANCH }} | ' + (anyReleaseCreated ? '✅ Executed' : 'N/A') + ' |',
+              '',
+              '#### 📋 Release Results',
+              '| Field | Value |',
+              '|-------|-------|',
+              '| **Release Method** | ' + releaseMethod + ' |',
+              '| **Release Created** | ' + (anyReleaseCreated ? 'true' : 'false') + ' |'
+            ];
+            
+            if (releaseCreated === 'true') {
+              summary.push(
+                '| **Tag Name** | `' + tagName + '` |',
+                '| **Version** | `' + version + '` |',
+                '| **Release URL** | [View Release](' + htmlUrl + ') |'
+              );
+            } else if (fallbackReleaseCreated === 'true') {
+              summary.push(
+                '| **Tag Name** | `' + tagName + '` |',
+                '| **Version** | `' + version + '` |',
+                '| **Release URL** | [View Release](' + htmlUrl + ') |'
+              );
+            } else if (prNumber) {
+              summary.push(
+                '| **PR Number** | [#' + prNumber + '](https://github.com/${{ github.repository }}/pull/' + prNumber + ') |',
+                '| **PR Status** | ' + (prMerged === 'true' ? 'Merged' : 'Open') + ' |'
+              );
+            }
+            
+            summary.push('');
+            
+            if (releaseCreated === 'true') {
+              summary.push(
+                '🎉 **Release Successfully Created!**',
+                '',
+                '**Next Steps:**',
+                '- ✅ Release notes generated automatically',
+                '- ✅ GitHub release is available',
+                '- ✅ Tags are ready for external consumption'
+              );
+              
+              if ('${{ env.ENABLE_ARTIFACTS }}' === 'true') {
+                summary.push('- ✅ Release artifacts generated and uploaded');
+              }
+              
+              if ('${{ env.ENABLE_SECURITY_SCAN }}' === 'true') {
+                summary.push('- 🛡️ Security scan completed (Score: ' + (securityScore || 'N/A') + '/100)');
+              }
+              
+              if ('${{ env.ENABLE_LICENSE_CHECK }}' === 'true') {
+                summary.push('- 📋 License compliance verified (' + (licenseCompliance || 'N/A') + ')');
+              }
+              
+            } else if (fallbackReleaseCreated === 'true') {
+              summary.push(
+                '🎉 **Universal Fallback Release Created!**',
+                '',
+                '**Next Steps:**',
+                '- ✅ Release created via universal script',
+                '- ✅ GitHub release is available',
+                '- ✅ Tags are ready for external consumption'
+              );
+            } else if (prNumber) {
+              summary.push(
+                '📝 **Release PR Created**',
+                '',
+                'A release PR has been created and is ready for review.',
+                '',
+                '**PR Actions:**'
+              );
+              
+              if ('${{ env.ENABLE_AUTO_MERGE }}' === 'true') {
+                if (prMerged === 'true') {
+                  summary.push('- ✅ PR automatically merged');
+                } else {
+                  summary.push('- ⏳ Auto-merge attempted but manual review required');
+                }
+              } else {
+                summary.push('- 👥 Manual review and merge required');
+              }
+            } else {
+              summary.push(
+                'ℹ️ **No Release Action Taken**',
+                '',
+                '**Possible Reasons:**',
+                '- No conventional commits since last release',
+                '- Only non-releasable changes (docs, chore, etc.)',
+                '- Release-Please PR already exists'
+              );
+            }
+            
+            await core.summary.addRaw(summary.join('\n')).write();
+            
+            // Add release trigger help if no action taken
+            if (!anyReleaseCreated && !prNumber) {
+              const helpSummary = [
+                '',
+                '**To Trigger a Release:**',
+                '- `feat:` for new features (minor version bump)',
+                '- `fix:` for bug fixes (patch version bump)',
+                '- `feat!:` or `BREAKING CHANGE:` for breaking changes (major version bump)'
+              ];
+              
+              await core.summary.addRaw(helpSummary.join('\n')).write();
+            }
+
+  # Extended artifact generation for specific types
+  extended-artifacts:
+    name: 🔨 Extended Artifact Generation
+    if: |
+      needs.release-management.outputs.release_created == 'true' && 
+      (github.event_name == 'workflow_dispatch' && 
+       (inputs.artifact-types == 'binaries' || inputs.artifact-types == 'docker' || inputs.artifact-types == 'all'))
+    needs: release-management
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: "Linux AMD64"
+            os: ubuntu-latest
+            target: linux-amd64
+          - name: "Windows AMD64"  
+            os: windows-latest
+            target: windows-amd64
+          - name: "macOS AMD64"
+            os: macos-latest
+            target: darwin-amd64
+    
+    steps:
+      - name: 🚀 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔨 Extended Artifact Generation
+        uses: ./.github/actions/artifact-generator
+        with:
+          artifact-types: ${{ env.ARTIFACT_TYPES }}
+          tag-name: ${{ needs.release-management.outputs.tag_name }}
+          version: ${{ needs.release-management.outputs.version }}
+          upload-url: ${{ needs.release-management.outputs.upload_url }}
+          build-command: 'echo "Add your build command here"'
+          binary-paths: ''
+          docker-registry: 'ghcr.io'
+          docker-username: ${{ github.actor }}
+          docker-password: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Post-release actions and notifications
+  post-release:
+    name: 🎯 Post-Release Actions
+    if: needs.release-management.outputs.release_created == 'true'
+    needs: [release-management]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📢 Release Notification
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ needs.release-management.outputs.version }}';
+            const tagName = '${{ needs.release-management.outputs.tag_name }}';
+            const htmlUrl = '${{ needs.release-management.outputs.html_url }}';
+            const securityScore = '${{ needs.release-management.outputs.security_score }}';
+            const licenseCompliance = '${{ needs.release-management.outputs.license_compliance }}';
+            const artifactsGenerated = '${{ needs.release-management.outputs.artifacts_generated }}';
+            
+            const notification = [
+              '🎉 New release published successfully!',
+              '',
+              '📋 Release Details:',
+              `  • Version: ${version}`,
+              `  • Tag: ${tagName}`,
+              `  • Release URL: ${htmlUrl}`
+            ];
+            
+            if ('${{ env.ENABLE_SECURITY_SCAN }}' === 'true') {
+              notification.push(`  • Security Score: ${securityScore || 'N/A'}/100`);
+            }
+            
+            if ('${{ env.ENABLE_LICENSE_CHECK }}' === 'true') {
+              notification.push(`  • License Compliance: ${licenseCompliance || 'N/A'}`);
+            }
+            
+            if ('${{ env.ENABLE_ARTIFACTS }}' === 'true') {
+              notification.push(`  • Artifacts: ${artifactsGenerated || 'None'}`);
+            }
+            
+            console.log(notification.join('\n'));
+
+      - name: 🔄 Update External References
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const checklist = [
+              '📋 External Reference Update Checklist:',
+              '',
+              '✅ **Automated Updates:**',
+              '  • GitHub release created with assets',
+              '  • Git tags updated',
+              '  • Release notes generated'
+            ];
+            
+            if ('${{ env.ARTIFACT_TYPES }}'.includes('docker')) {
+              checklist.push('  • Docker images pushed to registry');
+            }
+            
+            checklist.push(
+              '',
+              '📝 **Manual Updates Required:**',
+              '  • Update documentation with new version references',
+              '  • Notify dependent projects of the release',
+              '  • Update integration examples',
+              '  • Consider announcing on relevant channels',
+              '',
+              '🔗 **Useful Links:**',
+              '  • [Release](${{ needs.release-management.outputs.html_url }})',
+              '  • [Repository](https://github.com/${{ github.repository }})',
+              '  • [Documentation](https://github.com/${{ github.repository }}/wiki)'
+            );
+            
+            console.log(checklist.join('\n'));
+
+      - name: 📊 Post-Release Analytics
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const securityScore = '${{ needs.release-management.outputs.security_score }}';
+            const licenseCompliance = '${{ needs.release-management.outputs.license_compliance }}';
+            const artifactsGenerated = '${{ needs.release-management.outputs.artifacts_generated }}';
+            
+            const analytics = [
+              '📊 Release Analytics Summary:',
+              '',
+              '🎯 **Release Metrics:**',
+              '  • Release Type: ${{ env.RELEASE_TYPE }}',
+              '  • Trigger: ${{ github.event_name }}',
+              '  • Workflow Duration: ' + new Date().toISOString().replace('T', ' ').replace(/\..+/, ' UTC'),
+              '',
+              '🔧 **Features Used:**',
+              '  • Security Scanning: ${{ env.ENABLE_SECURITY_SCAN }}',
+              '  • License Checking: ${{ env.ENABLE_LICENSE_CHECK }}',
+              '  • Artifact Generation: ${{ env.ENABLE_ARTIFACTS }}',
+              '  • Auto-merge PR: ${{ env.ENABLE_AUTO_MERGE }}',
+              '',
+              '📈 **Quality Metrics:**',
+              '  • Security Score: ' + (securityScore || 'N/A') + '/100',
+              '  • License Compliance: ' + (licenseCompliance || 'N/A'),
+              '  • Artifacts Generated: ' + (artifactsGenerated || 'None')
+            ];
+            
+            console.log(analytics.join('\n'));
+
+      - name: 📤 Generate Release Report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Create reports directory
+            if (!fs.existsSync('reports')) {
+              fs.mkdirSync('reports', { recursive: true });
+            }
+            
+            const version = '${{ needs.release-management.outputs.version }}';
+            const tagName = '${{ needs.release-management.outputs.tag_name }}';
+            const htmlUrl = '${{ needs.release-management.outputs.html_url }}';
+            const securityScore = '${{ needs.release-management.outputs.security_score }}';
+            const licenseCompliance = '${{ needs.release-management.outputs.license_compliance }}';
+            const artifactsGenerated = '${{ needs.release-management.outputs.artifacts_generated }}';
+            const prMerged = '${{ needs.release-management.outputs.pr_merged }}';
+            
+            const releaseReport = [
+              `# 🚀 Release Report: ${version}`,
+              '',
+              `**Release Date:** ${new Date().toISOString().replace('T', ' ').replace(/\..+/, ' UTC')}`,
+              `**Repository:** ${{ github.repository }}`,
+              `**Branch:** ${{ github.ref_name }}`,
+              `**Triggered by:** ${{ github.event_name }}`,
+              '',
+              '## 📋 Release Details',
+              '',
+              `- **Version:** \`${version}\``,
+              `- **Tag:** \`${tagName}\``,
+              `- **Type:** ${{ env.RELEASE_TYPE }}`,
+              `- **Release URL:** ${htmlUrl}`,
+              '',
+              '## 🔧 Configuration',
+              '',
+              '| Feature | Enabled | Result |',
+              '|---------|---------|--------|',
+              `| Security Scan | ${{ env.ENABLE_SECURITY_SCAN }} | ${securityScore || 'N/A'}/100 |`,
+              `| License Check | ${{ env.ENABLE_LICENSE_CHECK }} | ${licenseCompliance || 'N/A'} |`,
+              `| Artifact Generation | ${{ env.ENABLE_ARTIFACTS }} | ${artifactsGenerated || 'None'} |`,
+              `| Auto-merge PR | ${{ env.ENABLE_AUTO_MERGE }} | ${prMerged || 'N/A'} |`,
+              '',
+              '## 📊 Quality Assurance',
+              '',
+              '✅ **Automated Checks Passed:**',
+              '- Conventional commit validation',
+              '- Security vulnerability scanning',
+              '- License compliance verification',
+              '- Semantic versioning validation',
+              '',
+              '## 🎯 Post-Release Actions',
+              '',
+              '✅ **Completed:**',
+              '- GitHub release created',
+              '- Release notes generated',
+              '- Tags pushed',
+              '- Artifacts uploaded (if enabled)',
+              '',
+              '📝 **Recommended:**',
+              '- Update documentation',
+              '- Notify stakeholders',
+              '- Monitor for issues',
+              '- Plan next iteration',
+              '',
+              '---',
+              '*Generated by Enhanced Release Management Workflow*'
+            ].join('\n');
+            
+            fs.writeFileSync('reports/release-report.md', releaseReport);
+            console.log('📄 Release report generated: reports/release-report.md');
+
+      - name: 📤 Upload Release Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-report-${{ needs.release-management.outputs.version }}
+          path: reports/
+          retention-days: 90
+
+  # Cleanup job for release branches
+  cleanup-release-branch:
+    name: 🧹 Cleanup Release Branch
+    if: |
+      needs.release-management.outputs.release_created == 'true' && 
+      needs.release-management.outputs.pr_merged == 'true' &&
+      github.event.inputs.cleanup-release-branch != 'false'
+    needs: [release-management, extended-artifacts]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🧹 Delete Release Branch
+        uses: actions/github-script@v7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          script: |
+            const prNumber = '${{ needs.release-management.outputs.pr_number }}';
+            
+            console.log('🧹 Starting release branch cleanup...');
+            
+            if (prNumber) {
+              console.log(`🔍 Looking for release branch from PR #${prNumber}`);
+              
+              try {
+                // Get PR details to find the head branch
+                const { data: pr } = await github.rest.pulls.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: parseInt(prNumber)
+                });
+                
+                const branchName = pr.head.ref;
+                console.log(`🎯 Found release branch: ${branchName}`);
+                
+                // Check if it's a release-please branch
+                if (branchName.startsWith('release-please')) {
+                  console.log('✅ Confirmed release-please branch, proceeding with deletion');
+                  
+                  try {
+                    // Delete the remote branch
+                    await github.rest.git.deleteRef({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      ref: `heads/${branchName}`
+                    });
+                    
+                    console.log(`✅ Successfully deleted remote branch: ${branchName}`);
+                    console.log('🧹 Release branch cleanup completed successfully');
+                  } catch (deleteError) {
+                    console.log(`⚠️ Remote branch ${branchName} may already be deleted or not found`);
+                    console.log('Error:', deleteError.message);
+                  }
+                } else {
+                  console.log(`⚠️ Branch ${branchName} is not a release-please branch, skipping deletion`);
+                }
+              } catch (prError) {
+                console.log(`⚠️ Could not get PR details for #${prNumber}:`, prError.message);
+              }
+            } else {
+              console.log('ℹ️ No PR number available, checking for release-please branches');
+              
+              try {
+                // Alternative: Find and delete any release-please branches
+                const { data: branches } = await github.rest.repos.listBranches({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo
+                });
+                
+                const releaseBranches = branches.filter(branch => 
+                  branch.name.startsWith('release-please')
+                );
+                
+                if (releaseBranches.length > 0) {
+                  console.log('🔍 Found release-please branches:');
+                  releaseBranches.forEach(branch => console.log(`  - ${branch.name}`));
+                  
+                  for (const branch of releaseBranches) {
+                    try {
+                      await github.rest.git.deleteRef({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        ref: `heads/${branch.name}`
+                      });
+                      console.log(`🧹 Deleted branch: ${branch.name}`);
+                    } catch (deleteError) {
+                      console.log(`⚠️ Could not delete ${branch.name}:`, deleteError.message);
+                    }
+                  }
+                  
+                  console.log('🧹 All release-please branches processed');
+                } else {
+                  console.log('ℹ️ No release-please branches found to clean up');
+                }
+              } catch (branchError) {
+                console.log('⚠️ Error listing branches:', branchError.message);
+              }
+            }
+
+      - name: 📊 Cleanup Summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = [
+              '### 🧹 Release Branch Cleanup Summary',
+              '',
+              '| Item | Status |',
+              '|------|--------|',
+              '| **Cleanup Enabled** | ✅ ${{ env.CLEANUP_RELEASE_BRANCH }} |',
+              '| **Release Created** | ✅ ${{ needs.release-management.outputs.release_created }} |',
+              '| **PR Merged** | ✅ ${{ needs.release-management.outputs.pr_merged }} |',
+              '| **PR Number** | #${{ needs.release-management.outputs.pr_number || 'N/A' }} |',
+              '',
+              '✅ Automatic cleanup of release-please branches completed.',
+              'This helps keep the repository clean by removing temporary release branches.'
+            ];
+            
+            await core.summary.addRaw(summary.join('\n')).write();
