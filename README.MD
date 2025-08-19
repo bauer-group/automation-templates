@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-19 13:19:08 UTC -->
+<!-- Generated on 2025-08-19 13:22:45 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -13,9 +13,8 @@ Professional automation templates and workflows for GitHub repositories, providi
 - **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)
 - **Branch:** main
 
-[![🚀 Automatic Release](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
-[![🛡️ Security Scan](https://github.com/bauer-group/automation-templates/actions/workflows/security-scan.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/security-scan.yml)
-[![📄 Documentation](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml)
+[![🚀 Automatic Release Management](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
+[![📄 README Documentation Management](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/readme.yml)
 
 ## 🛡️ Security Scanning
 
@@ -371,4 +370,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Professional automation templates for enterprise GitHub workflows. Generated on 2025-08-19 13:19:08 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Professional automation templates for enterprise GitHub workflows. Generated on 2025-08-19 13:22:45 UTC from [docs/README.template.MD](docs/README.template.MD)*
