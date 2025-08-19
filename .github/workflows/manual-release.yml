@@ -264,7 +264,7 @@ jobs:
           - Update CHANGELOG.MD with release notes
           - Prepare for release automation
           
-          [skip ci]" || echo "No changes to commit"
+          [automated]" || echo "No changes to commit"
 
       - name: 🏷️ Create Git Tag
         run: |

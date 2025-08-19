@@ -376,7 +376,7 @@ runs:
         git config --local user.email "action@github.com"
         git config --local user.name "📄 README Generator"
         
-        if git add "${{ inputs.output-path }}" && git commit -m "docs: update ${{ inputs.output-path }} [skip ci]"; then
+        if git add "${{ inputs.output-path }}" && git commit -m "docs: update ${{ inputs.output-path }} [automated]"; then
           echo "✅ README changes committed"
           echo "committed=true" >> $GITHUB_OUTPUT
           
