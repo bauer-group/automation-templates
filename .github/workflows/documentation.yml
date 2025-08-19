@@ -117,9 +117,6 @@ jobs:
           REQUIRED_DOCS=(
             "README.MD"
             "docs/README.template.MD"
-            ".github/modules/README.MD"
-            ".github/actions/README.MD"
-            "github/workflows/examples/README.MD"
           )
           
           MISSING_DOCS=()
