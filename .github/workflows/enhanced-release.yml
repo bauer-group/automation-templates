@@ -193,6 +193,49 @@ jobs:
           gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: 🔄 Universal Fallback Release
+        if: steps.enhanced-release.outputs.release_created != 'true' && github.event.inputs.force-release == 'true'
+        id: fallback-release
+        run: |
+          echo "🔄 Enhanced Release Please did not create a release, using Universal Fallback..."
+          
+          # Configure git
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Run Universal Release Script
+          chmod +x ./scripts/universal-release.sh
+          ./scripts/universal-release.sh patch
+          
+          # Set outputs for compatibility
+          echo "release_created=true" >> $GITHUB_OUTPUT
+          
+          # Get the latest tag as release info
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.1")
+          echo "tag_name=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "version=${LATEST_TAG#v}" >> $GITHUB_OUTPUT
+          
+          echo "✅ Universal Fallback Release completed"
+
+      - name: 🗑️ Cleanup Release Branches
+        if: env.CLEANUP_RELEASE_BRANCH == 'true' && (steps.enhanced-release.outputs.release_created == 'true' || steps.fallback-release.outputs.release_created == 'true')
+        run: |
+          echo "🗑️ Cleaning up release branches..."
+          
+          # Get all release-please branches
+          RELEASE_BRANCHES=$(git branch -r | grep -E "origin/release-please.*" | sed 's/origin\///' | xargs)
+          
+          if [ -n "$RELEASE_BRANCHES" ]; then
+            echo "Found release branches to cleanup: $RELEASE_BRANCHES"
+            for branch in $RELEASE_BRANCHES; do
+              echo "Deleting branch: $branch"
+              git push origin --delete "$branch" || echo "Failed to delete $branch (may not exist)"
+            done
+            echo "✅ Release branch cleanup completed"
+          else
+            echo "ℹ️ No release branches to cleanup"
+          fi
+
       - name: 🏷️ Validate Release Semantics
         if: steps.enhanced-release.outputs.release_created == 'true'
         uses: actions/github-script@v7
