@@ -107,6 +107,7 @@ jobs:
           scan-engine: ${{ env.SECURITY_SCAN_ENGINE }}
           scan-type: 'secrets'
           fail-on-findings: 'true'
+          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📋 License Pre-Check

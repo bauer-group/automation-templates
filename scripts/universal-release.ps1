@@ -45,7 +45,6 @@ function Write-Success {
     Write-Host "[SUCCESS] $Message" -ForegroundColor $Colors["Green"]
 }
 
-# Function to get current version
 function Get-CurrentVersion {
     $version = "0.0.0"
     
@@ -55,6 +54,7 @@ function Get-CurrentVersion {
             $manifest = Get-Content $ManifestFile | ConvertFrom-Json
             if ($manifest."." -and $manifest."." -ne "null") {
                 $version = $manifest."."
+                Write-Log "Found version in manifest: $version" "Blue"
             }
         }
         catch {
@@ -62,12 +62,13 @@ function Get-CurrentVersion {
         }
     }
     
-    # Fallback to git tags
+    # Fallback to git tags if still default
     if ($version -eq "0.0.0") {
         try {
             $tag = git describe --tags --abbrev=0 2>$null
             if ($tag) {
                 $version = $tag -replace '^v', ''
+                Write-Log "Found version from git tag: $version" "Blue"
             }
         }
         catch {
