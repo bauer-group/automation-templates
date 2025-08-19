@@ -220,6 +220,12 @@ EOF
     # Create GitHub release if gh CLI is available
     if command -v gh &> /dev/null; then
         log "Creating GitHub release..."
+        
+        # Ensure GH_TOKEN is available for gh CLI
+        if [[ -z "${GH_TOKEN:-}" && -n "${GITHUB_TOKEN:-}" ]]; then
+            export GH_TOKEN="$GITHUB_TOKEN"
+        fi
+        
         gh release create "v$version" \
             --title "🚀 Release v$version" \
             --notes "$changelog" \
