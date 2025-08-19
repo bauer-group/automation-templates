@@ -3,6 +3,10 @@
 =======
 # Changelog
 
+## 0.1.6 (2025-08-19)
+
+**Full Changelog**: https://github.com/bauer-group/automation-templates/compare/v0.1.5...v0.1.6
+
 ## 0.1.5 (2025-08-19)
 
 **Full Changelog**: https://github.com/bauer-group/automation-templates/compare/v0.1.4...v0.1.5
