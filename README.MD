@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-19 13:22:45 UTC -->
+<!-- Generated on 2025-08-19 13:56:52 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -353,10 +353,12 @@ gh auth status --show-token
 
 ## 📚 Documentation
 
-- [Security Scanning Guide](.github/actions/security-scan/README.md)
-- [Release Management Guide](.github/workflows/README.md)
-- [Repository Tools Guide](github/README.md)
-- [Contributing Guidelines](CONTRIBUTING.md)
+- [Security Scanning Action](.github/actions/security-scan/action.yml)
+- [Release Management Workflows](.github/workflows/README.MD)
+- [Branch Protection Tools](github/branch-protect/README.MD)
+- [Repository Cleanup Tools](github/cleanup/README.md)
+- [Self-Hosted Runner Setup](github/runner/README.MD)
+- [Workflow Examples](github/workflows/README.MD)
 
 ## 📞 Support
 
@@ -370,4 +372,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Professional automation templates for enterprise GitHub workflows. Generated on 2025-08-19 13:22:45 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Professional automation templates for enterprise GitHub workflows. Generated on 2025-08-19 13:56:52 UTC from [docs/README.template.MD](docs/README.template.MD)*
