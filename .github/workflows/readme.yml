@@ -1,4 +1,4 @@
-name: 📄 README Documentation Management
+name: 📄 Documentation Management
 
 on:
   push:
