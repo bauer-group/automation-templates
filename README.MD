@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-19 14:18:11 UTC -->
+<!-- Generated on 2025-08-19 14:59:15 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -354,7 +354,7 @@ gh auth status --show-token
 ## 📚 Documentation
 
 - [GitHub Actions Documentation](.github/actions/README.md)
-- [Security Scan Action](.github/actions/security-scan/README.md)
+- [Security Scan Action](.github/actions/security-scan-meta/README.md)
 - [License Compliance Action](.github/actions/license-compliance/README.md)
 - [Artifact Generator Action](.github/actions/artifact-generator/README.md)
 - [README Generator Action](.github/actions/readme-generate/README.md)
@@ -376,4 +376,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-08-19 14:18:11 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-08-19 14:59:15 UTC from [docs/README.template.MD](docs/README.template.MD)*
