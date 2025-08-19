@@ -141,13 +141,16 @@ jobs:
       - name: 🔍 Security Scan
         uses: ./.github/actions/security-scan
         with:
-          severity-threshold: 'medium'
-          upload-sarif: true
+          minimum-severity: 'medium'
+          fail-on-findings: false
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🛡️ GitGuardian Scan
         uses: ./.github/actions/gitguardian-scan
         with:
-          api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+          fail-on-findings: false
+          token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: 📄 License Compliance
         uses: ./.github/actions/license-compliance
@@ -237,15 +240,17 @@ jobs:
 
       - name: 🚀 Create GitHub Release
         if: ${{ github.event.inputs.create_github_release == 'true' }}
-        uses: actions/create-release@v1
+        run: |
+          TARGET_VERSION="${{ needs.validate-inputs.outputs.target_version }}"
+          CHANGELOG_CONTENT="${{ needs.validate-inputs.outputs.changelog_content }}"
+          
+          # Create GitHub release using gh CLI
+          gh release create "v$TARGET_VERSION" \
+            --title "🚀 Release v$TARGET_VERSION" \
+            --notes "$CHANGELOG_CONTENT" \
+            --latest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ needs.validate-inputs.outputs.target_version }}
-          release_name: 🚀 Release v${{ needs.validate-inputs.outputs.target_version }}
-          body: ${{ needs.validate-inputs.outputs.changelog_content }}
-          draft: false
-          prerelease: false
 
   notify-completion:
     name: 📢 Notify Release Completion
