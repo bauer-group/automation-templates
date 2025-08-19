@@ -371,4 +371,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Professional automation templates for enterprise GitHub workflows. Generated on {{DATETIME}} from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on {{DATETIME}} from [docs/README.template.MD](docs/README.template.MD)*
