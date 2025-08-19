@@ -267,6 +267,8 @@ jobs:
           steps.enhanced-release.outputs.release_created != 'true' &&
           (env.FORCE_RELEASE == 'true' || inputs.force-release == true)
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "🔄 Enhanced Release Please created no release, running Manual Fallback..."
           
