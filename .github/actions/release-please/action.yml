@@ -96,8 +96,8 @@ outputs:
     description: 'HTML URL of the release'
     value: ${{ steps.release.outputs.html_url }}
   pr_number:
-    description: 'Release PR number (if created)'
-    value: ${{ steps.release.outputs.pr_number }}
+    description: 'Release PR number (if created or found)'
+    value: ${{ steps.release.outputs.pr_number || steps.find-pr.outputs.existing-pr }}
   pr_merged:
     description: 'Whether release PR was merged'
     value: ${{ steps.auto-merge.outputs.merged }}
@@ -207,22 +207,26 @@ runs:
         manifest-file: ${{ inputs.manifest-file }}
         token: ${{ inputs.token }}
 
-    - name: 🔄 Auto Merge Release PR
-      id: auto-merge
+    - name: � Find Existing Release PR
+      id: find-pr
       if: |
-        inputs.auto-merge-enabled == 'true' && 
-        steps.release.outputs.pr_number != '' &&
+        steps.release.outputs.pr_number == '' &&
         steps.release.outputs.release_created != 'true'
-      uses: ./.github/actions/auto-merge
-      with:
-        pr-number: ${{ steps.release.outputs.pr_number }}
-        merge-method: 'squash'
-        auto-merge-enabled: 'true'
-        required-checks: ''
-        required-reviews: '0'
-        allowed-authors: 'github-actions[bot],release-please[bot]'
-        delete-branch-after-merge: 'true'
-        token: ${{ inputs.token }}
+      shell: bash
+      run: |
+        # Search for existing release PRs
+        PR_LIST=$(curl -s -H "Authorization: token ${{ inputs.token }}" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls?state=open" | \
+          jq -r '.[] | select(.title | test("chore: release")) | .number')
+        
+        if [ -n "$PR_LIST" ]; then
+          PR_NUMBER=$(echo "$PR_LIST" | head -1)
+          echo "existing-pr=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "📋 Found existing release PR: #$PR_NUMBER"
+        else
+          echo "existing-pr=" >> $GITHUB_OUTPUT
+          echo "📋 No existing release PR found"
+        fi
 
     - name: 📦 Generate Release Artifacts
       id: artifacts
@@ -374,7 +378,7 @@ runs:
         echo "📊 Results:"
         echo "  • Eligible: ${{ steps.check-eligibility.outputs.eligible || 'force' }}"
         echo "  • Release Created: ${{ steps.release.outputs.release_created || 'false' }}"
-        echo "  • PR Number: ${{ steps.release.outputs.pr_number || 'none' }}"
+        echo "  • PR Number: ${{ steps.release.outputs.pr_number || steps.find-pr.outputs.existing-pr || 'none' }}"
         echo "  • PR Merged: ${{ steps.auto-merge.outputs.merged || 'false' }}"
         
         if [ "${{ inputs.security-scan-enabled }}" == "true" ]; then
@@ -393,8 +397,8 @@ runs:
         if [ "${{ steps.release.outputs.release_created }}" == "true" ]; then
           echo "✅ Release completed successfully!"
           echo "🔗 Release: ${{ steps.release.outputs.html_url }}"
-        elif [ "${{ steps.release.outputs.pr_number }}" != "" ]; then
-          echo "📝 Release PR created: #${{ steps.release.outputs.pr_number }}"
+        elif [ "${{ steps.release.outputs.pr_number || steps.find-pr.outputs.existing-pr }}" != "" ]; then
+          echo "📝 Release PR: #${{ steps.release.outputs.pr_number || steps.find-pr.outputs.existing-pr }}"
         else
           echo "ℹ️ No release action taken"
         fi
