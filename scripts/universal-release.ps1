@@ -9,7 +9,10 @@ param(
 )
 
 # Configuration
-$RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$RepoRoot = (Get-Location).Path
+if ($PSScriptRoot) {
+    $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+}
 $ManifestFile = Join-Path $RepoRoot ".github\config\.release-please-manifest.json"
 $ConfigFile = Join-Path $RepoRoot ".github\config\release-please-config.json"
 
