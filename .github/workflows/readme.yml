@@ -13,9 +13,9 @@ on:
     paths:
       - 'docs/README.template.MD'
       - 'scripts/generate_readme.py'
-  schedule:
-    # Daily at 02:00 UTC to update date-sensitive placeholders
-    - cron: '0 2 * * *'
+  # schedule:
+  #   # Daily at 02:00 UTC to update date-sensitive placeholders
+  #   - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
       force-update:
