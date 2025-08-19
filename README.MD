@@ -323,3 +323,4 @@ Siehe [github/workflows/README.md](github/workflows/README.md) für detaillierte
 ---
 
 *Dieses README wurde automatisch generiert am 2025-08-19 10:32:50 UTC aus [docs/README.template.MD](docs/README.template.MD)*
+# Test for summary display
