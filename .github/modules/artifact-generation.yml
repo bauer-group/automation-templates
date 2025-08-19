@@ -1,0 +1,195 @@
+name: 🔨 Artifact Generation
+
+on:
+  workflow_call:
+    inputs:
+      artifact-types:
+        description: 'Types of artifacts to generate (source, binaries, docker, all)'
+        required: false
+        type: string
+        default: 'source'
+      tag-name:
+        description: 'Git tag name for the artifacts'
+        required: true
+        type: string
+      version:
+        description: 'Version string for the artifacts'
+        required: true
+        type: string
+      release-url:
+        description: 'Release URL to upload artifacts to'
+        required: false
+        type: string
+        default: ''
+      build-command:
+        description: 'Custom build command for binaries'
+        required: false
+        type: string
+        default: ''
+      docker-registry:
+        description: 'Docker registry for image publishing'
+        required: false
+        type: string
+        default: 'ghcr.io'
+      docker-image-name:
+        description: 'Docker image name (auto-detected if empty)'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      GITHUB_TOKEN:
+        description: 'GitHub token for repository access'
+        required: true
+      DOCKER_USERNAME:
+        description: 'Docker registry username'
+        required: false
+      DOCKER_PASSWORD:
+        description: 'Docker registry password/token'
+        required: false
+      NPM_TOKEN:
+        description: 'NPM registry token'
+        required: false
+    outputs:
+      artifacts-generated:
+        description: 'Whether artifacts were generated successfully'
+        value: ${{ jobs.generate-artifacts.outputs.artifacts-generated }}
+      source-archive-created:
+        description: 'Whether source archive was created'
+        value: ${{ jobs.generate-artifacts.outputs.source-archive-created }}
+      binaries-created:
+        description: 'Whether binaries were created'
+        value: ${{ jobs.generate-artifacts.outputs.binaries-created }}
+      docker-image-pushed:
+        description: 'Whether Docker image was pushed'
+        value: ${{ jobs.generate-artifacts.outputs.docker-image-pushed }}
+
+permissions:
+  contents: write
+  packages: write
+  actions: read
+
+jobs:
+  generate-artifacts:
+    name: 🔧 Artifact Creation
+    runs-on: ubuntu-latest
+    outputs:
+      artifacts-generated: ${{ steps.summary.outputs.artifacts-generated }}
+      source-archive-created: ${{ steps.artifacts.outputs.source_archive_created }}
+      binaries-created: ${{ steps.artifacts.outputs.binaries_created }}
+      docker-image-pushed: ${{ steps.artifacts.outputs.docker_image_pushed }}
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 🔨 Generate Artifacts
+        id: artifacts
+        uses: bauer-group/automation-templates/.github/actions/artifact-generator@main
+        with:
+          artifact-types: ${{ inputs.artifact-types }}
+          tag-name: ${{ inputs.tag-name }}
+          version: ${{ inputs.version }}
+          upload-url: ${{ inputs.release-url }}
+          build-command: ${{ inputs.build-command }}
+          docker-registry: ${{ inputs.docker-registry }}
+          docker-image-name: ${{ inputs.docker-image-name }}
+          docker-username: ${{ secrets.DOCKER_USERNAME || github.actor }}
+          docker-password: ${{ secrets.DOCKER_PASSWORD || secrets.GITHUB_TOKEN }}
+          npm-token: ${{ secrets.NPM_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📊 Artifact Generation Summary
+        id: summary
+        if: always()
+        run: |
+          # Determine if artifacts were successfully generated
+          SOURCE_OK="${{ steps.artifacts.outputs.source_archive_created }}"
+          BINARIES_OK="${{ steps.artifacts.outputs.binaries_created }}"
+          DOCKER_OK="${{ steps.artifacts.outputs.docker_image_pushed }}"
+          
+          # Consider successful if at least one artifact type was requested and created
+          ARTIFACTS_GENERATED="false"
+          
+          case "${{ inputs.artifact-types }}" in
+            "source")
+              if [ "$SOURCE_OK" = "true" ]; then
+                ARTIFACTS_GENERATED="true"
+              fi
+              ;;
+            "binaries")
+              if [ "$BINARIES_OK" = "true" ]; then
+                ARTIFACTS_GENERATED="true"
+              fi
+              ;;
+            "docker")
+              if [ "$DOCKER_OK" = "true" ]; then
+                ARTIFACTS_GENERATED="true"
+              fi
+              ;;
+            "all")
+              if [ "$SOURCE_OK" = "true" ] || [ "$BINARIES_OK" = "true" ] || [ "$DOCKER_OK" = "true" ]; then
+                ARTIFACTS_GENERATED="true"
+              fi
+              ;;
+          esac
+          
+          echo "artifacts-generated=$ARTIFACTS_GENERATED" >> $GITHUB_OUTPUT
+          
+          # Generate summary report
+          echo "### 🔨 Artifact Generation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Configuration | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Artifact Types** | ${{ inputs.artifact-types }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | ${{ inputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Tag** | ${{ inputs.tag-name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Docker Registry** | ${{ inputs.docker-registry }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### 📋 Generation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Artifact Type | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Source Archive** | $([[ '${{ inputs.artifact-types }}' =~ (source|all) ]] && echo '${{ steps.artifacts.outputs.source_archive_created == 'true' && '✅ Created' || '❌ Failed' }}' || echo '⏭️ Skipped') |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Binaries** | $([[ '${{ inputs.artifact-types }}' =~ (binaries|all) ]] && echo '${{ steps.artifacts.outputs.binaries_created == 'true' && '✅ Created' || '❌ Failed' }}' || echo '⏭️ Skipped') |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Docker Image** | $([[ '${{ inputs.artifact-types }}' =~ (docker|all) ]] && echo '${{ steps.artifacts.outputs.docker_image_pushed == 'true' && '✅ Pushed' || '❌ Failed' }}' || echo '⏭️ Skipped') |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$ARTIFACTS_GENERATED" = "true" ]; then
+            echo "✅ **Artifact generation completed successfully!**" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "${{ inputs.release-url }}" != "" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "📦 **Artifacts uploaded to release:** [View Release](${{ inputs.release-url }})" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if [[ "${{ inputs.artifact-types }}" =~ (docker|all) ]] && [ "$DOCKER_OK" = "true" ]; then
+              IMAGE_NAME="${{ inputs.docker-image-name }}"
+              if [ -z "$IMAGE_NAME" ]; then
+                IMAGE_NAME="${{ github.repository }}"
+              fi
+              echo "🐳 **Docker Image:** \`${{ inputs.docker-registry }}/${IMAGE_NAME}:${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "❌ **Artifact generation failed or no artifacts were created.**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Troubleshooting:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Check build commands and dependencies" >> $GITHUB_STEP_SUMMARY
+            echo "- Verify Docker registry credentials" >> $GITHUB_STEP_SUMMARY
+            echo "- Review artifact generation logs" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📤 Upload Build Artifacts
+        if: always() && steps.artifacts.outputs.source_archive_created == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts-${{ inputs.version }}
+          path: |
+            *.tar.gz
+            *.zip
+            dist/
+            build/
+            target/
+          retention-days: 90

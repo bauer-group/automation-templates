@@ -8,36 +8,69 @@
 
 This directory contains modular, reusable GitHub Actions designed for enterprise environments. Each action follows industry best practices for security, reliability, and maintainability.
 
+> **💡 Empfehlung:** Nutze die neuen **[modularen Workflows](../modules/)** für noch bessere Komposition und Wiederverwendbarkeit! Diese Actions werden als Bausteine in den modularen Workflows verwendet.
+
 ## 📦 Available Actions
 
 ### 🛡️ Security & Compliance
 
-| Action | Purpose | Engine | Performance | Enterprise Features |
-|--------|---------|---------|-------------|-------------------|
-| [`security-scan`](./security-scan/) | Comprehensive secrets detection | Gitleaks + GitGuardian | ⚡⚡⚡ | ✅ Dual-engine approach |
-| [`gitguardian-scan`](./gitguardian-scan/) | Advanced ML-based scanning | GitGuardian | ⚡⚡ | ✅ Policy enforcement |
-| [`license-compliance`](./license-compliance/) | SPDX license validation | FOSSA + SPDX | ⚡⚡⚡ | ✅ Legal compliance |
+| Action | Purpose | Engine | Performance | Modularer Workflow |
+|--------|---------|---------|-------------|---------------------|
+| [`security-scan`](./security-scan/) | Comprehensive secrets detection | Gitleaks + GitGuardian | ⚡⚡⚡ | [security-scan.yml](../modules/security-scan.yml) |
+| [`security-scan-meta`](./security-scan-meta/) | Advanced multi-engine scanning | Gitleaks + GitGuardian | ⚡⚡⚡ | Erweiterte Sicherheitsanalyse |
+| [`gitguardian-scan`](./gitguardian-scan/) | ML-based policy enforcement | GitGuardian | ⚡⚡ | GitGuardian-spezifisch |
+| [`gitleaks-scan`](./gitleaks-scan/) | Fast secrets detection | Gitleaks | ⚡⚡⚡ | Gitleaks-spezifisch |
+| [`license-compliance`](./license-compliance/) | SPDX license validation | FOSSA + SPDX | ⚡⚡⚡ | [license-compliance.yml](../modules/license-compliance.yml) |
 
 ### 🚀 Release Management
 
-| Action | Purpose | Integration | Automation Level |
-|--------|---------|-------------|-----------------|
-| [`release-please`](./release-please/) | Semantic release automation | Release-Please | ⚡⚡⚡⚡ |
-| [`auto-merge`](./auto-merge/) | Intelligent PR merging | GitHub API | ⚡⚡⚡ |
-| [`artifact-generator`](./artifact-generator/) | Multi-format artifact creation | GitHub Releases | ⚡⚡ |
+| Action | Purpose | Integration | Modularer Workflow |
+|--------|---------|-------------|---------------------|
+| [`release-please`](./release-please/) | Semantic release automation | Release-Please | [release-management.yml](../modules/release-management.yml) |
+| [`auto-merge`](./auto-merge/) | Intelligent PR merging | GitHub API | PR-Automatisierung |
+| [`artifact-generator`](./artifact-generator/) | Multi-format artifact creation | GitHub Releases | [artifact-generation.yml](../modules/artifact-generation.yml) |
 
 ### 🔧 Development Tools
 
-| Action | Purpose | Scope | Integration |
-|--------|---------|-------|-------------|
-| [`readme-generate`](./readme-generate/) | Dynamic documentation | Repository-wide | ⚡⚡⚡⚡ |
+| Action | Purpose | Scope | Modularer Workflow |
+|--------|---------|-------|---------------------|
+| [`readme-generate`](./readme-generate/) | Dynamic documentation | Repository-wide | [readme.yml](../workflows/examples/readme.yml) |
 
 ## 🚀 Quick Start
 
-### Basic Security Scanning
+> **💪 Empfehlung:** Verwende die [modularen Workflows](../modules/) für optimale Komposition!
+
+### 🧩 Modulare Workflows (Empfohlen)
+
+**Einfacher Security Scan:**
+```yaml
+jobs:
+  security:
+    uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+    with:
+      scan-engine: both
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+```
+
+**Release Management:**
+```yaml
+jobs:
+  release:
+    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    with:
+      release-type: simple
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### 🔧 Direkte Action-Verwendung
+
+**Security Scanning:**
 ```yaml
 - name: 🛡️ Security Scan
-  uses: ./.github/actions/security-scan
+  uses: bauer-group/automation-templates/.github/actions/security-scan@main
   with:
     scan-engine: both
     scan-type: all
@@ -46,10 +79,10 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
     gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
 ```
 
-### Enhanced Release Management
+**Release Management:**
 ```yaml
 - name: 📦 Enhanced Release
-  uses: ./.github/actions/release-please
+  uses: bauer-group/automation-templates/.github/actions/release-please@main
   with:
     release-type: simple
     security-scan-enabled: true
@@ -57,16 +90,37 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
     token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### Intelligent Auto-Merge
+**Auto-Merge:**
 ```yaml
 - name: 🔄 Auto-Merge PR
-  uses: ./.github/actions/auto-merge
+  uses: bauer-group/automation-templates/.github/actions/auto-merge@main
   with:
     pr-number: ${{ github.event.number }}
     merge-method: squash
     required-checks: ''
     token: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+## 🎆 Migration zu modularen Workflows
+
+**Von direkten Actions zu modularen Workflows:**
+
+```diff
+# Alt: Direkte Action-Verwendung
+- - name: Security Scan
+-   uses: ./.github/actions/security-scan
+
+# Neu: Modularer Workflow
++ jobs:
++   security:
++     uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+```
+
+**Vorteile der modularen Workflows:**
+- ✅ Bessere Komposition und Wiederverwendbarkeit
+- ✅ Integrierte Error-Handling und Reporting
+- ✅ Vordefinierte Best-Practice-Konfigurationen
+- ✅ Einfachere Wartung und Updates
 
 ## 🔧 Configuration
 
@@ -110,32 +164,47 @@ permissions:
 
 ## 🔄 Integration Patterns
 
-### Workflow Composition
+### Modulare Workflow Composition
 ```yaml
 jobs:
   security:
-    uses: ./.github/actions/security-scan
+    uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
     with:
       scan-engine: both
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
   compliance:
     needs: security
-    uses: ./.github/actions/license-compliance
+    uses: bauer-group/automation-templates/.github/modules/license-compliance.yml@main
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
   release:
     needs: [security, compliance]
-    uses: ./.github/actions/release-please
+    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    with:
+      release-type: simple
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### Conditional Execution
 ```yaml
-- name: 🛡️ Security Scan
-  if: github.event_name == 'pull_request'
-  uses: ./.github/actions/security-scan
+jobs:
+  pr-security:
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/modules/pr-validation.yml@main
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
-- name: 📦 Release
-  if: github.ref == 'refs/heads/main'
-  uses: ./.github/actions/release-please
+  release:
+    if: github.ref == 'refs/heads/main'
+    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    with:
+      release-type: simple
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## 📊 Performance Metrics
@@ -167,10 +236,20 @@ act -j test-security-scan --secret-file .env
 
 ## 📚 Documentation
 
-- [Security Scanning Guide](./security-scan/README.md)
-- [Release Management Guide](./release-please/README.md)
-- [Auto-Merge Configuration](./auto-merge/README.md)
-- [License Compliance Setup](./license-compliance/README.md)
+### Individual Actions
+- [Security Scanning Action](./security-scan/README.md)
+- [Release Management Action](./release-please/README.md)
+- [Auto-Merge Action](./auto-merge/README.md)
+- [License Compliance Action](./license-compliance/README.md)
+- [Artifact Generator Action](./artifact-generator/README.md)
+- [README Generator Action](./readme-generate/README.md)
+
+### Modulare Workflows (Empfohlen)
+- [Modulare Workflow-Komponenten](../modules/README.md)
+- [Workflow-Beispiele](../workflows/examples/README.MD)
+- [Security-Scan Workflow](../modules/security-scan.yml)
+- [Release-Management Workflow](../modules/release-management.yml)
+- [License-Compliance Workflow](../modules/license-compliance.yml)
 
 ## 🛠️ Support
 

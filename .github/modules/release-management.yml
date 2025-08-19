@@ -1,0 +1,164 @@
+name: 🚀 Release Management
+
+on:
+  workflow_call:
+    inputs:
+      release-type:
+        description: 'Type of release (simple, node, python, rust, java, go, docker)'
+        required: false
+        type: string
+        default: 'simple'
+      force-release:
+        description: 'Force create release (skip conventional commit check)'
+        required: false
+        type: boolean
+        default: false
+      auto-merge-enabled:
+        description: 'Enable automatic PR merging'
+        required: false
+        type: boolean
+        default: true
+      cleanup-release-branch:
+        description: 'Delete release branch after merge'
+        required: false
+        type: boolean
+        default: true
+      custom-version:
+        description: 'Custom version (overrides automatic version calculation)'
+        required: false
+        type: string
+        default: ''
+      skip-github-release:
+        description: 'Skip GitHub release creation'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      GITHUB_TOKEN:
+        description: 'GitHub token for repository access'
+        required: true
+      GITGUARDIAN_API_KEY:
+        description: 'GitGuardian API key'
+        required: false
+      GITLEAKS_LICENSE:
+        description: 'Gitleaks Pro license key'
+        required: false
+    outputs:
+      release-created:
+        description: 'Whether a release was created'
+        value: ${{ jobs.release-management.outputs.release-created }}
+      tag-name:
+        description: 'Git tag name for the release'
+        value: ${{ jobs.release-management.outputs.tag-name }}
+      version:
+        description: 'Release version'
+        value: ${{ jobs.release-management.outputs.version }}
+      release-url:
+        description: 'URL of the created release'
+        value: ${{ jobs.release-management.outputs.release-url }}
+      pr-number:
+        description: 'Release PR number'
+        value: ${{ jobs.release-management.outputs.pr-number }}
+      pr-merged:
+        description: 'Whether release PR was merged'
+        value: ${{ jobs.release-management.outputs.pr-merged }}
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+
+jobs:
+  release-management:
+    name: 📦 Release Processing
+    runs-on: ubuntu-latest
+    outputs:
+      release-created: ${{ steps.release.outputs.release_created }}
+      tag-name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+      release-url: ${{ steps.release.outputs.html_url }}
+      pr-number: ${{ steps.release.outputs.pr_number }}
+      pr-merged: ${{ steps.release.outputs.pr_merged }}
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 📝 Update Documentation
+        uses: bauer-group/automation-templates/.github/workflows/readme.yml@main
+        continue-on-error: true
+        with:
+          template-path: 'docs/README.template.MD'
+          output-path: 'README.MD'
+          custom-version: ${{ inputs.custom-version }}
+          auto-commit: false
+        secrets:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🚀 Enhanced Release Please
+        id: release
+        uses: bauer-group/automation-templates/.github/actions/release-please@main
+        with:
+          release-type: ${{ inputs.release-type }}
+          force-release: ${{ inputs.force-release }}
+          auto-merge-enabled: ${{ inputs.auto-merge-enabled }}
+          cleanup-release-branch: ${{ inputs.cleanup-release-branch }}
+          custom-version: ${{ inputs.custom-version }}
+          skip-github-release: ${{ inputs.skip-github-release }}
+          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🎯 Auto-Merge Release PR
+        if: steps.release.outputs.pr_number != '' && inputs.auto-merge-enabled == true
+        uses: bauer-group/automation-templates/.github/actions/auto-merge@main
+        with:
+          pr-number: ${{ steps.release.outputs.pr_number }}
+          merge-method: 'squash'
+          auto-merge-enabled: 'true'
+          required-checks: ''
+          required-reviews: '0'
+          allowed-authors: 'github-actions[bot],release-please[bot]'
+          delete-branch-after-merge: ${{ inputs.cleanup-release-branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📊 Release Management Summary
+        if: always()
+        run: |
+          echo "### 🚀 Release Management Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Release Type** | ${{ inputs.release-type }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Force Release** | ${{ inputs.force-release }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Auto-Merge** | ${{ inputs.auto-merge-enabled }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Cleanup Branch** | ${{ inputs.cleanup-release-branch }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### 📋 Release Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Release Created** | ${{ steps.release.outputs.release_created }} |" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.release.outputs.release_created }}" = "true" ]; then
+            echo "| **Version** | ${{ steps.release.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Tag** | ${{ steps.release.outputs.tag_name }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Release URL** | [View Release](${{ steps.release.outputs.html_url }}) |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🎉 **Release successfully created!**" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.release.outputs.pr_number }}" != "" ]; then
+            echo "| **PR Number** | [#${{ steps.release.outputs.pr_number }}](https://github.com/${{ github.repository }}/pull/${{ steps.release.outputs.pr_number }}) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **PR Status** | ${{ steps.release.outputs.pr_merged == 'true' && 'Merged' || 'Open' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "📝 **Release PR created and ready for review.**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **No release action taken.** This usually means:" >> $GITHUB_STEP_SUMMARY
+            echo "- No conventional commits since last release" >> $GITHUB_STEP_SUMMARY
+            echo "- Only non-releasable changes (docs, chore, etc.)" >> $GITHUB_STEP_SUMMARY
+            echo "- Release-Please PR already exists" >> $GITHUB_STEP_SUMMARY
+          fi

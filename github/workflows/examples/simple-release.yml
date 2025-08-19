@@ -1,0 +1,41 @@
+name: 🚀 Simple Release Example
+
+# This is a simple example showing how to use the modular release workflows
+# Perfect for small projects that need basic release management
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force-release:
+        description: 'Force create release'
+        type: boolean
+        default: false
+
+jobs:
+  # Simple release workflow using the modular components
+  release:
+    name: Simple Release
+    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    with:
+      release-type: 'simple'
+      force-release: ${{ inputs.force-release || false }}
+      auto-merge-enabled: true
+      cleanup-release-branch: true
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Optional: Generate basic artifacts for the release
+  artifacts:
+    name: Generate Artifacts
+    if: needs.release.outputs.release-created == 'true'
+    needs: release
+    uses: bauer-group/automation-templates/.github/modules/artifact-generation.yml@main
+    with:
+      artifact-types: 'source'
+      tag-name: ${{ needs.release.outputs.tag-name }}
+      version: ${{ needs.release.outputs.version }}
+      release-url: ${{ needs.release.outputs.release-url }}
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
