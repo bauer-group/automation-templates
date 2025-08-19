@@ -1,5 +1,5 @@
 [Unit]
-Description=GitHub Actions Runners (Docker Compose)
+Description=GitHub Actions Runners (Docker)
 After=docker.service
 Requires=docker.service
 
