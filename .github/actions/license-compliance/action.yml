@@ -206,16 +206,22 @@ runs:
         echo "" >> license-reports/findings.md
         
         # Check for SPDX license identifiers in source files
-        SOURCE_FILES=$(find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.java" -o -name "*.cs" -o -name "*.cpp" -o -name "*.c" -o -name "*.go" -o -name "*.rs" \) -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./vendor/*" | head -50)
+        SOURCE_FILES=$(find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.java" -o -name "*.cs" -o -name "*.cpp" -o -name "*.c" -o -name "*.go" -o -name "*.rs" \) -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./vendor/*" 2>/dev/null | head -50 || echo "")
         
         SPDX_COUNT=0
         if [ -n "$SOURCE_FILES" ]; then
+          echo "🔍 Checking SPDX headers in source files..."
           # Use for loop instead of while read to avoid subshell issues
           OLD_IFS="$IFS"
           IFS=$'\n'
           for file in $SOURCE_FILES; do
+            # Skip if file doesn't exist or isn't readable
+            if [ ! -f "$file" ] || [ ! -r "$file" ]; then
+              continue
+            fi
+            
             # Look for SPDX-License-Identifier
-            SPDX_LICENSE=$(grep -i "SPDX-License-Identifier:" "$file" 2>/dev/null | head -1 | sed 's/.*SPDX-License-Identifier: *//i' | sed 's/[[:space:]]*$//' | tr -d '\r')
+            SPDX_LICENSE=$(grep -i "SPDX-License-Identifier:" "$file" 2>/dev/null | head -1 | sed 's/.*SPDX-License-Identifier: *//i' | sed 's/[[:space:]]*$//' | tr -d '\r' || echo "")
             
             if [ -n "$SPDX_LICENSE" ]; then
               echo "  • $file: $SPDX_LICENSE"
@@ -227,7 +233,8 @@ runs:
               IFS=',' read -ra FORBIDDEN <<< "${{ inputs.forbidden-licenses }}"
               IFS="$IFS_BACKUP"
               for forbidden in "${FORBIDDEN[@]}"; do
-                if [[ "$SPDX_LICENSE" == *"$forbidden"* ]]; then
+                forbidden_clean=$(echo "$forbidden" | xargs)  # trim whitespace
+                if [[ "$SPDX_LICENSE" == *"$forbidden_clean"* ]]; then
                   echo "❌ Forbidden license found: $SPDX_LICENSE in $file"
                   FORBIDDEN_FOUND=true
                 fi
@@ -239,7 +246,8 @@ runs:
               IFS="$IFS_BACKUP2"
               LICENSE_ALLOWED=false
               for allowed in "${ALLOWED[@]}"; do
-                if [[ "$SPDX_LICENSE" == *"$allowed"* ]]; then
+                allowed_clean=$(echo "$allowed" | xargs)  # trim whitespace
+                if [[ "$SPDX_LICENSE" == *"$allowed_clean"* ]]; then
                   LICENSE_ALLOWED=true
                   break
                 fi
@@ -252,6 +260,8 @@ runs:
             fi
           done
           IFS="$OLD_IFS"
+        else
+          echo "ℹ️ No source files found for SPDX header check"
         fi
         
         echo "📊 SPDX headers found in $SPDX_COUNT files"
@@ -260,6 +270,10 @@ runs:
         
         echo "forbidden-found=$FORBIDDEN_FOUND" >> $GITHUB_OUTPUT
         echo "unknown-found=$UNKNOWN_FOUND" >> $GITHUB_OUTPUT
+        
+        # Ensure license scan step always succeeds
+        echo "✅ License scan completed successfully"
+        exit 0
 
     - name: 📦 Scan Dependencies
       id: dependency-scan
@@ -314,6 +328,10 @@ runs:
             fi
           fi
         fi
+        
+        # Ensure dependency scan step always succeeds
+        echo "✅ Dependency scan completed successfully"
+        exit 0
 
     - name: 🔬 FOSSA Integration
       id: fossa-scan
@@ -373,6 +391,10 @@ runs:
         fi
         
         echo "sbom-generated=$SBOM_GENERATED" >> $GITHUB_OUTPUT
+        
+        # Ensure SBOM generation step always succeeds
+        echo "✅ SBOM generation completed"
+        exit 0
 
     - name: ✅ Compliance Check
       id: compliance-check
