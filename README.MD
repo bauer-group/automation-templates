@@ -1,7 +1,7 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-19 15:36:49 UTC -->
+<!-- Generated on 2025-08-19 21:59:17 UTC -->
 
-# Bauer Group - Automation Templates
+# BAUER GROUP - Automation Templates
 
 ## Overview
 
@@ -9,7 +9,7 @@ Professional automation templates and workflows for GitHub repositories, providi
 
 **Repository Information:**
 
-- **Version:** 0.1.6 (2025-08-19)
+- **Version:** 0.3.0 (2025-08-19)
 - **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)
 - **Branch:** main
 
@@ -97,8 +97,20 @@ jobs:
 │   ├── config/               # Configuration files
 │   │   └── commitlint.config.js # Commit linting rules
 │   └── workflows/            # Production-ready workflows
-│       ├── automatic-release.yml # Automated release management
-│       ├── manual-release.yml    # Manual release controls
+│       ├── modules/          # 🧩 Modulare Workflow-Komponenten
+│       │   ├── security-scan.yml      # Sicherheitsanalyse
+│       │   ├── license-compliance.yml # Lizenz-Compliance
+│       │   ├── release-management.yml # Release-Automatisierung
+│       │   ├── artifact-generation.yml # Artefakt-Erstellung
+│       │   └── pr-validation.yml      # Pull Request-Validierung
+│       ├── examples/         # 📋 Verwendungsbeispiele
+│       │   ├── simple-release.yml     # Einfacher Release-Workflow
+│       │   ├── comprehensive-ci-cd.yml # Vollständige CI/CD-Pipeline
+│       │   ├── security-focused.yml   # Security-zentrierte Pipeline
+│       │   ├── nodejs-project.yml     # Node.js-spezifischer Workflow
+│       │   └── readme.yml             # README-Generator
+│       ├── automatic-release.yml # Legacy: Monolithischer Workflow
+│       ├── manual-release.yml    # Legacy: Manual release controls
 │       └── readme.yml           # Documentation automation
 ├── github/                   # Repository management tools
 │   ├── branch-protect/       # Branch protection automation
@@ -107,6 +119,45 @@ jobs:
 ├── docs/                    # Documentation templates
 └── scripts/                 # Utility scripts
 ```
+
+## 🧩 Modulare Workflow-Architektur
+
+**NEU:** Dieses Repository bietet jetzt **modulare, wiederverwendbare Workflow-Komponenten** anstatt monolithischer Workflows.
+
+### Verfügbare Module
+
+| Modul | Zweck | Verwendung |
+|-------|-------|------------|
+| **🛡️ security-scan.yml** | Sicherheitsanalyse | `uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main` |
+| **📋 license-compliance.yml** | Lizenz-Compliance | `uses: bauer-group/automation-templates/.github/modules/license-compliance.yml@main` |
+| **🚀 release-management.yml** | Release-Automatisierung | `uses: bauer-group/automation-templates/.github/modules/release-management.yml@main` |
+| **🔨 artifact-generation.yml** | Artefakt-Erstellung | `uses: bauer-group/automation-templates/.github/modules/artifact-generation.yml@main` |
+| **🔍 pr-validation.yml** | Pull Request-Validierung | `uses: bauer-group/automation-templates/.github/modules/pr-validation.yml@main` |
+
+### Quick Start: Einfacher Release-Workflow
+
+```yaml
+name: 🚀 Simple Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    with:
+      release-type: 'simple'
+    secrets:
+      GITHUB_TOKEN: $
+```
+
+### Beispiele für verschiedene Projekttypen
+
+- **[Simple Release](https://github.com/bauer-group/automation-templates/blob/main/github/workflows/examples/simple-release.yml)** - Minimaler Release-Workflow
+- **[Comprehensive CI/CD](https://github.com/bauer-group/automation-templates/blob/main/github/workflows/examples/comprehensive-ci-cd.yml)** - Vollständige Pipeline
+- **[Security-Focused](https://github.com/bauer-group/automation-templates/blob/main/github/workflows/examples/security-focused.yml)** - Security-zentriert
+- **[Node.js Project](https://github.com/bauer-group/automation-templates/blob/main/github/workflows/examples/nodejs-project.yml)** - Node.js-spezifisch
 
 ## 🔧 Configuration
 
@@ -376,4 +427,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-08-19 15:36:49 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-08-19 21:59:17 UTC from [docs/README.template.MD](docs/README.template.MD)*
