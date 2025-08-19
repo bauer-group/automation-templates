@@ -1,9 +1,9 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-19 03:13:53 UTC -->
+<!-- Generated on 2025-08-19 10:32:50 UTC -->
 
 # BAUER GROUP - Automation Templates
 
-**Status:** Version 0.1.0 (2025-08-19)  
+**Status:** Version 0.1.2 (2025-08-19)  
 **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)  
 **Branch:** {{CURRENT_BRANCH}}
 
@@ -322,4 +322,4 @@ Siehe [github/workflows/README.md](github/workflows/README.md) für detaillierte
 
 ---
 
-*Dieses README wurde automatisch generiert am 2025-08-19 03:13:53 UTC aus [docs/README.template.MD](docs/README.template.MD)*
+*Dieses README wurde automatisch generiert am 2025-08-19 10:32:50 UTC aus [docs/README.template.MD](docs/README.template.MD)*
