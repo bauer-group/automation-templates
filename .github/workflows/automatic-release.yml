@@ -71,6 +71,8 @@ permissions:
   security-events: write
   packages: write
   id-token: write
+  repository-projects: write
+  checks: write
 
 env:
   # Global configuration
