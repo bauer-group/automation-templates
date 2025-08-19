@@ -81,6 +81,7 @@ env:
   CLEANUP_RELEASE_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.cleanup-release-branch || 'true' }}
   RELEASE_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.release-type || 'simple' }}
   ARTIFACT_TYPES: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact-types || 'source' }}
+  FORCE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.force-release || 'false' }}
 
 jobs:
   # Pre-flight checks for pull requests
@@ -221,20 +222,40 @@ jobs:
             
             console.log('✅ Release semantics validated successfully');
 
-      - name: 📊 Generate Release Dashboard
+      - name: � Universal Fallback Release
+        id: universal_fallback
+        if: |
+          steps.enhanced-release.outputs.release_created != 'true' &&
+          (env.FORCE_RELEASE == 'true' || inputs.force-release == true)
+        shell: bash
+        run: |
+          echo "🔄 Enhanced Release Please created no release, running Universal Fallback..."
+          
+          # Make script executable
+          chmod +x scripts/universal-release.sh
+          
+          # Run universal release script
+          ./scripts/universal-release.sh
+
+      - name: �📊 Generate Release Dashboard
         if: always()
         uses: actions/github-script@v7
         with:
           script: |
             const releaseCreated = '${{ steps.enhanced-release.outputs.release_created }}';
-            const tagName = '${{ steps.enhanced-release.outputs.tag_name }}';
-            const version = '${{ steps.enhanced-release.outputs.version }}';
-            const htmlUrl = '${{ steps.enhanced-release.outputs.html_url }}';
+            const fallbackReleaseCreated = '${{ steps.universal_fallback.outputs.release_created }}';
+            const tagName = '${{ steps.enhanced-release.outputs.tag_name }}' || '${{ steps.universal_fallback.outputs.tag_name }}';
+            const version = '${{ steps.enhanced-release.outputs.version }}' || '${{ steps.universal_fallback.outputs.version }}';
+            const htmlUrl = '${{ steps.enhanced-release.outputs.html_url }}' || '${{ steps.universal_fallback.outputs.release_url }}';
             const prNumber = '${{ steps.enhanced-release.outputs.pr_number }}';
             const prMerged = '${{ steps.enhanced-release.outputs.pr_merged }}';
             const securityScore = '${{ steps.enhanced-release.outputs.security_score }}';
             const licenseCompliance = '${{ steps.enhanced-release.outputs.license_compliance }}';
             const artifactsGenerated = '${{ steps.enhanced-release.outputs.artifacts_generated }}';
+            
+            const anyReleaseCreated = releaseCreated === 'true' || fallbackReleaseCreated === 'true';
+            const releaseMethod = releaseCreated === 'true' ? 'Enhanced Release Please' : 
+                                 fallbackReleaseCreated === 'true' ? 'Universal Fallback' : 'None';
             
             let summary = [
               '### 🚀 Enhanced Release Management Dashboard',
@@ -245,6 +266,7 @@ jobs:
               '| **Branch** | 🌿 | ${{ github.ref_name }} |',
               '| **Release Type** | 📦 | ${{ env.RELEASE_TYPE }} |',
               '| **Force Release** | ⚡ | ${{ inputs.force-release || 'false' }} |',
+              '| **Release Method** | 🔧 | ' + releaseMethod + ' |',
               '',
               '#### 🔧 Features Status',
               '| Feature | Enabled | Result |',
@@ -253,14 +275,22 @@ jobs:
               '| License Check | ${{ env.ENABLE_LICENSE_CHECK }} | ' + (licenseCompliance || 'N/A') + ' |',
               '| Artifact Generation | ${{ env.ENABLE_ARTIFACTS }} | ' + (artifactsGenerated || 'N/A') + ' |',
               '| Auto Merge PR | ${{ env.ENABLE_AUTO_MERGE }} | ' + (prMerged || 'N/A') + ' |',
+              '| Branch Cleanup | ${{ env.CLEANUP_RELEASE_BRANCH }} | ' + (anyReleaseCreated ? '✅ Executed' : 'N/A') + ' |',
               '',
               '#### 📋 Release Results',
               '| Field | Value |',
               '|-------|-------|',
-              '| **Release Created** | ' + (releaseCreated || 'false') + ' |'
+              '| **Release Method** | ' + releaseMethod + ' |',
+              '| **Release Created** | ' + (anyReleaseCreated ? 'true' : 'false') + ' |'
             ];
             
             if (releaseCreated === 'true') {
+              summary.push(
+                '| **Tag Name** | `' + tagName + '` |',
+                '| **Version** | `' + version + '` |',
+                '| **Release URL** | [View Release](' + htmlUrl + ') |'
+              );
+            } else if (fallbackReleaseCreated === 'true') {
               summary.push(
                 '| **Tag Name** | `' + tagName + '` |',
                 '| **Version** | `' + version + '` |',
@@ -297,6 +327,15 @@ jobs:
                 summary.push('- 📋 License compliance verified (' + (licenseCompliance || 'N/A') + ')');
               }
               
+            } else if (fallbackReleaseCreated === 'true') {
+              summary.push(
+                '🎉 **Universal Fallback Release Created!**',
+                '',
+                '**Next Steps:**',
+                '- ✅ Release created via universal script',
+                '- ✅ GitHub release is available',
+                '- ✅ Tags are ready for external consumption'
+              );
             } else if (prNumber) {
               summary.push(
                 '📝 **Release PR Created**',
@@ -329,7 +368,7 @@ jobs:
             await core.summary.addRaw(summary.join('\n')).write();
             
             // Add release trigger help if no action taken
-            if (!releaseCreated && !prNumber) {
+            if (!anyReleaseCreated && !prNumber) {
               const helpSummary = [
                 '',
                 '**To Trigger a Release:**',
