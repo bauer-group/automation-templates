@@ -9,10 +9,19 @@ param(
 )
 
 # Configuration
-$RepoRoot = (Get-Location).Path
+$RepoRoot = Get-Location
 if ($PSScriptRoot) {
+    # If running as a script file, use the script's parent directory structure
     $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 }
+
+# Validate we're in a git repository
+$gitRoot = git rev-parse --show-toplevel 2>$null
+if ($gitRoot) {
+    $RepoRoot = $gitRoot -replace '/', '\'
+}
+
+Write-Host "Repository Root: $RepoRoot" -ForegroundColor DarkGray
 $ManifestFile = Join-Path $RepoRoot ".github\config\.release-please-manifest.json"
 $ConfigFile = Join-Path $RepoRoot ".github\config\release-please-config.json"
 
@@ -48,18 +57,27 @@ function Write-Success {
 function Get-CurrentVersion {
     $version = "0.0.0"
     
+    Write-Log "Checking for version in manifest: $ManifestFile" "Cyan"
+    
     # Try manifest file first
     if (Test-Path $ManifestFile) {
         try {
-            $manifest = Get-Content $ManifestFile | ConvertFrom-Json
+            $content = Get-Content $ManifestFile -Raw
+            Write-Log "Manifest content: $content" "Cyan"
+            
+            $manifest = $content | ConvertFrom-Json
             if ($manifest."." -and $manifest."." -ne "null") {
                 $version = $manifest."."
-                Write-Log "Found version in manifest: $version" "Blue"
+                Write-Log "Found version in manifest: $version" "Green"
+                return $version
             }
         }
         catch {
             Write-Warning-Custom "Could not parse manifest file: $_"
         }
+    }
+    else {
+        Write-Warning-Custom "Manifest file not found at: $ManifestFile"
     }
     
     # Fallback to git tags if still default

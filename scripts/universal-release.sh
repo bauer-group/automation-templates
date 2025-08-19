@@ -7,6 +7,16 @@ set -euo pipefail
 
 # Configuration
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# Validate we're in a git repository and get the actual repo root
+if command -v git &> /dev/null; then
+    GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+    if [[ -n "$GIT_ROOT" ]]; then
+        REPO_ROOT="$GIT_ROOT"
+    fi
+fi
+
+echo "Repository Root: $REPO_ROOT"
 MANIFEST_FILE="$REPO_ROOT/.github/config/.release-please-manifest.json"
 CONFIG_FILE="$REPO_ROOT/.github/config/release-please-config.json"
 
@@ -39,7 +49,20 @@ get_current_version() {
     
     # Try manifest file first
     if [[ -f "$MANIFEST_FILE" ]]; then
-        version=$(jq -r '."."' "$MANIFEST_FILE" 2>/dev/null || echo "0.0.0")
+        if command -v jq &> /dev/null; then
+            version=$(jq -r '."."' "$MANIFEST_FILE" 2>/dev/null || echo "0.0.0")
+            if [[ "$version" != "null" && "$version" != "0.0.0" ]]; then
+                echo "$version"
+                return
+            fi
+        else
+            # Simple grep-based parsing as fallback
+            version=$(grep -o '"\.": *"[^"]*"' "$MANIFEST_FILE" 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/' || echo "0.0.0")
+            if [[ "$version" != "0.0.0" ]]; then
+                echo "$version"
+                return
+            fi
+        fi
     fi
     
     # Fallback to git tags
@@ -55,7 +78,7 @@ increment_version() {
     local version="$1"
     local bump_type="${2:-patch}"
     
-    IFS='.' read -r major minor patch <<< "$version"
+    IFS='.' read -r major minor patch_num <<< "$version"
     
     case "$bump_type" in
         major)
@@ -65,7 +88,7 @@ increment_version() {
             echo "$major.$((minor + 1)).0"
             ;;
         patch)
-            echo "$major.$minor.$((patch + 1))"
+            echo "$major.$minor.$((patch_num + 1))"
             ;;
         *)
             echo "$version"
@@ -219,6 +242,13 @@ main() {
     local current_version
     current_version=$(get_current_version)
     log "Current version: $current_version"
+    
+    # Log version detection details
+    if [[ -f "$MANIFEST_FILE" ]]; then
+        log "✅ Found version in manifest file"
+    else
+        log "⚠️ Using fallback version detection"
+    fi
     
     # Detect bump type or use provided
     local bump_type="${1:-$(detect_bump_type)}"
