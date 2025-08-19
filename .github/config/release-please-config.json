@@ -38,13 +38,12 @@
   "prerelease": false,
   "draft": false,
   
-  "release-search-depth": 50,
-  "commit-search-depth": 100,
+  "release-search-depth": 1,
+  "commit-search-depth": 1,
   
   "sequential-calls": true,
   "group-pull-request-title-pattern": "chore: release ${version}",
   
   "always-link-local": false,
-  "separate-pull-requests": false,
-  "bootstrap-sha": "11e60e1aefe15f3c0e9b41ef775dc109bddce8c9"
+  "separate-pull-requests": false
 }
