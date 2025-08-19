@@ -26,12 +26,28 @@ on:
         required: false
         default: false
         type: boolean
+      security_scan_engine:
+        description: 'Security scanning engine'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+          - gitleaks
+          - gitguardian
+          - both
+      license_check:
+        description: 'Enable license compliance check'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
   pull-requests: write
   issues: write
-  actions: write
+  actions: read
+  security-events: write
+  packages: write
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -46,11 +62,29 @@ jobs:
       changelog_content: ${{ steps.changelog.outputs.content }}
     
     steps:
-      - name: 📥 Checkout Repository
+      - name: � Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📊 Debug Event Information
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log('🔍 Manual Release Debug Information:');
+            console.log(`Event Name: ${context.eventName}`);
+            console.log(`Ref: ${context.ref}`);
+            console.log(`SHA: ${context.sha}`);
+            console.log(`Actor: ${context.actor}`);
+            
+            console.log(`Input Parameters:`);
+            console.log(`  Version Bump: ${{ github.event.inputs.version_bump }}`);
+            console.log(`  Custom Version: ${{ github.event.inputs.custom_version }}`);
+            console.log(`  Create GitHub Release: ${{ github.event.inputs.create_github_release }}`);
+            console.log(`  Skip Tests: ${{ github.event.inputs.skip_tests }}`);
+            console.log(`  Security Scan Engine: ${{ github.event.inputs.security_scan_engine }}`);
+            console.log(`  License Check: ${{ github.event.inputs.license_check }}`);
 
       - name: 🏷️ Determine Target Version
         id: version
@@ -141,22 +175,23 @@ jobs:
       - name: 🔍 Security Scan
         uses: ./.github/actions/security-scan
         with:
+          scan-engine: ${{ github.event.inputs.security_scan_engine || 'both' }}
+          scan-type: 'all'
           minimum-severity: 'medium'
           fail-on-findings: false
           gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
           gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🛡️ GitGuardian Scan
-        uses: ./.github/actions/gitguardian-scan
-        with:
-          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
-          fail-on-findings: false
-          minimum-severity: 'medium'
-          token: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: 📄 License Compliance
+      - name: � License Compliance
+        if: ${{ github.event.inputs.license_check != 'false' }}
         uses: ./.github/actions/license-compliance
+        with:
+          fail-on-forbidden: 'false'
+          fail-on-unknown: 'false'
+          scan-dependencies: 'true'
+          generate-sbom: 'false'
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   create-release:
     name: 🏷️ Create Release
