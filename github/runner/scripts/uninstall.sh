@@ -13,4 +13,4 @@ rm -f /etc/systemd/system/gha-runners.service
 
 systemctl daemon-reload
 
-echo "Uninstall done."
+echo "Uninstall Completed!"
