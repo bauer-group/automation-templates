@@ -237,7 +237,7 @@ jobs:
           # Run universal release script
           ./scripts/universal-release.sh
 
-      - name: �📊 Generate Release Dashboard
+      - name: 📊 Generate Release Dashboard
         if: always()
         uses: actions/github-script@v7
         with:
@@ -257,7 +257,74 @@ jobs:
             const releaseMethod = releaseCreated === 'true' ? 'Enhanced Release Please' : 
                                  fallbackReleaseCreated === 'true' ? 'Universal Fallback' : 'None';
             
+            // Format security scan result
+            let securityDisplay = 'N/A';
+            if ('${{ env.ENABLE_SECURITY_SCAN }}' === 'true') {
+              if (securityScore) {
+                const score = parseInt(securityScore);
+                if (score >= 95) {
+                  securityDisplay = `✅ ${score}/100`;
+                } else if (score >= 80) {
+                  securityDisplay = `⚠️ ${score}/100`;
+                } else {
+                  securityDisplay = `❌ ${score}/100`;
+                }
+              } else {
+                securityDisplay = '🔄 Running...';
+              }
+            } else {
+              securityDisplay = '⏭️ Disabled';
+            }
+            
+            // Format license compliance result
+            let licenseDisplay = 'N/A';
+            if ('${{ env.ENABLE_LICENSE_CHECK }}' === 'true') {
+              if (licenseCompliance) {
+                licenseDisplay = licenseCompliance === 'pass' ? '✅ Pass' : '❌ Issues found';
+              } else {
+                licenseDisplay = '🔄 Running...';
+              }
+            } else {
+              licenseDisplay = '⏭️ Disabled';
+            }
+            
+            // Format artifact generation result
+            let artifactDisplay = 'N/A';
+            if ('${{ env.ENABLE_ARTIFACTS }}' === 'true') {
+              if (artifactsGenerated) {
+                artifactDisplay = artifactsGenerated === 'true' ? '✅ Generated' : '⚠️ Partial';
+              } else {
+                artifactDisplay = anyReleaseCreated ? '✅ Standard' : '⏭️ Pending';
+              }
+            } else {
+              artifactDisplay = '⏭️ Disabled';
+            }
+            
+            // Format auto merge result
+            let autoMergeDisplay = 'N/A';
+            if ('${{ env.ENABLE_AUTO_MERGE }}' === 'true') {
+              if (prMerged === 'true') {
+                autoMergeDisplay = '✅ Merged';
+              } else if (prNumber) {
+                autoMergeDisplay = '⏳ Pending';
+              } else {
+                autoMergeDisplay = '⏭️ No PR';
+              }
+            } else {
+              autoMergeDisplay = '⏭️ Disabled';
+            }
+            
+            // Format branch cleanup result
+            let cleanupDisplay = 'N/A';
+            if ('${{ env.CLEANUP_RELEASE_BRANCH }}' === 'true') {
+              cleanupDisplay = anyReleaseCreated ? '✅ Scheduled' : '⏭️ Pending';
+            } else {
+              cleanupDisplay = '⏭️ Disabled';
+            }
+            
             let summary = [
+              '## 📦 Release Management Summary',
+              '',
               '### 🚀 Automatic Release Management Dashboard',
               '',
               '| Component | Status | Details |',
@@ -268,16 +335,18 @@ jobs:
               '| **Force Release** | ⚡ | ${{ inputs.force-release || 'false' }} |',
               '| **Release Method** | 🔧 | ' + releaseMethod + ' |',
               '',
-              '#### 🔧 Features Status',
+              '### 🔧 Features Status',
+              '',
               '| Feature | Enabled | Result |',
               '|---------|---------|--------|',
-              '| Security Scan | ${{ env.ENABLE_SECURITY_SCAN }} | ' + (securityScore || 'N/A') + ' |',
-              '| License Check | ${{ env.ENABLE_LICENSE_CHECK }} | ' + (licenseCompliance || 'N/A') + ' |',
-              '| Artifact Generation | ${{ env.ENABLE_ARTIFACTS }} | ' + (artifactsGenerated || 'N/A') + ' |',
-              '| Auto Merge PR | ${{ env.ENABLE_AUTO_MERGE }} | ' + (prMerged || 'N/A') + ' |',
-              '| Branch Cleanup | ${{ env.CLEANUP_RELEASE_BRANCH }} | ' + (anyReleaseCreated ? '✅ Executed' : 'N/A') + ' |',
+              '| **Security Scan** | ${{ env.ENABLE_SECURITY_SCAN }} | ' + securityDisplay + ' |',
+              '| **License Check** | ${{ env.ENABLE_LICENSE_CHECK }} | ' + licenseDisplay + ' |',
+              '| **Artifact Generation** | ${{ env.ENABLE_ARTIFACTS }} | ' + artifactDisplay + ' |',
+              '| **Auto Merge PR** | ${{ env.ENABLE_AUTO_MERGE }} | ' + autoMergeDisplay + ' |',
+              '| **Branch Cleanup** | ${{ env.CLEANUP_RELEASE_BRANCH }} | ' + cleanupDisplay + ' |',
               '',
-              '#### 📋 Release Results',
+              '### 📋 Release Results',
+              '',
               '| Field | Value |',
               '|-------|-------|',
               '| **Release Method** | ' + releaseMethod + ' |',
@@ -307,7 +376,7 @@ jobs:
             
             if (releaseCreated === 'true') {
               summary.push(
-                '🎉 **Release Successfully Created!**',
+                '### 🎉 Release Successfully Created!',
                 '',
                 '**Next Steps:**',
                 '- ✅ Release notes generated automatically',
@@ -320,16 +389,16 @@ jobs:
               }
               
               if ('${{ env.ENABLE_SECURITY_SCAN }}' === 'true') {
-                summary.push('- 🛡️ Security scan completed (Score: ' + (securityScore || 'N/A') + '/100)');
+                summary.push('- 🛡️ Security scan completed (' + securityDisplay + ')');
               }
               
               if ('${{ env.ENABLE_LICENSE_CHECK }}' === 'true') {
-                summary.push('- 📋 License compliance verified (' + (licenseCompliance || 'N/A') + ')');
+                summary.push('- 📋 License compliance verified (' + licenseDisplay + ')');
               }
               
             } else if (fallbackReleaseCreated === 'true') {
               summary.push(
-                '🎉 **Universal Fallback Release Created!**',
+                '### 🎉 Universal Fallback Release Created!',
                 '',
                 '**Next Steps:**',
                 '- ✅ Release created via universal script',
@@ -338,7 +407,7 @@ jobs:
               );
             } else if (prNumber) {
               summary.push(
-                '📝 **Release PR Created**',
+                '### 📝 Release PR Created',
                 '',
                 'A release PR has been created and is ready for review.',
                 '',
@@ -356,29 +425,21 @@ jobs:
               }
             } else {
               summary.push(
-                'ℹ️ **No Release Action Taken**',
+                '### ℹ️ No Release Action Taken',
                 '',
                 '**Possible Reasons:**',
                 '- No conventional commits since last release',
                 '- Only non-releasable changes (docs, chore, etc.)',
-                '- Release-Please PR already exists'
-              );
-            }
-            
-            await core.summary.addRaw(summary.join('\n')).write();
-            
-            // Add release trigger help if no action taken
-            if (!anyReleaseCreated && !prNumber) {
-              const helpSummary = [
+                '- Release-Please PR already exists',
                 '',
                 '**To Trigger a Release:**',
                 '- `feat:` for new features (minor version bump)',
                 '- `fix:` for bug fixes (patch version bump)',
                 '- `feat!:` or `BREAKING CHANGE:` for breaking changes (major version bump)'
-              ];
-              
-              await core.summary.addRaw(helpSummary.join('\n')).write();
+              );
             }
+            
+            await core.summary.addRaw(summary.join('\n')).write();
 
   # Extended artifact generation for specific types
   extended-artifacts:
