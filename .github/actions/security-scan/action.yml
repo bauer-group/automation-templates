@@ -96,65 +96,13 @@ runs:
     - name: 🔐 Gitleaks Secrets Detection
       id: gitleaks-scan
       if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both')
-      shell: bash
-      run: |
-        echo "🔍 Running Gitleaks scan..."
-        
-        # Download and install gitleaks if not available
-        if ! command -v gitleaks &> /dev/null; then
-          echo "📥 Installing Gitleaks..."
-          # Get latest release URL and install
-          GITLEAKS_VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -o '"tag_name": "v[^"]*"' | grep -o 'v[^"]*' || echo "v8.18.4")
-          echo "Installing GitLeaks version: $GITLEAKS_VERSION"
-          
-          # Determine OS and architecture
-          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-          ARCH=$(uname -m)
-          case $ARCH in
-            x86_64) ARCH="x64" ;;
-            aarch64) ARCH="arm64" ;;
-            armv7l) ARCH="armv7" ;;
-          esac
-          
-          # Download and install
-          DOWNLOAD_URL="https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION#v}_${OS}_${ARCH}.tar.gz"
-          echo "Downloading from: $DOWNLOAD_URL"
-          
-          curl -sSfL "$DOWNLOAD_URL" | tar -xz -C /tmp
-          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
-          sudo chmod +x /usr/local/bin/gitleaks
-          
-          # Verify installation
-          if command -v gitleaks &> /dev/null; then
-            echo "✅ GitLeaks installed successfully: $(gitleaks version)"
-          else
-            echo "❌ GitLeaks installation failed"
-            exit 1
-          fi
-        fi
-        
-        # Create reports directory
-        mkdir -p security-reports
-        
-        # Run gitleaks scan and capture exit code
-        set +e
-        gitleaks detect --source . --report-format json --report-path security-reports/gitleaks-report.json --verbose
-        GITLEAKS_EXIT_CODE=$?
-        set -e
-        
-        echo "gitleaks-exit-code=$GITLEAKS_EXIT_CODE" >> $GITHUB_OUTPUT
-        
-        if [ $GITLEAKS_EXIT_CODE -eq 0 ]; then
-          echo "✅ No secrets detected by Gitleaks"
-          echo "gitleaks-outcome=success" >> $GITHUB_OUTPUT
-        else
-          echo "⚠️ Gitleaks found potential secrets"
-          echo "gitleaks-outcome=failure" >> $GITHUB_OUTPUT
-        fi
+      uses: gitleaks/gitleaks-action@v2
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
         GITLEAKS_LICENSE: ${{ inputs.gitleaks-license }}
-      continue-on-error: true
+        GITLEAKS_ENABLE_COMMENTS: false
+        GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
+        GITLEAKS_ENABLE_SUMMARY: false
 
     - name: 📊 Process Gitleaks Results  
       id: process-gitleaks
@@ -163,8 +111,9 @@ runs:
       run: |
         echo "📊 Processing Gitleaks results..."
         
-        # Check if gitleaks found any secrets
-        if [ "${{ steps.gitleaks-scan.outputs.gitleaks-outcome }}" == "failure" ]; then
+        # The official gitleaks action will fail if secrets are found
+        # So we check the job status and set our output accordingly
+        if [ "${{ job.status }}" = "failure" ] || [ "${{ steps.gitleaks-scan.outcome }}" = "failure" ]; then
           echo "❌ Gitleaks detected secrets!"
           echo "secrets-found=true" >> $GITHUB_OUTPUT
         else
@@ -172,14 +121,11 @@ runs:
           echo "secrets-found=false" >> $GITHUB_OUTPUT
         fi
         
-        # Create security reports directory
+        # Create security reports directory for consistency
         mkdir -p security-reports/gitleaks
         
-        # Store gitleaks results if available
-        if [ -f "results.sarif" ]; then
-          cp results.sarif security-reports/gitleaks/gitleaks-results.sarif
-          echo "📄 Gitleaks SARIF report saved"
-        fi
+        # Note: The official action uploads artifacts automatically
+        echo "📄 Gitleaks results will be available in artifacts"
 
     - name: 🛡️ GitGuardian Security Scan
       id: gitguardian-scan
@@ -289,7 +235,7 @@ runs:
       run: |
         echo "📊 Generating dual security summary..."
         
-        GITLEAKS_SECRETS="${{ steps.gitleaks-scan.outputs.secrets-found || 'false' }}"
+        GITLEAKS_SECRETS="${{ steps.process-gitleaks.outputs.secrets-found || 'false' }}"
         GITGUARDIAN_SECRETS="${{ steps.gitguardian-scan.outputs.secrets-found || '0' }}"
         GITGUARDIAN_POLICIES="${{ steps.gitguardian-scan.outputs.policy-violations || '0' }}"
         VULNS_FOUND="${{ steps.vulnerability-scan.outputs.vulnerabilities-found || 'false' }}"
@@ -539,11 +485,11 @@ runs:
         retention-days: 30
 
     - name: 🚨 Fail on Security Issues
-      if: inputs.fail-on-findings == 'true' && (steps.secrets-scan.outputs.secrets-found == 'true' || steps.vulnerability-scan.outputs.vulnerabilities-found == 'true')
+      if: inputs.fail-on-findings == 'true' && (steps.process-gitleaks.outputs.secrets-found == 'true' || steps.vulnerability-scan.outputs.vulnerabilities-found == 'true')
       shell: bash
       run: |
         echo "❌ Security scan failed due to findings"
-        echo "Secrets found: ${{ steps.secrets-scan.outputs.secrets-found }}"
+        echo "Secrets found: ${{ steps.process-gitleaks.outputs.secrets-found }}"
         echo "Vulnerabilities found: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found }}"
         echo ""
         echo "Review the security reports and address the issues before proceeding."
