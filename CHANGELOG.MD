@@ -1,3 +1,10 @@
+## [0.12.1](https://github.com/bauer-group/automation-templates/compare/v0.12.0...v0.12.1) (2025-08-20)
+
+### 🐛 Bug Fixes
+
+* korrigiere Ausgabemeldung nach dem Start der Runner-Container ([212130a](https://github.com/bauer-group/automation-templates/commit/212130a8406e90027e236495f82f4da75bb0950e))
+* korrigiere Pfad zur Moduldatei und füge Überprüfungen für OpenAI API-Schlüssel hinzu ([a2a36bd](https://github.com/bauer-group/automation-templates/commit/a2a36bd6c7c6840f2ea3962d37141794094be4b3))
+
 ## [0.12.0](https://github.com/bauer-group/automation-templates/compare/v0.11.0...v0.12.0) (2025-08-20)
 
 ### 🚀 Features
