@@ -64,7 +64,10 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
-  actions: read
+  actions: write
+  packages: write
+  statuses: write
+  checks: write
 
 jobs:
   release-management:
@@ -89,14 +92,25 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          
-      - name: 🧹 Clean Git History (Reduce API Load)
+        
+      - name: 🔍 Check for Existing Release PR
+        id: check-pr
         run: |
-          # Shallow the repository to last 100 commits to reduce API calls
-          git fetch --depth=100 origin main || true
-          
-      - name: ⏱️ Add Delay (Avoid Rate Limiting)
-        run: sleep 5
+          # Check if there's an existing release PR that might cause conflicts
+          EXISTING_PR=$(gh pr list --state open --label "autorelease: pending" --json number --jq '.[0].number' || echo "")
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Found existing release PR #$EXISTING_PR"
+            echo "existing-pr=$EXISTING_PR" >> $GITHUB_OUTPUT
+            
+            # Try to close the old PR if it's from a bot
+            PR_AUTHOR=$(gh pr view $EXISTING_PR --json author --jq '.author.login')
+            if [[ "$PR_AUTHOR" == *"bot"* ]]; then
+              echo "Closing old bot PR #$EXISTING_PR"
+              gh pr close $EXISTING_PR --comment "Closing in favor of new release process" || true
+            fi
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📝 Update Documentation
         continue-on-error: true
@@ -116,13 +130,32 @@ jobs:
           config-file: .github/config/release-please-config.json
           manifest-file: .github/config/.release-please-manifest.json
           
-      - name: ⏱️ Wait Before Retry
+      - name: 🔄 Analyze Failure
         if: steps.release.outcome == 'failure'
         run: |
-          echo "First attempt failed, waiting 30 seconds before retry..."
-          sleep 30
+          echo "First attempt failed. Checking error type..."
+          ERROR_OUTPUT="${{ steps.release.outputs.stderr }}"
           
-      - name: 🔄 Enhanced Release Please (Retry)
+          # Check for 5xx server errors
+          if [[ "$ERROR_OUTPUT" =~ 5[0-9]{2} ]]; then
+            echo "Server error detected (5xx), waiting 20 seconds before retry..."
+            sleep 20
+          # Check for rate limiting (429)
+          elif [[ "$ERROR_OUTPUT" == *"429"* ]] || [[ "$ERROR_OUTPUT" == *"rate limit"* ]]; then
+            echo "Rate limit detected, waiting 60 seconds before retry..."
+            sleep 60
+          # Check for permission errors
+          elif [[ "$ERROR_OUTPUT" == *"Resource not accessible"* ]]; then
+            echo "Permission error detected, retrying without delay..."
+          # Check for network timeouts
+          elif [[ "$ERROR_OUTPUT" == *"timeout"* ]] || [[ "$ERROR_OUTPUT" == *"ETIMEDOUT"* ]]; then
+            echo "Network timeout detected, waiting 5 seconds before retry..."
+            sleep 5
+          else
+            echo "Unknown error, retrying immediately..."
+          fi
+          
+      - name: 🔄 Release Please (Retry)
         id: release-retry
         if: steps.release.outcome == 'failure'
         uses: googleapis/release-please-action@v4
