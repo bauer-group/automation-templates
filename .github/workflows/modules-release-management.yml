@@ -71,12 +71,12 @@ jobs:
     name: 📦 Release Processing
     runs-on: ubuntu-latest
     outputs:
-      release-created: ${{ steps.release.outputs.release_created }}
-      tag-name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
-      release-url: ${{ steps.release.outputs.upload_url }}
-      pr-number: ${{ steps.release.outputs.pr }}
-      pr-merged: ${{ steps.release.outputs.pr_merged }}
+      release-created: ${{ steps.release.outputs.release_created || steps.release-retry.outputs.release_created }}
+      tag-name: ${{ steps.release.outputs.tag_name || steps.release-retry.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version || steps.release-retry.outputs.version }}
+      release-url: ${{ steps.release.outputs.upload_url || steps.release-retry.outputs.upload_url }}
+      pr-number: ${{ steps.release.outputs.pr || steps.release-retry.outputs.pr }}
+      pr-merged: ${{ steps.release.outputs.pr_merged || steps.release-retry.outputs.pr_merged }}
     
     steps:
       - name: 🚀 Checkout Repository
@@ -84,6 +84,19 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          
+      - name: 🔧 Configure Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+      - name: 🧹 Clean Git History (Reduce API Load)
+        run: |
+          # Shallow the repository to last 100 commits to reduce API calls
+          git fetch --depth=100 origin main || true
+          
+      - name: ⏱️ Add Delay (Avoid Rate Limiting)
+        run: sleep 5
 
       - name: 📝 Update Documentation
         continue-on-error: true
@@ -93,8 +106,25 @@ jobs:
           echo "Output: README.MD"
           # Note: Actual documentation update should be implemented as a separate job or composite action
 
-      - name: 🚀 Enhanced Release Please
+      - name: 🚀 Enhanced Release Please (Attempt 1)
         id: release
+        continue-on-error: true
+        uses: googleapis/release-please-action@v4
+        with:
+          release-type: ${{ inputs.release-type }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: .github/config/release-please-config.json
+          manifest-file: .github/config/.release-please-manifest.json
+          
+      - name: ⏱️ Wait Before Retry
+        if: steps.release.outcome == 'failure'
+        run: |
+          echo "First attempt failed, waiting 30 seconds before retry..."
+          sleep 30
+          
+      - name: 🔄 Enhanced Release Please (Retry)
+        id: release-retry
+        if: steps.release.outcome == 'failure'
         uses: googleapis/release-please-action@v4
         with:
           release-type: ${{ inputs.release-type }}
@@ -103,7 +133,7 @@ jobs:
           manifest-file: .github/config/.release-please-manifest.json
 
       - name: 🎯 Auto-Merge Release PR
-        if: steps.release.outputs.pr != '' && inputs.auto-merge-enabled == true
+        if: (steps.release.outputs.pr != '' || steps.release-retry.outputs.pr != '') && inputs.auto-merge-enabled == true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
