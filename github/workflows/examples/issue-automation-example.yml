@@ -1,0 +1,119 @@
+name: 🤖 Issue & PR Label Automation
+
+# Example workflow showing how to use the issue automation module
+# from the bauer-group/automation-templates repository
+
+on:
+  issues:
+    types: [labeled]
+  pull_request_target:
+    types: [labeled]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  # Basic automation using the module
+  auto-handle-labels:
+    name: Auto-handle Based on Labels
+    uses: bauer-group/automation-templates/.github/workflows/modules-issue-automation.yml@main
+    with:
+      label-config-path: '.github/config/issues/label-actions.yml'
+      dry-run: false
+    secrets: inherit
+
+  # Example: Custom handling for specific labels
+  handle-support:
+    name: Handle Support Issues
+    if: contains(github.event.issue.labels.*.name, 'support')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post Support Message
+        uses: peter-evans/close-issue@v3
+        with:
+          comment: |
+            Thank you for reaching out! 🙏
+            
+            This appears to be a support request. Please use:
+            - 📚 [Documentation](${{ github.event.repository.html_url }}/wiki)
+            - 💬 [Discussions](${{ github.event.repository.html_url }}/discussions)
+            - 🎯 [Community Forum](https://github.community/)
+            
+            This helps us keep issues focused on bugs and features.
+
+  # Example: Handle feature requests
+  handle-features:
+    name: Handle Feature Requests
+    if: contains(github.event.issue.labels.*.name, 'feature')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Thank and Close Feature Request
+        uses: peter-evans/close-issue@v3
+        with:
+          comment: |
+            Thank you for this feature request! 🚀
+            
+            We've logged your suggestion for consideration. To keep our issue tracker focused, we're closing this issue.
+            
+            **Next steps:**
+            - Your request has been documented
+            - We'll review it during planning
+            - If selected, we'll create a tracking issue
+            
+            Feel free to:
+            - 🍴 Fork and implement the feature
+            - 💬 Discuss in [Discussions](${{ github.event.repository.html_url }}/discussions)
+
+  # Example: Weekly stale issue check (separate workflow)
+  # This would be in a separate file: .github/workflows/stale-issues.yml
+  # 
+  # name: 🧹 Mark Stale Issues
+  # on:
+  #   schedule:
+  #     - cron: '0 0 * * 0'  # Weekly on Sunday
+  # 
+  # jobs:
+  #   mark-stale:
+  #     runs-on: ubuntu-latest
+  #     steps:
+  #       - uses: actions/stale@v9
+  #         with:
+  #           stale-issue-message: 'This issue is stale because it has been open 30 days with no activity.'
+  #           stale-pr-message: 'This PR is stale because it has been open 45 days with no activity.'
+  #           days-before-stale: 30
+  #           days-before-close: 7
+  #           stale-issue-label: 'stale'
+  #           stale-pr-label: 'stale'
+
+# Configuration file example (.github/config/issues/label-actions.yml):
+# 
+# support:
+#   action: close
+#   comment: |
+#     Thanks for reaching out! For support, please use our forums.
+#   close_reason: not_planned
+# 
+# feature:
+#   action: close
+#   comment: |
+#     Thank you for the feature request! We'll consider it for future releases.
+#   close_reason: not_planned
+# 
+# duplicate:
+#   action: close
+#   comment: |
+#     This appears to be a duplicate. Please see the original issue.
+#   close_reason: duplicate
+# 
+# needs-info:
+#   action: comment
+#   comment: |
+#     Please provide more information to help us investigate.
+#   add_labels: ["waiting-for-response"]
+# 
+# good-first-issue:
+#   action: comment
+#   comment: |
+#     This is a great issue for new contributors! Feel free to work on it.
+#   add_labels: ["help-wanted"]

@@ -11,6 +11,8 @@ Organized configuration files for GitHub Actions workflows and modules.
 ├── 📁 pr-labeler/       # Pull request labeling configurations  
 │   ├── path-labels.yml
 │   └── triage-rules.yml
+├── 📁 issues/           # Issue automation configurations
+│   └── label-actions.yml
 ├── 📁 security/         # Security scanning configurations (future)
 │   ├── gitleaks.toml
 │   └── gitguardian.yml
@@ -41,6 +43,15 @@ Organized configuration files for GitHub Actions workflows and modules.
   - Auto-assignment based on labels/paths
   - Priority classification
   - Custom automation rules
+
+### 🤖 Issue Automation (`issues/`)
+**Module:** `modules-issue-automation.yml`
+
+- **`label-actions.yml`** - Automated actions based on issue/PR labels
+  - Close issues with specific messages (support, feature, duplicate)
+  - Add comments and additional labels
+  - Remove labels based on conditions
+  - Handle stale issues and security reports
 
 ### 🔒 Security (future) (`security/`)
 **Modules:** `modules-security-scan.yml`
@@ -119,6 +130,7 @@ with:
 | `documentation` | - | - | No | Auto-updates on releases |
 | `modules-pr-labeler` | `pr-labeler/` | `path-labels.yml` | Yes | File-based labeling |
 | `modules-pr-labeler` | `pr-labeler/` | `triage-rules.yml` | No | Advanced automation |
+| `modules-issue-automation` | `issues/` | `label-actions.yml` | No | Issue/PR automation |
 | `modules-security-scan` | `security/` | `gitleaks.toml` | No | Secret patterns |
 | `modules-license-compliance` | `license/` | `allowed-licenses.yml` | No | License rules |
 
@@ -188,6 +200,24 @@ priority_rules:
       - has_any_labels: ['security', 'hotfix']
     actions:
       - add_labels: ['priority/critical']
+```
+
+### Issue Automation Configuration
+```yaml
+# .github/config/issues/label-actions.yml
+support:
+  action: close
+  comment: |
+    Thank you for reaching out! This is a support request.
+    Please use our forums or discussions instead.
+  close_reason: not_planned
+
+bug-confirmed:
+  action: comment
+  comment: |
+    Bug confirmed! We'll prioritize this for fixing.
+  add_labels: ["confirmed", "priority-high"]
+  remove_labels: ["needs-triage"]
 ```
 
 ## 🔒 Security Notes

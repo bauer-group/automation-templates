@@ -1,0 +1,179 @@
+# Issue Label Automation Configuration
+# Defines actions to take when specific labels are applied to issues or PRs
+
+# Support-related issues - close with helpful message
+support:
+  action: close
+  comment: |
+    Thank you for reaching out! 🙏
+    
+    This issue has been classified as a **support request**. 
+    
+    For support questions, please use one of these channels:
+    - 📚 [Documentation](https://github.com/bauer-group/automation-templates/wiki)
+    - 💬 [Discussions](https://github.com/bauer-group/automation-templates/discussions)
+    - 🎯 [Community Forum](https://github.community/)
+    
+    This helps us keep the issue tracker focused on bugs and feature requests.
+  close_reason: not_planned
+
+# Feature requests - close with explanation
+feature:
+  action: close
+  comment: |
+    Thank you for this feature request! 🚀
+    
+    We appreciate your suggestion and have logged it for consideration. However, we're closing this issue to keep our tracker focused on active development.
+    
+    **What happens next:**
+    - Your request has been documented
+    - It will be reviewed during our planning sessions
+    - If selected for implementation, we'll create a new tracking issue
+    
+    Feel free to:
+    - 🍴 Fork this repository and implement the feature
+    - 💬 Continue the discussion in [Discussions](https://github.com/bauer-group/automation-templates/discussions)
+  close_reason: not_planned
+
+# Duplicate issues
+duplicate:
+  action: close
+  comment: |
+    This issue appears to be a duplicate of an existing issue. 
+    
+    Please check the original issue for updates and add any additional context there.
+  close_reason: duplicate
+
+# Invalid issues
+invalid:
+  action: close
+  comment: |
+    This issue has been marked as invalid because it doesn't follow our issue template or lacks necessary information.
+    
+    Please feel free to open a new issue with:
+    - Clear description of the problem
+    - Steps to reproduce
+    - Expected behavior
+    - Actual behavior
+  close_reason: not_planned
+
+# Won't fix
+wontfix:
+  action: close
+  comment: |
+    After careful consideration, we've decided not to implement this change.
+    
+    This decision was made because the change:
+    - Falls outside the project scope
+    - Would break backward compatibility
+    - Has alternative solutions available
+    
+    Thank you for your understanding.
+  close_reason: not_planned
+
+# Stale issues - just comment, don't close
+stale:
+  action: comment
+  comment: |
+    This issue has been automatically marked as stale because it has not had recent activity. 
+    
+    It will be closed in 7 days if no further activity occurs. 
+    
+    If this issue is still relevant, please comment to keep it open.
+  add_labels: ["inactive"]
+
+# Needs more information
+needs-info:
+  action: comment
+  comment: |
+    Thank you for reporting this issue! 
+    
+    To help us investigate, could you please provide:
+    - More detailed steps to reproduce
+    - Your environment details (OS, version, etc.)
+    - Any relevant logs or error messages
+    - Screenshots if applicable
+  add_labels: ["waiting-for-response"]
+
+# Good first issues for contributors
+good-first-issue:
+  action: comment
+  comment: |
+    This issue has been marked as a **good first issue**! 👋
+    
+    If you're interested in working on this:
+    1. Comment here to claim it
+    2. Fork the repository
+    3. Create a branch for your changes
+    4. Submit a pull request when ready
+    
+    Need help? Feel free to ask questions!
+  add_labels: ["help-wanted", "contributors-welcome"]
+
+# Confirmed bugs
+bug-confirmed:
+  action: comment
+  comment: |
+    This bug has been confirmed and reproduced. 🐛
+    
+    We'll prioritize this for fixing. Thank you for the detailed report!
+  add_labels: ["confirmed", "priority-high"]
+  remove_labels: ["needs-triage", "needs-info"]
+
+# Security issues
+security:
+  action: comment
+  comment: |
+    🔒 **Security Issue Detected**
+    
+    Thank you for reporting this security concern. 
+    
+    For security issues, please:
+    1. **Do not share exploit details publicly**
+    2. Report via [GitHub Security Advisories](https://github.com/bauer-group/automation-templates/security/advisories/new)
+    3. Or email us at: security@bauer-group.com
+    
+    This issue will be handled with priority.
+  add_labels: ["priority-critical", "security"]
+  remove_labels: ["needs-triage"]
+
+# Questions
+question:
+  action: comment
+  comment: |
+    This appears to be a question rather than a bug report or feature request.
+    
+    For questions, please use:
+    - 💬 [GitHub Discussions](https://github.com/bauer-group/automation-templates/discussions)
+    - 📚 [Documentation](https://github.com/bauer-group/automation-templates/wiki)
+    
+    We'll leave this open for 7 days in case you want to rephrase it as a bug report or feature request.
+  add_labels: ["pending-closure"]
+
+# Documentation issues
+documentation:
+  action: comment
+  comment: |
+    Thank you for highlighting this documentation issue! 📚
+    
+    Documentation improvements are always welcome. Would you like to:
+    - Submit a PR with the fix?
+    - Or we can handle it internally
+    
+    Either way, we appreciate you taking the time to report this!
+  add_labels: ["good-first-issue", "help-wanted"]
+
+# Enhancement requests
+enhancement:
+  action: comment
+  comment: |
+    Thank you for this enhancement suggestion! ✨
+    
+    We'll review this during our next planning session. 
+    
+    To help us evaluate:
+    - What problem does this solve?
+    - Do you have a proposed implementation?
+    - Are there any alternatives you've considered?
+  add_labels: ["needs-review", "enhancement"]
+  remove_labels: ["needs-triage"]
