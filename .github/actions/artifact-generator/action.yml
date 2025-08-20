@@ -131,7 +131,7 @@ runs:
               rsync -av --exclude='.git' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g' | sed 's/^/--exclude=/') . "$TEMP_DIR/" || cp -r . "$TEMP_DIR/"
               
               # Create zip
-              (cd "$TEMP_DIR/.." && zip -r "artifacts/$ARCHIVE_NAME" "$TEMP_DIR")
+              zip -r "artifacts/$ARCHIVE_NAME" "$TEMP_DIR"
               rm -rf "$TEMP_DIR"
               
               GENERATED_ARCHIVES="$GENERATED_ARCHIVES,$ARCHIVE_NAME"

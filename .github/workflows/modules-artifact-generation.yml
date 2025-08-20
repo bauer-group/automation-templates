@@ -195,14 +195,21 @@ jobs:
           fi
 
       - name: 📤 Upload Build Artifacts
-        if: always() && steps.artifacts.outputs.source-archive-created == 'true'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: release-artifacts-${{ inputs.version }}
           path: |
-            *.tar.gz
-            *.zip
-            dist/
-            build/
-            target/
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/*.tar.xz
+            artifacts/*.7z
+            artifacts/*.exe
+            artifacts/*.deb
+            artifacts/*.rpm
+            artifacts/*.dmg
+            artifacts/*.iso
+            artifacts/*.sha256
+            artifacts/*.md
+          if-no-files-found: warn
           retention-days: 90
