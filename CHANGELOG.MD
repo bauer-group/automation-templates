@@ -1,3 +1,10 @@
+## [0.5.0](https://github.com/bauer-group/automation-templates/compare/v0.4.1...v0.5.0) (2025-08-20)
+
+### 🚀 Features
+
+* aktualisiere Lizenz-Compliance-Workflow mit Zählung verbotener und unbekannter Lizenzen ([e74b094](https://github.com/bauer-group/automation-templates/commit/e74b0941964b96b192734ca7a4eb669d9828f936))
+* aktualisiere Workflow-Dokumentation und migriere zu Semantic Release ([cdd0ccd](https://github.com/bauer-group/automation-templates/commit/cdd0ccd301c2229a5d1d1748fa35591f56aa530e))
+
 ## [0.4.1](https://github.com/bauer-group/automation-templates/compare/v0.4.0...v0.4.1) (2025-08-20)
 
 ### 🐛 Bug Fixes
