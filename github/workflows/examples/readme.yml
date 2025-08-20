@@ -13,6 +13,8 @@ on:
     branches: [main]
     paths:
       - 'docs/README.template.MD'
+  release:
+    types: [published, created]
   workflow_dispatch:
     inputs:
       force-update:
@@ -78,8 +80,8 @@ jobs:
           contact-email: 'contact@yourcompany.com'
           documentation-url: 'https://github.com/your-org/your-repo/wiki'
           support-url: 'https://github.com/your-org/your-repo/issues'
-          force-update: ${{ inputs.force-update || false }}
-          custom-version: ${{ inputs.custom-version }}
+          force-update: ${{ inputs.force-update || github.event_name == 'release' }}
+          custom-version: ${{ inputs.custom-version || github.event.release.tag_name }}
 
       - name: 📄 Auto-commit Changes
         if: steps.generate.outputs.changes_detected == 'true' && github.event_name != 'pull_request'
@@ -90,7 +92,9 @@ jobs:
           # Build dynamic commit message
           COMMIT_MSG="docs: update ${{ inputs.output-path || 'README.MD' }}"
           
-          if [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "${{ github.event_name }}" = "release" ]; then
+            COMMIT_MSG="$COMMIT_MSG for release ${{ github.event.release.tag_name }}"
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
             COMMIT_MSG="$COMMIT_MSG (scheduled)"
           elif [ "${{ inputs.force-update }}" = "true" ]; then
             COMMIT_MSG="$COMMIT_MSG (forced)"

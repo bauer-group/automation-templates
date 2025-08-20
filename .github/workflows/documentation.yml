@@ -14,6 +14,8 @@ on:
     branches: [main]
     paths:
       - 'docs/README.template.MD'
+  release:
+    types: [published, created]
   workflow_dispatch:
     inputs:
       force-update:
@@ -73,8 +75,8 @@ jobs:
           contact-email: 'support@bauer-group.com'
           documentation-url: 'https://github.com/bauer-group/automation-templates/wiki'
           support-url: 'https://github.com/bauer-group/automation-templates/issues'
-          force-update: ${{ inputs.force-update || false }}
-          custom-version: ${{ inputs.custom-version }}
+          force-update: ${{ inputs.force-update || github.event_name == 'release' }}
+          custom-version: ${{ inputs.custom-version || github.event.release.tag_name }}
 
       - name: 📄 Commit and Push Changes
         if: steps.generate.outputs.changes_detected == 'true' && github.event_name != 'pull_request'
@@ -84,7 +86,9 @@ jobs:
           
           COMMIT_MSG="docs: update README.MD"
           
-          if [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "${{ github.event_name }}" = "release" ]; then
+            COMMIT_MSG="$COMMIT_MSG for release ${{ github.event.release.tag_name }}"
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
             COMMIT_MSG="$COMMIT_MSG (scheduled update)"
           elif [ "${{ inputs.force-update }}" = "true" ]; then
             COMMIT_MSG="$COMMIT_MSG (forced update)"
@@ -177,6 +181,14 @@ jobs:
             echo "- Updated version and date information" >> $GITHUB_STEP_SUMMARY
             echo "- Current repository metadata" >> $GITHUB_STEP_SUMMARY
             echo "- Modular workflow architecture documentation" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "${{ github.event_name }}" = "release" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "🎉 **Release Details:**" >> $GITHUB_STEP_SUMMARY
+              echo "- Version: ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
+              echo "- Release Name: ${{ github.event.release.name }}" >> $GITHUB_STEP_SUMMARY
+              echo "- Created At: ${{ github.event.release.created_at }}" >> $GITHUB_STEP_SUMMARY
+            fi
           else
             echo "ℹ️ **No documentation updates required**" >> $GITHUB_STEP_SUMMARY
           fi
