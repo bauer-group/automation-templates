@@ -93,24 +93,14 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
         
-      - name: 🔍 Check for Existing Release PR
-        id: check-pr
+      - name: 🔍 Generate Unique Branch Name
+        id: branch
         run: |
-          # Check if there's an existing release PR that might cause conflicts
-          EXISTING_PR=$(gh pr list --state open --label "autorelease: pending" --json number --jq '.[0].number' || echo "")
-          if [ -n "$EXISTING_PR" ]; then
-            echo "Found existing release PR #$EXISTING_PR"
-            echo "existing-pr=$EXISTING_PR" >> $GITHUB_OUTPUT
-            
-            # Try to close the old PR if it's from a bot
-            PR_AUTHOR=$(gh pr view $EXISTING_PR --json author --jq '.author.login')
-            if [[ "$PR_AUTHOR" == *"bot"* ]]; then
-              echo "Closing old bot PR #$EXISTING_PR"
-              gh pr close $EXISTING_PR --comment "Closing in favor of new release process" || true
-            fi
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Create a unique branch name to avoid conflicts with existing PRs
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BRANCH_NAME="release-${TIMESTAMP}-${{ github.run_id }}"
+          echo "branch-name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "Using branch: $BRANCH_NAME"
 
       - name: 📝 Update Documentation
         continue-on-error: true
@@ -129,6 +119,9 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: .github/config/release-please-config.json
           manifest-file: .github/config/.release-please-manifest.json
+          target-branch: main
+          default-branch: main
+          signoff: false
           
       - name: 🔄 Analyze Failure
         if: steps.release.outcome == 'failure'
@@ -164,6 +157,9 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: .github/config/release-please-config.json
           manifest-file: .github/config/.release-please-manifest.json
+          target-branch: main
+          default-branch: main
+          signoff: false
 
       - name: 🎯 Auto-Merge Release PR
         if: (steps.release.outputs.pr != '' || steps.release-retry.outputs.pr != '') && inputs.auto-merge-enabled == true
