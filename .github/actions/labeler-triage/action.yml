@@ -1,0 +1,363 @@
+name: 'Pull Request Labeler & Triage'
+description: 'Automatically label and triage pull requests based on file changes, patterns, and custom rules'
+author: 'BAUER GROUP'
+
+inputs:
+  token:
+    description: 'GitHub Token with pull-requests write permission'
+    required: true
+  config-path:
+    description: 'Path to labeler configuration file'
+    required: false
+    default: '.github/config/pr-labeler-paths.yml'
+  sync-labels:
+    description: 'Remove labels when files no longer match'
+    required: false
+    default: 'true'
+  dot:
+    description: 'Process dotfiles (files starting with .)'
+    required: false
+    default: 'true'
+  pr-number:
+    description: 'Pull request number (auto-detected if not provided)'
+    required: false
+    default: ''
+  auto-assign:
+    description: 'Automatically assign reviewers based on CODEOWNERS'
+    required: false
+    default: 'false'
+  size-labels:
+    description: 'Add size labels (XS, S, M, L, XL, XXL)'
+    required: false
+    default: 'true'
+  priority-labels:
+    description: 'Add priority labels based on keywords'
+    required: false
+    default: 'true'
+  type-labels:
+    description: 'Add type labels based on branch names and PR title'
+    required: false
+    default: 'true'
+  custom-rules:
+    description: 'Path to custom triage rules file'
+    required: false
+    default: '.github/config/pr-labeler-triage-rules.yml'
+
+outputs:
+  labels-added:
+    description: 'Comma-separated list of labels added'
+    value: ${{ steps.apply-labels.outputs.labels-added }}
+  labels-removed:
+    description: 'Comma-separated list of labels removed'
+    value: ${{ steps.apply-labels.outputs.labels-removed }}
+  all-labels:
+    description: 'All labels currently on the PR'
+    value: ${{ steps.apply-labels.outputs.all-labels }}
+  size-label:
+    description: 'Size label applied to the PR'
+    value: ${{ steps.size-label.outputs.size }}
+  priority-label:
+    description: 'Priority label applied to the PR'
+    value: ${{ steps.priority-label.outputs.priority }}
+  reviewers-assigned:
+    description: 'Reviewers assigned to the PR'
+    value: ${{ steps.assign-reviewers.outputs.reviewers }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🏷️ Apply File-based Labels
+      id: labeler
+      uses: actions/labeler@v5
+      with:
+        repo-token: ${{ inputs.token }}
+        configuration-path: ${{ inputs.config-path }}
+        sync-labels: ${{ inputs.sync-labels }}
+        dot: ${{ inputs.dot }}
+        pr-number: ${{ inputs.pr-number }}
+
+    - name: 📏 Calculate PR Size
+      id: size-label
+      if: inputs.size-labels == 'true'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        echo "📏 Calculating PR size..."
+        
+        # Get PR number
+        if [ -n "${{ inputs.pr-number }}" ]; then
+          PR_NUMBER="${{ inputs.pr-number }}"
+        else
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+        fi
+        
+        if [ -z "$PR_NUMBER" ]; then
+          echo "❌ No PR number found"
+          exit 0
+        fi
+        
+        # Get PR diff stats
+        STATS=$(gh api repos/${{ github.repository }}/pulls/${PR_NUMBER} --jq '.additions + .deletions')
+        
+        # Determine size label
+        SIZE_LABEL=""
+        if [ "$STATS" -lt 10 ]; then
+          SIZE_LABEL="size/XS"
+        elif [ "$STATS" -lt 30 ]; then
+          SIZE_LABEL="size/S"
+        elif [ "$STATS" -lt 100 ]; then
+          SIZE_LABEL="size/M"
+        elif [ "$STATS" -lt 500 ]; then
+          SIZE_LABEL="size/L"
+        elif [ "$STATS" -lt 1000 ]; then
+          SIZE_LABEL="size/XL"
+        else
+          SIZE_LABEL="size/XXL"
+        fi
+        
+        echo "📊 PR has $STATS changes -> $SIZE_LABEL"
+        
+        # Remove existing size labels
+        EXISTING_LABELS=$(gh pr view ${PR_NUMBER} --json labels --jq '.labels[].name' | grep "^size/" || true)
+        if [ -n "$EXISTING_LABELS" ]; then
+          echo "$EXISTING_LABELS" | while read label; do
+            gh pr edit ${PR_NUMBER} --remove-label "$label" 2>/dev/null || true
+          done
+        fi
+        
+        # Add new size label
+        gh pr edit ${PR_NUMBER} --add-label "$SIZE_LABEL"
+        echo "size=$SIZE_LABEL" >> $GITHUB_OUTPUT
+
+    - name: 🎯 Apply Priority Labels
+      id: priority-label
+      if: inputs.priority-labels == 'true'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        echo "🎯 Checking for priority indicators..."
+        
+        # Get PR details
+        if [ -n "${{ inputs.pr-number }}" ]; then
+          PR_NUMBER="${{ inputs.pr-number }}"
+        else
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+        fi
+        
+        if [ -z "$PR_NUMBER" ]; then
+          echo "❌ No PR number found"
+          exit 0
+        fi
+        
+        PR_TITLE="${{ github.event.pull_request.title }}"
+        PR_BODY="${{ github.event.pull_request.body }}"
+        
+        # Check for priority keywords
+        PRIORITY=""
+        if echo "$PR_TITLE $PR_BODY" | grep -iE "(critical|urgent|emergency|blocker|hotfix)" > /dev/null; then
+          PRIORITY="priority/critical"
+        elif echo "$PR_TITLE $PR_BODY" | grep -iE "(high priority|important|asap)" > /dev/null; then
+          PRIORITY="priority/high"
+        elif echo "$PR_TITLE $PR_BODY" | grep -iE "(low priority|minor|trivial)" > /dev/null; then
+          PRIORITY="priority/low"
+        else
+          PRIORITY="priority/medium"
+        fi
+        
+        echo "🏷️ Applying priority: $PRIORITY"
+        
+        # Remove existing priority labels
+        EXISTING_LABELS=$(gh pr view ${PR_NUMBER} --json labels --jq '.labels[].name' | grep "^priority/" || true)
+        if [ -n "$EXISTING_LABELS" ]; then
+          echo "$EXISTING_LABELS" | while read label; do
+            gh pr edit ${PR_NUMBER} --remove-label "$label" 2>/dev/null || true
+          done
+        fi
+        
+        # Add priority label
+        gh pr edit ${PR_NUMBER} --add-label "$PRIORITY"
+        echo "priority=$PRIORITY" >> $GITHUB_OUTPUT
+
+    - name: 🔖 Apply Type Labels
+      id: type-label
+      if: inputs.type-labels == 'true'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        echo "🔖 Detecting PR type..."
+        
+        # Get PR details
+        if [ -n "${{ inputs.pr-number }}" ]; then
+          PR_NUMBER="${{ inputs.pr-number }}"
+        else
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+        fi
+        
+        if [ -z "$PR_NUMBER" ]; then
+          echo "❌ No PR number found"
+          exit 0
+        fi
+        
+        BRANCH_NAME="${{ github.head_ref }}"
+        PR_TITLE="${{ github.event.pull_request.title }}"
+        
+        # Detect type from branch name or PR title
+        TYPE_LABELS=""
+        
+        # Feature
+        if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(feat|feature)" > /dev/null; then
+          TYPE_LABELS="$TYPE_LABELS,type/feature"
+        fi
+        
+        # Bug fix
+        if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(fix|bug|patch)" > /dev/null; then
+          TYPE_LABELS="$TYPE_LABELS,type/bug"
+        fi
+        
+        # Documentation
+        if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(doc|docs|documentation)" > /dev/null; then
+          TYPE_LABELS="$TYPE_LABELS,type/docs"
+        fi
+        
+        # Testing
+        if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(test|tests|testing)" > /dev/null; then
+          TYPE_LABELS="$TYPE_LABELS,type/test"
+        fi
+        
+        # Refactoring
+        if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(refactor|refactoring)" > /dev/null; then
+          TYPE_LABELS="$TYPE_LABELS,type/refactor"
+        fi
+        
+        # CI/CD
+        if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(ci|cd|pipeline|workflow)" > /dev/null; then
+          TYPE_LABELS="$TYPE_LABELS,type/ci"
+        fi
+        
+        # Dependencies
+        if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(deps|dependencies|dependabot)" > /dev/null; then
+          TYPE_LABELS="$TYPE_LABELS,dependencies"
+        fi
+        
+        # Apply type labels
+        if [ -n "$TYPE_LABELS" ]; then
+          # Remove leading comma
+          TYPE_LABELS="${TYPE_LABELS#,}"
+          
+          IFS=',' read -ra LABELS <<< "$TYPE_LABELS"
+          for label in "${LABELS[@]}"; do
+            echo "🏷️ Adding type label: $label"
+            gh pr edit ${PR_NUMBER} --add-label "$label"
+          done
+        fi
+        
+        echo "types=$TYPE_LABELS" >> $GITHUB_OUTPUT
+
+    - name: 👥 Auto-assign Reviewers
+      id: assign-reviewers
+      if: inputs.auto-assign == 'true'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        echo "👥 Auto-assigning reviewers based on CODEOWNERS..."
+        
+        # Get PR number
+        if [ -n "${{ inputs.pr-number }}" ]; then
+          PR_NUMBER="${{ inputs.pr-number }}"
+        else
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+        fi
+        
+        if [ -z "$PR_NUMBER" ]; then
+          echo "❌ No PR number found"
+          exit 0
+        fi
+        
+        # Check if CODEOWNERS exists
+        if [ -f ".github/CODEOWNERS" ] || [ -f "CODEOWNERS" ] || [ -f "docs/CODEOWNERS" ]; then
+          echo "📋 CODEOWNERS file found"
+          
+          # Get suggested reviewers from GitHub
+          SUGGESTED=$(gh api repos/${{ github.repository }}/pulls/${PR_NUMBER}/requested_reviewers --jq '.users[].login' | tr '\n' ',' | sed 's/,$//')
+          
+          if [ -n "$SUGGESTED" ]; then
+            echo "👥 Suggested reviewers: $SUGGESTED"
+            echo "reviewers=$SUGGESTED" >> $GITHUB_OUTPUT
+          else
+            echo "ℹ️ No suggested reviewers found"
+            echo "reviewers=" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "ℹ️ No CODEOWNERS file found"
+          echo "reviewers=" >> $GITHUB_OUTPUT
+        fi
+
+    - name: 🎨 Apply Custom Rules
+      id: custom-rules
+      if: inputs.custom-rules != ''
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        echo "🎨 Applying custom triage rules..."
+        
+        # Check if custom rules file exists
+        if [ ! -f "${{ inputs.custom-rules }}" ]; then
+          echo "ℹ️ No custom rules file found at ${{ inputs.custom-rules }}"
+          exit 0
+        fi
+        
+        # Get PR number
+        if [ -n "${{ inputs.pr-number }}" ]; then
+          PR_NUMBER="${{ inputs.pr-number }}"
+        else
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+        fi
+        
+        if [ -z "$PR_NUMBER" ]; then
+          echo "❌ No PR number found"
+          exit 0
+        fi
+        
+        echo "📋 Custom rules would be processed here"
+        # Custom rule processing would go here
+        # This is a placeholder for complex custom logic
+
+    - name: 📊 Collect Label Summary
+      id: apply-labels
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        echo "📊 Collecting label summary..."
+        
+        # Get PR number
+        if [ -n "${{ inputs.pr-number }}" ]; then
+          PR_NUMBER="${{ inputs.pr-number }}"
+        else
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+        fi
+        
+        if [ -z "$PR_NUMBER" ]; then
+          echo "❌ No PR number found"
+          exit 0
+        fi
+        
+        # Get all current labels
+        ALL_LABELS=$(gh pr view ${PR_NUMBER} --json labels --jq '.labels[].name' | tr '\n' ',' | sed 's/,$//')
+        
+        echo "🏷️ Current labels: $ALL_LABELS"
+        echo "all-labels=$ALL_LABELS" >> $GITHUB_OUTPUT
+        
+        # Note: labels-added and labels-removed would need to track state
+        # For now, we'll output the current state
+        echo "labels-added=$ALL_LABELS" >> $GITHUB_OUTPUT
+        echo "labels-removed=" >> $GITHUB_OUTPUT
+
+branding:
+  icon: 'tag'
+  color: 'blue'

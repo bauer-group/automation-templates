@@ -1,0 +1,146 @@
+# Configuration for labeler action
+# https://github.com/actions/labeler
+
+# Add 'documentation' label to any change in docs folder
+documentation:
+  - changed-files:
+    - any-glob-to-any-file:
+      - docs/**
+      - '**/*.md'
+      - '**/*.MD'
+      - README.MD
+      - CHANGELOG.MD
+
+# Add 'github-actions' label to any change in .github folder
+github-actions:
+  - changed-files:
+    - any-glob-to-any-file:
+      - .github/**
+      - .github/workflows/**
+      - .github/actions/**
+
+# Add 'security' label to security-related files
+security:
+  - changed-files:
+    - any-glob-to-any-file:
+      - .github/actions/security-scan/**
+      - .github/actions/gitleaks-scan/**
+      - .github/actions/gitguardian-scan/**
+      - .gitleaks.toml
+      - .gitguardian.yml
+      - SECURITY.md
+
+# Add 'dependencies' label when dependencies are updated
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file:
+      - package.json
+      - package-lock.json
+      - yarn.lock
+      - requirements.txt
+      - pyproject.toml
+      - go.mod
+      - go.sum
+      - Cargo.toml
+      - Cargo.lock
+      - pom.xml
+      - build.gradle
+      - Gemfile
+      - Gemfile.lock
+
+# Add 'docker' label to Docker-related changes
+docker:
+  - changed-files:
+    - any-glob-to-any-file:
+      - Dockerfile
+      - docker-compose.yml
+      - docker-compose.yaml
+      - .dockerignore
+      - docker/**
+
+# Add 'configuration' label to config file changes
+configuration:
+  - changed-files:
+    - any-glob-to-any-file:
+      - .github/config/**
+      - '**/*.config.js'
+      - '**/*.config.json'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - .env.example
+      - .editorconfig
+
+# Add 'scripts' label to script changes
+scripts:
+  - changed-files:
+    - any-glob-to-any-file:
+      - scripts/**
+      - '**/*.sh'
+      - '**/*.ps1'
+      - '**/*.py'
+
+# Add 'tests' label to test file changes
+tests:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.test.js'
+      - '**/*.spec.js'
+      - '**/*.test.ts'
+      - '**/*.spec.ts'
+      - '**/test/**'
+      - '**/tests/**'
+      - '**/__tests__/**'
+      - '**/test_*.py'
+      - '**/*_test.go'
+
+# Add 'release' label to release-related changes
+release:
+  - changed-files:
+    - any-glob-to-any-file:
+      - .github/workflows/*release*.yml
+      - .github/config/.releaserc.json
+      - CHANGELOG.MD
+      - VERSION
+
+# Add 'license' label to license-related changes
+license:
+  - changed-files:
+    - any-glob-to-any-file:
+      - LICENSE
+      - LICENSE.md
+      - COPYING
+      - .github/actions/license-compliance/**
+
+# Add 'ci' label to CI/CD changes
+ci:
+  - changed-files:
+    - any-glob-to-any-file:
+      - .github/workflows/**
+      - .gitlab-ci.yml
+      - .travis.yml
+      - azure-pipelines.yml
+      - Jenkinsfile
+      - .circleci/**
+
+# Add 'frontend' label to frontend code
+frontend:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/**/*.jsx'
+      - 'src/**/*.tsx'
+      - 'src/**/*.css'
+      - 'src/**/*.scss'
+      - 'src/**/*.vue'
+      - 'public/**'
+      - 'assets/**'
+
+# Add 'backend' label to backend code
+backend:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'api/**'
+      - 'server/**'
+      - 'backend/**'
+      - 'src/**/*.controller.*'
+      - 'src/**/*.service.*'
+      - 'src/**/*.repository.*'

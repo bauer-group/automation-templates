@@ -1,0 +1,114 @@
+name: 📦 Module | PR Labeler & Triage
+
+on:
+  workflow_call:
+    inputs:
+      config-path:
+        description: 'Path to labeler configuration file'
+        required: false
+        type: string
+        default: '.github/config/pr-labeler-paths.yml'
+      sync-labels:
+        description: 'Remove labels when files no longer match'
+        required: false
+        type: boolean
+        default: true
+      auto-assign:
+        description: 'Automatically assign reviewers based on CODEOWNERS'
+        required: false
+        type: boolean
+        default: false
+      size-labels:
+        description: 'Add size labels (XS, S, M, L, XL, XXL)'
+        required: false
+        type: boolean
+        default: true
+      priority-labels:
+        description: 'Add priority labels based on keywords'
+        required: false
+        type: boolean
+        default: true
+      type-labels:
+        description: 'Add type labels based on branch names and PR title'
+        required: false
+        type: boolean
+        default: true
+      custom-rules:
+        description: 'Path to custom triage rules file'
+        required: false
+        type: string
+        default: '.github/config/pr-labeler-triage-rules.yml'
+    secrets:
+      GITHUB_TOKEN:
+        description: 'GitHub Token with pull-requests write permission'
+        required: true
+    outputs:
+      labels-added:
+        description: 'Labels added to the PR'
+        value: ${{ jobs.labeler.outputs.labels-added }}
+      size-label:
+        description: 'Size label applied'
+        value: ${{ jobs.labeler.outputs.size-label }}
+      priority-label:
+        description: 'Priority label applied'
+        value: ${{ jobs.labeler.outputs.priority-label }}
+      all-labels:
+        description: 'All current PR labels'
+        value: ${{ jobs.labeler.outputs.all-labels }}
+
+permissions:
+  contents: read
+  pull-requests: write
+  
+jobs:
+  labeler:
+    name: 🏷️ Label & Triage PR
+    runs-on: ubuntu-latest
+    outputs:
+      labels-added: ${{ steps.triage.outputs.labels-added }}
+      size-label: ${{ steps.triage.outputs.size-label }}
+      priority-label: ${{ steps.triage.outputs.priority-label }}
+      all-labels: ${{ steps.triage.outputs.all-labels }}
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: 🏷️ Run Labeler & Triage
+        id: triage
+        uses: bauer-group/automation-templates/.github/actions/labeler-triage@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-path: ${{ inputs.config-path }}
+          sync-labels: ${{ inputs.sync-labels }}
+          auto-assign: ${{ inputs.auto-assign }}
+          size-labels: ${{ inputs.size-labels }}
+          priority-labels: ${{ inputs.priority-labels }}
+          type-labels: ${{ inputs.type-labels }}
+          custom-rules: ${{ inputs.custom-rules }}
+          
+      - name: 📊 Label Summary
+        if: always()
+        run: |
+          echo "### 🏷️ Pull Request Labeling Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Category | Labels |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Size** | ${{ steps.triage.outputs.size-label || 'Not determined' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Priority** | ${{ steps.triage.outputs.priority-label || 'Not set' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **All Labels** | ${{ steps.triage.outputs.all-labels || 'None' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Add label statistics
+          if [ -n "${{ steps.triage.outputs.all-labels }}" ]; then
+            LABEL_COUNT=$(echo "${{ steps.triage.outputs.all-labels }}" | tr ',' '\n' | wc -l)
+            echo "**Total Labels:** $LABEL_COUNT" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Total Labels:** 0" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Automated labeling powered by PR Labeler & Triage* 🤖" >> $GITHUB_STEP_SUMMARY

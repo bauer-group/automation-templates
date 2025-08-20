@@ -1,0 +1,159 @@
+# Custom Triage Rules Configuration
+# Advanced rules for PR labeling and triage
+
+# Automatic assignment rules
+auto_assign:
+  # Assign based on file ownership
+  file_owners:
+    - paths: ['docs/**', '*.md']
+      assignees: ['docs-team']
+    - paths: ['.github/**']
+      assignees: ['devops-team']
+    - paths: ['src/api/**']
+      assignees: ['backend-team']
+    - paths: ['src/frontend/**']
+      assignees: ['frontend-team']
+  
+  # Assign based on labels
+  label_owners:
+    - labels: ['security']
+      assignees: ['security-team']
+    - labels: ['performance']
+      assignees: ['performance-team']
+    - labels: ['database']
+      assignees: ['database-team']
+
+# Advanced labeling rules
+advanced_labels:
+  # Add labels based on PR description templates
+  description_patterns:
+    - pattern: '\[x\] Breaking change'
+      labels: ['breaking-change', 'major']
+    - pattern: '\[x\] New feature'
+      labels: ['enhancement', 'minor']
+    - pattern: '\[x\] Bug fix'
+      labels: ['bug', 'patch']
+    - pattern: '\[x\] Documentation'
+      labels: ['documentation']
+    - pattern: '\[x\] Performance'
+      labels: ['performance']
+    - pattern: '\[x\] Security'
+      labels: ['security']
+  
+  # Add labels based on commit messages
+  commit_patterns:
+    - pattern: '^feat(\(.*\))?:'
+      labels: ['feature']
+    - pattern: '^fix(\(.*\))?:'
+      labels: ['bug']
+    - pattern: '^docs(\(.*\))?:'
+      labels: ['documentation']
+    - pattern: '^style(\(.*\))?:'
+      labels: ['style']
+    - pattern: '^refactor(\(.*\))?:'
+      labels: ['refactor']
+    - pattern: '^test(\(.*\))?:'
+      labels: ['test']
+    - pattern: '^chore(\(.*\))?:'
+      labels: ['chore']
+    - pattern: '^perf(\(.*\))?:'
+      labels: ['performance']
+    - pattern: 'BREAKING CHANGE:'
+      labels: ['breaking-change']
+
+# Priority rules based on multiple factors
+priority_rules:
+  critical:
+    conditions:
+      - has_any_labels: ['security', 'hotfix', 'production-bug']
+      - title_contains: ['URGENT', 'CRITICAL', 'EMERGENCY']
+      - affects_files: ['src/auth/**', 'src/payment/**']
+    actions:
+      - add_labels: ['priority/critical', 'needs-immediate-review']
+      - request_reviewers: ['senior-team', 'security-team']
+  
+  high:
+    conditions:
+      - has_any_labels: ['bug', 'regression']
+      - changes_exceed: 500
+    actions:
+      - add_labels: ['priority/high', 'needs-review']
+  
+  low:
+    conditions:
+      - has_all_labels: ['documentation', 'typo']
+      - changes_less_than: 10
+    actions:
+      - add_labels: ['priority/low']
+
+# Workflow automation rules
+automation:
+  # Auto-approve certain PRs
+  auto_approve:
+    - author_is_bot: true
+      has_all_labels: ['dependencies', 'minor']
+      changes_less_than: 50
+    - author_in: ['trusted-contributor']
+      has_all_labels: ['documentation']
+      no_labels: ['breaking-change']
+  
+  # Auto-merge rules
+  auto_merge:
+    - has_all_labels: ['ready-to-merge', 'approved']
+      has_no_labels: ['do-not-merge', 'work-in-progress']
+      all_checks_passed: true
+      approvals_minimum: 2
+  
+  # Skip CI for certain changes
+  skip_ci:
+    - only_changes_in: ['docs/**', '*.md']
+      no_changes_in: ['docs/api/**']
+    - has_all_labels: ['skip-ci', 'documentation']
+
+# Review requirements based on changes
+review_requirements:
+  - paths: ['src/security/**', 'src/auth/**']
+    required_reviewers: 2
+    required_teams: ['security-team']
+  - paths: ['database/**', 'migrations/**']
+    required_reviewers: 1
+    required_teams: ['database-team']
+  - paths: ['.github/workflows/**']
+    required_reviewers: 1
+    required_teams: ['devops-team']
+
+# Stale PR management
+stale_management:
+  mark_stale_after_days: 14
+  close_stale_after_days: 30
+  stale_label: 'stale'
+  exempt_labels: ['pinned', 'security', 'in-progress']
+  stale_message: |
+    This PR has been automatically marked as stale because it has not had
+    recent activity. It will be closed if no further activity occurs.
+    Remove the stale label or comment to keep it open.
+
+# Milestone assignment rules
+milestone_rules:
+  - has_any_labels: ['priority/critical', 'security']
+    assign_to: 'current-sprint'
+  - has_any_labels: ['feature', 'enhancement']
+    assign_to: 'next-release'
+  - has_any_labels: ['technical-debt', 'refactor']
+    assign_to: 'future'
+
+# Notification rules
+notifications:
+  slack:
+    - trigger: 'pr_opened'
+      has_any_labels: ['priority/critical', 'security']
+      channel: '#urgent-prs'
+    - trigger: 'pr_merged'
+      has_any_labels: ['breaking-change']
+      channel: '#releases'
+  
+  email:
+    - trigger: 'review_requested'
+      to: '{{requested_reviewer}}@company.com'
+    - trigger: 'pr_approved'
+      to: '{{pr_author}}@company.com'

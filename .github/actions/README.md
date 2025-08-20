@@ -21,6 +21,7 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 | [`gitguardian-scan`](./gitguardian-scan/) | ML-based policy enforcement | GitGuardian | ⚡⚡ | GitGuardian-spezifisch |
 | [`gitleaks-scan`](./gitleaks-scan/) | Fast secrets detection | Gitleaks | ⚡⚡⚡ | Gitleaks-spezifisch |
 | [`license-compliance`](./license-compliance/) | SPDX license validation | FOSSA + SPDX | ⚡⚡⚡ | [modules-license-compliance.yml](../workflows/modules-license-compliance.yml) |
+| [`labeler-triage`](./labeler-triage/) | PR labeling & triage | GitHub API | ⚡⚡⚡ | [modules-pr-labeler.yml](../workflows/modules-pr-labeler.yml) |
 
 ### 🚀 Release Management
 
