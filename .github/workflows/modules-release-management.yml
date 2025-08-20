@@ -95,10 +95,12 @@ jobs:
 
       - name: 🚀 Enhanced Release Please
         id: release
-        uses: google-github-actions/release-please-action@v4
+        uses: googleapis/release-please-action@v4
         with:
           release-type: ${{ inputs.release-type }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: .github/config/release-please-config.json
+          manifest-file: .github/config/.release-please-manifest.json
 
       - name: 🎯 Auto-Merge Release PR
         if: steps.release.outputs.pr != '' && inputs.auto-merge-enabled == true
