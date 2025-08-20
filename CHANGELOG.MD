@@ -1,3 +1,14 @@
+## [0.11.0](https://github.com/bauer-group/automation-templates/compare/v0.10.0...v0.11.0) (2025-08-20)
+
+### 🚀 Features
+
+* aktualisiere Workflow-Trigger für Tags und verbessere Versionserkennung ([8851617](https://github.com/bauer-group/automation-templates/commit/88516178f16727bf7bfb64bd4e083ebfdb8e45b4))
+* füge Automatisierung für Issues und PRs hinzu, einschließlich Konfiguration und Beispiel-Workflow ([367a66d](https://github.com/bauer-group/automation-templates/commit/367a66df19cbd3052aab3701dfd2a67256da4083))
+
+### 🐛 Bug Fixes
+
+* entferne doppelte Pfadangabe für .github im Workflow-Trigger ([c736da7](https://github.com/bauer-group/automation-templates/commit/c736da7bff84bbf9fcb2abd1b9bdf4e34e12c717))
+
 ## [0.10.0](https://github.com/bauer-group/automation-templates/compare/v0.9.0...v0.10.0) (2025-08-20)
 
 ### 🚀 Features
