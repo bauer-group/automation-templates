@@ -65,7 +65,7 @@ secrets:
 - `version`: Release-Version
 - `tag-name`: Git-Tag des Releases
 
-### 🔨 [Artifact Generation](./artifact-generation.yml)
+### 🔨 [Artifact Generation](./modules-artifact-generation.yml)
 **Zweck:** Erstellung und Upload von Release-Artefakten
 
 ```yaml
@@ -85,7 +85,7 @@ secrets:
 - `binaries-created`: Ob Binärdateien erstellt wurden
 - `docker-image-pushed`: Ob Docker-Image gepusht wurde
 
-### 🔍 [PR Validation](./pr-validation.yml)
+### 🔍 [PR Validation](./modules-pr-validation.yml)
 **Zweck:** Umfassende Pull Request Validierung
 
 ```yaml

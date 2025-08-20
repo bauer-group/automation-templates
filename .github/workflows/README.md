@@ -4,59 +4,42 @@ Diese Workflows sind speziell für das `automation-templates` Repository entwick
 
 ## 📁 Workflow-Dateien
 
-### 🔄 [ci-cd.yml](./ci-cd.yml) - Haupt CI/CD Pipeline
-**Zweck:** Hauptpipeline für Pull Requests und Main Branch  
-**Zeilen:** 147 (vs. 870 im ursprünglichen automatic-release.yml)  
-**Module verwendet:** pr-validation, security-scan, license-compliance, release-management, artifact-generation
+### 🔄 [automatic-release.yml](./automatic-release.yml) - Automatische Releases
+**Zweck:** Automatische Release-Erstellung bei Push auf Main Branch  
+**Module verwendet:** semantic-release
 
 **Features:**
-- PR-Validierung mit Quality Gates
-- Umfassende Security-Analysen für Main Branch
-- Automatische Release-Erstellung
-- Modulare Artefakt-Generierung
+- Automatische Versionierung basierend auf Conventional Commits
+- CHANGELOG.MD Generierung
+- GitHub Release Erstellung
+- Semantic Versioning
 
 ### 📄 [documentation.yml](./documentation.yml) - Dokumentations-Management
 **Zweck:** README-Generierung und Dokumentationsvalidierung  
-**Zeilen:** 141 (vs. 309 im ursprünglichen readme.yml)  
 **Module verwendet:** readme-generate action (direkt)
 
 **Features:**
 - Template-basierte README-Generierung
-- Dokumentations-Struktur-Validierung
-- Link-Checking für interne Verweise
 - Automatische Updates bei Template-Änderungen
+- Git-basierte Änderungserkennung
 
 ### 📦 [manual-release.yml](./manual-release.yml) - Manuelle Release-Erstellung
 **Zweck:** Kontrollierte, manuelle Release-Erstellung  
-**Zeilen:** 346 (vs. 313 im ursprünglichen manual-release.yml)  
-**Module verwendet:** security-scan, license-compliance, artifact-generation
+**Module verwendet:** security-scan, license-compliance, artifact-generation, generate-changelog
 
 **Features:**
 - Flexible Versionierung (major, minor, patch, custom)
 - Optionale Security- und Compliance-Checks
 - Konfigurierbare Artefakt-Generierung
-- Detaillierte Release-Dokumentation
+- Changelog-Generierung mit generate-changelog Action
 
 ## 🧩 Modulare Architektur
 
-### Vorher (Legacy-Workflows)
-- `automatic-release.yml`: **870 Zeilen** - Monolithisch
-- `manual-release.yml`: **313 Zeilen** - Eigenständig
-- `readme.yml`: **309 Zeilen** - Isoliert
+Die Workflows nutzen modulare Komponenten für bessere Wiederverwendbarkeit:
 
-**Gesamt:** 1.492 Zeilen in 3 separaten, nicht wiederverwendbaren Workflows
-
-### Nachher (Modulare Workflows)
-- `ci-cd.yml`: **147 Zeilen** - Komponiert aus 5 Modulen
-- `documentation.yml`: **141 Zeilen** - Nutzt wiederverwendbare Komponenten
-- `manual-release.yml`: **346 Zeilen** - Komponiert aus 3 Modulen
-
-**Gesamt:** 634 Zeilen in 3 komponierten Workflows + 5 wiederverwendbare Module
-
-### 💡 Verbesserungen
+### 💡 Vorteile
 
 **Reduzierte Komplexität:**
-- ✅ **57% weniger Code** in Repository-Workflows (634 vs. 1.492 Zeilen)
 - ✅ **Wiederverwendbare Module** für externe Repositories
 - ✅ **Bessere Wartbarkeit** durch Modularisierung
 - ✅ **Parallel ausführbar** für bessere Performance
@@ -72,7 +55,7 @@ Diese Workflows sind speziell für das `automation-templates` Repository entwick
 Diese Repository-Workflows demonstrieren die optimale Nutzung der modularen Komponenten:
 
 ```yaml
-# Beispiel: CI/CD Pipeline mit modularen Komponenten
+# Beispiel: Modulare Komponenten-Nutzung
 jobs:
   security-scan:
     uses: ./.github/workflows/modules-security-scan.yml
@@ -81,22 +64,22 @@ jobs:
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  release-management:
+  semantic-release:
     needs: security-scan
-    uses: ./.github/workflows/modules-release-management.yml
+    uses: ./.github/workflows/modules-semantic-release.yml
     with:
-      release-type: 'simple'
+      dry-run: false
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## 📊 Workflow-Matrix
 
-| Workflow | Trigger | Module-Anzahl | Primärer Zweck |
-|----------|---------|---------------|----------------|
-| **ci-cd.yml** | Push (main), PR | 5 Module | Kontinuierliche Integration |
-| **documentation.yml** | Docs-Änderungen | 1 Workflow | Dokumentations-Management |
-| **manual-release.yml** | Workflow Dispatch | 3 Module | Kontrollierte Releases |
+| Workflow | Trigger | Module/Actions | Primärer Zweck |
+|----------|---------|----------------|----------------|
+| **automatic-release.yml** | Push (main) | semantic-release | Automatische Releases |
+| **documentation.yml** | Docs-Änderungen | readme-generate | Dokumentations-Management |
+| **manual-release.yml** | Workflow Dispatch | 4 Module | Kontrollierte Releases |
 
 ## 🚀 Verwendung für externe Repositories
 
@@ -118,8 +101,7 @@ uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.y
 
 ## 📚 Weitere Dokumentation
 
-- **[Modulare Komponenten](./modules/README.md)** - Detaillierte Modul-Dokumentation
-- **[Workflow-Beispiele](./examples/README.MD)** - Verwendungsbeispiele für externe Repositories
+- **[Modulare Komponenten](./MODULES-README.MD)** - Detaillierte Modul-Dokumentation
 - **[GitHub Actions](../actions/README.MD)** - Verfügbare Action-Komponenten
 
 ---

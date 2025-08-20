@@ -82,12 +82,11 @@ jobs:
 
 **Release Management:**
 ```yaml
-- name: 📦 Enhanced Release
-  uses: bauer-group/automation-templates/.github/actions/release-please@main
+- name: 📦 Semantic Release
+  uses: bauer-group/automation-templates/.github/actions/semantic-release@main
   with:
-    release-type: simple
-    security-scan-enabled: true
-    auto-merge-enabled: true
+    dry-run: false
+    branches: main
     token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
@@ -213,7 +212,7 @@ jobs:
 | Action | Average Runtime | Resource Usage | Success Rate |
 |--------|----------------|----------------|--------------|
 | security-scan | ~45s | Low | 99.8% |
-| release-please | ~2m | Medium | 99.9% |
+| semantic-release | ~1m | Low | 99.9% |
 | auto-merge | ~15s | Low | 99.7% |
 | license-compliance | ~30s | Low | 99.5% |
 
@@ -239,7 +238,8 @@ act -j test-security-scan --secret-file .env
 
 ### Individual Actions
 - [Security Scanning Action](./security-scan/README.md)
-- [Release Management Action](./release-please/README.md)
+- [Semantic Release Action](./semantic-release/README.md)
+- [Changelog Generator Action](./generate-changelog/README.md)
 - [Auto-Merge Action](./auto-merge/README.md)
 - [License Compliance Action](./license-compliance/README.md)
 - [Artifact Generator Action](./artifact-generator/README.md)

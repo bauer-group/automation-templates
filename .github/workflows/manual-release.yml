@@ -201,48 +201,11 @@ jobs:
 
       - name: 📝 Generate Changelog
         id: changelog
-        run: |
-          TARGET_VERSION="${{ needs.validate-inputs.outputs.calculated-version }}"
-          CURRENT_VERSION="${{ needs.validate-inputs.outputs.current-version }}"
-          
-          # Get commits since last release
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
-          
-          CHANGELOG_CONTENT=$(cat <<EOF
-          ## 🚀 Release v${TARGET_VERSION}
-          
-          **Release Type:** ${{ inputs.release-type }}
-          **Created:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          **Previous Version:** v${CURRENT_VERSION}
-          
-          ### 📋 Changes since v${CURRENT_VERSION}
-          
-          $(git log ${LAST_TAG}..HEAD --pretty=format:"- %s" --reverse | head -20)
-          
-          ### 🛡️ Security & Compliance
-          
-          - Security Scan: ${{ inputs.skip-security-scan == true && 'Skipped' || 'Completed' }}
-          - License Compliance: ${{ inputs.skip-license-check == true && 'Skipped' || 'Completed' }}
-          
-          ### 🔗 Links
-          
-          **Full Changelog**: https://github.com/${{ github.repository }}/compare/v${CURRENT_VERSION}...v${TARGET_VERSION}
-          
-          ---
-          
-          *This release was created manually using modular workflow components.*
-          EOF
-          )
-          
-          # Save changelog content
-          echo "$CHANGELOG_CONTENT" > CHANGELOG_TEMP.md
-          
-          # Output for next steps (escape newlines)
-          {
-            echo 'changelog-content<<EOF'
-            echo "$CHANGELOG_CONTENT"
-            echo 'EOF'
-          } >> $GITHUB_OUTPUT
+        uses: ./.github/actions/generate-changelog
+        with:
+          from-tag: v${{ needs.validate-inputs.outputs.current-version }}
+          to-tag: HEAD
+          output-file: CHANGELOG_TEMP.md
 
       - name: 💾 Commit Version Changes
         run: |
@@ -272,9 +235,23 @@ jobs:
         run: |
           TARGET_VERSION="${{ needs.validate-inputs.outputs.calculated-version }}"
           
+          # Add release metadata to changelog
+          {
+            cat CHANGELOG_TEMP.md
+            echo ""
+            echo "### 🛡️ Security & Compliance"
+            echo ""
+            echo "- Security Scan: ${{ inputs.skip-security-scan == true && 'Skipped' || 'Completed' }}"
+            echo "- License Compliance: ${{ inputs.skip-license-check == true && 'Skipped' || 'Completed' }}"
+            echo ""
+            echo "---"
+            echo ""
+            echo "*This release was created manually using modular workflow components.*"
+          } > RELEASE_NOTES.MD
+          
           gh release create "v${TARGET_VERSION}" \
             --title "🚀 Release v${TARGET_VERSION}" \
-            --notes-file CHANGELOG_TEMP.md \
+            --notes-file RELEASE_NOTES.MD \
             --latest
           
           # Get release URL

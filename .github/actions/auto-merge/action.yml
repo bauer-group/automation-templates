@@ -34,7 +34,7 @@ inputs:
   allowed-authors:
     description: 'Comma-separated list of allowed PR authors for auto-merge'
     required: false
-    default: 'dependabot[bot],renovate[bot],github-actions[bot],release-please[bot]'
+    default: 'dependabot[bot],renovate[bot],github-actions[bot]'
   forbidden-labels:
     description: 'Comma-separated list of labels that prevent auto-merge'
     required: false
