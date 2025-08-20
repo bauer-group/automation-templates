@@ -38,10 +38,10 @@
   "prerelease": false,
   "draft": false,
   
-  "release-search-depth": 100,
-  "commit-search-depth": 500,
+  "release-search-depth": 20,
+  "commit-search-depth": 50,
   
-  "sequential-calls": true,
+  "sequential-calls": false,
   "group-pull-request-title-pattern": "chore${scope}: release${component} ${version}",
   
   "always-link-local": false,
