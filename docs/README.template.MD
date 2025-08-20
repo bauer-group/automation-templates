@@ -10,7 +10,7 @@ Professional automation templates and workflows for GitHub repositories, providi
 - **Repository:** [{{REPO_FULL_NAME}}]({{REPO_URL}})
 - **Branch:** {{CURRENT_BRANCH}}
 
-[![🔄 CI/CD Pipeline (Automatic Release)](https://github.com/bauer-group/automation-templates/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/ci-cd.yml)
+[![🔄 CI/CD Pipeline (Automatic Release)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
 [![📄 Documentation Management](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml)
 
 ## 🛡️ Security Scanning
