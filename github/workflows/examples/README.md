@@ -136,12 +136,12 @@ Die folgenden Beispiele zeigen, wie die **modularen Workflow-Komponenten** für 
 Anstatt monolithischer Workflows (wie der ursprüngliche 870-Zeilen automatic-release.yml) verwenden wir **komponierbare Module**:
 
 ```
-🧩 Modulare Komponenten (.github/workflows/modules/):
-├── 🛡️ security-scan.yml      → Sicherheitsanalyse
-├── 📋 license-compliance.yml → Lizenz-Compliance
-├── 🚀 release-management.yml → Release-Automatisierung
-├── 🔨 artifact-generation.yml → Artefakt-Erstellung
-└── 🔍 pr-validation.yml      → Pull Request-Validierung
+🧩 Modulare Komponenten (.github/workflows/):
+├── 🛡️ modules-security-scan.yml      → Sicherheitsanalyse
+├── 📋 modules-license-compliance.yml → Lizenz-Compliance
+├── 🚀 modules-release-management.yml → Release-Automatisierung
+├── 🔨 modules-artifact-generation.yml → Artefakt-Erstellung
+└── 🔍 modules-pr-validation.yml      → Pull Request-Validierung
 ```
 
 ### 🚀 Quick Start
@@ -150,7 +150,7 @@ Anstatt monolithischer Workflows (wie der ursprüngliche 870-Zeilen automatic-re
 ```yaml
 jobs:
   release:
-    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
     with:
       release-type: 'simple'
     secrets:
@@ -161,11 +161,11 @@ jobs:
 ```yaml
 jobs:
   security:
-    uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
   
   release:
     needs: security
-    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
 ```
 
 **3. PR-Validierung:**
@@ -173,7 +173,7 @@ jobs:
 jobs:
   pr-check:
     if: github.event_name == 'pull_request'
-    uses: bauer-group/automation-templates/.github/workflows/modules/pr-validation.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@main
     with:
       enable-security-scan: true
       enable-license-check: true
@@ -189,9 +189,9 @@ jobs:
 
 ### 🔗 Weiterführende Dokumentation
 
-- **[Modulare Komponenten](../../.github/workflows/modules/README.md)** - Detaillierte Dokumentation der einzelnen Module
-- **[Migration Guide](../../.github/workflows/modules/README.md#migration-von-monolithen)** - Von monolithischen zu modularen Workflows
-- **[Best Practices](../../.github/workflows/modules/README.md#best-practices)** - Empfehlungen für die Workflow-Komposition
+- **[Modulare Komponenten](..//modules-README.MD)** - Detaillierte Dokumentation der einzelnen Module
+- **[Migration Guide](../modules-README.MD#migration-von-monolithen)** - Von monolithischen zu modularen Workflows
+- **[Best Practices](../modules-README.MD#best-practices)** - Empfehlungen für die Workflow-Komposition
 - **[Actions Documentation](../../.github/actions/README.MD)** - Übersicht über verfügbare GitHub Actions
 - **[Repository Workflows](../../.github/workflows/README.md)** - Interne Workflow-Dokumentation
 

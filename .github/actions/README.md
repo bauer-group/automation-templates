@@ -16,19 +16,19 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 
 | Action | Purpose | Engine | Performance | Modularer Workflow |
 |--------|---------|---------|-------------|---------------------|
-| [`security-scan`](./security-scan/) | Comprehensive secrets detection | Gitleaks + GitGuardian | ⚡⚡⚡ | [security-scan.yml](../modules/security-scan.yml) |
+| [`security-scan`](./security-scan/) | Comprehensive secrets detection | Gitleaks + GitGuardian | ⚡⚡⚡ | [modules-security-scan.yml](../workflows/modules-security-scan.yml) |
 | [`security-scan-meta`](./security-scan-meta/) | Advanced multi-engine scanning | Gitleaks + GitGuardian | ⚡⚡⚡ | Erweiterte Sicherheitsanalyse |
 | [`gitguardian-scan`](./gitguardian-scan/) | ML-based policy enforcement | GitGuardian | ⚡⚡ | GitGuardian-spezifisch |
 | [`gitleaks-scan`](./gitleaks-scan/) | Fast secrets detection | Gitleaks | ⚡⚡⚡ | Gitleaks-spezifisch |
-| [`license-compliance`](./license-compliance/) | SPDX license validation | FOSSA + SPDX | ⚡⚡⚡ | [license-compliance.yml](../modules/license-compliance.yml) |
+| [`license-compliance`](./license-compliance/) | SPDX license validation | FOSSA + SPDX | ⚡⚡⚡ | [modules-license-compliance.yml](../workflows/modules-license-compliance.yml) |
 
 ### 🚀 Release Management
 
 | Action | Purpose | Integration | Modularer Workflow |
 |--------|---------|-------------|---------------------|
-| [`release-please`](./release-please/) | Semantic release automation | Release-Please | [release-management.yml](../modules/release-management.yml) |
+| [`release-please`](./release-please/) | Semantic release automation | Release-Please | [modules-release-management.yml](../workflows/modules-release-management.yml) |
 | [`auto-merge`](./auto-merge/) | Intelligent PR merging | GitHub API | PR-Automatisierung |
-| [`artifact-generator`](./artifact-generator/) | Multi-format artifact creation | GitHub Releases | [artifact-generation.yml](../modules/artifact-generation.yml) |
+| [`artifact-generator`](./artifact-generator/) | Multi-format artifact creation | GitHub Releases | [modules-artifact-generation.yml](../workflows/modules-artifact-generation.yml) |
 
 ### 🔧 Development Tools
 
@@ -46,7 +46,7 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 ```yaml
 jobs:
   security:
-    uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
       scan-engine: both
     secrets:
@@ -58,7 +58,7 @@ jobs:
 ```yaml
 jobs:
   release:
-    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
     with:
       release-type: simple
     secrets:
@@ -113,7 +113,7 @@ jobs:
 # Neu: Modularer Workflow
 + jobs:
 +   security:
-+     uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
++     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
 ```
 
 **Vorteile der modularen Workflows:**
@@ -168,7 +168,7 @@ permissions:
 ```yaml
 jobs:
   security:
-    uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
       scan-engine: both
     secrets:
@@ -176,13 +176,13 @@ jobs:
   
   compliance:
     needs: security
-    uses: bauer-group/automation-templates/.github/workflows/modules/license-compliance.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-license-compliance.yml@main
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
   release:
     needs: [security, compliance]
-    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
     with:
       release-type: simple
     secrets:
@@ -194,13 +194,13 @@ jobs:
 jobs:
   pr-security:
     if: github.event_name == 'pull_request'
-    uses: bauer-group/automation-templates/.github/workflows/modules/pr-validation.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@main
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
   release:
     if: github.ref == 'refs/heads/main'
-    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
     with:
       release-type: simple
     secrets:

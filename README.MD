@@ -128,11 +128,11 @@ jobs:
 
 | Modul | Zweck | Verwendung |
 |-------|-------|------------|
-| **🛡️ security-scan.yml** | Sicherheitsanalyse | `uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main` |
-| **📋 license-compliance.yml** | Lizenz-Compliance | `uses: bauer-group/automation-templates/.github/workflows/modules/license-compliance.yml@main` |
-| **🚀 release-management.yml** | Release-Automatisierung | `uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main` |
-| **🔨 artifact-generation.yml** | Artefakt-Erstellung | `uses: bauer-group/automation-templates/.github/workflows/modules/artifact-generation.yml@main` |
-| **🔍 pr-validation.yml** | Pull Request-Validierung | `uses: bauer-group/automation-templates/.github/workflows/modules/pr-validation.yml@main` |
+| **🛡️ modules-security-scan.yml** | Sicherheitsanalyse | `uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main` |
+| **📋 modules-license-compliance.yml** | Lizenz-Compliance | `uses: bauer-group/automation-templates/.github/workflows/modules-license-compliance.yml@main` |
+| **🚀 modules-release-management.yml** | Release-Automatisierung | `uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main` |
+| **🔨 modules-artifact-generation.yml** | Artefakt-Erstellung | `uses: bauer-group/automation-templates/.github/workflows/modules-artifact-generation.yml@main` |
+| **🔍 modules-pr-validation.yml** | Pull Request-Validierung | `uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@main` |
 
 ### Quick Start: Einfacher Release-Workflow
 
@@ -145,11 +145,12 @@ on:
 
 jobs:
   release:
-    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
     with:
       release-type: 'simple'
     secrets:
-      GITHUB_TOKEN: $
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
 ```
 
 ### Beispiele für verschiedene Projekttypen
