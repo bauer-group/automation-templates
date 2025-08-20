@@ -20,7 +20,7 @@ jobs:
       - uses: actions/labeler@v5
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-          configuration-path: .github/config/pr-labeler-paths.yml
+          configuration-path: .github/config/pr-labeler/path-labels.yml
           sync-labels: true
 
   # Advanced labeling and triage using our module
@@ -28,13 +28,13 @@ jobs:
     name: 🎯 Advanced Triage
     uses: bauer-group/automation-templates/.github/workflows/modules-pr-labeler.yml@main
     with:
-      config-path: '.github/config/pr-labeler-paths.yml'
+      config-path: '.github/config/pr-labeler/path-labels.yml'
       sync-labels: true
       auto-assign: false  # Set to true if you have CODEOWNERS
       size-labels: true
       priority-labels: true
       type-labels: true
-      custom-rules: '.github/config/pr-labeler-triage-rules.yml'
+      custom-rules: '.github/config/pr-labeler/triage-rules.yml'
     secrets: inherit
 
   # Optional: Additional custom labeling
@@ -123,8 +123,8 @@ jobs:
 
 # Example configuration for external repositories:
 # 
-# 1. Create .github/config/pr-labeler-paths.yml with your labeling rules
-# 2. Optionally create .github/config/pr-labeler-triage-rules.yml for advanced rules
+# 1. Create .github/config/pr-labeler/path-labels.yml with your labeling rules
+# 2. Optionally create .github/config/pr-labeler/triage-rules.yml for advanced rules
 # 3. Copy this workflow to .github/workflows/pr-labeler.yml
 # 4. Customize the configuration parameters as needed
 # 5. Ensure your repository has the necessary labels created

@@ -105,7 +105,7 @@ secrets:
 ```yaml
 uses: bauer-group/automation-templates/.github/workflows/modules-pr-labeler.yml@main
 with:
-  config-path: '.github/config/pr-labeler-paths.yml'
+  config-path: '.github/config/pr-labeler/path-labels.yml'
   size-labels: true
   priority-labels: true
   type-labels: true

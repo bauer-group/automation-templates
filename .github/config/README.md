@@ -1,104 +1,193 @@
-# 📁 Workflow Configuration Files
+# 📁 Workflow Configuration Directory
 
-This directory contains configuration files for various GitHub Actions workflows and modules.
+Organized configuration files for GitHub Actions workflows and modules.
 
-## 🔧 Configuration Files
+## 📂 Directory Structure
 
-### Release Management
-- **`.releaserc.json`** - Semantic Release configuration
-  - Defines release rules and changelog generation
-  - Used by: `modules-semantic-release.yml`
+```
+.github/config/
+├── 📁 release/          # Release & versioning configurations
+│   └── semantic-release.json
+├── 📁 pr-labeler/       # Pull request labeling configurations  
+│   ├── path-labels.yml
+│   └── triage-rules.yml
+├── 📁 security/         # Security scanning configurations (future)
+│   ├── gitleaks.toml
+│   └── gitguardian.yml
+└── 📁 license/          # License compliance configurations (future)
+    └── allowed-licenses.yml
+```
 
-### PR Labeling & Triage
-- **`pr-labeler-paths.yml`** - File path-based labeling rules
+## 🔧 Configuration Files by Module
+
+### 📦 Release Management (`release/`)
+**Module:** `modules-semantic-release.yml`
+
+- **`semantic-release.json`** - Semantic versioning and release configuration
+  - Defines version bump rules (major/minor/patch)
+  - Configures changelog generation
+  - Sets up release notes formatting
+
+### 🏷️ PR Labeler (`pr-labeler/`)
+**Module:** `modules-pr-labeler.yml`
+
+- **`path-labels.yml`** - File path-based labeling rules
   - Maps file patterns to labels
-  - Used by: `modules-pr-labeler.yml`, `pr-labeler.yml`
+  - Supports glob patterns
   
-- **`pr-labeler-triage-rules.yml`** - Advanced triage rules
-  - Custom rules for auto-assignment, priority, and automation
-  - Used by: `modules-pr-labeler.yml`, `pr-labeler.yml`
+- **`triage-rules.yml`** - Advanced triage and automation rules
+  - Auto-assignment based on labels/paths
+  - Priority classification
+  - Custom automation rules
+
+### 🔒 Security (future) (`security/`)
+**Modules:** `modules-security-scan.yml`
+
+- **`gitleaks.toml`** - Gitleaks secret detection patterns
+- **`gitguardian.yml`** - GitGuardian scanning rules
+
+### 📋 License (future) (`license/`)
+**Module:** `modules-license-compliance.yml`
+
+- **`allowed-licenses.yml`** - License whitelist/blacklist configuration
 
 ## 📝 Naming Convention
 
-All configuration files follow this naming pattern:
+Files follow a clear naming pattern:
 ```
-{module-name}-{config-type}.{extension}
+{category}/{function}.{extension}
 ```
 
 Examples:
-- `pr-labeler-paths.yml` - Path rules for PR labeler module
-- `pr-labeler-triage-rules.yml` - Triage rules for PR labeler module
-- `security-scan-patterns.toml` - (future) Patterns for security scanning
+- `release/semantic-release.json` - Release configuration
+- `pr-labeler/path-labels.yml` - Path-based label mapping
+- `pr-labeler/triage-rules.yml` - Triage automation rules
 
-## 🚀 Usage in External Repositories
+## 🚀 Usage in Workflows
 
-To use these configurations in your repository:
+### Internal Repository
+```yaml
+jobs:
+  labeler:
+    uses: ./.github/workflows/modules-pr-labeler.yml
+    with:
+      config-path: '.github/config/pr-labeler/path-labels.yml'
+      custom-rules: '.github/config/pr-labeler/triage-rules.yml'
+```
 
-1. Copy the required config files to `.github/config/`
-2. Reference them in your workflow:
-
+### External Repository
 ```yaml
 jobs:
   labeler:
     uses: bauer-group/automation-templates/.github/workflows/modules-pr-labeler.yml@main
     with:
-      config-path: '.github/config/pr-labeler-paths.yml'
-      custom-rules: '.github/config/pr-labeler-triage-rules.yml'
+      config-path: '.github/config/pr-labeler/path-labels.yml'
+      custom-rules: '.github/config/pr-labeler/triage-rules.yml'
 ```
 
-## 🎨 Customization
+## 🎨 Customization Guide
 
-All configuration files can be customized for your specific needs:
+### Creating Your Own Configuration
 
-### PR Labeler Paths
+1. **Create the directory structure:**
+```bash
+mkdir -p .github/config/{release,pr-labeler,security,license}
+```
+
+2. **Copy and customize configurations:**
+```bash
+# Copy from templates repository
+cp -r bauer-group/automation-templates/.github/config/* .github/config/
+
+# Edit as needed
+vim .github/config/pr-labeler/path-labels.yml
+```
+
+3. **Override default paths in workflow:**
 ```yaml
-# .github/config/pr-labeler-paths.yml
+with:
+  config-path: '.github/config/pr-labeler/my-custom-labels.yml'
+```
+
+## 📊 Configuration Matrix
+
+| Module | Config Directory | File | Required | Purpose |
+|--------|-----------------|------|----------|---------|
+| `modules-semantic-release` | `release/` | `semantic-release.json` | Yes | Version & changelog rules |
+| `modules-pr-labeler` | `pr-labeler/` | `path-labels.yml` | Yes | File-based labeling |
+| `modules-pr-labeler` | `pr-labeler/` | `triage-rules.yml` | No | Advanced automation |
+| `modules-security-scan` | `security/` | `gitleaks.toml` | No | Secret patterns |
+| `modules-license-compliance` | `license/` | `allowed-licenses.yml` | No | License rules |
+
+## 🔍 Configuration Examples
+
+### PR Labeler Path Configuration
+```yaml
+# .github/config/pr-labeler/path-labels.yml
 documentation:
   - changed-files:
     - any-glob-to-any-file:
       - 'docs/**'
-      - '*.md'
+      - '**/*.md'
 
 frontend:
   - changed-files:
     - any-glob-to-any-file:
       - 'src/frontend/**'
-      - '*.jsx'
-      - '*.tsx'
 ```
 
-### PR Triage Rules
+### Semantic Release Configuration
+```json
+// .github/config/release/semantic-release.json
+{
+  "branches": ["main"],
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    ["@semantic-release/changelog", {
+      "changelogFile": "CHANGELOG.MD"
+    }]
+  ]
+}
+```
+
+### Triage Rules Configuration
 ```yaml
-# .github/config/pr-labeler-triage-rules.yml
+# .github/config/pr-labeler/triage-rules.yml
 priority_rules:
   critical:
     conditions:
       - has_any_labels: ['security', 'hotfix']
     actions:
       - add_labels: ['priority/critical']
-      - request_reviewers: ['security-team']
 ```
-
-## 📊 Module Configuration Matrix
-
-| Module | Config File | Required | Purpose |
-|--------|------------|----------|---------|
-| `modules-pr-labeler` | `pr-labeler-paths.yml` | Yes | File-based labeling |
-| `modules-pr-labeler` | `pr-labeler-triage-rules.yml` | No | Advanced triage |
-| `modules-semantic-release` | `.releaserc.json` | Yes | Release configuration |
 
 ## 🔒 Security Notes
 
-- Never commit sensitive data in configuration files
-- Use repository secrets for API keys and tokens
-- Review custom rules for security implications
+- Never commit sensitive data or secrets
+- Use repository secrets for API keys
+- Review configurations for security implications
+- Keep configurations version controlled
 
-## 📚 Documentation
+## 🛠️ Maintenance
 
-For detailed documentation on each configuration format, see:
-- [PR Labeler Documentation](../actions/labeler-triage/README.md)
-- [Semantic Release Documentation](../actions/semantic-release/README.md)
+### Adding New Modules
+1. Create new subdirectory under `.github/config/`
+2. Use clear, descriptive names
+3. Document in this README
+4. Update workflow defaults
+
+### Deprecating Configurations
+1. Move to `deprecated/` subdirectory
+2. Update workflows to new paths
+3. Document migration path
+
+## 📚 Related Documentation
+
+- [Workflow Modules](../workflows/MODULES-README.MD)
+- [GitHub Actions](../actions/README.MD)
+- [Examples](../../github/workflows/examples/)
 
 ---
 
-*Configuration files are essential for workflow customization and should be version controlled.*
+*Organized configuration structure for better maintainability and clarity.*

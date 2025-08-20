@@ -49,9 +49,9 @@ runs:
       shell: bash
       run: |
         # Use repository config if exists, otherwise use default
-        if [ -f ".github/config/.releaserc.json" ]; then
+        if [ -f ".github/config/release/semantic-release.json" ]; then
           echo "Using repository semantic-release config"
-          cp .github/config/.releaserc.json .releaserc.json
+          cp .github/config/release/semantic-release.json .releaserc.json
         else
           echo "Creating default semantic-release config"
           cat > .releaserc.json << 'EOF'

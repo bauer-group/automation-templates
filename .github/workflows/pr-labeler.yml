@@ -13,11 +13,11 @@ jobs:
     name: 🏷️ Label & Triage
     uses: ./.github/workflows/modules-pr-labeler.yml
     with:
-      config-path: '.github/config/pr-labeler-paths.yml'
+      config-path: '.github/config/pr-labeler/path-labels.yml'
       sync-labels: true
       auto-assign: false
       size-labels: true
       priority-labels: true
       type-labels: true
-      custom-rules: '.github/config/pr-labeler-triage-rules.yml'
+      custom-rules: '.github/config/pr-labeler/triage-rules.yml'
     secrets: inherit
