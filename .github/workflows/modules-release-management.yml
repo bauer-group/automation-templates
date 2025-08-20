@@ -98,14 +98,24 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
         
-      - name: 🔍 Generate Unique Branch Name
-        id: branch
+      - name: 🧹 Clean up old release PRs
         run: |
-          # Create a unique branch name to avoid conflicts with existing PRs
-          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-          BRANCH_NAME="release-${TIMESTAMP}-${{ github.run_id }}"
-          echo "branch-name=$BRANCH_NAME" >> $GITHUB_OUTPUT
-          echo "Using branch: $BRANCH_NAME"
+          # Check for existing release PRs and close them
+          echo "Checking for existing release PRs..."
+          EXISTING_PRS=$(gh pr list --state open --search "chore: release" --json number,author --jq '.[] | select(.author.login | contains("bot")) | .number' || true)
+          
+          if [ -n "$EXISTING_PRS" ]; then
+            echo "Found existing release PRs: $EXISTING_PRS"
+            for PR in $EXISTING_PRS; do
+              echo "Closing PR #$PR..."
+              gh pr close $PR --comment "Closing outdated release PR. A new release process will be initiated." || true
+            done
+          else
+            echo "No existing release PRs found"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
 
       - name: 🚀 Enhanced Release Please (Attempt 1)
         id: release
@@ -117,8 +127,6 @@ jobs:
           config-file: .github/config/release-please-config.json
           manifest-file: .github/config/.release-please-manifest.json
           target-branch: ${{ inputs.target-branch }}
-          default-branch: ${{ inputs.target-branch }}
-          signoff: false
           
       - name: 🔄 Analyze Failure
         if: steps.release.outcome == 'failure'
@@ -155,8 +163,6 @@ jobs:
           config-file: .github/config/release-please-config.json
           manifest-file: .github/config/.release-please-manifest.json
           target-branch: ${{ inputs.target-branch }}
-          default-branch: ${{ inputs.target-branch }}
-          signoff: false
 
       - name: 🎯 Auto-Merge Release PR
         if: (steps.release.outputs.pr != '' || steps.release-retry.outputs.pr != '') && inputs.auto-merge-enabled == true
