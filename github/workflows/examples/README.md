@@ -92,9 +92,11 @@ on:
     branches: [main]
     paths: ['docs/README.template.MD', 'docs/**']
   
-  # Bei neuen Releases - AUTOMATISCHE VERSION UPDATE
-  release:
-    types: [published, created]
+  # Bei neuen Tags/Releases - AUTOMATISCHE VERSION UPDATE
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+'
   
   # Manueller Trigger
   workflow_dispatch:
@@ -112,18 +114,19 @@ jobs:
   update-readme:
     uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
     with:
-      force-update: ${{ inputs.force-update || github.event_name == 'release' }}
-      custom-version: ${{ inputs.custom-version || github.event.release.tag_name }}
+      force-update: ${{ inputs.force-update || startsWith(github.ref, 'refs/tags/') }}
+      custom-version: ${{ inputs.custom-version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-#### 🆕 Release-Trigger Features
+#### 🆕 Tag-basierte Release-Trigger Features
 
-- **Automatische Versionserkennung**: Bei Release-Events wird die Version automatisch aus dem Release-Tag extrahiert
-- **Force-Update bei Releases**: README wird bei jedem Release automatisch aktualisiert
-- **Spezielle Commit-Messages**: Releases erzeugen dedizierte Commit-Messages wie `docs: update README.MD for release v1.2.3 [automated]`
-- **Release-Details in Summary**: Workflow-Summary zeigt Release-Name, Version und Zeitstempel
+- **Automatische Versionserkennung**: Bei Tag-Push wird die Version automatisch aus dem Tag-Namen extrahiert
+- **Zuverlässiger Trigger**: Tag-basierter Trigger ist zuverlässiger als Release-Events
+- **Force-Update bei Tags**: README wird bei jedem neuen Tag automatisch aktualisiert
+- **Spezielle Commit-Messages**: Tags erzeugen dedizierte Commit-Messages wie `docs: update README.MD for release v1.2.3 [automated]`
+- **Tag-Details in Summary**: Workflow-Summary zeigt Tag-Name und Trigger-Information
 
 ---
 
