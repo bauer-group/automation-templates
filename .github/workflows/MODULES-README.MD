@@ -48,26 +48,22 @@ secrets:
 - `unknown-count`: Anzahl unbekannter Lizenzen
 - `sbom-generated`: Ob SBOM erstellt wurde
 
-### 🚀 [Release Management](./release-management.yml)
-**Zweck:** Automatisierte Release-Erstellung mit Release-Please
+### 🚀 [Semantic Release](./modules-semantic-release.yml)
+**Zweck:** Automatisierte Release-Erstellung mit Semantic Release
 
 ```yaml
-uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
+uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
 with:
-  release-type: 'simple'
-  auto-merge-enabled: true
-  cleanup-release-branch: true
+  target-branch: 'main'
+  dry-run: false
 secrets:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 **Ausgaben:**
 - `release-created`: Ob Release erstellt wurde
-- `tag-name`: Git-Tag des Releases
 - `version`: Release-Version
-- `release-url`: URL des erstellten Releases
-- `pr-number`: Release-PR Nummer
-- `pr-merged`: Ob Release-PR gemerged wurde
+- `tag-name`: Git-Tag des Releases
 
 ### 🔨 [Artifact Generation](./artifact-generation.yml)
 **Zweck:** Erstellung und Upload von Release-Artefakten
@@ -114,9 +110,9 @@ secrets:
 ```yaml
 jobs:
   release:
-    uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     with:
-      release-type: 'simple'
+      target-branch: 'main'
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -142,7 +138,7 @@ jobs:
   release:
     needs: [security, compliance]
     if: needs.security.outputs.security-score >= 80
-    uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
 ```
 
 ### 3. PR-Validierung mit Gates

@@ -67,7 +67,13 @@ jobs:
             
       - name: 🔧 Configure semantic-release
         run: |
-          cat > .releaserc.json << 'EOF'
+          # Use config from repository if exists, otherwise use default
+          if [ -f ".github/config/.releaserc.json" ]; then
+            echo "Using existing semantic-release config"
+            cp .github/config/.releaserc.json .releaserc.json
+          else
+            echo "Creating default semantic-release config"
+            cat > .releaserc.json << 'EOF'
           {
             "branches": ["${{ inputs.target-branch }}"],
             "plugins": [
@@ -107,10 +113,10 @@ jobs:
                 }
               }],
               ["@semantic-release/changelog", {
-                "changelogFile": "CHANGELOG.md"
+                "changelogFile": "CHANGELOG.MD"
               }],
               ["@semantic-release/git", {
-                "assets": ["CHANGELOG.md", "package.json"],
+                "assets": ["CHANGELOG.MD", "package.json"],
                 "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
               }],
               ["@semantic-release/github", {
@@ -121,6 +127,7 @@ jobs:
             ]
           }
           EOF
+          fi
           
       - name: 🚀 Run Semantic Release
         id: release
