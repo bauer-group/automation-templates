@@ -287,7 +287,6 @@ jobs:
           # Get release URL
           RELEASE_URL=$(gh release view "v${TARGET_VERSION}" --json url --jq '.url')
           echo "html_url=${RELEASE_URL}" >> $GITHUB_OUTPUT
-        env:
     
   # Generate artifacts
   generate-artifacts:
