@@ -98,7 +98,7 @@ release:
   - changed-files:
     - any-glob-to-any-file:
       - .github/workflows/*release*.yml
-      - .github/config/.releaserc.json
+      - .github/config/release/semantic-release.json
       - CHANGELOG.MD
       - VERSION
 

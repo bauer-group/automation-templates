@@ -7,7 +7,7 @@ on:
         description: 'Path to labeler configuration file'
         required: false
         type: string
-        default: '.github/config/pr-labeler-paths.yml'
+        default: '.github/config/pr-labeler/path-labels.yml'
       sync-labels:
         description: 'Remove labels when files no longer match'
         required: false
@@ -37,7 +37,7 @@ on:
         description: 'Path to custom triage rules file'
         required: false
         type: string
-        default: '.github/config/pr-labeler-triage-rules.yml'
+        default: '.github/config/pr-labeler/triage-rules.yml'
     secrets:
       token:
         description: 'GitHub Token with pull-requests write permission'
