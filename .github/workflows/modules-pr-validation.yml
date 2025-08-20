@@ -1,4 +1,4 @@
-name: 🔍 Pull Request Validation
+name: 📦 Module | Pull Request Validation
 
 on:
   workflow_call:

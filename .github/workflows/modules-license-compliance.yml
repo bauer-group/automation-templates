@@ -1,4 +1,4 @@
-name: 📋 License Compliance
+name: 📦 Module | License Compliance
 
 on:
   workflow_call:

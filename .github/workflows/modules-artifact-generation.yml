@@ -1,4 +1,4 @@
-name: 🔨 Artifact Generation
+name: 📦 Module | Artifact Generation
 
 on:
   workflow_call:
