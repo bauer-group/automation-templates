@@ -1,3 +1,10 @@
+## [0.12.0](https://github.com/bauer-group/automation-templates/compare/v0.11.0...v0.12.0) (2025-08-20)
+
+### 🚀 Features
+
+* aktualisiere Workflow-Trigger für Tags und verbessere die AI Issue Summary Workflow-Konfiguration ([29e3ec8](https://github.com/bauer-group/automation-templates/commit/29e3ec857c53df5a164c062809246a7526d95ab4))
+* füge AI-Prompt-Vorlagen und Workflow für automatisierte Zusammenfassungen von Issues und PRs hinzu ([0cf79d9](https://github.com/bauer-group/automation-templates/commit/0cf79d903c84aac5c782d3bdbda2f93dcfe10825))
+
 ## [0.11.0](https://github.com/bauer-group/automation-templates/compare/v0.10.0...v0.11.0) (2025-08-20)
 
 ### 🚀 Features
