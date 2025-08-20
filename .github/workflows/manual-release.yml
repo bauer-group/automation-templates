@@ -183,12 +183,8 @@ jobs:
         run: |
           TARGET_VERSION="${{ needs.validate-inputs.outputs.calculated-version }}"
           
-          # Update release-please manifest if it exists
-          if [[ -f ".github/config/.release-please-manifest.json" ]]; then
-            jq --arg version "$TARGET_VERSION" '. = {".": $version}' .github/config/.release-please-manifest.json > tmp.json
-            mv tmp.json .github/config/.release-please-manifest.json
-            echo "✅ Updated release-please manifest"
-          fi
+          # Version will be handled by semantic-release or manual tag
+          echo "Version: $TARGET_VERSION"
           
           # Update package.json if exists
           if [[ -f "package.json" ]]; then
