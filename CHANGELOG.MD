@@ -1,3 +1,10 @@
+## [0.10.0](https://github.com/bauer-group/automation-templates/compare/v0.9.0...v0.10.0) (2025-08-20)
+
+### 🚀 Features
+
+* integriere automatische Dokumentationsupdates bei Releases und verbessere Workflow-Konfiguration ([84c4b01](https://github.com/bauer-group/automation-templates/commit/84c4b01ae8f8f8d85aed59ee8ddddc865da4e626))
+* verbessere Artefakt-Upload-Namen und aktualisiere Release-URLs in der Zusammenfassung ([9de81e0](https://github.com/bauer-group/automation-templates/commit/9de81e05b3e0b571521ad848fd74095fee89ee5c))
+
 ## [0.9.0](https://github.com/bauer-group/automation-templates/compare/v0.8.0...v0.9.0) (2025-08-20)
 
 ### 🚀 Features
