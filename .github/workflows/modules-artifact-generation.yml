@@ -31,20 +31,12 @@ on:
         required: false
         type: string
         default: 'ghcr.io'
-      docker-image-name:
-        description: 'Docker image name (auto-detected if empty)'
-        required: false
-        type: string
-        default: ''
     secrets:
       DOCKER_USERNAME:
         description: 'Docker registry username'
         required: false
       DOCKER_PASSWORD:
         description: 'Docker registry password/token'
-        required: false
-      NPM_TOKEN:
-        description: 'NPM registry token'
         required: false
     outputs:
       artifacts-generated:
@@ -92,10 +84,8 @@ jobs:
           upload-url: ${{ inputs.release-url }}
           build-command: ${{ inputs.build-command }}
           docker-registry: ${{ inputs.docker-registry }}
-          docker-image-name: ${{ inputs.docker-image-name }}
           docker-username: ${{ secrets.DOCKER_USERNAME || github.actor }}
           docker-password: ${{ secrets.DOCKER_PASSWORD || secrets.GITHUB_TOKEN }}
-          npm-token: ${{ secrets.NPM_TOKEN }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📊 Artifact Generation Summary
@@ -163,10 +153,7 @@ jobs:
             fi
             
             if [[ "${{ inputs.artifact-types }}" =~ (docker|all) ]] && [ "$DOCKER_OK" = "true" ]; then
-              IMAGE_NAME="${{ inputs.docker-image-name }}"
-              if [ -z "$IMAGE_NAME" ]; then
-                IMAGE_NAME="${{ github.repository }}"
-              fi
+              IMAGE_NAME="${{ github.repository }}"
               echo "🐳 **Docker Image:** \`${{ inputs.docker-registry }}/${IMAGE_NAME}:${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
             fi
           else
