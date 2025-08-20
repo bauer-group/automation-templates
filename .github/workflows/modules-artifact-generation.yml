@@ -139,9 +139,38 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Artifact Type | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|---------------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Source Archive** | $([[ '${{ inputs.artifact-types }}' =~ (source|all) ]] && echo '${{ steps.artifacts.outputs.source-archive-created == 'true' && '✅ Created' || '❌ Failed' }}' || echo '⏭️ Skipped') |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Binaries** | $([[ '${{ inputs.artifact-types }}' =~ (binaries|all) ]] && echo '${{ steps.artifacts.outputs.binaries-created == 'true' && '✅ Created' || '❌ Failed' }}' || echo '⏭️ Skipped') |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Docker Image** | $([[ '${{ inputs.artifact-types }}' =~ (docker|all) ]] && echo '${{ steps.artifacts.outputs.docker-image-pushed == 'true' && '✅ Pushed' || '❌ Failed' }}' || echo '⏭️ Skipped') |" >> $GITHUB_STEP_SUMMARY
+          # Source Archive Status
+          if [[ '${{ inputs.artifact-types }}' =~ (source|all) ]]; then
+            if [ "$SOURCE_OK" = "true" ]; then
+              echo "| **Source Archive** | ✅ Created |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| **Source Archive** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| **Source Archive** | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Binaries Status
+          if [[ '${{ inputs.artifact-types }}' =~ (binaries|all) ]]; then
+            if [ "$BINARIES_OK" = "true" ]; then
+              echo "| **Binaries** | ✅ Created |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| **Binaries** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| **Binaries** | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Docker Image Status
+          if [[ '${{ inputs.artifact-types }}' =~ (docker|all) ]]; then
+            if [ "$DOCKER_OK" = "true" ]; then
+              echo "| **Docker Image** | ✅ Pushed |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| **Docker Image** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| **Docker Image** | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ "$ARTIFACTS_GENERATED" = "true" ]; then
