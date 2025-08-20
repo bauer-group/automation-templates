@@ -1,0 +1,251 @@
+# AI Prompt Templates for Issue/PR Analysis
+# Customizable prompts for different summary types and contexts
+
+# Brief summary - concise overview
+brief:
+  prompt: |
+    Summarize the following GitHub {type} in 2-3 concise sentences:
+    
+    Title: {title}
+    Body: {body}
+    
+    Be clear and to the point, focusing on the main request or problem.
+
+# Detailed analysis - comprehensive breakdown
+detailed:
+  prompt: |
+    Provide a detailed analysis of the following GitHub {type}:
+    
+    Title: {title}
+    Author: {author}
+    Body: {body}
+    
+    Please include:
+    1. A comprehensive summary of the issue/request
+    2. Key points and requirements
+    3. Potential impact and scope
+    4. Suggested next steps
+    5. Any missing information needed
+    6. Risk assessment if applicable
+
+# Technical summary - for developers
+technical:
+  prompt: |
+    Provide a technical summary of the following GitHub {type}:
+    
+    Title: {title}
+    Body: {body}
+    
+    Focus on:
+    - Technical requirements and constraints
+    - Implementation considerations
+    - Potential challenges and edge cases
+    - Architecture/design implications
+    - Performance and scalability considerations
+    - Security implications
+    - Testing requirements
+
+# User-friendly - for non-technical stakeholders
+user_friendly:
+  prompt: |
+    Provide a simple, non-technical summary of the following GitHub {type}:
+    
+    Title: {title}
+    Body: {body}
+    
+    Explain in plain language:
+    - What the user is asking for
+    - Why it might be important
+    - What the expected outcome is
+    - Who will benefit from this
+    
+    Use simple terms and avoid technical jargon.
+
+# Bug analysis - specific for bug reports
+bug_analysis:
+  prompt: |
+    Analyze the following bug report:
+    
+    Title: {title}
+    Body: {body}
+    
+    Provide:
+    1. Bug summary
+    2. Steps to reproduce (if provided)
+    3. Expected vs actual behavior
+    4. Potential root causes
+    5. Severity assessment (low/medium/high/critical)
+    6. Suggested debugging steps
+    7. Missing information needed
+
+# Feature request analysis
+feature_analysis:
+  prompt: |
+    Analyze the following feature request:
+    
+    Title: {title}
+    Body: {body}
+    
+    Evaluate:
+    1. Feature description and use case
+    2. Business value and user impact
+    3. Technical feasibility
+    4. Potential implementation approach
+    5. Alternatives or workarounds
+    6. Estimated complexity (simple/medium/complex)
+    7. Dependencies and prerequisites
+
+# Security issue analysis
+security_analysis:
+  prompt: |
+    Analyze the following potential security issue:
+    
+    Title: {title}
+    Body: {body}
+    
+    ⚠️ IMPORTANT: Do not expose sensitive details in the summary.
+    
+    Assess:
+    1. Type of security concern
+    2. Potential impact (low/medium/high/critical)
+    3. Affected components
+    4. General mitigation approach (without specifics)
+    5. Urgency level
+    
+    Keep the summary general to avoid exposing vulnerabilities.
+
+# PR review summary
+pr_review:
+  prompt: |
+    Summarize the following pull request:
+    
+    Title: {title}
+    Body: {body}
+    
+    Include:
+    1. What changes are being made
+    2. Why these changes are needed
+    3. Potential impact on existing functionality
+    4. Testing considerations
+    5. Review focus areas
+    6. Any concerns or risks
+
+# Triage helper - for initial classification
+triage:
+  prompt: |
+    Help triage the following GitHub {type}:
+    
+    Title: {title}
+    Body: {body}
+    
+    Determine:
+    1. Issue type (bug/feature/question/documentation/other)
+    2. Priority (low/medium/high/critical)
+    3. Suggested labels from: bug, enhancement, documentation, question, help-wanted, good-first-issue, breaking-change, performance, security, test, invalid, duplicate
+    4. Component/area affected
+    5. Is this actionable or needs more info?
+    6. Suggested assignee team (frontend/backend/devops/security/docs)
+
+# Multi-language support example
+multilingual:
+  prompt: |
+    Summarize the following GitHub {type} and provide the summary in {language}:
+    
+    Title: {title}
+    Body: {body}
+    
+    Provide a clear summary in {language} that captures the main points.
+
+# Custom templates for specific projects
+project_specific:
+  api_change:
+    prompt: |
+      Analyze this API change request:
+      
+      Title: {title}
+      Body: {body}
+      
+      Assess:
+      1. Endpoints affected
+      2. Breaking changes (yes/no)
+      3. Migration requirements
+      4. Documentation updates needed
+      5. Client impact
+      6. Versioning strategy
+  
+  ui_change:
+    prompt: |
+      Analyze this UI/UX change request:
+      
+      Title: {title}
+      Body: {body}
+      
+      Consider:
+      1. User experience impact
+      2. Accessibility implications
+      3. Design consistency
+      4. Browser compatibility
+      5. Mobile responsiveness
+      6. Performance impact
+
+# Comment templates for different scenarios
+comment_templates:
+  default: |
+    ## 🤖 AI Summary
+    
+    {summary}
+    
+    ---
+    *This summary was automatically generated by AI and may not be 100% accurate.*
+  
+  detailed: |
+    ## 🤖 AI Analysis Report
+    
+    ### Summary
+    {summary}
+    
+    ### Metadata
+    - **Analysis Type:** {summary_type}
+    - **Generated:** {timestamp}
+    - **Model:** {model}
+    
+    ---
+    *This is an automated analysis. Please verify the information for accuracy.*
+  
+  with_labels: |
+    ## 🤖 AI Summary
+    
+    {summary}
+    
+    ### Suggested Classification
+    - **Labels:** {labels}
+    - **Priority:** {priority}
+    
+    ---
+    *This summary was automatically generated. Labels and priority are suggestions only.*
+  
+  bug_report: |
+    ## 🐛 Bug Report Analysis
+    
+    {summary}
+    
+    ### Quick Info
+    - **Severity:** {severity}
+    - **Component:** {component}
+    - **Reproducible:** {reproducible}
+    
+    ---
+    *AI-generated analysis to help with triage. Please verify details.*
+  
+  feature_request: |
+    ## 🚀 Feature Request Analysis
+    
+    {summary}
+    
+    ### Assessment
+    - **Complexity:** {complexity}
+    - **Impact:** {impact}
+    - **Priority:** {priority}
+    
+    ---
+    *This is an automated assessment to aid in evaluation.*
