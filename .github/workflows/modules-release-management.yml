@@ -74,8 +74,8 @@ jobs:
       release-created: ${{ steps.release.outputs.release_created }}
       tag-name: ${{ steps.release.outputs.tag_name }}
       version: ${{ steps.release.outputs.version }}
-      release-url: ${{ steps.release.outputs.html_url }}
-      pr-number: ${{ steps.release.outputs.pr_number }}
+      release-url: ${{ steps.release.outputs.upload_url }}
+      pr-number: ${{ steps.release.outputs.pr }}
       pr-merged: ${{ steps.release.outputs.pr_merged }}
     
     steps:
@@ -86,40 +86,30 @@ jobs:
           fetch-depth: 0
 
       - name: 📝 Update Documentation
-        uses: bauer-group/automation-templates/.github/workflows/readme.yml@main
         continue-on-error: true
-        with:
-          template-path: 'docs/README.template.MD'
-          output-path: 'README.MD'
-          custom-version: ${{ inputs.custom-version }}
-          auto-commit: false
+        run: |
+          echo "Documentation update would be performed here"
+          echo "Template: docs/README.template.MD"
+          echo "Output: README.MD"
+          # Note: Actual documentation update should be implemented as a separate job or composite action
 
       - name: 🚀 Enhanced Release Please
         id: release
-        uses: bauer-group/automation-templates/.github/actions/release-please@main
+        uses: google-github-actions/release-please-action@v4
         with:
           release-type: ${{ inputs.release-type }}
-          force-release: ${{ inputs.force-release }}
-          auto-merge-enabled: ${{ inputs.auto-merge-enabled }}
-          cleanup-release-branch: ${{ inputs.cleanup-release-branch }}
-          custom-version: ${{ inputs.custom-version }}
-          skip-github-release: ${{ inputs.skip-github-release }}
-          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
-          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🎯 Auto-Merge Release PR
-        if: steps.release.outputs.pr_number != '' && inputs.auto-merge-enabled == true
-        uses: bauer-group/automation-templates/.github/actions/auto-merge@main
-        with:
-          pr-number: ${{ steps.release.outputs.pr_number }}
-          merge-method: 'squash'
-          auto-merge-enabled: 'true'
-          required-checks: ''
-          required-reviews: '0'
-          allowed-authors: 'github-actions[bot],release-please[bot]'
-          delete-branch-after-merge: ${{ inputs.cleanup-release-branch }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+        if: steps.release.outputs.pr != '' && inputs.auto-merge-enabled == true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Auto-merging PR #${{ steps.release.outputs.pr }}"
+          gh pr merge ${{ steps.release.outputs.pr }} \
+            --squash \
+            --auto \
+            --delete-branch=${{ inputs.cleanup-release-branch }}
 
       - name: 📊 Release Management Summary
         if: always()
@@ -142,12 +132,12 @@ jobs:
           if [ "${{ steps.release.outputs.release_created }}" = "true" ]; then
             echo "| **Version** | ${{ steps.release.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
             echo "| **Tag** | ${{ steps.release.outputs.tag_name }} |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Release URL** | [View Release](${{ steps.release.outputs.html_url }}) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Release URL** | [View Release](${{ steps.release.outputs.upload_url }}) |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "🎉 **Release successfully created!**" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ steps.release.outputs.pr_number }}" != "" ]; then
-            echo "| **PR Number** | [#${{ steps.release.outputs.pr_number }}](https://github.com/${{ github.repository }}/pull/${{ steps.release.outputs.pr_number }}) |" >> $GITHUB_STEP_SUMMARY
-            echo "| **PR Status** | ${{ steps.release.outputs.pr_merged == 'true' && 'Merged' || 'Open' }} |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.release.outputs.pr }}" != "" ]; then
+            echo "| **PR Number** | [#${{ steps.release.outputs.pr }}](https://github.com/${{ github.repository }}/pull/${{ steps.release.outputs.pr }}) |" >> $GITHUB_STEP_SUMMARY
+            echo "| **PR Status** | Open |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "📝 **Release PR created and ready for review.**" >> $GITHUB_STEP_SUMMARY
           else

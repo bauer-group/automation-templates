@@ -140,9 +140,7 @@ jobs:
       scan-type: 'all'
       fail-on-findings: false
       minimum-severity: 'medium'
-    secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
-      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+    secrets: inherit
 
   # License compliance check (conditional)
   license-compliance:
@@ -155,8 +153,7 @@ jobs:
       fail-on-unknown: false
       scan-dependencies: true
       generate-sbom: true
-    secrets:
-      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+    secrets: inherit
 
   # Manual release creation
   create-release:
