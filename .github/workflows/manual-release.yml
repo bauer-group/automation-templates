@@ -141,7 +141,6 @@ jobs:
       fail-on-findings: false
       minimum-severity: 'medium'
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
@@ -157,7 +156,6 @@ jobs:
       scan-dependencies: true
       generate-sbom: true
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
 
   # Manual release creation
@@ -290,8 +288,7 @@ jobs:
           RELEASE_URL=$(gh release view "v${TARGET_VERSION}" --json url --jq '.url')
           echo "html_url=${RELEASE_URL}" >> $GITHUB_OUTPUT
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+    
   # Generate artifacts
   generate-artifacts:
     name: Generate Release Artifacts
@@ -304,7 +301,6 @@ jobs:
       version: ${{ needs.create-release.outputs.version }}
       release-url: ${{ needs.create-release.outputs.release-url }}
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Manual release summary
   release-summary:

@@ -1,4 +1,4 @@
-name: 🔄 CI/CD Pipeline
+name: 🔄 CI/CD Pipeline (Automatic Release)
 
 # Main CI/CD pipeline using modular workflow components
 # This demonstrates the new modular approach for this repository
@@ -43,7 +43,6 @@ jobs:
       fail-on-security-issues: true
       fail-on-license-issues: false
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
@@ -58,7 +57,6 @@ jobs:
       fail-on-findings: false
       minimum-severity: 'medium'
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
@@ -73,7 +71,6 @@ jobs:
       scan-dependencies: true
       generate-sbom: true
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
 
   # Release management
@@ -88,7 +85,6 @@ jobs:
       auto-merge-enabled: true
       cleanup-release-branch: true
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
@@ -103,8 +99,6 @@ jobs:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
       version: ${{ needs.release-management.outputs.version }}
       release-url: ${{ needs.release-management.outputs.release-url }}
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Pipeline summary
   pipeline-summary:

@@ -34,9 +34,6 @@ on:
         type: string
         default: 'GPL-*,AGPL-*,SSPL-*'
     secrets:
-      GITHUB_TOKEN:
-        description: 'GitHub token for repository access'
-        required: true
       FOSSA_API_KEY:
         description: 'FOSSA API key for enterprise license scanning'
         required: false
