@@ -39,9 +39,9 @@ on:
         type: string
         default: '.github/config/pr-labeler-triage-rules.yml'
     secrets:
-      GITHUB_TOKEN:
+      token:
         description: 'GitHub Token with pull-requests write permission'
-        required: true
+        required: false
     outputs:
       labels-added:
         description: 'Labels added to the PR'
@@ -74,13 +74,13 @@ jobs:
       - name: 🚀 Checkout Repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.token || secrets.GITHUB_TOKEN }}
           
       - name: 🏷️ Run Labeler & Triage
         id: triage
         uses: bauer-group/automation-templates/.github/actions/labeler-triage@main
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.token || secrets.GITHUB_TOKEN }}
           config-path: ${{ inputs.config-path }}
           sync-labels: ${{ inputs.sync-labels }}
           auto-assign: ${{ inputs.auto-assign }}

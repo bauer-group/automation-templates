@@ -20,5 +20,4 @@ jobs:
       priority-labels: true
       type-labels: true
       custom-rules: '.github/config/pr-labeler-triage-rules.yml'
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    secrets: inherit

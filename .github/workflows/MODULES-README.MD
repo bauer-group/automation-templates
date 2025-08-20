@@ -110,8 +110,7 @@ with:
   priority-labels: true
   type-labels: true
   auto-assign: false
-secrets:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+secrets: inherit
 ```
 
 **Ausgaben:**
