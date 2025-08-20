@@ -1,3 +1,10 @@
+## [0.7.0](https://github.com/bauer-group/automation-templates/compare/v0.6.0...v0.7.0) (2025-08-20)
+
+### 🚀 Features
+
+* aktualisiere Konfigurationsdateien für PR-Labeler und Triage-Module zur Verbesserung der Struktur und Wartbarkeit ([2ce7c95](https://github.com/bauer-group/automation-templates/commit/2ce7c9585d3b48b0776db803236257386910b94e))
+* vereinheitliche Geheimnisverwaltung in PR-Labeler-Workflows ([bcc7bda](https://github.com/bauer-group/automation-templates/commit/bcc7bda7aa99da8bf6d13c09007777e63f3b12ba))
+
 ## [0.6.0](https://github.com/bauer-group/automation-templates/compare/v0.5.0...v0.6.0) (2025-08-20)
 
 ### 🚀 Features
