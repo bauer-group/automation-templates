@@ -34,7 +34,7 @@ jobs:
   pr-validation:
     name: PR Quality Gate
     if: github.event_name == 'pull_request'
-    uses: ./.github/modules/pr-validation.yml@main
+    uses: ./.github/workflows/modules/pr-validation.yml@main
     with:
       enable-security-scan: true
       enable-license-check: true
@@ -51,7 +51,7 @@ jobs:
   security-scan:
     name: Security Analysis
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: ./.github/modules/security-scan.yml@main
+    uses: ./.github/workflows/modules/security-scan.yml@main
     with:
       scan-engine: ${{ inputs.security-engine || 'both' }}
       scan-type: 'all'
@@ -66,7 +66,7 @@ jobs:
   license-compliance:
     name: License Compliance
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: ./.github/modules/license-compliance.yml@main
+    uses: ./.github/workflows/modules/license-compliance.yml@main
     with:
       fail-on-forbidden: false
       fail-on-unknown: false
@@ -81,7 +81,7 @@ jobs:
     name: Release Management
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [security-scan, license-compliance]
-    uses: ./.github/modules/release-management.yml@main
+    uses: ./.github/workflows/modules/release-management.yml@main
     with:
       release-type: 'simple'
       force-release: ${{ inputs.force-release || false }}
@@ -97,7 +97,7 @@ jobs:
     name: Generate Artifacts
     if: needs.release-management.outputs.release-created == 'true'
     needs: release-management
-    uses: ./.github/modules/artifact-generation.yml@main
+    uses: ./.github/workflows/modules/artifact-generation.yml@main
     with:
       artifact-types: ${{ inputs.artifact-types || 'source' }}
       tag-name: ${{ needs.release-management.outputs.tag-name }}

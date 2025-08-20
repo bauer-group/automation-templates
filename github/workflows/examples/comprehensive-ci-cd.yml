@@ -31,7 +31,7 @@ jobs:
   pr-validation:
     name: PR Validation
     if: github.event_name == 'pull_request'
-    uses: bauer-group/automation-templates/.github/modules/pr-validation.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/pr-validation.yml@main
     with:
       enable-security-scan: true
       enable-license-check: true
@@ -48,7 +48,7 @@ jobs:
   security-scan:
     name: Security Scan
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
     with:
       scan-engine: ${{ inputs.security-scan-engine || 'both' }}
       scan-type: 'all'
@@ -63,7 +63,7 @@ jobs:
   license-compliance:
     name: License Compliance
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: bauer-group/automation-templates/.github/modules/license-compliance.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/license-compliance.yml@main
     with:
       fail-on-forbidden: false  # Report but don't block
       fail-on-unknown: false
@@ -78,7 +78,7 @@ jobs:
     name: Release Management
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [security-scan, license-compliance]
-    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
     with:
       release-type: ${{ inputs.release-type || 'simple' }}
       auto-merge-enabled: true
@@ -93,7 +93,7 @@ jobs:
     name: Artifact Generation
     if: needs.release.outputs.release-created == 'true'
     needs: release
-    uses: bauer-group/automation-templates/.github/modules/artifact-generation.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/artifact-generation.yml@main
     with:
       artifact-types: ${{ inputs.artifact-types || 'source' }}
       tag-name: ${{ needs.release.outputs.tag-name }}

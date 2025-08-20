@@ -17,7 +17,7 @@ jobs:
   # Simple release workflow using the modular components
   release:
     name: Simple Release
-    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
     with:
       release-type: 'simple'
       force-release: ${{ inputs.force-release || false }}
@@ -31,7 +31,7 @@ jobs:
     name: Generate Artifacts
     if: needs.release.outputs.release-created == 'true'
     needs: release
-    uses: bauer-group/automation-templates/.github/modules/artifact-generation.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/artifact-generation.yml@main
     with:
       artifact-types: 'source'
       tag-name: ${{ needs.release.outputs.tag-name }}

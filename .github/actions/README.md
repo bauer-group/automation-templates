@@ -46,7 +46,7 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 ```yaml
 jobs:
   security:
-    uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
     with:
       scan-engine: both
     secrets:
@@ -58,7 +58,7 @@ jobs:
 ```yaml
 jobs:
   release:
-    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
     with:
       release-type: simple
     secrets:
@@ -113,7 +113,7 @@ jobs:
 # Neu: Modularer Workflow
 + jobs:
 +   security:
-+     uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
++     uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
 ```
 
 **Vorteile der modularen Workflows:**
@@ -168,7 +168,7 @@ permissions:
 ```yaml
 jobs:
   security:
-    uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
     with:
       scan-engine: both
     secrets:
@@ -176,13 +176,13 @@ jobs:
   
   compliance:
     needs: security
-    uses: bauer-group/automation-templates/.github/modules/license-compliance.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/license-compliance.yml@main
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
   release:
     needs: [security, compliance]
-    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
     with:
       release-type: simple
     secrets:
@@ -194,13 +194,13 @@ jobs:
 jobs:
   pr-security:
     if: github.event_name == 'pull_request'
-    uses: bauer-group/automation-templates/.github/modules/pr-validation.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/pr-validation.yml@main
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
   release:
     if: github.ref == 'refs/heads/main'
-    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
     with:
       release-type: simple
     secrets:
