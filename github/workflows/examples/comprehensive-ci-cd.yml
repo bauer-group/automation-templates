@@ -40,7 +40,6 @@ jobs:
       fail-on-security-issues: true
       fail-on-license-issues: false
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
@@ -55,7 +54,6 @@ jobs:
       fail-on-findings: false  # Don't block releases, but report issues
       minimum-severity: 'medium'
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
@@ -70,7 +68,6 @@ jobs:
       scan-dependencies: true
       generate-sbom: true
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
 
   # Release management
@@ -84,7 +81,6 @@ jobs:
       auto-merge-enabled: true
       cleanup-release-branch: true
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
@@ -101,7 +97,6 @@ jobs:
       release-url: ${{ needs.release.outputs.release-url }}
       docker-registry: 'ghcr.io'
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DOCKER_USERNAME: ${{ github.actor }}
       DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 

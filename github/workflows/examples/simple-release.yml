@@ -23,8 +23,6 @@ jobs:
       force-release: ${{ inputs.force-release || false }}
       auto-merge-enabled: true
       cleanup-release-branch: true
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Optional: Generate basic artifacts for the release
   artifacts:
@@ -37,5 +35,3 @@ jobs:
       tag-name: ${{ needs.release.outputs.tag-name }}
       version: ${{ needs.release.outputs.version }}
       release-url: ${{ needs.release.outputs.release-url }}
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

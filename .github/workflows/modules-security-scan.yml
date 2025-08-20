@@ -29,9 +29,6 @@ on:
         type: string
         default: '.git,node_modules,vendor'
     secrets:
-      GITHUB_TOKEN:
-        description: 'GitHub token for repository access'
-        required: true
       GITGUARDIAN_API_KEY:
         description: 'GitGuardian API key (required for GitGuardian scanning)'
         required: false

@@ -34,9 +34,6 @@ on:
         type: boolean
         default: false
     secrets:
-      GITHUB_TOKEN:
-        description: 'GitHub token for repository access'
-        required: true
       GITGUARDIAN_API_KEY:
         description: 'GitGuardian API key'
         required: false
@@ -89,13 +86,12 @@ jobs:
         id: security
         if: inputs.enable-security-scan == true
         continue-on-error: ${{ inputs.fail-on-security-issues == false }}
-        uses: bauer-group/automation-templates/.github/workflows/security-scan.yml@main
+        uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
         with:
           scan-engine: ${{ inputs.security-scan-engine }}
           scan-type: 'secrets'
           fail-on-findings: ${{ inputs.fail-on-security-issues }}
         secrets:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
@@ -103,14 +99,12 @@ jobs:
         id: license
         if: inputs.enable-license-check == true
         continue-on-error: ${{ inputs.fail-on-license-issues == false }}
-        uses: bauer-group/automation-templates/.github/workflows/license-compliance.yml@main
+        uses: bauer-group/automation-templates/.github/workflows/modules-license-compliance.yml@main
         with:
           fail-on-forbidden: ${{ inputs.fail-on-license-issues }}
           fail-on-unknown: false
           scan-dependencies: false
           generate-sbom: false
-        secrets:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📊 Validation Summary
         id: summary

@@ -35,7 +35,6 @@ jobs:
       minimum-severity: ${{ inputs.deep-scan == true && 'low' || 'medium' }}
       exclude-paths: '.git,node_modules,vendor,test/fixtures'
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
@@ -51,7 +50,6 @@ jobs:
       allowed-licenses: 'MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,CC0-1.0'
       forbidden-licenses: 'GPL-*,AGPL-*,SSPL-*,WTFPL,Unlicense'
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
 
   # Enhanced PR validation for security
@@ -67,7 +65,6 @@ jobs:
       fail-on-security-issues: true
       fail-on-license-issues: true  # Strict compliance for security projects
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
@@ -83,7 +80,6 @@ jobs:
       auto-merge-enabled: false  # Manual review required for security projects
       cleanup-release-branch: true
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
@@ -100,7 +96,6 @@ jobs:
       release-url: ${{ needs.secure-release.outputs.release-url }}
       docker-registry: 'ghcr.io'
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DOCKER_USERNAME: ${{ github.actor }}
       DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 

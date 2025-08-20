@@ -60,7 +60,6 @@ jobs:
       fail-on-security-issues: true
       fail-on-license-issues: false
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
 
   # Security scan for Node.js dependencies
@@ -74,7 +73,6 @@ jobs:
       fail-on-findings: false
       exclude-paths: 'node_modules,dist,build,.nyc_output,coverage'
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
 
   # License compliance for Node.js packages
@@ -89,7 +87,6 @@ jobs:
       allowed-licenses: 'MIT,Apache-2.0,BSD-*,ISC,CC0-1.0,Unlicense'
       forbidden-licenses: 'GPL-*,AGPL-*'
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Release management for Node.js projects
   release:
@@ -102,7 +99,6 @@ jobs:
       auto-merge-enabled: true
       cleanup-release-branch: true
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Build and publish artifacts
   build-and-publish:
@@ -162,7 +158,6 @@ jobs:
       release-url: ${{ needs.release.outputs.release-url }}
       build-command: 'npm ci && npm run build'
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Project summary
   nodejs-summary:

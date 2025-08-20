@@ -37,9 +37,6 @@ on:
         type: string
         default: ''
     secrets:
-      GITHUB_TOKEN:
-        description: 'GitHub token for repository access'
-        required: true
       DOCKER_USERNAME:
         description: 'Docker registry username'
         required: false
