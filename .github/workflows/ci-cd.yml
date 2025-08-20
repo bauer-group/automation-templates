@@ -42,9 +42,7 @@ jobs:
       security-scan-engine: 'gitleaks'
       fail-on-security-issues: true
       fail-on-license-issues: false
-    secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
-      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+    secrets: inherit
 
   # Comprehensive security scan for main branch
   security-scan:
@@ -56,9 +54,7 @@ jobs:
       scan-type: 'all'
       fail-on-findings: false
       minimum-severity: 'medium'
-    secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
-      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+    secrets: inherit
 
   # License compliance check
   license-compliance:
@@ -70,8 +66,7 @@ jobs:
       fail-on-unknown: false
       scan-dependencies: true
       generate-sbom: true
-    secrets:
-      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+    secrets: inherit
 
   # Release management
   release-management:
@@ -84,9 +79,7 @@ jobs:
       force-release: ${{ inputs.force-release || false }}
       auto-merge-enabled: true
       cleanup-release-branch: true
-    secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
-      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+    secrets: inherit
 
   # Artifact generation for releases
   artifact-generation:
