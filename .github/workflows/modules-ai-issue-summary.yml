@@ -201,11 +201,16 @@ jobs:
       
       - name: 🧠 Run AI Inference (OpenAI)
         id: inference-openai
-        if: ${{ contains(inputs.model, 'gpt') && secrets.ai-api-key != '' }}
+        if: ${{ contains(inputs.model, 'gpt') }}
         continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.ai-api-key }}
         run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "⚠️ OpenAI API key not configured, skipping..."
+            exit 1
+          fi
+          
           echo "🤖 Using OpenAI API..."
           
           PROMPT=$(cat ${{ steps.prompt.outputs.prompt-file }})
@@ -220,6 +225,11 @@ jobs:
               \"temperature\": 0.7,
               \"max_tokens\": 500
             }" | jq -r '.choices[0].message.content')
+          
+          if [ "$RESPONSE" = "null" ] || [ -z "$RESPONSE" ]; then
+            echo "⚠️ Failed to get response from OpenAI"
+            exit 1
+          fi
           
           echo "response=$RESPONSE" >> $GITHUB_OUTPUT
       

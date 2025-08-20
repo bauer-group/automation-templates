@@ -19,7 +19,7 @@ jobs:
   summarize-new-issue:
     name: Generate AI Summary
     if: github.event_name == 'issues' || github.event_name == 'pull_request_target'
-    uses: ./.github/workflows\modules-ai-issue-summary.yml
+    uses: ./.github/workflows/modules-ai-issue-summary.yml
     with:
       summary-type: 'brief'           # Options: brief, detailed, technical, user-friendly
       add-labels: true                # Add suggested labels based on AI analysis
