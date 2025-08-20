@@ -1,3 +1,10 @@
+## [0.6.0](https://github.com/bauer-group/automation-templates/compare/v0.5.0...v0.6.0) (2025-08-20)
+
+### 🚀 Features
+
+* add PR Labeler & Triage module with configuration files and workflows ([97f7d04](https://github.com/bauer-group/automation-templates/commit/97f7d044917c9260c601dec567e5bcf8ddcb78e7))
+* entferne nicht benötigte Eingaben und Geheimnisse aus dem Artifact-Generierungs-Workflow ([42c4738](https://github.com/bauer-group/automation-templates/commit/42c4738bea500719e2e4914f206bb49e544d2aa4))
+
 ## [0.5.0](https://github.com/bauer-group/automation-templates/compare/v0.4.1...v0.5.0) (2025-08-20)
 
 ### 🚀 Features
