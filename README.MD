@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-20 14:51:54 UTC -->
+<!-- Generated on 2025-08-20 19:54:37 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -13,7 +13,7 @@ Professional automation templates and workflows for GitHub repositories, providi
 - **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)
 - **Branch:** main
 
-[![🔄 CI/CD Pipeline (Automatic Release)](https://github.com/bauer-group/automation-templates/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/ci-cd.yml)
+[![🔄 CI/CD Pipeline (Automatic Release)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
 [![📄 Documentation Management](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml)
 
 ## 🛡️ Security Scanning
@@ -427,4 +427,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-08-20 14:51:54 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-08-20 19:54:37 UTC from [docs/README.template.MD](docs/README.template.MD)*
