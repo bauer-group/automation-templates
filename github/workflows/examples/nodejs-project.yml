@@ -51,7 +51,7 @@ jobs:
     name: PR Validation
     if: github.event_name == 'pull_request'
     needs: test
-    uses: bauer-group/automation-templates/.github/modules/pr-validation.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/pr-validation.yml@main
     with:
       enable-security-scan: true
       enable-license-check: true
@@ -67,7 +67,7 @@ jobs:
   security-scan:
     name: Security & Dependencies
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
     with:
       scan-engine: 'both'
       scan-type: 'all'
@@ -81,7 +81,7 @@ jobs:
   license-compliance:
     name: License Compliance
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: bauer-group/automation-templates/.github/modules/license-compliance.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/license-compliance.yml@main
     with:
       fail-on-forbidden: false
       scan-dependencies: true
@@ -96,7 +96,7 @@ jobs:
     name: Release Management
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [test, security-scan, license-compliance]
-    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
     with:
       release-type: 'node'  # Node.js-specific release type
       auto-merge-enabled: true
@@ -154,7 +154,7 @@ jobs:
     name: Generate Artifacts
     if: needs.release.outputs.release-created == 'true'
     needs: [release, build-and-publish]
-    uses: bauer-group/automation-templates/.github/modules/artifact-generation.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/artifact-generation.yml@main
     with:
       artifact-types: 'source'
       tag-name: ${{ needs.release.outputs.tag-name }}

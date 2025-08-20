@@ -27,7 +27,7 @@ jobs:
   # Comprehensive security scanning
   security-analysis:
     name: Deep Security Analysis
-    uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
     with:
       scan-engine: ${{ inputs.scan-engine || 'both' }}
       scan-type: 'all'
@@ -42,7 +42,7 @@ jobs:
   # License compliance with strict rules
   compliance-check:
     name: Compliance Analysis
-    uses: bauer-group/automation-templates/.github/modules/license-compliance.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/license-compliance.yml@main
     with:
       fail-on-forbidden: true  # Strict license compliance
       fail-on-unknown: true
@@ -58,7 +58,7 @@ jobs:
   pr-security-gate:
     name: Security Gate
     if: github.event_name == 'pull_request'
-    uses: bauer-group/automation-templates/.github/modules/pr-validation.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/pr-validation.yml@main
     with:
       enable-security-scan: true
       enable-license-check: true
@@ -77,7 +77,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [security-analysis, compliance-check]
     # Only proceed if security and compliance checks pass
-    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
     with:
       release-type: 'simple'
       auto-merge-enabled: false  # Manual review required for security projects
@@ -92,7 +92,7 @@ jobs:
     name: Secure Artifacts
     if: needs.secure-release.outputs.release-created == 'true'
     needs: secure-release
-    uses: bauer-group/automation-templates/.github/modules/artifact-generation.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/artifact-generation.yml@main
     with:
       artifact-types: 'all'  # Generate all artifact types
       tag-name: ${{ needs.secure-release.outputs.tag-name }}

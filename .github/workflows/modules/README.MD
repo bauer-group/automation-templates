@@ -12,7 +12,7 @@ Diese Sammlung von wiederverwendbaren Workflows ermöglicht es, CI/CD-Pipelines 
 **Zweck:** Umfassende Sicherheitsanalyse mit Gitleaks und GitGuardian
 
 ```yaml
-uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
 with:
   scan-engine: 'both'
   scan-type: 'all'
@@ -32,7 +32,7 @@ secrets:
 **Zweck:** Lizenz-Compliance-Prüfung und SBOM-Generierung
 
 ```yaml
-uses: bauer-group/automation-templates/.github/modules/license-compliance.yml@main
+uses: bauer-group/automation-templates/.github/workflows/modules/license-compliance.yml@main
 with:
   fail-on-forbidden: true
   scan-dependencies: true
@@ -52,7 +52,7 @@ secrets:
 **Zweck:** Automatisierte Release-Erstellung mit Release-Please
 
 ```yaml
-uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
 with:
   release-type: 'simple'
   auto-merge-enabled: true
@@ -73,7 +73,7 @@ secrets:
 **Zweck:** Erstellung und Upload von Release-Artefakten
 
 ```yaml
-uses: bauer-group/automation-templates/.github/modules/artifact-generation.yml@main
+uses: bauer-group/automation-templates/.github/workflows/modules/artifact-generation.yml@main
 with:
   artifact-types: 'all'
   tag-name: ${{ needs.release.outputs.tag-name }}
@@ -93,7 +93,7 @@ secrets:
 **Zweck:** Umfassende Pull Request Validierung
 
 ```yaml
-uses: bauer-group/automation-templates/.github/modules/pr-validation.yml@main
+uses: bauer-group/automation-templates/.github/workflows/modules/pr-validation.yml@main
 with:
   enable-security-scan: true
   enable-license-check: true
@@ -114,7 +114,7 @@ secrets:
 ```yaml
 jobs:
   release:
-    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
     with:
       release-type: 'simple'
     secrets:
@@ -123,7 +123,7 @@ jobs:
   artifacts:
     if: needs.release.outputs.release-created == 'true'
     needs: release
-    uses: bauer-group/automation-templates/.github/modules/artifact-generation.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/artifact-generation.yml@main
     with:
       artifact-types: 'source'
       tag-name: ${{ needs.release.outputs.tag-name }}
@@ -134,15 +134,15 @@ jobs:
 ```yaml
 jobs:
   security:
-    uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
   
   compliance:
-    uses: bauer-group/automation-templates/.github/modules/license-compliance.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/license-compliance.yml@main
   
   release:
     needs: [security, compliance]
     if: needs.security.outputs.security-score >= 80
-    uses: bauer-group/automation-templates/.github/modules/release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/release-management.yml@main
 ```
 
 ### 3. PR-Validierung mit Gates
@@ -150,7 +150,7 @@ jobs:
 jobs:
   pr-check:
     if: github.event_name == 'pull_request'
-    uses: bauer-group/automation-templates/.github/modules/pr-validation.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/pr-validation.yml@main
     with:
       fail-on-security-issues: true
       fail-on-license-issues: false
@@ -168,11 +168,11 @@ Module können basierend auf verschiedenen Bedingungen ausgeführt werden:
 jobs:
   security-scan:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
     
   pr-validation:
     if: github.event_name == 'pull_request'
-    uses: bauer-group/automation-templates/.github/modules/pr-validation.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/pr-validation.yml@main
 ```
 
 ### Error Handling
@@ -181,7 +181,7 @@ Module verwenden `continue-on-error` und Output-Parameter für flexibles Error-H
 ```yaml
 jobs:
   security:
-    uses: bauer-group/automation-templates/.github/modules/security-scan.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
     with:
       fail-on-findings: false  # Informative Scans
 
