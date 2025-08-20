@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-20 19:54:37 UTC -->
+<!-- Generated on 2025-08-20 21:02:57 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -9,7 +9,7 @@ Professional automation templates and workflows for GitHub repositories, providi
 
 **Repository Information:**
 
-- **Version:** 0.3.0 (2025-08-20)
+- **Version:** 0.4.0 (2025-08-20)
 - **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)
 - **Branch:** main
 
@@ -77,11 +77,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 🚀 Enhanced Release Management
-        uses: bauer-group/automation-templates/.github/actions/release-please@main
+      - name: 🚀 Semantic Release
+        uses: bauer-group/automation-templates/.github/actions/semantic-release@main
         with:
-          release-type: simple
-          security-engines: $
+          dry-run: false
+          branches: main
           token: $
 ```
 
@@ -384,7 +384,7 @@ docker-compose up -d
 ### Common Issues
 
 1. **Security scan failures**: Check scan configuration and token permissions
-2. **Release automation issues**: Validate commit format and release-please configuration
+2. **Release automation issues**: Validate commit format and semantic-release configuration
 3. **Workflow permissions**: Ensure proper GITHUB_TOKEN permissions
 4. **Template rendering**: Verify all required variables are provided
 
@@ -409,7 +409,7 @@ gh auth status --show-token
 - [License Compliance Action](.github/actions/license-compliance/README.md)
 - [Artifact Generator Action](.github/actions/artifact-generator/README.md)
 - [README Generator Action](.github/actions/readme-generate/README.md)
-- [Release Please Action](.github/actions/release-please/README.md)
+- [Semantic Release Action](.github/actions/semantic-release/README.md)
 - [Workflow Configuration](.github/config/README.md)
 - [Branch Protection Tools](github/branch-protect/README.md)
 - [Repository Cleanup Tools](github/cleanup/README.md)
@@ -427,4 +427,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-08-20 19:54:37 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-08-20 21:02:57 UTC from [docs/README.template.MD](docs/README.template.MD)*
