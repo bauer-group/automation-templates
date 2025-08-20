@@ -1,3 +1,9 @@
+## [0.8.0](https://github.com/bauer-group/automation-templates/compare/v0.7.0...v0.8.0) (2025-08-20)
+
+### 🚀 Features
+
+* erweitere Artefakt-Generator mit neuen Statusausgaben für Quellarchive, Binaries und Docker-Images ([53b0a52](https://github.com/bauer-group/automation-templates/commit/53b0a529ad1cf06c532857dc7945aa444640b43b))
+
 ## [0.7.0](https://github.com/bauer-group/automation-templates/compare/v0.6.0...v0.7.0) (2025-08-20)
 
 ### 🚀 Features
