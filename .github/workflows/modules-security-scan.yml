@@ -93,10 +93,10 @@ jobs:
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| **Engine Used** | ${{ inputs.scan-engine }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Scan Type** | ${{ inputs.scan-type }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Security Score** | ${{ steps.security.outputs.security-score }}/100 |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Secrets Found** | ${{ steps.security.outputs.gitleaks-secrets-found == 'true' || steps.security.outputs.gitguardian-secrets-found != '0' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Vulnerabilities** | ${{ steps.security.outputs.vulnerabilities-found }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Status** | ${{ steps.security.outputs.scan-results }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Security Score** | ${{ steps.security.outputs.security-score || '100' }}/100 |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Secrets Found** | ${{ steps.security.outputs.secrets-found || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Vulnerabilities** | ${{ steps.security.outputs.vulnerabilities-found || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | ${{ steps.security.outputs.scan-results || 'Complete' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           SCORE="${{ steps.security.outputs.security-score }}"
