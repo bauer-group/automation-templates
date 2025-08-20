@@ -51,5 +51,5 @@ docker compose up -d --scale runner="${RUNNER_COUNT}"
 systemctl daemon-reload
 systemctl enable --now gha-runners.service
 
-log "Fertig. Aktive Runner-Container:"
+log "Fertig! Aktive Runner-Container:"
 docker ps --filter "name=$(basename "$REPO_DIR")_runner"
