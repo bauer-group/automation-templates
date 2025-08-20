@@ -1,3 +1,9 @@
+## [0.9.0](https://github.com/bauer-group/automation-templates/compare/v0.8.0...v0.9.0) (2025-08-20)
+
+### 🚀 Features
+
+* verbessere Artefakt-Generator und Upload-Workflow mit zusätzlichen Archivformaten und verbesserten Bedingungen ([87e07db](https://github.com/bauer-group/automation-templates/commit/87e07db9552f2e37262998c6cfcaebcda8c6cfa4))
+
 ## [0.8.0](https://github.com/bauer-group/automation-templates/compare/v0.7.0...v0.8.0) (2025-08-20)
 
 ### 🚀 Features
