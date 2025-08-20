@@ -57,6 +57,15 @@ outputs:
   artifacts-generated:
     description: 'List of generated artifacts'
     value: ${{ steps.summary.outputs.artifacts-generated }}
+  source-archive-created:
+    description: 'Whether source archive was created'
+    value: ${{ steps.summary.outputs.source-archive-created }}
+  binaries-created:
+    description: 'Whether binaries were created'
+    value: ${{ steps.summary.outputs.binaries-created }}
+  docker-image-pushed:
+    description: 'Whether Docker image was pushed'
+    value: ${{ steps.summary.outputs.docker-image-pushed }}
   source-archives:
     description: 'Generated source archive files'
     value: ${{ steps.source-archives.outputs.source-archives }}
@@ -424,6 +433,25 @@ runs:
         ALL_ARTIFACTS="${ALL_ARTIFACTS#,}"
         
         echo "artifacts-generated=$ALL_ARTIFACTS" >> $GITHUB_OUTPUT
+        
+        # Set status outputs
+        if [ -n "$SOURCE_ARCHIVES" ]; then
+          echo "source-archive-created=true" >> $GITHUB_OUTPUT
+        else
+          echo "source-archive-created=false" >> $GITHUB_OUTPUT
+        fi
+        
+        if [ -n "$BINARY_ARCHIVES" ]; then
+          echo "binaries-created=true" >> $GITHUB_OUTPUT
+        else
+          echo "binaries-created=false" >> $GITHUB_OUTPUT
+        fi
+        
+        if [ -n "$DOCKER_IMAGES" ]; then
+          echo "docker-image-pushed=true" >> $GITHUB_OUTPUT
+        else
+          echo "docker-image-pushed=false" >> $GITHUB_OUTPUT
+        fi
         
         # Create detailed summary
         cat > artifacts/artifact-summary.md << EOF

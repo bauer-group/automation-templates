@@ -89,7 +89,6 @@ jobs:
       artifact-types: ${{ inputs.artifact-types || 'source' }}
       tag-name: ${{ needs.release-management.outputs.tag-name }}
       version: ${{ needs.release-management.outputs.version }}
-      release-url: ${{ needs.release-management.outputs.release-url }}
 
   # Pipeline summary
   pipeline-summary:
