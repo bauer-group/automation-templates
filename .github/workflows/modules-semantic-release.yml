@@ -1,0 +1,172 @@
+name: 📦 Module | Semantic Release
+
+on:
+  workflow_call:
+    inputs:
+      target-branch:
+        description: 'Target branch for releases'
+        required: false
+        type: string
+        default: 'main'
+      dry-run:
+        description: 'Perform dry run without creating release'
+        required: false
+        type: boolean
+        default: false
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '20'
+    outputs:
+      release-created:
+        description: 'Whether a release was created'
+        value: ${{ jobs.semantic-release.outputs.release-created }}
+      version:
+        description: 'Release version'
+        value: ${{ jobs.semantic-release.outputs.version }}
+      tag-name:
+        description: 'Git tag name'
+        value: ${{ jobs.semantic-release.outputs.tag }}
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  semantic-release:
+    name: 📦 Semantic Release
+    runs-on: ubuntu-latest
+    outputs:
+      release-created: ${{ steps.release.outputs.release-created }}
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+    
+    steps:
+      - name: 🚀 Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          
+      - name: 📦 Install semantic-release
+        run: |
+          npm install -D \
+            semantic-release \
+            @semantic-release/changelog \
+            @semantic-release/git \
+            @semantic-release/github \
+            @semantic-release/commit-analyzer \
+            @semantic-release/release-notes-generator
+            
+      - name: 🔧 Configure semantic-release
+        run: |
+          cat > .releaserc.json << 'EOF'
+          {
+            "branches": ["${{ inputs.target-branch }}"],
+            "plugins": [
+              ["@semantic-release/commit-analyzer", {
+                "preset": "conventionalcommits",
+                "releaseRules": [
+                  {"breaking": true, "release": "major"},
+                  {"type": "feat", "release": "minor"},
+                  {"type": "fix", "release": "patch"},
+                  {"type": "perf", "release": "patch"},
+                  {"type": "revert", "release": "patch"},
+                  {"type": "docs", "release": false},
+                  {"type": "style", "release": false},
+                  {"type": "chore", "release": false},
+                  {"type": "refactor", "release": false},
+                  {"type": "test", "release": false},
+                  {"type": "build", "release": false},
+                  {"type": "ci", "release": false}
+                ]
+              }],
+              ["@semantic-release/release-notes-generator", {
+                "preset": "conventionalcommits",
+                "presetConfig": {
+                  "types": [
+                    {"type": "feat", "section": "🚀 Features"},
+                    {"type": "fix", "section": "🐛 Bug Fixes"},
+                    {"type": "perf", "section": "⚡ Performance"},
+                    {"type": "revert", "section": "⏪ Reverts"},
+                    {"type": "docs", "section": "📚 Documentation", "hidden": true},
+                    {"type": "style", "section": "💄 Styles", "hidden": true},
+                    {"type": "chore", "section": "🔧 Chores", "hidden": true},
+                    {"type": "refactor", "section": "♻️ Refactoring"},
+                    {"type": "test", "section": "🧪 Tests", "hidden": true},
+                    {"type": "build", "section": "🔨 Build", "hidden": true},
+                    {"type": "ci", "section": "👷 CI", "hidden": true}
+                  ]
+                }
+              }],
+              ["@semantic-release/changelog", {
+                "changelogFile": "CHANGELOG.md"
+              }],
+              ["@semantic-release/git", {
+                "assets": ["CHANGELOG.md", "package.json"],
+                "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+              }],
+              ["@semantic-release/github", {
+                "successComment": false,
+                "failComment": false,
+                "releasedLabels": false
+              }]
+            ]
+          }
+          EOF
+          
+      - name: 🚀 Run Semantic Release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
+        run: |
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            echo "Running in dry-run mode..."
+            npx semantic-release --dry-run
+          else
+            # Capture output
+            OUTPUT=$(npx semantic-release 2>&1 | tee /tmp/semantic-release.log)
+            
+            # Extract version if release was created
+            if echo "$OUTPUT" | grep -q "Published release"; then
+              VERSION=$(echo "$OUTPUT" | grep -oP 'Published release \K[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+              echo "release-created=true" >> $GITHUB_OUTPUT
+              echo "version=$VERSION" >> $GITHUB_OUTPUT
+              echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+              echo "✅ Released version: v$VERSION"
+            else
+              echo "release-created=false" >> $GITHUB_OUTPUT
+              echo "ℹ️ No release created (no releasable changes)"
+            fi
+          fi
+          
+      - name: 📊 Summary
+        if: always()
+        run: |
+          echo "### 🚀 Semantic Release Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.release.outputs.release-created }}" = "true" ]; then
+            echo "✅ **Release Created Successfully**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| **Version** | ${{ steps.release.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Tag** | ${{ steps.release.outputs.tag }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Branch** | ${{ inputs.target-branch }} |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ **No Release Created**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No releasable changes found since the last release." >> $GITHUB_STEP_SUMMARY
+          fi

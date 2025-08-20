@@ -73,12 +73,10 @@ jobs:
     name: Release Management
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [security-scan, license-compliance]
-    uses: ./.github/workflows/modules-release-management.yml
+    uses: ./.github/workflows/modules-semantic-release.yml
     with:
-      release-type: 'simple'
-      force-release: ${{ inputs.force-release || false }}
-      auto-merge-enabled: true
-      cleanup-release-branch: true
+      target-branch: 'main'
+      dry-run: false
     secrets: inherit
 
   # Artifact generation for releases
