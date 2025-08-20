@@ -1,0 +1,351 @@
+name: 🤖 Module | Issue Automation
+
+on:
+  workflow_call:
+    inputs:
+      action:
+        description: 'Action to perform (close, comment, label, assign)'
+        required: false
+        type: string
+        default: 'close'
+      label-config-path:
+        description: 'Path to label configuration file'
+        required: false
+        type: string
+        default: '.github/config/issues/label-actions.yml'
+      close-reason:
+        description: 'Reason for closing (completed, not_planned, duplicate)'
+        required: false
+        type: string
+        default: 'completed'
+      dry-run:
+        description: 'Run in dry-run mode without making changes'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      token:
+        description: 'GitHub Token with issues write permission'
+        required: false
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  process-issue:
+    name: 🏷️ Process Issue Based on Label
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.token || secrets.GITHUB_TOKEN }}
+      
+      - name: 📋 Get Issue Details
+        id: issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.token || secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔍 Getting issue/PR details..."
+          
+          # Determine if this is an issue or PR
+          if [ -n "${{ github.event.issue }}" ]; then
+            echo "type=issue" >> $GITHUB_OUTPUT
+            echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "labels=${{ toJson(github.event.issue.labels.*.name) }}" >> $GITHUB_OUTPUT
+            echo "title=${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ github.event.pull_request }}" ]; then
+            echo "type=pull_request" >> $GITHUB_OUTPUT
+            echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "labels=${{ toJson(github.event.pull_request.labels.*.name) }}" >> $GITHUB_OUTPUT
+            echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 📖 Load Label Configuration
+        id: config
+        run: |
+          CONFIG_PATH="${{ inputs.label-config-path }}"
+          
+          # Check if config file exists, otherwise use default
+          if [ ! -f "$CONFIG_PATH" ]; then
+            echo "⚠️ Config file not found at $CONFIG_PATH, using default configuration"
+            
+            # Create default configuration
+            cat > /tmp/label-config.yml << 'EOF'
+          support:
+            action: close
+            comment: |
+              Thank you for reaching out! 🙏
+              
+              This issue has been classified as a **support request**. 
+              
+              For support questions, please use one of these channels:
+              - 📚 [Documentation](https://github.com/${{ github.repository }}/wiki)
+              - 💬 [Discussions](https://github.com/${{ github.repository }}/discussions)
+              - 🎯 [Community Forum](https://github.community/)
+              
+              This helps us keep the issue tracker focused on bugs and feature requests.
+            close_reason: not_planned
+            
+          feature:
+            action: close
+            comment: |
+              Thank you for this feature request! 🚀
+              
+              We appreciate your suggestion and have logged it for consideration. However, we're closing this issue to keep our tracker focused on active development.
+              
+              **What happens next:**
+              - Your request has been documented
+              - It will be reviewed during our planning sessions
+              - If selected for implementation, we'll create a new tracking issue
+              
+              Feel free to:
+              - 🍴 Fork this repository and implement the feature
+              - 💬 Continue the discussion in [Discussions](https://github.com/${{ github.repository }}/discussions)
+            close_reason: not_planned
+            
+          duplicate:
+            action: close
+            comment: |
+              This issue appears to be a duplicate of an existing issue. 
+              
+              Please check the original issue for updates and add any additional context there.
+            close_reason: duplicate
+            
+          invalid:
+            action: close
+            comment: |
+              This issue has been marked as invalid because it doesn't follow our issue template or lacks necessary information.
+              
+              Please feel free to open a new issue with:
+              - Clear description of the problem
+              - Steps to reproduce
+              - Expected behavior
+              - Actual behavior
+            close_reason: not_planned
+            
+          wontfix:
+            action: close
+            comment: |
+              After careful consideration, we've decided not to implement this change.
+              
+              This decision was made because the change:
+              - Falls outside the project scope
+              - Would break backward compatibility
+              - Has alternative solutions available
+              
+              Thank you for your understanding.
+            close_reason: not_planned
+            
+          stale:
+            action: comment
+            comment: |
+              This issue has been automatically marked as stale because it has not had recent activity. 
+              
+              It will be closed in 7 days if no further activity occurs. 
+              
+              If this issue is still relevant, please comment to keep it open.
+            
+          needs-info:
+            action: comment
+            comment: |
+              Thank you for reporting this issue! 
+              
+              To help us investigate, could you please provide:
+              - More detailed steps to reproduce
+              - Your environment details (OS, version, etc.)
+              - Any relevant logs or error messages
+              - Screenshots if applicable
+            add_labels: ["waiting-for-response"]
+            
+          good-first-issue:
+            action: comment
+            comment: |
+              This issue has been marked as a **good first issue**! 👋
+              
+              If you're interested in working on this:
+              1. Comment here to claim it
+              2. Fork the repository
+              3. Create a branch for your changes
+              4. Submit a pull request when ready
+              
+              Need help? Feel free to ask questions!
+            add_labels: ["help-wanted"]
+            
+          bug-confirmed:
+            action: comment
+            comment: |
+              This bug has been confirmed and reproduced. 🐛
+              
+              We'll prioritize this for fixing. Thank you for the detailed report!
+            add_labels: ["confirmed", "priority-high"]
+            remove_labels: ["needs-triage", "needs-info"]
+          EOF
+            
+            CONFIG_PATH="/tmp/label-config.yml"
+          fi
+          
+          echo "config-path=$CONFIG_PATH" >> $GITHUB_OUTPUT
+      
+      - name: 🏷️ Process Labels
+        id: process
+        env:
+          GITHUB_TOKEN: ${{ secrets.token || secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔄 Processing labels..."
+          
+          CONFIG_FILE="${{ steps.config.outputs.config-path }}"
+          ISSUE_NUMBER="${{ steps.issue.outputs.number }}"
+          ISSUE_TYPE="${{ steps.issue.outputs.type }}"
+          DRY_RUN="${{ inputs.dry-run }}"
+          
+          # Parse labels from event
+          LABELS=$(echo '${{ steps.issue.outputs.labels }}' | jq -r '.[]' 2>/dev/null || echo "")
+          
+          if [ -z "$LABELS" ]; then
+            echo "⚠️ No labels found on this $ISSUE_TYPE"
+            exit 0
+          fi
+          
+          echo "📋 Found labels: $LABELS"
+          
+          # Process each label
+          for LABEL in $LABELS; do
+            echo "Processing label: $LABEL"
+            
+            # Check if label has configuration
+            if ! grep -q "^$LABEL:" "$CONFIG_FILE" 2>/dev/null; then
+              echo "  ℹ️ No configuration for label: $LABEL"
+              continue
+            fi
+            
+            # Extract action for this label using Python (more reliable than bash for YAML)
+            ACTION=$(python3 -c "
+          import yaml
+          with open('$CONFIG_FILE', 'r') as f:
+              config = yaml.safe_load(f)
+              if '$LABEL' in config:
+                  print(config['$LABEL'].get('action', 'none'))
+              else:
+                  print('none')
+          " 2>/dev/null || echo "none")
+            
+            echo "  Action: $ACTION"
+            
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "  🔍 DRY RUN: Would perform action '$ACTION' for label '$LABEL'"
+              continue
+            fi
+            
+            case "$ACTION" in
+              "close")
+                echo "  📝 Adding comment and closing $ISSUE_TYPE..."
+                # Get comment and close reason
+                COMMENT=$(python3 -c "
+          import yaml
+          with open('$CONFIG_FILE', 'r') as f:
+              config = yaml.safe_load(f)
+              if '$LABEL' in config:
+                  comment = config['$LABEL'].get('comment', '')
+                  # Replace repository variable
+                  comment = comment.replace('\${{ github.repository }}', '${{ github.repository }}')
+                  print(comment)
+          " 2>/dev/null || echo "")
+                
+                CLOSE_REASON=$(python3 -c "
+          import yaml
+          with open('$CONFIG_FILE', 'r') as f:
+              config = yaml.safe_load(f)
+              if '$LABEL' in config:
+                  print(config['$LABEL'].get('close_reason', 'completed'))
+          " 2>/dev/null || echo "completed")
+                
+                # Add comment if specified
+                if [ -n "$COMMENT" ]; then
+                  gh issue comment "$ISSUE_NUMBER" --body "$COMMENT"
+                fi
+                
+                # Close the issue/PR
+                gh issue close "$ISSUE_NUMBER" --reason "$CLOSE_REASON"
+                echo "  ✅ Closed $ISSUE_TYPE #$ISSUE_NUMBER with reason: $CLOSE_REASON"
+                ;;
+                
+              "comment")
+                echo "  💬 Adding comment to $ISSUE_TYPE..."
+                COMMENT=$(python3 -c "
+          import yaml
+          with open('$CONFIG_FILE', 'r') as f:
+              config = yaml.safe_load(f)
+              if '$LABEL' in config:
+                  comment = config['$LABEL'].get('comment', '')
+                  comment = comment.replace('\${{ github.repository }}', '${{ github.repository }}')
+                  print(comment)
+          " 2>/dev/null || echo "")
+                
+                if [ -n "$COMMENT" ]; then
+                  gh issue comment "$ISSUE_NUMBER" --body "$COMMENT"
+                  echo "  ✅ Added comment to $ISSUE_TYPE #$ISSUE_NUMBER"
+                fi
+                
+                # Add additional labels if specified
+                ADD_LABELS=$(python3 -c "
+          import yaml
+          with open('$CONFIG_FILE', 'r') as f:
+              config = yaml.safe_load(f)
+              if '$LABEL' in config:
+                  labels = config['$LABEL'].get('add_labels', [])
+                  print(' '.join(labels))
+          " 2>/dev/null || echo "")
+                
+                if [ -n "$ADD_LABELS" ]; then
+                  for NEW_LABEL in $ADD_LABELS; do
+                    gh issue edit "$ISSUE_NUMBER" --add-label "$NEW_LABEL"
+                    echo "  ➕ Added label: $NEW_LABEL"
+                  done
+                fi
+                
+                # Remove labels if specified
+                REMOVE_LABELS=$(python3 -c "
+          import yaml
+          with open('$CONFIG_FILE', 'r') as f:
+              config = yaml.safe_load(f)
+              if '$LABEL' in config:
+                  labels = config['$LABEL'].get('remove_labels', [])
+                  print(' '.join(labels))
+          " 2>/dev/null || echo "")
+                
+                if [ -n "$REMOVE_LABELS" ]; then
+                  for OLD_LABEL in $REMOVE_LABELS; do
+                    gh issue edit "$ISSUE_NUMBER" --remove-label "$OLD_LABEL"
+                    echo "  ➖ Removed label: $OLD_LABEL"
+                  done
+                fi
+                ;;
+                
+              *)
+                echo "  ℹ️ No action configured for label: $LABEL"
+                ;;
+            esac
+          done
+      
+      - name: 📊 Summary
+        if: always()
+        run: |
+          echo "### 🤖 Issue Automation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Type** | ${{ steps.issue.outputs.type }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Number** | #${{ steps.issue.outputs.number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Title** | ${{ steps.issue.outputs.title }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Labels** | ${{ steps.issue.outputs.labels }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Dry Run** | ${{ inputs.dry-run }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            echo "🔍 **This was a dry run - no actual changes were made**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **Automation completed successfully**" >> $GITHUB_STEP_SUMMARY
+          fi
