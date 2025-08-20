@@ -1,4 +1,4 @@
-name: 🚀 Release Management
+name: 📦 Module | Release Management
 
 on:
   workflow_call:

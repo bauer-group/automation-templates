@@ -1,4 +1,4 @@
-name: 🛡️ Security Scanning
+name: 📦 Module | Security Scanning
 
 on:
   workflow_call:
