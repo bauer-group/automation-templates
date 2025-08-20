@@ -1,4 +1,4 @@
-name: 🤖 Module | Issue Automation
+name: 📦 Module | Issue Automation
 
 on:
   workflow_call:

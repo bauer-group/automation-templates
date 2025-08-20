@@ -1,4 +1,4 @@
-name: 🤖 Module | AI Issue Summary
+name: 📦 Module | AI Issue Summary
 
 on:
   workflow_call:
