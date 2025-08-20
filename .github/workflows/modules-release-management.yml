@@ -8,6 +8,11 @@ on:
         required: false
         type: string
         default: 'simple'
+      target-branch:
+        description: 'Target branch for releases (main, master, develop, etc.)'
+        required: false
+        type: string
+        default: 'main'
       force-release:
         description: 'Force create release (skip conventional commit check)'
         required: false
@@ -119,8 +124,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: .github/config/release-please-config.json
           manifest-file: .github/config/.release-please-manifest.json
-          target-branch: main
-          default-branch: main
+          target-branch: ${{ inputs.target-branch }}
+          default-branch: ${{ inputs.target-branch }}
           signoff: false
           
       - name: 🔄 Analyze Failure
@@ -157,8 +162,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: .github/config/release-please-config.json
           manifest-file: .github/config/.release-please-manifest.json
-          target-branch: main
-          default-branch: main
+          target-branch: ${{ inputs.target-branch }}
+          default-branch: ${{ inputs.target-branch }}
           signoff: false
 
       - name: 🎯 Auto-Merge Release PR
@@ -180,6 +185,7 @@ jobs:
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| **Release Type** | ${{ inputs.release-type }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Target Branch** | ${{ inputs.target-branch }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Force Release** | ${{ inputs.force-release }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Auto-Merge** | ${{ inputs.auto-merge-enabled }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Cleanup Branch** | ${{ inputs.cleanup-release-branch }} |" >> $GITHUB_STEP_SUMMARY
