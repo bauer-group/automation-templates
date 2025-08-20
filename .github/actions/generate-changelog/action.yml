@@ -1,0 +1,154 @@
+name: 'Generate Changelog'
+description: 'Generate changelog from conventional commits'
+author: 'BAUER GROUP'
+
+inputs:
+  from-tag:
+    description: 'Starting tag/commit'
+    required: false
+    default: ''
+  to-tag:
+    description: 'Ending tag/commit'
+    required: false
+    default: 'HEAD'
+  output-file:
+    description: 'Output file for changelog'
+    required: false
+    default: 'CHANGELOG.MD'
+  preset:
+    description: 'Conventional changelog preset'
+    required: false
+    default: 'conventionalcommits'
+
+outputs:
+  changelog:
+    description: 'Generated changelog content'
+    value: ${{ steps.generate.outputs.changelog }}
+  has-changes:
+    description: 'Whether there are changes to release'
+    value: ${{ steps.analyze.outputs.has-changes }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Analyze Commits
+      id: analyze
+      shell: bash
+      run: |
+        FROM_TAG="${{ inputs.from-tag }}"
+        TO_TAG="${{ inputs.to-tag }}"
+        
+        # Get last tag if not specified
+        if [ -z "$FROM_TAG" ]; then
+          FROM_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        fi
+        
+        # Get commits
+        if [ -n "$FROM_TAG" ]; then
+          COMMITS=$(git log ${FROM_TAG}..${TO_TAG} --oneline 2>/dev/null || echo "")
+        else
+          COMMITS=$(git log ${TO_TAG} --oneline 2>/dev/null || echo "")
+        fi
+        
+        # Check for releasable changes
+        if echo "$COMMITS" | grep -qE "^(feat|fix|perf|revert|BREAKING CHANGE)"; then
+          echo "has-changes=true" >> $GITHUB_OUTPUT
+          echo "✅ Found releasable changes"
+        else
+          echo "has-changes=false" >> $GITHUB_OUTPUT
+          echo "ℹ️ No releasable changes found"
+        fi
+        
+    - name: Generate Changelog
+      id: generate
+      shell: bash
+      run: |
+        FROM_TAG="${{ inputs.from-tag }}"
+        TO_TAG="${{ inputs.to-tag }}"
+        OUTPUT_FILE="${{ inputs.output-file }}"
+        
+        # Get last tag if not specified
+        if [ -z "$FROM_TAG" ]; then
+          FROM_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        fi
+        
+        # Start changelog
+        {
+          echo "# Changelog"
+          echo ""
+          
+          # Get commits by type
+          if [ -n "$FROM_TAG" ]; then
+            RANGE="${FROM_TAG}..${TO_TAG}"
+          else
+            RANGE="${TO_TAG}"
+          fi
+          
+          # Breaking Changes
+          BREAKING=$(git log $RANGE --grep="BREAKING CHANGE" --grep="^[^:]+!:" --oneline 2>/dev/null || true)
+          if [ -n "$BREAKING" ]; then
+            echo "### ⚠️ BREAKING CHANGES"
+            echo ""
+            echo "$BREAKING" | while read -r line; do
+              echo "* $line"
+            done
+            echo ""
+          fi
+          
+          # Features
+          FEATURES=$(git log $RANGE --grep="^feat" --oneline 2>/dev/null || true)
+          if [ -n "$FEATURES" ]; then
+            echo "### 🚀 Features"
+            echo ""
+            echo "$FEATURES" | while read -r line; do
+              echo "* $line"
+            done
+            echo ""
+          fi
+          
+          # Bug Fixes
+          FIXES=$(git log $RANGE --grep="^fix" --oneline 2>/dev/null || true)
+          if [ -n "$FIXES" ]; then
+            echo "### 🐛 Bug Fixes"
+            echo ""
+            echo "$FIXES" | while read -r line; do
+              echo "* $line"
+            done
+            echo ""
+          fi
+          
+          # Performance
+          PERF=$(git log $RANGE --grep="^perf" --oneline 2>/dev/null || true)
+          if [ -n "$PERF" ]; then
+            echo "### ⚡ Performance"
+            echo ""
+            echo "$PERF" | while read -r line; do
+              echo "* $line"
+            done
+            echo ""
+          fi
+          
+          # Reverts
+          REVERTS=$(git log $RANGE --grep="^revert" --oneline 2>/dev/null || true)
+          if [ -n "$REVERTS" ]; then
+            echo "### ⏪ Reverts"
+            echo ""
+            echo "$REVERTS" | while read -r line; do
+              echo "* $line"
+            done
+            echo ""
+          fi
+          
+        } > "$OUTPUT_FILE"
+        
+        # Set output
+        CHANGELOG_CONTENT=$(cat "$OUTPUT_FILE")
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+        echo "📝 Changelog generated to $OUTPUT_FILE"
+
+branding:
+  icon: 'file-text'
+  color: 'blue'
