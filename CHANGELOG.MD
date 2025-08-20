@@ -1,3 +1,9 @@
+## [0.4.1](https://github.com/bauer-group/automation-templates/compare/v0.4.0...v0.4.1) (2025-08-20)
+
+### 🐛 Bug Fixes
+
+* korrigiere Ausgabenamen in den Workflow-Dateien für Artefakterstellung, Lizenzprüfung und Sicherheitsprüfung ([5b6d0e9](https://github.com/bauer-group/automation-templates/commit/5b6d0e96cc35db3662e3c161ea7458e6920884ad))
+
 ## [0.4.0](https://github.com/bauer-group/automation-templates/compare/v0.3.0...v0.4.0) (2025-08-20)
 
 ### 🚀 Features
