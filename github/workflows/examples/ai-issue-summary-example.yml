@@ -1,0 +1,237 @@
+name: 🤖 AI-Powered Issue Analysis
+
+# Example workflow showing different configurations for AI issue summaries
+# Uses the modular AI summary component from bauer-group/automation-templates
+
+on:
+  issues:
+    types: [opened, edited]
+  pull_request_target:
+    types: [opened, edited]
+  workflow_dispatch:
+    inputs:
+      issue-number:
+        description: 'Issue/PR number to summarize'
+        required: true
+        type: number
+
+permissions:
+  issues: write
+  pull-requests: write
+  models: read
+  contents: read
+
+jobs:
+  # Basic summary for all new issues/PRs
+  basic-summary:
+    name: 📝 Basic Summary
+    if: github.event.action == 'opened'
+    uses: bauer-group/automation-templates/.github/workflows/modules-ai-issue-summary.yml@main
+    with:
+      summary-type: 'brief'
+      add-labels: true
+      add-priority: false
+      model: 'gpt-3.5-turbo'
+    secrets: inherit
+
+  # Detailed technical analysis for bug reports
+  bug-analysis:
+    name: 🐛 Bug Analysis
+    if: |
+      github.event.action == 'opened' && 
+      (contains(github.event.issue.title, 'bug') || 
+       contains(github.event.issue.title, 'error') ||
+       contains(github.event.issue.title, 'issue'))
+    uses: bauer-group/automation-templates/.github/workflows/modules-ai-issue-summary.yml@main
+    with:
+      summary-type: 'technical'
+      add-labels: true
+      add-priority: true
+      custom-prompt: |
+        Analyze this bug report and provide:
+        1. Summary of the issue
+        2. Steps to reproduce (if provided)
+        3. Potential root causes
+        4. Suggested debugging approach
+        5. Severity assessment (low/medium/high/critical)
+        
+        Title: ${{ github.event.issue.title }}
+        Body: ${{ github.event.issue.body }}
+      comment-template: |
+        ## 🐛 Bug Analysis Report
+        
+        {summary}
+        
+        ---
+        *AI-generated analysis to assist with debugging*
+    secrets: inherit
+
+  # Feature request evaluation
+  feature-evaluation:
+    name: 🚀 Feature Evaluation
+    if: |
+      github.event.action == 'opened' && 
+      (contains(github.event.issue.title, 'feature') || 
+       contains(github.event.issue.title, 'enhancement') ||
+       contains(github.event.issue.title, 'request'))
+    uses: bauer-group/automation-templates/.github/workflows/modules-ai-issue-summary.yml@main
+    with:
+      summary-type: 'detailed'
+      add-labels: true
+      add-priority: true
+      custom-prompt: |
+        Evaluate this feature request:
+        
+        Title: ${{ github.event.issue.title }}
+        Body: ${{ github.event.issue.body }}
+        
+        Provide:
+        1. Feature summary
+        2. Use case analysis
+        3. Technical feasibility
+        4. Estimated complexity (simple/medium/complex)
+        5. Potential alternatives
+        6. Suggested priority (low/medium/high)
+      comment-template: |
+        ## 🚀 Feature Request Analysis
+        
+        {summary}
+        
+        ### Next Steps
+        This analysis will help our team evaluate and prioritize this feature request.
+        
+        ---
+        *Automated feature evaluation*
+    secrets: inherit
+
+  # Multi-language support example
+  translate-for-international:
+    name: 🌍 Translate Summary
+    if: |
+      github.event.action == 'opened' && 
+      contains(github.event.issue.labels.*.name, 'international')
+    uses: bauer-group/automation-templates/.github/workflows/modules-ai-issue-summary.yml@main
+    with:
+      summary-type: 'user-friendly'
+      translate: 'German'  # Or Spanish, French, etc.
+      add-labels: false
+      add-priority: false
+      comment-template: |
+        ## 🌍 Internationale Zusammenfassung / International Summary
+        
+        {summary}
+        
+        ---
+        *Diese Zusammenfassung wurde automatisch übersetzt / This summary was automatically translated*
+    secrets: inherit
+
+  # Security issue handler (be careful with details)
+  security-analysis:
+    name: 🔒 Security Analysis
+    if: |
+      contains(github.event.issue.labels.*.name, 'security') ||
+      contains(github.event.issue.title, 'security') ||
+      contains(github.event.issue.title, 'vulnerability')
+    uses: bauer-group/automation-templates/.github/workflows/modules-ai-issue-summary.yml@main
+    with:
+      summary-type: 'technical'
+      add-labels: true
+      add-priority: true
+      custom-prompt: |
+        ⚠️ SECURITY ISSUE - Analyze carefully without exposing sensitive details:
+        
+        Title: ${{ github.event.issue.title }}
+        
+        Provide only:
+        1. General category of security concern
+        2. Severity assessment (low/medium/high/critical)
+        3. General mitigation approach
+        4. Priority recommendation
+        
+        DO NOT include specific exploit details or attack vectors.
+      comment-template: |
+        ## 🔒 Security Issue Assessment
+        
+        {summary}
+        
+        **Note:** Details have been intentionally limited for security reasons.
+        Please handle according to security protocols.
+        
+        ---
+        *Automated security triage - verify manually*
+    secrets: inherit
+
+  # PR description enhancer
+  pr-description:
+    name: 📋 PR Description
+    if: github.event_name == 'pull_request_target' && github.event.action == 'opened'
+    uses: bauer-group/automation-templates/.github/workflows/modules-ai-issue-summary.yml@main
+    with:
+      summary-type: 'technical'
+      add-labels: true
+      add-priority: false
+      custom-prompt: |
+        Analyze this pull request and provide:
+        
+        Title: ${{ github.event.pull_request.title }}
+        Body: ${{ github.event.pull_request.body || 'No description provided' }}
+        
+        Generate:
+        1. Summary of changes
+        2. Impact assessment
+        3. Testing considerations
+        4. Review focus areas
+        5. Suggested labels from: feature, bugfix, refactor, test, docs, breaking-change, performance
+      comment-template: |
+        ## 📋 PR Analysis
+        
+        {summary}
+        
+        ### Review Checklist
+        - [ ] Code follows project style guidelines
+        - [ ] Tests have been added/updated
+        - [ ] Documentation has been updated
+        - [ ] No breaking changes (or properly documented)
+        
+        ---
+        *AI-assisted PR review helper*
+    secrets: inherit
+
+# Example: Manual trigger for specific issue
+  manual-summary:
+    name: 📝 Manual Summary
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger AI Summary
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Trigger the AI summary for a specific issue
+          gh workflow run modules-ai-issue-summary.yml \
+            -f issue-number=${{ inputs.issue-number }} \
+            -f summary-type=detailed \
+            --repo ${{ github.repository }}
+
+# Configuration notes:
+# 
+# 1. Set up secrets:
+#    - GITHUB_TOKEN is automatically available
+#    - For OpenAI: Add OPENAI_API_KEY secret
+#    - For other AI services: Add appropriate API key
+# 
+# 2. Customize prompts:
+#    - Create .github/config/issues/ai-prompts.yml
+#    - Define custom templates for different scenarios
+# 
+# 3. Model options:
+#    - GitHub Models: Various models available through GitHub
+#    - OpenAI: gpt-3.5-turbo, gpt-4, etc.
+#    - Custom: Implement your own AI service integration
+# 
+# 4. Best practices:
+#    - Use 'brief' for quick triage
+#    - Use 'detailed' for complex issues
+#    - Use 'technical' for bug reports
+#    - Use 'user-friendly' for community issues
+#    - Always verify AI suggestions manually

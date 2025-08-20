@@ -12,7 +12,8 @@ Organized configuration files for GitHub Actions workflows and modules.
 │   ├── path-labels.yml
 │   └── triage-rules.yml
 ├── 📁 issues/           # Issue automation configurations
-│   └── label-actions.yml
+│   ├── label-actions.yml
+│   └── ai-prompts.yml
 ├── 📁 security/         # Security scanning configurations (future)
 │   ├── gitleaks.toml
 │   └── gitguardian.yml
@@ -45,13 +46,19 @@ Organized configuration files for GitHub Actions workflows and modules.
   - Custom automation rules
 
 ### 🤖 Issue Automation (`issues/`)
-**Module:** `modules-issue-automation.yml`
+**Modules:** `modules-issue-automation.yml`, `modules-ai-issue-summary.yml`
 
 - **`label-actions.yml`** - Automated actions based on issue/PR labels
   - Close issues with specific messages (support, feature, duplicate)
   - Add comments and additional labels
   - Remove labels based on conditions
   - Handle stale issues and security reports
+
+- **`ai-prompts.yml`** - AI prompt templates for issue analysis
+  - Brief, detailed, technical, and user-friendly summaries
+  - Bug analysis and feature evaluation templates
+  - Security issue handling (sanitized)
+  - Multi-language support templates
 
 ### 🔒 Security (future) (`security/`)
 **Modules:** `modules-security-scan.yml`
@@ -131,6 +138,7 @@ with:
 | `modules-pr-labeler` | `pr-labeler/` | `path-labels.yml` | Yes | File-based labeling |
 | `modules-pr-labeler` | `pr-labeler/` | `triage-rules.yml` | No | Advanced automation |
 | `modules-issue-automation` | `issues/` | `label-actions.yml` | No | Issue/PR automation |
+| `modules-ai-issue-summary` | `issues/` | `ai-prompts.yml` | No | AI-powered summaries |
 | `modules-security-scan` | `security/` | `gitleaks.toml` | No | Secret patterns |
 | `modules-license-compliance` | `license/` | `allowed-licenses.yml` | No | License rules |
 
