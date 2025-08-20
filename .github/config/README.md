@@ -14,19 +14,21 @@ Organized configuration files for GitHub Actions workflows and modules.
 ├── 📁 security/         # Security scanning configurations (future)
 │   ├── gitleaks.toml
 │   └── gitguardian.yml
-└── 📁 license/          # License compliance configurations (future)
-    └── allowed-licenses.yml
+├── 📁 license/          # License compliance configurations (future)
+│   └── allowed-licenses.yml
+└── commitlint.config.js # Commit message linting configuration
 ```
 
 ## 🔧 Configuration Files by Module
 
 ### 📦 Release Management (`release/`)
-**Module:** `modules-semantic-release.yml`
+**Modules:** `modules-semantic-release.yml`, `documentation.yml`
 
 - **`semantic-release.json`** - Semantic versioning and release configuration
   - Defines version bump rules (major/minor/patch)
   - Configures changelog generation
   - Sets up release notes formatting
+  - Triggers automatic README updates on releases
 
 ### 🏷️ PR Labeler (`pr-labeler/`)
 **Module:** `modules-pr-labeler.yml`
@@ -114,6 +116,7 @@ with:
 | Module | Config Directory | File | Required | Purpose |
 |--------|-----------------|------|----------|---------|
 | `modules-semantic-release` | `release/` | `semantic-release.json` | Yes | Version & changelog rules |
+| `documentation` | - | - | No | Auto-updates on releases |
 | `modules-pr-labeler` | `pr-labeler/` | `path-labels.yml` | Yes | File-based labeling |
 | `modules-pr-labeler` | `pr-labeler/` | `triage-rules.yml` | No | Advanced automation |
 | `modules-security-scan` | `security/` | `gitleaks.toml` | No | Secret patterns |
@@ -151,6 +154,31 @@ frontend:
 }
 ```
 
+### Documentation Auto-Update on Release
+```yaml
+# .github/workflows/documentation.yml
+on:
+  # Automatic trigger on new releases
+  release:
+    types: [published, created]
+  
+  # Manual trigger with version override
+  workflow_dispatch:
+    inputs:
+      custom-version:
+        description: 'Custom version for README'
+        type: string
+
+jobs:
+  generate-documentation:
+    uses: ./.github/actions/readme-generate
+    with:
+      # Auto-extract version from release
+      custom-version: ${{ github.event.release.tag_name }}
+      # Force update on releases
+      force-update: ${{ github.event_name == 'release' }}
+```
+
 ### Triage Rules Configuration
 ```yaml
 # .github/config/pr-labeler/triage-rules.yml
@@ -168,6 +196,23 @@ priority_rules:
 - Use repository secrets for API keys
 - Review configurations for security implications
 - Keep configurations version controlled
+
+## 🎉 Release Integration Features
+
+### Automatic Documentation Updates
+The `documentation.yml` workflow automatically updates README when a new release is created:
+
+- **Automatic Version Detection**: Extracts version from release tag
+- **Force Update**: README is always updated on releases
+- **Special Commit Messages**: `docs: update README.MD for release v1.2.3 [automated]`
+- **Release Details in Summary**: Shows release name, version, and timestamp
+
+### Configuration
+No additional configuration needed! The workflow automatically:
+1. Detects new releases (`release` event)
+2. Extracts version from `github.event.release.tag_name`
+3. Updates README with new version
+4. Commits changes with release-specific message
 
 ## 🛠️ Maintenance
 

@@ -92,9 +92,9 @@ on:
     branches: [main]
     paths: ['docs/README.template.MD', 'docs/**']
   
-  # Bei neuen Releases
+  # Bei neuen Releases - AUTOMATISCHE VERSION UPDATE
   release:
-    types: [published]
+    types: [published, created]
   
   # Manueller Trigger
   workflow_dispatch:
@@ -103,15 +103,27 @@ on:
         description: 'README auch ohne Änderungen aktualisieren'
         type: boolean
         default: false
+      custom-version:
+        description: 'Benutzerdefinierte Version für README'
+        type: string
+        default: ''
 
 jobs:
   update-readme:
-    uses: bauer-group/automation-templates/.github/workflows/readme.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
     with:
-      force-update: ${{ inputs.force-update || false }}
+      force-update: ${{ inputs.force-update || github.event_name == 'release' }}
+      custom-version: ${{ inputs.custom-version || github.event.release.tag_name }}
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+#### 🆕 Release-Trigger Features
+
+- **Automatische Versionserkennung**: Bei Release-Events wird die Version automatisch aus dem Release-Tag extrahiert
+- **Force-Update bei Releases**: README wird bei jedem Release automatisch aktualisiert
+- **Spezielle Commit-Messages**: Releases erzeugen dedizierte Commit-Messages wie `docs: update README.MD for release v1.2.3 [automated]`
+- **Release-Details in Summary**: Workflow-Summary zeigt Release-Name, Version und Zeitstempel
 
 ---
 
