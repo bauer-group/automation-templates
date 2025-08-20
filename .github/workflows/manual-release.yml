@@ -299,8 +299,7 @@ jobs:
       artifact-types: ${{ inputs.artifact-types }}
       tag-name: ${{ needs.create-release.outputs.tag-name }}
       version: ${{ needs.create-release.outputs.version }}
-      release-url: ${{ needs.create-release.outputs.release-url }}
-    secrets:
+      release-url: ${{ needs.create-release.outputs.release-url }}    
 
   # Manual release summary
   release-summary:
