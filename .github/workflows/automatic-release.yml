@@ -122,11 +122,12 @@ jobs:
             echo "**Release Information:**" >> $GITHUB_STEP_SUMMARY
             echo "- Version: ${{ needs.release-management.outputs.version }}" >> $GITHUB_STEP_SUMMARY
             echo "- Tag: ${{ needs.release-management.outputs.tag-name }}" >> $GITHUB_STEP_SUMMARY
-            echo "- URL: ${{ needs.release-management.outputs.release-url }}" >> $GITHUB_STEP_SUMMARY
+            echo "- URL: https://github.com/${{ github.repository }}/releases/tag/${{ needs.release-management.outputs.tag-name }}" >> $GITHUB_STEP_SUMMARY
           else
             echo "ℹ️ **No release created.** Pipeline completed successfully." >> $GITHUB_STEP_SUMMARY
           fi
           
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "*Powered by modular workflow components* 🧩" >> $GITHUB_STEP_SUMMARY
+          echo "*Powered by **BAUER GROUP** modular workflow components* 🧩" >> $GITHUB_STEP_SUMMARY
+          echo "*Repository: [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)*" >> $GITHUB_STEP_SUMMARY
