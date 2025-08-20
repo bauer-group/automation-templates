@@ -134,7 +134,7 @@ jobs:
     name: Security Analysis
     if: inputs.skip-security-scan != true
     needs: validate-inputs
-    uses: ./.github/workflows/modules/security-scan.yml@main
+    uses: ./.github/workflows/modules/security-scan.yml
     with:
       scan-engine: 'both'
       scan-type: 'all'
@@ -150,7 +150,7 @@ jobs:
     name: License Compliance
     if: inputs.skip-license-check != true
     needs: validate-inputs
-    uses: ./.github/workflows/modules/license-compliance.yml@main
+    uses: ./.github/workflows/modules/license-compliance.yml
     with:
       fail-on-forbidden: false
       fail-on-unknown: false
@@ -297,7 +297,7 @@ jobs:
     name: Generate Release Artifacts
     if: needs.create-release.result == 'success'
     needs: [validate-inputs, create-release]
-    uses: ./.github/workflows/modules/artifact-generation.yml@main
+    uses: ./.github/workflows/modules/artifact-generation.yml
     with:
       artifact-types: ${{ inputs.artifact-types }}
       tag-name: ${{ needs.create-release.outputs.tag-name }}
