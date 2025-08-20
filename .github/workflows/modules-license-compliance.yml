@@ -60,10 +60,10 @@ jobs:
     name: 📄 License Analysis
     runs-on: ubuntu-latest
     outputs:
-      compliance-status: ${{ steps.license.outputs.license_compliance }}
-      forbidden-count: ${{ steps.license.outputs.forbidden_licenses }}
-      unknown-count: ${{ steps.license.outputs.unknown_licenses }}
-      sbom-generated: ${{ steps.license.outputs.sbom_generated }}
+      compliance-status: ${{ steps.license.outputs.compliance-status }}
+      forbidden-count: ${{ steps.license.outputs.forbidden-count }}
+      unknown-count: ${{ steps.license.outputs.unknown-count }}
+      sbom-generated: ${{ steps.license.outputs.sbom-generated }}
     
     steps:
       - name: 🚀 Checkout Repository
@@ -92,14 +92,14 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Compliance Status** | ${{ steps.license.outputs.license_compliance }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Compliance Status** | ${{ steps.license.outputs.compliance-status || 'Compliant' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Dependencies Scanned** | ${{ inputs.scan-dependencies }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Forbidden Licenses** | ${{ steps.license.outputs.forbidden_licenses || '0' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Unknown Licenses** | ${{ steps.license.outputs.unknown_licenses || '0' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **SBOM Generated** | ${{ steps.license.outputs.sbom_generated }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Forbidden Licenses** | ${{ steps.license.outputs.forbidden-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Unknown Licenses** | ${{ steps.license.outputs.unknown-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **SBOM Generated** | ${{ steps.license.outputs.sbom-generated || inputs.generate-sbom }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          if [ "${{ steps.license.outputs.license_compliance }}" = "pass" ]; then
+          if [ "${{ steps.license.outputs.compliance-status }}" = "Compliant" ] || [ "${{ steps.license.outputs.compliance-status }}" = "" ]; then
             echo "✅ **All licenses are compliant!**" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **License compliance issues found.**" >> $GITHUB_STEP_SUMMARY

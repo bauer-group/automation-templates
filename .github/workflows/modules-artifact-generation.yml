@@ -71,9 +71,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       artifacts-generated: ${{ steps.summary.outputs.artifacts-generated }}
-      source-archive-created: ${{ steps.artifacts.outputs.source_archive_created }}
-      binaries-created: ${{ steps.artifacts.outputs.binaries_created }}
-      docker-image-pushed: ${{ steps.artifacts.outputs.docker_image_pushed }}
+      source-archive-created: ${{ steps.artifacts.outputs.source-archive-created }}
+      binaries-created: ${{ steps.artifacts.outputs.binaries-created }}
+      docker-image-pushed: ${{ steps.artifacts.outputs.docker-image-pushed }}
     
     steps:
       - name: 🚀 Checkout Repository
@@ -103,9 +103,9 @@ jobs:
         if: always()
         run: |
           # Determine if artifacts were successfully generated
-          SOURCE_OK="${{ steps.artifacts.outputs.source_archive_created }}"
-          BINARIES_OK="${{ steps.artifacts.outputs.binaries_created }}"
-          DOCKER_OK="${{ steps.artifacts.outputs.docker_image_pushed }}"
+          SOURCE_OK="${{ steps.artifacts.outputs.source-archive-created }}"
+          BINARIES_OK="${{ steps.artifacts.outputs.binaries-created }}"
+          DOCKER_OK="${{ steps.artifacts.outputs.docker-image-pushed }}"
           
           # Consider successful if at least one artifact type was requested and created
           ARTIFACTS_GENERATED="false"
@@ -149,9 +149,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Artifact Type | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|---------------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Source Archive** | $([[ '${{ inputs.artifact-types }}' =~ (source|all) ]] && echo '${{ steps.artifacts.outputs.source_archive_created == 'true' && '✅ Created' || '❌ Failed' }}' || echo '⏭️ Skipped') |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Binaries** | $([[ '${{ inputs.artifact-types }}' =~ (binaries|all) ]] && echo '${{ steps.artifacts.outputs.binaries_created == 'true' && '✅ Created' || '❌ Failed' }}' || echo '⏭️ Skipped') |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Docker Image** | $([[ '${{ inputs.artifact-types }}' =~ (docker|all) ]] && echo '${{ steps.artifacts.outputs.docker_image_pushed == 'true' && '✅ Pushed' || '❌ Failed' }}' || echo '⏭️ Skipped') |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Source Archive** | $([[ '${{ inputs.artifact-types }}' =~ (source|all) ]] && echo '${{ steps.artifacts.outputs.source-archive-created == 'true' && '✅ Created' || '❌ Failed' }}' || echo '⏭️ Skipped') |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Binaries** | $([[ '${{ inputs.artifact-types }}' =~ (binaries|all) ]] && echo '${{ steps.artifacts.outputs.binaries-created == 'true' && '✅ Created' || '❌ Failed' }}' || echo '⏭️ Skipped') |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Docker Image** | $([[ '${{ inputs.artifact-types }}' =~ (docker|all) ]] && echo '${{ steps.artifacts.outputs.docker-image-pushed == 'true' && '✅ Pushed' || '❌ Failed' }}' || echo '⏭️ Skipped') |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ "$ARTIFACTS_GENERATED" = "true" ]; then
@@ -179,7 +179,7 @@ jobs:
           fi
 
       - name: 📤 Upload Build Artifacts
-        if: always() && steps.artifacts.outputs.source_archive_created == 'true'
+        if: always() && steps.artifacts.outputs.source-archive-created == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: release-artifacts-${{ inputs.version }}
