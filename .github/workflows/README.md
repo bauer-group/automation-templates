@@ -75,7 +75,7 @@ Diese Repository-Workflows demonstrieren die optimale Nutzung der modularen Komp
 # Beispiel: CI/CD Pipeline mit modularen Komponenten
 jobs:
   security-scan:
-    uses: ./.github/workflows/modules/security-scan.yml
+    uses: ./.github/workflows/modules-security-scan.yml
     with:
       scan-engine: 'both'
     secrets:
@@ -83,7 +83,7 @@ jobs:
 
   release-management:
     needs: security-scan
-    uses: ./.github/workflows/modules/release-management.yml
+    uses: ./.github/workflows/modules-release-management.yml
     with:
       release-type: 'simple'
     secrets:
@@ -110,10 +110,10 @@ Externe Repositories können diese Workflows als Vorlage verwenden:
 **Beispiel-Anpassung:**
 ```yaml
 # Von (intern):
-uses: ./.github/workflows/modules/security-scan.yml
+uses: ./.github/workflows/modules-security-scan.yml
 
 # Zu (extern):
-uses: bauer-group/automation-templates/.github/workflows/modules/security-scan.yml@main
+uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
 ```
 
 ## 📚 Weitere Dokumentation

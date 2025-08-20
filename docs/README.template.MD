@@ -125,11 +125,11 @@ jobs:
 
 | Modul | Zweck | Verwendung |
 |-------|-------|------------|
-| **🛡️ security-scan.yml** | Sicherheitsanalyse | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules/security-scan.yml@main` |
-| **📋 license-compliance.yml** | Lizenz-Compliance | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules/license-compliance.yml@main` |
-| **🚀 release-management.yml** | Release-Automatisierung | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules/release-management.yml@main` |
-| **🔨 artifact-generation.yml** | Artefakt-Erstellung | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules/artifact-generation.yml@main` |
-| **🔍 pr-validation.yml** | Pull Request-Validierung | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules/pr-validation.yml@main` |
+| **🛡️ modules-security-scan.yml** | Sicherheitsanalyse | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-security-scan.yml@main` |
+| **📋 modules-license-compliance.yml** | Lizenz-Compliance | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-license-compliance.yml@main` |
+| **🚀 modules-release-management.yml** | Release-Automatisierung | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-release-management.yml@main` |
+| **🔨 modules-artifact-generation.yml** | Artefakt-Erstellung | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-artifact-generation.yml@main` |
+| **🔍 modules-pr-validation.yml** | Pull Request-Validierung | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-pr-validation.yml@main` |
 
 ### Quick Start: Einfacher Release-Workflow
 
@@ -142,7 +142,7 @@ on:
 
 jobs:
   release:
-    uses: {{REPO_FULL_NAME}}/.github/workflows/modules/release-management.yml@main
+    uses: {{REPO_FULL_NAME}}/.github/workflows/modules-release-management.yml@main
     with:
       release-type: 'simple'
     secrets:
