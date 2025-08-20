@@ -39,18 +39,18 @@ outputs:
   compliance-status:
     description: 'Overall compliance status (pass, warning, fail)'
     value: ${{ steps.compliance-check.outputs.compliance-status }}
-  forbidden-found:
-    description: 'Whether forbidden licenses were found'
-    value: ${{ steps.license-scan.outputs.forbidden-found }}
-  unknown-found:
-    description: 'Whether unknown licenses were found'
-    value: ${{ steps.license-scan.outputs.unknown-found }}
-  license-summary:
-    description: 'Summary of license findings'
-    value: ${{ steps.compliance-check.outputs.license-summary }}
+  forbidden-count:
+    description: 'Number of forbidden licenses found'
+    value: ${{ steps.compliance-check.outputs.forbidden-count }}
+  unknown-count:
+    description: 'Number of unknown licenses found'
+    value: ${{ steps.compliance-check.outputs.unknown-count }}
   sbom-generated:
     description: 'Whether SBOM was generated'
     value: ${{ steps.sbom-generation.outputs.sbom-generated }}
+  license-summary:
+    description: 'Summary of license findings'
+    value: ${{ steps.compliance-check.outputs.license-summary }}
 
 runs:
   using: 'composite'
@@ -268,8 +268,22 @@ runs:
         echo "" >> license-reports/findings.md
         echo "**SPDX Headers Found:** $SPDX_COUNT files" >> license-reports/findings.md
         
+        # Count forbidden and unknown licenses
+        FORBIDDEN_COUNT=0
+        UNKNOWN_COUNT=0
+        
+        # Simple counting logic (can be enhanced)
+        if [ "$FORBIDDEN_FOUND" == "true" ]; then
+          FORBIDDEN_COUNT=1
+        fi
+        if [ "$UNKNOWN_FOUND" == "true" ]; then
+          UNKNOWN_COUNT=1
+        fi
+        
         echo "forbidden-found=$FORBIDDEN_FOUND" >> $GITHUB_OUTPUT
         echo "unknown-found=$UNKNOWN_FOUND" >> $GITHUB_OUTPUT
+        echo "forbidden-count=$FORBIDDEN_COUNT" >> $GITHUB_OUTPUT
+        echo "unknown-count=$UNKNOWN_COUNT" >> $GITHUB_OUTPUT
         
         # Ensure license scan step always succeeds
         echo "✅ License scan completed successfully"
@@ -427,8 +441,14 @@ runs:
             ;;
         esac
         
+        # Count forbidden and unknown licenses (default to 0)
+        FORBIDDEN_COUNT="${{ steps.license-scan.outputs.forbidden-count || '0' }}"
+        UNKNOWN_COUNT="${{ steps.license-scan.outputs.unknown-count || '0' }}"
+        
         echo "compliance-status=$COMPLIANCE_STATUS" >> $GITHUB_OUTPUT
         echo "license-summary=$LICENSE_SUMMARY" >> $GITHUB_OUTPUT
+        echo "forbidden-count=$FORBIDDEN_COUNT" >> $GITHUB_OUTPUT
+        echo "unknown-count=$UNKNOWN_COUNT" >> $GITHUB_OUTPUT
         
         # Create comprehensive report
         cat > license-reports/compliance-summary.md << EOF

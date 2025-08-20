@@ -99,7 +99,8 @@ jobs:
           echo "| **SBOM Generated** | ${{ steps.license.outputs.sbom-generated || inputs.generate-sbom }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          if [ "${{ steps.license.outputs.compliance-status }}" = "Compliant" ] || [ "${{ steps.license.outputs.compliance-status }}" = "" ]; then
+          COMPLIANCE_STATUS="${{ steps.license.outputs.compliance-status }}"
+          if [ "$COMPLIANCE_STATUS" = "pass" ] || [ "$COMPLIANCE_STATUS" = "Compliant" ] || [ -z "$COMPLIANCE_STATUS" ]; then
             echo "✅ **All licenses are compliant!**" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **License compliance issues found.**" >> $GITHUB_STEP_SUMMARY
