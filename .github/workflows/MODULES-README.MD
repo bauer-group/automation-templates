@@ -99,6 +99,27 @@ secrets:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+### 🏷️ [PR Labeler & Triage](./modules-pr-labeler.yml)
+**Zweck:** Automatisches Labeling und Triage von Pull Requests
+
+```yaml
+uses: bauer-group/automation-templates/.github/workflows/modules-pr-labeler.yml@main
+with:
+  config-path: '.github/config/pr-labeler-paths.yml'
+  size-labels: true
+  priority-labels: true
+  type-labels: true
+  auto-assign: false
+secrets:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**Ausgaben:**
+- `labels-added`: Hinzugefügte Labels
+- `size-label`: Größen-Label (XS/S/M/L/XL/XXL)
+- `priority-label`: Prioritäts-Label
+- `all-labels`: Alle aktuellen PR-Labels
+
 **Ausgaben:**
 - `validation-passed`: Ob alle Validierungen bestanden wurden
 - `security-score`: Sicherheitsbewertung

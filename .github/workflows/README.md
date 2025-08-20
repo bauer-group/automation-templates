@@ -80,6 +80,7 @@ jobs:
 | **automatic-release.yml** | Push (main) | semantic-release | Automatische Releases |
 | **documentation.yml** | Docs-Änderungen | readme-generate | Dokumentations-Management |
 | **manual-release.yml** | Workflow Dispatch | 4 Module | Kontrollierte Releases |
+| **pr-labeler.yml** | Pull Request | labeler-triage | PR Labeling & Triage |
 
 ## 🚀 Verwendung für externe Repositories
 

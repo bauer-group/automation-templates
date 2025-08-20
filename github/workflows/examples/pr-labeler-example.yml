@@ -1,0 +1,139 @@
+name: 🏷️ Pull Request Labeler
+
+# This workflow automatically labels and triages pull requests
+# It runs on pull_request_target to have write permissions for PRs from forks
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # Basic labeling using GitHub's labeler action
+  basic-labeler:
+    name: 📁 File-based Labels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/config/pr-labeler-paths.yml
+          sync-labels: true
+
+  # Advanced labeling and triage using our module
+  advanced-triage:
+    name: 🎯 Advanced Triage
+    uses: bauer-group/automation-templates/.github/workflows/modules-pr-labeler.yml@main
+    with:
+      config-path: '.github/config/pr-labeler-paths.yml'
+      sync-labels: true
+      auto-assign: false  # Set to true if you have CODEOWNERS
+      size-labels: true
+      priority-labels: true
+      type-labels: true
+      custom-rules: '.github/config/pr-labeler-triage-rules.yml'
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Optional: Additional custom labeling
+  custom-labels:
+    name: 🎨 Custom Labels
+    needs: [basic-labeler, advanced-triage]
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - name: Check PR Status
+        id: pr-status
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          
+          # Add 'ready-for-review' label if not draft
+          if [ "${{ github.event.pull_request.draft }}" = "false" ]; then
+            gh pr edit $PR_NUMBER --add-label "ready-for-review" --repo ${{ github.repository }}
+          fi
+          
+          # Check if PR is from a first-time contributor
+          AUTHOR=${{ github.event.pull_request.user.login }}
+          CONTRIBUTOR_COUNT=$(gh api repos/${{ github.repository }}/contributors --jq ".[] | select(.login==\"$AUTHOR\") | .contributions" || echo "0")
+          
+          if [ "$CONTRIBUTOR_COUNT" = "0" ] || [ "$CONTRIBUTOR_COUNT" = "1" ]; then
+            gh pr edit $PR_NUMBER --add-label "first-time-contributor" --repo ${{ github.repository }}
+            
+            # Post welcome message
+            gh pr comment $PR_NUMBER --body "👋 Welcome @$AUTHOR! Thanks for your first contribution to this repository! 🎉
+            
+            Our team will review your PR soon. In the meantime, please make sure you've:
+            - [ ] Read our [Contributing Guidelines](CONTRIBUTING.md)
+            - [ ] Signed the [CLA](CLA.md) if required
+            - [ ] Added tests for your changes
+            - [ ] Updated documentation if needed
+            
+            If you have any questions, feel free to ask!" --repo ${{ github.repository }}
+          fi
+          
+          # Check for community contributor
+          ORG_MEMBER=$(gh api orgs/${{ github.repository_owner }}/members --jq ".[] | select(.login==\"$AUTHOR\")" || echo "")
+          if [ -z "$ORG_MEMBER" ]; then
+            gh pr edit $PR_NUMBER --add-label "community" --repo ${{ github.repository }}
+          fi
+
+  # Notify about labels
+  notify:
+    name: 📢 Notify
+    needs: [advanced-triage]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Comment PR with Label Info
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          
+          # Get current labels
+          LABELS=$(gh pr view $PR_NUMBER --json labels --jq '.labels[].name' --repo ${{ github.repository }} | tr '\n' ', ' | sed 's/,$//')
+          
+          # Only comment if this is a new PR
+          if [ "${{ github.event.action }}" = "opened" ]; then
+            COMMENT="## 🏷️ PR Labels Applied
+            
+            Your PR has been automatically labeled with: **$LABELS**
+            
+            | Label Category | Description |
+            |----------------|-------------|
+            | **Size Labels** | Indicates PR size (XS/S/M/L/XL/XXL) based on lines changed |
+            | **Priority Labels** | Shows urgency (critical/high/medium/low) based on keywords |
+            | **Type Labels** | Categorizes the change (feature/bug/docs/test/refactor) |
+            | **File Labels** | Based on which files were modified |
+            
+            These labels help us:
+            - 🎯 Prioritize reviews
+            - 📊 Track project metrics
+            - 🤖 Automate workflows
+            - 👥 Assign the right reviewers
+            
+            _Labels will be automatically updated as you make changes to the PR._"
+            
+            gh pr comment $PR_NUMBER --body "$COMMENT" --repo ${{ github.repository }}
+          fi
+
+# Example configuration for external repositories:
+# 
+# 1. Create .github/config/pr-labeler-paths.yml with your labeling rules
+# 2. Optionally create .github/config/pr-labeler-triage-rules.yml for advanced rules
+# 3. Copy this workflow to .github/workflows/pr-labeler.yml
+# 4. Customize the configuration parameters as needed
+# 5. Ensure your repository has the necessary labels created
+#
+# The workflow will automatically:
+# - Label PRs based on file changes
+# - Add size labels (XS to XXL)
+# - Detect PR type from branch name and title
+# - Set priority based on keywords
+# - Welcome first-time contributors
+# - Identify community contributions
