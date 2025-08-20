@@ -26,7 +26,8 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 
 | Action | Purpose | Integration | Modularer Workflow |
 |--------|---------|-------------|---------------------|
-| [`release-please`](./release-please/) | Semantic release automation | Release-Please | [modules-release-management.yml](../workflows/modules-release-management.yml) |
+| [`semantic-release`](./semantic-release/) | Semantic release automation | Semantic Release | [modules-semantic-release.yml](../workflows/modules-semantic-release.yml) |
+| [`generate-changelog`](./generate-changelog/) | Changelog generation | Git History | Manual releases & documentation |
 | [`auto-merge`](./auto-merge/) | Intelligent PR merging | GitHub API | PR-Automatisierung |
 | [`artifact-generator`](./artifact-generator/) | Multi-format artifact creation | GitHub Releases | [modules-artifact-generation.yml](../workflows/modules-artifact-generation.yml) |
 
