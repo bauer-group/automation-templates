@@ -295,24 +295,24 @@ on:
         default: '["8.0.x"]'
       
     secrets:
-      NUGET_API_KEY:
-        description: 'NuGet API key for publishing packages'
+      DOTNET_NUGET_PUBLISH_API_KEY:
+        description: 'NuGet API key for publishing .NET packages to NuGet.org or private feeds'
         required: false
       
-      DOCKER_USERNAME:
-        description: 'Docker registry username'
+      DOCKER_REGISTRY_USERNAME:
+        description: 'Username for Docker registry authentication'
         required: false
       
-      DOCKER_PASSWORD:
-        description: 'Docker registry password'
+      DOCKER_REGISTRY_PASSWORD:
+        description: 'Password for Docker registry authentication'
         required: false
       
-      CODECOV_TOKEN:
-        description: 'Codecov token for coverage upload'
+      CODECOV_UPLOAD_TOKEN:
+        description: 'Codecov token for uploading .NET test coverage reports'
         required: false
       
-      SONAR_TOKEN:
-        description: 'SonarCloud token for code analysis'
+      SONARCLOUD_ANALYSIS_TOKEN:
+        description: 'SonarCloud token for .NET code quality analysis'
         required: false
     
     outputs:
@@ -470,7 +470,7 @@ jobs:
         if: inputs.collect-coverage && steps.coverage.outputs.report-path != ''
         uses: codecov/codecov-action@v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
           file: ${{ steps.coverage.outputs.report-path }}
           fail_ci_if_error: false
           verbose: true
@@ -523,7 +523,7 @@ jobs:
         if: inputs.push-to-nuget && steps.package.outputs.package-path != ''
         run: |
           dotnet nuget push "${{ steps.package.outputs.package-path }}" \
-            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --api-key ${{ secrets.DOTNET_NUGET_PUBLISH_API_KEY }} \
             --source ${{ inputs.nuget-source }} \
             --skip-duplicate
       
@@ -549,7 +549,7 @@ jobs:
       - name: 🐳 Push Docker Image
         if: inputs.build-docker && inputs.docker-registry != ''
         run: |
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login ${{ inputs.docker-registry }} -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          echo "${{ secrets.DOCKER_REGISTRY_PASSWORD }}" | docker login ${{ inputs.docker-registry }} -u "${{ secrets.DOCKER_REGISTRY_USERNAME }}" --password-stdin
           
           FULL_IMAGE_NAME="${{ inputs.docker-registry }}/${{ steps.docker.outputs.image-tag }}"
           docker tag "${{ steps.docker.outputs.image-tag }}" "$FULL_IMAGE_NAME"

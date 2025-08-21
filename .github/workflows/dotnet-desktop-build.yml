@@ -181,16 +181,16 @@ on:
         default: 60
       
     secrets:
-      SIGNING_CERTIFICATE:
-        description: 'Base64 encoded PFX certificate for code signing'
+      DOTNET_SIGNING_CERTIFICATE_BASE64:
+        description: 'Base64 encoded PFX certificate for .NET desktop application code signing'
         required: false
       
-      CERTIFICATE_PASSWORD:
-        description: 'Password for the PFX certificate'
+      DOTNET_SIGNING_CERTIFICATE_PASSWORD:
+        description: 'Password for the .NET desktop application signing certificate'
         required: false
       
-      NUGET_API_KEY:
-        description: 'NuGet API key for package restoration from private feeds'
+      DOTNET_NUGET_API_KEY:
+        description: 'NuGet API key for .NET package restoration from private feeds'
         required: false
 
     outputs:
@@ -284,7 +284,7 @@ jobs:
           Write-Host "Version: $version"
       
       - name: 🔐 Configure NuGet
-        if: ${{ secrets.NUGET_API_KEY }}
+        if: ${{ secrets.DOTNET_NUGET_API_KEY }}
         shell: pwsh
         run: |
           $nugetConfig = @"
@@ -391,11 +391,11 @@ jobs:
           }
       
       - name: 📝 Prepare Certificate
-        if: ${{ inputs.sign-output == true && secrets.SIGNING_CERTIFICATE }}
+        if: ${{ inputs.sign-output == true && secrets.DOTNET_SIGNING_CERTIFICATE_BASE64 }}
         id: certificate
         shell: pwsh
         run: |
-          $certBytes = [Convert]::FromBase64String("${{ secrets.SIGNING_CERTIFICATE }}")
+          $certBytes = [Convert]::FromBase64String("${{ secrets.DOTNET_SIGNING_CERTIFICATE_BASE64 }}")
           $certPath = Join-Path $env:RUNNER_TEMP "signing_cert.pfx"
           [IO.File]::WriteAllBytes($certPath, $certBytes)
           Write-Output "path=$certPath" >> $env:GITHUB_OUTPUT
@@ -410,10 +410,10 @@ jobs:
           foreach ($file in $filesToSign) {
             Write-Host "Signing: $($file.Name)"
             
-            if ("${{ secrets.SIGNING_CERTIFICATE }}" -ne "") {
+            if ("${{ secrets.DOTNET_SIGNING_CERTIFICATE_BASE64 }}" -ne "") {
               # Use certificate file
               & signtool sign /f "${{ steps.certificate.outputs.path }}" `
-                /p "${{ secrets.CERTIFICATE_PASSWORD }}" `
+                /p "${{ secrets.DOTNET_SIGNING_CERTIFICATE_PASSWORD }}" `
                 /t "${{ inputs.timestamp-server }}" `
                 /fd SHA256 `
                 $file.FullName
@@ -445,7 +445,7 @@ jobs:
           
           if ("${{ steps.certificate.outputs.path }}" -ne "") {
             $msbuildArgs += "/p:PackageCertificateKeyFile=${{ steps.certificate.outputs.path }}"
-            $msbuildArgs += "/p:PackageCertificatePassword=${{ secrets.CERTIFICATE_PASSWORD }}"
+            $msbuildArgs += "/p:PackageCertificatePassword=${{ secrets.DOTNET_SIGNING_CERTIFICATE_PASSWORD }}"
           }
           
           msbuild $msbuildArgs
