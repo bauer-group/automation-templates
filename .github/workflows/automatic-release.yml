@@ -48,7 +48,7 @@ jobs:
   # Comprehensive security scan for main branch
   security-scan:
     name: Security Analysis
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/modules-security-scan.yml
     with:
       scan-engine: ${{ inputs.security-engine || 'both' }}
@@ -60,7 +60,7 @@ jobs:
   # License compliance check
   license-compliance:
     name: License Compliance
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/modules-license-compliance.yml
     with:
       fail-on-forbidden: false
@@ -72,7 +72,7 @@ jobs:
   # Release management
   release-management:
     name: Release Management
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: [security-scan, license-compliance]
     uses: ./.github/workflows/modules-semantic-release.yml
     with:
@@ -94,7 +94,7 @@ jobs:
   # Pipeline summary
   pipeline-summary:
     name: Pipeline Summary
-    if: always() && (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch')
     needs: [security-scan, license-compliance, release-management, artifact-generation]
     runs-on: ubuntu-latest
     
