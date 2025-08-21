@@ -1,0 +1,282 @@
+# Configuration for Monorepo builds
+# Extends the default configuration with monorepo-specific settings
+
+extends: default.yml
+
+node:
+  version: '20.x'
+
+package_manager:
+  type: 'pnpm'  # pnpm is recommended for monorepos
+  version: 'latest'
+  frozen_lockfile: true
+
+monorepo:
+  enabled: true
+  tool: 'auto-detect'  # lerna, nx, rush, turborepo, pnpm
+  
+  # Package structure
+  packages_path: 'packages/*'
+  apps_path: 'apps/*'
+  
+  # Workspace configuration
+  workspace:
+    hoist: true
+    shared_dependencies: true
+    
+  # Build strategy
+  build:
+    affected_only: false
+    parallel: true
+    cache: true
+    
+    # Dependency graph
+    graph:
+      visualize: false
+      check_circular: true
+      
+  # Commands
+  commands:
+    install: 'pnpm install'
+    build: 'pnpm run build'
+    test: 'pnpm run test'
+    lint: 'pnpm run lint'
+    
+  # Versioning
+  versioning:
+    independent: false  # Independent or fixed versioning
+    conventional_commits: true
+    
+    # Version bump rules
+    bump_rules:
+      breaking: 'major'
+      feat: 'minor'
+      fix: 'patch'
+
+turborepo:
+  # Turborepo specific settings
+  enabled: false
+  
+  # Pipeline configuration
+  pipeline:
+    build:
+      depends_on: ['^build']
+      outputs: ['dist/**', 'build/**']
+      
+    test:
+      depends_on: ['build']
+      outputs: []
+      
+    lint:
+      outputs: []
+      
+    dev:
+      cache: false
+      
+  # Remote caching
+  remote_cache:
+    enabled: false
+    team: ''
+    token: ''
+
+nx:
+  # Nx specific settings
+  enabled: false
+  
+  # Affected commands
+  affected:
+    base: 'main'
+    head: 'HEAD'
+    
+  # Caching
+  cache:
+    enabled: true
+    directory: '.nx-cache'
+    
+  # Cloud
+  cloud:
+    enabled: false
+    access_token: ''
+
+lerna:
+  # Lerna specific settings
+  enabled: false
+  
+  # Configuration
+  version: '6.0.0'
+  
+  # Commands
+  commands:
+    bootstrap: 'lerna bootstrap'
+    build: 'lerna run build --stream'
+    test: 'lerna run test --parallel'
+    publish: 'lerna publish'
+    
+  # Publishing
+  publish:
+    conventional_commits: true
+    create_release: 'github'
+    message: 'chore(release): publish'
+    
+  # Versioning
+  version:
+    allow_branch: ['main', 'release/*']
+    conventional_commits: true
+    create_release: 'github'
+
+rush:
+  # Rush specific settings
+  enabled: false
+  
+  # Configuration
+  version: '5.0.0'
+  
+  # Commands
+  commands:
+    install: 'rush install'
+    build: 'rush build'
+    test: 'rush test'
+    
+  # Policies
+  policies:
+    allowed_package_managers: ['pnpm']
+    
+pnpm_workspace:
+  # PNPM workspace specific settings
+  packages:
+    - 'packages/*'
+    - 'apps/*'
+    - 'tools/*'
+    
+  # Catalog (shared versions)
+  catalog:
+    react: '^18.0.0'
+    typescript: '^5.0.0'
+    
+  # Overrides (version overrides)
+  overrides: {}
+  
+  # Hooks
+  hooks:
+    readPackage: ''
+
+testing:
+  # Monorepo testing strategy
+  strategy: 'affected'  # all, affected, changed
+  
+  # Test configuration per package type
+  packages:
+    unit: true
+    integration: true
+    
+  apps:
+    unit: true
+    integration: true
+    e2e: true
+    
+  # Coverage aggregation
+  coverage:
+    aggregate: true
+    global_threshold:
+      statements: 80
+      branches: 75
+      functions: 80
+      lines: 80
+
+linting:
+  # Monorepo linting
+  enabled: true
+  
+  # Root config
+  root_config: true
+  
+  # Package-specific configs
+  package_configs: false
+  
+  # Shared configs
+  shared_configs:
+    - '@company/eslint-config'
+    - '@company/prettier-config'
+
+building:
+  # Build optimization
+  incremental: true
+  
+  # Build order
+  topological: true
+  
+  # Output structure
+  output:
+    packages: 'packages/*/dist'
+    apps: 'apps/*/build'
+    
+  # Shared build cache
+  cache:
+    enabled: true
+    directory: '.build-cache'
+
+publishing:
+  # Monorepo publishing
+  strategy: 'together'  # together, independent
+  
+  # Package access
+  access: 'public'
+  
+  # Registry
+  registry: 'npm'
+  
+  # Pre-publish checks
+  checks:
+    - build
+    - test
+    - lint
+    
+  # Changesets
+  changesets:
+    enabled: false
+    commit: true
+    
+  # Release
+  release:
+    branch: 'main'
+    npm_tag: 'latest'
+
+dependencies:
+  # Dependency management
+  check:
+    duplicates: true
+    mismatches: true
+    unused: true
+    missing: true
+    
+  # Updates
+  updates:
+    strategy: 'grouped'  # grouped, individual
+    frequency: 'weekly'
+    
+  # Constraints
+  constraints:
+    enabled: true
+    rules_file: '.dependency-constraints.yml'
+
+docker:
+  # Monorepo Docker strategy
+  enabled: false
+  
+  # Multi-stage build
+  strategy: 'multi-stage'
+  
+  # Base images
+  base:
+    builder: 'node:20-alpine'
+    runtime: 'node:20-alpine'
+    
+  # Layer caching
+  cache_mount: true
+  
+  # Output
+  images:
+    - name: 'app1'
+      context: 'apps/app1'
+    - name: 'app2'
+      context: 'apps/app2'

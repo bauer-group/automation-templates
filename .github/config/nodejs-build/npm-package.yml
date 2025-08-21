@@ -1,0 +1,206 @@
+# Configuration for NPM package publishing
+# Extends the default configuration with package-specific settings
+
+extends: default.yml
+
+node:
+  version: '20.x'
+  
+  # Test on multiple versions
+  additional_versions:
+    - '18.x'
+    - '20.x'
+    - '22.x'
+
+package_manager:
+  type: 'npm'
+  frozen_lockfile: true
+
+build:
+  command: 'npm run build'
+  environment: 'production'
+  
+  # Library build settings
+  output_directory: 'lib'
+  
+  # Build formats
+  formats:
+    - cjs  # CommonJS
+    - esm  # ES Modules
+    - umd  # Universal Module Definition
+  
+  # TypeScript declarations
+  declarations: true
+  declaration_map: true
+
+testing:
+  enabled: true
+  command: 'npm test'
+  
+  coverage:
+    enabled: true
+    threshold:
+      statements: 90
+      branches: 85
+      functions: 90
+      lines: 90
+
+linting:
+  enabled: true
+  
+  eslint:
+    enabled: true
+    max_warnings: 0
+  
+  prettier:
+    enabled: true
+    command: 'npm run format:check'
+
+typecheck:
+  enabled: true
+  command: 'npm run typecheck'
+  strict: true
+
+security:
+  audit:
+    enabled: true
+    level: 'moderate'
+    production_only: true
+  
+  license_check:
+    enabled: true
+    allowed_licenses:
+      - MIT
+      - Apache-2.0
+      - BSD-3-Clause
+      - ISC
+      - CC0-1.0
+
+bundle:
+  analyze:
+    enabled: true
+    
+  size_limit:
+    enabled: true
+    max_size: 100  # KB for libraries
+    
+  # Tree shaking validation
+  tree_shaking:
+    validate: true
+    side_effects: false
+
+publishing:
+  enabled: true
+  registry: 'npm'
+  
+  # NPM settings
+  access: 'public'
+  tag: 'latest'
+  
+  # Pre-publish checks
+  pre_publish:
+    - lint
+    - test
+    - build
+    - audit
+  
+  # Version management
+  version:
+    strategy: 'semantic'
+    
+  # Package validation
+  validation:
+    check_package_json: true
+    check_readme: true
+    check_license: true
+    check_changelog: true
+  
+  # Files to include
+  files:
+    - lib
+    - dist
+    - types
+    - README.md
+    - LICENSE
+    - CHANGELOG.md
+  
+  # NPM scripts to run
+  scripts:
+    prepublishOnly: 'npm run build'
+    postpublish: 'npm run clean'
+
+documentation:
+  # API documentation
+  generate: true
+  tool: 'typedoc'  # typedoc, jsdoc
+  
+  output_directory: 'docs'
+  
+  # Documentation settings
+  include_readme: true
+  include_changelog: true
+  include_examples: true
+
+package_json:
+  # Package.json validations
+  required_fields:
+    - name
+    - version
+    - description
+    - main
+    - module
+    - types
+    - author
+    - license
+    - repository
+    - keywords
+    - files
+  
+  # Entry points
+  exports:
+    '.':
+      import: './lib/index.mjs'
+      require: './lib/index.cjs'
+      types: './lib/index.d.ts'
+  
+  # Peer dependencies
+  peer_dependencies_meta:
+    optional: []
+
+quality:
+  # Code quality metrics
+  maintainability:
+    min_score: 80
+  
+  # Complexity
+  complexity:
+    max_cyclomatic: 10
+    max_cognitive: 15
+  
+  # Dependencies
+  dependencies:
+    max_dependencies: 20
+    max_dev_dependencies: 50
+    check_outdated: true
+    check_unused: true
+
+release:
+  # Release automation
+  automated: false
+  
+  # Changelog generation
+  changelog:
+    generate: true
+    format: 'conventional'  # conventional, keepachangelog
+    
+  # GitHub Release
+  github_release:
+    create: true
+    draft: false
+    prerelease: false
+    
+  # Release notes
+  release_notes:
+    generate: true
+    include_contributors: true
+    include_pr_links: true

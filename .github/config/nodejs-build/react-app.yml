@@ -1,0 +1,214 @@
+# Configuration for React application builds
+# Extends the default configuration with React-specific settings
+
+extends: default.yml
+
+node:
+  version: '20.x'
+
+package_manager:
+  type: 'npm'  # or yarn, pnpm
+  frozen_lockfile: true
+
+build:
+  command: 'npm run build'
+  environment: 'production'
+  
+  # React build settings
+  output_directory: 'build'
+  
+  # Environment variables
+  env_vars:
+    REACT_APP_ENV: 'production'
+    GENERATE_SOURCEMAP: 'false'
+    INLINE_RUNTIME_CHUNK: 'false'
+  
+  # Build optimization
+  optimization:
+    minify: true
+    split_chunks: true
+    tree_shaking: true
+    purge_css: true
+    
+  # Asset handling
+  assets:
+    inline_limit: 10000  # bytes
+    compress_images: true
+    generate_webp: true
+
+testing:
+  enabled: true
+  command: 'npm test -- --coverage --watchAll=false'
+  
+  # Jest configuration
+  jest:
+    coverage_thresholds:
+      statements: 80
+      branches: 75
+      functions: 80
+      lines: 80
+    
+    collect_from:
+      - 'src/**/*.{js,jsx,ts,tsx}'
+      - '!src/**/*.d.ts'
+      - '!src/index.tsx'
+      - '!src/serviceWorker.ts'
+  
+  # E2E testing
+  e2e:
+    enabled: false
+    tool: 'cypress'  # cypress, playwright
+    command: 'npm run test:e2e'
+
+linting:
+  enabled: true
+  
+  eslint:
+    enabled: true
+    extends:
+      - 'react-app'
+      - 'react-app/jest'
+    
+  prettier:
+    enabled: true
+    
+  stylelint:
+    enabled: true
+    command: 'npm run lint:styles'
+
+typecheck:
+  enabled: true
+  command: 'npm run typecheck'
+
+bundle:
+  analyze:
+    enabled: true
+    command: 'npm run analyze'
+    
+  # Bundle size limits
+  size_limit:
+    enabled: true
+    budgets:
+      - path: 'build/static/js/*.js'
+        max_size: 500  # KB
+      - path: 'build/static/css/*.css'
+        max_size: 100  # KB
+      - path: 'build/static/media/*'
+        max_size: 200  # KB per file
+    
+  # Lighthouse CI
+  lighthouse:
+    enabled: false
+    thresholds:
+      performance: 90
+      accessibility: 90
+      best_practices: 90
+      seo: 90
+      pwa: 90
+
+deployment:
+  # Static hosting deployment
+  static_hosting:
+    provider: ''  # vercel, netlify, github-pages, surge
+    
+    # Build settings
+    public_directory: 'build'
+    spa_mode: true  # Single Page Application
+    
+    # Redirects
+    redirects:
+      - from: '/*'
+        to: '/index.html'
+        status: 200
+  
+  # Environment-specific builds
+  environments:
+    development:
+      env_vars:
+        REACT_APP_API_URL: 'http://localhost:3001'
+        REACT_APP_ENV: 'development'
+    
+    staging:
+      env_vars:
+        REACT_APP_API_URL: 'https://staging-api.example.com'
+        REACT_APP_ENV: 'staging'
+    
+    production:
+      env_vars:
+        REACT_APP_API_URL: 'https://api.example.com'
+        REACT_APP_ENV: 'production'
+
+pwa:
+  # Progressive Web App
+  enabled: false
+  
+  # Service Worker
+  service_worker:
+    enabled: true
+    cache_strategy: 'cache-first'
+    
+  # Web App Manifest
+  manifest:
+    name: 'React App'
+    short_name: 'ReactApp'
+    theme_color: '#000000'
+    background_color: '#ffffff'
+    display: 'standalone'
+    orientation: 'portrait'
+
+optimization:
+  # Code splitting
+  code_splitting:
+    enabled: true
+    chunks: 'all'
+    
+  # Lazy loading
+  lazy_loading:
+    enabled: true
+    routes: true
+    components: true
+    
+  # Preloading
+  preload:
+    enabled: true
+    critical_chunks: true
+    
+  # Compression
+  compression:
+    gzip: true
+    brotli: true
+
+monitoring:
+  # Error tracking
+  sentry:
+    enabled: false
+    dsn: ''
+    environment: 'production'
+    
+  # Analytics
+  google_analytics:
+    enabled: false
+    tracking_id: ''
+    
+  # Performance monitoring
+  web_vitals:
+    enabled: true
+    report_to_analytics: true
+
+docker:
+  enabled: false
+  dockerfile: './Dockerfile'
+  
+  # Multi-stage build for React
+  stages:
+    - name: 'build'
+      base_image: 'node:20-alpine'
+      command: 'npm run build'
+    - name: 'production'
+      base_image: 'nginx:alpine'
+      copy_from: 'build'
+      
+  # Nginx configuration
+  nginx:
+    config_file: 'nginx.conf'
+    port: 80
