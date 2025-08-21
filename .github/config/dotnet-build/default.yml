@@ -1,0 +1,155 @@
+# Default configuration for .NET Build workflow
+# This file contains default values that can be overridden in your workflow
+
+dotnet:
+  # SDK Configuration
+  version: '8.0.x'  # .NET 8 LTS
+  quality: ''  # Options: daily, signed, validated, preview, ga
+  
+  # Multiple versions support
+  additional_versions: []
+  
+build:
+  # Build configuration
+  configuration: Release
+  verbosity: normal
+  treat_warnings_as_errors: false
+  
+  # Runtime options
+  runtime: ''  # e.g., linux-x64, win-x64, osx-x64
+  self_contained: false
+  
+  # Build arguments
+  additional_args: ''
+
+testing:
+  # Test execution
+  enabled: true
+  filter: ''
+  logger: 'trx;LogFileName=test-results.trx'
+  
+  # Additional test arguments
+  additional_args: ''
+  
+  # Parallel execution
+  parallel: true
+  max_parallel_threads: 0  # 0 = auto
+
+coverage:
+  # Code coverage
+  enabled: false
+  type: cobertura  # Options: cobertura, opencover, coverlet
+  threshold: 0
+  
+  # Exclusions
+  exclude_namespaces: []
+  exclude_files: []
+  
+  # Upload to external services
+  upload_codecov: false
+  upload_coveralls: false
+
+analysis:
+  # Static code analysis
+  enabled: false
+  level: recommended  # Options: none, default, minimum, recommended, all
+  
+  # Analyzers
+  enable_net_analyzers: true
+  enforce_code_style: true
+  
+  # SonarCloud integration
+  sonarcloud_enabled: false
+  sonarcloud_organization: ''
+  sonarcloud_project: ''
+
+publish:
+  # Publishing configuration
+  enabled: false
+  output_directory: './publish'
+  
+  # Trimming and optimization
+  trim_unused: false
+  ready_to_run: false
+  single_file: false
+  
+  # Additional publish arguments
+  additional_args: ''
+
+package:
+  # NuGet package creation
+  create: false
+  include_symbols: true
+  include_source: false
+  
+  # Version management
+  version_prefix: '1.0.0'
+  version_suffix: ''
+  
+  # Package metadata
+  authors: ''
+  company: ''
+  description: ''
+  tags: []
+
+nuget:
+  # NuGet publishing
+  push: false
+  source: 'https://api.nuget.org/v3/index.json'
+  
+  # Alternative sources
+  github_packages: false
+  azure_artifacts: false
+  
+  # Skip duplicate packages
+  skip_duplicate: true
+
+docker:
+  # Docker image building
+  build: false
+  dockerfile: './Dockerfile'
+  
+  # Image naming
+  image_name: ''
+  tag_pattern: '{version}'
+  
+  # Registry configuration
+  registry: ''
+  push: false
+  
+  # Multi-platform builds
+  platforms: ['linux/amd64']
+
+artifacts:
+  # Artifact management
+  upload: true
+  retention_days: 30
+  
+  # Naming patterns
+  name_pattern: '{project}-{version}-{os}'
+  
+  # Include patterns
+  include_paths: []
+  exclude_paths: []
+
+cache:
+  # Dependency caching
+  enabled: true
+  key_prefix: 'nuget'
+  
+  # Cache paths
+  additional_paths: []
+
+runner:
+  # GitHub Actions runner
+  os: ubuntu-latest  # Options: ubuntu-latest, windows-latest, macos-latest
+  timeout_minutes: 30
+
+matrix:
+  # Matrix builds
+  enabled: false
+  
+  # Matrix dimensions
+  os: ['ubuntu-latest']
+  dotnet_version: ['8.0.x']
+  configuration: ['Release']

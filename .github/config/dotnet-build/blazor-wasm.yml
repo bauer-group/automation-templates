@@ -1,0 +1,193 @@
+# Configuration for Blazor WebAssembly projects
+# Extends the default configuration with Blazor-specific settings
+
+extends: default.yml
+
+dotnet:
+  version: '8.0.x'
+  
+  # Workloads required for Blazor
+  workloads:
+    - wasm-tools
+    - wasm-experimental
+
+build:
+  configuration: Release
+  verbosity: normal
+  treat_warnings_as_errors: true
+  
+  # Blazor-specific properties
+  blazor_properties:
+    BlazorEnableCompression: true
+    BlazorWebAssemblyEnableLinking: true
+    InvariantGlobalization: false
+    BlazorCacheBootResources: true
+    ServiceWorkerAssetsManifest: 'service-worker-assets.js'
+
+optimization:
+  # WebAssembly optimization
+  wasm_optimization:
+    enable_aot: false  # Ahead-of-Time compilation
+    enable_simd: true
+    enable_threading: false
+    strip_symbols: true
+  
+  # Size optimization
+  linking:
+    enabled: true
+    mode: 'Full'  # None, SdkOnly, Full
+    skip_unmanaged: false
+  
+  # Runtime optimization
+  runtime:
+    use_browser_cache: true
+    enable_pwa: true
+    enable_integrity_check: true
+
+testing:
+  enabled: true
+  
+  # Unit tests
+  unit_tests:
+    enabled: true
+    use_bunit: true
+    
+  # E2E tests
+  e2e_tests:
+    enabled: false
+    framework: 'Playwright'  # Playwright, Selenium
+    browsers:
+      - chromium
+      - firefox
+      - webkit
+
+publish:
+  enabled: true
+  output_directory: './publish/wwwroot'
+  
+  # Blazor publish settings
+  compression:
+    enable_gzip: true
+    enable_brotli: true
+    compression_level: 'Optimal'
+  
+  # Static files
+  static_web_assets:
+    include_default: true
+    additional_paths: []
+
+deployment:
+  # Static site deployment
+  static_hosting:
+    provider: ''  # GitHub Pages, Azure Static Web Apps, Netlify, Vercel
+    
+    # GitHub Pages specific
+    github_pages:
+      branch: 'gh-pages'
+      cname: ''
+      base_path: ''
+    
+    # Azure Static Web Apps
+    azure_static_web:
+      api_location: ''
+      app_location: 'publish/wwwroot'
+      output_location: ''
+  
+  # CDN configuration
+  cdn:
+    enabled: false
+    provider: ''  # CloudFlare, Azure CDN, AWS CloudFront
+    cache_control: 'public, max-age=31536000'
+
+pwa:
+  # Progressive Web App settings
+  enabled: true
+  
+  # Manifest
+  manifest:
+    name: 'Blazor App'
+    short_name: 'BlazorApp'
+    theme_color: '#ffffff'
+    background_color: '#ffffff'
+    display: 'standalone'
+    orientation: 'portrait'
+  
+  # Service Worker
+  service_worker:
+    enabled: true
+    cache_strategy: 'CacheFirst'  # CacheFirst, NetworkFirst
+    offline_page: '/offline.html'
+  
+  # Icons
+  icons:
+    generate: true
+    source_icon: 'icon-512.png'
+    sizes: [192, 512]
+
+localization:
+  # Internationalization
+  enabled: false
+  default_culture: 'en-US'
+  supported_cultures:
+    - 'en-US'
+    - 'de-DE'
+    - 'fr-FR'
+  
+  # Resource files
+  use_satellite_assemblies: true
+  resource_location: 'Resources'
+
+security:
+  # Security headers
+  headers:
+    content_security_policy: "default-src 'self'"
+    x_frame_options: 'DENY'
+    x_content_type_options: 'nosniff'
+    referrer_policy: 'no-referrer'
+  
+  # Authentication
+  authentication:
+    enabled: false
+    provider: ''  # MSAL, Auth0, IdentityServer
+    
+    # MSAL (Azure AD)
+    msal:
+      client_id: ''
+      authority: ''
+      redirect_uri: ''
+
+performance:
+  # Performance optimizations
+  lazy_loading:
+    enabled: true
+    preload_assemblies: []
+  
+  # Resource hints
+  resource_hints:
+    preconnect: []
+    prefetch: []
+    preload: []
+  
+  # Bundle optimization
+  bundling:
+    enabled: true
+    minify_js: true
+    minify_css: true
+    minify_html: true
+
+monitoring:
+  # Application Insights
+  app_insights:
+    enabled: false
+    instrumentation_key: ''
+    
+  # Error tracking
+  error_tracking:
+    enabled: false
+    provider: ''  # Sentry, Rollbar, Bugsnag
+    
+  # Analytics
+  analytics:
+    enabled: false
+    provider: ''  # Google Analytics, Matomo
+    tracking_id: ''

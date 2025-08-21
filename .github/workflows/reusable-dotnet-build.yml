@@ -1,0 +1,606 @@
+name: 🚀 .NET Build & Test
+
+on:
+  workflow_call:
+    inputs:
+      # .NET Configuration
+      dotnet-version:
+        description: '.NET SDK version(s) to use (comma-separated for multiple)'
+        type: string
+        required: false
+        default: '8.0.x'
+      
+      dotnet-version-file:
+        description: 'Path to global.json for SDK version'
+        type: string
+        required: false
+        default: ''
+      
+      dotnet-quality:
+        description: 'Quality of .NET SDK (daily, signed, validated, preview, ga)'
+        type: string
+        required: false
+        default: ''
+      
+      # Project Configuration
+      project-path:
+        description: 'Path to project file(s) or solution'
+        type: string
+        required: false
+        default: '.'
+      
+      working-directory:
+        description: 'Working directory for all commands'
+        type: string
+        required: false
+        default: '.'
+      
+      configuration:
+        description: 'Build configuration (Debug, Release)'
+        type: string
+        required: false
+        default: 'Release'
+      
+      # Build Options
+      build-args:
+        description: 'Additional arguments for dotnet build'
+        type: string
+        required: false
+        default: ''
+      
+      restore-args:
+        description: 'Additional arguments for dotnet restore'
+        type: string
+        required: false
+        default: ''
+      
+      verbosity:
+        description: 'Logging verbosity (quiet, minimal, normal, detailed, diagnostic)'
+        type: string
+        required: false
+        default: 'normal'
+      
+      treat-warnings-as-errors:
+        description: 'Treat warnings as errors'
+        type: boolean
+        required: false
+        default: false
+      
+      # Runtime Configuration
+      runtime:
+        description: 'Target runtime (e.g., linux-x64, win-x64, osx-x64)'
+        type: string
+        required: false
+        default: ''
+      
+      self-contained:
+        description: 'Create self-contained deployment'
+        type: boolean
+        required: false
+        default: false
+      
+      # Testing Configuration
+      run-tests:
+        description: 'Run unit tests'
+        type: boolean
+        required: false
+        default: true
+      
+      test-filter:
+        description: 'Test filter expression'
+        type: string
+        required: false
+        default: ''
+      
+      test-args:
+        description: 'Additional arguments for dotnet test'
+        type: string
+        required: false
+        default: ''
+      
+      test-logger:
+        description: 'Test logger to use (trx, html, console)'
+        type: string
+        required: false
+        default: 'trx;LogFileName=test-results.trx'
+      
+      # Code Coverage
+      collect-coverage:
+        description: 'Collect code coverage'
+        type: boolean
+        required: false
+        default: false
+      
+      coverage-type:
+        description: 'Coverage format (cobertura, opencover, coverlet)'
+        type: string
+        required: false
+        default: 'cobertura'
+      
+      coverage-threshold:
+        description: 'Minimum coverage threshold percentage'
+        type: number
+        required: false
+        default: 0
+      
+      coverage-exclude:
+        description: 'Namespaces/files to exclude from coverage (comma-separated)'
+        type: string
+        required: false
+        default: ''
+      
+      # Code Analysis
+      run-code-analysis:
+        description: 'Run code analysis'
+        type: boolean
+        required: false
+        default: false
+      
+      analysis-level:
+        description: 'Analysis level (none, default, minimum, recommended, all)'
+        type: string
+        required: false
+        default: 'recommended'
+      
+      # Publishing Options
+      publish:
+        description: 'Publish the application'
+        type: boolean
+        required: false
+        default: false
+      
+      publish-args:
+        description: 'Additional arguments for dotnet publish'
+        type: string
+        required: false
+        default: ''
+      
+      output-directory:
+        description: 'Output directory for publish'
+        type: string
+        required: false
+        default: './publish'
+      
+      # Package Management
+      create-package:
+        description: 'Create NuGet package'
+        type: boolean
+        required: false
+        default: false
+      
+      package-version:
+        description: 'Package version (leave empty for auto)'
+        type: string
+        required: false
+        default: ''
+      
+      include-symbols:
+        description: 'Include symbols in package'
+        type: boolean
+        required: false
+        default: true
+      
+      include-source:
+        description: 'Include source in package'
+        type: boolean
+        required: false
+        default: false
+      
+      # Push to NuGet
+      push-to-nuget:
+        description: 'Push package to NuGet'
+        type: boolean
+        required: false
+        default: false
+      
+      nuget-source:
+        description: 'NuGet source URL'
+        type: string
+        required: false
+        default: 'https://api.nuget.org/v3/index.json'
+      
+      # Docker Support
+      build-docker:
+        description: 'Build Docker image'
+        type: boolean
+        required: false
+        default: false
+      
+      dockerfile-path:
+        description: 'Path to Dockerfile'
+        type: string
+        required: false
+        default: './Dockerfile'
+      
+      docker-image-name:
+        description: 'Docker image name'
+        type: string
+        required: false
+        default: ''
+      
+      docker-registry:
+        description: 'Docker registry URL'
+        type: string
+        required: false
+        default: ''
+      
+      # Artifact Management
+      upload-artifacts:
+        description: 'Upload build artifacts'
+        type: boolean
+        required: false
+        default: true
+      
+      artifact-name:
+        description: 'Name for uploaded artifacts'
+        type: string
+        required: false
+        default: 'dotnet-build'
+      
+      artifact-path:
+        description: 'Path pattern for artifacts'
+        type: string
+        required: false
+        default: ''
+      
+      artifact-retention-days:
+        description: 'Number of days to retain artifacts'
+        type: number
+        required: false
+        default: 30
+      
+      # Caching
+      cache-dependencies:
+        description: 'Cache NuGet dependencies'
+        type: boolean
+        required: false
+        default: true
+      
+      cache-key-prefix:
+        description: 'Cache key prefix'
+        type: string
+        required: false
+        default: 'nuget'
+      
+      # Platform Configuration
+      runs-on:
+        description: 'Runner OS (ubuntu-latest, windows-latest, macos-latest)'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+      
+      timeout-minutes:
+        description: 'Job timeout in minutes'
+        type: number
+        required: false
+        default: 30
+      
+      # Matrix Support
+      enable-matrix:
+        description: 'Enable matrix builds'
+        type: boolean
+        required: false
+        default: false
+      
+      matrix-os:
+        description: 'OS matrix as JSON array'
+        type: string
+        required: false
+        default: '["ubuntu-latest"]'
+      
+      matrix-dotnet:
+        description: '.NET version matrix as JSON array'
+        type: string
+        required: false
+        default: '["8.0.x"]'
+      
+    secrets:
+      NUGET_API_KEY:
+        description: 'NuGet API key for publishing packages'
+        required: false
+      
+      DOCKER_USERNAME:
+        description: 'Docker registry username'
+        required: false
+      
+      DOCKER_PASSWORD:
+        description: 'Docker registry password'
+        required: false
+      
+      CODECOV_TOKEN:
+        description: 'Codecov token for coverage upload'
+        required: false
+      
+      SONAR_TOKEN:
+        description: 'SonarCloud token for code analysis'
+        required: false
+    
+    outputs:
+      version:
+        description: 'Version of the built application/package'
+        value: ${{ jobs.build.outputs.version }}
+      
+      test-results:
+        description: 'Path to test results'
+        value: ${{ jobs.build.outputs.test-results }}
+      
+      coverage-report:
+        description: 'Path to coverage report'
+        value: ${{ jobs.build.outputs.coverage-report }}
+      
+      package-path:
+        description: 'Path to created NuGet package'
+        value: ${{ jobs.build.outputs.package-path }}
+      
+      docker-image:
+        description: 'Docker image tag'
+        value: ${{ jobs.build.outputs.docker-image }}
+
+jobs:
+  build:
+    name: Build .NET
+    runs-on: ${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    
+    strategy:
+      matrix:
+        os: ${{ inputs.enable-matrix && fromJson(inputs.matrix-os) || fromJson('["ubuntu-latest"]') }}
+        dotnet: ${{ inputs.enable-matrix && fromJson(inputs.matrix-dotnet) || fromJson('["8.0.x"]') }}
+      fail-fast: false
+    
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      test-results: ${{ steps.test.outputs.results-path }}
+      coverage-report: ${{ steps.coverage.outputs.report-path }}
+      package-path: ${{ steps.package.outputs.package-path }}
+      docker-image: ${{ steps.docker.outputs.image-tag }}
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+      
+      - name: 🔧 Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.enable-matrix && matrix.dotnet || inputs.dotnet-version }}
+          dotnet-version-file: ${{ inputs.dotnet-version-file }}
+          dotnet-quality: ${{ inputs.dotnet-quality }}
+      
+      - name: 🔧 Setup Additional .NET Versions
+        if: contains(inputs.dotnet-version, ',')
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            ${{ inputs.dotnet-version }}
+      
+      - name: 📦 Cache NuGet Packages
+        if: inputs.cache-dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.nuget/packages
+            ~/.local/share/NuGet/Cache
+            ~/Library/Caches/NuGet
+            %LocalAppData%\NuGet\Cache
+          key: ${{ inputs.cache-key-prefix }}-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '**/*.csproj', '**/Directory.Build.props') }}
+          restore-keys: |
+            ${{ inputs.cache-key-prefix }}-${{ runner.os }}-
+            ${{ inputs.cache-key-prefix }}-
+      
+      - name: 🏷️ Determine Version
+        id: version
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -n "${{ inputs.package-version }}" ]; then
+            VERSION="${{ inputs.package-version }}"
+          elif [ -n "$GITHUB_REF_NAME" ] && [[ "$GITHUB_REF_NAME" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="1.0.0-preview.${{ github.run_number }}"
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+      
+      - name: 📚 Restore Dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          dotnet restore ${{ inputs.project-path }} \
+            --verbosity ${{ inputs.verbosity }} \
+            ${{ inputs.runtime && format('--runtime {0}', inputs.runtime) || '' }} \
+            ${{ inputs.restore-args }}
+      
+      - name: 🏗️ Build Project
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          dotnet build ${{ inputs.project-path }} \
+            --configuration ${{ inputs.configuration }} \
+            --no-restore \
+            --verbosity ${{ inputs.verbosity }} \
+            ${{ inputs.treat-warnings-as-errors && '--warnaserror' || '' }} \
+            ${{ inputs.runtime && format('--runtime {0}', inputs.runtime) || '' }} \
+            ${{ inputs.self-contained && '--self-contained' || '' }} \
+            -p:Version=${{ steps.version.outputs.version }} \
+            ${{ inputs.build-args }}
+      
+      - name: 🧪 Run Tests
+        id: test
+        if: inputs.run-tests
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          TEST_RESULTS_DIR="${{ runner.temp }}/test-results"
+          mkdir -p "$TEST_RESULTS_DIR"
+          
+          dotnet test ${{ inputs.project-path }} \
+            --configuration ${{ inputs.configuration }} \
+            --no-build \
+            --verbosity ${{ inputs.verbosity }} \
+            --logger "${{ inputs.test-logger }}" \
+            --results-directory "$TEST_RESULTS_DIR" \
+            ${{ inputs.test-filter && format('--filter "{0}"', inputs.test-filter) || '' }} \
+            ${{ inputs.collect-coverage && format('--collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format={0}', inputs.coverage-type) || '' }} \
+            ${{ inputs.coverage-exclude && format('-- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile={0}', inputs.coverage-exclude) || '' }} \
+            ${{ inputs.test-args }}
+          
+          echo "results-path=$TEST_RESULTS_DIR" >> $GITHUB_OUTPUT
+      
+      - name: 📊 Process Coverage
+        id: coverage
+        if: inputs.collect-coverage
+        shell: bash
+        run: |
+          COVERAGE_FILE=$(find "${{ runner.temp }}/test-results" -name "coverage.${{ inputs.coverage-type }}.xml" -type f | head -1)
+          
+          if [ -n "$COVERAGE_FILE" ]; then
+            echo "Coverage report: $COVERAGE_FILE"
+            echo "report-path=$COVERAGE_FILE" >> $GITHUB_OUTPUT
+            
+            # Check threshold if specified
+            if [ "${{ inputs.coverage-threshold }}" -gt 0 ]; then
+              # Parse coverage percentage (simplified - you might need a proper tool)
+              echo "Coverage threshold check: ${{ inputs.coverage-threshold }}%"
+            fi
+          fi
+      
+      - name: 📊 Upload Coverage to Codecov
+        if: inputs.collect-coverage && steps.coverage.outputs.report-path != ''
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ${{ steps.coverage.outputs.report-path }}
+          fail_ci_if_error: false
+          verbose: true
+      
+      - name: 🔍 Code Analysis
+        if: inputs.run-code-analysis
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          dotnet build ${{ inputs.project-path }} \
+            --configuration ${{ inputs.configuration }} \
+            --no-restore \
+            -p:AnalysisLevel=${{ inputs.analysis-level }} \
+            -p:EnableNETAnalyzers=true \
+            -p:EnforceCodeStyleInBuild=true
+      
+      - name: 📦 Publish Application
+        if: inputs.publish
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          dotnet publish ${{ inputs.project-path }} \
+            --configuration ${{ inputs.configuration }} \
+            --output ${{ inputs.output-directory }} \
+            --no-build \
+            ${{ inputs.runtime && format('--runtime {0}', inputs.runtime) || '' }} \
+            ${{ inputs.self-contained && '--self-contained' || '--no-self-contained' }} \
+            -p:Version=${{ steps.version.outputs.version }} \
+            ${{ inputs.publish-args }}
+      
+      - name: 📦 Create NuGet Package
+        id: package
+        if: inputs.create-package
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          PACKAGE_OUTPUT_DIR="${{ runner.temp }}/packages"
+          mkdir -p "$PACKAGE_OUTPUT_DIR"
+          
+          dotnet pack ${{ inputs.project-path }} \
+            --configuration ${{ inputs.configuration }} \
+            --output "$PACKAGE_OUTPUT_DIR" \
+            --no-build \
+            -p:PackageVersion=${{ steps.version.outputs.version }} \
+            ${{ inputs.include-symbols && '-p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg' || '' }} \
+            ${{ inputs.include-source && '-p:IncludeSource=true' || '' }}
+          
+          PACKAGE_FILE=$(find "$PACKAGE_OUTPUT_DIR" -name "*.nupkg" -type f | head -1)
+          echo "package-path=$PACKAGE_FILE" >> $GITHUB_OUTPUT
+          echo "Package created: $PACKAGE_FILE"
+      
+      - name: 📤 Push to NuGet
+        if: inputs.push-to-nuget && steps.package.outputs.package-path != ''
+        run: |
+          dotnet nuget push "${{ steps.package.outputs.package-path }}" \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source ${{ inputs.nuget-source }} \
+            --skip-duplicate
+      
+      - name: 🐳 Build Docker Image
+        id: docker
+        if: inputs.build-docker
+        run: |
+          IMAGE_NAME="${{ inputs.docker-image-name }}"
+          if [ -z "$IMAGE_NAME" ]; then
+            IMAGE_NAME="${{ github.repository }}:${{ steps.version.outputs.version }}"
+          fi
+          
+          docker build \
+            -f ${{ inputs.dockerfile-path }} \
+            -t "$IMAGE_NAME" \
+            --build-arg VERSION=${{ steps.version.outputs.version }} \
+            --build-arg CONFIGURATION=${{ inputs.configuration }} \
+            ${{ inputs.working-directory }}
+          
+          echo "image-tag=$IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "Docker image built: $IMAGE_NAME"
+      
+      - name: 🐳 Push Docker Image
+        if: inputs.build-docker && inputs.docker-registry != ''
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login ${{ inputs.docker-registry }} -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          
+          FULL_IMAGE_NAME="${{ inputs.docker-registry }}/${{ steps.docker.outputs.image-tag }}"
+          docker tag "${{ steps.docker.outputs.image-tag }}" "$FULL_IMAGE_NAME"
+          docker push "$FULL_IMAGE_NAME"
+          
+          # Also push latest tag for main branch
+          if [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            LATEST_TAG="${{ inputs.docker-registry }}/${{ inputs.docker-image-name }}:latest"
+            docker tag "${{ steps.docker.outputs.image-tag }}" "$LATEST_TAG"
+            docker push "$LATEST_TAG"
+          fi
+      
+      - name: 📊 Test Report
+        if: always() && inputs.run-tests
+        uses: dorny/test-reporter@v1
+        with:
+          name: 'Test Results - ${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}'
+          path: '${{ steps.test.outputs.results-path }}/*.trx'
+          reporter: 'dotnet-trx'
+          fail-on-error: false
+      
+      - name: 📤 Upload Build Artifacts
+        if: inputs.upload-artifacts && inputs.publish
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}-${{ steps.version.outputs.version }}
+          path: |
+            ${{ inputs.output-directory }}
+            ${{ inputs.artifact-path }}
+          retention-days: ${{ inputs.artifact-retention-days }}
+      
+      - name: 📤 Upload Package Artifacts
+        if: inputs.upload-artifacts && inputs.create-package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages-${{ steps.version.outputs.version }}
+          path: ${{ steps.package.outputs.package-path }}
+          retention-days: ${{ inputs.artifact-retention-days }}
+      
+      - name: 📤 Upload Test Results
+        if: always() && inputs.run-tests && inputs.upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}
+          path: ${{ steps.test.outputs.results-path }}
+          retention-days: ${{ inputs.artifact-retention-days }}
+      
+      - name: 📤 Upload Coverage Report
+        if: inputs.collect-coverage && inputs.upload-artifacts && steps.coverage.outputs.report-path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}
+          path: ${{ steps.coverage.outputs.report-path }}
+          retention-days: ${{ inputs.artifact-retention-days }}

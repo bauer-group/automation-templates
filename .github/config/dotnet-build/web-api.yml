@@ -1,0 +1,168 @@
+# Configuration for ASP.NET Core Web API projects
+# Extends the default configuration with API-specific settings
+
+extends: default.yml
+
+dotnet:
+  version: '8.0.x'
+  quality: ''
+
+build:
+  configuration: Release
+  verbosity: normal
+  treat_warnings_as_errors: true
+  
+  # API-specific build properties
+  api_properties:
+    GenerateDocumentationFile: true
+    NoWarn: '1591'  # Missing XML comments
+    IncludeOpenAPIAnalyzers: true
+
+testing:
+  enabled: true
+  filter: 'Category!=Integration'
+  
+  # Integration tests
+  integration_tests:
+    enabled: true
+    filter: 'Category=Integration'
+    use_test_server: true
+    
+  # API testing
+  api_testing:
+    swagger_validation: true
+    response_validation: true
+    security_testing: false
+
+coverage:
+  enabled: true
+  type: cobertura
+  threshold: 80
+  
+  # Exclude generated files
+  exclude_namespaces:
+    - '*.Migrations'
+    - '*.Generated'
+  exclude_files:
+    - '**/Program.cs'
+    - '**/Startup.cs'
+
+analysis:
+  enabled: true
+  level: all
+  
+  # Security analysis
+  security_analysis:
+    enabled: true
+    owasp_dependency_check: true
+    security_code_scan: true
+
+publish:
+  enabled: true
+  output_directory: './publish'
+  
+  # API deployment options
+  trim_unused: true
+  ready_to_run: true
+  single_file: false
+  
+  # Environment-specific settings
+  environments:
+    - name: Development
+      configuration: Debug
+      include_dev_certs: true
+    - name: Staging
+      configuration: Release
+      include_swagger: true
+    - name: Production
+      configuration: Release
+      include_swagger: false
+
+docker:
+  build: true
+  dockerfile: './Dockerfile'
+  
+  # Multi-stage build
+  multi_stage: true
+  base_image: 'mcr.microsoft.com/dotnet/aspnet:8.0'
+  sdk_image: 'mcr.microsoft.com/dotnet/sdk:8.0'
+  
+  # Image configuration
+  expose_ports: [80, 443]
+  health_check: '/health'
+  
+  # Environment variables
+  env_vars:
+    ASPNETCORE_ENVIRONMENT: Production
+    ASPNETCORE_URLS: 'http://+:80'
+
+middleware:
+  # API middleware configuration
+  cors:
+    enabled: true
+    allow_any_origin: false
+    allowed_origins: []
+  
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 60
+  
+  authentication:
+    type: 'JWT'  # JWT, OAuth2, AzureAD
+    validate_issuer: true
+    validate_audience: true
+  
+  swagger:
+    enabled: true
+    version: 'v1'
+    title: 'API Documentation'
+    include_xml_comments: true
+
+database:
+  # Database migration settings
+  migrations:
+    auto_migrate: false
+    migration_timeout: 300
+  
+  # Connection string management
+  use_secrets: true
+  connection_string_key: 'DefaultConnection'
+
+logging:
+  # Logging configuration
+  min_level: Information
+  
+  # Structured logging
+  use_serilog: true
+  sinks:
+    - console
+    - file
+    - seq
+  
+  # Application Insights
+  app_insights:
+    enabled: false
+    instrumentation_key: ''
+
+monitoring:
+  # Health checks
+  health_checks:
+    enabled: true
+    endpoints:
+      - path: '/health'
+        name: 'Basic Health'
+      - path: '/health/ready'
+        name: 'Readiness'
+      - path: '/health/live'
+        name: 'Liveness'
+  
+  # Metrics
+  metrics:
+    enabled: true
+    prometheus_endpoint: '/metrics'
+    
+  # Tracing
+  tracing:
+    enabled: false
+    opentelemetry: true
+    jaeger_endpoint: ''

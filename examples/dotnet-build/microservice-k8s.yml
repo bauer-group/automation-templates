@@ -1,0 +1,181 @@
+name: Microservice Build and Deploy
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/**'
+      - 'k8s/**'
+      - 'Dockerfile'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to Kubernetes'
+        type: boolean
+        default: false
+      environment:
+        description: 'Target environment'
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/microservice
+
+jobs:
+  build-microservice:
+    uses: ./.github/workflows/reusable-dotnet-build.yml
+    with:
+      # .NET Configuration
+      dotnet-version: '8.0.x'
+      configuration: 'Release'
+      runs-on: 'ubuntu-latest'
+      
+      # Project Settings
+      project-path: 'src/Microservice/Microservice.csproj'
+      
+      # Runtime optimization for containers
+      runtime: 'linux-musl-x64'
+      self-contained: true
+      
+      # Build optimization
+      build-args: '-p:PublishTrimmed=true -p:PublishReadyToRun=true'
+      treat-warnings-as-errors: true
+      
+      # Testing
+      run-tests: true
+      test-filter: 'Category!=Integration & Category!=LoadTest'
+      collect-coverage: true
+      coverage-threshold: 75
+      
+      # Code Analysis
+      run-code-analysis: true
+      analysis-level: 'all'
+      
+      # Publishing
+      publish: true
+      output-directory: './app'
+      
+      # Docker
+      build-docker: true
+      dockerfile-path: './Dockerfile'
+      docker-image-name: ${{ env.IMAGE_NAME }}
+      docker-registry: ${{ env.REGISTRY }}
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'microservice'
+      
+    secrets:
+      DOCKER_USERNAME: ${{ github.actor }}
+      DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  
+  integration-tests:
+    needs: build-microservice
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      
+      - name: Run Integration Tests
+        run: |
+          dotnet test tests/IntegrationTests \
+            --configuration Release \
+            --logger "trx" \
+            --filter "Category=Integration"
+        env:
+          ConnectionStrings__DefaultConnection: "Host=localhost;Database=testdb;Username=postgres;Password=postgres"
+          Redis__ConnectionString: "localhost:6379"
+  
+  security-scan:
+    needs: build-microservice
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+  
+  deploy-kubernetes:
+    needs: [build-microservice, integration-tests, security-scan]
+    if: github.ref == 'refs/heads/main' || github.event.inputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+      
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+      
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+      
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install microservice ./k8s/helm \
+            --namespace ${{ github.event.inputs.environment || 'staging' }} \
+            --create-namespace \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            --set image.tag=${{ github.sha }} \
+            --set ingress.host=microservice-${{ github.event.inputs.environment || 'staging' }}.example.com \
+            --wait
+      
+      - name: Verify Deployment
+        run: |
+          kubectl rollout status deployment/microservice \
+            -n ${{ github.event.inputs.environment || 'staging' }} \
+            --timeout=5m
+      
+      - name: Run Smoke Tests
+        run: |
+          SERVICE_URL=$(kubectl get ingress microservice -n ${{ github.event.inputs.environment || 'staging' }} -o jsonpath='{.spec.rules[0].host}')
+          curl -f https://$SERVICE_URL/health || exit 1

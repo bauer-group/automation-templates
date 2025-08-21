@@ -1,0 +1,96 @@
+name: Build and Publish NuGet Package
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version (e.g., 1.2.3)'
+        required: true
+      prerelease:
+        description: 'Is this a prerelease?'
+        type: boolean
+        default: false
+
+jobs:
+  build-package:
+    uses: ./.github/workflows/reusable-dotnet-build.yml
+    with:
+      # .NET Configuration
+      dotnet-version: |
+        6.0.x
+        8.0.x
+      configuration: 'Release'
+      
+      # Project
+      project-path: 'src/MyLibrary/MyLibrary.csproj'
+      
+      # Testing
+      run-tests: true
+      collect-coverage: true
+      coverage-threshold: 90
+      
+      # Package Creation
+      create-package: true
+      package-version: ${{ github.event.inputs.version || github.ref_name }}
+      include-symbols: true
+      include-source: true
+      
+      # Publishing
+      push-to-nuget: true
+      nuget-source: 'https://api.nuget.org/v3/index.json'
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'nuget-packages'
+      
+    secrets:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+  
+  publish-github-packages:
+    needs: build-package
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download Package
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: packages
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      
+      - name: Publish to GitHub Packages
+        run: |
+          dotnet nuget push packages/*.nupkg \
+            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json \
+            --skip-duplicate
+  
+  create-release:
+    needs: [build-package, publish-github-packages]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: packages
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: packages/*
+          generate_release_notes: true
+          prerelease: ${{ github.event.inputs.prerelease || false }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

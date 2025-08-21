@@ -1,0 +1,267 @@
+# Configuration for .NET Microservice projects
+# Extends the default configuration with microservice-specific settings
+
+extends: default.yml
+
+dotnet:
+  version: '8.0.x'
+  quality: ''
+
+build:
+  configuration: Release
+  verbosity: minimal
+  treat_warnings_as_errors: true
+  
+  # Microservice properties
+  service_properties:
+    ServiceName: ''
+    ServiceVersion: ''
+    EnableHealthChecks: true
+    EnableMetrics: true
+    EnableDistributedTracing: true
+
+testing:
+  enabled: true
+  
+  # Test categories
+  categories:
+    unit: true
+    integration: true
+    contract: true
+    load: false
+    chaos: false
+
+coverage:
+  enabled: true
+  type: cobertura
+  threshold: 75
+  
+  # Exclude infrastructure code
+  exclude_namespaces:
+    - '*.Infrastructure'
+    - '*.Migrations'
+    - '*.Configuration'
+
+publish:
+  enabled: true
+  output_directory: './publish'
+  
+  # Container-optimized settings
+  trim_unused: true
+  ready_to_run: true
+  single_file: false
+  
+  # Runtime identifiers for containers
+  runtime_identifiers:
+    - linux-x64
+    - linux-musl-x64
+    - linux-arm64
+
+docker:
+  build: true
+  dockerfile: './Dockerfile'
+  
+  # Multi-stage build optimization
+  multi_stage: true
+  base_image: 'mcr.microsoft.com/dotnet/aspnet:8.0-alpine'
+  sdk_image: 'mcr.microsoft.com/dotnet/sdk:8.0'
+  
+  # Container configuration
+  user: 'app'
+  expose_ports: [8080, 8081]
+  
+  # Health check
+  health_check:
+    enabled: true
+    endpoint: '/health/ready'
+    interval: 30
+    timeout: 3
+    retries: 3
+  
+  # Labels
+  labels:
+    maintainer: ''
+    version: '${VERSION}'
+    description: ''
+
+kubernetes:
+  # Kubernetes deployment
+  deploy: false
+  
+  # Deployment configuration
+  deployment:
+    replicas: 3
+    strategy: 'RollingUpdate'
+    max_surge: 1
+    max_unavailable: 0
+  
+  # Service configuration
+  service:
+    type: 'ClusterIP'  # ClusterIP, NodePort, LoadBalancer
+    port: 80
+    target_port: 8080
+  
+  # Ingress
+  ingress:
+    enabled: false
+    class: 'nginx'
+    host: ''
+    tls: false
+  
+  # Resources
+  resources:
+    requests:
+      memory: '128Mi'
+      cpu: '100m'
+    limits:
+      memory: '256Mi'
+      cpu: '200m'
+  
+  # Probes
+  probes:
+    liveness:
+      path: '/health/live'
+      initial_delay: 30
+      period: 10
+    readiness:
+      path: '/health/ready'
+      initial_delay: 5
+      period: 5
+
+helm:
+  # Helm chart generation
+  create_chart: false
+  chart_name: ''
+  chart_version: ''
+  
+  # Values
+  values:
+    image:
+      repository: ''
+      tag: '${VERSION}'
+      pull_policy: 'IfNotPresent'
+
+observability:
+  # Distributed tracing
+  tracing:
+    enabled: true
+    provider: 'OpenTelemetry'  # OpenTelemetry, Jaeger, Zipkin
+    endpoint: ''
+    sampling_rate: 0.1
+  
+  # Metrics
+  metrics:
+    enabled: true
+    provider: 'Prometheus'
+    endpoint: '/metrics'
+    
+    # Custom metrics
+    custom_metrics:
+      - request_duration
+      - request_count
+      - error_rate
+  
+  # Logging
+  logging:
+    enabled: true
+    level: 'Information'
+    
+    # Structured logging
+    structured: true
+    format: 'json'
+    
+    # Log aggregation
+    aggregation:
+      provider: ''  # ELK, Fluentd, Loki
+      endpoint: ''
+
+messaging:
+  # Message bus configuration
+  enabled: false
+  provider: ''  # RabbitMQ, Kafka, Azure Service Bus, AWS SQS
+  
+  # Connection settings
+  connection:
+    host: ''
+    port: 0
+    username: ''
+    use_ssl: true
+
+database:
+  # Database configuration
+  provider: ''  # PostgreSQL, MySQL, SQLServer, MongoDB, CosmosDB
+  
+  # Connection resilience
+  resilience:
+    enable_retry: true
+    max_retry_count: 3
+    retry_delay_ms: 1000
+  
+  # Migrations
+  migrations:
+    auto_migrate: false
+    migration_on_startup: false
+
+cache:
+  # Distributed cache
+  enabled: false
+  provider: ''  # Redis, Memcached, NCache
+  
+  # Configuration
+  connection_string: ''
+  default_expiration_minutes: 60
+  
+  # Patterns
+  patterns:
+    - cache_aside
+    - write_through
+
+security:
+  # API security
+  authentication:
+    enabled: true
+    type: 'JWT'  # JWT, OAuth2, mTLS
+    
+  # Authorization
+  authorization:
+    enabled: true
+    policies: []
+  
+  # Rate limiting
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 100
+    
+  # CORS
+  cors:
+    enabled: true
+    allowed_origins: ['*']
+    allowed_methods: ['GET', 'POST', 'PUT', 'DELETE']
+
+resilience:
+  # Circuit breaker
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5
+    timeout_seconds: 30
+    
+  # Retry policies
+  retry:
+    enabled: true
+    max_attempts: 3
+    backoff_type: 'exponential'
+    
+  # Timeout policies
+  timeout:
+    default_seconds: 30
+    database_seconds: 10
+    http_seconds: 5
+
+feature_flags:
+  # Feature management
+  enabled: false
+  provider: ''  # LaunchDarkly, Azure App Configuration, ConfigCat
+  
+  # Configuration
+  refresh_interval_seconds: 60
+  cache_enabled: true
