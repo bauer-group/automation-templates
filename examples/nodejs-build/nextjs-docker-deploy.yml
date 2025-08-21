@@ -1,0 +1,157 @@
+name: Next.js Docker Build and Deploy
+
+on:
+  push:
+    branches: [ main, staging ]
+    paths:
+      - 'src/**'
+      - 'pages/**'
+      - 'app/**'
+      - 'components/**'
+      - 'package.json'
+      - 'Dockerfile'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/nextjs-app
+
+jobs:
+  build-and-test:
+    uses: ./.github/workflows/reusable-nodejs-build.yml
+    with:
+      node-version: '20.x'
+      package-manager: 'npm'
+      
+      # Build configuration
+      build-command: 'npm run build'
+      build-env: 'production'
+      
+      # Testing
+      run-tests: true
+      test-coverage: true
+      coverage-threshold: 75
+      
+      # Type checking
+      run-typecheck: true
+      typecheck-command: 'npm run type-check'
+      
+      # Linting
+      run-lint: true
+      lint-command: 'npm run lint'
+      
+      # Security
+      run-audit: true
+      audit-level: 'moderate'
+      
+      # Docker build
+      build-docker: true
+      dockerfile-path: './Dockerfile'
+      docker-image-name: ${{ env.IMAGE_NAME }}
+      docker-registry: ${{ env.REGISTRY }}
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'nextjs-build'
+      artifact-path: '.next/**'
+    
+    secrets:
+      DOCKER_USERNAME: ${{ github.actor }}
+      DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+  
+  analyze:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      
+      - name: Install Dependencies
+        run: npm ci
+      
+      - name: Bundle Analysis
+        run: ANALYZE=true npm run build
+      
+      - name: Upload Bundle Stats
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-stats
+          path: .next/analyze
+  
+  deploy-staging:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+      - name: Deploy to Vercel Staging
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+          scope: ${{ secrets.VERCEL_SCOPE }}
+  
+  deploy-production:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Deploy to Kubernetes
+        run: |
+          # Install kubectl
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+          
+          # Configure kubectl
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+          
+          # Update deployment
+          kubectl set image deployment/nextjs-app \
+            app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -n production
+          
+          # Wait for rollout
+          kubectl rollout status deployment/nextjs-app -n production
+      
+      - name: Run E2E Tests
+        run: |
+          npm ci
+          npm run test:e2e:production
+        env:
+          E2E_BASE_URL: https://app.example.com
+      
+      - name: Performance Test
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          urls: |
+            https://app.example.com
+            https://app.example.com/about
+            https://app.example.com/blog
+          uploadArtifacts: true
+          temporaryPublicStorage: true

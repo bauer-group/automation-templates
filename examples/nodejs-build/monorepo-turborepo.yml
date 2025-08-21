@@ -1,0 +1,185 @@
+name: Monorepo Build with Turborepo
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.filter.outputs.packages }}
+      apps: ${{ steps.filter.outputs.apps }}
+      docs: ${{ steps.filter.outputs.docs }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Path Filter
+        uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            packages:
+              - 'packages/**'
+            apps:
+              - 'apps/**'
+            docs:
+              - 'docs/**'
+  
+  build-monorepo:
+    needs: detect-changes
+    uses: ./.github/workflows/reusable-nodejs-build.yml
+    with:
+      node-version: '20.x'
+      package-manager: 'pnpm'
+      package-manager-version: '8'
+      
+      # Monorepo configuration
+      is-monorepo: true
+      packages-path: 'packages/*'
+      affected-only: ${{ github.event_name == 'pull_request' }}
+      
+      # Install with pnpm
+      install-command: 'pnpm install --frozen-lockfile'
+      
+      # Turborepo build
+      build-command: 'pnpm turbo build --cache-dir=.turbo'
+      
+      # Testing
+      run-tests: true
+      test-command: 'pnpm turbo test --cache-dir=.turbo'
+      
+      # Coverage for all packages
+      test-coverage: true
+      coverage-command: 'pnpm turbo test:coverage --cache-dir=.turbo'
+      
+      # Linting
+      run-lint: true
+      lint-command: 'pnpm turbo lint --cache-dir=.turbo'
+      
+      # Type checking
+      run-typecheck: true
+      typecheck-command: 'pnpm turbo typecheck --cache-dir=.turbo'
+      
+      # Caching
+      cache-dependencies: true
+      cache-build: true
+      cache-key-prefix: 'turbo'
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'monorepo-build'
+      artifact-path: |
+        packages/*/dist
+        apps/*/build
+        apps/*/.next
+  
+  publish-packages:
+    needs: build-monorepo
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org'
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+      
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Build Packages
+        run: pnpm turbo build --filter="./packages/*"
+      
+      - name: Create Changesets
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          publish: pnpm changeset publish
+          version: pnpm changeset version
+          commit: 'chore: release packages'
+          title: 'chore: release packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+  
+  deploy-apps:
+    needs: build-monorepo
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        app:
+          - name: web
+            path: apps/web
+            deploy: vercel
+          - name: docs
+            path: apps/docs
+            deploy: netlify
+          - name: api
+            path: apps/api
+            deploy: docker
+    
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: monorepo-build-ubuntu-latest-${{ github.sha }}
+          path: .
+      
+      - name: Deploy ${{ matrix.app.name }}
+        run: |
+          echo "Deploying ${{ matrix.app.name }} to ${{ matrix.app.deploy }}"
+          # Add deployment logic based on matrix.app.deploy
+  
+  e2e-tests:
+    needs: deploy-apps
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+      
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Run E2E Tests
+        run: pnpm turbo e2e --cache-dir=.turbo
+        env:
+          WEB_URL: https://web.example.com
+          API_URL: https://api.example.com

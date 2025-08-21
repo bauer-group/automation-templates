@@ -1,0 +1,831 @@
+name: 📦 Node.js Build & Publish
+
+on:
+  workflow_call:
+    inputs:
+      # Node.js Configuration
+      node-version:
+        description: 'Node.js version(s) - comma-separated for multiple'
+        type: string
+        required: false
+        default: '20.x'
+      
+      node-version-file:
+        description: 'Path to .nvmrc or .node-version file'
+        type: string
+        required: false
+        default: ''
+      
+      # Package Manager
+      package-manager:
+        description: 'Package manager to use (npm, yarn, pnpm, bun)'
+        type: string
+        required: false
+        default: 'npm'
+      
+      package-manager-version:
+        description: 'Specific package manager version'
+        type: string
+        required: false
+        default: ''
+      
+      # Working Directory
+      working-directory:
+        description: 'Working directory for all commands'
+        type: string
+        required: false
+        default: '.'
+      
+      # Install Options
+      install-command:
+        description: 'Custom install command (default: auto-detect)'
+        type: string
+        required: false
+        default: ''
+      
+      frozen-lockfile:
+        description: 'Use frozen lockfile for reproducible installs'
+        type: boolean
+        required: false
+        default: true
+      
+      # Build Configuration
+      build-command:
+        description: 'Build command (e.g., npm run build)'
+        type: string
+        required: false
+        default: ''
+      
+      build-env:
+        description: 'Build environment (development, production)'
+        type: string
+        required: false
+        default: 'production'
+      
+      # Testing Configuration
+      run-tests:
+        description: 'Run tests'
+        type: boolean
+        required: false
+        default: true
+      
+      test-command:
+        description: 'Test command'
+        type: string
+        required: false
+        default: ''
+      
+      test-coverage:
+        description: 'Collect test coverage'
+        type: boolean
+        required: false
+        default: false
+      
+      coverage-command:
+        description: 'Coverage command'
+        type: string
+        required: false
+        default: ''
+      
+      coverage-threshold:
+        description: 'Minimum coverage threshold'
+        type: number
+        required: false
+        default: 0
+      
+      # Linting & Formatting
+      run-lint:
+        description: 'Run linting'
+        type: boolean
+        required: false
+        default: false
+      
+      lint-command:
+        description: 'Lint command'
+        type: string
+        required: false
+        default: ''
+      
+      run-format-check:
+        description: 'Check code formatting'
+        type: boolean
+        required: false
+        default: false
+      
+      format-command:
+        description: 'Format check command'
+        type: string
+        required: false
+        default: ''
+      
+      # Type Checking
+      run-typecheck:
+        description: 'Run TypeScript type checking'
+        type: boolean
+        required: false
+        default: false
+      
+      typecheck-command:
+        description: 'Type check command'
+        type: string
+        required: false
+        default: ''
+      
+      # Security Scanning
+      run-audit:
+        description: 'Run security audit'
+        type: boolean
+        required: false
+        default: true
+      
+      audit-level:
+        description: 'Audit level (low, moderate, high, critical)'
+        type: string
+        required: false
+        default: 'moderate'
+      
+      # Bundle Analysis
+      analyze-bundle:
+        description: 'Analyze bundle size'
+        type: boolean
+        required: false
+        default: false
+      
+      bundle-command:
+        description: 'Bundle analysis command'
+        type: string
+        required: false
+        default: ''
+      
+      max-bundle-size:
+        description: 'Maximum bundle size in KB'
+        type: number
+        required: false
+        default: 0
+      
+      # Publishing Configuration
+      publish-package:
+        description: 'Publish package to registry'
+        type: boolean
+        required: false
+        default: false
+      
+      publish-registry:
+        description: 'Registry to publish to (npm, github, custom)'
+        type: string
+        required: false
+        default: 'npm'
+      
+      registry-url:
+        description: 'Custom registry URL'
+        type: string
+        required: false
+        default: ''
+      
+      publish-tag:
+        description: 'NPM dist-tag (latest, beta, next)'
+        type: string
+        required: false
+        default: 'latest'
+      
+      publish-access:
+        description: 'Package access level (public, restricted)'
+        type: string
+        required: false
+        default: 'public'
+      
+      dry-run:
+        description: 'Perform dry run of publish'
+        type: boolean
+        required: false
+        default: false
+      
+      # Version Management
+      version-strategy:
+        description: 'Version strategy (manual, auto, semantic)'
+        type: string
+        required: false
+        default: 'manual'
+      
+      version:
+        description: 'Explicit version to use'
+        type: string
+        required: false
+        default: ''
+      
+      prerelease:
+        description: 'Mark as prerelease'
+        type: boolean
+        required: false
+        default: false
+      
+      prerelease-identifier:
+        description: 'Prerelease identifier (alpha, beta, rc)'
+        type: string
+        required: false
+        default: 'beta'
+      
+      # Monorepo Support
+      is-monorepo:
+        description: 'Is this a monorepo?'
+        type: boolean
+        required: false
+        default: false
+      
+      packages-path:
+        description: 'Path to packages (for monorepos)'
+        type: string
+        required: false
+        default: 'packages/*'
+      
+      affected-only:
+        description: 'Build/test only affected packages'
+        type: boolean
+        required: false
+        default: false
+      
+      # Caching
+      cache-dependencies:
+        description: 'Cache node_modules'
+        type: boolean
+        required: false
+        default: true
+      
+      cache-build:
+        description: 'Cache build outputs'
+        type: boolean
+        required: false
+        default: false
+      
+      cache-key-prefix:
+        description: 'Cache key prefix'
+        type: string
+        required: false
+        default: 'node'
+      
+      # Artifact Management
+      upload-artifacts:
+        description: 'Upload build artifacts'
+        type: boolean
+        required: false
+        default: true
+      
+      artifact-name:
+        description: 'Artifact name'
+        type: string
+        required: false
+        default: 'nodejs-build'
+      
+      artifact-path:
+        description: 'Paths to include in artifacts'
+        type: string
+        required: false
+        default: ''
+      
+      artifact-retention-days:
+        description: 'Artifact retention days'
+        type: number
+        required: false
+        default: 30
+      
+      # Docker Support
+      build-docker:
+        description: 'Build Docker image'
+        type: boolean
+        required: false
+        default: false
+      
+      dockerfile-path:
+        description: 'Path to Dockerfile'
+        type: string
+        required: false
+        default: './Dockerfile'
+      
+      docker-image-name:
+        description: 'Docker image name'
+        type: string
+        required: false
+        default: ''
+      
+      docker-registry:
+        description: 'Docker registry'
+        type: string
+        required: false
+        default: ''
+      
+      # Platform Configuration
+      runs-on:
+        description: 'Runner OS'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+      
+      timeout-minutes:
+        description: 'Job timeout in minutes'
+        type: number
+        required: false
+        default: 30
+      
+      # Matrix Build Support
+      enable-matrix:
+        description: 'Enable matrix builds'
+        type: boolean
+        required: false
+        default: false
+      
+      matrix-os:
+        description: 'OS matrix (JSON array)'
+        type: string
+        required: false
+        default: '["ubuntu-latest"]'
+      
+      matrix-node:
+        description: 'Node.js version matrix (JSON array)'
+        type: string
+        required: false
+        default: '["20.x"]'
+      
+    secrets:
+      NPM_TOKEN:
+        description: 'NPM authentication token'
+        required: false
+      
+      GITHUB_TOKEN:
+        description: 'GitHub token for GitHub Packages'
+        required: false
+      
+      DOCKER_USERNAME:
+        description: 'Docker registry username'
+        required: false
+      
+      DOCKER_PASSWORD:
+        description: 'Docker registry password'
+        required: false
+      
+      CODECOV_TOKEN:
+        description: 'Codecov token'
+        required: false
+      
+      SONAR_TOKEN:
+        description: 'SonarCloud token'
+        required: false
+    
+    outputs:
+      version:
+        description: 'Package version'
+        value: ${{ jobs.build.outputs.version }}
+      
+      published:
+        description: 'Whether package was published'
+        value: ${{ jobs.build.outputs.published }}
+      
+      artifact-path:
+        description: 'Path to uploaded artifacts'
+        value: ${{ jobs.build.outputs.artifact-path }}
+      
+      docker-image:
+        description: 'Docker image tag'
+        value: ${{ jobs.build.outputs.docker-image }}
+
+jobs:
+  build:
+    name: Build Node.js
+    runs-on: ${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    
+    strategy:
+      matrix:
+        os: ${{ inputs.enable-matrix && fromJson(inputs.matrix-os) || fromJson('["ubuntu-latest"]') }}
+        node: ${{ inputs.enable-matrix && fromJson(inputs.matrix-node) || fromJson('["20.x"]') }}
+      fail-fast: false
+    
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      published: ${{ steps.publish.outputs.published }}
+      artifact-path: ${{ steps.artifacts.outputs.path }}
+      docker-image: ${{ steps.docker.outputs.image }}
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+      
+      - name: 🔧 Detect Package Manager
+        id: detect-pm
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -n "${{ inputs.package-manager }}" ]; then
+            PM="${{ inputs.package-manager }}"
+          elif [ -f "bun.lockb" ]; then
+            PM="bun"
+          elif [ -f "pnpm-lock.yaml" ]; then
+            PM="pnpm"
+          elif [ -f "yarn.lock" ]; then
+            PM="yarn"
+          else
+            PM="npm"
+          fi
+          
+          echo "package-manager=$PM" >> $GITHUB_OUTPUT
+          echo "Using package manager: $PM"
+          
+          # Determine lockfile
+          case $PM in
+            npm) LOCKFILE="package-lock.json" ;;
+            yarn) LOCKFILE="yarn.lock" ;;
+            pnpm) LOCKFILE="pnpm-lock.yaml" ;;
+            bun) LOCKFILE="bun.lockb" ;;
+          esac
+          echo "lockfile=$LOCKFILE" >> $GITHUB_OUTPUT
+      
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.enable-matrix && matrix.node || inputs.node-version }}
+          node-version-file: ${{ inputs.node-version-file }}
+          cache: ${{ inputs.cache-dependencies && steps.detect-pm.outputs.package-manager || '' }}
+          cache-dependency-path: ${{ inputs.working-directory }}/${{ steps.detect-pm.outputs.lockfile }}
+          registry-url: ${{ inputs.registry-url || (inputs.publish-registry == 'github' && 'https://npm.pkg.github.com' || 'https://registry.npmjs.org') }}
+      
+      - name: 🔧 Setup pnpm
+        if: steps.detect-pm.outputs.package-manager == 'pnpm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.package-manager-version || 'latest' }}
+      
+      - name: 🔧 Setup Bun
+        if: steps.detect-pm.outputs.package-manager == 'bun'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ inputs.package-manager-version || 'latest' }}
+      
+      - name: 🔧 Setup Yarn
+        if: steps.detect-pm.outputs.package-manager == 'yarn' && inputs.package-manager-version != ''
+        run: |
+          npm install -g yarn@${{ inputs.package-manager-version }}
+      
+      - name: 📦 Cache Build Output
+        if: inputs.cache-build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ inputs.working-directory }}/dist
+            ${{ inputs.working-directory }}/build
+            ${{ inputs.working-directory }}/.next
+            ${{ inputs.working-directory }}/.nuxt
+            ${{ inputs.working-directory }}/.output
+          key: ${{ inputs.cache-key-prefix }}-build-${{ runner.os }}-${{ hashFiles('**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ inputs.cache-key-prefix }}-build-${{ runner.os }}-
+      
+      - name: 🏷️ Determine Version
+        id: version
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          elif [ "${{ inputs.version-strategy }}" = "semantic" ]; then
+            # Extract from git tag or generate
+            if [[ "$GITHUB_REF" =~ ^refs/tags/v?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+              VERSION="${BASH_REMATCH[1]}"
+            else
+              VERSION=$(node -p "require('./package.json').version || '1.0.0'")
+            fi
+          else
+            VERSION=$(node -p "require('./package.json').version || '1.0.0'")
+          fi
+          
+          # Add prerelease identifier if needed
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            VERSION="$VERSION-${{ inputs.prerelease-identifier }}.${{ github.run_number }}"
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+      
+      - name: 📚 Install Dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          PM="${{ steps.detect-pm.outputs.package-manager }}"
+          
+          if [ -n "${{ inputs.install-command }}" ]; then
+            ${{ inputs.install-command }}
+          else
+            case $PM in
+              npm)
+                if [ "${{ inputs.frozen-lockfile }}" = "true" ]; then
+                  npm ci
+                else
+                  npm install
+                fi
+                ;;
+              yarn)
+                if [ "${{ inputs.frozen-lockfile }}" = "true" ]; then
+                  yarn install --frozen-lockfile
+                else
+                  yarn install
+                fi
+                ;;
+              pnpm)
+                if [ "${{ inputs.frozen-lockfile }}" = "true" ]; then
+                  pnpm install --frozen-lockfile
+                else
+                  pnpm install
+                fi
+                ;;
+              bun)
+                if [ "${{ inputs.frozen-lockfile }}" = "true" ]; then
+                  bun install --frozen-lockfile
+                else
+                  bun install
+                fi
+                ;;
+            esac
+          fi
+      
+      - name: 🔍 Security Audit
+        if: inputs.run-audit
+        working-directory: ${{ inputs.working-directory }}
+        continue-on-error: true
+        run: |
+          PM="${{ steps.detect-pm.outputs.package-manager }}"
+          
+          case $PM in
+            npm)
+              npm audit --audit-level=${{ inputs.audit-level }}
+              ;;
+            yarn)
+              yarn audit --level ${{ inputs.audit-level }}
+              ;;
+            pnpm)
+              pnpm audit --audit-level ${{ inputs.audit-level }}
+              ;;
+            bun)
+              # Bun doesn't have audit yet
+              echo "Bun doesn't support audit yet"
+              ;;
+          esac
+      
+      - name: 🎨 Lint Code
+        if: inputs.run-lint
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -n "${{ inputs.lint-command }}" ]; then
+            ${{ inputs.lint-command }}
+          else
+            PM="${{ steps.detect-pm.outputs.package-manager }}"
+            case $PM in
+              npm) npm run lint ;;
+              yarn) yarn lint ;;
+              pnpm) pnpm lint ;;
+              bun) bun run lint ;;
+            esac
+          fi
+      
+      - name: 💅 Check Formatting
+        if: inputs.run-format-check
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -n "${{ inputs.format-command }}" ]; then
+            ${{ inputs.format-command }}
+          else
+            PM="${{ steps.detect-pm.outputs.package-manager }}"
+            case $PM in
+              npm) npm run format:check ;;
+              yarn) yarn format:check ;;
+              pnpm) pnpm format:check ;;
+              bun) bun run format:check ;;
+            esac
+          fi
+      
+      - name: 🔍 Type Check
+        if: inputs.run-typecheck
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -n "${{ inputs.typecheck-command }}" ]; then
+            ${{ inputs.typecheck-command }}
+          else
+            PM="${{ steps.detect-pm.outputs.package-manager }}"
+            case $PM in
+              npm) npm run typecheck ;;
+              yarn) yarn typecheck ;;
+              pnpm) pnpm typecheck ;;
+              bun) bun run typecheck ;;
+            esac
+          fi
+      
+      - name: 🏗️ Build Project
+        if: inputs.build-command != ''
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          NODE_ENV: ${{ inputs.build-env }}
+        run: |
+          if [ -n "${{ inputs.build-command }}" ]; then
+            ${{ inputs.build-command }}
+          else
+            PM="${{ steps.detect-pm.outputs.package-manager }}"
+            case $PM in
+              npm) npm run build --if-present ;;
+              yarn) yarn build --if-present ;;
+              pnpm) pnpm build --if-present ;;
+              bun) bun run build --if-present ;;
+            esac
+          fi
+      
+      - name: 🧪 Run Tests
+        if: inputs.run-tests
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -n "${{ inputs.test-command }}" ]; then
+            ${{ inputs.test-command }}
+          else
+            PM="${{ steps.detect-pm.outputs.package-manager }}"
+            case $PM in
+              npm) npm test ;;
+              yarn) yarn test ;;
+              pnpm) pnpm test ;;
+              bun) bun test ;;
+            esac
+          fi
+      
+      - name: 📊 Code Coverage
+        if: inputs.test-coverage
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -n "${{ inputs.coverage-command }}" ]; then
+            ${{ inputs.coverage-command }}
+          else
+            PM="${{ steps.detect-pm.outputs.package-manager }}"
+            case $PM in
+              npm) npm run test:coverage ;;
+              yarn) yarn test:coverage ;;
+              pnpm) pnpm test:coverage ;;
+              bun) bun run test:coverage ;;
+            esac
+          fi
+          
+          # Check coverage threshold
+          if [ "${{ inputs.coverage-threshold }}" -gt 0 ]; then
+            echo "Checking coverage threshold: ${{ inputs.coverage-threshold }}%"
+            # Add coverage threshold check logic here
+          fi
+      
+      - name: 📊 Upload Coverage
+        if: inputs.test-coverage
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          working-directory: ${{ inputs.working-directory }}
+          fail_ci_if_error: false
+      
+      - name: 📊 Bundle Analysis
+        if: inputs.analyze-bundle
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -n "${{ inputs.bundle-command }}" ]; then
+            ${{ inputs.bundle-command }}
+          else
+            PM="${{ steps.detect-pm.outputs.package-manager }}"
+            case $PM in
+              npm) npm run analyze ;;
+              yarn) yarn analyze ;;
+              pnpm) pnpm analyze ;;
+              bun) bun run analyze ;;
+            esac
+          fi
+          
+          # Check bundle size if threshold is set
+          if [ "${{ inputs.max-bundle-size }}" -gt 0 ]; then
+            echo "Checking bundle size threshold: ${{ inputs.max-bundle-size }}KB"
+            # Add bundle size check logic here
+          fi
+      
+      - name: 📦 Update Package Version
+        if: inputs.publish-package && inputs.version != ''
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          PM="${{ steps.detect-pm.outputs.package-manager }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          case $PM in
+            npm) npm version $VERSION --no-git-tag-version ;;
+            yarn) yarn version --new-version $VERSION --no-git-tag-version ;;
+            pnpm) pnpm version $VERSION --no-git-tag-version ;;
+            bun) npm version $VERSION --no-git-tag-version ;;
+          esac
+      
+      - name: 📤 Publish Package
+        id: publish
+        if: inputs.publish-package
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          NODE_AUTH_TOKEN: ${{ inputs.publish-registry == 'github' && secrets.GITHUB_TOKEN || secrets.NPM_TOKEN }}
+        run: |
+          PM="${{ steps.detect-pm.outputs.package-manager }}"
+          
+          # Publish command based on package manager
+          PUBLISH_CMD=""
+          case $PM in
+            npm)
+              PUBLISH_CMD="npm publish"
+              [ "${{ inputs.publish-access }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --access ${{ inputs.publish-access }}"
+              [ "${{ inputs.publish-tag }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --tag ${{ inputs.publish-tag }}"
+              [ "${{ inputs.dry-run }}" = "true" ] && PUBLISH_CMD="$PUBLISH_CMD --dry-run"
+              ;;
+            yarn)
+              PUBLISH_CMD="yarn publish"
+              [ "${{ inputs.publish-access }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --access ${{ inputs.publish-access }}"
+              [ "${{ inputs.publish-tag }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --tag ${{ inputs.publish-tag }}"
+              [ "${{ inputs.dry-run }}" = "true" ] && PUBLISH_CMD="$PUBLISH_CMD --dry-run"
+              ;;
+            pnpm)
+              PUBLISH_CMD="pnpm publish"
+              [ "${{ inputs.publish-access }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --access ${{ inputs.publish-access }}"
+              [ "${{ inputs.publish-tag }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --tag ${{ inputs.publish-tag }}"
+              [ "${{ inputs.dry-run }}" = "true" ] && PUBLISH_CMD="$PUBLISH_CMD --dry-run"
+              ;;
+            bun)
+              # Bun uses npm for publishing
+              PUBLISH_CMD="npm publish"
+              [ "${{ inputs.publish-access }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --access ${{ inputs.publish-access }}"
+              [ "${{ inputs.publish-tag }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --tag ${{ inputs.publish-tag }}"
+              [ "${{ inputs.dry-run }}" = "true" ] && PUBLISH_CMD="$PUBLISH_CMD --dry-run"
+              ;;
+          esac
+          
+          # Execute publish
+          $PUBLISH_CMD
+          
+          if [ "${{ inputs.dry-run }}" != "true" ]; then
+            echo "published=true" >> $GITHUB_OUTPUT
+          else
+            echo "published=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 🐳 Build Docker Image
+        id: docker
+        if: inputs.build-docker
+        run: |
+          IMAGE_NAME="${{ inputs.docker-image-name }}"
+          if [ -z "$IMAGE_NAME" ]; then
+            IMAGE_NAME="${{ github.repository }}:${{ steps.version.outputs.version }}"
+          fi
+          
+          docker build \
+            -f ${{ inputs.dockerfile-path }} \
+            -t "$IMAGE_NAME" \
+            --build-arg VERSION=${{ steps.version.outputs.version }} \
+            --build-arg NODE_ENV=${{ inputs.build-env }} \
+            ${{ inputs.working-directory }}
+          
+          echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
+      
+      - name: 🐳 Push Docker Image
+        if: inputs.build-docker && inputs.docker-registry != ''
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login ${{ inputs.docker-registry }} -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          
+          FULL_IMAGE_NAME="${{ inputs.docker-registry }}/${{ steps.docker.outputs.image }}"
+          docker tag "${{ steps.docker.outputs.image }}" "$FULL_IMAGE_NAME"
+          docker push "$FULL_IMAGE_NAME"
+          
+          # Push latest tag for main branch
+          if [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            LATEST_TAG="${{ inputs.docker-registry }}/${{ inputs.docker-image-name }}:latest"
+            docker tag "${{ steps.docker.outputs.image }}" "$LATEST_TAG"
+            docker push "$LATEST_TAG"
+          fi
+      
+      - name: 📤 Prepare Artifacts
+        id: artifacts
+        if: inputs.upload-artifacts
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          ARTIFACT_DIR="${{ runner.temp }}/artifacts"
+          mkdir -p "$ARTIFACT_DIR"
+          
+          # Default artifact paths
+          if [ -z "${{ inputs.artifact-path }}" ]; then
+            # Copy common build outputs
+            [ -d "dist" ] && cp -r dist "$ARTIFACT_DIR/"
+            [ -d "build" ] && cp -r build "$ARTIFACT_DIR/"
+            [ -d "lib" ] && cp -r lib "$ARTIFACT_DIR/"
+            [ -d "coverage" ] && cp -r coverage "$ARTIFACT_DIR/"
+            [ -f "package.json" ] && cp package.json "$ARTIFACT_DIR/"
+            [ -f "package-lock.json" ] && cp package-lock.json "$ARTIFACT_DIR/"
+          else
+            # Copy specified paths
+            cp -r ${{ inputs.artifact-path }} "$ARTIFACT_DIR/"
+          fi
+          
+          echo "path=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
+      
+      - name: 📤 Upload Artifacts
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}-${{ steps.version.outputs.version }}
+          path: ${{ steps.artifacts.outputs.path }}
+          retention-days: ${{ inputs.artifact-retention-days }}

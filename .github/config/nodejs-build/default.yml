@@ -1,0 +1,278 @@
+# Default configuration for Node.js Build workflow
+# This file contains default values that can be overridden in your workflow
+
+node:
+  # Node.js version configuration
+  version: '20.x'  # LTS version
+  version_file: ''  # .nvmrc or .node-version
+  
+  # Additional versions for matrix builds
+  additional_versions:
+    - '18.x'
+    - '20.x'
+    - '22.x'
+
+package_manager:
+  # Package manager settings
+  type: 'npm'  # auto-detect by default
+  version: ''  # use latest if not specified
+  
+  # Install options
+  frozen_lockfile: true
+  clean_install: true
+  
+  # Registry configuration
+  registry: 'https://registry.npmjs.org'
+  scope: ''
+
+build:
+  # Build configuration
+  command: 'npm run build'
+  environment: 'production'
+  
+  # Build optimization
+  minify: true
+  sourcemaps: true
+  tree_shaking: true
+  
+  # Output settings
+  output_directory: 'dist'
+  clean_output: true
+
+testing:
+  # Test execution
+  enabled: true
+  command: 'npm test'
+  
+  # Test configuration
+  bail: false
+  verbose: false
+  watch: false
+  
+  # Coverage
+  coverage:
+    enabled: false
+    command: 'npm run test:coverage'
+    threshold:
+      statements: 80
+      branches: 75
+      functions: 80
+      lines: 80
+    
+    # Coverage reports
+    reporters:
+      - text
+      - lcov
+      - html
+    
+    # Upload to services
+    codecov: false
+    coveralls: false
+
+linting:
+  # Code quality checks
+  enabled: true
+  command: 'npm run lint'
+  
+  # ESLint configuration
+  eslint:
+    enabled: true
+    fix: false
+    cache: true
+    max_warnings: 0
+  
+  # Prettier
+  prettier:
+    enabled: false
+    command: 'npm run format:check'
+    
+  # StyleLint
+  stylelint:
+    enabled: false
+    command: 'npm run lint:styles'
+
+typecheck:
+  # TypeScript type checking
+  enabled: false
+  command: 'npm run typecheck'
+  
+  # TypeScript options
+  strict: true
+  skip_lib_check: false
+  no_emit: true
+
+security:
+  # Security scanning
+  audit:
+    enabled: true
+    level: 'moderate'  # low, moderate, high, critical
+    production_only: false
+  
+  # Dependency scanning
+  dependency_check:
+    enabled: false
+    fail_on_vulnerability: true
+  
+  # License checking
+  license_check:
+    enabled: false
+    allowed_licenses:
+      - MIT
+      - Apache-2.0
+      - BSD-3-Clause
+      - ISC
+
+bundle:
+  # Bundle analysis
+  analyze:
+    enabled: false
+    command: 'npm run analyze'
+    
+  # Size limits
+  size_limit:
+    enabled: false
+    max_size: 500  # KB
+    
+  # Performance budgets
+  performance:
+    enabled: false
+    max_js_size: 300  # KB
+    max_css_size: 100  # KB
+    max_asset_size: 200  # KB
+
+publishing:
+  # Package publishing
+  enabled: false
+  registry: 'npm'  # npm, github, custom
+  
+  # NPM settings
+  access: 'public'  # public, restricted
+  tag: 'latest'  # latest, beta, next, canary
+  dry_run: false
+  
+  # Version management
+  version:
+    strategy: 'manual'  # manual, auto, semantic
+    bump: 'patch'  # major, minor, patch
+    prerelease: false
+    prerelease_id: 'beta'
+  
+  # GitHub Packages
+  github:
+    scope: '@owner'
+    repository: ''
+
+monorepo:
+  # Monorepo configuration
+  enabled: false
+  tool: ''  # lerna, nx, rush, turborepo, auto-detect
+  
+  # Package management
+  packages_path: 'packages/*'
+  
+  # Build strategy
+  affected_only: false
+  parallel: true
+  
+  # Publishing
+  independent_versioning: false
+  
+  # Commands
+  commands:
+    bootstrap: 'lerna bootstrap'
+    build: 'lerna run build'
+    test: 'lerna run test'
+    publish: 'lerna publish'
+
+docker:
+  # Docker image building
+  enabled: false
+  dockerfile: './Dockerfile'
+  
+  # Image configuration
+  image_name: ''
+  tag_pattern: '{version}'
+  
+  # Registry
+  registry: ''
+  push: false
+  
+  # Build args
+  build_args:
+    NODE_VERSION: '20-alpine'
+    APP_ENV: 'production'
+  
+  # Multi-stage build
+  multi_stage: true
+  target: 'production'
+
+artifacts:
+  # Artifact management
+  upload: true
+  retention_days: 30
+  
+  # Artifact contents
+  include:
+    - dist
+    - build
+    - coverage
+  
+  exclude:
+    - node_modules
+    - .git
+    - '*.log'
+  
+  # Naming
+  name_pattern: '{name}-{version}-{os}'
+
+caching:
+  # Dependency caching
+  dependencies: true
+  
+  # Build output caching
+  build_output: false
+  
+  # Custom cache paths
+  additional_paths: []
+  
+  # Cache keys
+  key_prefix: 'node'
+  
+  # Cache restoration
+  restore_keys:
+    - 'node-{os}-'
+    - 'node-'
+
+runner:
+  # GitHub Actions runner
+  os: 'ubuntu-latest'
+  timeout_minutes: 30
+  
+  # Node.js setup
+  always_auth: false
+  
+  # Environment variables
+  env:
+    CI: true
+    NODE_ENV: 'test'
+
+matrix:
+  # Matrix build configuration
+  enabled: false
+  
+  # Dimensions
+  os:
+    - ubuntu-latest
+    - windows-latest
+    - macos-latest
+  
+  node_version:
+    - '18.x'
+    - '20.x'
+    - '22.x'
+  
+  # Exclusions
+  exclude: []
+  
+  # Inclusions
+  include: []

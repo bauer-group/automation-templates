@@ -1,0 +1,76 @@
+name: Matrix Build - Multi Node.js Versions
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly on Monday
+  workflow_dispatch:
+
+jobs:
+  matrix-build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['18.x', '20.x', '22.x']
+        package-manager: [npm, yarn, pnpm]
+        exclude:
+          # Exclude some combinations to save time
+          - os: windows-latest
+            package-manager: pnpm
+          - os: macos-latest
+            node: '18.x'
+        include:
+          # Add specific test cases
+          - os: ubuntu-latest
+            node: '21.x'
+            package-manager: npm
+            experimental: true
+      fail-fast: false
+    
+    uses: ./.github/workflows/reusable-nodejs-build.yml
+    with:
+      node-version: ${{ matrix.node }}
+      package-manager: ${{ matrix.package-manager }}
+      runs-on: ${{ matrix.os }}
+      
+      # Build and test
+      build-command: ${{ matrix.package-manager == 'npm' && 'npm run build' || matrix.package-manager == 'yarn' && 'yarn build' || 'pnpm build' }}
+      test-command: ${{ matrix.package-manager == 'npm' && 'npm test' || matrix.package-manager == 'yarn' && 'yarn test' || 'pnpm test' }}
+      
+      # Quality checks
+      run-tests: true
+      run-lint: true
+      run-audit: true
+      
+      # Coverage only for main combination
+      test-coverage: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '20.x' && matrix.package-manager == 'npm' }}
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'build-${{ matrix.os }}-node${{ matrix.node }}-${{ matrix.package-manager }}'
+      
+    continue-on-error: ${{ matrix.experimental == true }}
+  
+  # Compatibility report
+  compatibility-report:
+    needs: matrix-build
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Generate Compatibility Matrix
+        run: |
+          echo "# Compatibility Matrix" > compatibility.md
+          echo "" >> compatibility.md
+          echo "| OS | Node.js | Package Manager | Status |" >> compatibility.md
+          echo "|---|---|---|---|" >> compatibility.md
+          # Add logic to generate compatibility report
+      
+      - name: Upload Compatibility Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-matrix
+          path: compatibility.md

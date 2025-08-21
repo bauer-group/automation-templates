@@ -1,0 +1,93 @@
+name: Publish NPM Package
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version'
+        required: true
+        type: string
+      tag:
+        description: 'NPM dist tag'
+        required: false
+        default: 'latest'
+        type: choice
+        options:
+          - latest
+          - beta
+          - next
+          - canary
+
+jobs:
+  test-and-build:
+    uses: ./.github/workflows/reusable-nodejs-build.yml
+    with:
+      node-version: '20.x'
+      package-manager: 'npm'
+      frozen-lockfile: true
+      build-command: 'npm run build'
+      run-tests: true
+      test-coverage: true
+      coverage-threshold: 90
+      run-lint: true
+      run-typecheck: true
+      run-audit: true
+      audit-level: 'moderate'
+  
+  publish-npm:
+    needs: test-and-build
+    uses: ./.github/workflows/reusable-nodejs-build.yml
+    with:
+      node-version: '20.x'
+      package-manager: 'npm'
+      publish-package: true
+      publish-registry: 'npm'
+      publish-tag: ${{ github.event.inputs.tag || 'latest' }}
+      publish-access: 'public'
+      version: ${{ github.event.inputs.version || github.ref_name }}
+      dry-run: false
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+  
+  publish-github:
+    needs: test-and-build
+    uses: ./.github/workflows/reusable-nodejs-build.yml
+    with:
+      node-version: '20.x'
+      package-manager: 'npm'
+      publish-package: true
+      publish-registry: 'github'
+      registry-url: 'https://npm.pkg.github.com'
+      publish-tag: ${{ github.event.inputs.tag || 'latest' }}
+      version: ${{ github.event.inputs.version || github.ref_name }}
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  
+  create-release:
+    needs: [publish-npm, publish-github]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Generate Release Notes
+        id: notes
+        run: |
+          echo "Generating release notes..."
+          # Add your release note generation logic
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

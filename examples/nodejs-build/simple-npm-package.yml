@@ -1,0 +1,26 @@
+name: Build NPM Package
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-nodejs-build.yml
+    with:
+      node-version: '20.x'
+      package-manager: 'npm'
+      build-command: 'npm run build'
+      run-tests: true
+      run-lint: true
+      test-coverage: true
+      coverage-threshold: 80
+      upload-artifacts: true
+      artifact-name: 'npm-package'

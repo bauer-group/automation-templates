@@ -1,0 +1,121 @@
+name: Build and Deploy React App
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'package.json'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  build-and-test:
+    uses: ./.github/workflows/reusable-nodejs-build.yml
+    with:
+      node-version: ${{ env.NODE_VERSION }}
+      package-manager: 'npm'
+      working-directory: '.'
+      
+      # Install and build
+      frozen-lockfile: true
+      build-command: 'npm run build'
+      build-env: 'production'
+      
+      # Testing
+      run-tests: true
+      test-command: 'npm test -- --coverage --watchAll=false'
+      test-coverage: true
+      coverage-threshold: 80
+      
+      # Code quality
+      run-lint: true
+      lint-command: 'npm run lint'
+      run-format-check: true
+      format-command: 'npm run format:check'
+      
+      # Bundle analysis
+      analyze-bundle: true
+      bundle-command: 'npm run analyze'
+      max-bundle-size: 500
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'react-build'
+      artifact-path: 'build/**'
+    
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  
+  deploy-preview:
+    needs: build-and-test
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: react-build-ubuntu-latest-${{ github.sha }}
+          path: build
+      
+      - name: Deploy to Vercel Preview
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: ./
+          alias-domains: pr-{{PR_NUMBER}}.example.com
+  
+  deploy-production:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: react-build-ubuntu-latest-${{ github.sha }}
+          path: build
+      
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build
+          cname: app.example.com
+      
+      - name: Deploy to Netlify
+        uses: nwtgck/actions-netlify@v2.0
+        with:
+          publish-dir: './build'
+          production-branch: main
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deploy-message: "Deploy from GitHub Actions"
+          enable-pull-request-comment: false
+          enable-commit-comment: true
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      
+      - name: Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          urls: |
+            https://app.example.com
+          uploadArtifacts: true
+          temporaryPublicStorage: true

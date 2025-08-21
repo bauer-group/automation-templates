@@ -1,0 +1,250 @@
+# Configuration for Next.js application builds
+# Extends the default configuration with Next.js-specific settings
+
+extends: default.yml
+
+node:
+  version: '20.x'
+
+package_manager:
+  type: 'npm'
+  frozen_lockfile: true
+
+build:
+  command: 'npm run build'
+  environment: 'production'
+  
+  # Next.js build settings
+  output_directory: '.next'
+  
+  # Build modes
+  standalone: true  # Standalone output for containerization
+  output_tracing: true
+  
+  # Environment variables
+  env_vars:
+    NODE_ENV: 'production'
+    NEXT_TELEMETRY_DISABLED: '1'
+
+testing:
+  enabled: true
+  command: 'npm test'
+  
+  # Testing strategies
+  unit:
+    enabled: true
+    command: 'npm run test:unit'
+    
+  integration:
+    enabled: true
+    command: 'npm run test:integration'
+    
+  e2e:
+    enabled: false
+    tool: 'playwright'
+    command: 'npm run test:e2e'
+    
+  coverage:
+    enabled: true
+    threshold:
+      statements: 80
+      branches: 75
+      functions: 80
+      lines: 80
+
+linting:
+  enabled: true
+  
+  eslint:
+    enabled: true
+    extends:
+      - 'next/core-web-vitals'
+    
+  prettier:
+    enabled: true
+
+typecheck:
+  enabled: true
+  command: 'npm run typecheck'
+  
+  # TypeScript settings
+  incremental: true
+  strict: true
+
+bundle:
+  analyze:
+    enabled: true
+    command: 'ANALYZE=true npm run build'
+    
+  # Bundle size optimization
+  optimization:
+    minimize: true
+    module_concatenation: true
+    tree_shaking: true
+    
+  # Next.js specific optimizations
+  nextjs:
+    image_optimization: true
+    font_optimization: true
+    script_optimization: true
+    css_optimization: true
+
+deployment:
+  # Deployment strategies
+  strategy: 'serverless'  # serverless, standalone, static
+  
+  # Vercel deployment
+  vercel:
+    enabled: false
+    team: ''
+    project: ''
+    
+    # Build settings
+    framework: 'nextjs'
+    build_command: 'npm run build'
+    output_directory: '.next'
+    
+    # Environment variables
+    env_vars: {}
+    
+  # Static export
+  static_export:
+    enabled: false
+    command: 'npm run export'
+    output_directory: 'out'
+    
+  # Docker deployment
+  docker:
+    enabled: false
+    standalone: true
+    
+  # Edge runtime
+  edge_runtime:
+    enabled: false
+    regions: ['iad1']
+
+performance:
+  # Core Web Vitals thresholds
+  web_vitals:
+    lcp: 2500  # Largest Contentful Paint (ms)
+    fid: 100   # First Input Delay (ms)
+    cls: 0.1   # Cumulative Layout Shift
+    
+  # Performance budgets
+  budgets:
+    javascript: 300  # KB
+    css: 100  # KB
+    images: 500  # KB
+    fonts: 200  # KB
+    
+  # Lighthouse CI
+  lighthouse:
+    enabled: false
+    thresholds:
+      performance: 90
+      accessibility: 90
+      best_practices: 90
+      seo: 90
+
+caching:
+  # Next.js caching strategies
+  strategies:
+    pages: 'stale-while-revalidate'
+    api: 'no-store'
+    static: 'immutable'
+    
+  # ISR (Incremental Static Regeneration)
+  isr:
+    enabled: true
+    revalidate: 60  # seconds
+    
+  # Cache headers
+  headers:
+    static_assets: 'public, max-age=31536000, immutable'
+    html_pages: 'public, max-age=0, must-revalidate'
+
+i18n:
+  # Internationalization
+  enabled: false
+  
+  # Locales
+  locales:
+    - 'en'
+    - 'de'
+    - 'fr'
+  
+  default_locale: 'en'
+  
+  # Routing
+  locale_detection: true
+  domains: []
+
+api:
+  # API routes configuration
+  routes:
+    cors:
+      enabled: true
+      origins: ['*']
+      methods: ['GET', 'POST', 'PUT', 'DELETE']
+      
+    rate_limiting:
+      enabled: false
+      requests_per_minute: 60
+      
+    authentication:
+      enabled: false
+      provider: 'next-auth'
+
+seo:
+  # SEO optimization
+  sitemap:
+    enabled: true
+    command: 'npm run generate:sitemap'
+    
+  robots_txt:
+    enabled: true
+    
+  meta_tags:
+    default_title: 'Next.js App'
+    default_description: ''
+    
+  open_graph:
+    enabled: true
+    default_image: '/og-image.jpg'
+    
+  structured_data:
+    enabled: true
+
+middleware:
+  # Next.js middleware
+  enabled: false
+  
+  # Middleware features
+  features:
+    authentication: false
+    geolocation: false
+    bot_protection: false
+    
+  # Edge functions
+  edge_functions:
+    enabled: false
+    runtime: 'edge'
+
+monitoring:
+  # Application monitoring
+  analytics:
+    enabled: false
+    provider: 'vercel'  # vercel, google-analytics, plausible
+    
+  # Error tracking
+  sentry:
+    enabled: false
+    dsn: ''
+    
+  # Performance monitoring
+  speed_insights:
+    enabled: false
+    
+  # Real User Monitoring
+  rum:
+    enabled: false
