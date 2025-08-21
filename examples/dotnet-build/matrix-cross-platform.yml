@@ -1,0 +1,113 @@
+name: Cross-Platform Matrix Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly on Monday
+  workflow_dispatch:
+
+jobs:
+  matrix-build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        dotnet: ['6.0.x', '8.0.x']
+        configuration: [Debug, Release]
+        include:
+          # Add .NET 9 preview for Ubuntu only
+          - os: ubuntu-latest
+            dotnet: '9.0.x'
+            configuration: Release
+            dotnet-quality: 'preview'
+        exclude:
+          # Skip Debug builds on macOS to save time
+          - os: macos-latest
+            configuration: Debug
+      fail-fast: false
+    
+    uses: ./.github/workflows/reusable-dotnet-build.yml
+    with:
+      # Dynamic configuration based on matrix
+      dotnet-version: ${{ matrix.dotnet }}
+      dotnet-quality: ${{ matrix.dotnet-quality || '' }}
+      configuration: ${{ matrix.configuration }}
+      runs-on: ${{ matrix.os }}
+      
+      # Project settings
+      project-path: 'src/CrossPlatformApp.sln'
+      
+      # Platform-specific runtime
+      runtime: ${{ 
+        matrix.os == 'ubuntu-latest' && 'linux-x64' ||
+        matrix.os == 'windows-latest' && 'win-x64' ||
+        matrix.os == 'macos-latest' && 'osx-x64' 
+      }}
+      
+      # Testing
+      run-tests: true
+      test-logger: 'trx;LogFileName=${{ matrix.os }}-${{ matrix.dotnet }}-${{ matrix.configuration }}.trx'
+      
+      # Code coverage only for Release builds
+      collect-coverage: ${{ matrix.configuration == 'Release' }}
+      coverage-type: 'cobertura'
+      
+      # Publishing
+      publish: ${{ matrix.configuration == 'Release' }}
+      self-contained: true
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'build-${{ matrix.os }}-dotnet${{ matrix.dotnet }}-${{ matrix.configuration }}'
+      
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  
+  # Aggregate test results from all matrix jobs
+  test-summary:
+    needs: matrix-build
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download all test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'test-results-*'
+          path: all-test-results
+      
+      - name: Publish Test Report
+        uses: dorny/test-reporter@v1
+        with:
+          name: 'Cross-Platform Test Summary'
+          path: 'all-test-results/**/*.trx'
+          reporter: 'dotnet-trx'
+          fail-on-error: false
+  
+  # Performance comparison across platforms
+  benchmark:
+    needs: matrix-build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Download Release Builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'build-*-Release'
+          path: builds
+      
+      - name: Run Benchmarks
+        run: |
+          echo "Running performance benchmarks across platforms..."
+          # Add your benchmark scripts here
+      
+      - name: Upload Benchmark Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: '*.benchmark'

@@ -1,0 +1,172 @@
+# Configuration for .NET Class Library projects
+# Extends the default configuration with library-specific settings
+
+extends: default.yml
+
+dotnet:
+  version: '8.0.x'
+  
+  # Multi-targeting support
+  target_frameworks:
+    - net8.0
+    - net6.0
+    - netstandard2.1
+
+build:
+  configuration: Release
+  verbosity: minimal
+  treat_warnings_as_errors: true
+  
+  # Library-specific properties
+  library_properties:
+    GenerateDocumentationFile: true
+    GeneratePackageOnBuild: false
+    Deterministic: true
+    ContinuousIntegrationBuild: true
+
+testing:
+  enabled: true
+  
+  # Unit test configuration
+  unit_tests:
+    enabled: true
+    min_coverage: 90
+    
+  # Benchmark tests
+  benchmarks:
+    enabled: false
+    output_format: markdown
+    export_results: true
+
+coverage:
+  enabled: true
+  type: opencover
+  threshold: 85
+  
+  # Coverage reports
+  generate_report: true
+  report_types:
+    - Html
+    - Cobertura
+    - lcov
+
+analysis:
+  enabled: true
+  level: all
+  
+  # Code metrics
+  code_metrics:
+    cyclomatic_complexity: 10
+    maintainability_index: 60
+    depth_of_inheritance: 5
+    class_coupling: 10
+  
+  # API compatibility
+  api_compat_check: true
+  baseline_version: ''
+
+package:
+  create: true
+  include_symbols: true
+  include_source: true
+  
+  # Package metadata
+  metadata:
+    generate_on_build: false
+    require_license_acceptance: false
+    package_license: 'MIT'
+    package_icon: ''
+    package_readme: 'README.md'
+  
+  # Dependencies
+  dependencies:
+    include_all: true
+    exclude_patterns: []
+  
+  # Versioning
+  versioning:
+    strategy: 'GitVersion'  # GitVersion, SemVer, Custom
+    major: 1
+    minor: 0
+    patch: 0
+    prerelease: ''
+
+nuget:
+  push: false
+  source: 'https://api.nuget.org/v3/index.json'
+  
+  # Package validation
+  validate:
+    enabled: true
+    check_dependencies: true
+    check_package_size: true
+    max_package_size_mb: 50
+  
+  # Package signing
+  sign_package: false
+  certificate_fingerprint: ''
+
+documentation:
+  # XML documentation
+  xml_docs:
+    enabled: true
+    include_private: false
+    warnings_as_errors: true
+  
+  # DocFX documentation
+  docfx:
+    enabled: false
+    output_path: './docs'
+    include_api: true
+    include_conceptual: true
+  
+  # README generation
+  readme:
+    auto_generate: false
+    include_badges: true
+    include_examples: true
+
+compatibility:
+  # .NET compatibility
+  check_compatibility: true
+  target_frameworks:
+    - net8.0
+    - net6.0
+    - netstandard2.1
+    - netstandard2.0
+  
+  # Platform compatibility
+  platforms:
+    - Windows
+    - Linux
+    - macOS
+  
+  # API surface
+  api_surface:
+    track_changes: true
+    breaking_changes_allowed: false
+
+source_link:
+  # Source Link support
+  enabled: true
+  provider: 'GitHub'  # GitHub, GitLab, Bitbucket, Azure DevOps
+  
+  # Embed sources
+  embed_untracked_sources: true
+  embed_all_sources: false
+
+strong_naming:
+  # Assembly strong naming
+  enabled: false
+  key_file: ''
+  delay_sign: false
+  public_sign: true
+
+internals_visible_to:
+  # InternalsVisibleTo configuration
+  assemblies:
+    - '*.Tests'
+    - '*.Benchmarks'
+  
+  # Strong name keys for test assemblies
+  test_key_file: ''
