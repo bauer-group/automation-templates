@@ -1,0 +1,74 @@
+# Configuration for Windows Forms Application builds
+# Extends the default configuration with WinForms-specific settings
+
+extends: default.yml
+
+build:
+  dotnet_version: '8.0.x'
+  configurations:
+    - Release
+  platforms:
+    - x64
+    - x86
+  
+  # WinForms-specific build properties
+  winforms_properties:
+    UseWindowsForms: true
+    EnableWindowsTargeting: true
+    GenerateResourceUsePreserializedResources: true
+
+project:
+  # WinForms project patterns
+  solution_pattern: '**/*.sln'
+  project_pattern: '**/*.csproj'
+  
+  # Designer files
+  include_designer_files: true
+  designer_patterns:
+    - '**/*.Designer.cs'
+    - '**/*.resx'
+
+publish:
+  type: self-contained
+  
+  # WinForms deployment
+  include_native_libs: true
+  enable_compression: false  # Better for WinForms with many resources
+  
+  # Runtime identifiers
+  runtime_identifiers:
+    - win-x64
+    - win-x86
+
+resources:
+  # Resource management
+  include_resources: true
+  resource_patterns:
+    - '**/*.resx'
+    - '**/*.resources'
+    - '**/*.ico'
+    - '**/*.bmp'
+    - '**/*.png'
+  
+  # Embedded resources
+  embed_resources: true
+  resource_compression: true
+
+compatibility:
+  # Framework compatibility
+  target_framework: net8.0-windows
+  minimum_windows_version: '7.0'
+  
+  # High DPI support
+  enable_high_dpi: true
+  dpi_awareness: PerMonitorV2
+
+optimization:
+  # WinForms optimizations
+  optimize_layout: true
+  remove_unused_controls: true
+  minimize_resource_size: true
+  
+  # Startup performance
+  ready_to_run: true
+  prefer_32bit: false

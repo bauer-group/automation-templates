@@ -1,0 +1,508 @@
+name: 🖥️ .NET Desktop Build
+
+on:
+  workflow_call:
+    inputs:
+      # Build Configuration
+      dotnet-version:
+        description: '.NET SDK version to use (e.g., 8.0.x, 9.0.x)'
+        type: string
+        required: false
+        default: '8.0.x'
+      
+      configurations:
+        description: 'Build configurations as JSON array (e.g., ["Debug", "Release"])'
+        type: string
+        required: false
+        default: '["Release"]'
+      
+      platforms:
+        description: 'Target platforms as JSON array (e.g., ["x64", "x86", "arm64"])'
+        type: string
+        required: false
+        default: '["x64"]'
+      
+      # Project Paths
+      solution-path:
+        description: 'Path to solution file (e.g., src/MyApp.sln)'
+        type: string
+        required: false
+        default: '**/*.sln'
+      
+      project-path:
+        description: 'Path to main project file for single project builds'
+        type: string
+        required: false
+        default: ''
+      
+      test-project-pattern:
+        description: 'Pattern to find test projects (e.g., **/*Tests.csproj)'
+        type: string
+        required: false
+        default: '**/*Tests.csproj'
+      
+      # Publishing Options
+      publish-type:
+        description: 'Publish type: single-file, framework-dependent, self-contained, msix'
+        type: string
+        required: false
+        default: 'self-contained'
+      
+      include-native-libs:
+        description: 'Include native libraries in single file'
+        type: boolean
+        required: false
+        default: true
+      
+      enable-compression:
+        description: 'Enable compression for single file'
+        type: boolean
+        required: false
+        default: true
+      
+      trimming:
+        description: 'Enable trimming for self-contained apps'
+        type: boolean
+        required: false
+        default: false
+      
+      ready-to-run:
+        description: 'Enable ReadyToRun compilation'
+        type: boolean
+        required: false
+        default: true
+      
+      # MSIX/AppX Options
+      create-msix:
+        description: 'Create MSIX package'
+        type: boolean
+        required: false
+        default: false
+      
+      wap-project-path:
+        description: 'Windows Application Packaging project path'
+        type: string
+        required: false
+        default: ''
+      
+      app-version:
+        description: 'Application version (e.g., 1.0.0)'
+        type: string
+        required: false
+        default: '1.0.0'
+      
+      # Code Signing
+      sign-output:
+        description: 'Sign the output files'
+        type: boolean
+        required: false
+        default: false
+      
+      certificate-subject:
+        description: 'Certificate subject for signing (for Windows cert store)'
+        type: string
+        required: false
+        default: ''
+      
+      timestamp-server:
+        description: 'Timestamp server URL'
+        type: string
+        required: false
+        default: 'http://timestamp.digicert.com'
+      
+      # Testing Options
+      run-tests:
+        description: 'Run unit tests'
+        type: boolean
+        required: false
+        default: true
+      
+      test-filter:
+        description: 'Test filter expression'
+        type: string
+        required: false
+        default: ''
+      
+      collect-coverage:
+        description: 'Collect code coverage'
+        type: boolean
+        required: false
+        default: false
+      
+      coverage-threshold:
+        description: 'Minimum coverage threshold percentage'
+        type: number
+        required: false
+        default: 0
+      
+      # Build Options
+      verbosity:
+        description: 'MSBuild verbosity level: quiet, minimal, normal, detailed, diagnostic'
+        type: string
+        required: false
+        default: 'normal'
+      
+      treat-warnings-as-errors:
+        description: 'Treat warnings as errors'
+        type: boolean
+        required: false
+        default: false
+      
+      # Artifact Options
+      upload-artifacts:
+        description: 'Upload build artifacts'
+        type: boolean
+        required: false
+        default: true
+      
+      artifact-name:
+        description: 'Name for uploaded artifacts'
+        type: string
+        required: false
+        default: 'dotnet-desktop-build'
+      
+      artifact-retention-days:
+        description: 'Number of days to retain artifacts'
+        type: number
+        required: false
+        default: 30
+      
+      # Runner Configuration
+      runs-on:
+        description: 'Runner OS (windows-latest, windows-2022, windows-2019)'
+        type: string
+        required: false
+        default: 'windows-latest'
+      
+      timeout-minutes:
+        description: 'Job timeout in minutes'
+        type: number
+        required: false
+        default: 60
+      
+    secrets:
+      SIGNING_CERTIFICATE:
+        description: 'Base64 encoded PFX certificate for code signing'
+        required: false
+      
+      CERTIFICATE_PASSWORD:
+        description: 'Password for the PFX certificate'
+        required: false
+      
+      NUGET_API_KEY:
+        description: 'NuGet API key for package restoration from private feeds'
+        required: false
+
+    outputs:
+      version:
+        description: 'Version of the built application'
+        value: ${{ jobs.build.outputs.version }}
+      
+      artifacts-path:
+        description: 'Path to the build artifacts'
+        value: ${{ jobs.build.outputs.artifacts-path }}
+
+jobs:
+  build:
+    name: Build .NET Desktop
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    
+    strategy:
+      matrix:
+        configuration: ${{ fromJson(inputs.configurations) }}
+        platform: ${{ fromJson(inputs.platforms) }}
+      fail-fast: false
+    
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      artifacts-path: ${{ steps.artifacts.outputs.path }}
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+      
+      - name: 🔧 Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+      
+      - name: 🔨 Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+      
+      - name: 📦 Setup NuGet
+        uses: NuGet/setup-nuget@v2
+      
+      - name: 🔍 Find Solution/Project
+        id: find-project
+        shell: pwsh
+        run: |
+          if ("${{ inputs.project-path }}" -ne "") {
+            $projectFile = "${{ inputs.project-path }}"
+          } elseif ("${{ inputs.solution-path }}" -ne "") {
+            $solutionFiles = Get-ChildItem -Path . -Filter "${{ inputs.solution-path }}" -Recurse
+            if ($solutionFiles.Count -eq 0) {
+              Write-Error "No solution file found matching pattern: ${{ inputs.solution-path }}"
+              exit 1
+            }
+            $projectFile = $solutionFiles[0].FullName
+          } else {
+            Write-Error "No solution or project path specified"
+            exit 1
+          }
+          
+          Write-Output "project-file=$projectFile" >> $env:GITHUB_OUTPUT
+          Write-Host "Using project/solution: $projectFile"
+      
+      - name: 🏷️ Determine Version
+        id: version
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.app-version }}"
+          
+          # Try to extract version from project file if not specified
+          if ($version -eq "1.0.0") {
+            $projectContent = Get-Content "${{ steps.find-project.outputs.project-file }}" -Raw
+            if ($projectContent -match '<Version>([^<]+)</Version>') {
+              $version = $matches[1]
+            } elseif ($projectContent -match '<AssemblyVersion>([^<]+)</AssemblyVersion>') {
+              $version = $matches[1]
+            }
+          }
+          
+          # Append build number if not a release build
+          if ("${{ matrix.configuration }}" -ne "Release") {
+            $version = "$version-${{ matrix.configuration }}-${{ github.run_number }}"
+          }
+          
+          Write-Output "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version"
+      
+      - name: 🔐 Configure NuGet
+        if: secrets.NUGET_API_KEY != ''
+        shell: pwsh
+        run: |
+          $nugetConfig = @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+            </packageSources>
+          </configuration>
+          "@
+          $nugetConfig | Out-File -FilePath "nuget.config" -Encoding utf8
+      
+      - name: 📚 Restore Dependencies
+        shell: pwsh
+        run: |
+          $projectFile = "${{ steps.find-project.outputs.project-file }}"
+          
+          if ($projectFile -match "\.sln$") {
+            nuget restore $projectFile
+          } else {
+            dotnet restore $projectFile `
+              --runtime win-${{ matrix.platform }} `
+              --verbosity ${{ inputs.verbosity }}
+          }
+      
+      - name: 🧪 Run Tests
+        if: inputs.run-tests == true
+        shell: pwsh
+        run: |
+          $testProjects = Get-ChildItem -Path . -Filter "${{ inputs.test-project-pattern }}" -Recurse
+          
+          if ($testProjects.Count -gt 0) {
+            foreach ($testProject in $testProjects) {
+              Write-Host "Running tests in: $($testProject.FullName)"
+              
+              $testArgs = @(
+                "test",
+                $testProject.FullName,
+                "--configuration", "${{ matrix.configuration }}",
+                "--no-restore",
+                "--verbosity", "${{ inputs.verbosity }}",
+                "--logger", "trx",
+                "--results-directory", "TestResults"
+              )
+              
+              if ("${{ inputs.test-filter }}" -ne "") {
+                $testArgs += "--filter", "${{ inputs.test-filter }}"
+              }
+              
+              if ("${{ inputs.collect-coverage }}" -eq "true") {
+                $testArgs += "--collect", "Code Coverage"
+              }
+              
+              & dotnet $testArgs
+              
+              if ($LASTEXITCODE -ne 0) {
+                Write-Error "Tests failed"
+                exit 1
+              }
+            }
+          } else {
+            Write-Host "No test projects found"
+          }
+      
+      - name: 🏗️ Build Application
+        shell: pwsh
+        run: |
+          $projectFile = "${{ steps.find-project.outputs.project-file }}"
+          $outputPath = "build\${{ matrix.configuration }}\${{ matrix.platform }}"
+          
+          $buildArgs = @{
+            Configuration = "${{ matrix.configuration }}"
+            Platform = "${{ matrix.platform }}"
+            OutputPath = $outputPath
+            Version = "${{ steps.version.outputs.version }}"
+            TreatWarningsAsErrors = "${{ inputs.treat-warnings-as-errors }}"
+          }
+          
+          if ("${{ inputs.publish-type }}" -eq "single-file") {
+            $buildArgs.PublishSingleFile = "true"
+            $buildArgs.IncludeNativeLibrariesForSelfExtract = "${{ inputs.include-native-libs }}"
+            $buildArgs.EnableCompressionInSingleFile = "${{ inputs.enable-compression }}"
+          }
+          
+          if ("${{ inputs.publish-type }}" -eq "self-contained") {
+            $buildArgs.SelfContained = "true"
+            $buildArgs.PublishTrimmed = "${{ inputs.trimming }}"
+          }
+          
+          if ("${{ inputs.ready-to-run }}" -eq "true") {
+            $buildArgs.PublishReadyToRun = "true"
+          }
+          
+          $msbuildArgs = @()
+          foreach ($key in $buildArgs.Keys) {
+            $msbuildArgs += "/p:$key=$($buildArgs[$key])"
+          }
+          
+          msbuild $projectFile /t:Build /v:${{ inputs.verbosity }} $msbuildArgs
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Build failed"
+            exit 1
+          }
+      
+      - name: 📝 Prepare Certificate
+        if: inputs.sign-output == true && secrets.SIGNING_CERTIFICATE != ''
+        id: certificate
+        shell: pwsh
+        run: |
+          $certBytes = [Convert]::FromBase64String("${{ secrets.SIGNING_CERTIFICATE }}")
+          $certPath = Join-Path $env:RUNNER_TEMP "signing_cert.pfx"
+          [IO.File]::WriteAllBytes($certPath, $certBytes)
+          Write-Output "path=$certPath" >> $env:GITHUB_OUTPUT
+      
+      - name: 🔏 Sign Output Files
+        if: inputs.sign-output == true
+        shell: pwsh
+        run: |
+          $outputPath = "build\${{ matrix.configuration }}\${{ matrix.platform }}"
+          $filesToSign = Get-ChildItem -Path $outputPath -Include *.exe,*.dll -Recurse
+          
+          foreach ($file in $filesToSign) {
+            Write-Host "Signing: $($file.Name)"
+            
+            if ("${{ secrets.SIGNING_CERTIFICATE }}" -ne "") {
+              # Use certificate file
+              & signtool sign /f "${{ steps.certificate.outputs.path }}" `
+                /p "${{ secrets.CERTIFICATE_PASSWORD }}" `
+                /t "${{ inputs.timestamp-server }}" `
+                /fd SHA256 `
+                $file.FullName
+            } elseif ("${{ inputs.certificate-subject }}" -ne "") {
+              # Use certificate from store
+              & signtool sign /n "${{ inputs.certificate-subject }}" `
+                /t "${{ inputs.timestamp-server }}" `
+                /fd SHA256 `
+                $file.FullName
+            }
+          }
+      
+      - name: 📦 Create MSIX Package
+        if: inputs.create-msix == true && inputs.wap-project-path != ''
+        shell: pwsh
+        run: |
+          $wapProject = "${{ inputs.wap-project-path }}"
+          
+          $msbuildArgs = @(
+            $wapProject,
+            "/p:Configuration=${{ matrix.configuration }}",
+            "/p:Platform=${{ matrix.platform }}",
+            "/p:UapAppxPackageBuildMode=SideloadOnly",
+            "/p:AppxBundle=Always",
+            "/p:AppxBundlePlatforms=${{ matrix.platform }}",
+            "/p:AppxPackageDir=msix-output",
+            "/p:Version=${{ steps.version.outputs.version }}"
+          )
+          
+          if ("${{ steps.certificate.outputs.path }}" -ne "") {
+            $msbuildArgs += "/p:PackageCertificateKeyFile=${{ steps.certificate.outputs.path }}"
+            $msbuildArgs += "/p:PackageCertificatePassword=${{ secrets.CERTIFICATE_PASSWORD }}"
+          }
+          
+          msbuild $msbuildArgs
+      
+      - name: 🗑️ Cleanup Certificate
+        if: always() && steps.certificate.outputs.path != ''
+        shell: pwsh
+        run: |
+          if (Test-Path "${{ steps.certificate.outputs.path }}") {
+            Remove-Item "${{ steps.certificate.outputs.path }}" -Force
+          }
+      
+      - name: 📊 Check Coverage
+        if: inputs.collect-coverage == true && inputs.coverage-threshold > 0
+        shell: pwsh
+        run: |
+          # Parse coverage results
+          $coverageFiles = Get-ChildItem -Path TestResults -Filter *.coverage -Recurse
+          
+          if ($coverageFiles.Count -gt 0) {
+            # This is a simplified example - you'd need proper coverage parsing
+            Write-Host "Coverage files found: $($coverageFiles.Count)"
+            # Add actual coverage parsing and threshold checking here
+          }
+      
+      - name: 📤 Prepare Artifacts
+        id: artifacts
+        shell: pwsh
+        run: |
+          $artifactPath = "artifacts\${{ matrix.configuration }}\${{ matrix.platform }}"
+          New-Item -ItemType Directory -Path $artifactPath -Force
+          
+          # Copy build output
+          $outputPath = "build\${{ matrix.configuration }}\${{ matrix.platform }}"
+          if (Test-Path $outputPath) {
+            Copy-Item -Path "$outputPath\*" -Destination $artifactPath -Recurse
+          }
+          
+          # Copy MSIX if created
+          if ("${{ inputs.create-msix }}" -eq "true" -and (Test-Path "msix-output")) {
+            Copy-Item -Path "msix-output\*" -Destination $artifactPath -Recurse
+          }
+          
+          Write-Output "path=$artifactPath" >> $env:GITHUB_OUTPUT
+      
+      - name: 📦 Upload Artifacts
+        if: inputs.upload-artifacts == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}-${{ matrix.configuration }}-${{ matrix.platform }}
+          path: ${{ steps.artifacts.outputs.path }}
+          retention-days: ${{ inputs.artifact-retention-days }}
+      
+      - name: 📊 Upload Test Results
+        if: always() && inputs.run-tests == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.configuration }}-${{ matrix.platform }}
+          path: TestResults/
+          retention-days: ${{ inputs.artifact-retention-days }}
