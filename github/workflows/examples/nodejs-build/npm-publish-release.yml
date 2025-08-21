@@ -66,7 +66,7 @@ jobs:
       publish-tag: ${{ github.event.inputs.tag || 'latest' }}
       version: ${{ github.event.inputs.version || github.ref_name }}
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   
   create-release:
     needs: [publish-npm, publish-github]
