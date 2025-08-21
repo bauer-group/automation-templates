@@ -1,4 +1,4 @@
-name: 🚀 .NET Build & Test
+name: 🚀 .NET Build
 
 on:
   workflow_call:
