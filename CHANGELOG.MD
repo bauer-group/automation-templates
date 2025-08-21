@@ -1,3 +1,9 @@
+## [0.12.5](https://github.com/bauer-group/automation-templates/compare/v0.12.4...v0.12.5) (2025-08-21)
+
+### 🐛 Bug Fixes
+
+* Add newline at end of validate-workflows.ps1 for proper file termination ([d0a7c0a](https://github.com/bauer-group/automation-templates/commit/d0a7c0ad707d487477fd396f00b96b738fb352ab))
+
 ## [0.12.1](https://github.com/bauer-group/automation-templates/compare/v0.12.0...v0.12.1) (2025-08-20)
 
 ### 🐛 Bug Fixes
