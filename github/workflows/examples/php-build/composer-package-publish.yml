@@ -1,0 +1,79 @@
+name: Composer Package Release
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  validate:
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.0'  # Minimum supported version
+      dependency-versions: 'lowest'
+      validate-strict: true
+      run-tests: true
+      run-phpcs: true
+      run-phpstan: true
+      phpstan-level: 'max'
+      run-security-check: true
+
+  test-matrix:
+    needs: validate
+    strategy:
+      matrix:
+        php: ['8.0', '8.1', '8.2', '8.3']
+        dependencies: ['lowest', 'locked', 'highest']
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: ${{ matrix.php }}
+      dependency-versions: ${{ matrix.dependencies }}
+      run-tests: true
+      coverage: ${{ matrix.php == '8.2' && matrix.dependencies == 'locked' && 'pcov' || 'none' }}
+      upload-artifacts: ${{ matrix.php == '8.2' && matrix.dependencies == 'locked' }}
+    secrets:
+      CODECOV_UPLOAD_TOKEN: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
+
+  publish:
+    needs: test-matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          
+      - name: Validate version tag
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          COMPOSER_VERSION=$(grep '"version"' composer.json | cut -d '"' -f 4)
+          if [ "$VERSION" != "$COMPOSER_VERSION" ]; then
+            echo "Tag version ($VERSION) doesn't match composer.json version ($COMPOSER_VERSION)"
+            exit 1
+          fi
+      
+      - name: Create package archive
+        run: |
+          composer archive --format=zip --file=package
+          composer archive --format=tar --file=package
+      
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            package.zip
+            package.tar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Submit to Packagist
+        run: |
+          echo "Package will be automatically synced to Packagist via webhook"
+          # Or use manual submission:
+          # curl -XPOST -H'content-type:application/json' \
+          #   "https://packagist.org/api/update-package?username=${{ secrets.PACKAGIST_USERNAME }}&apiToken=${{ secrets.PACKAGIST_TOKEN }}" \
+          #   -d'{"repository":{"url":"https://github.com/${{ github.repository }}"}}'

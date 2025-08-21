@@ -1,0 +1,63 @@
+name: Laravel Application CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  release:
+    types: [published]
+
+jobs:
+  test:
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      # PHP Configuration
+      php-version: '8.2'
+      extensions: 'mbstring, xml, curl, zip, intl, gd, mysql, redis, bcmath'
+      coverage: 'pcov'
+      
+      # Laravel specific
+      framework: 'laravel'
+      run-migrations: true
+      
+      # Testing
+      run-tests: true
+      test-suite: 'Feature'
+      test-coverage-threshold: 75
+      
+      # Code Quality
+      run-phpcs: true
+      phpcs-standard: 'PSR12'
+      run-phpstan: true
+      phpstan-level: '6'
+      run-security-check: true
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'laravel-build'
+    secrets:
+      COMPOSER_AUTH_JSON: ${{ secrets.COMPOSER_AUTH_JSON }}
+      CODECOV_UPLOAD_TOKEN: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
+
+  deploy:
+    if: github.event_name == 'release'
+    needs: test
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.2'
+      framework: 'laravel'
+      run-tests: false
+      
+      # Docker build
+      build-docker: true
+      docker-image-name: 'my-laravel-app'
+      docker-registry: 'ghcr.io/${{ github.repository_owner }}'
+      
+      # Deployment
+      deploy-to: 'aws'
+      deploy-path: '/var/www/html'
+    secrets:
+      DOCKER_REGISTRY_USERNAME: ${{ github.actor }}
+      DOCKER_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      PHP_DEPLOY_KEY: ${{ secrets.AWS_DEPLOY_KEY }}

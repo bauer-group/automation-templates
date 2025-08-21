@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+<psalm
+    errorLevel="3"
+    resolveFromConfigFile="true"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="https://getpsalm.org/schema/config"
+    xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
+    findUnusedVariablesAndParams="true"
+    findUnusedCode="true"
+>
+    <projectFiles>
+        <directory name="src"/>
+        <directory name="app"/>
+        <ignoreFiles>
+            <directory name="vendor"/>
+            <directory name="tests"/>
+            <directory name="database/migrations"/>
+        </ignoreFiles>
+    </projectFiles>
+    
+    <issueHandlers>
+        <LessSpecificReturnType errorLevel="info"/>
+        <DeprecatedMethod errorLevel="info"/>
+        <DeprecatedProperty errorLevel="info"/>
+        <DeprecatedClass errorLevel="info"/>
+        <DeprecatedConstant errorLevel="info"/>
+        <DeprecatedFunction errorLevel="info"/>
+        <DeprecatedInterface errorLevel="info"/>
+        <DeprecatedTrait errorLevel="info"/>
+        
+        <InternalMethod errorLevel="info"/>
+        <InternalProperty errorLevel="info"/>
+        <InternalClass errorLevel="info"/>
+        
+        <MissingClosureReturnType errorLevel="info"/>
+        <MissingReturnType errorLevel="info"/>
+        <MissingPropertyType errorLevel="info"/>
+        
+        <InvalidDocblock errorLevel="info"/>
+        <MisplacedRequiredParam errorLevel="info"/>
+        
+        <PropertyNotSetInConstructor errorLevel="info"/>
+        <MissingConstructor errorLevel="info"/>
+        
+        <UndefinedGlobalVariable errorLevel="info"/>
+        <UndefinedVariable errorLevel="info"/>
+        <UndefinedConstant errorLevel="info"/>
+        <UndefinedClass errorLevel="info"/>
+        
+        <UnresolvableInclude errorLevel="info"/>
+        
+        <RawObjectIteration errorLevel="info"/>
+        
+        <InvalidStringClass errorLevel="info"/>
+    </issueHandlers>
+    
+    <plugins>
+        <!-- Add framework plugins if needed -->
+        <!-- <pluginClass class="Psalm\LaravelPlugin\Plugin"/> -->
+        <!-- <pluginClass class="Psalm\SymfonyPsalmPlugin\Plugin"/> -->
+    </plugins>
+</psalm>
