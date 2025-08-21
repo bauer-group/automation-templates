@@ -242,7 +242,7 @@ jobs:
           parallel-tests: true
       
       - name: 📊 Upload Coverage
-        if: inputs.run-tests && secrets.CODECOV_TOKEN
+        if: inputs.run-tests == true
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

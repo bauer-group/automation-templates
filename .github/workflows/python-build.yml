@@ -616,7 +616,7 @@ jobs:
           fi
       
       - name: 📊 Upload Coverage to Codecov
-        if: inputs.collect-coverage && secrets.CODECOV_TOKEN
+        if: inputs.collect-coverage == 'true'
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
