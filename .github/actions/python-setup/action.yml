@@ -1,0 +1,343 @@
+name: 'Python Environment Setup'
+description: 'Comprehensive Python environment setup with dependency management and caching'
+author: 'BAUER GROUP'
+
+inputs:
+  python-version:
+    description: 'Python version to use (e.g., 3.11, 3.11.x)'
+    required: false
+    default: '3.11'
+  python-version-file:
+    description: 'Path to .python-version or pyproject.toml file'
+    required: false
+    default: ''
+  package-manager:
+    description: 'Package manager (pip, poetry, pipenv, conda)'
+    required: false
+    default: 'pip'
+  package-manager-version:
+    description: 'Specific package manager version'
+    required: false
+    default: ''
+  requirements-files:
+    description: 'Requirements files as JSON array or comma-separated'
+    required: false
+    default: 'requirements.txt'
+  install-dev-requirements:
+    description: 'Install development requirements'
+    required: false
+    default: 'true'
+  upgrade-pip:
+    description: 'Upgrade pip before installation'
+    required: false
+    default: 'true'
+  cache-dependencies:
+    description: 'Cache dependencies for faster builds'
+    required: false
+    default: 'true'
+  install-package:
+    description: 'Install package in development mode'
+    required: false
+    default: 'true'
+  working-directory:
+    description: 'Working directory for all commands'
+    required: false
+    default: '.'
+  extra-dependencies:
+    description: 'Extra dependencies to install (space-separated)'
+    required: false
+    default: ''
+  architecture:
+    description: 'Python architecture (x64, x86)'
+    required: false
+    default: 'x64'
+
+outputs:
+  python-version:
+    description: 'Actual Python version installed'
+    value: ${{ steps.setup-python.outputs.python-version }}
+  python-path:
+    description: 'Path to Python executable'
+    value: ${{ steps.setup-python.outputs.python-path }}
+  cache-hit:
+    description: 'Whether cache was hit'
+    value: ${{ steps.cache.outputs.cache-hit }}
+  package-manager-used:
+    description: 'Package manager actually used'
+    value: ${{ steps.detect-manager.outputs.manager }}
+  virtual-env-path:
+    description: 'Path to virtual environment if created'
+    value: ${{ steps.venv.outputs.path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🔍 Detect Package Manager
+      id: detect-manager
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        MANAGER="${{ inputs.package-manager }}"
+        
+        # Auto-detect if not specified or set to auto
+        if [ "$MANAGER" = "auto" ] || [ -z "$MANAGER" ]; then
+          if [ -f "poetry.lock" ] || [ -f "pyproject.toml" ]; then
+            MANAGER="poetry"
+          elif [ -f "Pipfile" ] || [ -f "Pipfile.lock" ]; then
+            MANAGER="pipenv"
+          elif [ -f "environment.yml" ] || [ -f "conda-requirements.txt" ]; then
+            MANAGER="conda"
+          else
+            MANAGER="pip"
+          fi
+        fi
+        
+        echo "manager=$MANAGER" >> $GITHUB_OUTPUT
+        echo "🔍 Package manager: $MANAGER"
+
+    - name: 🐍 Setup Python
+      id: setup-python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        python-version-file: ${{ inputs.python-version-file }}
+        architecture: ${{ inputs.architecture }}
+        cache: ${{ inputs.cache-dependencies == 'true' && steps.detect-manager.outputs.manager == 'pip' && 'pip' || '' }}
+        cache-dependency-path: |
+          ${{ inputs.working-directory }}/requirements*.txt
+          ${{ inputs.working-directory }}/pyproject.toml
+          ${{ inputs.working-directory }}/poetry.lock
+          ${{ inputs.working-directory }}/Pipfile.lock
+
+    - name: 📦 Cache Dependencies (Non-pip)
+      id: cache
+      if: inputs.cache-dependencies == 'true' && steps.detect-manager.outputs.manager != 'pip'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/pip
+          ~/.cache/pypoetry
+          ~/.local/share/virtualenvs
+          ~/.cache/pipenv
+          ~/miniconda3/pkgs
+          ~/.conda/pkgs
+        key: ${{ steps.detect-manager.outputs.manager }}-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles(format('{0}/{1}', inputs.working-directory, '**/requirements*.txt'), format('{0}/{1}', inputs.working-directory, '**/pyproject.toml'), format('{0}/{1}', inputs.working-directory, '**/poetry.lock'), format('{0}/{1}', inputs.working-directory, '**/Pipfile.lock'), format('{0}/{1}', inputs.working-directory, '**/environment.yml')) }}
+        restore-keys: |
+          ${{ steps.detect-manager.outputs.manager }}-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-
+          ${{ steps.detect-manager.outputs.manager }}-${{ runner.os }}-
+
+    - name: 🔧 Setup Poetry
+      if: steps.detect-manager.outputs.manager == 'poetry'
+      shell: bash
+      run: |
+        if ! command -v poetry &> /dev/null; then
+          echo "Installing Poetry..."
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+        fi
+        
+        if [ -n "${{ inputs.package-manager-version }}" ]; then
+          echo "Setting Poetry version to ${{ inputs.package-manager-version }}"
+          poetry self update ${{ inputs.package-manager-version }}
+        fi
+        
+        # Configure Poetry
+        poetry config virtualenvs.create true
+        poetry config virtualenvs.in-project false
+
+    - name: 🔧 Setup Pipenv
+      if: steps.detect-manager.outputs.manager == 'pipenv'
+      shell: bash
+      run: |
+        if ! command -v pipenv &> /dev/null; then
+          echo "Installing Pipenv..."
+          pip install pipenv
+          if [ -n "${{ inputs.package-manager-version }}" ]; then
+            pip install pipenv==${{ inputs.package-manager-version }}
+          fi
+        fi
+
+    - name: 🔧 Setup Conda
+      if: steps.detect-manager.outputs.manager == 'conda'
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        python-version: ${{ inputs.python-version }}
+        miniforge-variant: Mambaforge
+        use-mamba: true
+
+    - name: ⬆️ Upgrade pip
+      if: inputs.upgrade-pip == 'true' && steps.detect-manager.outputs.manager == 'pip'
+      shell: bash
+      run: python -m pip install --upgrade pip
+
+    - name: 🏗️ Create Virtual Environment
+      id: venv
+      if: steps.detect-manager.outputs.manager == 'pip'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        # Create virtual environment for pip-based projects
+        if [ ! -d "venv" ]; then
+          echo "Creating virtual environment..."
+          python -m venv venv
+        fi
+        
+        # Activate virtual environment
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          VENV_PATH="$(pwd)/venv"
+          echo "$(pwd)/venv/Scripts" >> $GITHUB_PATH
+          echo "VIRTUAL_ENV=$(pwd)/venv" >> $GITHUB_ENV
+        else
+          VENV_PATH="$(pwd)/venv"
+          echo "$(pwd)/venv/bin" >> $GITHUB_PATH
+          echo "VIRTUAL_ENV=$(pwd)/venv" >> $GITHUB_ENV
+        fi
+        
+        echo "path=$VENV_PATH" >> $GITHUB_OUTPUT
+        echo "✅ Virtual environment created at: $VENV_PATH"
+
+    - name: 📚 Install Dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "📚 Installing dependencies with ${{ steps.detect-manager.outputs.manager }}..."
+        
+        if [ "${{ steps.detect-manager.outputs.manager }}" = "poetry" ]; then
+          # Poetry installation
+          if [ "${{ inputs.install-dev-requirements }}" = "true" ]; then
+            poetry install
+          else
+            poetry install --only=main
+          fi
+          
+        elif [ "${{ steps.detect-manager.outputs.manager }}" = "pipenv" ]; then
+          # Pipenv installation
+          if [ "${{ inputs.install-dev-requirements }}" = "true" ]; then
+            pipenv install --dev
+          else
+            pipenv install
+          fi
+          
+        elif [ "${{ steps.detect-manager.outputs.manager }}" = "conda" ]; then
+          # Conda installation
+          if [ -f "environment.yml" ]; then
+            conda env update -f environment.yml
+          elif [ -f "conda-requirements.txt" ]; then
+            conda install --file conda-requirements.txt
+          fi
+          
+          if [ "${{ inputs.install-dev-requirements }}" = "true" ] && [ -f "conda-requirements-dev.txt" ]; then
+            conda install --file conda-requirements-dev.txt
+          fi
+          
+        else
+          # Pip installation
+          # Parse requirements files
+          REQUIREMENTS_INPUT="${{ inputs.requirements-files }}"
+          
+          # Handle both JSON array and comma-separated formats
+          if [[ "$REQUIREMENTS_INPUT" =~ ^\[.*\]$ ]]; then
+            # JSON array format
+            echo "$REQUIREMENTS_INPUT" | jq -r '.[]' | while read -r file; do
+              if [ -f "$file" ]; then
+                echo "Installing from $file"
+                pip install -r "$file"
+              else
+                echo "⚠️ Requirements file not found: $file"
+              fi
+            done
+          else
+            # Comma-separated format
+            IFS=',' read -ra FILES <<< "$REQUIREMENTS_INPUT"
+            for file in "${FILES[@]}"; do
+              file=$(echo "$file" | xargs)  # trim whitespace
+              if [ -f "$file" ]; then
+                echo "Installing from $file"
+                pip install -r "$file"
+              else
+                echo "⚠️ Requirements file not found: $file"
+              fi
+            done
+          fi
+          
+          # Install dev requirements
+          if [ "${{ inputs.install-dev-requirements }}" = "true" ]; then
+            for dev_file in requirements-dev.txt requirements_dev.txt dev-requirements.txt; do
+              if [ -f "$dev_file" ]; then
+                echo "Installing development requirements from $dev_file"
+                pip install -r "$dev_file"
+                break
+              fi
+            done
+          fi
+        fi
+
+    - name: 📦 Install Package in Development Mode
+      if: inputs.install-package == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ "${{ steps.detect-manager.outputs.manager }}" = "poetry" ]; then
+          echo "Package installation handled by Poetry"
+        elif [ "${{ steps.detect-manager.outputs.manager }}" = "pipenv" ]; then
+          echo "Installing package in development mode with Pipenv"
+          pipenv install -e .
+        else
+          # Pip installation
+          if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
+            echo "Installing package in development mode"
+            pip install -e .
+          else
+            echo "No setup.py or pyproject.toml found, skipping package installation"
+          fi
+        fi
+
+    - name: 🎯 Install Extra Dependencies
+      if: inputs.extra-dependencies != ''
+      shell: bash
+      run: |
+        echo "Installing extra dependencies: ${{ inputs.extra-dependencies }}"
+        if [ "${{ steps.detect-manager.outputs.manager }}" = "poetry" ]; then
+          poetry add ${{ inputs.extra-dependencies }}
+        elif [ "${{ steps.detect-manager.outputs.manager }}" = "pipenv" ]; then
+          pipenv install ${{ inputs.extra-dependencies }}
+        elif [ "${{ steps.detect-manager.outputs.manager }}" = "conda" ]; then
+          conda install ${{ inputs.extra-dependencies }}
+        else
+          pip install ${{ inputs.extra-dependencies }}
+        fi
+
+    - name: 🔍 Environment Information
+      shell: bash
+      run: |
+        echo "🐍 Python Environment Information:"
+        echo "  • Python Version: $(python --version)"
+        echo "  • Python Path: $(which python)"
+        echo "  • Pip Version: $(pip --version)"
+        echo "  • Package Manager: ${{ steps.detect-manager.outputs.manager }}"
+        
+        if [ "${{ steps.detect-manager.outputs.manager }}" = "poetry" ]; then
+          echo "  • Poetry Version: $(poetry --version)"
+        elif [ "${{ steps.detect-manager.outputs.manager }}" = "pipenv" ]; then
+          echo "  • Pipenv Version: $(pipenv --version)"
+        elif [ "${{ steps.detect-manager.outputs.manager }}" = "conda" ]; then
+          echo "  • Conda Version: $(conda --version)"
+        fi
+        
+        echo "  • Virtual Environment: ${VIRTUAL_ENV:-Not activated}"
+        echo "  • Working Directory: ${{ inputs.working-directory }}"
+        echo "  • Cache Hit: ${{ steps.cache.outputs.cache-hit || 'N/A' }}"
+        
+        echo ""
+        echo "📦 Installed Packages:"
+        if [ "${{ steps.detect-manager.outputs.manager }}" = "poetry" ]; then
+          poetry show --tree | head -20
+        elif [ "${{ steps.detect-manager.outputs.manager }}" = "pipenv" ]; then
+          pipenv graph | head -20
+        else
+          pip list | head -20
+        fi
+
+branding:
+  icon: 'package'
+  color: 'blue'

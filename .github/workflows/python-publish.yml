@@ -1,0 +1,442 @@
+name: 🐍 Python Package Publish
+
+on:
+  workflow_call:
+    inputs:
+      # Python Configuration
+      python-version:
+        description: 'Python version to use'
+        type: string
+        required: false
+        default: '3.11'
+      
+      working-directory:
+        description: 'Working directory for all commands'
+        type: string
+        required: false
+        default: '.'
+      
+      # Package Configuration
+      package-version:
+        description: 'Package version (auto-detected if not provided)'
+        type: string
+        required: false
+        default: ''
+      
+      package-name:
+        description: 'Package name (auto-detected if not provided)'
+        type: string
+        required: false
+        default: ''
+      
+      # Build Configuration
+      build-backend:
+        description: 'Build backend (auto, setuptools, poetry, hatch, flit)'
+        type: string
+        required: false
+        default: 'auto'
+      
+      build-formats:
+        description: 'Build formats (wheel, sdist, both)'
+        type: string
+        required: false
+        default: 'both'
+      
+      # Testing
+      run-tests:
+        description: 'Run tests before building'
+        type: boolean
+        required: false
+        default: true
+      
+      test-command:
+        description: 'Custom test command'
+        type: string
+        required: false
+        default: 'pytest'
+      
+      coverage-threshold:
+        description: 'Minimum coverage threshold percentage'
+        type: number
+        required: false
+        default: 80
+      
+      # Publishing Configuration
+      publish-to:
+        description: 'Where to publish (testpypi, pypi, both)'
+        type: string
+        required: false
+        default: 'testpypi'
+      
+      testpypi-repository:
+        description: 'TestPyPI repository URL'
+        type: string
+        required: false
+        default: 'https://test.pypi.org/legacy/'
+      
+      pypi-repository:
+        description: 'PyPI repository URL'
+        type: string
+        required: false
+        default: 'https://upload.pypi.org/legacy/'
+      
+      skip-existing:
+        description: 'Skip uploading if package version already exists'
+        type: boolean
+        required: false
+        default: true
+      
+      # Validation & Security
+      validate-package:
+        description: 'Validate package with twine check'
+        type: boolean
+        required: false
+        default: true
+      
+      run-security-scan:
+        description: 'Run security scanning before publishing'
+        type: boolean
+        required: false
+        default: true
+      
+      sign-package:
+        description: 'Sign package with GPG'
+        type: boolean
+        required: false
+        default: false
+      
+      # Documentation
+      generate-docs:
+        description: 'Generate and publish documentation'
+        type: boolean
+        required: false
+        default: false
+      
+      docs-output-dir:
+        description: 'Documentation output directory'
+        type: string
+        required: false
+        default: 'docs/_build/html'
+      
+      # Release Management
+      create-github-release:
+        description: 'Create GitHub release'
+        type: boolean
+        required: false
+        default: false
+      
+      release-draft:
+        description: 'Create draft release'
+        type: boolean
+        required: false
+        default: false
+      
+      release-prerelease:
+        description: 'Mark as prerelease'
+        type: boolean
+        required: false
+        default: false
+      
+      # Environment
+      environment:
+        description: 'GitHub environment for deployment protection'
+        type: string
+        required: false
+        default: ''
+      
+      timeout-minutes:
+        description: 'Job timeout in minutes'
+        type: number
+        required: false
+        default: 30
+    
+    secrets:
+      PYPI_API_TOKEN:
+        description: 'PyPI API token for publishing packages'
+        required: false
+      
+      TEST_PYPI_API_TOKEN:
+        description: 'TestPyPI API token for publishing packages'
+        required: false
+      
+      GPG_PRIVATE_KEY:
+        description: 'GPG private key for package signing'
+        required: false
+      
+      GPG_PASSPHRASE:
+        description: 'GPG passphrase for package signing'
+        required: false
+      
+      CODECOV_TOKEN:
+        description: 'Codecov token for coverage reporting'
+        required: false
+    
+    outputs:
+      package-version:
+        description: 'Published package version'
+        value: ${{ jobs.publish.outputs.package-version }}
+      
+      package-name:
+        description: 'Published package name'
+        value: ${{ jobs.publish.outputs.package-name }}
+      
+      pypi-url:
+        description: 'PyPI package URL'
+        value: ${{ jobs.publish.outputs.pypi-url }}
+      
+      testpypi-url:
+        description: 'TestPyPI package URL'
+        value: ${{ jobs.publish.outputs.testpypi-url }}
+      
+      github-release-url:
+        description: 'GitHub release URL'
+        value: ${{ jobs.publish.outputs.github-release-url }}
+      
+      documentation-url:
+        description: 'Documentation URL'
+        value: ${{ jobs.publish.outputs.documentation-url }}
+
+jobs:
+  publish:
+    name: Build & Publish Python Package
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    environment: ${{ inputs.environment }}
+    
+    outputs:
+      package-version: ${{ steps.package.outputs.package-version }}
+      package-name: ${{ steps.package.outputs.package-name }}
+      pypi-url: ${{ steps.package.outputs.pypi-url }}
+      testpypi-url: ${{ steps.package.outputs.testpypi-url }}
+      github-release-url: ${{ steps.release.outputs.url }}
+      documentation-url: ${{ steps.docs.outputs.url }}
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+      
+      - name: 🐍 Setup Python Environment
+        uses: ./.github/actions/python-setup
+        with:
+          python-version: ${{ inputs.python-version }}
+          package-manager: 'auto'
+          working-directory: ${{ inputs.working-directory }}
+          cache-dependencies: true
+          install-dev-requirements: true
+          install-package: true
+      
+      - name: 🧪 Run Tests
+        if: inputs.run-tests
+        uses: ./.github/actions/python-test
+        with:
+          test-framework: 'pytest'
+          test-path: 'tests'
+          working-directory: ${{ inputs.working-directory }}
+          collect-coverage: true
+          coverage-threshold: ${{ inputs.coverage-threshold }}
+          coverage-fail-under: true
+          junit-xml: true
+          parallel-tests: true
+      
+      - name: 📊 Upload Coverage
+        if: inputs.run-tests && secrets.CODECOV_TOKEN
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ${{ inputs.working-directory }}/coverage.xml
+          flags: package-build
+          fail_ci_if_error: false
+      
+      - name: 🔍 Run Code Quality Checks
+        uses: ./.github/actions/python-quality
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          run-lint: true
+          linter: 'ruff'
+          run-format-check: true
+          formatter: 'black'
+          format-check-only: true
+          run-import-sort: true
+          import-sorter: 'isort'
+          import-sort-check-only: true
+          run-type-check: false
+          run-security-scan: ${{ inputs.run-security-scan }}
+          security-tools: 'bandit,safety'
+          fail-on-error: true
+      
+      - name: 🔐 Setup GPG
+        if: inputs.sign-package
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+      
+      - name: 📦 Build and Publish Package
+        id: package
+        uses: ./.github/actions/python-package
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          package-version: ${{ inputs.package-version }}
+          package-name: ${{ inputs.package-name }}
+          build-backend: ${{ inputs.build-backend }}
+          build-formats: ${{ inputs.build-formats }}
+          validate-package: ${{ inputs.validate-package }}
+          run-tests: false  # Already run above
+          publish-to: ${{ inputs.publish-to }}
+          testpypi-repository: ${{ inputs.testpypi-repository }}
+          pypi-repository: ${{ inputs.pypi-repository }}
+          skip-existing: ${{ inputs.skip-existing }}
+          sign-package: ${{ inputs.sign-package }}
+          generate-docs: ${{ inputs.generate-docs }}
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          TEST_PYPI_API_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
+      
+      - name: 📚 Build and Deploy Documentation
+        id: docs
+        if: inputs.generate-docs
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          echo "📚 Building documentation..."
+          
+          # Install documentation dependencies
+          pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints
+          
+          # Build documentation
+          if [ -f "docs/conf.py" ]; then
+            cd docs
+            make html
+            cd ..
+          elif [ -f "pyproject.toml" ] && grep -q "sphinx" pyproject.toml; then
+            sphinx-build -b html docs ${{ inputs.docs-output-dir }}
+          fi
+          
+          # Deploy to GitHub Pages if configured
+          if [ -d "${{ inputs.docs-output-dir }}" ]; then
+            echo "url=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 📤 Deploy Documentation to GitHub Pages
+        if: inputs.generate-docs && github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ${{ inputs.working-directory }}/${{ inputs.docs-output-dir }}
+          cname: ${{ github.event.repository.name }}.docs
+      
+      - name: 🏷️ Create GitHub Release
+        id: release
+        if: inputs.create-github-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.package.outputs.package-version }}
+          name: Release v${{ steps.package.outputs.package-version }}
+          body: |
+            ## 🎉 Release v${{ steps.package.outputs.package-version }}
+            
+            ### 📦 Package Information
+            - **Package Name:** `${{ steps.package.outputs.package-name }}`
+            - **Version:** `${{ steps.package.outputs.package-version }}`
+            - **Size:** ${{ steps.package.outputs.package-size }} bytes
+            
+            ### 📥 Installation
+            
+            ```bash
+            # Install from PyPI
+            pip install ${{ steps.package.outputs.package-name }}==${{ steps.package.outputs.package-version }}
+            ```
+            
+            ### 🔗 Links
+            
+            ${{ steps.package.outputs.pypi-url && format('- [PyPI Package]({0})', steps.package.outputs.pypi-url) || '' }}
+            ${{ steps.package.outputs.testpypi-url && format('- [TestPyPI Package]({0})', steps.package.outputs.testpypi-url) || '' }}
+            ${{ steps.docs.outputs.url && format('- [Documentation]({0})', steps.docs.outputs.url) || '' }}
+            
+            ### 🛠️ Built with
+            - Python ${{ inputs.python-version }}
+            - Build Backend: ${{ inputs.build-backend }}
+            - Build Formats: ${{ inputs.build-formats }}
+            
+            ---
+            
+            🤖 *This release was created automatically by GitHub Actions*
+          draft: ${{ inputs.release-draft }}
+          prerelease: ${{ inputs.release-prerelease }}
+          files: |
+            ${{ inputs.working-directory }}/dist/*
+          generate_release_notes: true
+      
+      - name: 📊 Generate Publish Summary
+        shell: bash
+        run: |
+          echo "## 🎉 Python Package Publish Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Package Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Name:** \`${{ steps.package.outputs.package-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** \`${{ steps.package.outputs.package-version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Size:** ${{ steps.package.outputs.package-size }} bytes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### 🚀 Published To" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.publish-to }}" = "pypi" ] || [ "${{ inputs.publish-to }}" = "both" ]; then
+            echo "- ✅ **PyPI:** [${{ steps.package.outputs.package-name }}](${{ steps.package.outputs.pypi-url }})" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ inputs.publish-to }}" = "testpypi" ] || [ "${{ inputs.publish-to }}" = "both" ]; then
+            echo "- ✅ **TestPyPI:** [${{ steps.package.outputs.package-name }}](${{ steps.package.outputs.testpypi-url }})" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### 📥 Installation" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "pip install ${{ steps.package.outputs.package-name }}==${{ steps.package.outputs.package-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ inputs.create-github-release }}" = "true" ]; then
+            echo "### 🏷️ GitHub Release" >> $GITHUB_STEP_SUMMARY
+            echo "- **Release:** [v${{ steps.package.outputs.package-version }}](${{ steps.release.outputs.url }})" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ inputs.generate-docs }}" = "true" ]; then
+            echo "### 📚 Documentation" >> $GITHUB_STEP_SUMMARY
+            echo "- **Docs:** [${{ steps.docs.outputs.url }}](${{ steps.docs.outputs.url }})" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "### 🔧 Build Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Version:** ${{ inputs.python-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Backend:** ${{ inputs.build-backend }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Formats:** ${{ inputs.build-formats }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests Run:** ${{ inputs.run-tests }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Security Scan:** ${{ inputs.run-security-scan }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Package Signed:** ${{ inputs.sign-package }}" >> $GITHUB_STEP_SUMMARY
+      
+      - name: 🎯 Post-Publish Verification
+        shell: bash
+        run: |
+          echo "🎯 Verifying published package..."
+          
+          PACKAGE_NAME="${{ steps.package.outputs.package-name }}"
+          PACKAGE_VERSION="${{ steps.package.outputs.package-version }}"
+          
+          # Wait a bit for package to be available
+          sleep 10
+          
+          # Verify installation from PyPI
+          if [ "${{ inputs.publish-to }}" = "pypi" ] || [ "${{ inputs.publish-to }}" = "both" ]; then
+            echo "Verifying PyPI installation..."
+            pip install --index-url https://pypi.org/simple/ "$PACKAGE_NAME==$PACKAGE_VERSION" --force-reinstall --no-deps || echo "⚠️ Package not yet available on PyPI (may take a few minutes)"
+          fi
+          
+          # Verify installation from TestPyPI
+          if [ "${{ inputs.publish-to }}" = "testpypi" ] || [ "${{ inputs.publish-to }}" = "both" ]; then
+            echo "Verifying TestPyPI installation..."
+            pip install --index-url https://test.pypi.org/simple/ "$PACKAGE_NAME==$PACKAGE_VERSION" --force-reinstall --no-deps || echo "⚠️ Package not yet available on TestPyPI (may take a few minutes)"
+          fi
+          
+          echo "✅ Publish verification completed"

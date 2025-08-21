@@ -38,6 +38,15 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 |--------|---------|-------|---------------------|
 | [`readme-generate`](./readme-generate/) | Dynamic documentation | Repository-wide | [readme.yml](../workflows/examples/readme.yml) |
 
+### 🐍 Python Development
+
+| Action | Purpose | Features | Modularer Workflow |
+|--------|---------|----------|---------------------|
+| [`python-setup`](./python-setup/) | Python environment setup | Multi-package-manager, caching | [python-build.yml](../workflows/python-build.yml) |
+| [`python-test`](./python-test/) | Comprehensive testing suite | Coverage, parallel tests, reporting | [python-build.yml](../workflows/python-build.yml) |
+| [`python-quality`](./python-quality/) | Code quality analysis | Linting, formatting, security, type checking | [python-build.yml](../workflows/python-build.yml) |
+| [`python-package`](./python-package/) | Package building & publishing | PyPI/TestPyPI, validation, signing | [python-publish.yml](../workflows/python-publish.yml) |
+
 ## 🚀 Quick Start
 
 > **💪 Empfehlung:** Verwende die [modularen Workflows](../modules/) für optimale Komposition!
@@ -65,6 +74,30 @@ jobs:
       release-type: simple
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**Python Development:**
+```yaml
+jobs:
+  python-ci:
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    with:
+      python-version: '3.11'
+      run-tests: true
+      collect-coverage: true
+      run-security-scan: true
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  
+  python-publish:
+    needs: python-ci
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: bauer-group/automation-templates/.github/workflows/python-publish.yml@main
+    with:
+      publish-to: 'pypi'
+      create-github-release: true
+    secrets:
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
 ```
 
 ### 🔧 Direkte Action-Verwendung
@@ -100,6 +133,32 @@ jobs:
     merge-method: squash
     required-checks: ''
     token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**Python Environment Setup:**
+```yaml
+- name: 🐍 Setup Python Environment
+  uses: bauer-group/automation-templates/.github/actions/python-setup@main
+  with:
+    python-version: '3.11'
+    package-manager: 'pip'
+    requirements-files: 'requirements.txt,requirements-dev.txt'
+    cache-dependencies: true
+
+- name: 🧪 Run Python Tests
+  uses: bauer-group/automation-templates/.github/actions/python-test@main
+  with:
+    test-framework: 'pytest'
+    collect-coverage: true
+    coverage-threshold: 80
+
+- name: 🔍 Python Quality Checks
+  uses: bauer-group/automation-templates/.github/actions/python-quality@main
+  with:
+    run-lint: true
+    linter: 'ruff'
+    run-format-check: true
+    run-security-scan: true
 ```
 
 ## 🎆 Migration zu modularen Workflows
