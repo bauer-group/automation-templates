@@ -284,18 +284,23 @@ jobs:
           Write-Host "Version: $version"
       
       - name: 🔐 Configure NuGet
-        if: ${{ secrets.DOTNET_NUGET_API_KEY }}
         shell: pwsh
         run: |
-          $nugetConfig = @"
-          <?xml version="1.0" encoding="utf-8"?>
-          <configuration>
-            <packageSources>
-              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
-            </packageSources>
-          </configuration>
-          "@
-          $nugetConfig | Out-File -FilePath "nuget.config" -Encoding utf8
+          # Only configure NuGet if API key is provided
+          if ("${{ secrets.DOTNET_NUGET_API_KEY }}" -ne "") {
+            $nugetConfig = @"
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+              </packageSources>
+            </configuration>
+            "@
+            $nugetConfig | Out-File -FilePath "nuget.config" -Encoding utf8
+            Write-Host "✅ NuGet configuration created"
+          } else {
+            Write-Host "ℹ️ Skipping NuGet configuration (no API key provided)"
+          }
       
       - name: 📚 Restore Dependencies
         shell: pwsh
@@ -391,14 +396,21 @@ jobs:
           }
       
       - name: 📝 Prepare Certificate
-        if: ${{ inputs.sign-output == true && secrets.DOTNET_SIGNING_CERTIFICATE_BASE64 }}
+        if: inputs.sign-output == true
         id: certificate
         shell: pwsh
         run: |
-          $certBytes = [Convert]::FromBase64String("${{ secrets.DOTNET_SIGNING_CERTIFICATE_BASE64 }}")
-          $certPath = Join-Path $env:RUNNER_TEMP "signing_cert.pfx"
-          [IO.File]::WriteAllBytes($certPath, $certBytes)
-          Write-Output "path=$certPath" >> $env:GITHUB_OUTPUT
+          # Only prepare certificate if one is provided
+          if ("${{ secrets.DOTNET_SIGNING_CERTIFICATE_BASE64 }}" -ne "") {
+            $certBytes = [Convert]::FromBase64String("${{ secrets.DOTNET_SIGNING_CERTIFICATE_BASE64 }}")
+            $certPath = Join-Path $env:RUNNER_TEMP "signing_cert.pfx"
+            [IO.File]::WriteAllBytes($certPath, $certBytes)
+            Write-Output "path=$certPath" >> $env:GITHUB_OUTPUT
+            Write-Host "✅ Certificate prepared for signing"
+          } else {
+            Write-Host "ℹ️ No certificate provided, skipping certificate preparation"
+            Write-Output "path=" >> $env:GITHUB_OUTPUT
+          }
       
       - name: 🔏 Sign Output Files
         if: inputs.sign-output == true
