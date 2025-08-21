@@ -36,9 +36,10 @@ jobs:
     name: Generate Documentation
     runs-on: ubuntu-latest
     outputs:
-      readme_updated: ${{ steps.generate.outputs.readme_updated }}
-      changes_detected: ${{ steps.generate.outputs.changes_detected }}
-      validation_passed: ${{ steps.generate.outputs.validation_passed }}
+      should_run: ${{ steps.should-run.outputs.should_run }}
+      readme_updated: ${{ steps.generate.outputs.readme_updated || 'false' }}
+      changes_detected: ${{ steps.generate.outputs.changes_detected || 'false' }}
+      validation_passed: ${{ steps.generate.outputs.validation_passed || steps.should-run.outputs.should_run == 'false' && 'skipped' || 'false' }}
       file_size: ${{ steps.generate.outputs.file_size }}
       unresolved_placeholders: ${{ steps.generate.outputs.unresolved_placeholders }}
     
@@ -56,6 +57,7 @@ jobs:
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "Running for tag: ${{ github.ref_name }}"
             echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
             exit 0
           fi
           
@@ -63,6 +65,7 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "Running for pull request"
             echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
             exit 0
           fi
           
@@ -70,6 +73,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "Running for manual trigger"
             echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
             exit 0
           fi
           
@@ -87,12 +91,24 @@ jobs:
                  [[ "$file" == ".github/workflows/documentation.yml" ]]; then
                 echo "Relevant file changed: $file"
                 echo "should_run=true" >> $GITHUB_OUTPUT
+                echo "skip_reason=" >> $GITHUB_OUTPUT
                 exit 0
               fi
             done
             
-            echo "No relevant files changed"
+            echo "No relevant files changed - skipping workflow"
             echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "skip_reason=No documentation-related files changed" >> $GITHUB_OUTPUT
+            
+            # Create a minimal summary for skipped runs
+            echo "### 📄 Documentation Workflow" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⏭️ **Skipped** - No documentation-related files were modified" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Files checked:" >> $GITHUB_STEP_SUMMARY
+            echo "- \`docs/README.template.MD\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`.github/actions/readme-generate/**\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`.github/workflows/documentation.yml\`" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: 🔍 Validate Prerequisites
@@ -154,6 +170,7 @@ jobs:
   validate-documentation:
     name: Validate Documentation
     needs: generate-documentation
+    if: needs.generate-documentation.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     
     steps:
@@ -214,13 +231,21 @@ jobs:
         run: |
           echo "### 📄 Documentation Validation Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **README Generated** | ${{ needs.generate-documentation.outputs.readme_updated && '✅ Updated' || '⏭️ No changes' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Template Validation** | ${{ needs.generate-documentation.outputs.validation_passed && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Link Validation** | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Structure Check** | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check if workflow should have run
+          if [ "${{ needs.generate-documentation.outputs.should_run }}" = "false" ]; then
+            echo "ℹ️ **Workflow skipped - no relevant files changed**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No documentation-related files were modified in this push." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+            echo "| **README Generated** | ${{ needs.generate-documentation.outputs.readme_updated == 'true' && '✅ Updated' || '⏭️ No changes' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Template Validation** | ${{ needs.generate-documentation.outputs.validation_passed == 'true' && '✅ Passed' || needs.generate-documentation.outputs.validation_passed == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Link Validation** | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Structure Check** | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
           
           if [ "${{ needs.generate-documentation.outputs.readme_updated }}" = "true" ]; then
             echo "📝 **Documentation updated successfully!**" >> $GITHUB_STEP_SUMMARY
