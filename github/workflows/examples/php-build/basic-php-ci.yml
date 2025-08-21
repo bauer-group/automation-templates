@@ -1,0 +1,21 @@
+name: PHP CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.2'
+      run-tests: true
+      run-phpcs: true
+      run-phpstan: true
+      run-security-check: true
+      coverage: 'xdebug'
+      test-coverage-threshold: 80
+    secrets:
+      CODECOV_UPLOAD_TOKEN: ${{ secrets.CODECOV_UPLOAD_TOKEN }}

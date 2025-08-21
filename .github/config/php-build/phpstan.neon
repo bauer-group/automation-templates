@@ -1,0 +1,43 @@
+parameters:
+    level: 5
+    paths:
+        - src
+        - app
+    excludePaths:
+        - vendor
+        - tests/fixtures
+        - cache
+    
+    # Error reporting
+    reportUnmatchedIgnoredErrors: true
+    treatPhpDocTypesAsCertain: false
+    
+    # Type checking
+    checkMissingIterableValueType: false
+    checkGenericClassInNonGenericObjectType: false
+    
+    # Framework specific
+    universalObjectCratesClasses:
+        - Illuminate\Http\Request
+        - Illuminate\Support\Facades\Facade
+        - Illuminate\Database\Eloquent\Model
+    
+    # Custom rules
+    ignoreErrors:
+        - '#Call to an undefined method [a-zA-Z0-9\\_]+::factory\(\)#'
+        - '#Access to an undefined property#'
+        
+    # Parallel processing
+    parallel:
+        processTimeout: 300.0
+        maximumNumberOfProcesses: 4
+        minimumNumberOfJobsPerProcess: 2
+    
+    # Memory settings
+    memoryLimitFile: %tmpDir%/.memory_limit
+    
+includes:
+    # Add framework extensions if needed
+    # - vendor/larastan/larastan/extension.neon
+    # - vendor/phpstan/phpstan-symfony/extension.neon
+    # - vendor/phpstan/phpstan-doctrine/extension.neon

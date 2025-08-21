@@ -1,0 +1,124 @@
+name: Symfony Enterprise CI/CD
+
+on:
+  push:
+    branches: [main, develop, release/*]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * 1' # Weekly security check
+
+jobs:
+  matrix-test:
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      # Matrix build for multiple PHP versions
+      enable-matrix: true
+      php-version: '8.1,8.2,8.3'
+      dependency-versions: 'locked'
+      
+      # Symfony configuration
+      framework: 'symfony'
+      run-migrations: true
+      
+      # Extended PHP extensions
+      extensions: 'mbstring, xml, curl, zip, intl, gd, mysql, redis, apcu, opcache, amqp'
+      ini-values: 'error_reporting=E_ALL, display_errors=On, memory_limit=512M, opcache.enable=1'
+      
+      # Full testing suite
+      run-tests: true
+      coverage: 'pcov'
+      test-coverage-threshold: 85
+      
+      # All code quality tools
+      run-phpcs: true
+      phpcs-standard: 'PSR12'
+      run-phpstan: true
+      phpstan-level: 'max'
+      run-psalm: true
+      psalm-level: '2'
+      run-phpmd: true
+      phpmd-ruleset: 'cleancode,codesize,controversial,design,naming,unusedcode'
+      
+      # Security
+      run-security-check: true
+      fail-on-security-issues: true
+      
+      # Caching
+      cache-dependencies: true
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'symfony-enterprise'
+      artifact-retention-days: 60
+      
+      # Extended timeout for large test suite
+      timeout-minutes: 45
+    secrets:
+      COMPOSER_AUTH_JSON: ${{ secrets.COMPOSER_AUTH_JSON }}
+      CODECOV_UPLOAD_TOKEN: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
+      SONARCLOUD_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
+
+  code-quality:
+    needs: matrix-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=symfony-enterprise
+            -Dsonar.organization=your-org
+            -Dsonar.php.coverage.reportPaths=coverage.xml
+
+  docker-build:
+    if: github.ref == 'refs/heads/main'
+    needs: [matrix-test, code-quality]
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.2'
+      framework: 'symfony'
+      run-tests: false
+      
+      # Docker multi-stage build
+      build-docker: true
+      docker-image-name: 'symfony-enterprise'
+      dockerfile-path: 'docker/Dockerfile.production'
+      docker-registry: 'docker.io'
+    secrets:
+      DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  deploy-staging:
+    if: github.ref == 'refs/heads/develop'
+    needs: matrix-test
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.2'
+      framework: 'symfony'
+      run-tests: false
+      deploy-to: 'aws'
+      deploy-path: '/var/www/staging'
+    secrets:
+      PHP_DEPLOY_KEY: ${{ secrets.STAGING_DEPLOY_KEY }}
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    needs: [matrix-test, code-quality, docker-build]
+    environment:
+      name: production
+      url: https://your-app.com
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.2'
+      framework: 'symfony'
+      run-tests: false
+      deploy-to: 'aws'
+      deploy-path: '/var/www/production'
+    secrets:
+      PHP_DEPLOY_KEY: ${{ secrets.PRODUCTION_DEPLOY_KEY }}

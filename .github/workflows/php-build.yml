@@ -1,0 +1,634 @@
+name: 🐘 PHP Build
+
+on:
+  workflow_call:
+    inputs:
+      # PHP Configuration
+      php-version:
+        description: 'PHP version(s) to use (comma-separated for matrix)'
+        type: string
+        required: false
+        default: '8.2'
+      
+      extensions:
+        description: 'PHP extensions to install (comma-separated)'
+        type: string
+        required: false
+        default: 'mbstring, xml, curl, zip, intl, gd, mysql, redis'
+      
+      ini-values:
+        description: 'PHP ini values (comma-separated key=value pairs)'
+        type: string
+        required: false
+        default: 'error_reporting=E_ALL, display_errors=On, memory_limit=256M'
+      
+      coverage:
+        description: 'Code coverage driver (none, xdebug, pcov)'
+        type: string
+        required: false
+        default: 'none'
+      
+      # Composer Configuration
+      composer-version:
+        description: 'Composer version (latest, preview, snapshot, 1, 2)'
+        type: string
+        required: false
+        default: 'latest'
+      
+      dependency-versions:
+        description: 'Dependency versions to use (lowest, locked, highest)'
+        type: string
+        required: false
+        default: 'locked'
+      
+      composer-options:
+        description: 'Additional composer install options'
+        type: string
+        required: false
+        default: '--prefer-dist --no-progress --no-interaction'
+      
+      validate-strict:
+        description: 'Use strict validation for composer.json'
+        type: boolean
+        required: false
+        default: true
+      
+      # Testing Configuration
+      run-tests:
+        description: 'Run PHPUnit tests'
+        type: boolean
+        required: false
+        default: true
+      
+      test-suite:
+        description: 'PHPUnit test suite to run'
+        type: string
+        required: false
+        default: ''
+      
+      test-coverage-threshold:
+        description: 'Minimum code coverage percentage (0-100)'
+        type: number
+        required: false
+        default: 0
+      
+      # Code Quality
+      run-phpcs:
+        description: 'Run PHP CodeSniffer'
+        type: boolean
+        required: false
+        default: true
+      
+      phpcs-standard:
+        description: 'PHP CodeSniffer standard (PSR12, PSR2, etc.)'
+        type: string
+        required: false
+        default: 'PSR12'
+      
+      run-phpstan:
+        description: 'Run PHPStan static analysis'
+        type: boolean
+        required: false
+        default: true
+      
+      phpstan-level:
+        description: 'PHPStan level (0-9 or max)'
+        type: string
+        required: false
+        default: '5'
+      
+      run-psalm:
+        description: 'Run Psalm static analysis'
+        type: boolean
+        required: false
+        default: false
+      
+      psalm-level:
+        description: 'Psalm error level (1-8)'
+        type: string
+        required: false
+        default: '3'
+      
+      run-phpmd:
+        description: 'Run PHP Mess Detector'
+        type: boolean
+        required: false
+        default: false
+      
+      phpmd-ruleset:
+        description: 'PHPMD ruleset'
+        type: string
+        required: false
+        default: 'cleancode,codesize,controversial,design,naming,unusedcode'
+      
+      # Security
+      run-security-check:
+        description: 'Run security vulnerability check'
+        type: boolean
+        required: false
+        default: true
+      
+      fail-on-security-issues:
+        description: 'Fail build on security vulnerabilities'
+        type: boolean
+        required: false
+        default: true
+      
+      # Laravel/Symfony specific
+      framework:
+        description: 'PHP framework (none, laravel, symfony, laminas)'
+        type: string
+        required: false
+        default: 'none'
+      
+      run-migrations:
+        description: 'Run database migrations (framework specific)'
+        type: boolean
+        required: false
+        default: false
+      
+      # Docker
+      build-docker:
+        description: 'Build Docker image'
+        type: boolean
+        required: false
+        default: false
+      
+      docker-image-name:
+        description: 'Docker image name'
+        type: string
+        required: false
+        default: ''
+      
+      dockerfile-path:
+        description: 'Path to Dockerfile'
+        type: string
+        required: false
+        default: 'Dockerfile'
+      
+      docker-registry:
+        description: 'Docker registry URL'
+        type: string
+        required: false
+        default: ''
+      
+      # Deployment
+      deploy-to:
+        description: 'Deployment target (none, ftp, ssh, aws, azure)'
+        type: string
+        required: false
+        default: 'none'
+      
+      deploy-path:
+        description: 'Deployment path on target'
+        type: string
+        required: false
+        default: ''
+      
+      # Build Options
+      working-directory:
+        description: 'Working directory for all operations'
+        type: string
+        required: false
+        default: '.'
+      
+      cache-dependencies:
+        description: 'Cache Composer dependencies'
+        type: boolean
+        required: false
+        default: true
+      
+      # Matrix Configuration
+      enable-matrix:
+        description: 'Enable matrix builds for multiple PHP versions'
+        type: boolean
+        required: false
+        default: false
+      
+      # Artifact Options
+      upload-artifacts:
+        description: 'Upload build artifacts'
+        type: boolean
+        required: false
+        default: false
+      
+      artifact-name:
+        description: 'Name for uploaded artifacts'
+        type: string
+        required: false
+        default: 'php-build'
+      
+      artifact-path:
+        description: 'Path to artifacts'
+        type: string
+        required: false
+        default: ''
+      
+      artifact-retention-days:
+        description: 'Days to retain artifacts'
+        type: number
+        required: false
+        default: 30
+      
+      # Runner Configuration
+      runs-on:
+        description: 'Runner OS'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+      
+      timeout-minutes:
+        description: 'Job timeout in minutes'
+        type: number
+        required: false
+        default: 30
+    
+    secrets:
+      COMPOSER_AUTH_JSON:
+        description: 'Composer auth.json content for private packages'
+        required: false
+      
+      PHP_DEPLOY_KEY:
+        description: 'SSH key for deployment'
+        required: false
+      
+      PHP_FTP_PASSWORD:
+        description: 'FTP password for deployment'
+        required: false
+      
+      DOCKER_REGISTRY_USERNAME:
+        description: 'Docker registry username'
+        required: false
+      
+      DOCKER_REGISTRY_PASSWORD:
+        description: 'Docker registry password'
+        required: false
+      
+      CODECOV_UPLOAD_TOKEN:
+        description: 'Codecov token for coverage upload'
+        required: false
+      
+      SONARCLOUD_TOKEN:
+        description: 'SonarCloud token for analysis'
+        required: false
+    
+    outputs:
+      build-status:
+        description: 'Build status'
+        value: ${{ jobs.build.outputs.build-status }}
+      
+      test-results:
+        description: 'Test results summary'
+        value: ${{ jobs.build.outputs.test-results }}
+      
+      coverage-percentage:
+        description: 'Code coverage percentage'
+        value: ${{ jobs.build.outputs.coverage-percentage }}
+      
+      quality-score:
+        description: 'Code quality score'
+        value: ${{ jobs.build.outputs.quality-score }}
+      
+      docker-image:
+        description: 'Docker image tag if built'
+        value: ${{ jobs.build.outputs.docker-image }}
+
+jobs:
+  build:
+    name: PHP Build
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    
+    strategy:
+      matrix:
+        php-version: ${{ inputs.enable-matrix && fromJson(format('[{0}]', inputs.php-version)) || fromJson(format('["{0}"]', inputs.php-version)) }}
+        dependency-versions: ${{ inputs.enable-matrix && fromJson(format('["{0}"]', inputs.dependency-versions)) || fromJson(format('["{0}"]', inputs.dependency-versions)) }}
+      fail-fast: false
+    
+    outputs:
+      build-status: ${{ steps.summary.outputs.build-status }}
+      test-results: ${{ steps.test-results.outputs.summary }}
+      coverage-percentage: ${{ steps.coverage.outputs.percentage }}
+      quality-score: ${{ steps.quality.outputs.score }}
+      docker-image: ${{ steps.docker.outputs.image }}
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🔧 Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          extensions: ${{ inputs.extensions }}
+          ini-values: ${{ inputs.ini-values }}
+          coverage: ${{ inputs.coverage }}
+          tools: composer:${{ inputs.composer-version }}
+      
+      - name: 🔍 Get Composer Cache Directory
+        id: composer-cache-dir
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+      
+      - name: 📦 Cache Composer Dependencies
+        if: inputs.cache-dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ matrix.php-version }}-${{ hashFiles(format('{0}/composer.lock', inputs.working-directory)) }}
+          restore-keys: |
+            ${{ runner.os }}-composer-${{ matrix.php-version }}-
+            ${{ runner.os }}-composer-
+      
+      - name: 🔐 Configure Composer Auth
+        if: secrets.COMPOSER_AUTH_JSON != ''
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          echo '${{ secrets.COMPOSER_AUTH_JSON }}' > auth.json
+          composer config --global --auth --merge-auth auth.json
+          rm auth.json
+      
+      - name: ✅ Validate Composer Files
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ "${{ inputs.validate-strict }}" = "true" ]; then
+            composer validate --strict
+          else
+            composer validate
+          fi
+      
+      - name: 📚 Install Dependencies
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ "${{ matrix.dependency-versions }}" = "lowest" ]; then
+            composer update --prefer-lowest --prefer-stable ${{ inputs.composer-options }}
+          elif [ "${{ matrix.dependency-versions }}" = "highest" ]; then
+            composer update ${{ inputs.composer-options }}
+          else
+            composer install ${{ inputs.composer-options }}
+          fi
+      
+      - name: 🏗️ Framework Setup
+        if: inputs.framework != 'none'
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          case "${{ inputs.framework }}" in
+            laravel)
+              cp .env.example .env || true
+              php artisan key:generate || true
+              php artisan config:cache || true
+              if [ "${{ inputs.run-migrations }}" = "true" ]; then
+                php artisan migrate --force
+              fi
+              ;;
+            symfony)
+              php bin/console cache:clear || true
+              if [ "${{ inputs.run-migrations }}" = "true" ]; then
+                php bin/console doctrine:migrations:migrate --no-interaction || true
+              fi
+              ;;
+            laminas)
+              if [ "${{ inputs.run-migrations }}" = "true" ]; then
+                php vendor/bin/doctrine-module migrations:migrate --no-interaction || true
+              fi
+              ;;
+          esac
+      
+      - name: 🧪 Run PHPUnit Tests
+        id: phpunit
+        if: inputs.run-tests
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          TEST_CMD="vendor/bin/phpunit"
+          
+          # Add test suite if specified
+          if [ -n "${{ inputs.test-suite }}" ]; then
+            TEST_CMD="$TEST_CMD --testsuite=${{ inputs.test-suite }}"
+          fi
+          
+          # Add coverage if enabled
+          if [ "${{ inputs.coverage }}" != "none" ]; then
+            TEST_CMD="$TEST_CMD --coverage-clover=coverage.xml --coverage-html=coverage-html"
+          fi
+          
+          # Run tests
+          $TEST_CMD --colors=always || TEST_RESULT=$?
+          
+          # Output results
+          if [ -z "$TEST_RESULT" ] || [ "$TEST_RESULT" = "0" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+      
+      - name: 📊 Process Coverage
+        id: coverage
+        if: inputs.run-tests && inputs.coverage != 'none'
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -f "coverage.xml" ]; then
+            # Extract coverage percentage
+            COVERAGE=$(grep -oP 'line-rate="\K[0-9.]+' coverage.xml | head -1)
+            COVERAGE_PCT=$(echo "$COVERAGE * 100" | bc)
+            echo "percentage=$COVERAGE_PCT" >> $GITHUB_OUTPUT
+            
+            # Check threshold
+            if [ "${{ inputs.test-coverage-threshold }}" -gt 0 ]; then
+              if (( $(echo "$COVERAGE_PCT < ${{ inputs.test-coverage-threshold }}" | bc -l) )); then
+                echo "❌ Coverage $COVERAGE_PCT% is below threshold ${{ inputs.test-coverage-threshold }}%"
+                exit 1
+              else
+                echo "✅ Coverage $COVERAGE_PCT% meets threshold"
+              fi
+            fi
+          fi
+      
+      - name: 📤 Upload Coverage to Codecov
+        if: inputs.run-tests && inputs.coverage != 'none' && secrets.CODECOV_UPLOAD_TOKEN != ''
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
+          file: ${{ inputs.working-directory }}/coverage.xml
+          flags: phpunit
+          name: PHP ${{ matrix.php-version }}
+      
+      - name: 🔍 PHP CodeSniffer
+        if: inputs.run-phpcs
+        working-directory: ${{ inputs.working-directory }}
+        continue-on-error: true
+        run: |
+          if [ -f "vendor/bin/phpcs" ]; then
+            vendor/bin/phpcs --standard=${{ inputs.phpcs-standard }} --report=summary --report-file=phpcs-report.txt src/ || true
+            cat phpcs-report.txt
+          else
+            echo "PHP CodeSniffer not installed, skipping..."
+          fi
+      
+      - name: 🔬 PHPStan Analysis
+        if: inputs.run-phpstan
+        working-directory: ${{ inputs.working-directory }}
+        continue-on-error: true
+        run: |
+          if [ -f "vendor/bin/phpstan" ]; then
+            vendor/bin/phpstan analyse --level=${{ inputs.phpstan-level }} --no-progress src/
+          else
+            echo "PHPStan not installed, skipping..."
+          fi
+      
+      - name: 🔍 Psalm Analysis
+        if: inputs.run-psalm
+        working-directory: ${{ inputs.working-directory }}
+        continue-on-error: true
+        run: |
+          if [ -f "vendor/bin/psalm" ]; then
+            vendor/bin/psalm --show-info=false --error-level=${{ inputs.psalm-level }}
+          else
+            echo "Psalm not installed, skipping..."
+          fi
+      
+      - name: 🧹 PHP Mess Detector
+        if: inputs.run-phpmd
+        working-directory: ${{ inputs.working-directory }}
+        continue-on-error: true
+        run: |
+          if [ -f "vendor/bin/phpmd" ]; then
+            vendor/bin/phpmd src/ text ${{ inputs.phpmd-ruleset }}
+          else
+            echo "PHP Mess Detector not installed, skipping..."
+          fi
+      
+      - name: 🔒 Security Check
+        if: inputs.run-security-check
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # Using local-php-security-checker
+          curl -L https://github.com/fabpot/local-php-security-checker/releases/download/v2.0.6/local-php-security-checker_2.0.6_linux_amd64 -o security-checker
+          chmod +x security-checker
+          
+          if ./security-checker; then
+            echo "✅ No security vulnerabilities found"
+          else
+            if [ "${{ inputs.fail-on-security-issues }}" = "true" ]; then
+              echo "❌ Security vulnerabilities found"
+              exit 1
+            else
+              echo "⚠️ Security vulnerabilities found (non-blocking)"
+            fi
+          fi
+      
+      - name: 📊 Code Quality Score
+        id: quality
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          SCORE=100
+          
+          # Deduct points for issues
+          if [ -f "phpcs-report.txt" ]; then
+            ERRORS=$(grep -oP 'FOUND \K[0-9]+' phpcs-report.txt | head -1)
+            [ -n "$ERRORS" ] && SCORE=$((SCORE - ERRORS))
+          fi
+          
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "Code Quality Score: $SCORE/100"
+      
+      - name: 🐳 Build Docker Image
+        id: docker
+        if: inputs.build-docker
+        run: |
+          IMAGE_NAME="${{ inputs.docker-image-name }}"
+          if [ -z "$IMAGE_NAME" ]; then
+            IMAGE_NAME="${{ github.repository }}:php-${{ matrix.php-version }}"
+          fi
+          
+          docker build \
+            -f ${{ inputs.dockerfile-path }} \
+            -t "$IMAGE_NAME" \
+            --build-arg PHP_VERSION=${{ matrix.php-version }} \
+            ${{ inputs.working-directory }}
+          
+          echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
+      
+      - name: 🐳 Push Docker Image
+        if: inputs.build-docker && inputs.docker-registry != ''
+        run: |
+          echo "${{ secrets.DOCKER_REGISTRY_PASSWORD }}" | docker login ${{ inputs.docker-registry }} -u "${{ secrets.DOCKER_REGISTRY_USERNAME }}" --password-stdin
+          
+          FULL_IMAGE_NAME="${{ inputs.docker-registry }}/${{ steps.docker.outputs.image }}"
+          docker tag "${{ steps.docker.outputs.image }}" "$FULL_IMAGE_NAME"
+          docker push "$FULL_IMAGE_NAME"
+      
+      - name: 🚀 Deploy Application
+        if: inputs.deploy-to != 'none' && github.ref == 'refs/heads/main'
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          case "${{ inputs.deploy-to }}" in
+            ftp)
+              echo "Deploying via FTP..."
+              # Add FTP deployment logic
+              ;;
+            ssh)
+              echo "Deploying via SSH..."
+              # Add SSH deployment logic
+              ;;
+            aws)
+              echo "Deploying to AWS..."
+              # Add AWS deployment logic
+              ;;
+            azure)
+              echo "Deploying to Azure..."
+              # Add Azure deployment logic
+              ;;
+          esac
+      
+      - name: 📤 Prepare Artifacts
+        id: artifacts
+        if: inputs.upload-artifacts
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          ARTIFACT_DIR="${{ runner.temp }}/artifacts"
+          mkdir -p "$ARTIFACT_DIR"
+          
+          if [ -z "${{ inputs.artifact-path }}" ]; then
+            # Default artifacts
+            [ -d "vendor" ] && tar -czf "$ARTIFACT_DIR/vendor.tar.gz" vendor/
+            [ -d "coverage-html" ] && cp -r coverage-html "$ARTIFACT_DIR/"
+            [ -f "coverage.xml" ] && cp coverage.xml "$ARTIFACT_DIR/"
+            [ -f "phpcs-report.txt" ] && cp phpcs-report.txt "$ARTIFACT_DIR/"
+          else
+            cp -r ${{ inputs.artifact-path }} "$ARTIFACT_DIR/"
+          fi
+          
+          echo "path=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
+      
+      - name: 📤 Upload Artifacts
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}-php${{ matrix.php-version }}
+          path: ${{ steps.artifacts.outputs.path }}
+          retention-days: ${{ inputs.artifact-retention-days }}
+      
+      - name: 📊 Build Summary
+        id: summary
+        if: always()
+        run: |
+          if [ "${{ steps.phpunit.outputs.status }}" = "success" ] || [ -z "${{ steps.phpunit.outputs.status }}" ]; then
+            echo "build-status=success" >> $GITHUB_OUTPUT
+          else
+            echo "build-status=failure" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "### 🐘 PHP Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **PHP Version** | ${{ matrix.php-version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Dependencies** | ${{ matrix.dependency-versions }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Tests** | ${{ steps.phpunit.outputs.status == 'success' && '✅ Passed' || steps.phpunit.outputs.status == 'failure' && '❌ Failed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Coverage** | ${{ steps.coverage.outputs.percentage || 'N/A' }}% |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Quality Score** | ${{ steps.quality.outputs.score || 'N/A' }}/100 |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Security** | ${{ inputs.run-security-check && '✅ Checked' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
