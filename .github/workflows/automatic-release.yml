@@ -147,4 +147,5 @@ jobs:
   #   permissions:
   #     contents: write
   #     pull-requests: write
-          echo "*Repository: [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)*" >> $GITHUB_STEP_SUMMARY
+  #        echo "*Repository: [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)*" >> $GITHUB_STEP_SUMMARY
+  
