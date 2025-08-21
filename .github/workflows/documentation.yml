@@ -25,6 +25,19 @@ on:
         description: 'Custom version for README'
         type: string
         default: ''
+  # Triggered by other workflows when tags are created
+  workflow_call:
+    inputs:
+      tag-name:
+        description: 'Tag name that triggered the documentation update'
+        type: string
+        required: false
+        default: ''
+      force-update:
+        description: 'Force README update even without changes'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -56,6 +69,14 @@ jobs:
           # Always run for tags
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "Running for tag: ${{ github.ref_name }}"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Always run for workflow_call (called by other workflows)
+          if [ "${{ github.event_name }}" = "workflow_call" ]; then
+            echo "Running for workflow call (tag: ${{ inputs.tag-name }})"
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "skip_reason=" >> $GITHUB_OUTPUT
             exit 0
@@ -138,8 +159,8 @@ jobs:
           contact-email: 'support@bauer-group.com'
           documentation-url: 'https://github.com/bauer-group/automation-templates/wiki'
           support-url: 'https://github.com/bauer-group/automation-templates/issues'
-          force-update: ${{ inputs.force-update || startsWith(github.ref, 'refs/tags/') }}
-          custom-version: ${{ inputs.custom-version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+          force-update: ${{ inputs.force-update || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' }}
+          custom-version: ${{ inputs.custom-version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || (github.event_name == 'workflow_call' && inputs.tag-name) || '' }}
 
       - name: 📄 Commit and Push Changes
         if: steps.should-run.outputs.should_run == 'true' && steps.generate.outputs.changes_detected == 'true' && github.event_name != 'pull_request'
