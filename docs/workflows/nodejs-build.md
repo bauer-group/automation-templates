@@ -38,7 +38,7 @@ on:
 
 jobs:
   build:
-    uses: your-org/automation-templates/.github/workflows/reusable-nodejs-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
     with:
       node-version: '20.x'
       package-manager: 'npm'
@@ -52,7 +52,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: your-org/automation-templates/.github/workflows/reusable-nodejs-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
     with:
       # Node.js Configuration
       node-version: '20.x'
@@ -278,7 +278,7 @@ test-command: 'bun test'
 ```yaml
 jobs:
   publish:
-    uses: your-org/automation-templates/.github/workflows/reusable-nodejs-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
     with:
       node-version: '20.x'
       build-command: 'npm run build'
@@ -295,7 +295,7 @@ jobs:
 ```yaml
 jobs:
   build-react:
-    uses: your-org/automation-templates/.github/workflows/reusable-nodejs-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
     with:
       node-version: '20.x'
       build-command: 'npm run build'
@@ -310,7 +310,7 @@ jobs:
 ```yaml
 jobs:
   build-nextjs:
-    uses: your-org/automation-templates/.github/workflows/reusable-nodejs-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
     with:
       node-version: '20.x'
       build-command: 'npm run build'
@@ -324,7 +324,7 @@ jobs:
 ```yaml
 jobs:
   build-monorepo:
-    uses: your-org/automation-templates/.github/workflows/reusable-nodejs-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
     with:
       package-manager: 'pnpm'
       is-monorepo: true
@@ -345,7 +345,7 @@ jobs:
         node: ['18.x', '20.x', '22.x']
         pm: [npm, yarn, pnpm]
     
-    uses: your-org/automation-templates/.github/workflows/reusable-nodejs-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
     with:
       node-version: ${{ matrix.node }}
       package-manager: ${{ matrix.pm }}
@@ -380,6 +380,16 @@ testing:
 - **Next.js App**: `.github/config/nodejs-build/nextjs-app.yml`
 - **Monorepo**: `.github/config/nodejs-build/monorepo.yml`
 
+### Example Workflows
+
+All example workflows are located in `github/workflows/examples/nodejs-build/`:
+- `simple-npm-package.yml` - Simple NPM package build
+- `npm-publish-release.yml` - NPM package publishing on release
+- `matrix-multi-version.yml` - Multi-version matrix builds
+- `react-app-deploy.yml` - React application deployment
+- `nextjs-docker-deploy.yml` - Next.js with Docker deployment
+- `monorepo-turborepo.yml` - Monorepo with Turborepo
+
 ## Publishing Workflow
 
 ### NPM Publishing
@@ -391,7 +401,7 @@ on:
 
 jobs:
   publish:
-    uses: your-org/automation-templates/.github/workflows/reusable-nodejs-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
     with:
       publish-package: true
       publish-registry: 'npm'

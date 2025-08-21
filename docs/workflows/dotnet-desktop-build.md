@@ -39,7 +39,7 @@ on:
 
 jobs:
   build:
-    uses: your-org/automation-templates/.github/workflows/reusable-dotnet-desktop-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/dotnet-desktop-build.yml@main
     with:
       dotnet-version: '8.0.x'
       solution-path: 'src/MyApp.sln'
@@ -52,7 +52,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: your-org/automation-templates/.github/workflows/reusable-dotnet-desktop-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/dotnet-desktop-build.yml@main
     with:
       # .NET Configuration
       dotnet-version: '8.0.x'
@@ -273,6 +273,15 @@ artifacts:
 #### MAUI Windows
 `.github/config/dotnet-desktop-build/maui-windows.yml`
 
+### Example Workflows
+
+All example workflows are located in `github/workflows/examples/dotnet-desktop-build/`:
+- `basic-wpf-build.yml` - Simple WPF application build
+- `advanced-signed-build.yml` - Build with code signing
+- `msix-package-build.yml` - MSIX package creation
+- `multi-project-build.yml` - Multiple project builds
+- `matrix-build-test.yml` - Matrix build configuration
+
 ## Examples
 
 ### WPF Application with Signing
@@ -286,7 +295,7 @@ on:
 
 jobs:
   build:
-    uses: your-org/automation-templates/.github/workflows/reusable-dotnet-desktop-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/dotnet-desktop-build.yml@main
     with:
       solution-path: 'src/WpfApp.sln'
       publish-type: 'single-file'
@@ -311,7 +320,7 @@ jobs:
           - path: 'src/App2/App2.csproj'
             type: 'self-contained'
     
-    uses: your-org/automation-templates/.github/workflows/reusable-dotnet-desktop-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/dotnet-desktop-build.yml@main
     with:
       project-path: ${{ matrix.project.path }}
       publish-type: ${{ matrix.project.type }}
@@ -322,7 +331,7 @@ jobs:
 ```yaml
 jobs:
   create-msix:
-    uses: your-org/automation-templates/.github/workflows/reusable-dotnet-desktop-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/dotnet-desktop-build.yml@main
     with:
       solution-path: 'src/StoreApp.sln'
       create-msix: true

@@ -16,7 +16,7 @@ env:
 
 jobs:
   build-and-test:
-    uses: ./.github/workflows/reusable-nodejs-build.yml
+    uses: ./.github/workflows/nodejs-build.yml
     with:
       node-version: ${{ env.NODE_VERSION }}
       package-manager: 'npm'

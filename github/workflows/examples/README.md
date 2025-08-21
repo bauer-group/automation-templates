@@ -1,263 +1,160 @@
-# 📄 Beispiel-Workflows für externe Repositories
+# GitHub Actions Workflow Examples
 
-Diese Workflows können von anderen Repositories als zentrale Vorlagen verwendet werden.
+This directory contains example workflows demonstrating how to use the reusable workflows from this repository.
 
-## 📄 README Generator Workflow
-
-### Verwendung in externen Repositories
-
-Erstelle eine Datei `.github/workflows/documentation.yml` in deinem Repository:
-
-```yaml
-name: 📄 Documentation Management
-
-on:
-  push:
-    branches: [main]
-    paths: ['docs/**', '*.md', '*.MD']
-  workflow_dispatch:
-
-jobs:
-  generate-readme:
-    name: Generate README
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: bauer-group/automation-templates/.github/actions/readme-generate@main
-        with:
-          template-path: 'docs/README.template.MD'
-          output-path: 'README.MD'
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### Template-Datei erstellen
-
-Erstelle eine Datei `docs/README.template.MD` mit Platzhaltern:
-
-```markdown
-# {{PROJECT_NAME}}
-
-**{{PROJECT_DESCRIPTION}}**
-
-- Version: {{VERSION}}
-- Repository: {{REPOSITORY_URL}}
-- Company: {{COMPANY_NAME}}
-- Contact: {{CONTACT_EMAIL}}
-
-Generated on: {{GENERATION_DATE}}
-```
-
-### Verfügbare Platzhalter
-
-| Platzhalter | Beschreibung | Automatisch erkannt |
-|-------------|-------------|-------------------|
-| `{{PROJECT_NAME}}` | Projektname | ✅ Aus Repository-Name |
-| `{{PROJECT_DESCRIPTION}}` | Projektbeschreibung | ✅ Aus Repository-Description |
-| `{{VERSION}}` | Version | ✅ Aus Git-Tags |
-| `{{COMPANY_NAME}}` | Firmenname | ❌ Parameter erforderlich |
-| `{{CONTACT_EMAIL}}` | Kontakt-Email | ❌ Parameter erforderlich |
-| `{{REPOSITORY_URL}}` | Repository-URL | ✅ Automatisch |
-| `{{GENERATION_DATE}}` | Generierungsdatum | ✅ Automatisch |
-| `{{BRANCH}}` | Aktueller Branch | ✅ Automatisch |
-
-## Konfigurationsoptionen
-
-### Workflow-Inputs
-
-- `template-path`: Pfad zur Template-Datei (Standard: `docs/README.template.MD`)
-- `output-path`: Ausgabedatei (Standard: `README.MD`)
-- `project-name`: Projektname (automatisch erkannt wenn leer)
-- `company-name`: Firmenname (erforderlich für saubere Ausgabe)
-- `project-description`: Projektbeschreibung (automatisch erkannt)
-- `auto-commit`: Automatisches Committen der Änderungen (Standard: `true`)
-- `force-update`: Update erzwingen auch ohne Änderungen (Standard: `false`)
-
-### Workflow-Outputs
-
-- `readme_updated`: Ob README aktualisiert wurde
-- `changes_detected`: Ob Änderungen erkannt wurden
-- `validation_passed`: Ob Validierung erfolgreich war
-- `file_size`: Größe der generierten Datei
-- `unresolved_placeholders`: Anzahl unaufgelöster Platzhalter
-
-### Beispiel für verschiedene Trigger
-
-```yaml
-name: 📄 README Management
-
-on:
-  # Bei Änderungen am Template
-  push:
-    branches: [main]
-    paths: ['docs/README.template.MD', 'docs/**']
-  
-  # Bei neuen Tags/Releases - AUTOMATISCHE VERSION UPDATE
-  push:
-    tags:
-      - 'v*'
-      - '[0-9]+.[0-9]+.[0-9]+'
-  
-  # Manueller Trigger
-  workflow_dispatch:
-    inputs:
-      force-update:
-        description: 'README auch ohne Änderungen aktualisieren'
-        type: boolean
-        default: false
-      custom-version:
-        description: 'Benutzerdefinierte Version für README'
-        type: string
-        default: ''
-
-jobs:
-  update-readme:
-    uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
-    with:
-      force-update: ${{ inputs.force-update || startsWith(github.ref, 'refs/tags/') }}
-      custom-version: ${{ inputs.custom-version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-#### 🆕 Tag-basierte Release-Trigger Features
-
-- **Automatische Versionserkennung**: Bei Tag-Push wird die Version automatisch aus dem Tag-Namen extrahiert
-- **Zuverlässiger Trigger**: Tag-basierter Trigger ist zuverlässiger als Release-Events
-- **Force-Update bei Tags**: README wird bei jedem neuen Tag automatisch aktualisiert
-- **Spezielle Commit-Messages**: Tags erzeugen dedizierte Commit-Messages wie `docs: update README.MD for release v1.2.3 [automated]`
-- **Tag-Details in Summary**: Workflow-Summary zeigt Tag-Name und Trigger-Information
-
----
-
-## 🧩 Modulare Workflow-Beispiele
-
-Die folgenden Beispiele zeigen, wie die **modularen Workflow-Komponenten** für verschiedene Projekttypen und Anwendungsfälle verwendet werden können.
-
-### 📋 Verfügbare Beispiele
-
-| Beispiel | Beschreibung | Zielgruppe |
-|----------|-------------|-----------|
-| **[documentation.yml](../../.github/workflows/documentation.yml)** | Documentation Management | Alle Projekttypen |
-| **[simple-release.yml](./simple-release.yml)** | Einfacher Release-Workflow | Kleine Projekte, Prototypen |
-| **[comprehensive-ci-cd.yml](./comprehensive-ci-cd.yml)** | Vollständige CI/CD-Pipeline | Enterprise-Projekte |
-| **[security-focused.yml](./security-focused.yml)** | Security-zentrierte Pipeline | Sicherheitskritische Anwendungen |
-| **[nodejs-project.yml](./nodejs-project.yml)** | Node.js-spezifischer Workflow | JavaScript/TypeScript-Projekte |
-
-### 🎯 Modulare Architektur
-
-Anstatt monolithischer Workflows (wie der ursprüngliche 870-Zeilen automatic-release.yml) verwenden wir **komponierbare Module**:
+## Directory Structure
 
 ```
-🧩 Modulare Komponenten (.github/workflows/):
-├── 🛡️ modules-security-scan.yml      → Sicherheitsanalyse
-├── 📋 modules-license-compliance.yml → Lizenz-Compliance
-├── 🚀 modules-semantic-release.yml  → Release-Automatisierung
-├── 🔨 modules-artifact-generation.yml → Artefakt-Erstellung
-└── 🔍 modules-pr-validation.yml      → Pull Request-Validierung
+github/workflows/examples/
+├── ci-cd/                   # CI/CD pipeline examples
+│   ├── comprehensive-ci-cd.yml
+│   └── security-focused.yml
+├── documentation/           # Documentation & automation examples
+│   ├── ai-issue-summary.yml
+│   ├── documentation.yml
+│   ├── issue-automation.yml
+│   ├── pr-labeler.yml
+│   └── readme.yml
+├── dotnet-desktop-build/    # .NET Desktop application examples
+│   ├── basic-wpf-build.yml
+│   ├── advanced-signed-build.yml
+│   ├── msix-package-build.yml
+│   ├── multi-project-build.yml
+│   └── matrix-build-test.yml
+├── dotnet-build/            # .NET Core/5+ application examples
+│   ├── simple-library.yml
+│   ├── web-api-docker.yml
+│   ├── nuget-package-publish.yml
+│   ├── blazor-wasm-deploy.yml
+│   ├── matrix-cross-platform.yml
+│   └── microservice-k8s.yml
+├── nodejs-build/            # Node.js application examples
+│   ├── simple-npm-package.yml
+│   ├── npm-publish-release.yml
+│   ├── matrix-multi-version.yml
+│   ├── react-app-deploy.yml
+│   ├── nextjs-docker-deploy.yml
+│   └── monorepo-turborepo.yml
+├── release/                 # Release automation examples
+│   ├── semantic-release.yml
+│   └── simple-release.yml
+├── security/               # Security workflow examples
+│   ├── automatic-release.yml
+│   └── manual-release.yml
+├── project-templates/      # Complete project workflow templates
+│   └── nodejs-project.yml
+└── docker/                 # Docker-specific examples (future)
 ```
 
-### 🚀 Quick Start
+## Using These Examples
 
-**1. Einfacher Release-Workflow:**
-```yaml
-jobs:
-  release:
-    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
-    with:
-      release-type: 'simple'
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
+1. **Copy the example** that matches your use case
+2. **Place it in your repository's** `.github/workflows/` directory
+3. **Modify the configuration** to match your project structure
+4. **Update the `uses:` statement** to reference this repository:
+   ```yaml
+   uses: your-org/automation-templates/.github/workflows/[workflow-name].yml@main
+   ```
 
-**2. Mit Security-Scan:**
-```yaml
-jobs:
-  security:
-    uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
-  
-  release:
-    needs: security
-    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
-```
+## Available Reusable Workflows
 
-**3. PR-Validierung:**
-```yaml
-jobs:
-  pr-check:
-    if: github.event_name == 'pull_request'
-    uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@main
-    with:
-      enable-security-scan: true
-      enable-license-check: true
-```
+### .NET Desktop Build (`dotnet-desktop-build.yml`)
+For building Windows desktop applications (WPF, WinForms, MAUI)
 
-### 💡 Vorteile der modularen Architektur
+**Examples:**
+- `dotnet-desktop-build/basic-wpf-build.yml` - Simple WPF application
+- `dotnet-desktop-build/advanced-signed-build.yml` - With code signing
+- `dotnet-desktop-build/msix-package-build.yml` - MSIX packaging
+- `dotnet-desktop-build/multi-project-build.yml` - Multiple projects
+- `dotnet-desktop-build/matrix-build-test.yml` - Matrix configurations
 
-- ✅ **Wiederverwendbarkeit:** Ein Modul, viele Projekte
-- ✅ **Flexibilität:** Nur die benötigten Komponenten verwenden
-- ✅ **Wartbarkeit:** Einzelne Module unabhängig aktualisieren
-- ✅ **Testbarkeit:** Jedes Modul isoliert testbar
-- ✅ **Performance:** Parallel ausführbare Module
+### .NET Build (`dotnet-build.yml`)
+For building .NET Core/5+ applications, libraries, and services
 
-### 🔗 Weiterführende Dokumentation
+**Examples:**
+- `dotnet-build/simple-library.yml` - Class library
+- `dotnet-build/web-api-docker.yml` - Web API with Docker
+- `dotnet-build/nuget-package-publish.yml` - NuGet publishing
+- `dotnet-build/blazor-wasm-deploy.yml` - Blazor WebAssembly
+- `dotnet-build/matrix-cross-platform.yml` - Cross-platform builds
+- `dotnet-build/microservice-k8s.yml` - Microservice with Kubernetes
 
-- **[Modulare Komponenten](..//modules-README.MD)** - Detaillierte Dokumentation der einzelnen Module
-- **[Migration Guide](../modules-README.MD#migration-von-monolithen)** - Von monolithischen zu modularen Workflows
-- **[Best Practices](../modules-README.MD#best-practices)** - Empfehlungen für die Workflow-Komposition
-- **[Actions Documentation](../../.github/actions/README.MD)** - Übersicht über verfügbare GitHub Actions
-- **[Repository Workflows](../../.github/workflows/README.md)** - Interne Workflow-Dokumentation
+### Node.js Build (`nodejs-build.yml`)
+For building Node.js applications and packages
 
----
+**Examples:**
+- `nodejs-build/simple-npm-package.yml` - NPM package
+- `nodejs-build/npm-publish-release.yml` - NPM publishing
+- `nodejs-build/matrix-multi-version.yml` - Multi-version testing
+- `nodejs-build/react-app-deploy.yml` - React deployment
+- `nodejs-build/nextjs-docker-deploy.yml` - Next.js with Docker
+- `nodejs-build/monorepo-turborepo.yml` - Monorepo management
 
-## 🔧 Setup für Semantic Release
+### CI/CD Pipelines
+Complete CI/CD pipeline configurations
 
-### 1. Konfiguration erstellen
+**Examples:**
+- `ci-cd/comprehensive-ci-cd.yml` - Full CI/CD pipeline with all checks
+- `ci-cd/security-focused.yml` - Security-first CI/CD pipeline
 
-Erstelle `.github/config/.releaserc.json`:
+### Documentation & Automation
+Various automation and documentation workflows
 
-```json
-{
-  "branches": ["main"],
-  "plugins": [
-    "@semantic-release/commit-analyzer",
-    "@semantic-release/release-notes-generator",
-    ["@semantic-release/changelog", {
-      "changelogFile": "CHANGELOG.MD"
-    }],
-    "@semantic-release/github",
-    ["@semantic-release/git", {
-      "assets": ["CHANGELOG.MD"]
-    }]
-  ]
-}
-```
+**Examples:**
+- `documentation/ai-issue-summary.yml` - AI-powered issue summaries
+- `documentation/documentation.yml` - Auto-generate documentation
+- `documentation/issue-automation.yml` - Issue management automation
+- `documentation/pr-labeler.yml` - Automatic PR labeling
+- `documentation/readme.yml` - README generation
 
-### 2. Workflow einrichten
+### Release Management
+Release and versioning workflows
 
-```yaml
-name: 🚀 Automatic Release
+**Examples:**
+- `release/semantic-release.yml` - Semantic versioning automation
+- `release/simple-release.yml` - Basic release workflow
 
-on:
-  push:
-    branches: [main]
+### Security Workflows
+Security scanning and compliance workflows
 
-jobs:
-  release:
-    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
+**Examples:**
+- `security/automatic-release.yml` - Secure automated releases
+- `security/manual-release.yml` - Manual release with security checks
 
-## 📚 Weitere Ressourcen
+### Project Templates
+Complete workflow templates for specific project types
 
-- **[Semantic Release](https://semantic-release.gitbook.io/)**: Offizielle Dokumentation
-- **[Conventional Commits](https://www.conventionalcommits.org/)**: Commit-Format Spezifikation
-- **[SPDX License List](https://spdx.org/licenses/)**: Standardisierte Lizenz-Identifier
+**Examples:**
+- `project-templates/nodejs-project.yml` - Complete Node.js project setup
 
-## 🆘 Support
+## Configuration
 
-- **Issues**: [GitHub Issues](https://github.com/bauer-group/automation-templates/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/bauer-group/automation-templates/discussions)
+Most workflows support configuration through:
 
-**Ready to use, built for scale!** 🚀
+1. **Workflow inputs** - Direct parameters in the workflow file
+2. **Configuration files** - YAML files in `.github/config/`
+3. **Secrets** - Sensitive data like tokens and credentials
+4. **Environment variables** - Runtime configuration
+
+## Best Practices
+
+1. **Start simple** - Use basic examples and add complexity as needed
+2. **Use matrix builds** - Test across multiple versions/platforms
+3. **Cache dependencies** - Improve build performance
+4. **Pin versions** - Use specific versions for reproducibility
+5. **Secure secrets** - Never commit sensitive data
+
+## Support
+
+For detailed documentation, see:
+- [.NET Desktop Build Documentation](../../../docs/workflows/dotnet-desktop-build.md)
+- [.NET Build Documentation](../../../docs/workflows/dotnet-build.md)
+- [Node.js Build Documentation](../../../docs/workflows/nodejs-build.md)
+
+## Contributing
+
+When adding new examples:
+1. Place them in the appropriate category directory
+2. Use descriptive names
+3. Include comments explaining key configurations
+4. Update this README with the new example

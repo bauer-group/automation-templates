@@ -13,7 +13,7 @@ on:
 
 jobs:
   build-blazor:
-    uses: ./.github/workflows/reusable-dotnet-build.yml
+    uses: ./.github/workflows/dotnet-build.yml
     with:
       # .NET Configuration
       dotnet-version: '8.0.x'
