@@ -284,7 +284,7 @@ jobs:
           Write-Host "Version: $version"
       
       - name: 🔐 Configure NuGet
-        if: secrets.NUGET_API_KEY != ''
+        if: ${{ secrets.NUGET_API_KEY }}
         shell: pwsh
         run: |
           $nugetConfig = @"
@@ -391,7 +391,7 @@ jobs:
           }
       
       - name: 📝 Prepare Certificate
-        if: inputs.sign-output == true && secrets.SIGNING_CERTIFICATE != ''
+        if: ${{ inputs.sign-output == true && secrets.SIGNING_CERTIFICATE }}
         id: certificate
         shell: pwsh
         run: |

@@ -350,7 +350,7 @@ on:
         description: 'NPM authentication token'
         required: false
       
-      GITHUB_TOKEN:
+      GH_TOKEN:
         description: 'GitHub token for GitHub Packages'
         required: false
       
@@ -721,7 +721,7 @@ jobs:
         if: inputs.publish-package
         working-directory: ${{ inputs.working-directory }}
         env:
-          NODE_AUTH_TOKEN: ${{ inputs.publish-registry == 'github' && secrets.GITHUB_TOKEN || secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ inputs.publish-registry == 'github' && secrets.GH_TOKEN || secrets.NPM_TOKEN }}
         run: |
           PM="${{ steps.detect-pm.outputs.package-manager }}"
           
