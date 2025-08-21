@@ -232,6 +232,8 @@ jobs:
 
       - name: 🚀 Create GitHub Release
         id: create-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TARGET_VERSION="${{ needs.validate-inputs.outputs.calculated-version }}"
           
