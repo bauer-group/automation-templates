@@ -1,5 +1,5 @@
-# Example: FastAPI Application with PostgreSQL
-# This workflow demonstrates a complete CI/CD pipeline for a FastAPI application
+# Example: FastAPI Application with PostgreSQL and Redis
+# This example demonstrates a complete CI/CD pipeline using reusable workflows
 
 name: FastAPI Application CI/CD
 
@@ -10,20 +10,68 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-env:
-  PYTHON_VERSION: "3.11"
-  POSTGRES_VERSION: "15"
-
 permissions:
   contents: read
   packages: write
   security-events: write
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+  # Use reusable Python build workflow with custom configuration
+  test-and-build:
+    name: Test & Build FastAPI App
+    uses: ./.github/workflows/python-build.yml
+    with:
+      # Python Configuration
+      python-version: '3.11'
+      working-directory: '.'
+      project-type: 'web-app'
+      
+      # Dependencies
+      requirements-files: '["requirements.txt", "requirements-dev.txt", "requirements-test.txt"]'
+      install-dev-requirements: true
+      package-manager: 'pip'
+      cache-dependencies: true
+      
+      # Testing with services
+      run-tests: true
+      test-framework: 'pytest'
+      test-path: 'tests'
+      test-args: '-v --tb=short'
+      collect-coverage: true
+      coverage-threshold: 85
+      coverage-format: 'xml,html'
+      coverage-fail-under: true
+      
+      # Code Quality (strict for web apps)
+      run-lint: true
+      linter: 'ruff'
+      run-format-check: true
+      formatter: 'black'
+      format-check-only: true
+      run-import-sort: true
+      import-sorter: 'isort'
+      run-type-check: true
+      type-checker: 'mypy'
+      
+      # Security (important for web apps)
+      run-security-scan: true
+      security-tools: '["bandit", "safety"]'
+      security-fail-on-error: true
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'fastapi-app'
+      
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  # Integration tests with real services
+  integration-tests:
+    name: Integration Tests
+    needs: test-and-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
     services:
       postgres:
         image: postgres:15
@@ -50,158 +98,147 @@ jobs:
           - 6379:6379
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python ${{ env.PYTHON_VERSION }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-        cache: 'pip'
+      - name: Setup Python Environment
+        uses: ./.github/actions/python-setup
+        with:
+          python-version: '3.11'
+          requirements-files: 'requirements.txt,requirements-test.txt'
+          install-dev-requirements: true
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -r requirements-dev.txt
-        pip install pytest-asyncio pytest-cov httpx
+      - name: Set up environment variables
+        run: |
+          echo "DATABASE_URL=postgresql://testuser:testpass@localhost:5432/testdb" >> $GITHUB_ENV
+          echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
+          echo "SECRET_KEY=test-secret-key-for-ci" >> $GITHUB_ENV
 
-    - name: Set up environment variables
-      run: |
-        echo "DATABASE_URL=postgresql://testuser:testpass@localhost:5432/testdb" >> $GITHUB_ENV
-        echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
-        echo "SECRET_KEY=test-secret-key-for-ci" >> $GITHUB_ENV
+      - name: Run database migrations
+        run: |
+          alembic upgrade head
 
-    - name: Run database migrations
-      run: |
-        alembic upgrade head
+      - name: Run API integration tests
+        run: |
+          pytest tests/integration/ -v --tb=short
 
-    - name: Lint with ruff
-      run: |
-        ruff check .
-        ruff format --check .
+      - name: API health check
+        run: |
+          # Start the application in background
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+          
+          # Test API endpoints
+          curl -f http://localhost:8000/health || exit 1
+          curl -f http://localhost:8000/docs || exit 1
 
-    - name: Type checking with mypy
-      run: |
-        mypy .
-
-    - name: Security check with bandit
-      run: |
-        bandit -r app/ -f json -o bandit-report.json
-
-    - name: Test with pytest
-      run: |
-        pytest --cov=app --cov-report=xml --cov-report=html --junitxml=pytest-report.xml -v
-
-    - name: API integration tests
-      run: |
-        # Start the application in background
-        uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-        sleep 10
-        
-        # Run API tests
-        pytest tests/integration/ -v
-        
-        # Stop the application
-        pkill -f uvicorn
-
-    - name: Upload coverage reports
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.xml
-        flags: unittests
-
-    - name: Archive test results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: test-results
-        path: |
-          pytest-report.xml
-          htmlcov/
-          bandit-report.json
-
-  docker:
-    needs: test
+  # Docker build job
+  docker-build:
+    name: Build Docker Image
+    needs: test-and-build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
+    timeout-minutes: 15
+    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Log in to GitHub Container Registry
-      if: github.event_name != 'pull_request'
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ghcr.io/${{ github.repository }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix={{branch}}-
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        platforms: linux/amd64,linux/arm64
-        push: ${{ github.event_name != 'pull_request' }}
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-    - name: Run container security scan
-      if: github.event_name != 'pull_request'
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: ghcr.io/${{ github.repository }}:${{ github.sha }}
-        format: 'sarif'
-        output: 'trivy-results.sarif'
+      - name: Run container security scan
+        if: github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
 
-    - name: Upload security scan results
-      if: github.event_name != 'pull_request'
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: 'trivy-results.sarif'
+      - name: Upload security scan results
+        if: github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
 
+  # Deploy to staging
   deploy-staging:
+    name: Deploy to Staging
+    needs: [integration-tests, docker-build]
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
-    needs: [test, docker]
     runs-on: ubuntu-latest
     environment:
       name: staging
       url: https://api-staging.example.com
 
     steps:
-    - name: Deploy to staging
-      run: |
-        echo "Deploying to staging environment..."
-        # kubectl apply -f k8s/staging/
-        # helm upgrade --install myapp-staging ./helm-chart --namespace staging
+      - name: Deploy FastAPI to staging
+        run: |
+          echo "Deploying FastAPI application to staging..."
+          echo "Image: ghcr.io/${{ github.repository }}:${{ github.sha }}"
+          # Add your deployment commands here
+          # kubectl apply -f k8s/staging/
+          # helm upgrade --install myapp-staging ./helm-chart --namespace staging
 
+      - name: Run smoke tests
+        run: |
+          echo "Running staging smoke tests..."
+          # curl -f https://api-staging.example.com/health
+          # curl -f https://api-staging.example.com/docs
+
+  # Deploy to production
   deploy-production:
+    name: Deploy to Production
+    needs: [integration-tests, docker-build]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [test, docker]
     runs-on: ubuntu-latest
     environment:
       name: production
       url: https://api.example.com
 
     steps:
-    - name: Deploy to production
-      run: |
-        echo "Deploying to production environment..."
-        # kubectl apply -f k8s/production/
-        # helm upgrade --install myapp ./helm-chart --namespace production
+      - name: Deploy FastAPI to production
+        run: |
+          echo "Deploying FastAPI application to production..."
+          echo "Image: ghcr.io/${{ github.repository }}:${{ github.sha }}"
+          # Add your deployment commands here
+          # kubectl apply -f k8s/production/
+          # helm upgrade --install myapp ./helm-chart --namespace production
+
+      - name: Run production smoke tests
+        run: |
+          echo "Running production smoke tests..."
+          # curl -f https://api.example.com/health
+
+      - name: Notify team
+        run: |
+          echo "FastAPI application deployed to production successfully!"
+          # Add notification logic (Slack, Teams, etc.)

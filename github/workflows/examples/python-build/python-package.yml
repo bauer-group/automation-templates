@@ -1,3 +1,6 @@
+# Example: Python Package CI with Multi-Platform Testing
+# This example demonstrates using the reusable Python build workflow for PyPI packages
+
 name: Python Package CI
 
 on:
@@ -14,121 +17,96 @@ permissions:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
-        exclude:
-          # Reduce matrix for faster builds on non-main branches
-          - os: windows-latest
-            python-version: "3.9"
-          - os: macos-latest
-            python-version: "3.9"
+    name: Build & Test Package
+    uses: ./.github/workflows/python-build.yml
+    with:
+      # Matrix Configuration for multi-platform testing
+      enable-matrix: true
+      matrix-os: '["ubuntu-latest", "windows-latest", "macos-latest"]'
+      matrix-python: '["3.9", "3.10", "3.11", "3.12"]'
+      matrix-fail-fast: false
+      
+      # Basic Configuration
+      working-directory: '.'
+      project-type: 'package'
+      
+      # Dependencies
+      requirements-files: '["requirements.txt", "requirements-dev.txt"]'
+      install-dev-requirements: true
+      package-manager: 'pip'
+      cache-dependencies: true
+      
+      # Testing
+      run-tests: true
+      test-framework: 'pytest'
+      test-path: 'tests'
+      collect-coverage: true
+      coverage-threshold: 90
+      coverage-format: 'xml,html'
+      coverage-fail-under: false
+      
+      # Code Quality
+      run-lint: true
+      linter: 'ruff'
+      run-format-check: true
+      formatter: 'black'
+      format-check-only: true
+      run-import-sort: true
+      run-type-check: true
+      type-checker: 'mypy'
+      
+      # Security
+      run-security-scan: true
+      security-tools: '["bandit", "safety"]'
+      security-fail-on-error: false
+      
+      # Package Building
+      build-package: true
+      build-tools: '["build", "twine"]'
+      package-check: true
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'python-package'
+      
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-
-    - name: Install dependencies
-      shell: bash
-      run: |
-        python -m pip install --upgrade pip
-        pip install build twine flake8 pytest pytest-cov pytest-xdist mypy black isort
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-
-    - name: Install package in development mode
-      run: |
-        pip install -e .
-
-    - name: Code formatting check - Black
-      if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
-      run: |
-        black --check --diff .
-
-    - name: Import sorting check - isort
-      if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
-      run: |
-        isort --check-only --diff .
-
-    - name: Type checking - mypy
-      if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
-      run: |
-        mypy . --ignore-missing-imports || true
-      continue-on-error: true
-
-    - name: Lint with flake8
-      run: |
-        # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-    - name: Test with pytest
-      run: |
-        pytest --cov=. --cov-report=xml --cov-report=term-missing --junitxml=pytest-report-${{ matrix.os }}-${{ matrix.python-version }}.xml -n auto
-
-    - name: Build package
-      if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
-      run: |
-        python -m build
-
-    - name: Check package
-      if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
-      run: |
-        twine check dist/*
-
-    - name: Upload coverage to Codecov
-      if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-${{ matrix.os }}-${{ matrix.python-version }}
-        fail_ci_if_error: false
-
-    - name: Archive test results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: test-results-${{ matrix.os }}-${{ matrix.python-version }}
-        path: |
-          pytest-report-${{ matrix.os }}-${{ matrix.python-version }}.xml
-          coverage.xml
-
-    - name: Archive build artifacts
-      uses: actions/upload-artifact@v4
-      if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
-      with:
-        name: python-package-distributions
-        path: dist/
-
-  test-summary:
+  # Optional: Publish to TestPyPI on develop branch
+  publish-test:
+    name: Publish to TestPyPI
     needs: build
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-    - name: Download all test results
-      uses: actions/download-artifact@v4
-      with:
-        pattern: test-results-*
-        merge-multiple: true
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    uses: ./.github/workflows/python-publish.yml
+    with:
+      python-version: '3.11'
+      publish-to: 'testpypi'
+      run-tests: false  # Already tested in build job
+      validate-package: true
+      run-security-scan: true
+      create-github-release: false
+      environment: 'testpypi'
+    secrets:
+      TEST_PYPI_API_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-    - name: Publish test results
-      uses: dorny/test-reporter@v1
-      if: success() || failure()
-      with:
-        name: Python Package Tests
-        path: 'pytest-report-*.xml'
-        reporter: java-junit
+  # Optional: Publish to PyPI on release
+  publish-release:
+    name: Publish to PyPI
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/python-publish.yml
+    with:
+      python-version: '3.11'
+      publish-to: 'pypi'
+      run-tests: false  # Already tested in build job
+      validate-package: true
+      run-security-scan: true
+      create-github-release: true
+      release-draft: false
+      release-prerelease: false
+      generate-docs: true
+      environment: 'pypi'
+    secrets:
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

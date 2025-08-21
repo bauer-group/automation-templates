@@ -1,0 +1,686 @@
+name: 🐍 Python Build & Test
+
+on:
+  workflow_call:
+    inputs:
+      # Python Configuration
+      python-version:
+        description: 'Python version(s) - comma-separated for multiple'
+        type: string
+        required: false
+        default: '3.11'
+      
+      python-version-file:
+        description: 'Path to .python-version or pyproject.toml file'
+        type: string
+        required: false
+        default: ''
+      
+      # Project Configuration
+      working-directory:
+        description: 'Working directory for all commands'
+        type: string
+        required: false
+        default: '.'
+      
+      project-type:
+        description: 'Project type (app, package, web-app, data-science, microservice)'
+        type: string
+        required: false
+        default: 'app'
+      
+      # Dependencies
+      requirements-files:
+        description: 'Requirements files as JSON array'
+        type: string
+        required: false
+        default: '["requirements.txt"]'
+      
+      install-dev-requirements:
+        description: 'Install development requirements'
+        type: boolean
+        required: false
+        default: true
+      
+      install-command:
+        description: 'Custom install command'
+        type: string
+        required: false
+        default: ''
+      
+      upgrade-pip:
+        description: 'Upgrade pip before installation'
+        type: boolean
+        required: false
+        default: true
+      
+      # Virtual Environment
+      use-venv:
+        description: 'Create and use virtual environment'
+        type: boolean
+        required: false
+        default: false
+      
+      # Package Management
+      package-manager:
+        description: 'Package manager (pip, poetry, pipenv, conda)'
+        type: string
+        required: false
+        default: 'pip'
+      
+      cache-dependencies:
+        description: 'Cache dependencies'
+        type: boolean
+        required: false
+        default: true
+      
+      # Testing Configuration
+      run-tests:
+        description: 'Run tests'
+        type: boolean
+        required: false
+        default: true
+      
+      test-framework:
+        description: 'Test framework (pytest, unittest, nose2)'
+        type: string
+        required: false
+        default: 'pytest'
+      
+      test-command:
+        description: 'Custom test command'
+        type: string
+        required: false
+        default: ''
+      
+      test-path:
+        description: 'Path to tests'
+        type: string
+        required: false
+        default: 'tests'
+      
+      test-args:
+        description: 'Additional test arguments'
+        type: string
+        required: false
+        default: ''
+      
+      # Coverage
+      collect-coverage:
+        description: 'Collect test coverage'
+        type: boolean
+        required: false
+        default: true
+      
+      coverage-threshold:
+        description: 'Minimum coverage threshold percentage'
+        type: number
+        required: false
+        default: 80
+      
+      coverage-format:
+        description: 'Coverage report format (xml, html, term)'
+        type: string
+        required: false
+        default: 'xml'
+      
+      coverage-fail-under:
+        description: 'Fail if coverage is under threshold'
+        type: boolean
+        required: false
+        default: false
+      
+      # Code Quality
+      run-lint:
+        description: 'Run linting'
+        type: boolean
+        required: false
+        default: true
+      
+      linter:
+        description: 'Linter to use (flake8, ruff, pylint)'
+        type: string
+        required: false
+        default: 'flake8'
+      
+      lint-config:
+        description: 'Path to lint configuration file'
+        type: string
+        required: false
+        default: ''
+      
+      max-line-length:
+        description: 'Maximum line length for linting'
+        type: number
+        required: false
+        default: 88
+      
+      # Code Formatting
+      run-format-check:
+        description: 'Check code formatting'
+        type: boolean
+        required: false
+        default: false
+      
+      formatter:
+        description: 'Code formatter (black, autopep8, yapf)'
+        type: string
+        required: false
+        default: 'black'
+      
+      format-check-only:
+        description: 'Only check formatting, dont fix'
+        type: boolean
+        required: false
+        default: true
+      
+      # Import Sorting
+      run-isort-check:
+        description: 'Check import sorting'
+        type: boolean
+        required: false
+        default: false
+      
+      isort-check-only:
+        description: 'Only check import sorting, dont fix'
+        type: boolean
+        required: false
+        default: true
+      
+      # Type Checking
+      run-type-check:
+        description: 'Run type checking'
+        type: boolean
+        required: false
+        default: false
+      
+      type-checker:
+        description: 'Type checker (mypy, pyright, pyre)'
+        type: string
+        required: false
+        default: 'mypy'
+      
+      type-check-args:
+        description: 'Additional type check arguments'
+        type: string
+        required: false
+        default: '--ignore-missing-imports'
+      
+      # Security Scanning
+      run-security-scan:
+        description: 'Run security scanning'
+        type: boolean
+        required: false
+        default: true
+      
+      security-tools:
+        description: 'Security tools as JSON array (bandit, safety)'
+        type: string
+        required: false
+        default: '["bandit", "safety"]'
+      
+      security-fail-on-error:
+        description: 'Fail build on security issues'
+        type: boolean
+        required: false
+        default: false
+      
+      # Build & Package
+      build-package:
+        description: 'Build package (wheel/sdist)'
+        type: boolean
+        required: false
+        default: false
+      
+      build-tools:
+        description: 'Build tools as JSON array'
+        type: string
+        required: false
+        default: '["build", "twine"]'
+      
+      package-check:
+        description: 'Check package with twine'
+        type: boolean
+        required: false
+        default: true
+      
+      # Matrix Configuration
+      enable-matrix:
+        description: 'Enable matrix builds'
+        type: boolean
+        required: false
+        default: false
+      
+      matrix-os:
+        description: 'OS matrix as JSON array'
+        type: string
+        required: false
+        default: '["ubuntu-latest"]'
+      
+      matrix-python:
+        description: 'Python version matrix as JSON array'
+        type: string
+        required: false
+        default: '["3.11"]'
+      
+      matrix-fail-fast:
+        description: 'Fail fast in matrix builds'
+        type: boolean
+        required: false
+        default: false
+      
+      # Platform Configuration
+      runs-on:
+        description: 'Runner OS (ubuntu-latest, windows-latest, macos-latest)'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+      
+      timeout-minutes:
+        description: 'Job timeout in minutes'
+        type: number
+        required: false
+        default: 30
+      
+      # Artifact Management
+      upload-artifacts:
+        description: 'Upload build artifacts'
+        type: boolean
+        required: false
+        default: true
+      
+      artifact-name:
+        description: 'Name for uploaded artifacts'
+        type: string
+        required: false
+        default: 'python-build'
+      
+      artifact-paths:
+        description: 'Artifact paths as JSON array'
+        type: string
+        required: false
+        default: '[]'
+      
+      artifact-retention-days:
+        description: 'Number of days to retain artifacts'
+        type: number
+        required: false
+        default: 30
+      
+    secrets:
+      CODECOV_TOKEN:
+        description: 'Codecov token for uploading coverage reports'
+        required: false
+      
+      SONARCLOUD_TOKEN:
+        description: 'SonarCloud token for code quality analysis'
+        required: false
+      
+      PYPI_API_TOKEN:
+        description: 'PyPI API token for package publishing'
+        required: false
+      
+      TEST_PYPI_API_TOKEN:
+        description: 'TestPyPI API token for package publishing'
+        required: false
+    
+    outputs:
+      python-version:
+        description: 'Python version used'
+        value: ${{ jobs.build.outputs.python-version }}
+      
+      package-version:
+        description: 'Package version'
+        value: ${{ jobs.build.outputs.package-version }}
+      
+      test-results:
+        description: 'Test results status'
+        value: ${{ jobs.build.outputs.test-results }}
+      
+      coverage-percentage:
+        description: 'Coverage percentage'
+        value: ${{ jobs.build.outputs.coverage-percentage }}
+      
+      package-path:
+        description: 'Path to built package'
+        value: ${{ jobs.build.outputs.package-path }}
+
+jobs:
+  build:
+    name: Python Build
+    runs-on: ${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    
+    strategy:
+      matrix:
+        os: ${{ inputs.enable-matrix && fromJson(inputs.matrix-os) || fromJson('["ubuntu-latest"]') }}
+        python-version: ${{ inputs.enable-matrix && fromJson(inputs.matrix-python) || fromJson('["3.11"]') }}
+      fail-fast: ${{ inputs.matrix-fail-fast }}
+    
+    outputs:
+      python-version: ${{ steps.setup-python.outputs.python-version }}
+      package-version: ${{ steps.version.outputs.version }}
+      test-results: ${{ steps.test.outputs.results }}
+      coverage-percentage: ${{ steps.coverage.outputs.percentage }}
+      package-path: ${{ steps.package.outputs.path }}
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+      
+      - name: 🐍 Setup Python
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.enable-matrix && matrix.python-version || inputs.python-version }}
+          python-version-file: ${{ inputs.python-version-file }}
+          cache: ${{ inputs.package-manager == 'pip' && inputs.cache-dependencies && 'pip' || '' }}
+          cache-dependency-path: |
+            requirements*.txt
+            pyproject.toml
+            poetry.lock
+            Pipfile.lock
+      
+      - name: 🔧 Setup Package Manager
+        shell: bash
+        run: |
+          if [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            curl -sSL https://install.python-poetry.org | python3 -
+            echo "$HOME/.local/bin" >> $GITHUB_PATH
+          elif [ "${{ inputs.package-manager }}" = "pipenv" ]; then
+            pip install pipenv
+          fi
+      
+      - name: 📦 Cache Dependencies
+        if: inputs.cache-dependencies && inputs.package-manager != 'pip'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/pypoetry
+            ~/.local/share/virtualenvs
+            ~/.cache/pipenv
+          key: ${{ inputs.package-manager }}-${{ runner.os }}-${{ inputs.enable-matrix && matrix.python-version || inputs.python-version }}-${{ hashFiles('**/requirements*.txt', '**/pyproject.toml', '**/poetry.lock', '**/Pipfile.lock') }}
+          restore-keys: |
+            ${{ inputs.package-manager }}-${{ runner.os }}-${{ inputs.enable-matrix && matrix.python-version || inputs.python-version }}-
+            ${{ inputs.package-manager }}-${{ runner.os }}-
+      
+      - name: 🏷️ Determine Version
+        id: version
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -f "pyproject.toml" ] && command -v python3 >/dev/null; then
+            VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])" 2>/dev/null || echo "")
+          fi
+          
+          if [ -z "$VERSION" ] && [ -f "setup.py" ]; then
+            VERSION=$(python3 setup.py --version 2>/dev/null || echo "")
+          fi
+          
+          if [ -z "$VERSION" ]; then
+            VERSION="0.1.0-dev.${{ github.run_number }}"
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Package version: $VERSION"
+      
+      - name: 🔧 Create Virtual Environment
+        if: inputs.use-venv && inputs.package-manager == 'pip'
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          python -m venv venv
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            echo "$(pwd)/venv/Scripts" >> $GITHUB_PATH
+            echo "VIRTUAL_ENV=$(pwd)/venv" >> $GITHUB_ENV
+          else
+            echo "$(pwd)/venv/bin" >> $GITHUB_PATH
+            echo "VIRTUAL_ENV=$(pwd)/venv" >> $GITHUB_ENV
+          fi
+      
+      - name: ⬆️ Upgrade pip
+        if: inputs.upgrade-pip
+        run: python -m pip install --upgrade pip
+      
+      - name: 📚 Install Dependencies
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -n "${{ inputs.install-command }}" ]; then
+            ${{ inputs.install-command }}
+          elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            poetry install
+          elif [ "${{ inputs.package-manager }}" = "pipenv" ]; then
+            pipenv install --dev
+          else
+            # pip installation
+            REQUIREMENTS_FILES='${{ inputs.requirements-files }}'
+            echo "$REQUIREMENTS_FILES" | jq -r '.[]' | while read -r file; do
+              if [ -f "$file" ]; then
+                echo "Installing from $file"
+                pip install -r "$file"
+              fi
+            done
+            
+            if [ "${{ inputs.install-dev-requirements }}" = "true" ] && [ -f "requirements-dev.txt" ]; then
+              pip install -r requirements-dev.txt
+            fi
+            
+            # Install package in development mode if setup.py or pyproject.toml exists
+            if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
+              pip install -e .
+            fi
+          fi
+      
+      - name: 📦 Install Build Tools
+        if: inputs.build-package
+        shell: bash
+        run: |
+          BUILD_TOOLS='${{ inputs.build-tools }}'
+          echo "$BUILD_TOOLS" | jq -r '.[]' | while read -r tool; do
+            pip install "$tool"
+          done
+      
+      - name: 🔍 Run Security Scan
+        if: inputs.run-security-scan
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        continue-on-error: ${{ !inputs.security-fail-on-error }}
+        run: |
+          SECURITY_TOOLS='${{ inputs.security-tools }}'
+          
+          if echo "$SECURITY_TOOLS" | jq -e '. | index("safety")' >/dev/null; then
+            pip install safety
+            echo "Running safety check..."
+            safety check --json --output safety-report.json || true
+          fi
+          
+          if echo "$SECURITY_TOOLS" | jq -e '. | index("bandit")' >/dev/null; then
+            pip install bandit
+            echo "Running bandit security scan..."
+            bandit -r . -f json -o bandit-report.json || true
+          fi
+      
+      - name: 🧹 Run Linting
+        if: inputs.run-lint
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ "${{ inputs.linter }}" = "ruff" ]; then
+            pip install ruff
+            ruff check . --output-format=json --output-file=ruff-report.json || true
+          elif [ "${{ inputs.linter }}" = "pylint" ]; then
+            pip install pylint
+            pylint --output-format=json --reports=no $(find . -name "*.py") > pylint-report.json || true
+          else
+            # Default: flake8
+            pip install flake8
+            flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+            flake8 . --count --exit-zero --max-complexity=10 --max-line-length=${{ inputs.max-line-length }} --statistics --format=json --output-file=flake8-report.json
+          fi
+      
+      - name: 🎨 Check Code Formatting
+        if: inputs.run-format-check
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ "${{ inputs.formatter }}" = "black" ]; then
+            pip install black
+            if [ "${{ inputs.format-check-only }}" = "true" ]; then
+              black --check --diff .
+            else
+              black .
+            fi
+          elif [ "${{ inputs.formatter }}" = "autopep8" ]; then
+            pip install autopep8
+            if [ "${{ inputs.format-check-only }}" = "true" ]; then
+              autopep8 --diff --recursive .
+            else
+              autopep8 --in-place --recursive .
+            fi
+          fi
+      
+      - name: 📤 Check Import Sorting
+        if: inputs.run-isort-check
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          pip install isort
+          if [ "${{ inputs.isort-check-only }}" = "true" ]; then
+            isort --check-only --diff .
+          else
+            isort .
+          fi
+      
+      - name: 🔤 Run Type Checking
+        if: inputs.run-type-check
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        continue-on-error: true
+        run: |
+          if [ "${{ inputs.type-checker }}" = "mypy" ]; then
+            pip install mypy
+            mypy . ${{ inputs.type-check-args }}
+          elif [ "${{ inputs.type-checker }}" = "pyright" ]; then
+            npm install -g pyright
+            pyright .
+          fi
+      
+      - name: 🧪 Run Tests
+        id: test
+        if: inputs.run-tests
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          TEST_RESULTS_DIR="${{ runner.temp }}/test-results"
+          mkdir -p "$TEST_RESULTS_DIR"
+          
+          if [ -n "${{ inputs.test-command }}" ]; then
+            ${{ inputs.test-command }}
+          elif [ "${{ inputs.test-framework }}" = "pytest" ]; then
+            pip install pytest pytest-xdist
+            if [ "${{ inputs.collect-coverage }}" = "true" ]; then
+              pip install pytest-cov
+              COVERAGE_ARGS="--cov=. --cov-report=${{ inputs.coverage-format }}"
+              if [ "${{ inputs.coverage-fail-under }}" = "true" ]; then
+                COVERAGE_ARGS="$COVERAGE_ARGS --cov-fail-under=${{ inputs.coverage-threshold }}"
+              fi
+            fi
+            
+            pytest ${{ inputs.test-path }} \
+              --junitxml="$TEST_RESULTS_DIR/pytest-report.xml" \
+              -n auto \
+              $COVERAGE_ARGS \
+              ${{ inputs.test-args }}
+          elif [ "${{ inputs.test-framework }}" = "unittest" ]; then
+            python -m unittest discover -s ${{ inputs.test-path }} -v
+          fi
+          
+          echo "results=success" >> $GITHUB_OUTPUT
+      
+      - name: 📊 Process Coverage
+        id: coverage
+        if: inputs.collect-coverage
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -f "coverage.xml" ]; then
+            # Extract coverage percentage (simplified)
+            COVERAGE_PCT=$(grep -o 'line-rate="[0-9.]*"' coverage.xml | head -1 | grep -o '[0-9.]*' | awk '{print $1*100}')
+            echo "percentage=$COVERAGE_PCT" >> $GITHUB_OUTPUT
+            echo "Coverage: $COVERAGE_PCT%"
+          fi
+      
+      - name: 📊 Upload Coverage to Codecov
+        if: inputs.collect-coverage && secrets.CODECOV_TOKEN
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ${{ inputs.working-directory }}/coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+      
+      - name: 📦 Build Package
+        id: package
+        if: inputs.build-package
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          PACKAGE_OUTPUT_DIR="${{ runner.temp }}/packages"
+          mkdir -p "$PACKAGE_OUTPUT_DIR"
+          
+          if [ "${{ inputs.package-manager }}" = "poetry" ]; then
+            poetry build
+            cp dist/* "$PACKAGE_OUTPUT_DIR/"
+          else
+            python -m build --outdir "$PACKAGE_OUTPUT_DIR"
+          fi
+          
+          if [ "${{ inputs.package-check }}" = "true" ]; then
+            twine check "$PACKAGE_OUTPUT_DIR"/*
+          fi
+          
+          PACKAGE_FILE=$(find "$PACKAGE_OUTPUT_DIR" -name "*.whl" -type f | head -1)
+          echo "path=$PACKAGE_FILE" >> $GITHUB_OUTPUT
+          echo "Package built: $PACKAGE_FILE"
+      
+      - name: 📊 Test Report
+        if: always() && inputs.run-tests
+        uses: dorny/test-reporter@v1
+        with:
+          name: 'Python Tests - ${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}'
+          path: '${{ runner.temp }}/test-results/*.xml'
+          reporter: 'java-junit'
+          fail-on-error: false
+      
+      - name: 📤 Upload Test Artifacts
+        if: always() && inputs.upload-artifacts && inputs.run-tests
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}-${{ inputs.enable-matrix && matrix.python-version || inputs.python-version }}
+          path: |
+            ${{ runner.temp }}/test-results/
+            ${{ inputs.working-directory }}/htmlcov/
+            ${{ inputs.working-directory }}/*-report.json
+          retention-days: ${{ inputs.artifact-retention-days }}
+      
+      - name: 📤 Upload Package Artifacts
+        if: inputs.upload-artifacts && inputs.build-package
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-packages-${{ steps.version.outputs.version }}
+          path: ${{ runner.temp }}/packages/
+          retention-days: ${{ inputs.artifact-retention-days }}
+      
+      - name: 📤 Upload Custom Artifacts
+        if: inputs.upload-artifacts && inputs.artifact-paths != '[]'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}
+          path: |
+            ${{ join(fromJson(inputs.artifact-paths), '\n') }}
+          retention-days: ${{ inputs.artifact-retention-days }}
