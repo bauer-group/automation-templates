@@ -28,7 +28,7 @@ jobs:
             configuration: Debug
       fail-fast: false
     
-    uses: ./.github/workflows/reusable-dotnet-build.yml
+    uses: ./.github/workflows/dotnet-build.yml
     with:
       # Dynamic configuration based on matrix
       dotnet-version: ${{ matrix.dotnet }}

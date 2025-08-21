@@ -37,7 +37,7 @@ jobs:
   
   build-monorepo:
     needs: detect-changes
-    uses: ./.github/workflows/reusable-nodejs-build.yml
+    uses: ./.github/workflows/nodejs-build.yml
     with:
       node-version: '20.x'
       package-manager: 'pnpm'

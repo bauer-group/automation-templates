@@ -39,7 +39,7 @@ on:
 
 jobs:
   build:
-    uses: your-org/automation-templates/.github/workflows/reusable-dotnet-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/dotnet-build.yml@main
     with:
       dotnet-version: '8.0.x'
       project-path: 'src/MyProject.csproj'
@@ -52,7 +52,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: your-org/automation-templates/.github/workflows/reusable-dotnet-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/dotnet-build.yml@main
     with:
       # .NET Configuration
       dotnet-version: '8.0.x'
@@ -231,7 +231,7 @@ jobs:
 ```yaml
 jobs:
   build-api:
-    uses: your-org/automation-templates/.github/workflows/reusable-dotnet-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/dotnet-build.yml@main
     with:
       project-path: 'src/WebApi.csproj'
       build-docker: true
@@ -248,7 +248,7 @@ jobs:
 ```yaml
 jobs:
   build-library:
-    uses: your-org/automation-templates/.github/workflows/reusable-dotnet-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/dotnet-build.yml@main
     with:
       project-path: 'src/MyLibrary.csproj'
       create-package: true
@@ -263,7 +263,7 @@ jobs:
 ```yaml
 jobs:
   build-blazor:
-    uses: your-org/automation-templates/.github/workflows/reusable-dotnet-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/dotnet-build.yml@main
     with:
       project-path: 'src/BlazorApp.csproj'
       publish: true
@@ -277,7 +277,7 @@ jobs:
 ```yaml
 jobs:
   build-microservice:
-    uses: your-org/automation-templates/.github/workflows/reusable-dotnet-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/dotnet-build.yml@main
     with:
       project-path: 'src/Microservice.csproj'
       runtime: 'linux-musl-x64'
@@ -297,7 +297,7 @@ jobs:
         dotnet: ['6.0.x', '8.0.x']
         configuration: [Debug, Release]
     
-    uses: your-org/automation-templates/.github/workflows/reusable-dotnet-build.yml@main
+    uses: your-org/automation-templates/.github/workflows/dotnet-build.yml@main
     with:
       dotnet-version: ${{ matrix.dotnet }}
       configuration: ${{ matrix.configuration }}
@@ -329,6 +329,16 @@ coverage:
 - **Class Library**: `.github/config/dotnet-build/class-library.yml`
 - **Blazor WebAssembly**: `.github/config/dotnet-build/blazor-wasm.yml`
 - **Microservice**: `.github/config/dotnet-build/microservice.yml`
+
+### Example Workflows
+
+All example workflows are located in `github/workflows/examples/dotnet-build/`:
+- `simple-library.yml` - Simple class library build
+- `web-api-docker.yml` - Web API with Docker deployment
+- `nuget-package-publish.yml` - NuGet package publishing
+- `blazor-wasm-deploy.yml` - Blazor WebAssembly deployment
+- `matrix-cross-platform.yml` - Cross-platform matrix builds
+- `microservice-k8s.yml` - Microservice with Kubernetes
 
 ## Best Practices
 

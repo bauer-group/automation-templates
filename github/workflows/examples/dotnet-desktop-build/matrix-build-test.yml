@@ -31,7 +31,7 @@ jobs:
             platform: x86
       fail-fast: false
     
-    uses: ./.github/workflows/reusable-dotnet-desktop-build.yml
+    uses: ./.github/workflows/dotnet-desktop-build.yml
     with:
       dotnet-version: ${{ matrix.dotnet }}
       configurations: '["${{ matrix.config }}"]'

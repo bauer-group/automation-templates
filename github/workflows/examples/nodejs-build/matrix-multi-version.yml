@@ -30,7 +30,7 @@ jobs:
             experimental: true
       fail-fast: false
     
-    uses: ./.github/workflows/reusable-nodejs-build.yml
+    uses: ./.github/workflows/nodejs-build.yml
     with:
       node-version: ${{ matrix.node }}
       package-manager: ${{ matrix.package-manager }}

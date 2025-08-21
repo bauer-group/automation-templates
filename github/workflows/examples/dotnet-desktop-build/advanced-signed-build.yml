@@ -13,7 +13,7 @@ on:
 
 jobs:
   build-and-sign:
-    uses: ./.github/workflows/reusable-dotnet-desktop-build.yml
+    uses: ./.github/workflows/dotnet-desktop-build.yml
     with:
       # .NET Configuration
       dotnet-version: '8.0.x'

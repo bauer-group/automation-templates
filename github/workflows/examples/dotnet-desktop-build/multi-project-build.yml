@@ -10,7 +10,7 @@ on:
 jobs:
   # Build main WPF application
   build-wpf:
-    uses: ./.github/workflows/reusable-dotnet-desktop-build.yml
+    uses: ./.github/workflows/dotnet-desktop-build.yml
     with:
       dotnet-version: '8.0.x'
       configurations: '["Debug", "Release"]'
@@ -22,7 +22,7 @@ jobs:
   
   # Build Windows Forms utilities
   build-winforms:
-    uses: ./.github/workflows/reusable-dotnet-desktop-build.yml
+    uses: ./.github/workflows/dotnet-desktop-build.yml
     with:
       dotnet-version: '8.0.x'
       configurations: '["Release"]'
@@ -34,7 +34,7 @@ jobs:
   
   # Build console tools
   build-console:
-    uses: ./.github/workflows/reusable-dotnet-desktop-build.yml
+    uses: ./.github/workflows/dotnet-desktop-build.yml
     with:
       dotnet-version: '8.0.x'
       configurations: '["Release"]'
@@ -49,7 +49,7 @@ jobs:
   
   # Build MAUI Windows app
   build-maui:
-    uses: ./.github/workflows/reusable-dotnet-desktop-build.yml
+    uses: ./.github/workflows/dotnet-desktop-build.yml
     with:
       dotnet-version: '8.0.x'
       configurations: '["Release"]'
