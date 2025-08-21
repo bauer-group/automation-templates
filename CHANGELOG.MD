@@ -1,3 +1,10 @@
+## [0.12.6](https://github.com/bauer-group/automation-templates/compare/v0.12.5...v0.12.6) (2025-08-21)
+
+### 🐛 Bug Fixes
+
+* improve documentation workflow to trigger on relevant file changes and tags ([b621dd2](https://github.com/bauer-group/automation-templates/commit/b621dd2cca35350803789c036f15e5c6c53d3ac0))
+* update documentation workflow to handle release and tag events correctly ([04d206a](https://github.com/bauer-group/automation-templates/commit/04d206a79f2ee95bfb9236b57187b3e57f32518c))
+
 ## [0.12.5](https://github.com/bauer-group/automation-templates/compare/v0.12.4...v0.12.5) (2025-08-21)
 
 ### 🐛 Bug Fixes
