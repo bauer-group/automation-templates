@@ -1,0 +1,62 @@
+# Default Python Build Configuration
+# This file contains the default settings for Python application builds
+
+python:
+  version: "3.11"
+  cache: "pip"
+
+dependencies:
+  upgrade_pip: true
+  install_dev_requirements: true
+  requirements_files:
+    - "requirements.txt"
+    - "requirements-dev.txt"
+  development_mode: true
+
+testing:
+  framework: "pytest"
+  coverage: true
+  coverage_threshold: 80
+  parallel: true
+  xml_output: true
+  html_output: true
+  junit_output: true
+
+linting:
+  flake8:
+    enabled: true
+    max_line_length: 127
+    max_complexity: 10
+    fail_on_syntax_errors: true
+  black:
+    enabled: false
+    check_only: true
+  isort:
+    enabled: false
+    check_only: true
+
+type_checking:
+  mypy:
+    enabled: false
+    ignore_missing_imports: true
+    fail_on_error: false
+
+security:
+  safety:
+    enabled: true
+    fail_on_error: false
+  bandit:
+    enabled: true
+    fail_on_error: false
+
+artifacts:
+  test_results: true
+  coverage_reports: true
+  security_reports: true
+
+codecov:
+  enabled: true
+  fail_ci_if_error: false
+
+timeout:
+  build_job: 30

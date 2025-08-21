@@ -1,0 +1,113 @@
+# Python Microservice Configuration
+# Configuration for containerized microservices with FastAPI, Flask, etc.
+
+python:
+  version: "3.11"
+  cache: "pip"
+
+dependencies:
+  upgrade_pip: true
+  install_dev_requirements: true
+  requirements_files:
+    - "requirements.txt"
+    - "requirements-dev.txt"
+    - "requirements-test.txt"
+  development_mode: true
+
+testing:
+  framework: "pytest"
+  coverage: true
+  coverage_threshold: 85
+  parallel: true
+  xml_output: true
+  html_output: true
+  junit_output: true
+  integration_tests: true
+  load_tests: false
+
+linting:
+  flake8:
+    enabled: true
+    max_line_length: 88
+    max_complexity: 10
+    fail_on_syntax_errors: true
+  black:
+    enabled: true
+    check_only: true
+    line_length: 88
+  isort:
+    enabled: true
+    check_only: true
+
+type_checking:
+  mypy:
+    enabled: true
+    ignore_missing_imports: true
+    fail_on_error: false
+
+security:
+  safety:
+    enabled: true
+    fail_on_error: true
+  bandit:
+    enabled: true
+    fail_on_error: true
+  container_scanning: true
+
+docker:
+  build: true
+  multi_platform: true
+  platforms: ["linux/amd64", "linux/arm64"]
+  security_scan: true
+  image_optimization: true
+  sbom_generation: true
+
+api_testing:
+  openapi_validation: true
+  contract_testing: true
+  health_check: true
+
+monitoring:
+  prometheus_metrics: true
+  health_endpoints: true
+  logging_validation: true
+
+deployment:
+  kubernetes: true
+  helm_charts: true
+  staging:
+    enabled: true
+    environment: "staging"
+    auto_deploy: true
+  production:
+    enabled: true
+    environment: "production"
+    requires_approval: true
+    blue_green: true
+
+service_mesh:
+  istio_support: false
+  linkerd_support: false
+
+database:
+  migrations_check: true
+  connection_testing: true
+  backup_validation: false
+
+artifacts:
+  test_results: true
+  coverage_reports: true
+  security_reports: true
+  docker_images: true
+  helm_charts: true
+  api_documentation: true
+
+codecov:
+  enabled: true
+  fail_ci_if_error: false
+
+timeout:
+  build_job: 30
+  test_job: 25
+  docker_build: 20
+  deploy_job: 15

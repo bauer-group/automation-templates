@@ -1,0 +1,92 @@
+# Python Data Science Configuration
+# Configuration for Jupyter notebooks, data analysis, and ML projects
+
+python:
+  version: "3.11"
+  cache: "pip"
+
+dependencies:
+  upgrade_pip: true
+  install_dev_requirements: true
+  requirements_files:
+    - "requirements.txt"
+    - "requirements-dev.txt"
+    - "requirements-ml.txt"
+  development_mode: true
+  conda_support: true
+
+testing:
+  framework: "pytest"
+  coverage: true
+  coverage_threshold: 75
+  parallel: true
+  xml_output: true
+  html_output: true
+  junit_output: true
+  notebook_testing: true
+
+linting:
+  flake8:
+    enabled: true
+    max_line_length: 88
+    max_complexity: 15
+    fail_on_syntax_errors: true
+    exclude: ["*.ipynb"]
+  black:
+    enabled: true
+    check_only: true
+    line_length: 88
+    jupyter: true
+  isort:
+    enabled: true
+    check_only: true
+
+type_checking:
+  mypy:
+    enabled: false
+    ignore_missing_imports: true
+    fail_on_error: false
+
+security:
+  safety:
+    enabled: true
+    fail_on_error: false
+  bandit:
+    enabled: true
+    fail_on_error: false
+    exclude_dirs: ["notebooks", "data"]
+
+notebooks:
+  execution_test: true
+  output_cleanup: true
+  format_check: true
+  exclude_from_git: ["*.ipynb_checkpoints"]
+
+data:
+  validation: true
+  versioning: false
+  large_file_support: true
+
+ml_specific:
+  model_validation: true
+  reproducibility_check: true
+  dependency_scanning: true
+
+documentation:
+  auto_generate: true
+  include_notebooks: true
+
+artifacts:
+  test_results: true
+  coverage_reports: true
+  security_reports: true
+  notebook_outputs: false
+  model_artifacts: true
+
+codecov:
+  enabled: true
+  fail_ci_if_error: false
+
+timeout:
+  build_job: 60
+  notebook_test: 45
