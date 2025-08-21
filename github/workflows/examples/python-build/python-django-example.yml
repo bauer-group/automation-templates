@@ -1,0 +1,258 @@
+# Example: Django Application with PostgreSQL and Redis
+# This workflow demonstrates Django-specific CI/CD with migrations and static files
+
+name: Django Application CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "18"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: django_user
+          POSTGRES_PASSWORD: django_pass
+          POSTGRES_DB: django_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Set up Node.js ${{ env.NODE_VERSION }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+
+    - name: Install Node.js dependencies
+      run: |
+        npm ci
+
+    - name: Set up environment variables
+      run: |
+        echo "DATABASE_URL=postgres://django_user:django_pass@localhost:5432/django_test" >> $GITHUB_ENV
+        echo "REDIS_URL=redis://localhost:6379/0" >> $GITHUB_ENV
+        echo "SECRET_KEY=test-secret-key-for-ci-cd-pipeline" >> $GITHUB_ENV
+        echo "DEBUG=False" >> $GITHUB_ENV
+        echo "ALLOWED_HOSTS=localhost,127.0.0.1" >> $GITHUB_ENV
+
+    - name: Build frontend assets
+      run: |
+        npm run build
+
+    - name: Collect static files
+      run: |
+        python manage.py collectstatic --noinput
+
+    - name: Check Django configuration
+      run: |
+        python manage.py check --deploy
+
+    - name: Check for pending migrations
+      run: |
+        python manage.py makemigrations --check --dry-run
+
+    - name: Run database migrations
+      run: |
+        python manage.py migrate
+
+    - name: Load test fixtures
+      run: |
+        python manage.py loaddata fixtures/test_data.json
+
+    - name: Lint with ruff
+      run: |
+        ruff check .
+        ruff format --check .
+
+    - name: Type checking with mypy
+      run: |
+        mypy .
+
+    - name: Security check with bandit
+      run: |
+        bandit -r . -x tests/,venv/,node_modules/ -f json -o bandit-report.json
+
+    - name: Check for security issues in dependencies
+      run: |
+        safety check --json --output safety-report.json
+
+    - name: Test with pytest
+      run: |
+        pytest --cov=. --cov-report=xml --cov-report=html --junitxml=pytest-report.xml -v --tb=short
+
+    - name: Django system checks
+      run: |
+        python manage.py check
+
+    - name: Test Django admin
+      run: |
+        python manage.py test --keepdb --verbosity=2
+
+    - name: Performance tests
+      run: |
+        # Run performance tests if available
+        if [ -f "tests/performance/test_performance.py" ]; then
+          pytest tests/performance/ -v
+        fi
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        flags: unittests
+
+    - name: Archive test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: |
+          pytest-report.xml
+          htmlcov/
+          bandit-report.json
+          safety-report.json
+          staticfiles/
+
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ghcr.io/${{ github.repository }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
+
+  deploy-staging:
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    needs: [test, docker]
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.example.com
+
+    steps:
+    - name: Run database migrations on staging
+      run: |
+        echo "Running migrations on staging..."
+        # kubectl exec deployment/django-app -- python manage.py migrate
+
+    - name: Deploy to staging
+      run: |
+        echo "Deploying Django app to staging..."
+        # kubectl set image deployment/django-app django=ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+    - name: Verify deployment
+      run: |
+        echo "Verifying staging deployment..."
+        # curl -f https://staging.example.com/health/ || exit 1
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [test, docker]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://example.com
+
+    steps:
+    - name: Create database backup
+      run: |
+        echo "Creating database backup..."
+        # kubectl exec deployment/postgres -- pg_dump -U user database > backup.sql
+
+    - name: Run database migrations on production
+      run: |
+        echo "Running migrations on production..."
+        # kubectl exec deployment/django-app -- python manage.py migrate
+
+    - name: Deploy to production
+      run: |
+        echo "Deploying Django app to production..."
+        # kubectl set image deployment/django-app django=ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+    - name: Verify deployment
+      run: |
+        echo "Verifying production deployment..."
+        # curl -f https://example.com/health/ || exit 1

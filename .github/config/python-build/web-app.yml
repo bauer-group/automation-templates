@@ -1,0 +1,91 @@
+# Python Web Application Configuration
+# Configuration for Flask, Django, FastAPI and other web frameworks
+
+python:
+  version: "3.11"
+  cache: "pip"
+
+dependencies:
+  upgrade_pip: true
+  install_dev_requirements: true
+  requirements_files:
+    - "requirements.txt"
+    - "requirements-dev.txt"
+    - "requirements-test.txt"
+  development_mode: true
+
+testing:
+  framework: "pytest"
+  coverage: true
+  coverage_threshold: 85
+  parallel: true
+  xml_output: true
+  html_output: true
+  junit_output: true
+  integration_tests: true
+
+linting:
+  flake8:
+    enabled: true
+    max_line_length: 88
+    max_complexity: 10
+    fail_on_syntax_errors: true
+  black:
+    enabled: true
+    check_only: true
+    line_length: 88
+  isort:
+    enabled: true
+    check_only: true
+
+type_checking:
+  mypy:
+    enabled: true
+    ignore_missing_imports: true
+    fail_on_error: false
+
+security:
+  safety:
+    enabled: true
+    fail_on_error: true
+  bandit:
+    enabled: true
+    fail_on_error: true
+    exclude_dirs: ["tests", "migrations"]
+
+database:
+  migrations_check: true
+  test_database: true
+
+static_analysis:
+  sonarqube: false
+  codeclimate: false
+
+docker:
+  build: true
+  security_scan: true
+  multi_platform: true
+
+deployment:
+  staging:
+    enabled: true
+    environment: "staging"
+  production:
+    enabled: true
+    environment: "production"
+    requires_approval: true
+
+artifacts:
+  test_results: true
+  coverage_reports: true
+  security_reports: true
+  docker_images: true
+
+codecov:
+  enabled: true
+  fail_ci_if_error: false
+
+timeout:
+  build_job: 45
+  test_job: 30
+  deploy_job: 15

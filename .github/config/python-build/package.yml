@@ -1,0 +1,101 @@
+# Python Package Configuration
+# Configuration for packages that will be published to PyPI
+
+python:
+  versions: ["3.9", "3.10", "3.11", "3.12"]
+  primary_version: "3.11"
+  cache: "pip"
+
+matrix:
+  os: ["ubuntu-latest", "windows-latest", "macos-latest"]
+  fail_fast: false
+  exclude_combinations:
+    - os: "windows-latest"
+      python: "3.9"
+    - os: "macos-latest"
+      python: "3.9"
+
+dependencies:
+  upgrade_pip: true
+  install_dev_requirements: true
+  requirements_files:
+    - "requirements.txt"
+    - "requirements-dev.txt"
+  development_mode: true
+  build_tools:
+    - "build"
+    - "twine"
+
+testing:
+  framework: "pytest"
+  coverage: true
+  coverage_threshold: 90
+  parallel: true
+  xml_output: true
+  html_output: true
+  junit_output: true
+  test_all_platforms: true
+
+linting:
+  flake8:
+    enabled: true
+    max_line_length: 88
+    max_complexity: 10
+    fail_on_syntax_errors: true
+  black:
+    enabled: true
+    check_only: true
+    line_length: 88
+  isort:
+    enabled: true
+    check_only: true
+
+type_checking:
+  mypy:
+    enabled: true
+    ignore_missing_imports: true
+    fail_on_error: false
+
+security:
+  safety:
+    enabled: true
+    fail_on_error: false
+  bandit:
+    enabled: true
+    fail_on_error: false
+
+packaging:
+  build_check: true
+  twine_check: true
+  wheel_build: true
+  sdist_build: true
+
+publishing:
+  testpypi:
+    enabled: true
+    environment: "testpypi"
+  pypi:
+    enabled: true
+    environment: "pypi"
+    on_release: true
+    trusted_publishing: true
+
+documentation:
+  build: true
+  publish: true
+  format: "sphinx"
+
+artifacts:
+  test_results: true
+  coverage_reports: true
+  security_reports: true
+  package_distributions: true
+
+codecov:
+  enabled: true
+  fail_ci_if_error: false
+
+timeout:
+  build_job: 45
+  test_job: 30
+  publish_job: 10
