@@ -1,0 +1,25 @@
+name: 🤖 Issue & PR Automation
+
+# This workflow automatically handles issues and PRs based on labels
+# It uses the modular issue-automation component
+
+on:
+  issues:
+    types: [labeled]
+  pull_request_target:
+    types: [labeled]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  handle-labeled-issue:
+    name: Handle Labeled Issue/PR
+    if: github.event_name == 'issues' || github.event_name == 'pull_request_target'
+    uses: ./.github/workflows/modules-issue-automation.yml
+    with:
+      action: 'auto'  # Automatically determine action from config
+      label-config-path: '.github/config/issues/label-actions.yml'
+      dry-run: false
+    secrets: inherit

@@ -1,0 +1,311 @@
+name: ⚙️ Manual Release
+
+# Manual release workflow using modular components
+# Replaces the legacy manual-release.yml workflow with modular approach
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-type:
+        description: 'Type of release'
+        required: true
+        default: 'simple'
+        type: choice
+        options:
+          - simple
+          - node
+          - python
+          - rust
+          - java
+          - go
+          - docker
+      version-bump:
+        description: 'Version bump type (ignored if custom-version is set)'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+      custom-version:
+        description: 'Custom version (overrides version-bump)'
+        required: false
+        type: string
+        default: ''
+      artifact-types:
+        description: 'Types of artifacts to generate'
+        required: false
+        default: 'source'
+        type: choice
+        options:
+          - source
+          - binaries
+          - docker
+          - all
+      skip-security-scan:
+        description: 'Skip security scanning'
+        required: false
+        default: false
+        type: boolean
+      skip-license-check:
+        description: 'Skip license compliance check'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+  security-events: write
+  packages: write
+
+jobs:
+  # Input validation and preparation
+  validate-inputs:
+    name: Validate Release Inputs
+    runs-on: ubuntu-latest
+    outputs:
+      calculated-version: ${{ steps.version.outputs.calculated-version }}
+      current-version: ${{ steps.version.outputs.current-version }}
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🏷️ Calculate Target Version
+        id: version
+        run: |
+          # Get current version from manifest or git tags
+          if [[ -f ".github/config/.release-please-manifest.json" ]]; then
+            CURRENT_VERSION=$(jq -r '."."' .github/config/.release-please-manifest.json 2>/dev/null || echo "0.0.0")
+          else
+            CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")
+          fi
+          
+          echo "Current version: $CURRENT_VERSION"
+          echo "current-version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          
+          # Calculate target version
+          if [[ -n "${{ inputs.custom-version }}" ]]; then
+            CALCULATED_VERSION="${{ inputs.custom-version }}"
+            echo "Using custom version: $CALCULATED_VERSION"
+          else
+            # Parse current version
+            IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+            
+            case "${{ inputs.version-bump }}" in
+              major)
+                CALCULATED_VERSION="$((major + 1)).0.0"
+                ;;
+              minor)
+                CALCULATED_VERSION="$major.$((minor + 1)).0"
+                ;;
+              patch)
+                CALCULATED_VERSION="$major.$minor.$((patch + 1))"
+                ;;
+            esac
+            
+            echo "Calculated version (${{ inputs.version-bump }} bump): $CALCULATED_VERSION"
+          fi
+          
+          echo "calculated-version=$CALCULATED_VERSION" >> $GITHUB_OUTPUT
+
+      - name: 📊 Input Validation Summary
+        run: |
+          echo "### 📦 Manual Release Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Release Type** | ${{ inputs.release-type }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Current Version** | ${{ steps.version.outputs.current-version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Target Version** | ${{ steps.version.outputs.calculated-version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version Method** | ${{ inputs.custom-version && 'Custom' || inputs.version-bump }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Artifact Types** | ${{ inputs.artifact-types }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Skip Security** | ${{ inputs.skip-security-scan }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Skip License Check** | ${{ inputs.skip-license-check }} |" >> $GITHUB_STEP_SUMMARY
+
+  # Security scan (conditional)
+  security-scan:
+    name: Security Analysis
+    if: inputs.skip-security-scan != true
+    needs: validate-inputs
+    uses: ./.github/workflows/modules-security-scan.yml
+    with:
+      scan-engine: 'both'
+      scan-type: 'all'
+      fail-on-findings: false
+      minimum-severity: 'medium'
+    secrets: inherit
+
+  # License compliance check (conditional)
+  license-compliance:
+    name: License Compliance
+    if: inputs.skip-license-check != true
+    needs: validate-inputs
+    uses: ./.github/workflows/modules-license-compliance.yml
+    with:
+      fail-on-forbidden: false
+      fail-on-unknown: false
+      scan-dependencies: true
+      generate-sbom: true
+    secrets: inherit
+
+  # Manual release creation
+  create-release:
+    name: Create Manual Release
+    needs: [validate-inputs, security-scan, license-compliance]
+    if: always() && needs.validate-inputs.result == 'success' && (needs.security-scan.result == 'success' || needs.security-scan.result == 'skipped') && (needs.license-compliance.result == 'success' || needs.license-compliance.result == 'skipped')
+    runs-on: ubuntu-latest
+    outputs:
+      release-created: 'true'
+      version: ${{ needs.validate-inputs.outputs.calculated-version }}
+      tag-name: v${{ needs.validate-inputs.outputs.calculated-version }}
+      release-url: ${{ steps.create-release.outputs.html_url }}
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔧 Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: 📝 Update Version Files
+        run: |
+          TARGET_VERSION="${{ needs.validate-inputs.outputs.calculated-version }}"
+          
+          # Version will be handled by semantic-release or manual tag
+          echo "Version: $TARGET_VERSION"
+          
+          # Update package.json if exists
+          if [[ -f "package.json" ]]; then
+            jq --arg version "$TARGET_VERSION" '.version = $version' package.json > tmp.json
+            mv tmp.json package.json
+            echo "✅ Updated package.json"
+          fi
+          
+          # Update other version files
+          if [[ -f "pyproject.toml" ]]; then
+            sed -i "s/^version = .*/version = \"$TARGET_VERSION\"/" pyproject.toml
+            echo "✅ Updated pyproject.toml"
+          fi
+
+      - name: 📝 Generate Changelog
+        id: changelog
+        uses: ./.github/actions/generate-changelog
+        with:
+          from-tag: v${{ needs.validate-inputs.outputs.current-version }}
+          to-tag: HEAD
+          output-file: CHANGELOG_TEMP.md
+
+      - name: 💾 Commit Version Changes
+        run: |
+          TARGET_VERSION="${{ needs.validate-inputs.outputs.calculated-version }}"
+          
+          git add -A
+          git commit -m "chore: release v${TARGET_VERSION}
+
+          - Update version to ${TARGET_VERSION}
+          - Generated via manual release workflow
+          - Release type: ${{ inputs.release-type }}
+          
+          [manual-release]" || echo "No changes to commit"
+
+      - name: 🏷️ Create Git Tag
+        run: |
+          TARGET_VERSION="${{ needs.validate-inputs.outputs.calculated-version }}"
+          git tag -a "v${TARGET_VERSION}" -m "Release v${TARGET_VERSION}"
+
+      - name: 📤 Push Changes
+        run: |
+          git push origin main
+          git push origin --tags
+
+      - name: 🚀 Create GitHub Release
+        id: create-release
+        run: |
+          TARGET_VERSION="${{ needs.validate-inputs.outputs.calculated-version }}"
+          
+          # Add release metadata to changelog
+          {
+            cat CHANGELOG_TEMP.md
+            echo ""
+            echo "### 🛡️ Security & Compliance"
+            echo ""
+            echo "- Security Scan: ${{ inputs.skip-security-scan == true && 'Skipped' || 'Completed' }}"
+            echo "- License Compliance: ${{ inputs.skip-license-check == true && 'Skipped' || 'Completed' }}"
+            echo ""
+            echo "---"
+            echo ""
+            echo "*This release was created manually using modular workflow components.*"
+          } > RELEASE_NOTES.MD
+          
+          gh release create "v${TARGET_VERSION}" \
+            --title "🚀 Release v${TARGET_VERSION}" \
+            --notes-file RELEASE_NOTES.MD \
+            --latest
+          
+          # Get release URL
+          RELEASE_URL=$(gh release view "v${TARGET_VERSION}" --json url --jq '.url')
+          echo "html_url=${RELEASE_URL}" >> $GITHUB_OUTPUT
+    
+  # Generate artifacts
+  generate-artifacts:
+    name: Generate Release Artifacts
+    if: needs.create-release.result == 'success'
+    needs: [validate-inputs, create-release]
+    uses: ./.github/workflows/modules-artifact-generation.yml
+    with:
+      artifact-types: ${{ inputs.artifact-types }}
+      tag-name: ${{ needs.create-release.outputs.tag-name }}
+      version: ${{ needs.create-release.outputs.version }}
+      release-url: ${{ needs.create-release.outputs.release-url }}    
+
+  # Manual release summary
+  release-summary:
+    name: Release Summary
+    if: always()
+    needs: [validate-inputs, security-scan, license-compliance, create-release, generate-artifacts]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📊 Generate Release Summary
+        run: |
+          echo "### 📦 Manual Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Release Configuration:**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Input Validation** | ${{ needs.validate-inputs.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Version: ${{ needs.validate-inputs.outputs.calculated-version || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || needs.security-scan.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | ${{ inputs.skip-security-scan && 'Skipped by user' || 'Completed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || needs.license-compliance.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | ${{ inputs.skip-license-check && 'Skipped by user' || 'Completed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Release Creation** | ${{ needs.create-release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Manual process |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Artifact Generation** | ${{ needs.generate-artifacts.result == 'success' && '✅ PASS' || needs.generate-artifacts.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Type: ${{ inputs.artifact-types }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.create-release.result }}" = "success" ]; then
+            echo "🎉 **Manual Release v${{ needs.validate-inputs.outputs.calculated-version }} Created Successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Release Details:**" >> $GITHUB_STEP_SUMMARY
+            echo "- **Version:** ${{ needs.validate-inputs.outputs.calculated-version }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Tag:** ${{ needs.create-release.outputs.tag-name }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Type:** ${{ inputs.release-type }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **URL:** ${{ needs.create-release.outputs.release-url }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Artifacts:** ${{ inputs.artifact-types }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Manual release failed.** Check the logs for details." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Created using modular workflow components* 🧩" >> $GITHUB_STEP_SUMMARY
