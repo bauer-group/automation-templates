@@ -4,7 +4,9 @@ Diese Workflows sind speziell für das `automation-templates` Repository entwick
 
 ## 📁 Workflow-Dateien
 
-### 🔄 [automatic-release.yml](./automatic-release.yml) - Automatische Releases
+### Repository-spezifische Workflows
+
+#### 🔄 [automatic-release.yml](./automatic-release.yml) - Automatische Releases
 **Zweck:** Automatische Release-Erstellung bei Push auf Main Branch  
 **Module verwendet:** semantic-release
 
@@ -14,7 +16,7 @@ Diese Workflows sind speziell für das `automation-templates` Repository entwick
 - GitHub Release Erstellung
 - Semantic Versioning
 
-### 📄 [documentation.yml](./documentation.yml) - Dokumentations-Management
+#### 📄 [documentation.yml](./documentation.yml) - Dokumentations-Management
 **Zweck:** README-Generierung und Dokumentationsvalidierung  
 **Module verwendet:** readme-generate action (direkt)
 
@@ -23,7 +25,7 @@ Diese Workflows sind speziell für das `automation-templates` Repository entwick
 - Automatische Updates bei Template-Änderungen
 - Git-basierte Änderungserkennung
 
-### 📦 [manual-release.yml](./manual-release.yml) - Manuelle Release-Erstellung
+#### 📦 [manual-release.yml](./manual-release.yml) - Manuelle Release-Erstellung
 **Zweck:** Kontrollierte, manuelle Release-Erstellung  
 **Module verwendet:** security-scan, license-compliance, artifact-generation, generate-changelog
 
@@ -32,6 +34,32 @@ Diese Workflows sind speziell für das `automation-templates` Repository entwick
 - Optionale Security- und Compliance-Checks
 - Konfigurierbare Artefakt-Generierung
 - Changelog-Generierung mit generate-changelog Action
+
+#### 🤖 [ai-issue-summary.yml](./ai-issue-summary.yml) - AI Issue Zusammenfassungen
+**Zweck:** AI-gestützte Issue-Zusammenfassungen  
+**Module verwendet:** modules-ai-issue-summary
+
+#### 🏷️ [pr-labeler.yml](./pr-labeler.yml) - PR Labeling
+**Zweck:** Automatisches PR Labeling  
+**Module verwendet:** modules-pr-labeler
+
+#### 🔧 [issue-automation.yml](./issue-automation.yml) - Issue Automatisierung
+**Zweck:** Issue Management Automatisierung  
+**Module verwendet:** modules-issue-automation
+
+### Reusable Workflows (Neu)
+
+#### 🔷 [dotnet-build.yml](./dotnet-build.yml) - .NET Build & Test
+**Zweck:** Wiederverwendbarer .NET Core/5+ Build Workflow  
+**Features:** Docker, NuGet Publishing, Cross-Platform
+
+#### 🖥️ [dotnet-desktop-build.yml](./dotnet-desktop-build.yml) - .NET Desktop Build
+**Zweck:** Wiederverwendbarer .NET Desktop (WPF/WinForms/MAUI) Build Workflow  
+**Features:** Code Signing, MSIX Packaging, Multi-Platform
+
+#### 📦 [nodejs-build.yml](./nodejs-build.yml) - Node.js Build & Publish
+**Zweck:** Wiederverwendbarer Node.js Build und Publish Workflow  
+**Features:** npm/yarn/pnpm/bun Support, Package Publishing, Docker
 
 ## 🧩 Modulare Architektur
 
@@ -75,12 +103,22 @@ jobs:
 
 ## 📊 Workflow-Matrix
 
+### Repository Workflows
 | Workflow | Trigger | Module/Actions | Primärer Zweck |
 |----------|---------|----------------|----------------|
 | **automatic-release.yml** | Push (main) | semantic-release | Automatische Releases |
 | **documentation.yml** | Docs-Änderungen | readme-generate | Dokumentations-Management |
 | **manual-release.yml** | Workflow Dispatch | 4 Module | Kontrollierte Releases |
-| **pr-labeler.yml** | Pull Request | labeler-triage | PR Labeling & Triage |
+| **ai-issue-summary.yml** | Issue Events | modules-ai-issue-summary | AI Zusammenfassungen |
+| **pr-labeler.yml** | Pull Request | modules-pr-labeler | PR Labeling |
+| **issue-automation.yml** | Issue/PR Events | modules-issue-automation | Issue Management |
+
+### Reusable Workflows
+| Workflow | Type | Hauptfunktionen | Plattformen |
+|----------|------|-----------------|-------------|
+| **dotnet-build.yml** | workflow_call | Build, Test, Package, Docker | Linux, Windows, macOS |
+| **dotnet-desktop-build.yml** | workflow_call | Desktop Build, Sign, MSIX | Windows |
+| **nodejs-build.yml** | workflow_call | Build, Test, Publish, Docker | Linux, Windows, macOS |
 
 ## 🚀 Verwendung für externe Repositories
 
