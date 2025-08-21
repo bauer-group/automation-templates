@@ -1,0 +1,95 @@
+name: Matrix Build and Test
+
+on:
+  push:
+    branches: [ main, develop, 'release/**' ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly on Monday at 2 AM
+  workflow_dispatch:
+
+jobs:
+  # Define build matrix
+  matrix-build:
+    strategy:
+      matrix:
+        dotnet: ['8.0.x', '9.0.x']
+        os: [windows-latest, windows-2022]
+        config: [Debug, Release]
+        platform: [x64, x86]
+        include:
+          # Add specific combinations
+          - dotnet: '8.0.x'
+            os: windows-latest
+            config: Release
+            platform: arm64
+        exclude:
+          # Exclude specific combinations
+          - dotnet: '9.0.x'
+            config: Debug
+            platform: x86
+      fail-fast: false
+    
+    uses: ./.github/workflows/reusable-dotnet-desktop-build.yml
+    with:
+      dotnet-version: ${{ matrix.dotnet }}
+      configurations: '["${{ matrix.config }}"]'
+      platforms: '["${{ matrix.platform }}"]'
+      solution-path: 'src/MyApp.sln'
+      runs-on: ${{ matrix.os }}
+      
+      # Conditional settings based on matrix
+      publish-type: ${{ matrix.config == 'Release' && 'single-file' || 'framework-dependent' }}
+      trimming: ${{ matrix.config == 'Release' }}
+      run-tests: true
+      collect-coverage: ${{ matrix.config == 'Debug' }}
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'build-${{ matrix.dotnet }}-${{ matrix.os }}-${{ matrix.config }}-${{ matrix.platform }}'
+  
+  # Test report aggregation
+  test-report:
+    needs: matrix-build
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Download all test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'test-results-*'
+          path: test-results
+      
+      - name: Generate Test Report
+        uses: dorny/test-reporter@v1
+        with:
+          name: 'Test Results'
+          path: 'test-results/**/*.trx'
+          reporter: 'dotnet-trx'
+          fail-on-error: false
+  
+  # Performance testing
+  performance-test:
+    needs: matrix-build
+    runs-on: windows-latest
+    
+    steps:
+      - name: Download Release x64 build
+        uses: actions/download-artifact@v4
+        with:
+          name: 'build-8.0.x-windows-latest-Release-x64'
+          path: app
+      
+      - name: Run Performance Tests
+        run: |
+          # Run performance benchmarks
+          cd app
+          ./MyApp.exe --benchmark
+      
+      - name: Upload Performance Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results
+          path: '*.benchmark'

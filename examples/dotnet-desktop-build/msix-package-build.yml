@@ -1,0 +1,70 @@
+name: Build MSIX Package
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'Package/**'
+  release:
+    types: [ published ]
+  workflow_dispatch:
+
+env:
+  SOLUTION_PATH: 'src/MyApp.sln'
+  WAP_PROJECT_PATH: 'Package/MyApp.Package.wapproj'
+
+jobs:
+  create-msix:
+    uses: ./.github/workflows/reusable-dotnet-desktop-build.yml
+    with:
+      # Build Configuration
+      dotnet-version: '8.0.x'
+      configurations: '["Release"]'
+      platforms: '["x64", "x86", "arm64"]'
+      
+      # Project Paths
+      solution-path: ${{ env.SOLUTION_PATH }}
+      wap-project-path: ${{ env.WAP_PROJECT_PATH }}
+      
+      # MSIX Configuration
+      create-msix: true
+      publish-type: 'msix'
+      app-version: ${{ github.event.release.tag_name || '1.0.0' }}
+      
+      # Signing
+      sign-output: true
+      
+      # Testing
+      run-tests: true
+      test-filter: 'Category!=Integration'
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'msix-packages'
+      artifact-retention-days: 30
+      
+    secrets:
+      SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+  
+  deploy-to-store:
+    needs: create-msix
+    runs-on: windows-latest
+    if: github.event_name == 'release'
+    
+    steps:
+      - name: Download MSIX Packages
+        uses: actions/download-artifact@v4
+        with:
+          name: msix-packages
+          path: packages
+      
+      - name: Upload to Microsoft Store
+        uses: microsoft/store-submission@v1
+        with:
+          package-path: packages/*.msixbundle
+          store-id: ${{ secrets.MICROSOFT_STORE_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}

@@ -1,0 +1,86 @@
+name: Multi-Project Desktop Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  # Build main WPF application
+  build-wpf:
+    uses: ./.github/workflows/reusable-dotnet-desktop-build.yml
+    with:
+      dotnet-version: '8.0.x'
+      configurations: '["Debug", "Release"]'
+      platforms: '["x64"]'
+      project-path: 'src/WpfApp/WpfApp.csproj'
+      publish-type: 'self-contained'
+      run-tests: true
+      artifact-name: 'wpf-application'
+  
+  # Build Windows Forms utilities
+  build-winforms:
+    uses: ./.github/workflows/reusable-dotnet-desktop-build.yml
+    with:
+      dotnet-version: '8.0.x'
+      configurations: '["Release"]'
+      platforms: '["x64", "x86"]'
+      project-path: 'src/WinFormsUtils/WinFormsUtils.csproj'
+      publish-type: 'framework-dependent'
+      run-tests: true
+      artifact-name: 'winforms-utilities'
+  
+  # Build console tools
+  build-console:
+    uses: ./.github/workflows/reusable-dotnet-desktop-build.yml
+    with:
+      dotnet-version: '8.0.x'
+      configurations: '["Release"]'
+      platforms: '["x64"]'
+      project-path: 'src/ConsoleTools/ConsoleTools.csproj'
+      publish-type: 'single-file'
+      include-native-libs: true
+      enable-compression: true
+      trimming: true
+      run-tests: false
+      artifact-name: 'console-tools'
+  
+  # Build MAUI Windows app
+  build-maui:
+    uses: ./.github/workflows/reusable-dotnet-desktop-build.yml
+    with:
+      dotnet-version: '8.0.x'
+      configurations: '["Release"]'
+      platforms: '["x64"]'
+      project-path: 'src/MauiApp/MauiApp.csproj'
+      create-msix: true
+      wap-project-path: 'src/MauiApp/Platforms/Windows/Package.appxmanifest'
+      run-tests: true
+      artifact-name: 'maui-windows-app'
+  
+  # Create combined installer
+  create-installer:
+    needs: [build-wpf, build-winforms, build-console, build-maui]
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Create Installer
+        run: |
+          # Use InnoSetup, WiX, or another installer creator
+          iscc installer/setup.iss
+      
+      - name: Upload Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-suite-installer
+          path: installer/output/*.exe

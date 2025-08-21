@@ -1,0 +1,58 @@
+name: Build and Sign Desktop Application
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.2.3)'
+        required: true
+        default: '1.0.0'
+
+jobs:
+  build-and-sign:
+    uses: ./.github/workflows/reusable-dotnet-desktop-build.yml
+    with:
+      # .NET Configuration
+      dotnet-version: '8.0.x'
+      configurations: '["Release"]'
+      platforms: '["x64", "x86"]'
+      
+      # Project Settings
+      solution-path: 'src/EnterpriseApp.sln'
+      test-project-pattern: '**/*Tests.csproj'
+      
+      # Publishing Options
+      publish-type: 'single-file'
+      include-native-libs: true
+      enable-compression: true
+      trimming: true
+      ready-to-run: true
+      
+      # Version Management
+      app-version: ${{ github.event.inputs.version || github.ref_name }}
+      
+      # Code Signing
+      sign-output: true
+      timestamp-server: 'http://timestamp.digicert.com'
+      
+      # Testing
+      run-tests: true
+      collect-coverage: true
+      coverage-threshold: 80
+      
+      # Build Options
+      verbosity: 'detailed'
+      treat-warnings-as-errors: true
+      
+      # Artifacts
+      upload-artifacts: true
+      artifact-name: 'enterprise-app-signed'
+      artifact-retention-days: 90
+      
+    secrets:
+      SIGNING_CERTIFICATE: ${{ secrets.CODE_SIGNING_CERT }}
+      CERTIFICATE_PASSWORD: ${{ secrets.CERT_PASSWORD }}
+      NUGET_API_KEY: ${{ secrets.NUGET_KEY }}

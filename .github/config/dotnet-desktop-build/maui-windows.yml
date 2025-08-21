@@ -1,0 +1,105 @@
+# Configuration for .NET MAUI Windows Application builds
+# Extends the default configuration with MAUI-specific settings
+
+extends: default.yml
+
+build:
+  dotnet_version: '8.0.x'
+  configurations:
+    - Release
+  platforms:
+    - x64
+  
+  # MAUI-specific build properties
+  maui_properties:
+    UseMaui: true
+    SingleProject: true
+    EnableMsixTooling: true
+
+project:
+  # MAUI project patterns
+  solution_pattern: '**/*.sln'
+  project_pattern: '**/*.csproj'
+  
+  # MAUI-specific patterns
+  include_platforms:
+    - Windows
+  exclude_platforms:
+    - Android
+    - iOS
+    - MacCatalyst
+
+workload:
+  # Required .NET workloads
+  install_workloads:
+    - maui-windows
+    - wasm-tools  # If using Blazor Hybrid
+  
+  # Workload version
+  workload_version: latest
+
+publish:
+  type: msix
+  
+  # MSIX package settings
+  package_properties:
+    DisplayName: 'My MAUI App'
+    PublisherDisplayName: 'Company Name'
+    Logo: 'Assets/logo.png'
+    
+  # Windows-specific settings
+  target_platform_version: '10.0.19041.0'
+  target_platform_min_version: '10.0.17763.0'
+  
+  # Runtime identifiers
+  runtime_identifiers:
+    - win10-x64
+    - win10-x86
+    - win10-arm64
+
+resources:
+  # MAUI resources
+  include_resources: true
+  resource_patterns:
+    - '**/*.xaml'
+    - 'Resources/**/*'
+    - 'Platforms/Windows/**/*'
+  
+  # Asset catalogs
+  process_assets: true
+  optimize_images: true
+
+blazor:
+  # Blazor Hybrid settings (if applicable)
+  enable_blazor: false
+  blazor_hosting_model: WebView2
+  
+  # WebView2 settings
+  webview2_version: Evergreen
+  webview2_user_data_folder: '%LOCALAPPDATA%\\MyApp'
+
+platform_specific:
+  # Windows-specific features
+  windows_features:
+    - InternetClient
+    - InternetClientServer
+    - PrivateNetworkClientServer
+  
+  # Capabilities
+  capabilities:
+    - runFullTrust
+  
+  # File associations
+  file_associations:
+    - extension: '.myapp'
+      content_type: 'application/myapp'
+
+optimization:
+  # MAUI optimizations
+  link_mode: SdkOnly
+  enable_interpreter: false
+  use_incremental_builds: true
+  
+  # AOT for performance
+  ready_to_run: true
+  enable_aot: false  # Not yet supported for MAUI Windows

@@ -1,0 +1,72 @@
+# Configuration for WPF Application builds
+# Extends the default configuration with WPF-specific settings
+
+extends: default.yml
+
+build:
+  dotnet_version: '8.0.x'
+  configurations:
+    - Release
+  platforms:
+    - x64
+  
+  # WPF-specific build properties
+  wpf_properties:
+    UseWPF: true
+    EnableWindowsTargeting: true
+    IncludeAllContentForSelfExtract: true
+
+project:
+  # WPF project patterns
+  solution_pattern: '**/*.sln'
+  project_pattern: '**/*.csproj'
+  exclude_patterns:
+    - '**/obj/**'
+    - '**/bin/**'
+
+publish:
+  type: single-file
+  
+  # WPF single-file settings
+  include_native_libs: true
+  enable_compression: true
+  
+  # Runtime identifiers for WPF
+  runtime_identifiers:
+    - win-x64
+    - win-x86
+    - win-arm64
+
+resources:
+  # Resource handling
+  include_resources: true
+  resource_patterns:
+    - '**/*.xaml'
+    - '**/*.png'
+    - '**/*.jpg'
+    - '**/*.ico'
+  
+  # Localization
+  include_satellite_assemblies: true
+  cultures:
+    - en-US
+    - de-DE
+    - fr-FR
+
+optimization:
+  # WPF performance optimizations
+  enable_xaml_compilation: true
+  optimize_resources: true
+  remove_unused_references: true
+  
+  # AOT compilation for performance
+  ready_to_run: true
+  ready_to_run_composite: false
+
+styling:
+  # Theme and styling
+  default_theme: Windows11
+  include_themes:
+    - Light
+    - Dark
+    - HighContrast

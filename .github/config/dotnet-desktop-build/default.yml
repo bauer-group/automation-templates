@@ -1,0 +1,88 @@
+# Default configuration for .NET Desktop Build workflow
+# This file contains default values that can be overridden in your workflow
+
+build:
+  # .NET SDK Configuration
+  dotnet_version: '8.0.x'  # LTS version
+  
+  # Build configurations to test
+  configurations:
+    - Release
+    - Debug
+  
+  # Target platforms
+  platforms:
+    - x64
+    - x86
+  
+  # MSBuild settings
+  verbosity: normal
+  treat_warnings_as_errors: false
+  
+  # Compilation options
+  ready_to_run: true
+  trimming: false
+
+project:
+  # Project discovery patterns
+  solution_pattern: '**/*.sln'
+  test_project_pattern: '**/*Tests.csproj'
+  
+  # Version management
+  auto_version: true
+  version_prefix: '1.0.0'
+
+publish:
+  # Publishing type
+  type: self-contained  # Options: single-file, framework-dependent, self-contained, msix
+  
+  # Single file options
+  include_native_libs: true
+  enable_compression: true
+  
+  # MSIX packaging
+  create_msix: false
+  app_bundle: true
+
+testing:
+  # Test execution
+  enabled: true
+  filter: ''
+  
+  # Code coverage
+  collect_coverage: false
+  coverage_threshold: 0
+  coverage_format: cobertura
+
+signing:
+  # Code signing
+  enabled: false
+  timestamp_server: 'http://timestamp.digicert.com'
+  hash_algorithm: SHA256
+
+artifacts:
+  # Artifact management
+  upload: true
+  retention_days: 30
+  
+  # Naming convention
+  name_pattern: '{name}-{configuration}-{platform}-{version}'
+
+runner:
+  # GitHub Actions runner
+  os: windows-latest
+  timeout_minutes: 60
+
+# Advanced options
+advanced:
+  # Dependency caching
+  cache_dependencies: true
+  cache_key_prefix: 'dotnet-'
+  
+  # Parallel execution
+  parallel_tests: true
+  max_parallel_jobs: 4
+  
+  # Retry policy
+  retry_failed_tests: true
+  max_retries: 2
