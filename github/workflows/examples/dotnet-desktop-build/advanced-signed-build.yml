@@ -53,6 +53,6 @@ jobs:
       artifact-retention-days: 90
       
     secrets:
-      SIGNING_CERTIFICATE: ${{ secrets.CODE_SIGNING_CERT }}
-      CERTIFICATE_PASSWORD: ${{ secrets.CERT_PASSWORD }}
-      NUGET_API_KEY: ${{ secrets.NUGET_KEY }}
+      DOTNET_SIGNING_CERTIFICATE_BASE64: ${{ secrets.DOTNET_CODE_SIGNING_CERT_BASE64 }}
+      DOTNET_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.DOTNET_CODE_SIGNING_CERT_PASSWORD }}
+      DOTNET_NUGET_API_KEY: ${{ secrets.DOTNET_NUGET_PRIVATE_FEED_KEY }}

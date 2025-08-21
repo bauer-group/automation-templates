@@ -346,28 +346,28 @@ on:
         default: '["20.x"]'
       
     secrets:
-      NPM_TOKEN:
-        description: 'NPM authentication token'
+      NPM_REGISTRY_PUBLISH_TOKEN:
+        description: 'NPM authentication token for publishing Node.js packages to npm registry'
         required: false
       
-      GH_TOKEN:
-        description: 'GitHub token for GitHub Packages'
+      GITHUB_PACKAGES_TOKEN:
+        description: 'GitHub token for publishing Node.js packages to GitHub Packages'
         required: false
       
-      DOCKER_USERNAME:
-        description: 'Docker registry username'
+      DOCKER_REGISTRY_USERNAME:
+        description: 'Username for Docker registry authentication'
         required: false
       
-      DOCKER_PASSWORD:
-        description: 'Docker registry password'
+      DOCKER_REGISTRY_PASSWORD:
+        description: 'Password for Docker registry authentication'
         required: false
       
-      CODECOV_TOKEN:
-        description: 'Codecov token'
+      CODECOV_UPLOAD_TOKEN:
+        description: 'Codecov token for uploading JavaScript/TypeScript test coverage'
         required: false
       
-      SONAR_TOKEN:
-        description: 'SonarCloud token'
+      SONARCLOUD_ANALYSIS_TOKEN:
+        description: 'SonarCloud token for JavaScript/TypeScript code quality analysis'
         required: false
     
     outputs:
@@ -676,7 +676,7 @@ jobs:
         if: inputs.test-coverage
         uses: codecov/codecov-action@v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
           working-directory: ${{ inputs.working-directory }}
           fail_ci_if_error: false
       
@@ -721,7 +721,7 @@ jobs:
         if: inputs.publish-package
         working-directory: ${{ inputs.working-directory }}
         env:
-          NODE_AUTH_TOKEN: ${{ inputs.publish-registry == 'github' && secrets.GH_TOKEN || secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ inputs.publish-registry == 'github' && secrets.GITHUB_PACKAGES_TOKEN || secrets.NPM_REGISTRY_PUBLISH_TOKEN }}
         run: |
           PM="${{ steps.detect-pm.outputs.package-manager }}"
           
@@ -785,7 +785,7 @@ jobs:
       - name: 🐳 Push Docker Image
         if: inputs.build-docker && inputs.docker-registry != ''
         run: |
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login ${{ inputs.docker-registry }} -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          echo "${{ secrets.DOCKER_REGISTRY_PASSWORD }}" | docker login ${{ inputs.docker-registry }} -u "${{ secrets.DOCKER_REGISTRY_USERNAME }}" --password-stdin
           
           FULL_IMAGE_NAME="${{ inputs.docker-registry }}/${{ steps.docker.outputs.image }}"
           docker tag "${{ steps.docker.outputs.image }}" "$FULL_IMAGE_NAME"
