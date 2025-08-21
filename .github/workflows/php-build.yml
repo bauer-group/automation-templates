@@ -344,12 +344,16 @@ jobs:
             ${{ runner.os }}-composer-
       
       - name: 🔐 Configure Composer Auth
-        if: secrets.COMPOSER_AUTH_JSON != ''
         working-directory: ${{ inputs.working-directory }}
         run: |
-          echo '${{ secrets.COMPOSER_AUTH_JSON }}' > auth.json
-          composer config --global --auth --merge-auth auth.json
-          rm auth.json
+          if [ -n "${{ secrets.COMPOSER_AUTH_JSON }}" ]; then
+            echo '${{ secrets.COMPOSER_AUTH_JSON }}' > auth.json
+            composer config --global --auth --merge-auth auth.json
+            rm auth.json
+            echo "✅ Composer auth configured"
+          else
+            echo "ℹ️ No Composer auth needed"
+          fi
       
       - name: ✅ Validate Composer Files
         working-directory: ${{ inputs.working-directory }}
@@ -448,13 +452,14 @@ jobs:
           fi
       
       - name: 📤 Upload Coverage to Codecov
-        if: inputs.run-tests && inputs.coverage != 'none' && secrets.CODECOV_UPLOAD_TOKEN != ''
+        if: inputs.run-tests && inputs.coverage != 'none'
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
           file: ${{ inputs.working-directory }}/coverage.xml
           flags: phpunit
           name: PHP ${{ matrix.php-version }}
+          fail_ci_if_error: false
       
       - name: 🔍 PHP CodeSniffer
         if: inputs.run-phpcs
