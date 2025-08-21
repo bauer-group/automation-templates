@@ -720,10 +720,15 @@ jobs:
         id: publish
         if: inputs.publish-package
         working-directory: ${{ inputs.working-directory }}
-        env:
-          NODE_AUTH_TOKEN: ${{ inputs.publish-registry == 'github' && secrets.GITHUB_PACKAGES_TOKEN || secrets.NPM_REGISTRY_PUBLISH_TOKEN }}
         run: |
           PM="${{ steps.detect-pm.outputs.package-manager }}"
+          
+          # Set auth token based on registry
+          if [ "${{ inputs.publish-registry }}" = "github" ]; then
+            export NODE_AUTH_TOKEN="${{ secrets.GITHUB_PACKAGES_TOKEN }}"
+          else
+            export NODE_AUTH_TOKEN="${{ secrets.NPM_REGISTRY_PUBLISH_TOKEN }}"
+          fi
           
           # Publish command based on package manager
           PUBLISH_CMD=""
