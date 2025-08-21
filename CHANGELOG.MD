@@ -1,3 +1,18 @@
+## [0.13.0](https://github.com/bauer-group/automation-templates/compare/v0.12.6...v0.13.0) (2025-08-21)
+
+### 🚀 Features
+
+* Add reusable Python package publish workflow with extensive configuration options ([0ea82b9](https://github.com/bauer-group/automation-templates/commit/0ea82b923617d54e23fab82f87819a7395a20893))
+
+### 🐛 Bug Fixes
+
+* enhance documentation workflow to handle skipped runs and provide summaries ([ef352d9](https://github.com/bauer-group/automation-templates/commit/ef352d9f71f5658b9958f0b56bfb9e7d9f1238ab))
+* improve Composer auth configuration and add conditional logging ([1afefb9](https://github.com/bauer-group/automation-templates/commit/1afefb9ff7ca5725ed8908ffcf99e71868ce79c9))
+
+### 🔧 Maintenance
+
+* remove temporary changelog file ([51eb826](https://github.com/bauer-group/automation-templates/commit/51eb82689ba852792d5f0f44bcb8134ed5328052))
+
 ## [0.12.6](https://github.com/bauer-group/automation-templates/compare/v0.12.5...v0.12.6) (2025-08-21)
 
 ### 🐛 Bug Fixes
