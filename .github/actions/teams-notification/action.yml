@@ -230,10 +230,13 @@ runs:
         # Format timestamp for display (German locale format)
         # Use current timestamp or event timestamp
         SOURCE_TIME="$TIMESTAMP"
-        if [[ -n "${{ github.event.created_at }}" ]]; then
-          SOURCE_TIME="${{ github.event.created_at }}"
-        elif [[ -n "${{ github.event.updated_at }}" ]]; then
-          SOURCE_TIME="${{ github.event.updated_at }}"
+        EVENT_CREATED="${{ github.event.created_at }}"
+        EVENT_UPDATED="${{ github.event.updated_at }}"
+        
+        if [[ -n "$EVENT_CREATED" ]]; then
+          SOURCE_TIME="$EVENT_CREATED"
+        elif [[ -n "$EVENT_UPDATED" ]]; then
+          SOURCE_TIME="$EVENT_UPDATED"
         fi
         
         # Format as German date/time: DD.MM.YYYY HH:MM UTC
@@ -317,7 +320,8 @@ runs:
         EOF
         
         # Add summary if provided
-        if [[ -n "${{ inputs.summary }}" ]]; then
+        SUMMARY="${{ inputs.summary }}"
+        if [[ -n "$SUMMARY" ]]; then
           cat >> "$CARD_FILE" << 'EOF'
                   {
                     "type": "TextBlock",
@@ -329,7 +333,8 @@ runs:
         fi
         
         # Add details if provided
-        if [[ -n "${{ inputs.details }}" ]]; then
+        DETAILS="${{ inputs.details }}"
+        if [[ -n "$DETAILS" ]]; then
           cat >> "$CARD_FILE" << 'EOF'
                   {
                     "type": "TextBlock",
@@ -354,7 +359,8 @@ runs:
         EOF
           
           # Add event-specific facts
-          if [[ -n "${{ inputs.pr-number }}" ]]; then
+          PR_NUMBER="${{ inputs.pr-number }}"
+          if [[ -n "$PR_NUMBER" ]]; then
             cat >> "$CARD_FILE" << 'EOF'
                       ,{
                         "title": "🔀 Pull Request:",
@@ -363,7 +369,8 @@ runs:
         EOF
           fi
           
-          if [[ -n "${{ inputs.issue-number }}" ]]; then
+          ISSUE_NUMBER="${{ inputs.issue-number }}"
+          if [[ -n "$ISSUE_NUMBER" ]]; then
             cat >> "$CARD_FILE" << 'EOF'
                       ,{
                         "title": "🐛 Issue:",
@@ -373,7 +380,8 @@ runs:
           fi
           
           # Add custom facts if provided
-          if [[ -n "${{ inputs.custom-facts }}" ]]; then
+          CUSTOM_FACTS="${{ inputs.custom-facts }}"
+          if [[ -n "$CUSTOM_FACTS" ]]; then
             # Process custom facts JSON
             echo '${{ inputs.custom-facts }}' | jq -c '.[]' | while read -r fact; do
               TITLE=$(echo "$fact" | jq -r '.title')
@@ -394,7 +402,9 @@ runs:
         fi
         
         # Add workflow logs section if enabled
-        if [[ "${{ inputs.show-logs }}" == "true" ]] && [[ -n "${{ inputs.workflow-logs }}" ]]; then
+        SHOW_LOGS="${{ inputs.show-logs }}"
+        WORKFLOW_LOGS="${{ inputs.workflow-logs }}"
+        if [[ "$SHOW_LOGS" == "true" ]] && [[ -n "$WORKFLOW_LOGS" ]]; then
           cat >> "$CARD_FILE" << 'EOF'
                   {
                     "type": "Container",
@@ -437,7 +447,8 @@ runs:
         EOF
         
         # Workflow run action
-        if [[ -n "${{ inputs.run-url }}" ]]; then
+        RUN_URL="${{ inputs.run-url }}"
+        if [[ -n "$RUN_URL" ]]; then
           cat >> "$CARD_FILE" << 'EOF'
                       ,{
                         "type": "Action.OpenUrl",
@@ -448,7 +459,8 @@ runs:
         fi
         
         # PR action
-        if [[ -n "${{ inputs.pr-url }}" ]]; then
+        PR_URL="${{ inputs.pr-url }}"
+        if [[ -n "$PR_URL" ]]; then
           cat >> "$CARD_FILE" << 'EOF'
                       ,{
                         "type": "Action.OpenUrl",
@@ -459,7 +471,8 @@ runs:
         fi
         
         # Issue action
-        if [[ -n "${{ inputs.issue-url }}" ]]; then
+        ISSUE_URL="${{ inputs.issue-url }}"
+        if [[ -n "$ISSUE_URL" ]]; then
           cat >> "$CARD_FILE" << 'EOF'
                       ,{
                         "type": "Action.OpenUrl",
