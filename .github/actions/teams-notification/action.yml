@@ -347,39 +347,43 @@ runs:
         fi
         
         # Add facts section
-        if [[ "${{ steps.config.outputs.enable-facts }}" == "true" ]]; then
-          # Build facts JSON
-          FACTS_JSON=""
-          
-          # Commit SHA fact
-          COMMIT_SHA="${{ steps.event-data.outputs.short-sha }}"
-          FACTS_JSON='[{"title": "🔗 Commit SHA:", "value": "'$COMMIT_SHA'"}]'
-          
-          # Add PR number if provided
-          PR_NUMBER="${{ inputs.pr-number }}"
-          if [[ -n "$PR_NUMBER" ]]; then
-            FACTS_JSON=$(echo "$FACTS_JSON" | jq '. += [{"title": "🔀 Pull Request:", "value": "#'$PR_NUMBER'"}]')
-          fi
-          
-          # Add issue number if provided
-          ISSUE_NUMBER="${{ inputs.issue-number }}"
-          if [[ -n "$ISSUE_NUMBER" ]]; then
-            FACTS_JSON=$(echo "$FACTS_JSON" | jq '. += [{"title": "🐛 Issue:", "value": "#'$ISSUE_NUMBER'"}]')
-          fi
-          
-          # Add custom facts if provided
-          CUSTOM_FACTS='${{ inputs.custom-facts }}'
-          if [[ -n "$CUSTOM_FACTS" ]] && [[ "$CUSTOM_FACTS" != "null" ]]; then
-            FACTS_JSON=$(echo "$FACTS_JSON" | jq --argjson custom "$CUSTOM_FACTS" '. += $custom')
-          fi
-          
-          # Add facts section to card
-          cat >> "$CARD_FILE" << EOF
+        ENABLE_FACTS="${{ steps.config.outputs.enable-facts }}"
+        if [[ "$ENABLE_FACTS" == "true" ]]; then
+          cat >> "$CARD_FILE" << 'EOF'
                   {
                     "type": "FactSet",
-                    "facts": $FACTS_JSON
+                    "facts": [
+                      {
+                        "title": "🔗 Commit SHA:",
+                        "value": "${{ steps.event-data.outputs.short-sha }}"
+                      }
+        EOF
+          
+          # Add event-specific facts
+          PR_NUMBER="${{ inputs.pr-number }}"
+          if [[ -n "$PR_NUMBER" ]]; then
+            cat >> "$CARD_FILE" << 'EOF'
+                      ,{
+                        "title": "🔀 Pull Request:",
+                        "value": "#${{ inputs.pr-number }}"
+                      }
+        EOF
+          fi
+          
+          ISSUE_NUMBER="${{ inputs.issue-number }}"
+          if [[ -n "$ISSUE_NUMBER" ]]; then
+            cat >> "$CARD_FILE" << 'EOF'
+                      ,{
+                        "title": "🐛 Issue:",
+                        "value": "#${{ inputs.issue-number }}"
+                      }
+        EOF
+          fi
+          
+          cat >> "$CARD_FILE" << 'EOF'
+                    ]
                   },
-EOF
+        EOF
         fi
         
         # Add workflow logs section if enabled
