@@ -1,0 +1,133 @@
+# 🔔 Teams Notification Test Configuration
+# Configuration for testing and debugging Teams notifications
+# Author: BAUER GROUP IT
+# Version: 1.0.0
+
+# Inherit from default configuration
+extends: "default"
+
+# Theme configuration for test events
+theme:
+  colors:
+    test: "6f42c1"                # Purple for test notifications
+    debug: "fd7e14"               # Orange for debug notifications
+    demo: "20c997"                # Teal for demo notifications
+    default: "6f42c1"             # Default to test purple
+
+# Card styling optimized for testing
+card:
+  style: "accent"                 # Distinct styling for tests
+  width: "Full"
+  
+# Feature toggles for testing - enable all features
+features:
+  mentions: true                  # Test mention functionality
+  facts: true                     # Test facts display
+  actions: true                   # Test action buttons
+  timestamps: true                # Test timestamps
+  avatars: true                   # Test avatar display
+  retry: true                     # Test retry functionality
+  
+# Notification settings - more verbose for testing
+notifications:
+  timeout: 60                     # Longer timeout for debugging
+  retry_count: 1                  # Single retry for testing
+  retry_delay: 1                  # Short delay for testing
+  
+# Content settings - allow longer content for testing
+content:
+  title_max_length: 200          # Longer titles for test scenarios
+  summary_max_length: 1000       # Longer summaries for test data
+  details_max_length: 2000       # Longer details for comprehensive testing
+  
+# Test mentions
+mentions:
+  test:                           # Test mentions (use test users/groups)
+    - "test-user"
+    - "developers"
+  debug:                          # Debug mentions
+    - "devops-team"
+  demo:                           # Demo mentions
+    - "stakeholders"
+  
+# Formatting for testing
+formatting:
+  use_emojis: true               # Test emoji rendering
+  bold_titles: true              # Test bold formatting
+  code_formatting: true          # Test code formatting
+
+# Test-specific settings
+test_settings:
+  verbose_logging: true          # Enable detailed logging
+  include_metadata: true         # Include all available metadata
+  show_payload: true             # Show card payload in logs
+  validate_card: true            # Validate adaptive card schema
+  
+# Test scenarios
+test_scenarios:
+  basic:                         # Basic notification test
+    title: "🧪 Basic Test Notification"
+    summary: "Testing basic Teams notification functionality"
+    details: "This is a test notification to verify the basic functionality of the Teams notification system."
+    
+  with_facts:                    # Test with facts
+    title: "📊 Test with Facts"
+    summary: "Testing notification with facts section"
+    details: "This test includes custom facts to verify the facts display functionality."
+    custom_facts:
+      - title: "Test Type"
+        value: "Integration Test"
+      - title: "Environment"
+        value: "Development"
+      - title: "Duration"
+        value: "< 1 minute"
+        
+  with_mentions:                 # Test with mentions
+    title: "👥 Test with Mentions"
+    summary: "Testing notification with user mentions"
+    details: "This test includes user mentions to verify the mention functionality."
+    mentions:
+      - "test-user"
+      - "qa-team"
+      
+  large_content:                 # Test with large content
+    title: "📝 Large Content Test"
+    summary: "Testing notification with large amounts of content to verify truncation and formatting"
+    details: "This is a comprehensive test with a large amount of content to verify how the system handles content truncation, formatting, and display. It includes multiple paragraphs, technical details, and various formatting options to ensure the notification system works properly with extensive content."
+    
+  all_features:                  # Test all features
+    title: "🎯 Comprehensive Feature Test"
+    summary: "Testing all available features in a single notification"
+    details: "This comprehensive test includes all available features: mentions, facts, actions, timestamps, avatars, and various formatting options."
+    custom_facts:
+      - title: "Feature Coverage"
+        value: "100%"
+      - title: "Test Status"
+        value: "✅ Passed"
+    mentions:
+      - "test-user"
+      
+# Debug information
+debug:
+  include_github_context: true   # Include GitHub context in debug info
+  include_environment_vars: true # Include relevant environment variables
+  log_request_details: true     # Log HTTP request details
+  log_response_details: true    # Log HTTP response details
+  
+# Validation rules for testing
+validation:
+  required_fields:               # Fields that must be present
+    - "webhook-url"
+    - "event-type"
+  optional_fields:               # Fields that are optional but tested
+    - "title"
+    - "summary"
+    - "details"
+    - "custom-facts"
+    - "mention-users"
+    
+# Performance testing
+performance:
+  measure_response_time: true    # Measure notification delivery time
+  target_response_time: 5000     # Target response time in milliseconds
+  log_performance_metrics: true  # Log performance metrics

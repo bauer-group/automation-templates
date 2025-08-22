@@ -1,0 +1,63 @@
+# 🔔 Teams Notification Failure Configuration
+# Optimized configuration for failure/error events requiring immediate attention
+# Author: BAUER GROUP IT
+# Version: 1.0.0
+
+# Inherit from default configuration
+extends: "default"
+
+# Theme configuration - high visibility colors
+theme:
+  colors:
+    workflow_failure: "dc3545"    # Critical Red
+    issue_opened: "fd7e14"        # Warning Orange
+    pr_opened: "ffc107"           # Attention Yellow (for critical PRs)
+    default: "dc3545"             # Default to critical red
+
+# Card styling optimized for urgent attention
+card:
+  style: "attention"              # Use attention-grabbing styling
+  width: "Full"
+  
+# Feature toggles - maximize information for failures
+features:
+  mentions: true                  # Enable mentions for failures
+  facts: true                     # Show detailed facts
+  actions: true                   # Show action buttons
+  timestamps: true                # Include timestamps
+  avatars: true                   # Show user avatars
+  retry: true                     # Enable aggressive retry
+  
+# Notification settings - aggressive for failures
+notifications:
+  timeout: 45                     # Longer timeout for critical messages
+  retry_count: 5                  # More retries for failures
+  retry_delay: 3                  # Longer delay for stability
+  
+# Content settings - detailed information for troubleshooting
+content:
+  title_max_length: 150          # Longer titles for context
+  summary_max_length: 750        # Detailed summaries
+  details_max_length: 1500       # Full details for troubleshooting
+  
+# Default mentions for failure events - customize per team
+mentions:
+  workflow_failure:               # Critical - notify team leads
+    - "devops-team"
+    - "team-leads"
+  issue_opened:                   # New issues - notify maintainers
+    - "maintainers"
+  pr_opened: []                   # PRs don't need immediate mentions
+  
+# Formatting optimized for urgency and clarity
+formatting:
+  use_emojis: true               # Alert emojis
+  bold_titles: true              # Bold for urgency
+  code_formatting: true          # Technical details important for debugging
+
+# Additional failure-specific settings
+failure_settings:
+  include_logs: true              # Include log snippets if available
+  highlight_errors: true          # Highlight error messages
+  suggest_actions: true           # Include suggested next steps
+  escalation_enabled: true        # Enable escalation workflows

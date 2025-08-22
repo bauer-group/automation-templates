@@ -1,0 +1,57 @@
+# 🔔 Teams Notification Default Configuration
+# This configuration provides standard settings for Microsoft Teams notifications
+# Author: BAUER GROUP IT
+# Version: 1.0.0
+
+# Theme configuration
+theme:
+  colors:
+    # Event-specific colors (hex without #)
+    workflow_success: "28a745"    # Green
+    workflow_failure: "dc3545"    # Red
+    issue_opened: "fd7e14"        # Orange
+    issue_closed: "28a745"        # Green
+    pr_opened: "007bff"           # Blue
+    pr_closed: "6c757d"           # Gray
+    pr_merged: "28a745"           # Green
+    push: "6f42c1"                # Purple
+    release: "17a2b8"             # Teal
+    default: "0078d4"             # Microsoft Blue
+
+# Card styling
+card:
+  style: "default"                # default, emphasis, good, attention, warning, accent
+  width: "Full"                   # Full, Auto
+  
+# Feature toggles
+features:
+  mentions: true                  # Enable @mentions
+  facts: true                     # Show facts section
+  actions: true                   # Show action buttons
+  timestamps: true                # Include timestamps
+  avatars: true                   # Show user avatars
+  retry: true                     # Enable retry on failure
+  
+# Notification settings
+notifications:
+  timeout: 30                     # Request timeout in seconds
+  retry_count: 3                  # Number of retry attempts
+  retry_delay: 2                  # Base delay between retries (exponential backoff)
+  
+# Content limits
+content:
+  title_max_length: 100          # Maximum title length
+  summary_max_length: 500        # Maximum summary length
+  details_max_length: 1000       # Maximum details length
+  
+# Default mentions for different event types
+mentions:
+  workflow_failure: []            # Users to mention on workflow failures
+  issue_opened: []                # Users to mention on new issues
+  pr_ready_for_review: []         # Users to mention when PR is ready for review
+  
+# Formatting options
+formatting:
+  use_emojis: true               # Include emojis in notifications
+  bold_titles: true              # Use bold formatting for titles
+  code_formatting: true          # Use code formatting for technical details
