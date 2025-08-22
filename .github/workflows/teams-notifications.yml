@@ -125,7 +125,7 @@ jobs:
           issue-number: ${{ github.event.issue.number }}
           issue-url: ${{ github.event.issue.html_url }}
           config-file: 'issue'
-          custom-facts: |
+          custom-facts: >-
             [
               {"title": "Labels", "value": "${{ join(github.event.issue.labels.*.name, ', ') }}"},
               {"title": "Assignees", "value": "${{ join(github.event.issue.assignees.*.login, ', ') }}"}
@@ -174,7 +174,7 @@ jobs:
           pr-number: ${{ github.event.pull_request.number }}
           pr-url: ${{ github.event.pull_request.html_url }}
           config-file: 'pull-request'
-          custom-facts: |
+          custom-facts: >-
             [
               {"title": "Base Branch", "value": "${{ github.event.pull_request.base.ref }}"},
               {"title": "Head Branch", "value": "${{ github.event.pull_request.head.ref }}"},
@@ -213,7 +213,7 @@ jobs:
           pr-number: ${{ github.event.pull_request.number }}
           pr-url: ${{ github.event.pull_request.html_url }}
           config-file: 'pull-request'
-          custom-facts: |
+          custom-facts: >-
             [
               {"title": "Merged into", "value": "${{ github.event.pull_request.base.ref }}"},
               {"title": "Commits", "value": "${{ github.event.pull_request.commits }}"},
@@ -252,7 +252,7 @@ jobs:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
           event-type: 'push'
           title: '🚀 New Commits Pushed'
-          summary: '${{ github.event.commits | length }} commit(s) pushed to **${{ github.ref_name }}**'
+          summary: 'New commits pushed to **${{ github.ref_name }}**'
           details: 'Latest commit: ${{ github.event.head_commit.message }}'
           repository-name: ${{ github.repository }}
           repository-url: ${{ github.server_url }}/${{ github.repository }}
@@ -260,10 +260,10 @@ jobs:
           ref: ${{ github.ref }}
           sha: ${{ github.sha }}
           config-file: 'push'
-          custom-facts: |
+          custom-facts: >-
             [
-              {"title": "Commits", "value": "${{ github.event.commits | length }}"},
-              {"title": "Files Changed", "value": "${{ github.event.head_commit.added | length + github.event.head_commit.modified | length + github.event.head_commit.removed | length }}"}
+              {"title": "Branch", "value": "${{ github.ref_name }}"},
+              {"title": "Commit SHA", "value": "${{ github.sha }}"}
             ]
 
   # Handle release notifications
@@ -289,7 +289,7 @@ jobs:
           actor: ${{ github.event.release.author.login }}
           actor-avatar: ${{ github.event.release.author.avatar_url }}
           config-file: 'release'
-          custom-facts: |
+          custom-facts: >-
             [
               {"title": "Tag", "value": "${{ github.event.release.tag_name }}"},
               {"title": "Prerelease", "value": "${{ github.event.release.prerelease }}"},
