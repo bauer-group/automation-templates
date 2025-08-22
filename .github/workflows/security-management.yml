@@ -199,11 +199,10 @@ jobs:
         if: steps.should-run.outputs.should_run == 'true'
         uses: ./.github/actions/security-generate
         with:
-          template-path: 'docs/SECURITY.template.MD'
-          output-path: 'SECURITY.MD'
+          config-file: '.github/config/security-policy/config.yml'
           force-update: ${{ inputs.force-update || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' }}
           custom-version: ${{ inputs.custom-version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || (github.event_name == 'workflow_call' && inputs.tag-name) || '' }}
-          policy-version: ${{ inputs.policy-version || '1.0.0' }}
+          policy-version: ${{ inputs.policy-version || '' }}
 
       - name: 🛡️ Commit and Push Changes
         if: steps.should-run.outputs.should_run == 'true' && steps.generate.outputs.changes_detected == 'true' && github.event_name != 'pull_request'
