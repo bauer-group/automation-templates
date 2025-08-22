@@ -1,3 +1,9 @@
+## [0.17.0](https://github.com/bauer-group/automation-templates/compare/v0.16.0...v0.17.0) (2025-08-22)
+
+### 🚀 Features
+
+* Add comprehensive Teams notifications workflows ([d3e722a](https://github.com/bauer-group/automation-templates/commit/d3e722ac3614d67f63332ba9eda894cf84392ce9))
+
 ## [0.16.0](https://github.com/bauer-group/automation-templates/compare/v0.15.0...v0.16.0) (2025-08-22)
 
 ### 🚀 Features
