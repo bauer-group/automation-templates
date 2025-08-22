@@ -223,6 +223,20 @@ on:
         type: string
         required: false
         default: 'ubuntu-latest'
+      
+      # Docker Hub README Sync
+      sync-dockerhub-readme:
+        description: 'Sync README to Docker Hub repository'
+        type: boolean
+        required: false
+        default: false
+      
+      
+      readme-file:
+        description: 'Custom README file path (defaults to DOCKER_README.MD or README.MD)'
+        type: string
+        required: false
+        default: ''
     
     secrets:
       REGISTRY_PASSWORD:
@@ -240,6 +254,7 @@ on:
       DOCKER_BUILD_SECRETS:
         description: 'Docker build secrets as JSON'
         required: false
+      
     
     outputs:
       image-digest:
@@ -385,6 +400,105 @@ jobs:
             eval "$TEST_CMD"
           fi
 
+  # Docker Hub README synchronization
+  dockerhub-readme:
+    name: Sync Docker Hub README
+    needs: build
+    if: inputs.sync-dockerhub-readme && inputs.registry == 'docker.io' && needs.build.result == 'success' && inputs.push
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+      
+      - name: 📄 Determine README File
+        id: readme
+        shell: bash
+        run: |
+          # Priority: Custom file -> DOCKER_README.MD -> README.MD
+          if [ -n "${{ inputs.readme-file }}" ] && [ -f "${{ inputs.readme-file }}" ]; then
+            README_FILE="${{ inputs.readme-file }}"
+            echo "📄 Using custom README file: $README_FILE"
+          elif [ -f "DOCKER_README.MD" ]; then
+            README_FILE="DOCKER_README.MD"
+            echo "📄 Using Docker-specific README: $README_FILE"
+          elif [ -f "README.MD" ]; then
+            README_FILE="README.MD"
+            echo "📄 Using main README: $README_FILE"
+          elif [ -f "README.md" ]; then
+            README_FILE="README.md"
+            echo "📄 Using main README: $README_FILE"
+          else
+            echo "❌ No README file found!"
+            exit 1
+          fi
+          
+          echo "file=$README_FILE" >> $GITHUB_OUTPUT
+          
+          # Log file size and first few lines for verification
+          echo "📊 README file info:"
+          echo "  - File: $README_FILE"
+          echo "  - Size: $(wc -c < "$README_FILE") bytes"
+          echo "  - Lines: $(wc -l < "$README_FILE") lines"
+          echo ""
+          echo "📋 First 5 lines preview:"
+          head -5 "$README_FILE" | sed 's/^/    /'
+          echo ""
+      
+      - name: 🐋 Extract Docker Hub Repository Name
+        id: docker-repo
+        shell: bash
+        run: |
+          # Extract repository name for Docker Hub
+          IMAGE_NAME="${{ inputs.image-name }}"
+          if [ -z "$IMAGE_NAME" ]; then
+            # Use GitHub repository name as fallback
+            IMAGE_NAME="${{ github.repository }}"
+            IMAGE_NAME="${IMAGE_NAME##*/}"  # Remove owner, keep repo name
+          fi
+          
+          # Use global DOCKER_USERNAME secret
+          DOCKERHUB_USER="${{ secrets.DOCKER_USERNAME }}"
+          if [ -z "$DOCKERHUB_USER" ]; then
+            echo "❌ DOCKER_USERNAME secret is required for README sync"
+            exit 1
+          fi
+          
+          DOCKER_REPO="$DOCKERHUB_USER/$IMAGE_NAME"
+          echo "🐋 Docker Hub repository: $DOCKER_REPO"
+          echo "repository=$DOCKER_REPO" >> $GITHUB_OUTPUT
+          
+          # Validate repository name format
+          if [[ ! "$DOCKER_REPO" =~ ^[a-z0-9]+([._-][a-z0-9]+)*\/[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
+            echo "⚠️ Warning: Repository name '$DOCKER_REPO' may not follow Docker Hub naming conventions"
+          fi
+      
+      - name: 🔄 Sync README to Docker Hub
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: ${{ steps.docker-repo.outputs.repository }}
+          readme-filepath: ${{ steps.readme.outputs.file }}
+          short-description: 'Docker image for ${{ github.repository }} - automatically synced from GitHub'
+          enable-url-completion: true
+      
+      - name: ✅ README Sync Completed
+        shell: bash
+        run: |
+          echo "✅ Successfully synchronized README to Docker Hub!"
+          echo ""
+          echo "📋 Sync Details:"
+          echo "  - Repository: ${{ steps.docker-repo.outputs.repository }}"
+          echo "  - README File: ${{ steps.readme.outputs.file }}"
+          echo "  - Docker Hub URL: https://hub.docker.com/r/${{ steps.docker-repo.outputs.repository }}"
+          echo ""
+          echo "🔗 View on Docker Hub: https://hub.docker.com/r/${{ steps.docker-repo.outputs.repository }}"
+
   # Image vulnerability analysis (separate job for better performance)
   security-analysis:
     name: Security Analysis
@@ -486,7 +600,7 @@ jobs:
   # Summary job
   summary:
     name: Build Summary
-    needs: [build, security-analysis, deploy]
+    needs: [build, dockerhub-readme, security-analysis, deploy]
     if: always()
     runs-on: ubuntu-latest
     
@@ -502,6 +616,7 @@ jobs:
           echo "| Stage | Status | Duration | Details |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|----------|---------|" >> $GITHUB_STEP_SUMMARY
           echo "| **Build** | ${{ needs.build.result == 'success' && '✅ Success' || '❌ Failed' }} | ${{ needs.build.outputs.build-duration }}s | Image: \`${{ needs.build.outputs.image-url }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **README Sync** | ${{ needs.dockerhub-readme.result == 'success' && '✅ Synced' || needs.dockerhub-readme.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | - | Docker Hub README |" >> $GITHUB_STEP_SUMMARY
           echo "| **Security** | ${{ needs.security-analysis.result == 'success' && '✅ Passed' || needs.security-analysis.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | ${{ needs.security-analysis.outputs.scan-duration || '0' }}s | ${{ inputs.security-scanner }} scan |" >> $GITHUB_STEP_SUMMARY
           echo "| **Deploy** | ${{ needs.deploy.result == 'success' && '✅ Deployed' || needs.deploy.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | ${{ needs.deploy.outputs.deploy-duration || '0' }}s | Environment: ${{ inputs.deploy-environment }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
