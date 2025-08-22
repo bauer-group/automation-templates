@@ -240,7 +240,17 @@ runs:
                     "style": "emphasis",
                     "items": [
                       {
+                        "type": "TextBlock",
+                        "text": "📦 **[${{ inputs.repository-name }}](${{ inputs.repository-url }})**",
+                        "weight": "Bolder",
+                        "size": "Large",
+                        "color": "Accent",
+                        "wrap": true,
+                        "spacing": "None"
+                      },
+                      {
                         "type": "ColumnSet",
+                        "spacing": "Medium",
                         "columns": [
                           {
                             "type": "Column",
@@ -263,14 +273,16 @@ runs:
                                 "text": "${{ steps.event-data.outputs.status-icon }} **${{ inputs.title || steps.event-data.outputs.status-text }}**",
                                 "weight": "Bolder",
                                 "size": "Medium",
-                                "wrap": true
+                                "wrap": true,
+                                "spacing": "None"
                               },
                               {
                                 "type": "TextBlock",
-                                "text": "[${{ inputs.repository-name }}](${{ inputs.repository-url }})",
+                                "text": "👤 ${{ inputs.actor }} • 🌿 ${{ steps.event-data.outputs.ref-name }} • 📅 ${{ steps.event-data.outputs.timestamp }}",
                                 "size": "Small",
-                                "color": "Accent",
-                                "wrap": true
+                                "color": "Default",
+                                "wrap": true,
+                                "spacing": "Small"
                               }
                             ]
                           }
@@ -312,20 +324,8 @@ runs:
                     "type": "FactSet",
                     "facts": [
                       {
-                        "title": "Actor:",
-                        "value": "${{ inputs.actor }}"
-                      },
-                      {
-                        "title": "Branch:",
-                        "value": "${{ steps.event-data.outputs.ref-name }}"
-                      },
-                      {
-                        "title": "Commit:",
+                        "title": "🔗 Commit SHA:",
                         "value": "${{ steps.event-data.outputs.short-sha }}"
-                      },
-                      {
-                        "title": "Time:",
-                        "value": "${{ steps.event-data.outputs.timestamp }}"
                       }
         EOF
           
@@ -333,7 +333,7 @@ runs:
           if [[ -n "${{ inputs.pr-number }}" ]]; then
             cat >> "$CARD_FILE" << 'EOF'
                       ,{
-                        "title": "PR:",
+                        "title": "🔀 Pull Request:",
                         "value": "#${{ inputs.pr-number }}"
                       }
         EOF
@@ -342,7 +342,7 @@ runs:
           if [[ -n "${{ inputs.issue-number }}" ]]; then
             cat >> "$CARD_FILE" << 'EOF'
                       ,{
-                        "title": "Issue:",
+                        "title": "🐛 Issue:",
                         "value": "#${{ inputs.issue-number }}"
                       }
         EOF
