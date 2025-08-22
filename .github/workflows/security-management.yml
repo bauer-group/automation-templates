@@ -240,6 +240,7 @@ jobs:
           
           git add SECURITY.MD
           git commit -m "$COMMIT_MSG" || echo "No changes to commit"
+          git pull --rebase origin main
           git push
 
   # Validate security policy structure and content
