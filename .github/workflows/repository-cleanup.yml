@@ -49,7 +49,7 @@ on:
         description: 'Custom operations (comma-separated: releases,tags,branches,prs,workflows,issues)'
         type: string
         required: false
-        default: 'workflows'
+        default: 'releases,tags,workflows,prs,branches,issues'
       
       protected-branches:
         description: 'Protected branches (comma-separated, empty = profile default)'
@@ -233,8 +233,8 @@ jobs:
               ;;
             custom)
               MAX_AGE_DEFAULT=365  # 1 year default
-              PROTECTED_BRANCHES_DEFAULT="main,master,develop,staging"
-              BATCH_SIZE_DEFAULT=25
+              PROTECTED_BRANCHES_DEFAULT="main,master"
+              BATCH_SIZE_DEFAULT=50
               ;;
             *)
               echo "❌ Invalid profile: $PROFILE"
