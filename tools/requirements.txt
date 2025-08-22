@@ -1,0 +1,2 @@
+# Dependencies for Automation Templates Deployment Tool
+PyYAML>=6.0.1
