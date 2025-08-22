@@ -72,6 +72,7 @@ Create a `.actrc` file in your repository root:
 
 # Use GitHub's larger runner image for better compatibility
 -P ubuntu-latest=catthehacker/ubuntu:act-latest
+-P ubuntu-24.04=catthehacker/ubuntu:act-24.04
 -P ubuntu-22.04=catthehacker/ubuntu:act-22.04
 -P ubuntu-20.04=catthehacker/ubuntu:act-20.04
 
