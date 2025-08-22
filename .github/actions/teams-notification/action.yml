@@ -348,57 +348,38 @@ runs:
         
         # Add facts section
         if [[ "${{ steps.config.outputs.enable-facts }}" == "true" ]]; then
-          cat >> "$CARD_FILE" << 'EOF'
-                  {
-                    "type": "FactSet",
-                    "facts": [
-                      {
-                        "title": "🔗 Commit SHA:",
-                        "value": "${{ steps.event-data.outputs.short-sha }}"
-                      }
-        EOF
+          # Build facts JSON
+          FACTS_JSON=""
           
-          # Add event-specific facts
+          # Commit SHA fact
+          COMMIT_SHA="${{ steps.event-data.outputs.short-sha }}"
+          FACTS_JSON='[{"title": "🔗 Commit SHA:", "value": "'$COMMIT_SHA'"}]'
+          
+          # Add PR number if provided
           PR_NUMBER="${{ inputs.pr-number }}"
           if [[ -n "$PR_NUMBER" ]]; then
-            cat >> "$CARD_FILE" << 'EOF'
-                      ,{
-                        "title": "🔀 Pull Request:",
-                        "value": "#${{ inputs.pr-number }}"
-                      }
-        EOF
+            FACTS_JSON=$(echo "$FACTS_JSON" | jq '. += [{"title": "🔀 Pull Request:", "value": "#'$PR_NUMBER'"}]')
           fi
           
+          # Add issue number if provided
           ISSUE_NUMBER="${{ inputs.issue-number }}"
           if [[ -n "$ISSUE_NUMBER" ]]; then
-            cat >> "$CARD_FILE" << 'EOF'
-                      ,{
-                        "title": "🐛 Issue:",
-                        "value": "#${{ inputs.issue-number }}"
-                      }
-        EOF
+            FACTS_JSON=$(echo "$FACTS_JSON" | jq '. += [{"title": "🐛 Issue:", "value": "#'$ISSUE_NUMBER'"}]')
           fi
           
           # Add custom facts if provided
-          CUSTOM_FACTS="${{ inputs.custom-facts }}"
-          if [[ -n "$CUSTOM_FACTS" ]]; then
-            # Process custom facts JSON
-            echo '${{ inputs.custom-facts }}' | jq -c '.[]' | while read -r fact; do
-              TITLE=$(echo "$fact" | jq -r '.title')
-              VALUE=$(echo "$fact" | jq -r '.value')
-              cat >> "$CARD_FILE" << EOF
-                      ,{
-                        "title": "$TITLE:",
-                        "value": "$VALUE"
-                      }
-        EOF
-            done
+          CUSTOM_FACTS='${{ inputs.custom-facts }}'
+          if [[ -n "$CUSTOM_FACTS" ]] && [[ "$CUSTOM_FACTS" != "null" ]]; then
+            FACTS_JSON=$(echo "$FACTS_JSON" | jq --argjson custom "$CUSTOM_FACTS" '. += $custom')
           fi
           
-          cat >> "$CARD_FILE" << 'EOF'
-                    ]
+          # Add facts section to card
+          cat >> "$CARD_FILE" << EOF
+                  {
+                    "type": "FactSet",
+                    "facts": $FACTS_JSON
                   },
-        EOF
+EOF
         fi
         
         # Add workflow logs section if enabled
