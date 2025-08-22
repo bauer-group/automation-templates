@@ -133,19 +133,32 @@ jobs:
           echo "*Powered by **BAUER GROUP** modular workflow components* 🧩" >> $GITHUB_STEP_SUMMARY
 
   # 📄 Documentation Update (explicit call)
-  # Uncomment the following job to explicitly trigger documentation updates after successful releases
-  # This ensures documentation is updated even if the tag-push trigger doesn't work as expected
+  # Explicitly trigger documentation updates after successful releases
   
-  # update-documentation:
-  #   name: Update Documentation
-  #   if: needs.release-management.outputs.release-created == 'true'
-  #   needs: [release-management, artifact-generation]
-  #   uses: ./.github/workflows/documentation.yml
-  #   with:
-  #     tag-name: ${{ needs.release-management.outputs.tag-name }}
-  #     force-update: true
-  #   permissions:
-  #     contents: write
-  #     pull-requests: write
-  #        echo "*Repository: [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)*" >> $GITHUB_STEP_SUMMARY
+  update-documentation:
+    name: Update Documentation
+    if: needs.release-management.outputs.release-created == 'true'
+    needs: [release-management, artifact-generation]
+    uses: ./.github/workflows/documentation.yml
+    with:
+      tag-name: ${{ needs.release-management.outputs.tag-name }}
+      force-update: true
+    permissions:
+      contents: write
+      pull-requests: write
+
+  # 🛡️ Security Management Update (explicit call)
+  # Explicitly trigger security policy updates after successful releases
+
+  update-security-management:
+    name: Update Security Management
+    if: needs.release-management.outputs.release-created == 'true'
+    needs: [release-management, artifact-generation]
+    uses: ./.github/workflows/security-management.yml
+    with:
+      tag-name: ${{ needs.release-management.outputs.tag-name }}
+      force-update: true
+    permissions:
+      contents: write
+      pull-requests: write
   
