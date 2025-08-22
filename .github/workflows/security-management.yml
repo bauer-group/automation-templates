@@ -26,9 +26,9 @@ on:
         type: string
         default: ''
       policy-version:
-        description: 'Security policy version'
+        description: 'Security policy version (semantic versioning: x.y.z)'
         type: string
-        default: '2.0'
+        default: '1.0.0'
   # Triggered by other workflows when tags are created
   workflow_call:
     inputs:
@@ -43,10 +43,10 @@ on:
         required: false
         default: false
       policy-version:
-        description: 'Security policy version'
+        description: 'Security policy version (semantic versioning: x.y.z)'
         type: string
         required: false
-        default: '2.0'
+        default: '1.0.0'
 
 permissions:
   contents: write
@@ -203,7 +203,7 @@ jobs:
           output-path: 'SECURITY.MD'
           force-update: ${{ inputs.force-update || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' }}
           custom-version: ${{ inputs.custom-version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || (github.event_name == 'workflow_call' && inputs.tag-name) || '' }}
-          policy-version: ${{ inputs.policy-version || '2.0' }}
+          policy-version: ${{ inputs.policy-version || '1.0.0' }}
 
       - name: 🛡️ Commit and Push Changes
         if: steps.should-run.outputs.should_run == 'true' && steps.generate.outputs.changes_detected == 'true' && github.event_name != 'pull_request'

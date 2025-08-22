@@ -20,7 +20,7 @@ This action processes a `SECURITY.template.MD` file and generates a complete `SE
 | `output-path` | Path where the generated SECURITY.MD should be saved | No | `SECURITY.MD` |
 | `force-update` | Force update even if no changes detected | No | `false` |
 | `custom-version` | Custom version to use instead of auto-detected | No | `` |
-| `policy-version` | Security policy version | No | `2.0` |
+| `policy-version` | Security policy version (semantic versioning: x.y.z) | No | `1.0.0` |
 
 ## Outputs
 
@@ -42,7 +42,7 @@ The action processes the following placeholders in your `SECURITY.template.MD`:
 | `{{CURRENT_VERSION}}` | Current repository version (from latest tag) | `v0.18.0` |
 | `{{LAST_UPDATED}}` | Current timestamp | `2025-08-22 15:30:00 UTC` |
 | `{{NEXT_REVIEW}}` | Next review date (+12 months) | `August 2026` |
-| `{{POLICY_VERSION}}` | Security policy version | `2.0` |
+| `{{POLICY_VERSION}}` | Security policy version | `1.0.0` |
 | `{{SUPPORTED_VERSIONS_TABLE}}` | Complete version support table | See below |
 
 ### Version Support Table Format
@@ -80,7 +80,7 @@ The action automatically generates a table like this:
     output-path: 'SECURITY.MD'
     force-update: true
     custom-version: 'v1.0.0'
-    policy-version: '3.0'
+    policy-version: '2.0.0'
 ```
 
 ### Conditional Usage
