@@ -81,6 +81,16 @@ jobs:
           echo "Ref: ${{ github.ref }}"
           echo "Ref Name: ${{ github.ref_name }}"
           echo "Ref Type: ${{ github.ref_type }}"
+          echo "Force Update: ${{ inputs.force-update }}"
+          echo "Tag Name Input: ${{ inputs.tag-name }}"
+          
+          # Always run if force-update is true (from workflow_call or manual trigger)
+          if [[ "${{ inputs.force-update }}" == "true" ]]; then
+            echo "🔄 ✅ FORCE UPDATE ENABLED - will run regardless of other conditions"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           
           # Always run for tags - HIGHEST PRIORITY
           echo "Debug - github.ref: '${{ github.ref }}'"
