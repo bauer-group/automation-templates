@@ -1,3 +1,40 @@
+## [0.19.0](https://github.com/bauer-group/automation-templates/compare/v0.18.0...v0.19.0) (2025-08-22)
+
+### 🚀 Features
+
+* Add bug report template for improved issue tracking ([d46b118](https://github.com/bauer-group/automation-templates/commit/d46b1184f5403a90d28c425e7bb832d1d5e3c1f2))
+* Add Code of Conduct to promote a welcoming and inclusive community ([b2844c4](https://github.com/bauer-group/automation-templates/commit/b2844c42f9d31345da45dd26deb2c3babb4af66e))
+* Add contributing and security policy documentation ([95c4fad](https://github.com/bauer-group/automation-templates/commit/95c4fad1a7a29283b44f0e98d23fadee5ffd188d))
+* add deployment scripts and configuration for automation templates ([d5fc162](https://github.com/bauer-group/automation-templates/commit/d5fc162e9d1a4033d5c18aa4bf904577589a05bc))
+* Add feature request template to enhance issue tracking ([1ae1b6b](https://github.com/bauer-group/automation-templates/commit/1ae1b6b5e93b11678a0519efcf3b3af38969799b))
+* Add feature request template to streamline enhancement suggestions ([4c0aa5e](https://github.com/bauer-group/automation-templates/commit/4c0aa5e514d21780d12a786e57a2c17f9f91d643))
+* add notification level configuration for Teams notifications ([b9ff893](https://github.com/bauer-group/automation-templates/commit/b9ff893ed7da729dc406c5b501303ffbef798c90))
+* Add Security Policy Generator Action and Workflow ([2ce9c59](https://github.com/bauer-group/automation-templates/commit/2ce9c59773f55f819f7708dcb2fba34bd7596994))
+* Enhance README with project resources and support information ([d1683e4](https://github.com/bauer-group/automation-templates/commit/d1683e49e5b8df4560ce5d7222f213438ccbf763))
+* implement dynamic configuration for SECURITY.MD generation and add README for security policy management ([38bab82](https://github.com/bauer-group/automation-templates/commit/38bab828c49044278d1deaf07134885adbc209ed))
+* Update issue templates for improved clarity and structure; add new documentation and security vulnerability templates ([b767c25](https://github.com/bauer-group/automation-templates/commit/b767c2520073da96ed5f4c96f3b8e871a6ba1e28))
+
+### 🐛 Bug Fixes
+
+* Aktualisiere die Sicherheitsrichtlinienversion auf 1.0.0 und verbessere die Beschreibung für die semantische Versionierung ([f77cb5e](https://github.com/bauer-group/automation-templates/commit/f77cb5e85c36b80423e7cbc7f78b6050aa4646e3))
+* Enhance tag detection logic to ensure documentation updates are triggered correctly ([0155121](https://github.com/bauer-group/automation-templates/commit/015512153efae9358f77a9312fe156fdd14c87e8))
+* Entferne duplizierte Sicherheitsrichtlinien-Management-Badge im README-Template ([ebfa251](https://github.com/bauer-group/automation-templates/commit/ebfa25108d9ed90645026be38eade47c32a9811a))
+* Improve facts JSON construction for Microsoft Teams notifications ([a16f80c](https://github.com/bauer-group/automation-templates/commit/a16f80c90efb2ccd501901211606400b446e2f00))
+* Optimize facts JSON construction for Microsoft Teams notifications ([cda7d62](https://github.com/bauer-group/automation-templates/commit/cda7d625a6b2134f8e19d67f58c995e3d4213912))
+* Refactor timestamp and input handling for improved readability in Microsoft Teams notifications ([0cd8b08](https://github.com/bauer-group/automation-templates/commit/0cd8b08005d28bf57f9d9c8248d2e85a55d8bb20))
+* Remove duplicate security policy management badge in README template ([33dd1d0](https://github.com/bauer-group/automation-templates/commit/33dd1d0491cf585dc1bc8ffa20877874d6f81998))
+* Remove unnecessary formatting in workflow log messages for clarity ([3bf7c68](https://github.com/bauer-group/automation-templates/commit/3bf7c68d347b7c3250441ac57b00e6c633fbad35))
+* Update email contact for security reporting and streamline supported versions section ([2ea10ac](https://github.com/bauer-group/automation-templates/commit/2ea10aca9cca32816878a475dbc6448680cb71f9))
+* Update required security policy sections for consistency ([b61727a](https://github.com/bauer-group/automation-templates/commit/b61727ad5d4ed19fa540d6d88b5594c33288dce2))
+* Update Teams notification details formatting for clarity ([75ea3bc](https://github.com/bauer-group/automation-templates/commit/75ea3bc65853951ee36da12b904f47854e5cf344))
+* Update Teams notification details formatting for consistency ([7f0af00](https://github.com/bauer-group/automation-templates/commit/7f0af00ff02a216c99d240a1cc2dc0281bfd26ec))
+* Update text block size in Teams notification for improved layout ([36c0e92](https://github.com/bauer-group/automation-templates/commit/36c0e92e4bc47b0b38d0a5afb210aff5898bc11b))
+* Update text block sizes in Teams notification for improved readability ([cba491e](https://github.com/bauer-group/automation-templates/commit/cba491e588d0678811a2a047f864752242a58985))
+
+### 🔧 Maintenance
+
+* Remove bug report template from issue templates ([c2ad919](https://github.com/bauer-group/automation-templates/commit/c2ad919ab72da63403febd45c8a34a831bcccffd))
+
 ## [0.18.0](https://github.com/bauer-group/automation-templates/compare/v0.17.0...v0.18.0) (2025-08-22)
 
 ### 🚀 Features
