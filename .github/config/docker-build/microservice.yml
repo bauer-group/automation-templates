@@ -1,0 +1,98 @@
+# Docker Configuration for Microservices
+# Optimized for containerized microservice architectures
+
+docker:
+  # Build Configuration
+  dockerfile: "./Dockerfile"
+  context: "."
+  target: "runtime"
+  
+  # Multi-platform for cloud deployment
+  platforms: "linux/amd64,linux/arm64"
+  multi_platform: true
+  
+  # Registry Configuration
+  registry: "ghcr.io"
+  auto_tags: true
+  latest_tag: true
+  push_on_pr: true
+
+# Build Arguments for microservices
+build_args:
+  SERVICE_NAME: ""
+  SERVICE_VERSION: ""
+  BUILDTIME: ""
+  VERSION: ""
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "info"
+
+# Advanced caching for microservices
+cache:
+  enabled: true
+  mode: "max"
+  registry: "ghcr.io"
+
+# Security Configuration (critical for microservices)
+security:
+  scan_enabled: true
+  scanner: "trivy"
+  fail_on: "CRITICAL"
+  ignore_unfixed: false
+  sign_image: true
+  generate_sbom: true
+  sbom_format: "cyclonedx"
+
+# Comprehensive testing for microservices
+testing:
+  pre_build: true
+  post_build: true
+  test_command: "docker run --rm $IMAGE_TAG test"
+  integration_tests: true
+  contract_tests: true
+
+# Performance optimized for microservices
+performance:
+  builder_driver: "docker-container"
+  build_timeout: 30
+  parallel_builds: true
+  resource_limits:
+    memory: "512Mi"
+    cpu: "250m"
+
+# Microservice specific labels
+labels:
+  add_git_labels: true
+  custom_labels:
+    "org.opencontainers.image.title": "Microservice"
+    "org.opencontainers.image.description": "Production microservice"
+    "app.type": "microservice"
+    "app.tier": "backend"
+    "service.mesh": "istio"
+
+# Deployment configuration for Kubernetes
+deployment:
+  enabled: true
+  environment: "staging"
+  command: "helm upgrade --install $SERVICE_NAME ./helm --set image.tag=$IMAGE_TAG"
+  
+# Service mesh configuration
+service_mesh:
+  enabled: true
+  type: "istio"
+  sidecar_injection: true
+
+# Monitoring and observability
+monitoring:
+  metrics_port: 9090
+  health_port: 8080
+  tracing_enabled: true
+  logging_format: "json"
+
+# Resource specifications
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"

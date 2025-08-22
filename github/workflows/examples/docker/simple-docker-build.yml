@@ -1,0 +1,43 @@
+name: Docker Simple Build Example
+# Example: Basic Docker build workflow using the automation-templates system
+# This example demonstrates a simple Docker build with minimal configuration
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - '.dockerignore'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - '.dockerignore'
+
+jobs:
+  docker-build:
+    name: Build Docker Image
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      # Basic configuration using default settings
+      config-file: 'default'
+      
+      # Image configuration
+      image-name: 'my-simple-app'
+      image-tag: ${{ github.sha }}
+      
+      # Build settings
+      dockerfile: './Dockerfile'
+      context: '.'
+      
+      # Basic security scanning
+      security-scan: true
+      fail-on-severity: 'CRITICAL'
+      
+      # No deployment for this example
+      deploy: false
+    
+    secrets:
+      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}

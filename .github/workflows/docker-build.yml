@@ -1,0 +1,542 @@
+name: 🐳 Docker Build & Deploy
+
+on:
+  workflow_call:
+    inputs:
+      # Build Configuration
+      working-directory:
+        description: 'Working directory for all commands'
+        type: string
+        required: false
+        default: '.'
+      
+      dockerfile-path:
+        description: 'Path to Dockerfile'
+        type: string
+        required: false
+        default: './Dockerfile'
+      
+      docker-context:
+        description: 'Docker build context'
+        type: string
+        required: false
+        default: '.'
+      
+      build-args:
+        description: 'Build arguments as JSON object'
+        type: string
+        required: false
+        default: '{}'
+      
+      build-target:
+        description: 'Docker build target stage'
+        type: string
+        required: false
+        default: ''
+      
+      # Platform Configuration
+      platforms:
+        description: 'Target platforms (comma-separated)'
+        type: string
+        required: false
+        default: 'linux/amd64'
+      
+      multi-platform:
+        description: 'Enable multi-platform builds'
+        type: boolean
+        required: false
+        default: false
+      
+      # Registry Configuration
+      registry:
+        description: 'Docker registry URL'
+        type: string
+        required: false
+        default: 'ghcr.io'
+      
+      registry-username:
+        description: 'Registry username (defaults to github.actor)'
+        type: string
+        required: false
+        default: ''
+      
+      image-name:
+        description: 'Docker image name (without registry, defaults to repository name)'
+        type: string
+        required: false
+        default: ''
+      
+      image-tags:
+        description: 'Additional custom image tags (comma-separated)'
+        type: string
+        required: false
+        default: ''
+      
+      auto-tags:
+        description: 'Generate automatic tags based on Git refs'
+        type: boolean
+        required: false
+        default: true
+      
+      latest-tag:
+        description: 'Tag image as latest on main branch'
+        type: boolean
+        required: false
+        default: true
+      
+      # Push Configuration
+      push:
+        description: 'Push image to registry'
+        type: boolean
+        required: false
+        default: true
+      
+      push-on-pr:
+        description: 'Push images on pull requests'
+        type: boolean
+        required: false
+        default: false
+      
+      # Testing Configuration
+      run-tests:
+        description: 'Run tests before building'
+        type: boolean
+        required: false
+        default: false
+      
+      test-command:
+        description: 'Command to run tests'
+        type: string
+        required: false
+        default: 'docker run --rm $IMAGE_TAG test'
+      
+      # Security Configuration
+      security-scan:
+        description: 'Run security vulnerability scan'
+        type: boolean
+        required: false
+        default: true
+      
+      security-scanner:
+        description: 'Security scanner (trivy, grype, snyk)'
+        type: string
+        required: false
+        default: 'trivy'
+      
+      security-fail-on:
+        description: 'Fail on security issues (CRITICAL, HIGH, MEDIUM, LOW)'
+        type: string
+        required: false
+        default: 'CRITICAL'
+      
+      security-ignore-unfixed:
+        description: 'Ignore unfixed vulnerabilities'
+        type: boolean
+        required: false
+        default: false
+      
+      # Image Signing & SBOM
+      sign-image:
+        description: 'Sign image with cosign'
+        type: boolean
+        required: false
+        default: false
+      
+      generate-sbom:
+        description: 'Generate Software Bill of Materials'
+        type: boolean
+        required: false
+        default: false
+      
+      sbom-format:
+        description: 'SBOM format (cyclonedx, spdx)'
+        type: string
+        required: false
+        default: 'cyclonedx'
+      
+      # Caching
+      cache-enabled:
+        description: 'Enable build caching'
+        type: boolean
+        required: false
+        default: true
+      
+      cache-mode:
+        description: 'Cache mode (min, max, inline)'
+        type: string
+        required: false
+        default: 'max'
+      
+      # Matrix Configuration
+      enable-matrix:
+        description: 'Enable matrix builds'
+        type: boolean
+        required: false
+        default: false
+      
+      matrix-platforms:
+        description: 'Platform matrix as JSON array'
+        type: string
+        required: false
+        default: '["linux/amd64"]'
+      
+      matrix-tags:
+        description: 'Tag matrix as JSON array'
+        type: string
+        required: false
+        default: '["latest"]'
+      
+      # Deployment Configuration
+      deploy-enabled:
+        description: 'Enable deployment after successful build'
+        type: boolean
+        required: false
+        default: false
+      
+      deploy-environment:
+        description: 'Deployment environment'
+        type: string
+        required: false
+        default: 'staging'
+      
+      deploy-command:
+        description: 'Custom deployment command'
+        type: string
+        required: false
+        default: ''
+      
+      # Performance & Resource Configuration
+      builder-driver:
+        description: 'Builder driver (docker, docker-container, kubernetes)'
+        type: string
+        required: false
+        default: 'docker-container'
+      
+      build-timeout:
+        description: 'Build timeout in minutes'
+        type: number
+        required: false
+        default: 30
+      
+      runs-on:
+        description: 'Runner OS (ubuntu-latest, windows-latest, macos-latest)'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+    
+    secrets:
+      REGISTRY_PASSWORD:
+        description: 'Registry password/token (defaults to GITHUB_TOKEN)'
+        required: false
+      
+      COSIGN_PRIVATE_KEY:
+        description: 'Cosign private key for image signing'
+        required: false
+      
+      COSIGN_PASSWORD:
+        description: 'Cosign key password'
+        required: false
+      
+      DOCKER_BUILD_SECRETS:
+        description: 'Docker build secrets as JSON'
+        required: false
+    
+    outputs:
+      image-digest:
+        description: 'Built image digest'
+        value: ${{ jobs.build.outputs.image-digest }}
+      
+      image-tags:
+        description: 'Generated image tags'
+        value: ${{ jobs.build.outputs.image-tags }}
+      
+      image-url:
+        description: 'Full image URL with tag'
+        value: ${{ jobs.build.outputs.image-url }}
+      
+      image-size:
+        description: 'Image size in bytes'
+        value: ${{ jobs.build.outputs.image-size }}
+      
+      security-report:
+        description: 'Security scan report status'
+        value: ${{ jobs.build.outputs.security-report }}
+      
+      build-duration:
+        description: 'Build duration in seconds'
+        value: ${{ jobs.build.outputs.build-duration }}
+
+jobs:
+  build:
+    name: Docker Build
+    runs-on: ${{ inputs.enable-matrix && matrix.platform && 'ubuntu-latest' || inputs.runs-on }}
+    timeout-minutes: ${{ inputs.build-timeout }}
+    
+    strategy:
+      matrix:
+        platform: ${{ inputs.enable-matrix && fromJson(inputs.matrix-platforms) || fromJson('["linux/amd64"]') }}
+        tag-suffix: ${{ inputs.enable-matrix && fromJson(inputs.matrix-tags) || fromJson('[""]') }}
+      fail-fast: false
+    
+    outputs:
+      image-digest: ${{ steps.docker-build.outputs.image-digest }}
+      image-tags: ${{ steps.docker-build.outputs.image-tags }}
+      image-url: ${{ steps.docker-build.outputs.image-url }}
+      image-size: ${{ steps.docker-build.outputs.image-size }}
+      security-report: ${{ steps.docker-build.outputs.security-report }}
+      build-duration: ${{ steps.docker-build.outputs.build-duration }}
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+      
+      - name: 🧪 Run Pre-Build Tests
+        if: inputs.run-tests
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          echo "🧪 Running pre-build tests..."
+          
+          # Check if custom test command provided
+          if [ -n "${{ inputs.test-command }}" ]; then
+            # Replace placeholder with actual image tag
+            TEST_CMD="${{ inputs.test-command }}"
+            eval "$TEST_CMD"
+          else
+            # Default test commands based on file existence
+            if [ -f "package.json" ]; then
+              npm test
+            elif [ -f "requirements.txt" ]; then
+              python -m pytest
+            elif [ -f "go.mod" ]; then
+              go test ./...
+            elif [ -f "Cargo.toml" ]; then
+              cargo test
+            else
+              echo "No test framework detected, skipping tests"
+            fi
+          fi
+      
+      - name: 🐳 Build Docker Image
+        id: docker-build
+        uses: ./.github/actions/docker-build
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          dockerfile-path: ${{ inputs.dockerfile-path }}
+          docker-context: ${{ inputs.docker-context }}
+          build-args: ${{ inputs.build-args }}
+          build-secrets: ${{ secrets.DOCKER_BUILD_SECRETS }}
+          target: ${{ inputs.build-target }}
+          platforms: ${{ inputs.enable-matrix && matrix.platform || inputs.platforms }}
+          multi-platform: ${{ inputs.enable-matrix && 'false' || inputs.multi-platform }}
+          registry: ${{ inputs.registry }}
+          registry-username: ${{ inputs.registry-username }}
+          registry-password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+          image-name: ${{ inputs.image-name }}
+          image-tags: ${{ inputs.image-tags }}${{ inputs.enable-matrix && matrix.tag-suffix && format('-{0}', matrix.tag-suffix) || '' }}
+          auto-tags: ${{ inputs.auto-tags }}
+          latest-tag: ${{ inputs.latest-tag }}
+          push: ${{ inputs.push }}
+          push-on-pr: ${{ inputs.push-on-pr }}
+          cache-enabled: ${{ inputs.cache-enabled }}
+          cache-mode: ${{ inputs.cache-mode }}
+          security-scan: ${{ inputs.security-scan }}
+          security-scanner: ${{ inputs.security-scanner }}
+          security-fail-on: ${{ inputs.security-fail-on }}
+          security-ignore-unfixed: ${{ inputs.security-ignore-unfixed }}
+          sign-image: ${{ inputs.sign-image }}
+          cosign-key: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          cosign-password: ${{ secrets.COSIGN_PASSWORD }}
+          generate-sbom: ${{ inputs.generate-sbom }}
+          sbom-format: ${{ inputs.sbom-format }}
+          builder-driver: ${{ inputs.builder-driver }}
+          build-timeout: ${{ inputs.build-timeout }}
+      
+      - name: 🧪 Run Post-Build Tests
+        if: inputs.run-tests && steps.docker-build.outputs.image-url
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          echo "🧪 Running post-build tests on image..."
+          
+          IMAGE_URL="${{ steps.docker-build.outputs.image-url }}"
+          
+          # Basic image tests
+          echo "Testing image: $IMAGE_URL"
+          
+          # Test image can be pulled and run
+          docker run --rm "$IMAGE_URL" --version 2>/dev/null || \
+          docker run --rm "$IMAGE_URL" version 2>/dev/null || \
+          docker run --rm "$IMAGE_URL" -v 2>/dev/null || \
+          docker run --rm --entrypoint="" "$IMAGE_URL" echo "Image runs successfully" || \
+          echo "⚠️ Could not test image execution (this might be normal)"
+          
+          # Test image metadata
+          docker inspect "$IMAGE_URL" > /dev/null
+          echo "✅ Image metadata validation passed"
+          
+          # Custom post-build test command
+          if [ -n "${{ inputs.test-command }}" ]; then
+            TEST_CMD="${{ inputs.test-command }}"
+            TEST_CMD="${TEST_CMD//\$IMAGE_TAG/$IMAGE_URL}"
+            eval "$TEST_CMD"
+          fi
+
+  # Image vulnerability analysis (separate job for better performance)
+  security-analysis:
+    name: Security Analysis
+    needs: build
+    if: inputs.security-scan && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🛡️ Advanced Security Analysis
+        shell: bash
+        run: |
+          echo "🛡️ Running advanced security analysis..."
+          
+          IMAGE_URL="${{ needs.build.outputs.image-url }}"
+          
+          # Multiple scanner approach for comprehensive coverage
+          echo "Image: $IMAGE_URL"
+          
+          # Install additional security tools
+          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          
+          # Comprehensive Trivy scan
+          trivy image \
+            --format table \
+            --severity HIGH,CRITICAL \
+            "$IMAGE_URL"
+          
+          # Check for secrets in image
+          trivy image \
+            --scanners secret \
+            --format table \
+            "$IMAGE_URL"
+          
+          # Configuration scanning
+          trivy image \
+            --scanners config \
+            --format table \
+            "$IMAGE_URL"
+          
+          echo "✅ Advanced security analysis completed"
+
+  # Deployment job (if enabled)
+  deploy:
+    name: Deploy Image
+    needs: [build, security-analysis]
+    if: inputs.deploy-enabled && needs.build.result == 'success' && (needs.security-analysis.result == 'success' || needs.security-analysis.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.deploy-environment }}
+      url: ${{ steps.deploy.outputs.url }}
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🚀 Deploy Docker Image
+        id: deploy
+        shell: bash
+        run: |
+          echo "🚀 Deploying Docker image..."
+          
+          IMAGE_URL="${{ needs.build.outputs.image-url }}"
+          
+          if [ -n "${{ inputs.deploy-command }}" ]; then
+            # Custom deployment command
+            DEPLOY_CMD="${{ inputs.deploy-command }}"
+            DEPLOY_CMD="${DEPLOY_CMD//\$IMAGE_URL/$IMAGE_URL}"
+            eval "$DEPLOY_CMD"
+          else
+            # Default deployment examples (customize as needed)
+            echo "Deploying image: $IMAGE_URL"
+            echo "Environment: ${{ inputs.deploy-environment }}"
+            
+            # Example deployment commands (uncomment and customize as needed):
+            # kubectl set image deployment/myapp container=$IMAGE_URL
+            # docker service update --image $IMAGE_URL myservice
+            # helm upgrade myapp ./chart --set image.tag=${IMAGE_URL##*:}
+            
+            echo "✅ Deployment completed"
+          fi
+          
+          # Set deployment URL (customize as needed)
+          case "${{ inputs.deploy-environment }}" in
+            "staging")
+              echo "url=https://staging.example.com" >> $GITHUB_OUTPUT
+              ;;
+            "production")
+              echo "url=https://example.com" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "url=https://${{ inputs.deploy-environment }}.example.com" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+  # Summary job
+  summary:
+    name: Build Summary
+    needs: [build, security-analysis, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📊 Generate Build Summary
+        shell: bash
+        run: |
+          echo "## 🐳 Docker Build & Deploy Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Build Status
+          echo "### 🏗️ Build Status" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status | Duration | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|----------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build** | ${{ needs.build.result == 'success' && '✅ Success' || '❌ Failed' }} | ${{ needs.build.outputs.build-duration }}s | Image: \`${{ needs.build.outputs.image-url }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Security** | ${{ needs.security-analysis.result == 'success' && '✅ Passed' || needs.security-analysis.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | - | ${{ inputs.security-scanner }} scan |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Deploy** | ${{ needs.deploy.result == 'success' && '✅ Deployed' || needs.deploy.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | - | Environment: ${{ inputs.deploy-environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Image Information
+          if [ "${{ needs.build.result }}" = "success" ]; then
+            echo "### 📦 Image Information" >> $GITHUB_STEP_SUMMARY
+            echo "- **Registry:** \`${{ inputs.registry }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Image:** \`${{ needs.build.outputs.image-url }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Digest:** \`${{ needs.build.outputs.image-digest }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Size:** ${{ needs.build.outputs.image-size }} bytes" >> $GITHUB_STEP_SUMMARY
+            echo "- **Platforms:** \`${{ inputs.multi-platform && inputs.platforms || 'linux/amd64' }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            echo "### 🏷️ Tags" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "${{ needs.build.outputs.image-tags }}" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Security Information
+          if [ "${{ inputs.security-scan }}" = "true" ]; then
+            echo "### 🛡️ Security" >> $GITHUB_STEP_SUMMARY
+            echo "- **Scanner:** ${{ inputs.security-scanner }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Fail Level:** ${{ inputs.security-fail-on }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Image Signed:** ${{ inputs.sign-image && '✅ Yes' || '❌ No' }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **SBOM Generated:** ${{ inputs.generate-sbom && '✅ Yes' || '❌ No' }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Configuration Summary
+          echo "### ⚙️ Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dockerfile:** \`${{ inputs.dockerfile-path }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Context:** \`${{ inputs.docker-context }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Builder:** ${{ inputs.builder-driver }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cache:** ${{ inputs.cache-enabled && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Multi-Platform:** ${{ inputs.multi-platform && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY

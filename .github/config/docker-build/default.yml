@@ -1,0 +1,61 @@
+# Default Docker Build Configuration
+# Basic configuration for standard Docker applications
+
+docker:
+  # Build Configuration
+  dockerfile: "./Dockerfile"
+  context: "."
+  target: ""
+  
+  # Platform Configuration
+  platforms: "linux/amd64"
+  multi_platform: false
+  
+  # Registry Configuration
+  registry: "ghcr.io"
+  auto_tags: true
+  latest_tag: true
+  push_on_pr: false
+
+# Build Arguments (can be overridden)
+build_args:
+  BUILDTIME: ""
+  VERSION: ""
+
+# Caching
+cache:
+  enabled: true
+  mode: "max"
+  registry: ""
+
+# Security Configuration
+security:
+  scan_enabled: true
+  scanner: "trivy"
+  fail_on: "CRITICAL"
+  ignore_unfixed: false
+  sign_image: false
+  generate_sbom: false
+
+# Testing
+testing:
+  pre_build: false
+  post_build: false
+  test_command: ""
+
+# Performance
+performance:
+  builder_driver: "docker-container"
+  build_timeout: 30
+  parallel_builds: false
+
+# Labels (OCI standard)
+labels:
+  add_git_labels: true
+  custom_labels: {}
+
+# Deployment
+deployment:
+  enabled: false
+  environment: "staging"
+  command: ""

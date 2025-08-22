@@ -1,0 +1,77 @@
+# Docker Configuration for Web Applications
+# Optimized for Node.js, Python, PHP, and other web frameworks
+
+docker:
+  # Build Configuration
+  dockerfile: "./Dockerfile"
+  context: "."
+  target: "production"
+  
+  # Multi-platform for web apps
+  platforms: "linux/amd64,linux/arm64"
+  multi_platform: true
+  
+  # Registry Configuration
+  registry: "ghcr.io"
+  auto_tags: true
+  latest_tag: true
+  push_on_pr: false
+
+# Build Arguments for web applications
+build_args:
+  NODE_ENV: "production"
+  BUILDTIME: ""
+  VERSION: ""
+  APP_PORT: "3000"
+  ENVIRONMENT: "production"
+
+# Enhanced caching for web apps
+cache:
+  enabled: true
+  mode: "max"
+  registry: ""
+
+# Security Configuration (stricter for web apps)
+security:
+  scan_enabled: true
+  scanner: "trivy"
+  fail_on: "HIGH"
+  ignore_unfixed: false
+  sign_image: true
+  generate_sbom: true
+  sbom_format: "cyclonedx"
+
+# Testing (important for web applications)
+testing:
+  pre_build: true
+  post_build: true
+  test_command: "docker run --rm $IMAGE_TAG npm test"
+
+# Performance optimized for web apps
+performance:
+  builder_driver: "docker-container"
+  build_timeout: 45
+  parallel_builds: true
+
+# Web application specific labels
+labels:
+  add_git_labels: true
+  custom_labels:
+    "org.opencontainers.image.title": "Web Application"
+    "org.opencontainers.image.description": "Production web application"
+    "app.type": "web"
+    "app.framework": ""
+
+# Deployment configuration
+deployment:
+  enabled: true
+  environment: "staging"
+  command: "kubectl set image deployment/webapp container=$IMAGE_URL"
+  
+# Health checks
+health_check:
+  enabled: true
+  endpoint: "/health"
+  timeout: "30s"
+  interval: "10s"
+  retries: 3
