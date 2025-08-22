@@ -135,7 +135,6 @@ permissions:
   issues: write
   pull-requests: write
   actions: write
-  metadata: read
 
 jobs:
   # Input validation and safety checks
