@@ -1,0 +1,21 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📚 Documentation & Examples
+    url: https://github.com/bauer-group/automation-templates/tree/main/github/workflows/examples
+    about: Browse comprehensive examples and documentation for all workflows and actions
+
+  - name: 💬 Community Discussions
+    url: https://github.com/bauer-group/automation-templates/discussions
+    about: Ask questions, share ideas, and discuss best practices with the community
+
+  - name: 🛡️ Security Advisories
+    url: https://github.com/bauer-group/automation-templates/security/advisories
+    about: Report sensitive security vulnerabilities privately
+
+  - name: 📧 Enterprise Support
+    url: mailto:support@bauer-group.com
+    about: Contact BAUER GROUP enterprise support for critical issues
+
+  - name: 🏢 BAUER GROUP Support Portal
+    url: https://support.bauer-group.com
+    about: Official BAUER GROUP support portal for all users
