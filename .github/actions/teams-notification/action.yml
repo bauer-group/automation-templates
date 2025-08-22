@@ -227,8 +227,17 @@ runs:
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
         echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
         
-        # Formatted timestamp for display (Teams will localize this automatically)
-        DISPLAY_TIMESTAMP="{{DATE($TIMESTAMP, SHORT)}} {{TIME($TIMESTAMP, SHORT)}}"
+        # Format timestamp for display (German locale format)
+        # Use current timestamp or event timestamp
+        SOURCE_TIME="$TIMESTAMP"
+        if [[ -n "${{ github.event.created_at }}" ]]; then
+          SOURCE_TIME="${{ github.event.created_at }}"
+        elif [[ -n "${{ github.event.updated_at }}" ]]; then
+          SOURCE_TIME="${{ github.event.updated_at }}"
+        fi
+        
+        # Format as German date/time: DD.MM.YYYY HH:MM UTC
+        DISPLAY_TIMESTAMP=$(date -u -d "$SOURCE_TIME" +"%d.%m.%Y %H:%M UTC" 2>/dev/null || date -u +"%d.%m.%Y %H:%M UTC")
         echo "display-timestamp=$DISPLAY_TIMESTAMP" >> $GITHUB_OUTPUT
 
     - name: 🎨 Generate Adaptive Card
