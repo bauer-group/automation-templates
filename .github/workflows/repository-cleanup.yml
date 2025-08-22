@@ -6,7 +6,7 @@ name: 🧹 Repository Cleanup
 on:
   workflow_dispatch:
     inputs:
-      # Cleanup Profile Selection
+      # Essential Configuration (Max 10 inputs allowed)
       cleanup-profile:
         description: 'Cleanup profile to use'
         type: choice
@@ -20,114 +20,60 @@ on:
           - 'emergency'
           - 'custom'
       
-      # Target Repository
-      target-repository:
-        description: 'Target repository (leave empty for current repo)'
-        type: string
-        required: false
-        default: ''
-      
-      # Safety Configuration
-      dry-run:
-        description: 'Perform dry run (STRONGLY recommended for first use)'
-        type: boolean
-        required: false
-        default: true
-      
       confirm-cleanup:
         description: 'Type "CONFIRM" to proceed with cleanup'
         type: string
         required: true
         default: ''
       
-      # Age Configuration
-      max-age-days:
-        description: 'Maximum age in days (0 = no age limit)'
-        type: number
-        required: false
-        default: 365
-      
-      # Cleanup Operations
-      cleanup-releases:
-        description: 'Delete old releases'
-        type: boolean
-        required: false
-        default: false
-      
-      cleanup-tags:
-        description: 'Delete old tags'
-        type: boolean
-        required: false
-        default: false
-      
-      cleanup-branches:
-        description: 'Delete old branches'
-        type: boolean
-        required: false
-        default: false
-      
-      cleanup-pull-requests:
-        description: 'Close old pull requests'
-        type: boolean
-        required: false
-        default: false
-      
-      cleanup-workflow-runs:
-        description: 'Delete old workflow runs'
+      dry-run:
+        description: 'Perform dry run (STRONGLY recommended for first use)'
         type: boolean
         required: false
         default: true
       
-      cleanup-issues:
-        description: 'Close old issues'
-        type: boolean
+      target-repository:
+        description: 'Target repository (leave empty for current repo)'
+        type: string
         required: false
-        default: false
+        default: ''
       
-      # Advanced Configuration
+      max-age-days:
+        description: 'Maximum age in days (0 = profile default)'
+        type: number
+        required: false
+        default: 0
+      
+      # Custom Operations (only if profile is 'custom')
+      custom-operations:
+        description: 'Custom operations (comma-separated: releases,tags,branches,prs,workflows,issues)'
+        type: string
+        required: false
+        default: 'workflows'
+      
       protected-branches:
-        description: 'Protected branches (comma-separated)'
+        description: 'Protected branches (comma-separated, empty = profile default)'
         type: string
         required: false
-        default: 'main,master,develop,staging,production'
+        default: ''
       
-      include-patterns:
-        description: 'Include patterns (JSON array of regex)'
-        type: string
-        required: false
-        default: '[]'
-      
-      exclude-patterns:
-        description: 'Exclude patterns (JSON array of regex)'
-        type: string
-        required: false
-        default: '[".*keep.*", ".*important.*", ".*preserve.*"]'
-      
-      # Performance Configuration
       batch-size:
-        description: 'Batch size (items per batch)'
+        description: 'Batch size (0 = profile default)'
         type: number
         required: false
-        default: 25
+        default: 0
       
-      batch-delay:
-        description: 'Delay between batches (seconds)'
-        type: number
-        required: false
-        default: 3
-      
-      # Reporting
       verbose-logging:
         description: 'Enable verbose logging'
         type: boolean
         required: false
         default: false
       
-      generate-report:
-        description: 'Generate detailed cleanup report'
+      force-operations:
+        description: 'Override profile safety limits (use with extreme caution)'
         type: boolean
         required: false
-        default: true
+        default: false
 
 # Required permissions for repository cleanup
 permissions:
@@ -145,7 +91,15 @@ jobs:
     outputs:
       proceed-with-cleanup: ${{ steps.validation.outputs.proceed }}
       effective-profile: ${{ steps.profile.outputs.effective-profile }}
-      cleanup-summary: ${{ steps.summary.outputs.summary }}
+      effective-max-age: ${{ steps.profile.outputs.effective-max-age }}
+      effective-protected-branches: ${{ steps.profile.outputs.effective-protected-branches }}
+      effective-batch-size: ${{ steps.profile.outputs.effective-batch-size }}
+      cleanup-releases: ${{ steps.profile.outputs.cleanup-releases }}
+      cleanup-tags: ${{ steps.profile.outputs.cleanup-tags }}
+      cleanup-branches: ${{ steps.profile.outputs.cleanup-branches }}
+      cleanup-pull-requests: ${{ steps.profile.outputs.cleanup-pull-requests }}
+      cleanup-workflow-runs: ${{ steps.profile.outputs.cleanup-workflow-runs }}
+      cleanup-issues: ${{ steps.profile.outputs.cleanup-issues }}
     
     steps:
       - name: 🔄 Checkout Repository
@@ -228,43 +182,184 @@ jobs:
             exit 1
           }
           
-          # Check if any cleanup operation is enabled
-          CLEANUP_ENABLED=false
-          
-          if [[ "${{ github.event.inputs.cleanup-releases }}" == "true" ]] || \
-             [[ "${{ github.event.inputs.cleanup-tags }}" == "true" ]] || \
-             [[ "${{ github.event.inputs.cleanup-branches }}" == "true" ]] || \
-             [[ "${{ github.event.inputs.cleanup-pull-requests }}" == "true" ]] || \
-             [[ "${{ github.event.inputs.cleanup-workflow-runs }}" == "true" ]] || \
-             [[ "${{ github.event.inputs.cleanup-issues }}" == "true" ]]; then
-            CLEANUP_ENABLED=true
-          fi
-          
-          if [[ "$CLEANUP_ENABLED" != "true" ]]; then
-            echo "⚠️ No cleanup operations enabled"
-            echo "At least one cleanup operation must be enabled"
-            echo "proceed=false" >> $GITHUB_OUTPUT
-            exit 1
+          # Validate custom operations format if using custom profile
+          PROFILE="${{ github.event.inputs.cleanup-profile }}"
+          if [[ "$PROFILE" == "custom" ]]; then
+            CUSTOM_OPS="${{ github.event.inputs.custom-operations }}"
+            if [[ -z "$CUSTOM_OPS" ]]; then
+              echo "❌ Custom operations required when using custom profile"
+              echo "Please specify operations: releases,tags,branches,prs,workflows,issues"
+              echo "proceed=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+            
+            # Validate custom operations format
+            if [[ ! "$CUSTOM_OPS" =~ ^[a-z,]+$ ]]; then
+              echo "❌ Invalid custom operations format: $CUSTOM_OPS"
+              echo "Use comma-separated values: releases,tags,branches,prs,workflows,issues"
+              echo "proceed=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+            
+            echo "✅ Custom operations validated: $CUSTOM_OPS"
+          else
+            echo "✅ Using predefined profile: $PROFILE"
           fi
           
           echo "✅ All validation checks passed"
           echo "proceed=true" >> $GITHUB_OUTPUT
       
-      - name: ⚙️ Determine Effective Profile
+      - name: ⚙️ Determine Effective Configuration
         id: profile
         run: |
           PROFILE="${{ github.event.inputs.cleanup-profile }}"
           
-          # Override profile settings with custom inputs if profile is 'custom'
-          if [[ "$PROFILE" == "custom" ]]; then
-            echo "🔧 Using custom profile with user-defined settings"
-            EFFECTIVE_PROFILE="custom"
-          else
-            echo "📋 Using predefined profile: $PROFILE"
-            EFFECTIVE_PROFILE="$PROFILE"
+          echo "📋 Configuring cleanup for profile: $PROFILE"
+          
+          # Set default values based on profile
+          case "$PROFILE" in
+            conservative)
+              MAX_AGE_DEFAULT=730  # 2 years
+              PROTECTED_BRANCHES_DEFAULT="main,master,develop,development,staging,stage,production,prod,release,release/*,hotfix/*,support/*"
+              BATCH_SIZE_DEFAULT=10
+              ;;
+            aggressive)
+              MAX_AGE_DEFAULT=180  # 6 months
+              PROTECTED_BRANCHES_DEFAULT="main,master"
+              BATCH_SIZE_DEFAULT=50
+              ;;
+            development)
+              MAX_AGE_DEFAULT=90   # 3 months
+              PROTECTED_BRANCHES_DEFAULT="main,master,develop,development,staging,test"
+              BATCH_SIZE_DEFAULT=25
+              ;;
+            maintenance)
+              MAX_AGE_DEFAULT=365  # 1 year
+              PROTECTED_BRANCHES_DEFAULT="main,master,develop,development,staging,stage,production,prod,release,release/*,hotfix/*,support/*"
+              BATCH_SIZE_DEFAULT=30
+              ;;
+            emergency)
+              MAX_AGE_DEFAULT=30   # 1 month
+              PROTECTED_BRANCHES_DEFAULT="main,master"
+              BATCH_SIZE_DEFAULT=100
+              ;;
+            custom)
+              MAX_AGE_DEFAULT=365  # 1 year default
+              PROTECTED_BRANCHES_DEFAULT="main,master,develop,staging"
+              BATCH_SIZE_DEFAULT=25
+              ;;
+            *)
+              echo "❌ Invalid profile: $PROFILE"
+              exit 1
+              ;;
+          esac
+          
+          # Use user inputs or defaults
+          EFFECTIVE_MAX_AGE=${{ github.event.inputs.max-age-days }}
+          if [[ "$EFFECTIVE_MAX_AGE" -eq 0 ]]; then
+            EFFECTIVE_MAX_AGE=$MAX_AGE_DEFAULT
           fi
           
-          echo "effective-profile=$EFFECTIVE_PROFILE" >> $GITHUB_OUTPUT
+          EFFECTIVE_PROTECTED_BRANCHES="${{ github.event.inputs.protected-branches }}"
+          if [[ -z "$EFFECTIVE_PROTECTED_BRANCHES" ]]; then
+            EFFECTIVE_PROTECTED_BRANCHES="$PROTECTED_BRANCHES_DEFAULT"
+          fi
+          
+          EFFECTIVE_BATCH_SIZE=${{ github.event.inputs.batch-size }}
+          if [[ "$EFFECTIVE_BATCH_SIZE" -eq 0 ]]; then
+            EFFECTIVE_BATCH_SIZE=$BATCH_SIZE_DEFAULT
+          fi
+          
+          echo "effective-profile=$PROFILE" >> $GITHUB_OUTPUT
+          echo "effective-max-age=$EFFECTIVE_MAX_AGE" >> $GITHUB_OUTPUT
+          echo "effective-protected-branches=$EFFECTIVE_PROTECTED_BRANCHES" >> $GITHUB_OUTPUT
+          echo "effective-batch-size=$EFFECTIVE_BATCH_SIZE" >> $GITHUB_OUTPUT
+          
+          # Parse custom operations if using custom profile
+          if [[ "$PROFILE" == "custom" ]]; then
+            CUSTOM_OPS="${{ github.event.inputs.custom-operations }}"
+            
+            # Convert comma-separated operations to boolean flags
+            if [[ "$CUSTOM_OPS" == *"releases"* ]]; then
+              echo "cleanup-releases=true" >> $GITHUB_OUTPUT
+            else
+              echo "cleanup-releases=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if [[ "$CUSTOM_OPS" == *"tags"* ]]; then
+              echo "cleanup-tags=true" >> $GITHUB_OUTPUT
+            else
+              echo "cleanup-tags=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if [[ "$CUSTOM_OPS" == *"branches"* ]]; then
+              echo "cleanup-branches=true" >> $GITHUB_OUTPUT
+            else
+              echo "cleanup-branches=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if [[ "$CUSTOM_OPS" == *"prs"* ]]; then
+              echo "cleanup-pull-requests=true" >> $GITHUB_OUTPUT
+            else
+              echo "cleanup-pull-requests=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if [[ "$CUSTOM_OPS" == *"workflows"* ]]; then
+              echo "cleanup-workflow-runs=true" >> $GITHUB_OUTPUT
+            else
+              echo "cleanup-workflow-runs=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if [[ "$CUSTOM_OPS" == *"issues"* ]]; then
+              echo "cleanup-issues=true" >> $GITHUB_OUTPUT
+            else
+              echo "cleanup-issues=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            # Use profile-based defaults
+            case "$PROFILE" in
+              conservative)
+                echo "cleanup-releases=false" >> $GITHUB_OUTPUT
+                echo "cleanup-tags=false" >> $GITHUB_OUTPUT
+                echo "cleanup-branches=false" >> $GITHUB_OUTPUT
+                echo "cleanup-pull-requests=false" >> $GITHUB_OUTPUT
+                echo "cleanup-workflow-runs=true" >> $GITHUB_OUTPUT
+                echo "cleanup-issues=false" >> $GITHUB_OUTPUT
+                ;;
+              aggressive)
+                echo "cleanup-releases=true" >> $GITHUB_OUTPUT
+                echo "cleanup-tags=true" >> $GITHUB_OUTPUT
+                echo "cleanup-branches=true" >> $GITHUB_OUTPUT
+                echo "cleanup-pull-requests=true" >> $GITHUB_OUTPUT
+                echo "cleanup-workflow-runs=true" >> $GITHUB_OUTPUT
+                echo "cleanup-issues=true" >> $GITHUB_OUTPUT
+                ;;
+              development)
+                echo "cleanup-releases=false" >> $GITHUB_OUTPUT
+                echo "cleanup-tags=false" >> $GITHUB_OUTPUT
+                echo "cleanup-branches=true" >> $GITHUB_OUTPUT
+                echo "cleanup-pull-requests=true" >> $GITHUB_OUTPUT
+                echo "cleanup-workflow-runs=true" >> $GITHUB_OUTPUT
+                echo "cleanup-issues=false" >> $GITHUB_OUTPUT
+                ;;
+              maintenance)
+                echo "cleanup-releases=true" >> $GITHUB_OUTPUT
+                echo "cleanup-tags=false" >> $GITHUB_OUTPUT
+                echo "cleanup-branches=true" >> $GITHUB_OUTPUT
+                echo "cleanup-pull-requests=true" >> $GITHUB_OUTPUT
+                echo "cleanup-workflow-runs=true" >> $GITHUB_OUTPUT
+                echo "cleanup-issues=false" >> $GITHUB_OUTPUT
+                ;;
+              emergency)
+                echo "cleanup-releases=true" >> $GITHUB_OUTPUT
+                echo "cleanup-tags=true" >> $GITHUB_OUTPUT
+                echo "cleanup-branches=true" >> $GITHUB_OUTPUT
+                echo "cleanup-pull-requests=true" >> $GITHUB_OUTPUT
+                echo "cleanup-workflow-runs=true" >> $GITHUB_OUTPUT
+                echo "cleanup-issues=true" >> $GITHUB_OUTPUT
+                ;;
+            esac
+          fi
       
       - name: 📋 Generate Configuration Summary
         id: summary
@@ -275,23 +370,23 @@ jobs:
           echo "- 🎯 **Profile**: ${{ steps.profile.outputs.effective-profile }}" >> $GITHUB_STEP_SUMMARY
           echo "- 📁 **Repository**: ${{ github.event.inputs.target-repository || github.repository }}" >> $GITHUB_STEP_SUMMARY
           echo "- 🔧 **Mode**: ${{ github.event.inputs.dry-run == 'true' && '🔍 Dry Run' || '⚠️ LIVE EXECUTION' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 📅 **Max Age**: ${{ github.event.inputs.max-age-days }} days" >> $GITHUB_STEP_SUMMARY
+          echo "- 📅 **Max Age**: ${{ steps.profile.outputs.effective-max-age }} days" >> $GITHUB_STEP_SUMMARY
           echo "- 🕐 **Timestamp**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           echo "**Cleanup Operations:**" >> $GITHUB_STEP_SUMMARY
-          echo "- 🚀 Releases: ${{ github.event.inputs.cleanup-releases == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🏷️ Tags: ${{ github.event.inputs.cleanup-tags == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🌿 Branches: ${{ github.event.inputs.cleanup-branches == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🔀 Pull Requests: ${{ github.event.inputs.cleanup-pull-requests == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- ⚙️ Workflow Runs: ${{ github.event.inputs.cleanup-workflow-runs == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🐛 Issues: ${{ github.event.inputs.cleanup-issues == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚀 Releases: ${{ steps.profile.outputs.cleanup-releases == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🏷️ Tags: ${{ steps.profile.outputs.cleanup-tags == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌿 Branches: ${{ steps.profile.outputs.cleanup-branches == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔀 Pull Requests: ${{ steps.profile.outputs.cleanup-pull-requests == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ⚙️ Workflow Runs: ${{ steps.profile.outputs.cleanup-workflow-runs == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🐛 Issues: ${{ steps.profile.outputs.cleanup-issues == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           echo "**Protection Settings:**" >> $GITHUB_STEP_SUMMARY
-          echo "- 🛡️ Protected Branches: \`${{ github.event.inputs.protected-branches }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- 📊 Batch Size: ${{ github.event.inputs.batch-size }} items" >> $GITHUB_STEP_SUMMARY
-          echo "- ⏱️ Batch Delay: ${{ github.event.inputs.batch-delay }} seconds" >> $GITHUB_STEP_SUMMARY
+          echo "- 🛡️ Protected Branches: \`${{ steps.profile.outputs.effective-protected-branches }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 Batch Size: ${{ steps.profile.outputs.effective-batch-size }} items" >> $GITHUB_STEP_SUMMARY
+          echo "- 📅 Max Age: ${{ steps.profile.outputs.effective-max-age }} days" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [[ "${{ github.event.inputs.dry-run }}" == "true" ]]; then
@@ -312,19 +407,28 @@ jobs:
       target-repository: ${{ github.event.inputs.target-repository }}
       config-profile: ${{ needs.validate-inputs.outputs.effective-profile }}
       
-      # Cleanup operations
-      cleanup-releases: ${{ github.event.inputs.cleanup-releases == 'true' }}
-      cleanup-tags: ${{ github.event.inputs.cleanup-tags == 'true' }}
-      cleanup-branches: ${{ github.event.inputs.cleanup-branches == 'true' }}
-      cleanup-pull-requests: ${{ github.event.inputs.cleanup-pull-requests == 'true' }}
-      cleanup-workflow-runs: ${{ github.event.inputs.cleanup-workflow-runs == 'true' }}
-      cleanup-issues: ${{ github.event.inputs.cleanup-issues == 'true' }}
+      # Cleanup operations (determined by profile)
+      cleanup-releases: ${{ needs.validate-inputs.outputs.cleanup-releases == 'true' }}
+      cleanup-tags: ${{ needs.validate-inputs.outputs.cleanup-tags == 'true' }}
+      cleanup-branches: ${{ needs.validate-inputs.outputs.cleanup-branches == 'true' }}
+      cleanup-pull-requests: ${{ needs.validate-inputs.outputs.cleanup-pull-requests == 'true' }}
+      cleanup-workflow-runs: ${{ needs.validate-inputs.outputs.cleanup-workflow-runs == 'true' }}
+      cleanup-issues: ${{ needs.validate-inputs.outputs.cleanup-issues == 'true' }}
       
-      # Age and filtering
-      max-age-days: ${{ fromJSON(github.event.inputs.max-age-days) }}
-      protected-branches: ${{ github.event.inputs.protected-branches }}
-      include-patterns: ${{ github.event.inputs.include-patterns }}
-      exclude-patterns: ${{ github.event.inputs.exclude-patterns }}
+      # Age and filtering (using effective values)
+      max-age-days: ${{ fromJSON(needs.validate-inputs.outputs.effective-max-age) }}
+      protected-branches: ${{ needs.validate-inputs.outputs.effective-protected-branches }}
+      
+      # Use profile-appropriate patterns
+      exclude-patterns: |
+        [
+          ".*keep.*",
+          ".*important.*", 
+          ".*preserve.*",
+          ".*permanent.*",
+          ".*lts.*",
+          ".*stable.*"
+        ]
       
       # PR handling
       pr-action: 'comment-and-close'
@@ -335,12 +439,12 @@ jobs:
         
         **Cleanup Details:**
         - Profile: ${{ needs.validate-inputs.outputs.effective-profile }}
-        - Age Threshold: ${{ github.event.inputs.max-age-days }} days
+        - Age Threshold: ${{ needs.validate-inputs.outputs.effective-max-age }} days
         - Execution: ${{ github.event.inputs.dry-run == 'true' && 'Dry Run' || 'Live Operation' }}
         
         **Why was this closed?**
-        - This PR is older than ${{ github.event.inputs.max-age-days }} days
-        - It was included in our cleanup criteria
+        - This PR is older than ${{ needs.validate-inputs.outputs.effective-max-age }} days
+        - It was included in our cleanup criteria based on the ${{ needs.validate-inputs.outputs.effective-profile }} profile
         - This helps maintain repository organization
         
         **To reopen this PR:**
@@ -350,14 +454,15 @@ jobs:
         
         *This is an automated action by the BAUER GROUP Repository Cleanup system.*
       
-      # Execution configuration
+      # Execution configuration (using effective values)
       dry-run: ${{ github.event.inputs.dry-run == 'true' }}
-      batch-size: ${{ fromJSON(github.event.inputs.batch-size) }}
-      batch-delay: ${{ fromJSON(github.event.inputs.batch-delay) }}
+      batch-size: ${{ fromJSON(needs.validate-inputs.outputs.effective-batch-size) }}
+      batch-delay: 3
       skip-confirmation: true
+      force-delete: ${{ github.event.inputs.force-operations == 'true' }}
       
       # Reporting
-      generate-report: ${{ github.event.inputs.generate-report == 'true' }}
+      generate-report: true
       verbose: ${{ github.event.inputs.verbose-logging == 'true' }}
     
     secrets: inherit
