@@ -1,0 +1,296 @@
+name: 🔔 Teams Notifications
+
+on:
+  # Workflow events
+  workflow_run:
+    workflows: ["*"]
+    types: [completed]
+  
+  # Issue events
+  issues:
+    types: [opened, closed, reopened, assigned, labeled]
+  
+  # Pull request events
+  pull_request:
+    types: [opened, closed, synchronize, reopened, ready_for_review, converted_to_draft]
+  
+  # Push events
+  push:
+    branches: [main, develop, master]
+  
+  # Release events
+  release:
+    types: [published, created, edited]
+  
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      event-type:
+        description: 'Test event type'
+        required: true
+        type: choice
+        options:
+          - workflow_success
+          - workflow_failure
+          - issue_opened
+          - issue_closed
+          - pr_opened
+          - pr_closed
+          - pr_merged
+          - push
+          - release
+        default: workflow_success
+      test-message:
+        description: 'Test message'
+        required: false
+        default: 'This is a test notification'
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  actions: read
+
+jobs:
+  # Handle workflow completion notifications
+  workflow-notifications:
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    name: 🔄 Workflow Notifications
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔔 Send Workflow Success Notification
+        if: github.event.workflow_run.conclusion == 'success'
+        uses: ./.github/actions/teams-notification
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          event-type: 'workflow_success'
+          title: '✅ Workflow Completed Successfully'
+          summary: 'Workflow **${{ github.event.workflow_run.name }}** completed successfully'
+          details: 'All checks passed and the workflow executed without errors.'
+          repository-name: ${{ github.repository }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+          actor: ${{ github.event.workflow_run.actor.login }}
+          actor-avatar: ${{ github.event.workflow_run.actor.avatar_url }}
+          ref: ${{ github.event.workflow_run.head_branch }}
+          sha: ${{ github.event.workflow_run.head_sha }}
+          run-id: ${{ github.event.workflow_run.id }}
+          run-url: ${{ github.event.workflow_run.html_url }}
+          config-file: 'success'
+
+      - name: 🔔 Send Workflow Failure Notification
+        if: github.event.workflow_run.conclusion == 'failure'
+        uses: ./.github/actions/teams-notification
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          event-type: 'workflow_failure'
+          title: '❌ Workflow Failed'
+          summary: 'Workflow **${{ github.event.workflow_run.name }}** failed'
+          details: 'The workflow encountered errors and did not complete successfully. Please check the logs for details.'
+          repository-name: ${{ github.repository }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+          actor: ${{ github.event.workflow_run.actor.login }}
+          actor-avatar: ${{ github.event.workflow_run.actor.avatar_url }}
+          ref: ${{ github.event.workflow_run.head_branch }}
+          sha: ${{ github.event.workflow_run.head_sha }}
+          run-id: ${{ github.event.workflow_run.id }}
+          run-url: ${{ github.event.workflow_run.html_url }}
+          config-file: 'failure'
+          mention-users: ${{ vars.TEAMS_MENTION_ON_FAILURE }}
+
+  # Handle issue notifications
+  issue-notifications:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    name: 🐛 Issue Notifications
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔔 Send Issue Opened Notification
+        if: github.event.action == 'opened'
+        uses: ./.github/actions/teams-notification
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          event-type: 'issue_opened'
+          title: '🐛 New Issue Opened'
+          summary: '**#${{ github.event.issue.number }}**: ${{ github.event.issue.title }}'
+          details: ${{ github.event.issue.body }}
+          repository-name: ${{ github.repository }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+          actor: ${{ github.event.issue.user.login }}
+          actor-avatar: ${{ github.event.issue.user.avatar_url }}
+          issue-number: ${{ github.event.issue.number }}
+          issue-url: ${{ github.event.issue.html_url }}
+          config-file: 'issue'
+          custom-facts: '[{"title": "Labels", "value": "${{ join(github.event.issue.labels.*.name, ', ') }}"}, {"title": "Assignees", "value": "${{ join(github.event.issue.assignees.*.login, ', ') }}"}]'
+
+      - name: 🔔 Send Issue Closed Notification
+        if: github.event.action == 'closed'
+        uses: ./.github/actions/teams-notification
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          event-type: 'issue_closed'
+          title: '✅ Issue Closed'
+          summary: '**#${{ github.event.issue.number }}**: ${{ github.event.issue.title }}'
+          details: 'Issue was closed by ${{ github.event.issue.closed_by.login }}'
+          repository-name: ${{ github.repository }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+          actor: ${{ github.actor }}
+          issue-number: ${{ github.event.issue.number }}
+          issue-url: ${{ github.event.issue.html_url }}
+          config-file: 'issue'
+
+  # Handle pull request notifications
+  pr-notifications:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    name: 🔀 Pull Request Notifications
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔔 Send PR Opened Notification
+        if: github.event.action == 'opened'
+        uses: ./.github/actions/teams-notification
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          event-type: 'pr_opened'
+          title: '🔀 New Pull Request Opened'
+          summary: '**#${{ github.event.pull_request.number }}**: ${{ github.event.pull_request.title }}'
+          details: ${{ github.event.pull_request.body }}
+          repository-name: ${{ github.repository }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+          actor: ${{ github.event.pull_request.user.login }}
+          actor-avatar: ${{ github.event.pull_request.user.avatar_url }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          sha: ${{ github.event.pull_request.head.sha }}
+          pr-number: ${{ github.event.pull_request.number }}
+          pr-url: ${{ github.event.pull_request.html_url }}
+          config-file: 'pull-request'
+          custom-facts: '[{"title": "Base Branch", "value": "${{ github.event.pull_request.base.ref }}"}, {"title": "Head Branch", "value": "${{ github.event.pull_request.head.ref }}"}, {"title": "Changes", "value": "+${{ github.event.pull_request.additions }} -${{ github.event.pull_request.deletions }}"}]'
+
+      - name: 🔔 Send PR Closed Notification
+        if: github.event.action == 'closed' && github.event.pull_request.merged == false
+        uses: ./.github/actions/teams-notification
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          event-type: 'pr_closed'
+          title: '🔒 Pull Request Closed'
+          summary: '**#${{ github.event.pull_request.number }}**: ${{ github.event.pull_request.title }}'
+          details: 'Pull request was closed without merging'
+          repository-name: ${{ github.repository }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+          actor: ${{ github.actor }}
+          pr-number: ${{ github.event.pull_request.number }}
+          pr-url: ${{ github.event.pull_request.html_url }}
+          config-file: 'pull-request'
+
+      - name: 🔔 Send PR Merged Notification
+        if: github.event.action == 'closed' && github.event.pull_request.merged == true
+        uses: ./.github/actions/teams-notification
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          event-type: 'pr_merged'
+          title: '🎉 Pull Request Merged'
+          summary: '**#${{ github.event.pull_request.number }}**: ${{ github.event.pull_request.title }}'
+          details: 'Pull request was successfully merged into ${{ github.event.pull_request.base.ref }}'
+          repository-name: ${{ github.repository }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+          actor: ${{ github.event.pull_request.merged_by.login }}
+          actor-avatar: ${{ github.event.pull_request.merged_by.avatar_url }}
+          pr-number: ${{ github.event.pull_request.number }}
+          pr-url: ${{ github.event.pull_request.html_url }}
+          config-file: 'pull-request'
+          custom-facts: '[{"title": "Merged into", "value": "${{ github.event.pull_request.base.ref }}"}, {"title": "Commits", "value": "${{ github.event.pull_request.commits }}"}, {"title": "Files Changed", "value": "${{ github.event.pull_request.changed_files }}"}]'
+
+      - name: 🔔 Send PR Ready for Review Notification
+        if: github.event.action == 'ready_for_review'
+        uses: ./.github/actions/teams-notification
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          event-type: 'pr_opened'
+          title: '👀 Pull Request Ready for Review'
+          summary: '**#${{ github.event.pull_request.number }}**: ${{ github.event.pull_request.title }}'
+          details: 'Pull request is now ready for review'
+          repository-name: ${{ github.repository }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+          actor: ${{ github.event.pull_request.user.login }}
+          pr-number: ${{ github.event.pull_request.number }}
+          pr-url: ${{ github.event.pull_request.html_url }}
+          config-file: 'pull-request'
+          mention-users: ${{ vars.TEAMS_MENTION_ON_PR_REVIEW }}
+
+  # Handle push notifications
+  push-notifications:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    name: 🚀 Push Notifications
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔔 Send Push Notification
+        uses: ./.github/actions/teams-notification
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          event-type: 'push'
+          title: '🚀 New Commits Pushed'
+          summary: '${{ github.event.commits | length }} commit(s) pushed to **${{ github.ref_name }}**'
+          details: 'Latest commit: ${{ github.event.head_commit.message }}'
+          repository-name: ${{ github.repository }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+          actor: ${{ github.event.head_commit.author.username }}
+          ref: ${{ github.ref }}
+          sha: ${{ github.sha }}
+          config-file: 'push'
+          custom-facts: '[{"title": "Commits", "value": "${{ github.event.commits | length }}"}, {"title": "Files Changed", "value": "${{ github.event.head_commit.added | length + github.event.head_commit.modified | length + github.event.head_commit.removed | length }}"}]'
+
+  # Handle release notifications
+  release-notifications:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    name: 🏷️ Release Notifications
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔔 Send Release Notification
+        if: github.event.action == 'published'
+        uses: ./.github/actions/teams-notification
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          event-type: 'release'
+          title: '🏷️ New Release Published'
+          summary: '**${{ github.event.release.tag_name }}**: ${{ github.event.release.name }}'
+          details: ${{ github.event.release.body }}
+          repository-name: ${{ github.repository }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+          actor: ${{ github.event.release.author.login }}
+          actor-avatar: ${{ github.event.release.author.avatar_url }}
+          config-file: 'release'
+          custom-facts: '[{"title": "Tag", "value": "${{ github.event.release.tag_name }}"}, {"title": "Prerelease", "value": "${{ github.event.release.prerelease }}"}, {"title": "Draft", "value": "${{ github.event.release.draft }}"}]'
+
+  # Handle manual test notifications
+  test-notifications:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    name: 🧪 Test Notifications
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔔 Send Test Notification
+        uses: ./.github/actions/teams-notification
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          event-type: ${{ github.event.inputs.event-type }}
+          title: '🧪 Test Notification'
+          summary: ${{ github.event.inputs.test-message }}
+          details: 'This is a test notification triggered manually'
+          repository-name: ${{ github.repository }}
+          repository-url: ${{ github.server_url }}/${{ github.repository }}
+          actor: ${{ github.actor }}
+          config-file: 'test'

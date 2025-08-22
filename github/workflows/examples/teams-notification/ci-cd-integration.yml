@@ -1,0 +1,402 @@
+# 🔔 Teams Notifications - CI/CD Integration Example
+# Integration of Teams notifications with CI/CD pipelines and deployment workflows
+# Author: BAUER GROUP IT
+#
+# This example demonstrates how to integrate Teams notifications with:
+# - Build and test workflows
+# - Deployment pipelines
+# - Security scanning
+# - Performance monitoring
+# - Environment-specific notifications
+
+name: CI/CD with Teams Integration
+
+on:
+  push:
+    branches: [main, develop, 'release/*', 'hotfix/*']
+  pull_request:
+    branches: [main, develop]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+        default: development
+      skip-tests:
+        description: 'Skip test execution'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+  security-events: read
+  deployments: read
+
+env:
+  # Environment-specific webhook URLs
+  DEV_TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_DEV }}
+  STAGING_TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_STAGING }}
+  PROD_TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_PROD }}
+  SECURITY_TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_SECURITY }}
+
+jobs:
+  # Build and test job with integrated notifications
+  build-and-test:
+    runs-on: ubuntu-latest
+    name: 🏗️ Build & Test
+    outputs:
+      build-status: ${{ steps.build.outcome }}
+      test-status: ${{ steps.test.outcome }}
+      build-time: ${{ steps.timing.outputs.build-time }}
+      test-time: ${{ steps.timing.outputs.test-time }}
+      coverage: ${{ steps.test.outputs.coverage }}
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: ⏱️ Start Timing
+        id: timing
+        run: |
+          echo "build-start=$(date +%s)" >> $GITHUB_OUTPUT
+          echo "test-start=" >> $GITHUB_OUTPUT
+
+      - name: 🔔 Build Started Notification
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ env.DEV_TEAMS_WEBHOOK }}
+          event-type: 'workflow_started'
+          title: '🏗️ Build Started'
+          summary: 'Starting build and test pipeline for **${{ github.ref_name }}**'
+          custom-facts: |
+            [
+              {"title": "🌿 Branch", "value": "${{ github.ref_name }}"},
+              {"title": "🔄 Trigger", "value": "${{ github.event_name }}"},
+              {"title": "👤 Actor", "value": "${{ github.actor }}"}
+            ]
+          config-file: 'default'
+
+      - name: 🏗️ Build Application
+        id: build
+        run: |
+          echo "🏗️ Building application..."
+          # Simulate build process
+          sleep 10
+          
+          # Simulate build success/failure based on conditions
+          if [[ "${{ github.ref_name }}" == *"break"* ]]; then
+            echo "❌ Build failed - intentional failure for demo"
+            exit 1
+          fi
+          
+          echo "✅ Build completed successfully"
+          echo "build-artifact=app-${{ github.sha }}.tar.gz" >> $GITHUB_OUTPUT
+
+      - name: ⏱️ Record Build Time
+        run: |
+          BUILD_END=$(date +%s)
+          BUILD_START=${{ steps.timing.outputs.build-start }}
+          BUILD_TIME=$((BUILD_END - BUILD_START))
+          echo "build-time=${BUILD_TIME}s" >> $GITHUB_OUTPUT
+          echo "test-start=$(date +%s)" >> $GITHUB_OUTPUT
+
+      - name: 🔔 Build Success Notification
+        if: steps.build.outcome == 'success'
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ env.DEV_TEAMS_WEBHOOK }}
+          event-type: 'workflow_success'
+          title: '✅ Build Successful'
+          summary: 'Build completed successfully in ${{ steps.timing.outputs.build-time }}'
+          details: |
+            **Build Results:**
+            - **Status**: ✅ Success
+            - **Duration**: ${{ steps.timing.outputs.build-time }}
+            - **Artifact**: ${{ steps.build.outputs.build-artifact }}
+            - **Branch**: ${{ github.ref_name }}
+            - **Commit**: ${{ github.sha }}
+          custom-facts: |
+            [
+              {"title": "⏱️ Duration", "value": "${{ steps.timing.outputs.build-time }}"},
+              {"title": "📦 Artifact", "value": "${{ steps.build.outputs.build-artifact }}"},
+              {"title": "🌿 Branch", "value": "${{ github.ref_name }}"}
+            ]
+          config-file: 'success'
+
+      - name: 🔔 Build Failure Notification
+        if: steps.build.outcome == 'failure'
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ env.PROD_TEAMS_WEBHOOK }}
+          event-type: 'workflow_failure'
+          title: '❌ Build Failed'
+          summary: '**Critical**: Build process failed after ${{ steps.timing.outputs.build-time }}'
+          details: |
+            **Build Failure Details:**
+            - **Status**: ❌ Failed
+            - **Duration**: ${{ steps.timing.outputs.build-time }}
+            - **Branch**: ${{ github.ref_name }}
+            - **Commit**: ${{ github.sha }}
+            - **Logs**: [View Build Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            
+            **Next Steps:**
+            1. Check build logs for detailed error information
+            2. Verify recent code changes
+            3. Contact DevOps team if issue persists
+          mention-users: 'devops-team,maintainers'
+          config-file: 'failure'
+
+      - name: 🧪 Run Tests
+        id: test
+        if: steps.build.outcome == 'success' && github.event.inputs.skip-tests != 'true'
+        run: |
+          echo "🧪 Running test suite..."
+          # Simulate test execution
+          sleep 15
+          
+          # Simulate test results
+          TOTAL_TESTS=150
+          PASSED_TESTS=148
+          FAILED_TESTS=$((TOTAL_TESTS - PASSED_TESTS))
+          COVERAGE=87.5
+          
+          echo "test-results=Passed: $PASSED_TESTS, Failed: $FAILED_TESTS" >> $GITHUB_OUTPUT
+          echo "coverage=$COVERAGE%" >> $GITHUB_OUTPUT
+          
+          if [ $FAILED_TESTS -gt 0 ]; then
+            echo "⚠️ Some tests failed"
+            exit 1
+          fi
+          
+          echo "✅ All tests passed"
+
+      - name: ⏱️ Record Test Time
+        if: steps.build.outcome == 'success'
+        run: |
+          TEST_END=$(date +%s)
+          TEST_START=${{ steps.timing.outputs.test-start }}
+          TEST_TIME=$((TEST_END - TEST_START))
+          echo "test-time=${TEST_TIME}s" >> $GITHUB_OUTPUT
+
+  # Security scanning with notifications
+  security-scan:
+    runs-on: ubuntu-latest
+    name: 🛡️ Security Scan
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🛡️ Run Security Scan
+        id: security
+        run: |
+          echo "🛡️ Running security scan..."
+          # Simulate security scanning
+          sleep 8
+          
+          # Simulate security findings
+          CRITICAL=0
+          HIGH=2
+          MEDIUM=5
+          LOW=12
+          
+          echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+          echo "high=$HIGH" >> $GITHUB_OUTPUT
+          echo "medium=$MEDIUM" >> $GITHUB_OUTPUT
+          echo "low=$LOW" >> $GITHUB_OUTPUT
+          
+          TOTAL=$((CRITICAL + HIGH + MEDIUM + LOW))
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          
+          if [ $CRITICAL -gt 0 ] || [ $HIGH -gt 5 ]; then
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "❌ Security scan failed - critical vulnerabilities found"
+            exit 1
+          elif [ $HIGH -gt 0 ]; then
+            echo "status=warning" >> $GITHUB_OUTPUT
+            echo "⚠️ Security scan completed with warnings"
+          else
+            echo "status=passed" >> $GITHUB_OUTPUT
+            echo "✅ Security scan passed"
+          fi
+
+      - name: 🔔 Security Scan Results
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ steps.security.outputs.status == 'failed' && env.SECURITY_TEAMS_WEBHOOK || env.DEV_TEAMS_WEBHOOK }}
+          event-type: ${{ steps.security.outputs.status == 'failed' && 'workflow_failure' || steps.security.outputs.status == 'warning' && 'workflow_warning' || 'workflow_success' }}
+          title: '🛡️ Security Scan: ${{ steps.security.outputs.status == 'failed' && '❌ Failed' || steps.security.outputs.status == 'warning' && '⚠️ Warnings' || '✅ Passed' }}'
+          summary: |
+            **Security scan completed** with ${{ steps.security.outputs.total }} findings
+            
+            🚨 **Critical**: ${{ steps.security.outputs.critical }}
+            ⚠️ **High**: ${{ steps.security.outputs.high }}
+            📋 **Medium**: ${{ steps.security.outputs.medium }}
+            ℹ️ **Low**: ${{ steps.security.outputs.low }}
+          details: |
+            **Security Scan Results:**
+            - **Status**: ${{ steps.security.outputs.status }}
+            - **Total Findings**: ${{ steps.security.outputs.total }}
+            - **Critical Vulnerabilities**: ${{ steps.security.outputs.critical }}
+            - **High Severity**: ${{ steps.security.outputs.high }}
+            - **Medium Severity**: ${{ steps.security.outputs.medium }}
+            - **Low Severity**: ${{ steps.security.outputs.low }}
+            
+            ${{ steps.security.outputs.status == 'failed' && '**Immediate Action Required:**\n1. Review critical vulnerabilities\n2. Block deployment until resolved\n3. Notify security team' || steps.security.outputs.status == 'warning' && '**Action Recommended:**\n1. Review high severity findings\n2. Plan remediation\n3. Consider deployment impact' || '**No Action Required:**\nSecurity scan passed successfully' }}
+          custom-facts: |
+            [
+              {"title": "🚨 Critical", "value": "${{ steps.security.outputs.critical }}"},
+              {"title": "⚠️ High", "value": "${{ steps.security.outputs.high }}"},
+              {"title": "📋 Medium", "value": "${{ steps.security.outputs.medium }}"},
+              {"title": "ℹ️ Low", "value": "${{ steps.security.outputs.low }}"},
+              {"title": "📊 Total", "value": "${{ steps.security.outputs.total }}"}
+            ]
+          mention-users: ${{ steps.security.outputs.status == 'failed' && 'security-team,devops-team' || steps.security.outputs.status == 'warning' && 'security-team' || '' }}
+          config-file: ${{ steps.security.outputs.status == 'failed' && 'failure' || 'default' }}
+
+  # Deployment job with environment-specific notifications
+  deploy:
+    needs: [build-and-test, security-scan]
+    if: success() && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    name: 🚀 Deploy
+    environment: ${{ github.event.inputs.environment || 'development' }}
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🎯 Determine Target Environment
+        id: env
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ENV="${{ github.event.inputs.environment }}"
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            ENV="production"
+          else
+            ENV="development"
+          fi
+          
+          echo "target=$ENV" >> $GITHUB_OUTPUT
+          
+          # Set webhook based on environment
+          case $ENV in
+            production)
+              echo "webhook=${{ env.PROD_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
+              echo "mentions=devops-team,stakeholders" >> $GITHUB_OUTPUT
+              ;;
+            staging)
+              echo "webhook=${{ env.STAGING_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
+              echo "mentions=qa-team,devops-team" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "webhook=${{ env.DEV_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
+              echo "mentions=" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: 🔔 Deployment Started
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ steps.env.outputs.webhook }}
+          event-type: 'deployment_started'
+          title: '🚀 Deployment Started: ${{ steps.env.outputs.target }}'
+          summary: |
+            **Starting deployment** to **${{ steps.env.outputs.target }}** environment
+            
+            📦 **Version**: ${{ github.ref_name }}
+            👤 **Deployed by**: ${{ github.actor }}
+          custom-facts: |
+            [
+              {"title": "🎯 Environment", "value": "${{ steps.env.outputs.target }}"},
+              {"title": "📦 Version", "value": "${{ github.ref_name }}"},
+              {"title": "👤 Actor", "value": "${{ github.actor }}"},
+              {"title": "⏱️ Started", "value": "${{ github.event.created_at }}"}
+            ]
+          config-file: 'default'
+
+      - name: 🚀 Deploy Application
+        id: deploy
+        run: |
+          echo "🚀 Deploying to ${{ steps.env.outputs.target }}..."
+          # Simulate deployment process
+          sleep 20
+          
+          # Simulate deployment success
+          echo "✅ Deployment completed successfully"
+          echo "deployment-url=https://${{ steps.env.outputs.target }}.example.com" >> $GITHUB_OUTPUT
+          echo "version=${{ github.ref_name }}-${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+      - name: 🔔 Deployment Success
+        if: steps.deploy.outcome == 'success'
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ steps.env.outputs.webhook }}
+          event-type: 'deployment_success'
+          title: '🎉 Deployment Successful: ${{ steps.env.outputs.target }}'
+          summary: |
+            **Deployment completed successfully** to **${{ steps.env.outputs.target }}** environment! 🎉
+            
+            🌐 **URL**: [Open Application](${{ steps.deploy.outputs.deployment-url }})
+            📦 **Version**: ${{ steps.deploy.outputs.version }}
+            ⏱️ **Duration**: ~20 seconds
+          details: |
+            **Deployment Summary:**
+            - **Environment**: ${{ steps.env.outputs.target }}
+            - **Version**: ${{ steps.deploy.outputs.version }}
+            - **Application URL**: ${{ steps.deploy.outputs.deployment-url }}
+            - **Deployed by**: ${{ github.actor }}
+            - **Build Status**: ✅ ${{ needs.build-and-test.outputs.build-status }}
+            - **Test Coverage**: ${{ needs.build-and-test.outputs.coverage }}
+            
+            **Quick Links:**
+            - [🌐 Open Application](${{ steps.deploy.outputs.deployment-url }})
+            - [📊 View Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            - [📋 View Commit](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+          custom-facts: |
+            [
+              {"title": "🎯 Environment", "value": "${{ steps.env.outputs.target }}"},
+              {"title": "📦 Version", "value": "${{ steps.deploy.outputs.version }}"},
+              {"title": "🌐 URL", "value": "${{ steps.deploy.outputs.deployment-url }}"},
+              {"title": "⏱️ Duration", "value": "~20s"},
+              {"title": "📊 Coverage", "value": "${{ needs.build-and-test.outputs.coverage }}"}
+            ]
+          mention-users: ${{ steps.env.outputs.mentions }}
+          config-file: 'success'
+
+      - name: 🔔 Deployment Failure
+        if: steps.deploy.outcome == 'failure'
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ steps.env.outputs.webhook }}
+          event-type: 'deployment_failure'
+          title: '💥 Deployment Failed: ${{ steps.env.outputs.target }}'
+          summary: |
+            **Critical: Deployment failed** to **${{ steps.env.outputs.target }}** environment
+            
+            🚨 **Immediate action required**
+            👤 **Failed for**: ${{ github.actor }}
+          details: |
+            **Deployment Failure:**
+            - **Environment**: ${{ steps.env.outputs.target }}
+            - **Version**: ${{ github.ref_name }}-${{ github.run_number }}
+            - **Failed by**: ${{ github.actor }}
+            - **Failure Time**: ${{ github.event.created_at }}
+            
+            **Immediate Actions:**
+            1. Check deployment logs for error details
+            2. Verify environment health
+            3. Consider rollback if necessary
+            4. Notify on-call team
+            
+            **Links:**
+            - [📊 View Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            - [🔄 Re-run Deployment](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          mention-users: 'devops-team,on-call-team,maintainers'
+          config-file: 'failure'

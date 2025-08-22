@@ -1,0 +1,385 @@
+# 🔔 Comprehensive Teams Notifications Example
+# Advanced implementation with rich content, custom facts, and detailed event handling
+# Author: BAUER GROUP IT
+#
+# This example demonstrates advanced Teams notification features including:
+# - Rich adaptive cards with custom facts
+# - Environment-specific configurations
+# - Conditional notifications based on branch/event
+# - Error handling and retry logic
+# - Performance monitoring integration
+
+name: Comprehensive Teams Notifications
+
+on:
+  # All workflow events
+  workflow_run:
+    workflows: ["*"]
+    types: [completed, requested]
+  
+  # Comprehensive issue events
+  issues:
+    types: [opened, closed, reopened, assigned, labeled, unlabeled]
+  
+  # Comprehensive PR events
+  pull_request:
+    types: [opened, closed, synchronize, reopened, ready_for_review, converted_to_draft, review_requested]
+  
+  # Push events with detailed branch filtering
+  push:
+    branches: [main, master, develop, 'release/*', 'hotfix/*']
+  
+  # Release and tag events
+  release:
+    types: [published, created, edited, deleted]
+  
+  # Schedule for periodic health checks
+  schedule:
+    - cron: '0 9 * * 1'  # Monday 9 AM UTC - Weekly summary
+  
+  # Manual testing trigger
+  workflow_dispatch:
+    inputs:
+      notification-type:
+        description: 'Test notification type'
+        required: true
+        type: choice
+        options:
+          - workflow_success
+          - workflow_failure
+          - issue_opened
+          - pr_opened
+          - push
+          - release
+          - test
+        default: test
+      include-mentions:
+        description: 'Include test mentions'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  actions: read
+  security-events: read
+
+env:
+  # Environment-specific webhook URLs (use secrets in real implementation)
+  PROD_TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_PROD }}
+  DEV_TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_DEV }}
+  SECURITY_TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_SECURITY }}
+
+jobs:
+  # Advanced workflow notifications with performance metrics
+  advanced-workflow-notifications:
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    name: 🔄 Advanced Workflow Notifications
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📊 Calculate Performance Metrics
+        id: metrics
+        run: |
+          # Calculate workflow duration
+          START_TIME="${{ github.event.workflow_run.created_at }}"
+          END_TIME="${{ github.event.workflow_run.updated_at }}"
+          
+          START_EPOCH=$(date -d "$START_TIME" +%s)
+          END_EPOCH=$(date -d "$END_TIME" +%s)
+          DURATION=$((END_EPOCH - START_EPOCH))
+          
+          DURATION_MIN=$((DURATION / 60))
+          DURATION_SEC=$((DURATION % 60))
+          
+          echo "duration=${DURATION_MIN}m ${DURATION_SEC}s" >> $GITHUB_OUTPUT
+          echo "duration-seconds=$DURATION" >> $GITHUB_OUTPUT
+          
+          # Determine performance rating
+          if [ $DURATION -lt 300 ]; then
+            echo "performance=🚀 Fast" >> $GITHUB_OUTPUT
+          elif [ $DURATION -lt 900 ]; then
+            echo "performance=⚡ Normal" >> $GITHUB_OUTPUT
+          else
+            echo "performance=🐌 Slow" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔔 Advanced Success Notification
+        if: github.event.workflow_run.conclusion == 'success'
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ contains(github.ref, 'main') && env.PROD_TEAMS_WEBHOOK || env.DEV_TEAMS_WEBHOOK }}
+          event-type: 'workflow_success'
+          title: '✅ ${{ github.event.workflow_run.name }} - Success'
+          summary: |
+            **Workflow completed successfully** in ${{ steps.metrics.outputs.duration }}
+            
+            🎯 **Performance**: ${{ steps.metrics.outputs.performance }}
+            📊 **Branch**: `${{ github.event.workflow_run.head_branch }}`
+            👤 **Triggered by**: ${{ github.event.workflow_run.actor.login }}
+          details: |
+            **Workflow Details:**
+            - **Repository**: ${{ github.repository }}
+            - **Workflow**: ${{ github.event.workflow_run.name }}
+            - **Run Number**: #${{ github.event.workflow_run.run_number }}
+            - **Duration**: ${{ steps.metrics.outputs.duration }}
+            - **Commit**: ${{ github.event.workflow_run.head_sha }}
+            
+            **Quick Links:**
+            - [View Workflow](${{ github.event.workflow_run.html_url }})
+            - [View Commit](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.workflow_run.head_sha }})
+          custom-facts: |
+            [
+              {"title": "Performance", "value": "${{ steps.metrics.outputs.performance }}"},
+              {"title": "Duration", "value": "${{ steps.metrics.outputs.duration }}"},
+              {"title": "Branch", "value": "${{ github.event.workflow_run.head_branch }}"},
+              {"title": "Run Number", "value": "#${{ github.event.workflow_run.run_number }}"},
+              {"title": "Event", "value": "${{ github.event.workflow_run.event }}"},
+              {"title": "Commit SHA", "value": "${{ github.event.workflow_run.head_sha }}"}
+            ]
+          config-file: 'success'
+
+      - name: 🔔 Advanced Failure Notification
+        if: github.event.workflow_run.conclusion == 'failure'
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ env.PROD_TEAMS_WEBHOOK }}
+          event-type: 'workflow_failure'
+          title: '❌ ${{ github.event.workflow_run.name }} - Failed'
+          summary: |
+            **Critical: Workflow failed** after ${{ steps.metrics.outputs.duration }}
+            
+            🚨 **Immediate Action Required**
+            📊 **Branch**: `${{ github.event.workflow_run.head_branch }}`
+            👤 **Triggered by**: ${{ github.event.workflow_run.actor.login }}
+          details: |
+            **Failure Details:**
+            - **Repository**: ${{ github.repository }}
+            - **Workflow**: ${{ github.event.workflow_run.name }}
+            - **Run Number**: #${{ github.event.workflow_run.run_number }}
+            - **Duration**: ${{ steps.metrics.outputs.duration }}
+            - **Commit**: ${{ github.event.workflow_run.head_sha }}
+            
+            **Troubleshooting Steps:**
+            1. Check the [workflow logs](${{ github.event.workflow_run.html_url }})
+            2. Review recent changes in [commit](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.workflow_run.head_sha }})
+            3. Contact the DevOps team if issue persists
+            
+            **Quick Actions:**
+            - [View Logs](${{ github.event.workflow_run.html_url }})
+            - [View Commit](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.workflow_run.head_sha }})
+            - [Create Issue](${{ github.server_url }}/${{ github.repository }}/issues/new)
+          custom-facts: |
+            [
+              {"title": "❌ Status", "value": "FAILED"},
+              {"title": "⏱️ Duration", "value": "${{ steps.metrics.outputs.duration }}"},
+              {"title": "🌿 Branch", "value": "${{ github.event.workflow_run.head_branch }}"},
+              {"title": "🔢 Run #", "value": "${{ github.event.workflow_run.run_number }}"},
+              {"title": "📅 Failed At", "value": "${{ github.event.workflow_run.updated_at }}"},
+              {"title": "🔗 Commit", "value": "${{ github.event.workflow_run.head_sha }}"}
+            ]
+          mention-users: 'devops-team,maintainers,team-leads'
+          config-file: 'failure'
+
+  # Advanced issue notifications with priority handling
+  advanced-issue-notifications:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    name: 🐛 Advanced Issue Notifications
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🏷️ Analyze Issue Priority
+        id: priority
+        run: |
+          LABELS="${{ join(github.event.issue.labels.*.name, ',') }}"
+          
+          if [[ "$LABELS" == *"priority:critical"* ]] || [[ "$LABELS" == *"security"* ]]; then
+            echo "level=critical" >> $GITHUB_OUTPUT
+            echo "webhook=${{ env.SECURITY_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
+            echo "mentions=security-team,team-leads,maintainers" >> $GITHUB_OUTPUT
+          elif [[ "$LABELS" == *"priority:high"* ]] || [[ "$LABELS" == *"bug"* ]]; then
+            echo "level=high" >> $GITHUB_OUTPUT
+            echo "webhook=${{ env.PROD_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
+            echo "mentions=maintainers,qa-team" >> $GITHUB_OUTPUT
+          else
+            echo "level=normal" >> $GITHUB_OUTPUT
+            echo "webhook=${{ env.DEV_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
+            echo "mentions=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔔 Advanced Issue Opened
+        if: github.event.action == 'opened'
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ steps.priority.outputs.webhook || env.DEV_TEAMS_WEBHOOK }}
+          event-type: 'issue_opened'
+          title: '🐛 ${{ steps.priority.outputs.level == 'critical' && '🚨 CRITICAL' || steps.priority.outputs.level == 'high' && '⚠️ HIGH PRIORITY' || 'New' }} Issue: ${{ github.event.issue.title }}'
+          summary: |
+            **Issue #${{ github.event.issue.number }}** opened by **${{ github.event.issue.user.login }}**
+            
+            📋 **Priority**: ${{ steps.priority.outputs.level }}
+            🏷️ **Labels**: ${{ join(github.event.issue.labels.*.name, ', ') || 'None' }}
+            👥 **Assignees**: ${{ join(github.event.issue.assignees.*.login, ', ') || 'Unassigned' }}
+          details: |
+            **Issue Description:**
+            ${{ github.event.issue.body }}
+            
+            **Issue Details:**
+            - **Reporter**: ${{ github.event.issue.user.login }}
+            - **Created**: ${{ github.event.issue.created_at }}
+            - **Labels**: ${{ join(github.event.issue.labels.*.name, ', ') || 'None' }}
+            - **Milestone**: ${{ github.event.issue.milestone.title || 'None' }}
+            
+            **Actions:**
+            - [View Issue](${{ github.event.issue.html_url }})
+            - [Add Comment](${{ github.event.issue.html_url }}#new_comment_field)
+            - [Assign Issue](${{ github.event.issue.html_url }}/assign)
+          custom-facts: |
+            [
+              {"title": "🆔 Issue #", "value": "${{ github.event.issue.number }}"},
+              {"title": "📈 Priority", "value": "${{ steps.priority.outputs.level }}"},
+              {"title": "👤 Reporter", "value": "${{ github.event.issue.user.login }}"},
+              {"title": "🏷️ Labels", "value": "${{ join(github.event.issue.labels.*.name, ', ') || 'None' }}"},
+              {"title": "👥 Assignees", "value": "${{ join(github.event.issue.assignees.*.login, ', ') || 'Unassigned' }}"},
+              {"title": "🎯 Milestone", "value": "${{ github.event.issue.milestone.title || 'None' }}"}
+            ]
+          mention-users: ${{ steps.priority.outputs.mentions }}
+          issue-number: ${{ github.event.issue.number }}
+          issue-url: ${{ github.event.issue.html_url }}
+          config-file: 'issue'
+
+  # Advanced PR notifications with change analysis
+  advanced-pr-notifications:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    name: 🔀 Advanced PR Notifications
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📊 Analyze PR Changes
+        id: changes
+        run: |
+          ADDITIONS=${{ github.event.pull_request.additions }}
+          DELETIONS=${{ github.event.pull_request.deletions }}
+          TOTAL_CHANGES=$((ADDITIONS + DELETIONS))
+          
+          if [ $TOTAL_CHANGES -lt 50 ]; then
+            echo "size=Small (< 50 lines)" >> $GITHUB_OUTPUT
+            echo "complexity=🟢 Simple" >> $GITHUB_OUTPUT
+          elif [ $TOTAL_CHANGES -lt 200 ]; then
+            echo "size=Medium (50-200 lines)" >> $GITHUB_OUTPUT
+            echo "complexity=🟡 Moderate" >> $GITHUB_OUTPUT
+          elif [ $TOTAL_CHANGES -lt 500 ]; then
+            echo "size=Large (200-500 lines)" >> $GITHUB_OUTPUT
+            echo "complexity=🟠 Complex" >> $GITHUB_OUTPUT
+          else
+            echo "size=Extra Large (500+ lines)" >> $GITHUB_OUTPUT
+            echo "complexity=🔴 Very Complex" >> $GITHUB_OUTPUT
+          fi
+          
+          # Determine if targeting protected branch
+          if [[ "${{ github.event.pull_request.base.ref }}" == "main" ]] || [[ "${{ github.event.pull_request.base.ref }}" == "master" ]]; then
+            echo "protected=true" >> $GITHUB_OUTPUT
+            echo "webhook=${{ env.PROD_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
+          else
+            echo "protected=false" >> $GITHUB_OUTPUT
+            echo "webhook=${{ env.DEV_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔔 Advanced PR Opened
+        if: github.event.action == 'opened'
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ steps.changes.outputs.webhook }}
+          event-type: 'pr_opened'
+          title: '🔀 New PR: ${{ github.event.pull_request.title }}'
+          summary: |
+            **Pull Request #${{ github.event.pull_request.number }}** opened by **${{ github.event.pull_request.user.login }}**
+            
+            📊 **Size**: ${{ steps.changes.outputs.size }}
+            🎯 **Target**: `${{ github.event.pull_request.base.ref }}` ← `${{ github.event.pull_request.head.ref }}`
+            ⚡ **Complexity**: ${{ steps.changes.outputs.complexity }}
+            ${{ steps.changes.outputs.protected == 'true' && '🔒 **Protected Branch**' || '' }}
+          details: |
+            **Pull Request Description:**
+            ${{ github.event.pull_request.body }}
+            
+            **Change Summary:**
+            - **Files Changed**: ${{ github.event.pull_request.changed_files }}
+            - **Additions**: +${{ github.event.pull_request.additions }} lines
+            - **Deletions**: -${{ github.event.pull_request.deletions }} lines
+            - **Total Changes**: ${{ github.event.pull_request.additions + github.event.pull_request.deletions }} lines
+            - **Commits**: ${{ github.event.pull_request.commits }}
+            
+            **Branch Information:**
+            - **Source**: ${{ github.event.pull_request.head.ref }}
+            - **Target**: ${{ github.event.pull_request.base.ref }}
+            - **Mergeable**: ${{ github.event.pull_request.mergeable || 'Unknown' }}
+            
+            **Actions:**
+            - [Review PR](${{ github.event.pull_request.html_url }})
+            - [View Changes](${{ github.event.pull_request.html_url }}/files)
+            - [View Commits](${{ github.event.pull_request.html_url }}/commits)
+          custom-facts: |
+            [
+              {"title": "🆔 PR #", "value": "${{ github.event.pull_request.number }}"},
+              {"title": "📊 Size", "value": "${{ steps.changes.outputs.size }}"},
+              {"title": "👤 Author", "value": "${{ github.event.pull_request.user.login }}"},
+              {"title": "🎯 Target", "value": "${{ github.event.pull_request.base.ref }}"},
+              {"title": "🌿 Source", "value": "${{ github.event.pull_request.head.ref }}"},
+              {"title": "📝 Changes", "value": "+${{ github.event.pull_request.additions }} -${{ github.event.pull_request.deletions }}"},
+              {"title": "📁 Files", "value": "${{ github.event.pull_request.changed_files }}"},
+              {"title": "💾 Commits", "value": "${{ github.event.pull_request.commits }}"}
+            ]
+          mention-users: ${{ steps.changes.outputs.protected == 'true' && 'maintainers,senior-developers' || '' }}
+          pr-number: ${{ github.event.pull_request.number }}
+          pr-url: ${{ github.event.pull_request.html_url }}
+          config-file: 'pull-request'
+
+  # Manual test notifications
+  test-notifications:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    name: 🧪 Test Notifications
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔔 Test Notification
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ env.DEV_TEAMS_WEBHOOK }}
+          event-type: ${{ github.event.inputs.notification-type }}
+          title: '🧪 Test Notification: ${{ github.event.inputs.notification-type }}'
+          summary: |
+            **Test notification triggered manually**
+            
+            🎯 **Type**: ${{ github.event.inputs.notification-type }}
+            👤 **Triggered by**: ${{ github.actor }}
+            🕐 **Time**: ${{ github.event.created_at }}
+          details: |
+            **Test Information:**
+            - **Notification Type**: ${{ github.event.inputs.notification-type }}
+            - **Include Mentions**: ${{ github.event.inputs.include-mentions }}
+            - **Repository**: ${{ github.repository }}
+            - **Workflow**: ${{ github.workflow }}
+            - **Run Number**: #${{ github.run_number }}
+            
+            This is a comprehensive test notification to verify all features are working correctly including adaptive cards, custom facts, mentions, and various formatting options.
+          custom-facts: |
+            [
+              {"title": "🧪 Test Type", "value": "${{ github.event.inputs.notification-type }}"},
+              {"title": "👤 Actor", "value": "${{ github.actor }}"},
+              {"title": "🔢 Run #", "value": "${{ github.run_number }}"},
+              {"title": "📅 Timestamp", "value": "${{ github.event.created_at }}"},
+              {"title": "💬 Mentions", "value": "${{ github.event.inputs.include-mentions }}"}
+            ]
+          mention-users: ${{ github.event.inputs.include-mentions == 'true' && 'test-user,developers' || '' }}
+          config-file: 'test'

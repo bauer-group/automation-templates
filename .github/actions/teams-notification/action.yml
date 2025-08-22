@@ -1,0 +1,508 @@
+name: '🔔 Microsoft Teams Notification'
+description: 'Send sophisticated Adaptive Card notifications to Microsoft Teams channels for repository events'
+author: 'BAUER GROUP IT'
+branding:
+  icon: 'bell'
+  color: 'blue'
+
+inputs:
+  webhook-url:
+    description: 'Microsoft Teams webhook URL'
+    required: true
+  event-type:
+    description: 'Type of event (workflow_failure, workflow_success, issue_opened, issue_closed, pr_opened, pr_closed, pr_merged, push, release)'
+    required: true
+  title:
+    description: 'Notification title'
+    required: false
+    default: 'Repository Event'
+  summary:
+    description: 'Event summary text'
+    required: false
+  details:
+    description: 'Additional event details'
+    required: false
+  repository-name:
+    description: 'Repository name'
+    required: false
+    default: ${{ github.repository }}
+  repository-url:
+    description: 'Repository URL'
+    required: false
+    default: ${{ github.server_url }}/${{ github.repository }}
+  actor:
+    description: 'Event actor'
+    required: false
+    default: ${{ github.actor }}
+  actor-avatar:
+    description: 'Actor avatar URL'
+    required: false
+    default: ${{ github.server_url }}/${{ github.actor }}.png
+  ref:
+    description: 'Git reference'
+    required: false
+    default: ${{ github.ref }}
+  sha:
+    description: 'Commit SHA'
+    required: false
+    default: ${{ github.sha }}
+  run-id:
+    description: 'Workflow run ID'
+    required: false
+    default: ${{ github.run_id }}
+  run-url:
+    description: 'Workflow run URL'
+    required: false
+    default: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  pr-number:
+    description: 'Pull request number'
+    required: false
+  pr-url:
+    description: 'Pull request URL'
+    required: false
+  issue-number:
+    description: 'Issue number'
+    required: false
+  issue-url:
+    description: 'Issue URL'
+    required: false
+  theme-color:
+    description: 'Custom theme color (hex without #)'
+    required: false
+  custom-facts:
+    description: 'Additional facts as JSON array'
+    required: false
+  mention-users:
+    description: 'Users to mention (comma-separated)'
+    required: false
+  config-file:
+    description: 'Configuration file name (without extension) from .github/config/teams-notification/'
+    required: false
+    default: 'default'
+  enable-retry:
+    description: 'Enable retry on failure'
+    required: false
+    default: 'true'
+  retry-count:
+    description: 'Number of retry attempts'
+    required: false
+    default: '3'
+  timeout:
+    description: 'Request timeout in seconds'
+    required: false
+    default: '30'
+
+outputs:
+  status:
+    description: 'Notification delivery status'
+  response:
+    description: 'Teams webhook response'
+  card-payload:
+    description: 'Generated Adaptive Card payload'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 📋 Load Configuration
+      id: config
+      shell: bash
+      run: |
+        CONFIG_FILE=".github/config/teams-notification/${{ inputs.config-file }}.yml"
+        
+        if [[ -f "$CONFIG_FILE" ]]; then
+          echo "✅ Loading configuration from $CONFIG_FILE"
+          
+          # Parse YAML configuration
+          THEME_COLOR=$(yq eval '.theme.colors.${{ inputs.event-type }} // .theme.colors.default // "0078d4"' "$CONFIG_FILE")
+          ENABLE_MENTIONS=$(yq eval '.features.mentions // true' "$CONFIG_FILE")
+          ENABLE_FACTS=$(yq eval '.features.facts // true' "$CONFIG_FILE")
+          CARD_STYLE=$(yq eval '.card.style // "default"' "$CONFIG_FILE")
+          
+          echo "theme-color=$THEME_COLOR" >> $GITHUB_OUTPUT
+          echo "enable-mentions=$ENABLE_MENTIONS" >> $GITHUB_OUTPUT
+          echo "enable-facts=$ENABLE_FACTS" >> $GITHUB_OUTPUT
+          echo "card-style=$CARD_STYLE" >> $GITHUB_OUTPUT
+        else
+          echo "⚠️ Configuration file not found, using defaults"
+          echo "theme-color=0078d4" >> $GITHUB_OUTPUT
+          echo "enable-mentions=true" >> $GITHUB_OUTPUT
+          echo "enable-facts=true" >> $GITHUB_OUTPUT
+          echo "card-style=default" >> $GITHUB_OUTPUT
+        fi
+
+    - name: 📊 Prepare Event Data
+      id: event-data
+      shell: bash
+      run: |
+        # Determine theme color based on event type
+        THEME_COLOR="${{ inputs.theme-color }}"
+        if [[ -z "$THEME_COLOR" ]]; then
+          case "${{ inputs.event-type }}" in
+            "workflow_success"|"pr_merged"|"release")
+              THEME_COLOR="28a745" # Green
+              ;;
+            "workflow_failure"|"issue_opened")
+              THEME_COLOR="dc3545" # Red
+              ;;
+            "pr_opened"|"pr_closed")
+              THEME_COLOR="007bff" # Blue
+              ;;
+            "push")
+              THEME_COLOR="6f42c1" # Purple
+              ;;
+            *)
+              THEME_COLOR="${{ steps.config.outputs.theme-color }}"
+              ;;
+          esac
+        fi
+        
+        # Prepare status icon
+        case "${{ inputs.event-type }}" in
+          "workflow_success")
+            STATUS_ICON="✅"
+            STATUS_TEXT="Success"
+            ;;
+          "workflow_failure")
+            STATUS_ICON="❌"
+            STATUS_TEXT="Failed"
+            ;;
+          "pr_opened")
+            STATUS_ICON="🔀"
+            STATUS_TEXT="Pull Request Opened"
+            ;;
+          "pr_closed")
+            STATUS_ICON="🔒"
+            STATUS_TEXT="Pull Request Closed"
+            ;;
+          "pr_merged")
+            STATUS_ICON="🎉"
+            STATUS_TEXT="Pull Request Merged"
+            ;;
+          "issue_opened")
+            STATUS_ICON="🐛"
+            STATUS_TEXT="Issue Opened"
+            ;;
+          "issue_closed")
+            STATUS_ICON="✅"
+            STATUS_TEXT="Issue Closed"
+            ;;
+          "push")
+            STATUS_ICON="🚀"
+            STATUS_TEXT="Push"
+            ;;
+          "release")
+            STATUS_ICON="🏷️"
+            STATUS_TEXT="Release"
+            ;;
+          *)
+            STATUS_ICON="📢"
+            STATUS_TEXT="Repository Event"
+            ;;
+        esac
+        
+        echo "theme-color=$THEME_COLOR" >> $GITHUB_OUTPUT
+        echo "status-icon=$STATUS_ICON" >> $GITHUB_OUTPUT
+        echo "status-text=$STATUS_TEXT" >> $GITHUB_OUTPUT
+        
+        # Format branch/ref name
+        REF_NAME=$(echo "${{ inputs.ref }}" | sed 's|refs/heads/||' | sed 's|refs/tags/||')
+        echo "ref-name=$REF_NAME" >> $GITHUB_OUTPUT
+        
+        # Short SHA
+        SHORT_SHA=$(echo "${{ inputs.sha }}" | head -c 8)
+        echo "short-sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+        
+        # Current timestamp
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+
+    - name: 🎨 Generate Adaptive Card
+      id: card
+      shell: bash
+      run: |
+        # Create temporary file for card payload
+        CARD_FILE=$(mktemp)
+        
+        # Build adaptive card JSON
+        cat > "$CARD_FILE" << 'EOF'
+        {
+          "type": "message",
+          "attachments": [
+            {
+              "contentType": "application/vnd.microsoft.card.adaptive",
+              "content": {
+                "type": "AdaptiveCard",
+                "version": "1.5",
+                "schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "body": [
+                  {
+                    "type": "Container",
+                    "style": "emphasis",
+                    "items": [
+                      {
+                        "type": "ColumnSet",
+                        "columns": [
+                          {
+                            "type": "Column",
+                            "width": "auto",
+                            "items": [
+                              {
+                                "type": "Image",
+                                "url": "${{ inputs.actor-avatar }}",
+                                "style": "Person",
+                                "size": "Small"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "Column",
+                            "width": "stretch",
+                            "items": [
+                              {
+                                "type": "TextBlock",
+                                "text": "${{ steps.event-data.outputs.status-icon }} **${{ inputs.title || steps.event-data.outputs.status-text }}**",
+                                "weight": "Bolder",
+                                "size": "Medium",
+                                "wrap": true
+                              },
+                              {
+                                "type": "TextBlock",
+                                "text": "[${{ inputs.repository-name }}](${{ inputs.repository-url }})",
+                                "size": "Small",
+                                "color": "Accent",
+                                "wrap": true
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+        EOF
+        
+        # Add summary if provided
+        if [[ -n "${{ inputs.summary }}" ]]; then
+          cat >> "$CARD_FILE" << 'EOF'
+                  {
+                    "type": "TextBlock",
+                    "text": "${{ inputs.summary }}",
+                    "wrap": true,
+                    "spacing": "Medium"
+                  },
+        EOF
+        fi
+        
+        # Add details if provided
+        if [[ -n "${{ inputs.details }}" ]]; then
+          cat >> "$CARD_FILE" << 'EOF'
+                  {
+                    "type": "TextBlock",
+                    "text": "${{ inputs.details }}",
+                    "wrap": true,
+                    "size": "Small",
+                    "color": "Default"
+                  },
+        EOF
+        fi
+        
+        # Add facts section
+        if [[ "${{ steps.config.outputs.enable-facts }}" == "true" ]]; then
+          cat >> "$CARD_FILE" << 'EOF'
+                  {
+                    "type": "FactSet",
+                    "facts": [
+                      {
+                        "title": "Actor:",
+                        "value": "${{ inputs.actor }}"
+                      },
+                      {
+                        "title": "Branch:",
+                        "value": "${{ steps.event-data.outputs.ref-name }}"
+                      },
+                      {
+                        "title": "Commit:",
+                        "value": "${{ steps.event-data.outputs.short-sha }}"
+                      },
+                      {
+                        "title": "Time:",
+                        "value": "${{ steps.event-data.outputs.timestamp }}"
+                      }
+        EOF
+          
+          # Add event-specific facts
+          if [[ -n "${{ inputs.pr-number }}" ]]; then
+            cat >> "$CARD_FILE" << 'EOF'
+                      ,{
+                        "title": "PR:",
+                        "value": "#${{ inputs.pr-number }}"
+                      }
+        EOF
+          fi
+          
+          if [[ -n "${{ inputs.issue-number }}" ]]; then
+            cat >> "$CARD_FILE" << 'EOF'
+                      ,{
+                        "title": "Issue:",
+                        "value": "#${{ inputs.issue-number }}"
+                      }
+        EOF
+          fi
+          
+          # Add custom facts if provided
+          if [[ -n "${{ inputs.custom-facts }}" ]]; then
+            # Process custom facts JSON
+            echo '${{ inputs.custom-facts }}' | jq -c '.[]' | while read -r fact; do
+              TITLE=$(echo "$fact" | jq -r '.title')
+              VALUE=$(echo "$fact" | jq -r '.value')
+              cat >> "$CARD_FILE" << EOF
+                      ,{
+                        "title": "$TITLE:",
+                        "value": "$VALUE"
+                      }
+        EOF
+            done
+          fi
+          
+          cat >> "$CARD_FILE" << 'EOF'
+                    ]
+                  },
+        EOF
+        fi
+        
+        # Add actions section
+        cat >> "$CARD_FILE" << 'EOF'
+                  {
+                    "type": "ActionSet",
+                    "actions": [
+        EOF
+        
+        # Repository action
+        cat >> "$CARD_FILE" << 'EOF'
+                      {
+                        "type": "Action.OpenUrl",
+                        "title": "📂 Repository",
+                        "url": "${{ inputs.repository-url }}"
+                      }
+        EOF
+        
+        # Workflow run action
+        if [[ -n "${{ inputs.run-url }}" ]]; then
+          cat >> "$CARD_FILE" << 'EOF'
+                      ,{
+                        "type": "Action.OpenUrl",
+                        "title": "🔄 Workflow",
+                        "url": "${{ inputs.run-url }}"
+                      }
+        EOF
+        fi
+        
+        # PR action
+        if [[ -n "${{ inputs.pr-url }}" ]]; then
+          cat >> "$CARD_FILE" << 'EOF'
+                      ,{
+                        "type": "Action.OpenUrl",
+                        "title": "🔀 Pull Request",
+                        "url": "${{ inputs.pr-url }}"
+                      }
+        EOF
+        fi
+        
+        # Issue action
+        if [[ -n "${{ inputs.issue-url }}" ]]; then
+          cat >> "$CARD_FILE" << 'EOF'
+                      ,{
+                        "type": "Action.OpenUrl",
+                        "title": "🐛 Issue",
+                        "url": "${{ inputs.issue-url }}"
+                      }
+        EOF
+        fi
+        
+        # Close actions and card
+        cat >> "$CARD_FILE" << 'EOF'
+                    ]
+                  }
+                ],
+                "msteams": {
+                  "width": "Full"
+                }
+              }
+            }
+          ]
+        }
+        EOF
+        
+        # Output card payload
+        CARD_PAYLOAD=$(cat "$CARD_FILE")
+        echo "payload<<EOF" >> $GITHUB_OUTPUT
+        echo "$CARD_PAYLOAD" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+        # Clean up
+        rm "$CARD_FILE"
+
+    - name: 🚀 Send Teams Notification
+      id: send
+      shell: bash
+      run: |
+        # Retry logic
+        RETRY_COUNT=0
+        MAX_RETRIES=${{ inputs.retry-count }}
+        SUCCESS=false
+        
+        while [[ $RETRY_COUNT -le $MAX_RETRIES ]] && [[ "$SUCCESS" != "true" ]]; do
+          if [[ $RETRY_COUNT -gt 0 ]]; then
+            echo "⏳ Retry attempt $RETRY_COUNT/$MAX_RETRIES"
+            sleep $((RETRY_COUNT * 2))
+          fi
+          
+          # Send webhook request
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\nTIME_TOTAL:%{time_total}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            --max-time ${{ inputs.timeout }} \
+            -d '${{ steps.card.outputs.payload }}' \
+            "${{ inputs.webhook-url }}" || echo "CURL_ERROR")
+          
+          # Parse response
+          if [[ "$RESPONSE" == "CURL_ERROR" ]]; then
+            echo "❌ Network error occurred"
+            STATUS_CODE="000"
+          else
+            BODY=$(echo "$RESPONSE" | sed '$d' | sed '$d')
+            STATUS_CODE=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+            TIME_TOTAL=$(echo "$RESPONSE" | grep "TIME_TOTAL:" | cut -d: -f2)
+            
+            echo "📊 Response Status: $STATUS_CODE"
+            echo "⏱️ Response Time: ${TIME_TOTAL}s"
+            
+            if [[ "$STATUS_CODE" == "200" ]]; then
+              echo "✅ Teams notification sent successfully"
+              SUCCESS=true
+              echo "status=success" >> $GITHUB_OUTPUT
+              echo "response=$BODY" >> $GITHUB_OUTPUT
+            else
+              echo "❌ Teams notification failed with status $STATUS_CODE"
+              echo "📝 Response: $BODY"
+            fi
+          fi
+          
+          if [[ "$SUCCESS" != "true" ]] && [[ "${{ inputs.enable-retry }}" == "true" ]]; then
+            ((RETRY_COUNT++))
+          else
+            break
+          fi
+        done
+        
+        if [[ "$SUCCESS" != "true" ]]; then
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "response=Failed after $RETRY_COUNT attempts" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+
+    - name: 📋 Output Card Payload
+      shell: bash
+      run: |
+        echo "card-payload<<EOF" >> $GITHUB_OUTPUT
+        echo '${{ steps.card.outputs.payload }}' >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT

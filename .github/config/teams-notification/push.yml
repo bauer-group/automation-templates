@@ -1,0 +1,111 @@
+# 🔔 Teams Notification Push Configuration
+# Optimized configuration for Git Push events
+# Author: BAUER GROUP IT
+# Version: 1.0.0
+
+# Inherit from default configuration
+extends: "default"
+
+# Theme configuration for push events
+theme:
+  colors:
+    push: "6f42c1"                # Purple for regular pushes
+    push_main: "28a745"           # Green for main branch pushes
+    push_develop: "17a2b8"        # Teal for develop branch pushes
+    push_hotfix: "dc3545"         # Red for hotfix pushes
+    push_feature: "007bff"        # Blue for feature branch pushes
+    default: "6f42c1"             # Default to purple
+
+# Card styling optimized for commit tracking
+card:
+  style: "default"                # Neutral styling for pushes
+  width: "Full"
+  
+# Feature toggles for push notifications
+features:
+  mentions: false                 # Generally don't mention on pushes (too noisy)
+  facts: true                     # Show commit metadata
+  actions: true                   # Show action buttons
+  timestamps: true                # Include timestamps
+  avatars: true                   # Show committer avatars
+  retry: true                     # Enable retry
+  
+# Notification settings - lightweight for frequent events
+notifications:
+  timeout: 20                     # Shorter timeout for pushes
+  retry_count: 2                  # Fewer retries for pushes
+  retry_delay: 1                  # Shorter delay
+  
+# Content optimized for commit information
+content:
+  title_max_length: 80           # Shorter titles for pushes
+  summary_max_length: 400        # Concise summaries
+  details_max_length: 600        # Brief commit details
+  
+# Default mentions for push events (branch-specific)
+mentions:
+  push: []                        # No mentions for regular pushes
+  push_main:                      # Mention for main branch pushes
+    - "maintainers"
+  push_develop: []                # No mentions for develop pushes
+  push_hotfix:                    # Critical hotfix pushes
+    - "maintainers"
+    - "devops-team"
+  
+# Formatting optimized for commit information
+formatting:
+  use_emojis: true               # Commit type emojis
+  bold_titles: false             # Less emphasis for pushes
+  code_formatting: true          # Code formatting for commit messages
+
+# Push-specific settings
+push_settings:
+  show_commit_count: true        # Display number of commits
+  show_files_changed: true       # Display files changed count
+  show_commit_messages: true     # Include commit messages
+  max_commits_shown: 5           # Maximum commits to display
+  truncate_messages: true        # Truncate long commit messages
+  show_author_info: true         # Show commit author information
+  
+# Branch-based handling
+branch_handling:
+  main_branches:                 # Main branch names
+    - "main"
+    - "master"
+  develop_branches:              # Development branch names
+    - "develop"
+    - "dev"
+  hotfix_patterns:               # Hotfix branch patterns
+    - "hotfix/*"
+    - "fix/*"
+  feature_patterns:              # Feature branch patterns
+    - "feature/*"
+    - "feat/*"
+  
+# Commit type recognition
+commit_types:
+  feat: "✨"                     # New features
+  fix: "🐛"                      # Bug fixes
+  docs: "📚"                     # Documentation
+  style: "💎"                    # Code style
+  refactor: "🔨"                 # Code refactoring
+  test: "🚨"                     # Tests
+  chore: "🔧"                    # Maintenance
+  
+# File type significance
+significant_files:
+  config:                        # Configuration files
+    - "*.json"
+    - "*.yml"
+    - "*.yaml"
+    - "*.toml"
+    - "*.ini"
+  security:                      # Security-related files
+    - ".github/workflows/*"
+    - "Dockerfile"
+    - "requirements.txt"
+    - "package.json"
+  documentation:                 # Documentation files
+    - "README*"
+    - "*.md"
+    - "docs/*"
