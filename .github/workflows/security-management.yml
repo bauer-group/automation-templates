@@ -210,7 +210,7 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "🛡️ Security Policy Bot"
           
-          COMMIT_MSG="security: update SECURITY.MD"
+          COMMIT_MSG="docs: update SECURITY.MD"
           
           if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
             COMMIT_MSG="$COMMIT_MSG for tag ${{ github.ref_name }} [automated]"

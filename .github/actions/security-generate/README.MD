@@ -177,7 +177,7 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "Security Policy Bot"
           git add SECURITY.MD
-          git commit -m "security: update SECURITY.MD [automated]"
+          git commit -m "docs: update SECURITY.MD [automated]"
           git push
 ```
 
