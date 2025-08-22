@@ -340,7 +340,7 @@ runs:
                     "type": "TextBlock",
                     "text": "${{ inputs.details }}",
                     "wrap": true,
-                    "size": "Small",
+                    "size": "Default",
                     "color": "Default"
                   },
         EOF
