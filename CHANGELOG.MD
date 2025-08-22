@@ -1,3 +1,13 @@
+## [0.22.0](https://github.com/bauer-group/automation-templates/compare/v0.21.0...v0.22.0) (2025-08-22)
+
+### 🚀 Features
+
+* Enable force update option in documentation and security management workflows ([2ea33f7](https://github.com/bauer-group/automation-templates/commit/2ea33f7cd48ba89ea5474fb484dbefc067500783))
+
+### 🐛 Bug Fixes
+
+* ensure newline at end of file in deployment scripts ([013a38c](https://github.com/bauer-group/automation-templates/commit/013a38c4daa6d261c0f6a2477c7077f8e22b6f2b))
+
 ## [0.21.0](https://github.com/bauer-group/automation-templates/compare/v0.20.0...v0.21.0) (2025-08-22)
 
 ### 🚀 Features
