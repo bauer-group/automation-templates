@@ -1,3 +1,13 @@
+## [0.14.0](https://github.com/bauer-group/automation-templates/compare/v0.13.0...v0.14.0) (2025-08-22)
+
+### 🚀 Features
+
+* Enhance documentation workflow to support triggering from other workflows ([d945311](https://github.com/bauer-group/automation-templates/commit/d9453117a53e72905de14dcdfe12dda48153cfba))
+
+### 🐛 Bug Fixes
+
+* update coverage upload conditions to use boolean comparison ([7092d15](https://github.com/bauer-group/automation-templates/commit/7092d157d204e3aecf9e438401e4fac8ce179269))
+
 ## [0.13.0](https://github.com/bauer-group/automation-templates/compare/v0.12.6...v0.13.0) (2025-08-21)
 
 ### 🚀 Features
