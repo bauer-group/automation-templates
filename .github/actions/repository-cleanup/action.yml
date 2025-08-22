@@ -190,14 +190,15 @@ runs:
         
         # Check if any cleanup option is enabled
         CLEANUP_ENABLED=false
-        for option in releases tags branches pull-requests workflow-runs issues; do
-          var_name="cleanup-${option}"
-          var_value="${{ inputs[var_name] }}"
-          if [[ "$var_value" == "true" ]]; then
-            CLEANUP_ENABLED=true
-            break
-          fi
-        done
+        
+        if [[ "${{ inputs.cleanup-releases }}" == "true" ]] || \
+           [[ "${{ inputs.cleanup-tags }}" == "true" ]] || \
+           [[ "${{ inputs.cleanup-branches }}" == "true" ]] || \
+           [[ "${{ inputs.cleanup-pull-requests }}" == "true" ]] || \
+           [[ "${{ inputs.cleanup-workflow-runs }}" == "true" ]] || \
+           [[ "${{ inputs.cleanup-issues }}" == "true" ]]; then
+          CLEANUP_ENABLED=true
+        fi
         
         if [[ "$CLEANUP_ENABLED" != "true" ]]; then
           echo "⚠️ No cleanup operations enabled"
