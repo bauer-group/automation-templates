@@ -125,7 +125,11 @@ jobs:
           issue-number: ${{ github.event.issue.number }}
           issue-url: ${{ github.event.issue.html_url }}
           config-file: 'issue'
-          custom-facts: '[{"title": "Labels", "value": "${{ join(github.event.issue.labels.*.name, ', ') }}"}, {"title": "Assignees", "value": "${{ join(github.event.issue.assignees.*.login, ', ') }}"}]'
+          custom-facts: |
+            [
+              {"title": "Labels", "value": "${{ join(github.event.issue.labels.*.name, ', ') }}"},
+              {"title": "Assignees", "value": "${{ join(github.event.issue.assignees.*.login, ', ') }}"}
+            ]
 
       - name: 🔔 Send Issue Closed Notification
         if: github.event.action == 'closed'
@@ -170,7 +174,12 @@ jobs:
           pr-number: ${{ github.event.pull_request.number }}
           pr-url: ${{ github.event.pull_request.html_url }}
           config-file: 'pull-request'
-          custom-facts: '[{"title": "Base Branch", "value": "${{ github.event.pull_request.base.ref }}"}, {"title": "Head Branch", "value": "${{ github.event.pull_request.head.ref }}"}, {"title": "Changes", "value": "+${{ github.event.pull_request.additions }} -${{ github.event.pull_request.deletions }}"}]'
+          custom-facts: |
+            [
+              {"title": "Base Branch", "value": "${{ github.event.pull_request.base.ref }}"},
+              {"title": "Head Branch", "value": "${{ github.event.pull_request.head.ref }}"},
+              {"title": "Changes", "value": "+${{ github.event.pull_request.additions }} -${{ github.event.pull_request.deletions }}"}
+            ]
 
       - name: 🔔 Send PR Closed Notification
         if: github.event.action == 'closed' && github.event.pull_request.merged == false
@@ -204,7 +213,12 @@ jobs:
           pr-number: ${{ github.event.pull_request.number }}
           pr-url: ${{ github.event.pull_request.html_url }}
           config-file: 'pull-request'
-          custom-facts: '[{"title": "Merged into", "value": "${{ github.event.pull_request.base.ref }}"}, {"title": "Commits", "value": "${{ github.event.pull_request.commits }}"}, {"title": "Files Changed", "value": "${{ github.event.pull_request.changed_files }}"}]'
+          custom-facts: |
+            [
+              {"title": "Merged into", "value": "${{ github.event.pull_request.base.ref }}"},
+              {"title": "Commits", "value": "${{ github.event.pull_request.commits }}"},
+              {"title": "Files Changed", "value": "${{ github.event.pull_request.changed_files }}"}
+            ]
 
       - name: 🔔 Send PR Ready for Review Notification
         if: github.event.action == 'ready_for_review'
@@ -246,7 +260,11 @@ jobs:
           ref: ${{ github.ref }}
           sha: ${{ github.sha }}
           config-file: 'push'
-          custom-facts: '[{"title": "Commits", "value": "${{ github.event.commits | length }}"}, {"title": "Files Changed", "value": "${{ github.event.head_commit.added | length + github.event.head_commit.modified | length + github.event.head_commit.removed | length }}"}]'
+          custom-facts: |
+            [
+              {"title": "Commits", "value": "${{ github.event.commits | length }}"},
+              {"title": "Files Changed", "value": "${{ github.event.head_commit.added | length + github.event.head_commit.modified | length + github.event.head_commit.removed | length }}"}
+            ]
 
   # Handle release notifications
   release-notifications:
@@ -271,7 +289,12 @@ jobs:
           actor: ${{ github.event.release.author.login }}
           actor-avatar: ${{ github.event.release.author.avatar_url }}
           config-file: 'release'
-          custom-facts: '[{"title": "Tag", "value": "${{ github.event.release.tag_name }}"}, {"title": "Prerelease", "value": "${{ github.event.release.prerelease }}"}, {"title": "Draft", "value": "${{ github.event.release.draft }}"}]'
+          custom-facts: |
+            [
+              {"title": "Tag", "value": "${{ github.event.release.tag_name }}"},
+              {"title": "Prerelease", "value": "${{ github.event.release.prerelease }}"},
+              {"title": "Draft", "value": "${{ github.event.release.draft }}"}
+            ]
 
   # Handle manual test notifications
   test-notifications:
