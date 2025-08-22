@@ -1,3 +1,11 @@
+## [0.20.0](https://github.com/bauer-group/automation-templates/compare/v0.19.0...v0.20.0) (2025-08-22)
+
+### 🚀 Features
+
+* add enterprise profile with advanced workflows and actions to deployment configuration ([2ee11a7](https://github.com/bauer-group/automation-templates/commit/2ee11a7a12b3d46a9c1e29756b790df95255082f))
+* add project type support and workflow-specific configurations to deployment scripts ([0805d4e](https://github.com/bauer-group/automation-templates/commit/0805d4e8b6b1a7d6c95bf8c40efb2660db28b6be))
+* Implement Python-based Automation Templates Deployment Tool ([e6b1867](https://github.com/bauer-group/automation-templates/commit/e6b1867ba3a76e58f900128f4b158ffb099cb015))
+
 ## [0.19.0](https://github.com/bauer-group/automation-templates/compare/v0.18.0...v0.19.0) (2025-08-22)
 
 ### 🚀 Features
