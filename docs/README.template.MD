@@ -2,16 +2,19 @@
 
 ## Overview
 
-Professional automation templates and workflows for GitHub repositories, providing enterprise-grade security scanning, release management, and repository maintenance tools.
+Enterprise-grade GitHub Actions automation repository providing comprehensive CI/CD workflows, security scanning, and deployment automation for modern software development. This repository serves as a central template system for standardizing automation across multiple projects and teams.
 
 **Repository Information:**
 
 - **Version:** {{VERSION}} ({{DATE}})
 - **Repository:** [{{REPO_FULL_NAME}}]({{REPO_URL}})
 - **Branch:** {{CURRENT_BRANCH}}
+- **Architecture:** Modular, Reusable, Enterprise-Ready
 
 [![🔄 CI/CD Pipeline (Automatic Release)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
 [![📄 Documentation Management](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml)
+[![🐍 Python Build System](https://github.com/bauer-group/automation-templates/actions/workflows/python-build.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/python-build.yml)
+[![🐳 Docker Build System](https://github.com/bauer-group/automation-templates/actions/workflows/docker-build.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/docker-build.yml)
 
 ## 🛡️ Security Scanning
 
@@ -86,75 +89,151 @@ jobs:
 
 ```text
 ├── .github/
-│   ├── actions/               # Reusable GitHub Actions
+│   ├── actions/               # 🔧 Reusable Composite Actions
+│   │   ├── docker-build/      # Docker build with security scanning
+│   │   ├── python-setup/      # Python environment setup
+│   │   ├── python-test/       # Python testing and coverage
+│   │   ├── python-quality/    # Code quality and security scanning
+│   │   ├── python-package/    # Python packaging and publishing
 │   │   ├── security-scan/     # Multi-engine security scanning
 │   │   ├── license-compliance/ # SPDX license compliance
 │   │   ├── artifact-generator/ # Multi-format artifact generation
 │   │   └── readme-generate/   # Professional README generation
-│   ├── config/               # Configuration files
+│   ├── config/               # 📋 Configuration Templates
+│   │   ├── docker-build/      # Docker build configurations
+│   │   │   ├── default.yml         # Basic Docker configuration
+│   │   │   ├── web-application.yml # Web app optimized
+│   │   │   ├── microservice.yml    # Microservice configuration
+│   │   │   └── enterprise.yml      # Enterprise-grade security
+│   │   ├── python-build/      # Python build configurations
+│   │   │   ├── default.yml         # Standard Python setup
+│   │   │   ├── library.yml         # Python library
+│   │   │   ├── application.yml     # Python application
+│   │   │   └── data-science.yml    # Data science projects
 │   │   └── commitlint.config.js # Commit linting rules
-│   └── workflows/            # Production-ready workflows
-│       ├── modules/          # 🧩 Modulare Workflow-Komponenten
-│       │   ├── security-scan.yml      # Sicherheitsanalyse
-│       │   ├── license-compliance.yml # Lizenz-Compliance
-│       │   ├── release-management.yml # Release-Automatisierung
-│       │   ├── artifact-generation.yml # Artefakt-Erstellung
-│       │   └── pr-validation.yml      # Pull Request-Validierung
-│       ├── examples/         # 📋 Verwendungsbeispiele
-│       │   ├── simple-release.yml     # Einfacher Release-Workflow
-│       │   ├── comprehensive-ci-cd.yml # Vollständige CI/CD-Pipeline
-│       │   ├── security-focused.yml   # Security-zentrierte Pipeline
-│       │   ├── nodejs-project.yml     # Node.js-spezifischer Workflow
-│       │   └── readme.yml             # README-Generator
-│       ├── automatic-release.yml # Legacy: Monolithischer Workflow
-│       ├── manual-release.yml    # Legacy: Manual release controls
-│       └── readme.yml           # Documentation automation
-├── github/                   # Repository management tools
+│   └── workflows/            # 🚀 Reusable Workflows
+│       ├── docker-build.yml       # Docker build & deploy workflow
+│       ├── python-build.yml       # Python build & test workflow
+│       ├── python-publish.yml     # Python package publishing
+│       ├── automatic-release.yml  # Automated release management
+│       ├── documentation.yml      # Documentation automation
+│       └── examples/         # 📋 Usage Examples
+│           ├── docker/            # Docker build examples
+│           │   ├── simple-docker-build.yml
+│           │   ├── web-application-build.yml
+│           │   ├── microservice-build.yml
+│           │   ├── enterprise-build.yml
+│           │   ├── multi-platform-build.yml
+│           │   └── security-focused-build.yml
+│           ├── python-build/      # Python project examples
+│           │   ├── simple-library.yml
+│           │   ├── web-application.yml
+│           │   ├── data-science-project.yml
+│           │   └── comprehensive-python.yml
+│           ├── ci-cd/            # General CI/CD examples
+│           │   ├── comprehensive-ci-cd.yml
+│           │   └── security-focused.yml
+│           └── documentation/     # Documentation examples
+├── github/                   # 🛠️ Repository Management Tools
 │   ├── branch-protect/       # Branch protection automation
 │   ├── cleanup/             # Repository cleanup utilities
-│   └── runner/              # Self-hosted runner management
-├── docs/                    # Documentation templates
-└── scripts/                 # Utility scripts
+│   ├── runner/              # Self-hosted runner management
+│   └── workflows/           # Legacy workflow examples
+├── docs/                    # 📚 Comprehensive Documentation
+│   ├── workflows/           # Workflow documentation
+│   │   ├── docker-build.md       # Docker system documentation
+│   │   ├── python-build.md       # Python system documentation
+│   │   ├── dotnet-build.md       # .NET build documentation
+│   │   ├── nodejs-build.md       # Node.js build documentation
+│   │   └── php-build.md          # PHP build documentation
+│   ├── README.template.MD    # This template file
+│   └── SECRETS-NAMING-CONVENTION.md # Secret naming standards
+└── scripts/                 # 🔨 Utility Scripts
 ```
 
-## 🧩 Modulare Workflow-Architektur
+## 🧩 Automation Systems Overview
 
-**NEU:** Dieses Repository bietet jetzt **modulare, wiederverwendbare Workflow-Komponenten** anstatt monolithischer Workflows.
+This repository provides **comprehensive automation systems** for modern software development, featuring modular and reusable components for different technology stacks.
 
-### Verfügbare Module
+### 🐳 Docker Build System
 
-| Modul | Zweck | Verwendung |
-|-------|-------|------------|
-| **🛡️ modules-security-scan.yml** | Sicherheitsanalyse | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-security-scan.yml@main` |
-| **📋 modules-license-compliance.yml** | Lizenz-Compliance | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-license-compliance.yml@main` |
-| **🚀 modules-release-management.yml** | Release-Automatisierung | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-release-management.yml@main` |
-| **🔨 modules-artifact-generation.yml** | Artefakt-Erstellung | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-artifact-generation.yml@main` |
-| **🔍 modules-pr-validation.yml** | Pull Request-Validierung | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-pr-validation.yml@main` |
+Complete Docker automation with multi-platform builds, security scanning, and enterprise features.
 
-### Quick Start: Einfacher Release-Workflow
+| Component | Purpose | Usage |
+|-----------|---------|-------|
+| **🔧 docker-build action** | Multi-platform Docker builds | Composite action with security scanning |
+| **🚀 docker-build workflow** | Complete Docker CI/CD | `uses: {{REPO_FULL_NAME}}/.github/workflows/docker-build.yml@main` |
+| **📋 Configuration Templates** | Pre-configured setups | `default`, `web-application`, `microservice`, `enterprise` |
 
+**Quick Start - Docker:**
 ```yaml
-name: 🚀 Simple Release
+name: 🐳 Docker Build
 
-on:
-  push:
-    branches: [main]
+on: [push]
 
 jobs:
-  release:
-    uses: {{REPO_FULL_NAME}}/.github/workflows/modules-release-management.yml@main
+  docker:
+    uses: {{REPO_FULL_NAME}}/.github/workflows/docker-build.yml@main
     with:
-      release-type: 'simple'
+      config-file: 'web-application'
+      image-name: 'my-app'
+      image-tag: ${{ github.sha }}
+      security-scan: true
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### Beispiele für verschiedene Projekttypen
+### 🐍 Python Build System
 
-- **[Simple Release](https://github.com/{{REPO_FULL_NAME}}/blob/main/github/workflows/examples/simple-release.yml)** - Minimaler Release-Workflow
-- **[Comprehensive CI/CD](https://github.com/{{REPO_FULL_NAME}}/blob/main/github/workflows/examples/comprehensive-ci-cd.yml)** - Vollständige Pipeline
-- **[Security-Focused](https://github.com/{{REPO_FULL_NAME}}/blob/main/github/workflows/examples/security-focused.yml)** - Security-zentriert
-- **[Node.js Project](https://github.com/{{REPO_FULL_NAME}}/blob/main/github/workflows/examples/nodejs-project.yml)** - Node.js-spezifisch
+Comprehensive Python automation supporting multiple package managers and deployment targets.
+
+| Component | Purpose | Usage |
+|-----------|---------|-------|
+| **🔧 python-setup action** | Multi-manager Python setup | Supports pip, poetry, pipenv, conda |
+| **🧪 python-test action** | Testing and coverage | pytest, unittest, nose2, tox |
+| **🔍 python-quality action** | Code quality and security | linting, formatting, security scanning |
+| **📦 python-package action** | Packaging and publishing | PyPI, TestPyPI with trusted publishing |
+| **🚀 python-build workflow** | Complete Python CI/CD | `uses: {{REPO_FULL_NAME}}/.github/workflows/python-build.yml@main` |
+| **📤 python-publish workflow** | Package publishing | `uses: {{REPO_FULL_NAME}}/.github/workflows/python-publish.yml@main` |
+
+**Quick Start - Python:**
+```yaml
+name: 🐍 Python Build
+
+on: [push]
+
+jobs:
+  python:
+    uses: {{REPO_FULL_NAME}}/.github/workflows/python-build.yml@main
+    with:
+      config-file: 'application'
+      python-version: '3.11'
+      package-manager: 'poetry'
+      run-tests: true
+      collect-coverage: true
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+```
+
+### 🛡️ Security & Compliance System
+
+Enterprise-grade security scanning and compliance automation.
+
+| Component | Purpose | Usage |
+|-----------|---------|-------|
+| **🛡️ security-scan action** | Multi-engine security scanning | Gitleaks, GitGuardian, Trivy |
+| **📋 license-compliance action** | License compliance checks | SPDX, FOSSA integration |
+| **🔍 Release Management** | Automated releases | Semantic versioning, changelog generation |
+
+### 🏗️ Additional Systems
+
+| System | Status | Description |
+|--------|--------|-------------|
+| **🟢 .NET Build** | Available | Complete .NET Core/Framework automation |
+| **🟢 Node.js Build** | Available | Node.js and npm/yarn automation |
+| **🟢 PHP Build** | Available | PHP and Composer automation |
+| **🟡 Go Build** | Planned | Go module and build automation |
+| **🟡 Rust Build** | Planned | Cargo and Rust build automation |
 
 ## 🔧 Configuration
 
@@ -219,69 +298,167 @@ module.exports = {
 
 ### Quick Setup
 
-1. **Use as template:**
+1. **Use as template repository:**
 
    ```bash
    gh repo create my-project --template {{REPO_FULL_NAME}}
+   cd my-project
    ```
 
-2. **Configure secrets:**
+2. **Choose your automation system:**
 
    ```bash
-   # Required
+   # For Docker projects
+   cp .github/workflows/examples/docker/web-application-build.yml .github/workflows/
+   
+   # For Python projects  
+   cp .github/workflows/examples/python-build/web-application.yml .github/workflows/
+   
+   # For general CI/CD
+   cp .github/workflows/examples/ci-cd/comprehensive-ci-cd.yml .github/workflows/
+   ```
+
+3. **Configure required secrets:**
+
+   ```bash
+   # Basic (always required)
    gh secret set GITHUB_TOKEN --body "${{ secrets.GITHUB_TOKEN }}"
    
-   # Optional (for GitGuardian)
-   gh secret set GITGUARDIAN_API_KEY --body "your-api-key"
+   # Docker builds
+   gh secret set REGISTRY_TOKEN --body "your-registry-token"
+   gh secret set COSIGN_PRIVATE_KEY --body "$(cat cosign.key)"
+   gh secret set COSIGN_PASSWORD --body "your-cosign-password"
+   
+   # Python publishing
+   gh secret set PYPI_API_TOKEN --body "your-pypi-token"
+   gh secret set CODECOV_TOKEN --body "your-codecov-token"
+   
+   # Security scanning
+   gh secret set GITGUARDIAN_API_KEY --body "your-gitguardian-key"
    ```
 
-3. **Customize workflows:**
+4. **Customize configuration:**
 
    ```bash
-   # Copy example workflows
-   cp .github/workflows/examples/* .github/workflows/
+   # Edit Docker configuration
+   vim .github/config/docker-build/web-application.yml
    
-   # Edit configuration
+   # Edit Python configuration  
+   vim .github/config/python-build/application.yml
+   
+   # Update commit linting rules
    vim .github/config/commitlint.config.js
    ```
 
+### Quick Examples by Technology
+
+#### 🐳 Docker Project Setup
+
+```yaml
+# .github/workflows/docker.yml
+name: Docker Build & Deploy
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  docker:
+    uses: {{REPO_FULL_NAME}}/.github/workflows/docker-build.yml@main
+    with:
+      config-file: 'web-application'
+      image-name: 'my-webapp'
+      image-tag: ${{ github.ref_name }}-${{ github.sha }}
+      platforms: 'linux/amd64,linux/arm64'
+      security-scan: true
+      generate-sbom: true
+      sign-image: true
+      deploy: ${{ github.ref == 'refs/heads/main' }}
+    secrets:
+      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+```
+
+#### 🐍 Python Project Setup
+
+```yaml
+# .github/workflows/python.yml
+name: Python Build & Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    uses: {{REPO_FULL_NAME}}/.github/workflows/python-build.yml@main
+    with:
+      config-file: 'application'
+      python-version: '3.11'
+      package-manager: 'poetry'
+      run-tests: true
+      collect-coverage: true
+      security-scan: true
+      quality-checks: true
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      
+  publish:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    uses: {{REPO_FULL_NAME}}/.github/workflows/python-publish.yml@main
+    with:
+      config-file: 'application'
+      package-manager: 'poetry'
+      registry: 'pypi'
+    secrets:
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+```
+
 ### Using Individual Actions
 
-#### Security Scanning
+#### 🐳 Docker Build Action
 
 ```yaml
-jobs:
-  security:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Security Scan
-        uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
-        with:
-          scan-engines: 'both'
-          fail-on-findings: true
+- name: Build Docker Image
+  uses: {{REPO_FULL_NAME}}/.github/actions/docker-build@main
+  with:
+    image-name: 'my-app'
+    image-tag: ${{ github.sha }}
+    platforms: 'linux/amd64,linux/arm64'
+    security-scan: true
+    fail-on-severity: 'HIGH'
+    generate-sbom: true
+    sign-image: true
 ```
 
-#### License Compliance
+#### 🐍 Python Setup Action
 
 ```yaml
-- name: License Compliance Check
-  uses: {{REPO_FULL_NAME}}/.github/actions/license-compliance@main
+- name: Setup Python Environment  
+  uses: {{REPO_FULL_NAME}}/.github/actions/python-setup@main
   with:
-    fossa-api-key: ${{ secrets.FOSSA_API_KEY }}
-    fail-on-issues: true
+    python-version: '3.11'
+    package-manager: 'poetry'
+    cache-enabled: true
+    install-dependencies: true
 ```
 
-#### README Generation
+#### 🛡️ Security Scanning Action
 
 ```yaml
-- name: Generate README
-  uses: {{REPO_FULL_NAME}}/.github/actions/readme-generate@main
+- name: Security Scan
+  uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
   with:
-    template-path: 'docs/README.template.MD'
-    project-name: 'My Project'
-    company-name: 'My Company'
+    scan-engines: 'both'
+    fail-on-findings: true
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
 ```
 
 ## 🔄 Best Practices
@@ -399,18 +576,55 @@ git log --oneline -10
 gh auth status --show-token
 ```
 
-## 📚 Documentation
+## 📚 Comprehensive Documentation
 
-- [GitHub Actions Documentation](.github/actions/README.md)
-- [Security Scan Action](.github/actions/security-scan-meta/README.md)
-- [License Compliance Action](.github/actions/license-compliance/README.md)
-- [Artifact Generator Action](.github/actions/artifact-generator/README.md)
-- [README Generator Action](.github/actions/readme-generate/README.md)
-- [Semantic Release Action](.github/actions/semantic-release/README.md)
-- [Workflow Configuration](.github/config/README.md)
-- [Branch Protection Tools](github/branch-protect/README.md)
-- [Repository Cleanup Tools](github/cleanup/README.md)
-- [Self-Hosted Runner Setup](github/runner/README.md)
+### 🚀 Workflow Systems Documentation
+
+- [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
+- [🐍 **Python Build System**](docs/workflows/python-build.md) - Python project automation
+- [🔨 **.NET Build System**](docs/workflows/dotnet-build.md) - .NET Core/Framework automation  
+- [📦 **Node.js Build System**](docs/workflows/nodejs-build.md) - Node.js and npm/yarn automation
+- [🐘 **PHP Build System**](docs/workflows/php-build.md) - PHP and Composer automation
+
+### 🔧 Actions Documentation  
+
+#### Docker Actions
+- [🐳 **docker-build**](.github/actions/docker-build/README.md) - Multi-platform Docker builds with security
+
+#### Python Actions
+- [🔧 **python-setup**](.github/actions/python-setup/README.md) - Multi-manager Python environment setup
+- [🧪 **python-test**](.github/actions/python-test/README.md) - Testing and coverage collection
+- [🔍 **python-quality**](.github/actions/python-quality/README.md) - Code quality and security scanning
+- [📦 **python-package**](.github/actions/python-package/README.md) - Package building and publishing
+
+#### Security & Compliance Actions
+- [🛡️ **security-scan**](.github/actions/security-scan/README.md) - Multi-engine security scanning
+- [📋 **license-compliance**](.github/actions/license-compliance/README.md) - SPDX license compliance
+- [🔨 **artifact-generator**](.github/actions/artifact-generator/README.md) - Multi-format artifact generation
+
+#### Utility Actions
+- [📝 **readme-generate**](.github/actions/readme-generate/README.md) - Professional README generation
+- [🚀 **semantic-release**](.github/actions/semantic-release/README.md) - Automated release management
+
+### 📋 Configuration References
+
+- [🐳 **Docker Configurations**](.github/config/docker-build/) - Docker build configuration templates
+- [🐍 **Python Configurations**](.github/config/python-build/) - Python project configuration templates
+- [⚙️ **Workflow Configuration**](.github/config/README.md) - General workflow configuration guide
+- [🔒 **Secrets Naming Convention**](docs/SECRETS-NAMING-CONVENTION.md) - Standardized secret naming
+
+### 🛠️ Repository Management Tools
+
+- [🔐 **Branch Protection Tools**](github/branch-protect/README.md) - Automated branch protection
+- [🧹 **Repository Cleanup Tools**](github/cleanup/README.md) - Repository maintenance utilities  
+- [🏃 **Self-Hosted Runner Setup**](github/runner/README.md) - Runner deployment and management
+
+### 📖 Examples and Templates
+
+- [🐳 **Docker Examples**](github/workflows/examples/docker/) - Complete Docker workflow examples
+- [🐍 **Python Examples**](github/workflows/examples/python-build/) - Python project examples
+- [🔄 **CI/CD Examples**](github/workflows/examples/ci-cd/) - General CI/CD pipeline examples
+- [📝 **Documentation Examples**](github/workflows/examples/documentation/) - Documentation automation examples
 
 ## 📞 Support
 
