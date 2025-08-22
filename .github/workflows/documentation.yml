@@ -73,7 +73,7 @@ jobs:
           echo "Ref Type: ${{ github.ref_type }}"
           
           # Always run for tags - HIGHEST PRIORITY
-          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
+          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]] || [[ "${{ startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
             echo "🏷️ ✅ FORCE RUNNING FOR TAG: ${{ github.ref_name }}"
             echo "🏷️ This will force update documentation regardless of file changes"
             echo "should_run=true" >> $GITHUB_OUTPUT
