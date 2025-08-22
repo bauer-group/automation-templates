@@ -14,7 +14,6 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 [![🔄 CI/CD Pipeline (Automatic Release)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
 [![📄 Documentation Management](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml)
 [![🛡️ Security Policy Management](https://github.com/bauer-group/automation-templates/actions/workflows/security-management.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/security-management.yml)
-[![🛡️ Security Policy Management](https://github.com/bauer-group/automation-templates/actions/workflows/security-management.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/security-management.yml)
 
 ## 📋 Project Resources
 
