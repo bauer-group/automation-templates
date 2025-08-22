@@ -19,9 +19,9 @@ inputs:
     required: false
     default: ''
   policy-version:
-    description: 'Security policy version'
+    description: 'Security policy version (semantic versioning: x.y.z)'
     required: false
-    default: '2.0'
+    default: '1.0.0'
 
 outputs:
   security_updated:
