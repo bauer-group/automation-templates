@@ -306,7 +306,7 @@ runs:
                               {
                                 "type": "TextBlock",
                                 "text": "👤 ${{ inputs.actor }} • 🌿 ${{ steps.event-data.outputs.ref-name }} • 📅 ${{ steps.event-data.outputs.display-timestamp }}",
-                                "size": "Small",
+                                "size": "Medium",
                                 "color": "Default",
                                 "wrap": true,
                                 "spacing": "Small"
@@ -340,7 +340,7 @@ runs:
                     "type": "TextBlock",
                     "text": "${{ inputs.details }}",
                     "wrap": true,
-                    "size": "Default",
+                    "size": "Medium",
                     "color": "Default"
                   },
         EOF
@@ -407,7 +407,7 @@ runs:
                         "text": "```\n${{ inputs.workflow-logs }}\n```",
                         "wrap": true,
                         "fontType": "Monospace",
-                        "size": "Small",
+                        "size": "Medium",
                         "spacing": "Small"
                       }
                     ]
