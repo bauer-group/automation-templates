@@ -229,6 +229,7 @@ jobs:
           
           git add README.MD
           git commit -m "$COMMIT_MSG" || echo "No changes to commit"
+          git pull --rebase origin main
           git push
 
   # Validate documentation links and structure
