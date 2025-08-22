@@ -1,0 +1,23 @@
+# 🛡️ Security Policy Configuration
+# Configuration for automatic SECURITY.MD generation and management
+
+# Policy Version Management
+policy:
+  # Current policy version (semantic versioning: x.y.z)
+  version: "1.0.0"
+  
+  # Policy review cycle (in months)
+  review_cycle: 12
+
+# Template Configuration
+template:
+  # Path to security policy template
+  path: "docs/SECURITY.template.MD"
+  
+  # Output path for generated security policy
+  output: "SECURITY.MD"
+
+# Version Support Configuration
+version_support:
+  # Number of previous versions to show in support table
+  show_previous_versions: 5

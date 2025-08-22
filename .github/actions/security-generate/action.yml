@@ -2,14 +2,18 @@ name: 🛡️ Security Policy Generator
 description: Generate SECURITY.MD from template with dynamic version and date information
 
 inputs:
+  config-file:
+    description: 'Path to security policy configuration file'
+    required: false
+    default: '.github/config/security-policy/config.yml'
   template-path:
-    description: 'Path to the SECURITY template file'
+    description: 'Path to the SECURITY template file (overrides config)'
     required: false
-    default: 'docs/SECURITY.template.MD'
+    default: ''
   output-path:
-    description: 'Path where the generated SECURITY.MD should be saved'
+    description: 'Path where the generated SECURITY.MD should be saved (overrides config)'
     required: false
-    default: 'SECURITY.MD'
+    default: ''
   force-update:
     description: 'Force update even if no changes detected'
     required: false
@@ -19,9 +23,9 @@ inputs:
     required: false
     default: ''
   policy-version:
-    description: 'Security policy version (semantic versioning: x.y.z)'
+    description: 'Security policy version (overrides config, semantic versioning: x.y.z)'
     required: false
-    default: '1.0.0'
+    default: ''
 
 outputs:
   security_updated:
@@ -46,10 +50,68 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: 📋 Load Configuration
+      id: config
+      shell: bash
+      run: |
+        CONFIG_FILE="${{ inputs.config-file }}"
+        
+        echo "📋 Loading security policy configuration..."
+        echo "Config file: $CONFIG_FILE"
+        
+        if [ ! -f "$CONFIG_FILE" ]; then
+          echo "⚠️ Config file not found: $CONFIG_FILE"
+          echo "Using default values"
+          echo "template_path=docs/SECURITY.template.MD" >> $GITHUB_OUTPUT
+          echo "output_path=SECURITY.MD" >> $GITHUB_OUTPUT
+          echo "policy_version=1.0.0" >> $GITHUB_OUTPUT
+          echo "review_cycle=12" >> $GITHUB_OUTPUT
+        else
+          echo "✅ Config file found: $CONFIG_FILE"
+          
+          # Parse YAML config using python
+          python3 -c "
+        import yaml
+        import sys
+        
+        try:
+            with open('$CONFIG_FILE', 'r') as f:
+                config = yaml.safe_load(f)
+            
+            # Extract values with defaults
+            template_path = config.get('template', {}).get('path', 'docs/SECURITY.template.MD')
+            output_path = config.get('template', {}).get('output', 'SECURITY.MD')
+            policy_version = config.get('policy', {}).get('version', '1.0.0')
+            review_cycle = config.get('policy', {}).get('review_cycle', 12)
+            
+            print(f'template_path={template_path}')
+            print(f'output_path={output_path}')
+            print(f'policy_version={policy_version}')
+            print(f'review_cycle={review_cycle}')
+            
+        except Exception as e:
+            print(f'Error parsing config: {e}', file=sys.stderr)
+            sys.exit(1)
+        " >> $GITHUB_OUTPUT
+        fi
+        
+        # Override with input parameters if provided
+        if [ -n "${{ inputs.template-path }}" ]; then
+          sed -i 's/template_path=.*/template_path=${{ inputs.template-path }}/' $GITHUB_OUTPUT
+        fi
+        
+        if [ -n "${{ inputs.output-path }}" ]; then
+          sed -i 's/output_path=.*/output_path=${{ inputs.output-path }}/' $GITHUB_OUTPUT
+        fi
+        
+        if [ -n "${{ inputs.policy-version }}" ]; then
+          sed -i 's/policy_version=.*/policy_version=${{ inputs.policy-version }}/' $GITHUB_OUTPUT
+        fi
+
     - name: 🔍 Validate Template
       shell: bash
       run: |
-        TEMPLATE_PATH="${{ inputs.template-path }}"
+        TEMPLATE_PATH="${{ steps.config.outputs.template_path }}"
         
         if [ ! -f "$TEMPLATE_PATH" ]; then
           echo "❌ Template file not found: $TEMPLATE_PATH"
@@ -123,26 +185,34 @@ runs:
         CURRENT_DATE=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
         echo "last_updated=$CURRENT_DATE" >> $GITHUB_OUTPUT
         
-        # Next review date (12 months from now)
+        # Get review cycle from config
+        REVIEW_CYCLE="${{ steps.config.outputs.review_cycle }}"
+        
+        # Next review date (configurable months from now)
         if command -v date >/dev/null 2>&1; then
           if date --version 2>/dev/null | grep -q GNU; then
             # GNU date (Linux)
-            NEXT_REVIEW=$(date -u -d '+12 months' '+%B %Y')
+            NEXT_REVIEW=$(date -u -d "+${REVIEW_CYCLE} months" '+%B %Y')
           else
             # BSD date (macOS)
-            NEXT_REVIEW=$(date -u -v+12m '+%B %Y')
+            NEXT_REVIEW=$(date -u -v+${REVIEW_CYCLE}m '+%B %Y')
           fi
         else
           # Fallback
           CURRENT_YEAR=$(date -u '+%Y')
           CURRENT_MONTH=$(date -u '+%m')
-          NEXT_YEAR=$((CURRENT_YEAR + 1))
-          NEXT_REVIEW=$(date -u -d "${NEXT_YEAR}-${CURRENT_MONTH}-01" '+%B %Y' 2>/dev/null || echo "$(date -u '+%B') $NEXT_YEAR")
+          FUTURE_YEAR=$((CURRENT_YEAR + REVIEW_CYCLE / 12))
+          FUTURE_MONTH=$((CURRENT_MONTH + REVIEW_CYCLE % 12))
+          if [ $FUTURE_MONTH -gt 12 ]; then
+            FUTURE_YEAR=$((FUTURE_YEAR + 1))
+            FUTURE_MONTH=$((FUTURE_MONTH - 12))
+          fi
+          NEXT_REVIEW=$(date -u -d "${FUTURE_YEAR}-${FUTURE_MONTH}-01" '+%B %Y' 2>/dev/null || echo "$(date -u '+%B') $((CURRENT_YEAR + 1))")
         fi
         
         echo "next_review=$NEXT_REVIEW" >> $GITHUB_OUTPUT
         echo "📅 Last updated: $CURRENT_DATE"
-        echo "📅 Next review: $NEXT_REVIEW"
+        echo "📅 Next review: $NEXT_REVIEW (${REVIEW_CYCLE} months from now)"
 
     - name: 🔢 Build Version Support Table
       id: version-table
@@ -183,14 +253,14 @@ runs:
       id: generate
       shell: bash
       run: |
-        TEMPLATE_PATH="${{ inputs.template-path }}"
-        OUTPUT_PATH="${{ inputs.output-path }}"
+        TEMPLATE_PATH="${{ steps.config.outputs.template_path }}"
+        OUTPUT_PATH="${{ steps.config.outputs.output_path }}"
         FORCE_UPDATE="${{ inputs.force-update }}"
         
         CURRENT_VERSION="${{ steps.version-info.outputs.current_version }}"
         LAST_UPDATED="${{ steps.dates.outputs.last_updated }}"
         NEXT_REVIEW="${{ steps.dates.outputs.next_review }}"
-        POLICY_VERSION="${{ inputs.policy-version }}"
+        POLICY_VERSION="${{ steps.config.outputs.policy_version }}"
         VERSION_TABLE="${{ steps.version-table.outputs.table_content }}"
         
         echo "🛡️ Generating security policy..."
