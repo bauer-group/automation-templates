@@ -102,20 +102,37 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "Checking for relevant file changes..."
             
-            # Get changed files
-            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD)
+            # Get changed files in this push
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} 2>/dev/null || echo "")
+            
+            # Fallback if github.event.before is not available
+            if [ -z "$CHANGED_FILES" ]; then
+              CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD)
+            fi
+            
+            echo "Changed files in this push:"
+            echo "$CHANGED_FILES"
             
             # Check if any relevant files changed
-            for file in $CHANGED_FILES; do
-              if [[ "$file" == "docs/README.template.MD" ]] || \
-                 [[ "$file" == .github/actions/readme-generate/* ]] || \
-                 [[ "$file" == ".github/workflows/documentation.yml" ]]; then
-                echo "Relevant file changed: $file"
-                echo "should_run=true" >> $GITHUB_OUTPUT
-                echo "skip_reason=" >> $GITHUB_OUTPUT
-                exit 0
+            RELEVANT_CHANGED=false
+            while IFS= read -r file; do
+              if [ -n "$file" ]; then
+                echo "Checking file: $file"
+                if [[ "$file" == "docs/README.template.MD" ]] || \
+                   [[ "$file" == .github/actions/readme-generate/* ]] || \
+                   [[ "$file" == ".github/workflows/documentation.yml" ]]; then
+                  echo "Relevant file changed: $file"
+                  RELEVANT_CHANGED=true
+                  break
+                fi
               fi
-            done
+            done <<< "$CHANGED_FILES"
+            
+            if [ "$RELEVANT_CHANGED" = "true" ]; then
+              echo "should_run=true" >> $GITHUB_OUTPUT
+              echo "skip_reason=" >> $GITHUB_OUTPUT
+              exit 0
+            fi
             
             echo "No relevant files changed - skipping workflow"
             echo "should_run=false" >> $GITHUB_OUTPUT
