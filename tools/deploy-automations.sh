@@ -38,6 +38,7 @@ OPTIONS:
     -w, --workflows LIST     Comma-separated list of workflows to deploy
     -a, --actions LIST       Comma-separated list of actions to deploy
     -c, --config PATH        Path to configuration file
+    -t, --project-type TYPE  Project type (nodejs, dotnet, python, docker)
     -f, --force             Force deployment (overwrite existing files)
     -d, --dry-run           Show what would be deployed without making changes
     -h, --help              Show this help message
@@ -78,6 +79,7 @@ parse_arguments() {
     FORCE=false
     DRY_RUN=false
     TARGET_REPO=""
+    PROJECT_TYPE=""
 
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -104,6 +106,10 @@ parse_arguments() {
             -d|--dry-run)
                 DRY_RUN=true
                 shift
+                ;;
+            -t|--project-type)
+                PROJECT_TYPE="$2"
+                shift 2
                 ;;
             -h|--help)
                 show_help
@@ -244,6 +250,154 @@ runs:
       with:
         # Pass through all inputs
         config-file: \${{ inputs.config-file }}
+EOF
+}
+
+# Copy required configuration files for workflows
+copy_workflow_configs() {
+    local target_dir="$1"
+    local config_base="$target_dir/.github/config"
+    
+    log_info "Copying required configuration files..."
+    
+    # Copy security policy config if security workflows are deployed
+    if [[ "$WORKFLOWS" == *"security-management"* ]]; then
+        mkdir -p "$config_base/security-policy"
+        cp ".github/config/security-policy/config.yml" "$config_base/security-policy/" 2>/dev/null || {
+            log_warning "Could not copy security-policy config - creating default"
+            cat > "$config_base/security-policy/config.yml" << 'EOF'
+# 🛡️ Security Policy Configuration
+policy:
+  version: "1.0.0"
+  review_cycle: 12
+template:
+  path: "docs/SECURITY.template.MD"
+  output: "SECURITY.MD"
+version_support:
+  show_previous_versions: 5
+EOF
+        }
+    fi
+    
+    # Copy Teams notification configs if Teams workflows are deployed
+    if [[ "$WORKFLOWS" == *"teams-notifications"* ]]; then
+        mkdir -p "$config_base/teams-notification"
+        for config_file in default success failure issue pull-request push release test; do
+            if [[ -f ".github/config/teams-notification/$config_file.yml" ]]; then
+                cp ".github/config/teams-notification/$config_file.yml" "$config_base/teams-notification/" 2>/dev/null || {
+                    log_warning "Could not copy teams-notification/$config_file.yml config"
+                }
+            fi
+        done
+    fi
+    
+    # Copy Docker configs if Docker workflows are deployed
+    if [[ "$WORKFLOWS" == *"docker"* ]] || [[ "$ACTIONS" == *"docker"* ]]; then
+        mkdir -p "$config_base/docker-build"
+        cp ".github/config/docker-build/default.yml" "$config_base/docker-build/" 2>/dev/null || {
+            log_warning "Could not copy docker-build config - creating default"
+            cat > "$config_base/docker-build/default.yml" << 'EOF'
+# 🐳 Docker Build Configuration
+build:
+  dockerfile: "Dockerfile"
+  context: "."
+  platforms: ["linux/amd64", "linux/arm64"]
+  cache: true
+registry:
+  name: "docker.io"
+  repository: ""
+security:
+  scan_enabled: true
+  fail_on_critical: true
+EOF
+        }
+    fi
+    
+    # Copy language-specific configs based on detected project type or user selection
+    # This could be enhanced to auto-detect project type
+    if [[ "$PROJECT_TYPE" == "nodejs" ]]; then
+        mkdir -p "$config_base/nodejs-build"
+        cp ".github/config/nodejs-build/default.yml" "$config_base/nodejs-build/" 2>/dev/null || {
+            create_nodejs_default_config "$config_base/nodejs-build/default.yml"
+        }
+    elif [[ "$PROJECT_TYPE" == "dotnet" ]]; then
+        mkdir -p "$config_base/dotnet-build"
+        cp ".github/config/dotnet-build/default.yml" "$config_base/dotnet-build/" 2>/dev/null || {
+            create_dotnet_default_config "$config_base/dotnet-build/default.yml"
+        }
+    elif [[ "$PROJECT_TYPE" == "python" ]]; then
+        mkdir -p "$config_base/python-build"
+        cp ".github/config/python-build/default.yml" "$config_base/python-build/" 2>/dev/null || {
+            create_python_default_config "$config_base/python-build/default.yml"
+        }
+    fi
+}
+
+# Helper functions for creating default configs
+create_nodejs_default_config() {
+    local target_file="$1"
+    cat > "$target_file" << 'EOF'
+# 🟢 Node.js Build Configuration
+build:
+  node_versions: ["18", "20", "22"]
+  package_manager: "npm"  # npm, yarn, pnpm
+  install_command: "npm ci"
+  build_command: "npm run build"
+  test_command: "npm test"
+cache:
+  enabled: true
+  paths: ["node_modules", ".npm"]
+security:
+  audit_enabled: true
+  audit_level: "high"
+lint:
+  enabled: true
+  command: "npm run lint"
+EOF
+}
+
+create_dotnet_default_config() {
+    local target_file="$1"
+    cat > "$target_file" << 'EOF'
+# 🔵 .NET Build Configuration
+build:
+  dotnet_versions: ["6.0", "8.0"]
+  configuration: "Release"
+  framework: "net8.0"
+  restore_command: "dotnet restore"
+  build_command: "dotnet build --no-restore"
+  test_command: "dotnet test --no-build"
+cache:
+  enabled: true
+  paths: ["~/.nuget/packages"]
+security:
+  scan_enabled: true
+  whitesource_enabled: false
+lint:
+  enabled: true
+  command: "dotnet format --verify-no-changes"
+EOF
+}
+
+create_python_default_config() {
+    local target_file="$1"
+    cat > "$target_file" << 'EOF'
+# 🐍 Python Build Configuration
+build:
+  python_versions: ["3.9", "3.10", "3.11", "3.12"]
+  package_manager: "pip"  # pip, poetry, pipenv
+  requirements_file: "requirements.txt"
+  install_command: "pip install -r requirements.txt"
+  test_command: "pytest"
+cache:
+  enabled: true
+  paths: ["~/.cache/pip"]
+security:
+  safety_enabled: true
+  bandit_enabled: true
+lint:
+  enabled: true
+  tools: ["flake8", "black", "isort"]
 EOF
 }
 
@@ -394,6 +548,9 @@ deploy_automations() {
             generate_action_reference "$action" "$actions_dir/$action"
         done
     fi
+    
+    # Copy required configuration files
+    copy_workflow_configs "$temp_dir"
     
     # Create configuration template
     create_config_template "$temp_dir"

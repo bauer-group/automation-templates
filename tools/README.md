@@ -49,6 +49,9 @@ Zentrale Konfigurationsdatei für Deployment-Profile und Einstellungen.
 ```bash
 # Auswahl bestimmter Workflows
 ./deploy-automations.sh --workflows "ci-cd,teams-notifications" owner/my-repo
+
+# Mit Projekt-Typ für spezifische Konfigurationen
+./deploy-automations.sh --profile basic --project-type nodejs owner/my-repo
 ```
 
 ### Dry Run (Vorschau)
@@ -96,6 +99,21 @@ Zentrale Konfigurationsdatei für Deployment-Profile und Einstellungen.
 **Benötigte Secrets:** Keine
 
 ## 🔧 Was wird erstellt
+
+### Workflow-spezifische Konfigurationen
+```
+.github/config/
+├── security-policy/config.yml          # Security Management
+├── teams-notification/                 # Teams Notifications
+│   ├── default.yml
+│   ├── success.yml
+│   ├── failure.yml
+│   └── ...
+├── docker-build/default.yml           # Docker Workflows
+├── nodejs-build/default.yml           # Node.js Projekte
+├── dotnet-build/default.yml           # .NET Projekte
+└── python-build/default.yml           # Python Projekte
+```
 
 ### In Ziel-Repository: `.github/workflows/`
 ```yaml
@@ -163,6 +181,31 @@ Optionale Konfiguration über Repository-Variablen:
 | `TEAMS_NOTIFICATION_LEVEL` | Benachrichtigungslevel (all/errors-only) | errors-only |
 | `TEAMS_MENTION_ON_FAILURE` | Benutzer bei Fehlern erwähnen | |
 | `TEAMS_MENTION_ON_PR_REVIEW` | Benutzer bei PR-Reviews erwähnen | |
+
+## 🎯 Automatische Konfiguration
+
+### Projekt-Typ erkennen
+```bash
+# Das Tool kopiert automatisch die passenden Konfigurationen
+./deploy-automations.sh --profile basic --project-type nodejs owner/my-repo
+```
+
+**Unterstützte Projekt-Typen:**
+- `nodejs` - Node.js/React/Vue/Angular Projekte
+- `dotnet` - .NET/C# Projekte  
+- `python` - Python/Django/Flask Projekte
+- `docker` - Container-basierte Projekte
+
+### Was wird automatisch konfiguriert
+
+| Workflow | Benötigte Configs | Automatisch kopiert |
+|----------|------------------|-------------------|
+| `security-management` | `security-policy/config.yml` | ✅ Ja |
+| `teams-notifications` | `teams-notification/*.yml` | ✅ Ja |
+| `docker-hub` | `docker-build/default.yml` | ✅ Ja |
+| `ci-cd` (Node.js) | `nodejs-build/default.yml` | ✅ Ja |
+| `ci-cd` (.NET) | `dotnet-build/default.yml` | ✅ Ja |
+| `ci-cd` (Python) | `python-build/default.yml` | ✅ Ja |
 
 ## 🔄 Funktionsweise
 
