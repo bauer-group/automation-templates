@@ -297,7 +297,7 @@ runs:
                             "items": [
                               {
                                 "type": "TextBlock",
-                                "text": "${{ steps.event-data.outputs.status-icon }} **${{ inputs.title || steps.event-data.outputs.status-text }}**",
+                                "text": "**${{ inputs.title || steps.event-data.outputs.status-text }}**",
                                 "weight": "Bolder",
                                 "size": "Medium",
                                 "wrap": true,
