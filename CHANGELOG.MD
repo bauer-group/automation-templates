@@ -1,3 +1,9 @@
+## [0.16.0](https://github.com/bauer-group/automation-templates/compare/v0.15.0...v0.16.0) (2025-08-22)
+
+### 🚀 Features
+
+* Add comprehensive secrets naming convention documentation ([7d3e63d](https://github.com/bauer-group/automation-templates/commit/7d3e63d75910b31856ec027a496be240aa2b60e9))
+
 ## [0.15.0](https://github.com/bauer-group/automation-templates/compare/v0.14.0...v0.15.0) (2025-08-22)
 
 ### 🚀 Features
