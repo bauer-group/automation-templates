@@ -1,0 +1,341 @@
+name: 🛡️ Security Policy Management
+
+# Security policy management workflow using modular components
+# Automatically updates SECURITY.MD from template with current version information
+
+on:
+  push:
+    branches: 
+      - main
+    tags:
+      - 'v*.*.*'
+      - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/SECURITY.template.MD'
+  workflow_dispatch:
+    inputs:
+      force-update:
+        description: 'Force SECURITY.MD update even without changes'
+        type: boolean
+        default: false
+      custom-version:
+        description: 'Custom version for SECURITY.MD'
+        type: string
+        default: ''
+      policy-version:
+        description: 'Security policy version'
+        type: string
+        default: '2.0'
+  # Triggered by other workflows when tags are created
+  workflow_call:
+    inputs:
+      tag-name:
+        description: 'Tag name that triggered the security policy update'
+        type: string
+        required: false
+        default: ''
+      force-update:
+        description: 'Force SECURITY.MD update even without changes'
+        type: boolean
+        required: false
+        default: false
+      policy-version:
+        description: 'Security policy version'
+        type: string
+        required: false
+        default: '2.0'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # Generate SECURITY.MD using the security-generate action
+  generate-security-policy:
+    name: Generate Security Policy
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.should-run.outputs.should_run }}
+      security_updated: ${{ steps.generate.outputs.security_updated || 'false' }}
+      changes_detected: ${{ steps.generate.outputs.changes_detected || 'false' }}
+      validation_passed: ${{ steps.generate.outputs.validation_passed || steps.should-run.outputs.should_run == 'false' && 'skipped' || 'false' }}
+      current_version: ${{ steps.generate.outputs.current_version }}
+      policy_version: ${{ steps.generate.outputs.policy_version }}
+      next_review_date: ${{ steps.generate.outputs.next_review_date }}
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 🔍 Check if workflow should run
+        id: should-run
+        run: |
+          echo "🔍 Determining if security policy workflow should run..."
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Ref Name: ${{ github.ref_name }}"
+          echo "Ref Type: ${{ github.ref_type }}"
+          
+          # Always run for tags - HIGHEST PRIORITY
+          echo "Debug - github.ref: '${{ github.ref }}'"
+          echo "Debug - github.ref_type: '${{ github.ref_type }}'"
+          echo "Debug - github.ref_name: '${{ github.ref_name }}'"
+          
+          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]] || [[ "${{ startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
+            echo "🏷️ ✅ FORCE RUNNING FOR TAG: ${{ github.ref_name }}"
+            echo "🏷️ This will force update security policy regardless of file changes"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Always run for workflow_call (called by other workflows)
+          if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
+            echo "✅ Running for workflow call (tag: ${{ inputs.tag-name || 'none' }})"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Always run for workflow_dispatch (manual trigger)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "✅ Running for manual trigger"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Always run for pull requests
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "✅ Running for pull request"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # For push events, check if relevant files changed (but NOT for tags)
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            # Double-check this isn't a tag push (should have been caught above)
+            if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
+              echo "🏷️ EMERGENCY TAG DETECTION - This is a tag push that should have been caught earlier!"
+              echo "🏷️ ✅ FORCE RUNNING FOR TAG: ${{ github.ref_name }}"
+              echo "🏷️ This will force update security policy regardless of file changes"
+              echo "should_run=true" >> $GITHUB_OUTPUT
+              echo "skip_reason=" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            
+            echo "📋 Checking for relevant file changes in push to ${{ github.ref_name }}..."
+            
+            # Get changed files in this push
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} 2>/dev/null || echo "")
+            
+            # Fallback if github.event.before is not available
+            if [ -z "$CHANGED_FILES" ]; then
+              CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD)
+            fi
+            
+            echo "Changed files in this push:"
+            echo "$CHANGED_FILES"
+            
+            # Check if any relevant files changed
+            RELEVANT_CHANGED=false
+            while IFS= read -r file; do
+              if [ -n "$file" ]; then
+                echo "Checking file: $file"
+                if [[ "$file" == "docs/SECURITY.template.MD" ]] || \
+                   [[ "$file" == .github/actions/security-generate/* ]] || \
+                   [[ "$file" == ".github/workflows/security-management.yml" ]]; then
+                  echo "Relevant file changed: $file"
+                  RELEVANT_CHANGED=true
+                  break
+                fi
+              fi
+            done <<< "$CHANGED_FILES"
+            
+            if [ "$RELEVANT_CHANGED" = "true" ]; then
+              echo "should_run=true" >> $GITHUB_OUTPUT
+              echo "skip_reason=" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            
+            echo "No relevant files changed - skipping workflow"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "skip_reason=No security policy related files changed" >> $GITHUB_OUTPUT
+            
+            # Create a minimal summary for skipped runs
+            echo "### 🛡️ Security Policy Workflow" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⏭️ **Skipped** - No security policy related files were modified" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Files checked:" >> $GITHUB_STEP_SUMMARY
+            echo "- \`docs/SECURITY.template.MD\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`.github/actions/security-generate/**\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`.github/workflows/security-management.yml\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 🔍 Validate Prerequisites
+        if: steps.should-run.outputs.should_run == 'true'
+        run: |
+          TEMPLATE_FILE="${{ inputs.template-path || 'docs/SECURITY.template.MD' }}"
+          
+          if [ ! -f "$TEMPLATE_FILE" ]; then
+            echo "❌ Template file not found: $TEMPLATE_FILE"
+            echo "💡 Available template files:"
+            find . -name "*.template.*" -type f | head -10
+            exit 1
+          fi
+          
+          echo "✅ Template file found: $TEMPLATE_FILE"
+
+      - name: 🛡️ Generate Professional Security Policy
+        id: generate
+        if: steps.should-run.outputs.should_run == 'true'
+        uses: ./.github/actions/security-generate
+        with:
+          template-path: 'docs/SECURITY.template.MD'
+          output-path: 'SECURITY.MD'
+          force-update: ${{ inputs.force-update || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' }}
+          custom-version: ${{ inputs.custom-version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || (github.event_name == 'workflow_call' && inputs.tag-name) || '' }}
+          policy-version: ${{ inputs.policy-version || '2.0' }}
+
+      - name: 🛡️ Commit and Push Changes
+        if: steps.should-run.outputs.should_run == 'true' && steps.generate.outputs.changes_detected == 'true' && github.event_name != 'pull_request'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "🛡️ Security Policy Bot"
+          
+          COMMIT_MSG="security: update SECURITY.MD"
+          
+          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
+            COMMIT_MSG="$COMMIT_MSG for tag ${{ github.ref_name }} [automated]"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ inputs.force-update }}" = "true" ]; then
+              COMMIT_MSG="$COMMIT_MSG (forced update)"
+            fi
+            if [ -n "${{ inputs.custom-version }}" ]; then
+              COMMIT_MSG="$COMMIT_MSG (version ${{ inputs.custom-version }})"
+            fi
+            if [ -n "${{ inputs.policy-version }}" ]; then
+              COMMIT_MSG="$COMMIT_MSG (policy v${{ inputs.policy-version }})"
+            fi
+          fi
+          
+          COMMIT_MSG="$COMMIT_MSG [automated]"
+          
+          git add SECURITY.MD
+          git commit -m "$COMMIT_MSG" || echo "No changes to commit"
+          git push
+
+  # Validate security policy structure and content
+  validate-security-policy:
+    name: Validate Security Policy
+    needs: generate-security-policy
+    if: needs.generate-security-policy.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🔍 Validate Security Policy Structure
+        run: |
+          echo "🔍 Validating security policy structure..."
+          
+          # Check for required security policy sections
+          REQUIRED_SECTIONS=(
+            "## 🚨 Reporting Security Vulnerabilities"
+            "## 🔐 Supported Versions"
+            "## 🛡️ Security Measures"
+            "## 📞 Emergency Contacts"
+          )
+          
+          MISSING_SECTIONS=()
+          for section in "${REQUIRED_SECTIONS[@]}"; do
+            if ! grep -q "$section" SECURITY.MD; then
+              MISSING_SECTIONS+=("$section")
+            fi
+          done
+          
+          if [ ${#MISSING_SECTIONS[@]} -gt 0 ]; then
+            echo "❌ Missing required sections:"
+            for section in "${MISSING_SECTIONS[@]}"; do
+              echo "  - $section"
+            done
+            exit 1
+          else
+            echo "✅ All required sections found"
+          fi
+
+      - name: 🔗 Check Security Policy Links
+        run: |
+          echo "🔗 Checking security policy links..."
+          
+          # Check for broken internal links in SECURITY.MD
+          if [ -f "SECURITY.MD" ]; then
+            echo "Checking SECURITY.MD for broken internal links..."
+            
+            # Extract relative links
+            grep -o "]\(\./[^)]*\)" SECURITY.MD | while read -r link; do
+              file_path=$(echo "$link" | sed 's/](\.\///; s/)//')
+              
+              # Skip anchor links for now
+              if [[ "$file_path" == *"#"* ]]; then
+                file_path=$(echo "$file_path" | cut -d'#' -f1)
+              fi
+              
+              if [ -n "$file_path" ] && [ ! -f "$file_path" ] && [ ! -d "$file_path" ]; then
+                echo "⚠️ Potentially broken link: $link -> $file_path"
+              fi
+            done || echo "No relative links found or all links valid"
+          fi
+
+      - name: 📊 Security Policy Summary
+        run: |
+          echo "### 🛡️ Security Policy Management Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check if workflow should have run
+          if [ "${{ needs.generate-security-policy.outputs.should_run }}" = "false" ]; then
+            echo "ℹ️ **Workflow skipped - no relevant files changed**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No security policy related files were modified in this push." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+            echo "| **Security Policy Generated** | ${{ needs.generate-security-policy.outputs.security_updated == 'true' && '✅ Updated' || '⏭️ No changes' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Template Validation** | ${{ needs.generate-security-policy.outputs.validation_passed == 'true' && '✅ Passed' || needs.generate-security-policy.outputs.validation_passed == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Link Validation** | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Structure Check** | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.generate-security-policy.outputs.security_updated }}" = "true" ]; then
+            echo "🛡️ **Security policy updated successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Policy Details:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Version: ${{ needs.generate-security-policy.outputs.current_version }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Policy Version: ${{ needs.generate-security-policy.outputs.policy_version }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Next Review: ${{ needs.generate-security-policy.outputs.next_review_date }}" >> $GITHUB_STEP_SUMMARY
+            
+            if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "🏷️ **Tag Details:**" >> $GITHUB_STEP_SUMMARY
+              echo "- Tag: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+              echo "- Ref: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+              echo "- Triggered by: Tag push" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "ℹ️ **No security policy updates required**" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🧩 **Modular Components Used:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Security Policy Generator Action: [actions/security-generate](.github/actions/security-generate/)" >> $GITHUB_STEP_SUMMARY
+          echo "- Security Template: [docs/SECURITY.template.MD](docs/SECURITY.template.MD)" >> $GITHUB_STEP_SUMMARY

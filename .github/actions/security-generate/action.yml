@@ -1,0 +1,275 @@
+name: 🛡️ Security Policy Generator
+description: Generate SECURITY.MD from template with dynamic version and date information
+
+inputs:
+  template-path:
+    description: 'Path to the SECURITY template file'
+    required: false
+    default: 'docs/SECURITY.template.MD'
+  output-path:
+    description: 'Path where the generated SECURITY.MD should be saved'
+    required: false
+    default: 'SECURITY.MD'
+  force-update:
+    description: 'Force update even if no changes detected'
+    required: false
+    default: 'false'
+  custom-version:
+    description: 'Custom version to use instead of auto-detected'
+    required: false
+    default: ''
+  policy-version:
+    description: 'Security policy version'
+    required: false
+    default: '2.0'
+
+outputs:
+  security_updated:
+    description: 'Whether the SECURITY.MD file was updated'
+    value: ${{ steps.generate.outputs.security_updated }}
+  changes_detected:
+    description: 'Whether changes were detected in the template'
+    value: ${{ steps.generate.outputs.changes_detected }}
+  validation_passed:
+    description: 'Whether validation checks passed'
+    value: ${{ steps.generate.outputs.validation_passed }}
+  current_version:
+    description: 'The current version that was used'
+    value: ${{ steps.generate.outputs.current_version }}
+  policy_version:
+    description: 'The policy version that was used'
+    value: ${{ steps.generate.outputs.policy_version }}
+  next_review_date:
+    description: 'The calculated next review date'
+    value: ${{ steps.generate.outputs.next_review_date }}
+
+runs:
+  using: composite
+  steps:
+    - name: 🔍 Validate Template
+      shell: bash
+      run: |
+        TEMPLATE_PATH="${{ inputs.template-path }}"
+        
+        if [ ! -f "$TEMPLATE_PATH" ]; then
+          echo "❌ Template file not found: $TEMPLATE_PATH"
+          exit 1
+        fi
+        
+        echo "✅ Template file found: $TEMPLATE_PATH"
+        
+        # Check for required placeholders
+        REQUIRED_PLACEHOLDERS=(
+          "{{SUPPORTED_VERSIONS_TABLE}}"
+          "{{CURRENT_VERSION}}"
+          "{{LAST_UPDATED}}"
+          "{{NEXT_REVIEW}}"
+          "{{POLICY_VERSION}}"
+        )
+        
+        MISSING_PLACEHOLDERS=()
+        for placeholder in "${REQUIRED_PLACEHOLDERS[@]}"; do
+          if ! grep -q "$placeholder" "$TEMPLATE_PATH"; then
+            MISSING_PLACEHOLDERS+=("$placeholder")
+          fi
+        done
+        
+        if [ ${#MISSING_PLACEHOLDERS[@]} -gt 0 ]; then
+          echo "❌ Missing required placeholders:"
+          for placeholder in "${MISSING_PLACEHOLDERS[@]}"; do
+            echo "  - $placeholder"
+          done
+          exit 1
+        fi
+        
+        echo "✅ All required placeholders found"
+
+    - name: 📊 Get Version Information
+      id: version-info
+      shell: bash
+      run: |
+        # Get current version
+        if [ -n "${{ inputs.custom-version }}" ]; then
+          CURRENT_VERSION="${{ inputs.custom-version }}"
+          echo "Using custom version: $CURRENT_VERSION"
+        else
+          # Try to get latest tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$LATEST_TAG" ]; then
+            CURRENT_VERSION="$LATEST_TAG"
+            echo "Using latest tag: $CURRENT_VERSION"
+          else
+            CURRENT_VERSION="main"
+            echo "No tags found, using: $CURRENT_VERSION"
+          fi
+        fi
+        
+        echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        
+        # Get all tags for version table
+        ALL_TAGS=$(git tag -l --sort=-version:refname | head -10 || echo "")
+        echo "Available tags: $ALL_TAGS"
+        
+        # Store tags for version table generation
+        echo "all_tags<<EOF" >> $GITHUB_OUTPUT
+        echo "$ALL_TAGS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: 📅 Calculate Dates
+      id: dates
+      shell: bash
+      run: |
+        # Current date
+        CURRENT_DATE=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+        echo "last_updated=$CURRENT_DATE" >> $GITHUB_OUTPUT
+        
+        # Next review date (12 months from now)
+        if command -v date >/dev/null 2>&1; then
+          if date --version 2>/dev/null | grep -q GNU; then
+            # GNU date (Linux)
+            NEXT_REVIEW=$(date -u -d '+12 months' '+%B %Y')
+          else
+            # BSD date (macOS)
+            NEXT_REVIEW=$(date -u -v+12m '+%B %Y')
+          fi
+        else
+          # Fallback
+          CURRENT_YEAR=$(date -u '+%Y')
+          CURRENT_MONTH=$(date -u '+%m')
+          NEXT_YEAR=$((CURRENT_YEAR + 1))
+          NEXT_REVIEW=$(date -u -d "${NEXT_YEAR}-${CURRENT_MONTH}-01" '+%B %Y' 2>/dev/null || echo "$(date -u '+%B') $NEXT_YEAR")
+        fi
+        
+        echo "next_review=$NEXT_REVIEW" >> $GITHUB_OUTPUT
+        echo "📅 Last updated: $CURRENT_DATE"
+        echo "📅 Next review: $NEXT_REVIEW"
+
+    - name: 🔢 Build Version Support Table
+      id: version-table
+      shell: bash
+      run: |
+        CURRENT_VERSION="${{ steps.version-info.outputs.current_version }}"
+        ALL_TAGS="${{ steps.version-info.outputs.all_tags }}"
+        
+        # Build version support table
+        cat > version_table.md << 'EOF'
+        | Version | Support Status | Security Updates |
+        |---------|---------------|------------------|
+        EOF
+        
+        # Current version (always supported)
+        echo "| $CURRENT_VERSION (current) | ✅ Full Support | ✅ Yes |" >> version_table.md
+        
+        # Previous versions (not supported)
+        if [ -n "$ALL_TAGS" ]; then
+          echo "$ALL_TAGS" | head -5 | tail -n +2 | while read -r tag; do
+            if [ -n "$tag" ] && [ "$tag" != "$CURRENT_VERSION" ]; then
+              echo "| $tag | ❌ End of Life | ❌ No |" >> version_table.md
+            fi
+          done
+        fi
+        
+        # Read the generated table
+        TABLE_CONTENT=$(cat version_table.md)
+        
+        # Store in output (escape for GitHub Actions)
+        echo "table_content<<EOF" >> $GITHUB_OUTPUT
+        echo "$TABLE_CONTENT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+        echo "✅ Version support table generated"
+
+    - name: 🛡️ Generate Security Policy
+      id: generate
+      shell: bash
+      run: |
+        TEMPLATE_PATH="${{ inputs.template-path }}"
+        OUTPUT_PATH="${{ inputs.output-path }}"
+        FORCE_UPDATE="${{ inputs.force-update }}"
+        
+        CURRENT_VERSION="${{ steps.version-info.outputs.current_version }}"
+        LAST_UPDATED="${{ steps.dates.outputs.last_updated }}"
+        NEXT_REVIEW="${{ steps.dates.outputs.next_review }}"
+        POLICY_VERSION="${{ inputs.policy-version }}"
+        VERSION_TABLE="${{ steps.version-table.outputs.table_content }}"
+        
+        echo "🛡️ Generating security policy..."
+        echo "Template: $TEMPLATE_PATH"
+        echo "Output: $OUTPUT_PATH"
+        echo "Current Version: $CURRENT_VERSION"
+        echo "Policy Version: $POLICY_VERSION"
+        
+        # Create temporary file for processing
+        TEMP_FILE=$(mktemp)
+        
+        # Copy template and replace placeholders
+        cp "$TEMPLATE_PATH" "$TEMP_FILE"
+        
+        # Replace placeholders
+        sed -i "s|{{CURRENT_VERSION}}|$CURRENT_VERSION|g" "$TEMP_FILE"
+        sed -i "s|{{LAST_UPDATED}}|$LAST_UPDATED|g" "$TEMP_FILE"
+        sed -i "s|{{NEXT_REVIEW}}|$NEXT_REVIEW|g" "$TEMP_FILE"
+        sed -i "s|{{POLICY_VERSION}}|$POLICY_VERSION|g" "$TEMP_FILE"
+        
+        # Replace version table (more complex replacement)
+        python3 -c "
+        import sys
+        import re
+        
+        # Read template content
+        with open('$TEMP_FILE', 'r') as f:
+            content = f.read()
+        
+        # Read version table
+        with open('version_table.md', 'r') as f:
+            table = f.read()
+        
+        # Replace placeholder
+        content = content.replace('{{SUPPORTED_VERSIONS_TABLE}}', table.strip())
+        
+        # Write result
+        with open('$TEMP_FILE', 'w') as f:
+            f.write(content)
+        "
+        
+        # Check if output file exists and compare
+        CHANGES_DETECTED="true"
+        if [ -f "$OUTPUT_PATH" ] && [ "$FORCE_UPDATE" != "true" ]; then
+          if cmp -s "$TEMP_FILE" "$OUTPUT_PATH"; then
+            CHANGES_DETECTED="false"
+            echo "ℹ️ No changes detected in security policy"
+          else
+            echo "📝 Changes detected in security policy"
+          fi
+        else
+          echo "📝 Creating new security policy or force update requested"
+        fi
+        
+        # Update output file if changes detected or force update
+        if [ "$CHANGES_DETECTED" = "true" ] || [ "$FORCE_UPDATE" = "true" ]; then
+          # Add generation comment at the top
+          {
+            echo "<!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/SECURITY.template.MD instead. -->"
+            echo "<!-- Generated on $LAST_UPDATED -->"
+            echo ""
+            cat "$TEMP_FILE"
+          } > "$OUTPUT_PATH"
+          
+          echo "✅ Security policy updated: $OUTPUT_PATH"
+          echo "security_updated=true" >> $GITHUB_OUTPUT
+        else
+          echo "⏭️ Security policy unchanged: $OUTPUT_PATH"
+          echo "security_updated=false" >> $GITHUB_OUTPUT
+        fi
+        
+        # Set outputs
+        echo "changes_detected=$CHANGES_DETECTED" >> $GITHUB_OUTPUT
+        echo "validation_passed=true" >> $GITHUB_OUTPUT
+        echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        echo "policy_version=$POLICY_VERSION" >> $GITHUB_OUTPUT
+        echo "next_review_date=$NEXT_REVIEW" >> $GITHUB_OUTPUT
+        
+        # Cleanup
+        rm -f "$TEMP_FILE" version_table.md
+        
+        echo "🛡️ Security policy generation completed"
