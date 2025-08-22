@@ -306,7 +306,7 @@ runs:
                               {
                                 "type": "TextBlock",
                                 "text": "👤 ${{ inputs.actor }} • 🌿 ${{ steps.event-data.outputs.ref-name }} • 📅 ${{ steps.event-data.outputs.display-timestamp }}",
-                                "size": "Medium",
+                                "size": "Small",
                                 "color": "Default",
                                 "wrap": true,
                                 "spacing": "Small"
