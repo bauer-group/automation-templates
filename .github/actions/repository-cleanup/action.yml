@@ -753,12 +753,12 @@ runs:
         
         echo "| Operation | Enabled | Items Processed | Items Deleted | Errors |" >> $GITHUB_STEP_SUMMARY
         echo "|-----------|---------|-----------------|---------------|---------|" >> $GITHUB_STEP_SUMMARY
-        echo "| **🚀 Releases** | ${{ inputs.cleanup-releases == 'true' && '✅' || '❌' }} | - | - | - |" >> $GITHUB_STEP_SUMMARY
-        echo "| **🏷️ Tags** | ${{ inputs.cleanup-tags == 'true' && '✅' || '❌' }} | - | - | - |" >> $GITHUB_STEP_SUMMARY
-        echo "| **🌿 Branches** | ${{ inputs.cleanup-branches == 'true' && '✅' || '❌' }} | - | - | - |" >> $GITHUB_STEP_SUMMARY
-        echo "| **🔀 Pull Requests** | ${{ inputs.cleanup-pull-requests == 'true' && '✅' || '❌' }} | - | - | - |" >> $GITHUB_STEP_SUMMARY
-        echo "| **⚙️ Workflow Runs** | ${{ inputs.cleanup-workflow-runs == 'true' && '✅' || '❌' }} | - | - | - |" >> $GITHUB_STEP_SUMMARY
-        echo "| **🐛 Issues** | ${{ inputs.cleanup-issues == 'true' && '✅' || '❌' }} | - | - | - |" >> $GITHUB_STEP_SUMMARY
+        echo "| **🚀 Releases** | ${{ inputs.cleanup-releases == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **🏷️ Tags** | ${{ inputs.cleanup-tags == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **🌿 Branches** | ${{ inputs.cleanup-branches == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **🔀 Pull Requests** | ${{ inputs.cleanup-pull-requests == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **⚙️ Workflow Runs** | ${{ inputs.cleanup-workflow-runs == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **🐛 Issues** | ${{ inputs.cleanup-issues == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         echo "**Summary:**" >> $GITHUB_STEP_SUMMARY

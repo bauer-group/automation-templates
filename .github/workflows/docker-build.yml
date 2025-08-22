@@ -502,8 +502,8 @@ jobs:
           echo "| Stage | Status | Duration | Details |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|----------|---------|" >> $GITHUB_STEP_SUMMARY
           echo "| **Build** | ${{ needs.build.result == 'success' && '✅ Success' || '❌ Failed' }} | ${{ needs.build.outputs.build-duration }}s | Image: \`${{ needs.build.outputs.image-url }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Security** | ${{ needs.security-analysis.result == 'success' && '✅ Passed' || needs.security-analysis.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | - | ${{ inputs.security-scanner }} scan |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Deploy** | ${{ needs.deploy.result == 'success' && '✅ Deployed' || needs.deploy.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | - | Environment: ${{ inputs.deploy-environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Security** | ${{ needs.security-analysis.result == 'success' && '✅ Passed' || needs.security-analysis.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | ${{ needs.security-analysis.outputs.scan-duration || '0' }}s | ${{ inputs.security-scanner }} scan |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Deploy** | ${{ needs.deploy.result == 'success' && '✅ Deployed' || needs.deploy.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | ${{ needs.deploy.outputs.deploy-duration || '0' }}s | Environment: ${{ inputs.deploy-environment }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # Image Information

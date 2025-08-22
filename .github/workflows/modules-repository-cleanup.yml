@@ -398,12 +398,12 @@ jobs:
           
           | Operation | Enabled | Items Processed | Items Deleted | Items Skipped | Errors |
           |-----------|---------|-----------------|---------------|---------------|---------|
-          | 🚀 **Releases** | ${{ inputs.cleanup-releases && '✅' || '❌' }} | - | - | - | - |
-          | 🏷️ **Tags** | ${{ inputs.cleanup-tags && '✅' || '❌' }} | - | - | - | - |
-          | 🌿 **Branches** | ${{ inputs.cleanup-branches && '✅' || '❌' }} | - | - | - | - |
-          | 🔀 **Pull Requests** | ${{ inputs.cleanup-pull-requests && '✅' || '❌' }} | - | - | - | - |
-          | ⚙️ **Workflow Runs** | ${{ inputs.cleanup-workflow-runs && '✅' || '❌' }} | - | - | - | - |
-          | 🐛 **Issues** | ${{ inputs.cleanup-issues && '✅' || '❌' }} | - | - | - | - |
+          | 🚀 **Releases** | ${{ inputs.cleanup-releases && '✅' || '❌' }} | ${{ needs.repository-cleanup.outputs.items-processed || '0' }} | ${{ needs.repository-cleanup.outputs.items-deleted || '0' }} | ${{ needs.repository-cleanup.outputs.items-skipped || '0' }} | ${{ needs.repository-cleanup.outputs.errors-count || '0' }} |
+          | 🏷️ **Tags** | ${{ inputs.cleanup-tags && '✅' || '❌' }} | ${{ needs.repository-cleanup.outputs.items-processed || '0' }} | ${{ needs.repository-cleanup.outputs.items-deleted || '0' }} | ${{ needs.repository-cleanup.outputs.items-skipped || '0' }} | ${{ needs.repository-cleanup.outputs.errors-count || '0' }} |
+          | 🌿 **Branches** | ${{ inputs.cleanup-branches && '✅' || '❌' }} | ${{ needs.repository-cleanup.outputs.items-processed || '0' }} | ${{ needs.repository-cleanup.outputs.items-deleted || '0' }} | ${{ needs.repository-cleanup.outputs.items-skipped || '0' }} | ${{ needs.repository-cleanup.outputs.errors-count || '0' }} |
+          | 🔀 **Pull Requests** | ${{ inputs.cleanup-pull-requests && '✅' || '❌' }} | ${{ needs.repository-cleanup.outputs.items-processed || '0' }} | ${{ needs.repository-cleanup.outputs.items-deleted || '0' }} | ${{ needs.repository-cleanup.outputs.items-skipped || '0' }} | ${{ needs.repository-cleanup.outputs.errors-count || '0' }} |
+          | ⚙️ **Workflow Runs** | ${{ inputs.cleanup-workflow-runs && '✅' || '❌' }} | ${{ needs.repository-cleanup.outputs.items-processed || '0' }} | ${{ needs.repository-cleanup.outputs.items-deleted || '0' }} | ${{ needs.repository-cleanup.outputs.items-skipped || '0' }} | ${{ needs.repository-cleanup.outputs.errors-count || '0' }} |
+          | 🐛 **Issues** | ${{ inputs.cleanup-issues && '✅' || '❌' }} | ${{ needs.repository-cleanup.outputs.items-processed || '0' }} | ${{ needs.repository-cleanup.outputs.items-deleted || '0' }} | ${{ needs.repository-cleanup.outputs.items-skipped || '0' }} | ${{ needs.repository-cleanup.outputs.errors-count || '0' }} |
           
           ## 📈 Statistics
           
