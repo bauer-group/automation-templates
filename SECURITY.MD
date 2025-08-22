@@ -16,14 +16,8 @@ If you discover a security vulnerability, please report it immediately through o
 - Provide detailed information using our template
 
 #### 2. Email Reporting
-- **Email**: security@bauer-group.com
+- **Email**: support@bauer-group.com
 - **Subject**: `[SECURITY] Automation Templates Vulnerability Report`
-- **Encryption**: Use PGP key ID `0x1234567890ABCDEF` (available on request)
-
-#### 3. Emergency Contact
-For critical vulnerabilities requiring immediate attention:
-- **Phone**: +49 (0) 8341 966-0 (BAUER GROUP IT Security)
-- **Available**: 24/7 for critical issues
 
 ### What to Include
 
@@ -47,21 +41,18 @@ When reporting a vulnerability, please provide:
 
 ## 🔐 Supported Versions
 
-We actively maintain and provide security updates for the following versions:
+We actively maintain and provide security updates for supported versions:
 
 | Version | Support Status | Security Updates |
 |---------|---------------|------------------|
-| 0.18.x (current) | ✅ Full Support | ✅ Yes |
-| 0.17.x | ✅ Limited Support | ✅ Yes |
-| 0.16.x | ⚠️ Critical Only | ⚠️ Critical Only |
-| < 0.16.x | ❌ End of Life | ❌ No |
+| Current (main) | ✅ Full Support | ✅ Yes |
+| Previous Releases | ❌ End of Life | ❌ No |
 
 ### Version Support Policy
 
-- **Current Version**: Full feature and security support
-- **Previous Version**: Security updates and critical bug fixes
-- **Legacy Versions**: Critical security issues only
-- **End of Life**: No support provided
+- **Current Version**: Full feature and security support for the latest release
+- **Previous Versions**: No support provided - users should upgrade to the current version
+- **Security Updates**: Only applied to the current version
 
 ## 🛡️ Security Measures
 
@@ -312,14 +303,8 @@ We recognize security contributors through:
 ## 📞 Emergency Contacts
 
 ### Incident Response Team
-- **Primary**: security@bauer-group.com
-- **Escalation**: ciso@bauer-group.com
-- **Emergency**: +49 (0) 8341 966-0
-
-### Regional Contacts
-- **Europe**: security-eu@bauer-group.com
-- **Americas**: security-am@bauer-group.com
-- **Asia-Pacific**: security-ap@bauer-group.com
+- **Primary**: support@bauer-group.com
+- **Escalation**: Available through support portal
 
 ---
 
