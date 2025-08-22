@@ -66,41 +66,58 @@ jobs:
       - name: 🔍 Check if workflow should run
         id: should-run
         run: |
-          # Always run for tags
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "Running for tag: ${{ github.ref_name }}"
+          echo "🔍 Determining if workflow should run..."
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Ref Name: ${{ github.ref_name }}"
+          echo "Ref Type: ${{ github.ref_type }}"
+          
+          # Always run for tags - HIGHEST PRIORITY
+          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "🏷️ ✅ FORCE RUNNING FOR TAG: ${{ github.ref_name }}"
+            echo "🏷️ This will force update documentation regardless of file changes"
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "skip_reason=" >> $GITHUB_OUTPUT
             exit 0
           fi
           
           # Always run for workflow_call (called by other workflows)
-          if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            echo "Running for workflow call (tag: ${{ inputs.tag-name }})"
+          if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
+            echo "✅ Running for workflow call (tag: ${{ inputs.tag-name || 'none' }})"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Always run for workflow_dispatch (manual trigger)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "✅ Running for manual trigger"
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "skip_reason=" >> $GITHUB_OUTPUT
             exit 0
           fi
           
           # Always run for pull requests
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "Running for pull request"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "✅ Running for pull request"
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "skip_reason=" >> $GITHUB_OUTPUT
             exit 0
           fi
           
-          # Always run for workflow_dispatch
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "Running for manual trigger"
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "skip_reason=" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          # For push to main, check if relevant files changed
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "Checking for relevant file changes..."
+          # For push events, check if relevant files changed (but NOT for tags)
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            # Double-check this isn't a tag push (should have been caught above)
+            if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
+              echo "🏷️ EMERGENCY TAG DETECTION - This is a tag push that should have been caught earlier!"
+              echo "🏷️ ✅ FORCE RUNNING FOR TAG: ${{ github.ref_name }}"
+              echo "🏷️ This will force update documentation regardless of file changes"
+              echo "should_run=true" >> $GITHUB_OUTPUT
+              echo "skip_reason=" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            
+            echo "📋 Checking for relevant file changes in push to ${{ github.ref_name }}..."
             
             # Get changed files in this push
             CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} 2>/dev/null || echo "")
@@ -187,8 +204,8 @@ jobs:
           
           COMMIT_MSG="docs: update README.MD"
           
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            COMMIT_MSG="$COMMIT_MSG for tag ${{ github.ref_name }}"
+          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
+            COMMIT_MSG="$COMMIT_MSG for tag ${{ github.ref_name }} [automated]"
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ "${{ inputs.force-update }}" = "true" ]; then
               COMMIT_MSG="$COMMIT_MSG (forced update)"
