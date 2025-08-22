@@ -236,12 +236,15 @@ jobs:
           
           # Check if any cleanup operation is enabled
           CLEANUP_ENABLED=false
-          for operation in cleanup-releases cleanup-tags cleanup-branches cleanup-pull-requests cleanup-workflow-runs cleanup-issues; do
-            if [[ "${{ inputs[operation] }}" == "true" ]]; then
-              CLEANUP_ENABLED=true
-              break
-            fi
-          done
+          
+          if [[ "${{ inputs.cleanup-releases }}" == "true" ]] || \
+             [[ "${{ inputs.cleanup-tags }}" == "true" ]] || \
+             [[ "${{ inputs.cleanup-branches }}" == "true" ]] || \
+             [[ "${{ inputs.cleanup-pull-requests }}" == "true" ]] || \
+             [[ "${{ inputs.cleanup-workflow-runs }}" == "true" ]] || \
+             [[ "${{ inputs.cleanup-issues }}" == "true" ]]; then
+            CLEANUP_ENABLED=true
+          fi
           
           if [[ "$CLEANUP_ENABLED" != "true" ]]; then
             echo "⚠️ No cleanup operations enabled"
