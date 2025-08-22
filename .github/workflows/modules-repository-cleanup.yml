@@ -1,4 +1,4 @@
-name: 🧹 Repository Cleanup Module
+name: 📦 Module | Repository Cleanup Module
 
 on:
   workflow_call:

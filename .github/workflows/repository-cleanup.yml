@@ -1,0 +1,499 @@
+name: 🧹 Repository Cleanup
+
+# Manual repository cleanup workflow with comprehensive configuration options
+# This workflow provides direct access to the repository cleanup functionality
+
+on:
+  workflow_dispatch:
+    inputs:
+      # Cleanup Profile Selection
+      cleanup-profile:
+        description: 'Cleanup profile to use'
+        type: choice
+        required: true
+        default: 'conservative'
+        options:
+          - 'conservative'
+          - 'aggressive'
+          - 'development'
+          - 'maintenance'
+          - 'emergency'
+          - 'custom'
+      
+      # Target Repository
+      target-repository:
+        description: 'Target repository (leave empty for current repo)'
+        type: string
+        required: false
+        default: ''
+      
+      # Safety Configuration
+      dry-run:
+        description: 'Perform dry run (STRONGLY recommended for first use)'
+        type: boolean
+        required: false
+        default: true
+      
+      confirm-cleanup:
+        description: 'Type "CONFIRM" to proceed with cleanup'
+        type: string
+        required: true
+        default: ''
+      
+      # Age Configuration
+      max-age-days:
+        description: 'Maximum age in days (0 = no age limit)'
+        type: number
+        required: false
+        default: 365
+      
+      # Cleanup Operations
+      cleanup-releases:
+        description: 'Delete old releases'
+        type: boolean
+        required: false
+        default: false
+      
+      cleanup-tags:
+        description: 'Delete old tags'
+        type: boolean
+        required: false
+        default: false
+      
+      cleanup-branches:
+        description: 'Delete old branches'
+        type: boolean
+        required: false
+        default: false
+      
+      cleanup-pull-requests:
+        description: 'Close old pull requests'
+        type: boolean
+        required: false
+        default: false
+      
+      cleanup-workflow-runs:
+        description: 'Delete old workflow runs'
+        type: boolean
+        required: false
+        default: true
+      
+      cleanup-issues:
+        description: 'Close old issues'
+        type: boolean
+        required: false
+        default: false
+      
+      # Advanced Configuration
+      protected-branches:
+        description: 'Protected branches (comma-separated)'
+        type: string
+        required: false
+        default: 'main,master,develop,staging,production'
+      
+      include-patterns:
+        description: 'Include patterns (JSON array of regex)'
+        type: string
+        required: false
+        default: '[]'
+      
+      exclude-patterns:
+        description: 'Exclude patterns (JSON array of regex)'
+        type: string
+        required: false
+        default: '[".*keep.*", ".*important.*", ".*preserve.*"]'
+      
+      # Performance Configuration
+      batch-size:
+        description: 'Batch size (items per batch)'
+        type: number
+        required: false
+        default: 25
+      
+      batch-delay:
+        description: 'Delay between batches (seconds)'
+        type: number
+        required: false
+        default: 3
+      
+      # Reporting
+      verbose-logging:
+        description: 'Enable verbose logging'
+        type: boolean
+        required: false
+        default: false
+      
+      generate-report:
+        description: 'Generate detailed cleanup report'
+        type: boolean
+        required: false
+        default: true
+
+# Required permissions for repository cleanup
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+  metadata: read
+
+jobs:
+  # Input validation and safety checks
+  validate-inputs:
+    name: 🔍 Validate Cleanup Configuration
+    runs-on: ubuntu-latest
+    
+    outputs:
+      proceed-with-cleanup: ${{ steps.validation.outputs.proceed }}
+      effective-profile: ${{ steps.profile.outputs.effective-profile }}
+      cleanup-summary: ${{ steps.summary.outputs.summary }}
+    
+    steps:
+      - name: 🔄 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Validate User Confirmation
+        id: validation
+        run: |
+          echo "🔍 Validating cleanup configuration..."
+          
+          # Check confirmation
+          if [[ "${{ github.event.inputs.confirm-cleanup }}" != "CONFIRM" ]]; then
+            echo "❌ Cleanup not confirmed"
+            echo "🛡️ Please type 'CONFIRM' exactly to proceed with cleanup"
+            echo "This safety measure prevents accidental cleanup operations"
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Validate cleanup profile
+          PROFILE="${{ github.event.inputs.cleanup-profile }}"
+          case "$PROFILE" in
+            conservative|aggressive|development|maintenance|emergency|custom)
+              echo "✅ Valid cleanup profile: $PROFILE"
+              ;;
+            *)
+              echo "❌ Invalid cleanup profile: $PROFILE"
+              echo "proceed=false" >> $GITHUB_OUTPUT
+              exit 1
+              ;;
+          esac
+          
+          # Validate target repository format
+          TARGET_REPO="${{ github.event.inputs.target-repository }}"
+          if [[ -n "$TARGET_REPO" ]]; then
+            if [[ ! "$TARGET_REPO" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
+              echo "❌ Invalid repository format: $TARGET_REPO"
+              echo "Expected format: owner/repo"
+              echo "proceed=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          fi
+          
+          # Validate numerical inputs
+          MAX_AGE="${{ github.event.inputs.max-age-days }}"
+          BATCH_SIZE="${{ github.event.inputs.batch-size }}"
+          BATCH_DELAY="${{ github.event.inputs.batch-delay }}"
+          
+          if [[ ! "$MAX_AGE" =~ ^[0-9]+$ ]] || [[ "$MAX_AGE" -lt 0 ]]; then
+            echo "❌ Invalid max-age-days: $MAX_AGE"
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          if [[ ! "$BATCH_SIZE" =~ ^[1-9][0-9]*$ ]] || [[ "$BATCH_SIZE" -gt 100 ]] || [[ "$BATCH_SIZE" -lt 1 ]]; then
+            echo "❌ Invalid batch-size: $BATCH_SIZE"
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          if [[ ! "$BATCH_DELAY" =~ ^[0-9]+$ ]] || [[ "$BATCH_DELAY" -gt 60 ]]; then
+            echo "❌ Invalid batch-delay: $BATCH_DELAY"
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Validate JSON patterns
+          INCLUDE_PATTERNS='${{ github.event.inputs.include-patterns }}'
+          EXCLUDE_PATTERNS='${{ github.event.inputs.exclude-patterns }}'
+          
+          echo "$INCLUDE_PATTERNS" | python3 -m json.tool > /dev/null || {
+            echo "❌ Invalid include-patterns JSON format"
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          }
+          
+          echo "$EXCLUDE_PATTERNS" | python3 -m json.tool > /dev/null || {
+            echo "❌ Invalid exclude-patterns JSON format"
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          }
+          
+          # Check if any cleanup operation is enabled
+          CLEANUP_ENABLED=false
+          
+          if [[ "${{ github.event.inputs.cleanup-releases }}" == "true" ]] || \
+             [[ "${{ github.event.inputs.cleanup-tags }}" == "true" ]] || \
+             [[ "${{ github.event.inputs.cleanup-branches }}" == "true" ]] || \
+             [[ "${{ github.event.inputs.cleanup-pull-requests }}" == "true" ]] || \
+             [[ "${{ github.event.inputs.cleanup-workflow-runs }}" == "true" ]] || \
+             [[ "${{ github.event.inputs.cleanup-issues }}" == "true" ]]; then
+            CLEANUP_ENABLED=true
+          fi
+          
+          if [[ "$CLEANUP_ENABLED" != "true" ]]; then
+            echo "⚠️ No cleanup operations enabled"
+            echo "At least one cleanup operation must be enabled"
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "✅ All validation checks passed"
+          echo "proceed=true" >> $GITHUB_OUTPUT
+      
+      - name: ⚙️ Determine Effective Profile
+        id: profile
+        run: |
+          PROFILE="${{ github.event.inputs.cleanup-profile }}"
+          
+          # Override profile settings with custom inputs if profile is 'custom'
+          if [[ "$PROFILE" == "custom" ]]; then
+            echo "🔧 Using custom profile with user-defined settings"
+            EFFECTIVE_PROFILE="custom"
+          else
+            echo "📋 Using predefined profile: $PROFILE"
+            EFFECTIVE_PROFILE="$PROFILE"
+          fi
+          
+          echo "effective-profile=$EFFECTIVE_PROFILE" >> $GITHUB_OUTPUT
+      
+      - name: 📋 Generate Configuration Summary
+        id: summary
+        run: |
+          echo "### 🧹 Repository Cleanup Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Execution Details:**" >> $GITHUB_STEP_SUMMARY
+          echo "- 🎯 **Profile**: ${{ steps.profile.outputs.effective-profile }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📁 **Repository**: ${{ github.event.inputs.target-repository || github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔧 **Mode**: ${{ github.event.inputs.dry-run == 'true' && '🔍 Dry Run' || '⚠️ LIVE EXECUTION' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📅 **Max Age**: ${{ github.event.inputs.max-age-days }} days" >> $GITHUB_STEP_SUMMARY
+          echo "- 🕐 **Timestamp**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "**Cleanup Operations:**" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚀 Releases: ${{ github.event.inputs.cleanup-releases == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🏷️ Tags: ${{ github.event.inputs.cleanup-tags == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌿 Branches: ${{ github.event.inputs.cleanup-branches == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔀 Pull Requests: ${{ github.event.inputs.cleanup-pull-requests == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ⚙️ Workflow Runs: ${{ github.event.inputs.cleanup-workflow-runs == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🐛 Issues: ${{ github.event.inputs.cleanup-issues == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "**Protection Settings:**" >> $GITHUB_STEP_SUMMARY
+          echo "- 🛡️ Protected Branches: \`${{ github.event.inputs.protected-branches }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 Batch Size: ${{ github.event.inputs.batch-size }} items" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏱️ Batch Delay: ${{ github.event.inputs.batch-delay }} seconds" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ github.event.inputs.dry-run }}" == "true" ]]; then
+            echo "> 🔍 **Dry Run Mode**: No actual changes will be made. Review results carefully before running with dry-run: false" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "> ⚠️ **LIVE EXECUTION**: This will permanently modify your repository. Ensure you have backups if needed." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Execute the repository cleanup
+  execute-repository-cleanup:
+    name: 🧹 Execute Repository Cleanup
+    needs: validate-inputs
+    if: needs.validate-inputs.outputs.proceed-with-cleanup == 'true'
+    uses: ./.github/workflows/modules-repository-cleanup.yml
+    
+    with:
+      # Repository configuration
+      target-repository: ${{ github.event.inputs.target-repository }}
+      config-profile: ${{ needs.validate-inputs.outputs.effective-profile }}
+      
+      # Cleanup operations
+      cleanup-releases: ${{ github.event.inputs.cleanup-releases == 'true' }}
+      cleanup-tags: ${{ github.event.inputs.cleanup-tags == 'true' }}
+      cleanup-branches: ${{ github.event.inputs.cleanup-branches == 'true' }}
+      cleanup-pull-requests: ${{ github.event.inputs.cleanup-pull-requests == 'true' }}
+      cleanup-workflow-runs: ${{ github.event.inputs.cleanup-workflow-runs == 'true' }}
+      cleanup-issues: ${{ github.event.inputs.cleanup-issues == 'true' }}
+      
+      # Age and filtering
+      max-age-days: ${{ fromJSON(github.event.inputs.max-age-days) }}
+      protected-branches: ${{ github.event.inputs.protected-branches }}
+      include-patterns: ${{ github.event.inputs.include-patterns }}
+      exclude-patterns: ${{ github.event.inputs.exclude-patterns }}
+      
+      # PR handling
+      pr-action: 'comment-and-close'
+      pr-comment: |
+        🧹 **Repository Cleanup Notice**
+        
+        This pull request is being closed as part of a repository cleanup operation.
+        
+        **Cleanup Details:**
+        - Profile: ${{ needs.validate-inputs.outputs.effective-profile }}
+        - Age Threshold: ${{ github.event.inputs.max-age-days }} days
+        - Execution: ${{ github.event.inputs.dry-run == 'true' && 'Dry Run' || 'Live Operation' }}
+        
+        **Why was this closed?**
+        - This PR is older than ${{ github.event.inputs.max-age-days }} days
+        - It was included in our cleanup criteria
+        - This helps maintain repository organization
+        
+        **To reopen this PR:**
+        - Simply reopen it if it's still relevant
+        - Add the `keep-open` label to prevent future cleanup
+        - Contact repository maintainers if you have questions
+        
+        *This is an automated action by the BAUER GROUP Repository Cleanup system.*
+      
+      # Execution configuration
+      dry-run: ${{ github.event.inputs.dry-run == 'true' }}
+      batch-size: ${{ fromJSON(github.event.inputs.batch-size) }}
+      batch-delay: ${{ fromJSON(github.event.inputs.batch-delay) }}
+      skip-confirmation: true
+      
+      # Reporting
+      generate-report: ${{ github.event.inputs.generate-report == 'true' }}
+      verbose: ${{ github.event.inputs.verbose-logging == 'true' }}
+    
+    secrets: inherit
+
+  # Post-cleanup summary and recommendations
+  cleanup-summary:
+    name: 📊 Cleanup Summary & Recommendations
+    needs: [validate-inputs, execute-repository-cleanup]
+    if: always() && needs.validate-inputs.outputs.proceed-with-cleanup == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📊 Generate Comprehensive Summary
+        run: |
+          echo "### 📊 Repository Cleanup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Display execution results
+          echo "**Execution Results:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ **Success**: ${{ needs.execute-repository-cleanup.outputs.cleanup-success }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📈 **Items Processed**: ${{ needs.execute-repository-cleanup.outputs.items-processed || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🗑️ **Items Deleted**: ${{ needs.execute-repository-cleanup.outputs.items-deleted || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏭️ **Items Skipped**: ${{ needs.execute-repository-cleanup.outputs.items-skipped || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ❌ **Errors**: ${{ needs.execute-repository-cleanup.outputs.errors-count || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏱️ **Duration**: ${{ needs.execute-repository-cleanup.outputs.execution-time || '0' }} seconds" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Profile-specific recommendations
+          PROFILE="${{ needs.validate-inputs.outputs.effective-profile }}"
+          ITEMS_DELETED=${{ needs.execute-repository-cleanup.outputs.items-deleted || '0' }}
+          
+          echo "**📋 Profile Analysis: $PROFILE**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          case "$PROFILE" in
+            conservative)
+              echo "🛡️ **Conservative Profile Results:**" >> $GITHUB_STEP_SUMMARY
+              if [[ "$ITEMS_DELETED" -gt 50 ]]; then
+                echo "- Excellent cleanup results for conservative approach" >> $GITHUB_STEP_SUMMARY
+                echo "- Consider scheduling monthly conservative cleanups" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "- Repository is well-maintained" >> $GITHUB_STEP_SUMMARY
+                echo "- Current maintenance practices are effective" >> $GITHUB_STEP_SUMMARY
+              fi
+              ;;
+            aggressive)
+              echo "🔥 **Aggressive Profile Results:**" >> $GITHUB_STEP_SUMMARY
+              if [[ "$ITEMS_DELETED" -gt 200 ]]; then
+                echo "- Significant cleanup achieved" >> $GITHUB_STEP_SUMMARY
+                echo "- Repository storage substantially optimized" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "- Repository was already well-maintained" >> $GITHUB_STEP_SUMMARY
+                echo "- Limited cleanup opportunities available" >> $GITHUB_STEP_SUMMARY
+              fi
+              ;;
+            development)
+              echo "🔧 **Development Profile Results:**" >> $GITHUB_STEP_SUMMARY
+              echo "- Development environment cleanup completed" >> $GITHUB_STEP_SUMMARY
+              echo "- Consider running monthly for development repositories" >> $GITHUB_STEP_SUMMARY
+              ;;
+            maintenance)
+              echo "🔄 **Maintenance Profile Results:**" >> $GITHUB_STEP_SUMMARY
+              echo "- Regular maintenance cleanup completed" >> $GITHUB_STEP_SUMMARY
+              echo "- Suitable for scheduled automation" >> $GITHUB_STEP_SUMMARY
+              ;;
+            emergency)
+              echo "🚨 **Emergency Profile Results:**" >> $GITHUB_STEP_SUMMARY
+              echo "- Emergency cleanup operation completed" >> $GITHUB_STEP_SUMMARY
+              echo "- Review results carefully for any issues" >> $GITHUB_STEP_SUMMARY
+              ;;
+            custom)
+              echo "🔧 **Custom Profile Results:**" >> $GITHUB_STEP_SUMMARY
+              echo "- Custom configuration cleanup completed" >> $GITHUB_STEP_SUMMARY
+              echo "- Review settings for future optimizations" >> $GITHUB_STEP_SUMMARY
+              ;;
+          esac
+          
+          if [[ "${{ github.event.inputs.dry-run }}" == "true" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**🔍 Next Steps (Dry Run Complete):**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "1. 📊 Review the cleanup results above" >> $GITHUB_STEP_SUMMARY
+            echo "2. 🛡️ Verify the operations match your expectations" >> $GITHUB_STEP_SUMMARY
+            echo "3. 🔧 Adjust configuration if needed" >> $GITHUB_STEP_SUMMARY
+            echo "4. 🚀 Re-run with dry-run: false to execute actual cleanup" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> 💡 **Tip**: Always test configuration changes with dry-run first!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**🎉 Cleanup Complete!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- Repository cleanup has been executed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "- All changes are permanent and cannot be undone" >> $GITHUB_STEP_SUMMARY
+            echo "- Monitor repository for any unexpected issues" >> $GITHUB_STEP_SUMMARY
+            echo "- Consider setting up regular maintenance schedules" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: ❌ Handle Cleanup Failures
+        if: needs.execute-repository-cleanup.outputs.cleanup-success != 'true'
+        run: |
+          echo "### ❌ Cleanup Issues Detected" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The cleanup operation completed with errors. Please review:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Error Summary:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ❌ Errors: ${{ needs.execute-repository-cleanup.outputs.errors-count || 'Unknown' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Successful: ${{ needs.execute-repository-cleanup.outputs.items-deleted || '0' }} items" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏭️ Skipped: ${{ needs.execute-repository-cleanup.outputs.items-skipped || '0' }} items" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Recommended Actions:**" >> $GITHUB_STEP_SUMMARY
+          echo "1. 📋 Review the detailed cleanup logs above" >> $GITHUB_STEP_SUMMARY
+          echo "2. 🔑 Check GitHub token permissions" >> $GITHUB_STEP_SUMMARY
+          echo "3. 🛡️ Verify repository access and settings" >> $GITHUB_STEP_SUMMARY
+          echo "4. 🔧 Adjust configuration and retry if needed" >> $GITHUB_STEP_SUMMARY
+          echo "5. 📞 Contact repository administrators for assistance" >> $GITHUB_STEP_SUMMARY
+          
+          exit 1
+
+      - name: 📋 Provide Usage Recommendations
+        run: |
+          echo "### 📋 Future Usage Recommendations" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          PROFILE="${{ needs.validate-inputs.outputs.effective-profile }}"
+          
+          echo "**🔗 Related Workflows:**" >> $GITHUB_STEP_SUMMARY
+          echo "- [Scheduled Maintenance](./examples/repository-cleanup/scheduled-maintenance.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Conservative Cleanup](./examples/repository-cleanup/conservative-cleanup.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Aggressive Cleanup](./examples/repository-cleanup/aggressive-cleanup.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "**📚 Documentation:**" >> $GITHUB_STEP_SUMMARY
+          echo "- [Repository Cleanup Action](./actions/repository-cleanup/README.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Configuration Profiles](./config/repository-cleanup/README.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Usage Examples](./examples/repository-cleanup/README.md)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "*For questions or issues, please open a ticket in the automation templates repository.*"
