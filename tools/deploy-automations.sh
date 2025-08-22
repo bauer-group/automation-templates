@@ -46,6 +46,7 @@ OPTIONS:
 PROFILES:
     basic                   Core workflows (CI/CD, security, docs)
     complete               All available automations
+    enterprise             Enterprise-grade with advanced features
     security-focused       Security and compliance workflows only
     docs-only              Documentation automation only
     custom                 Use custom workflow/action selection
@@ -160,6 +161,10 @@ get_deployment_items() {
         complete)
             WORKFLOWS="ci-cd,security-management,documentation,teams-notifications,docker-hub,release-management"
             ACTIONS="teams-notification,security-generate,readme-generate,docker-build,version-bump"
+            ;;
+        enterprise)
+            WORKFLOWS="ci-cd,security-management,documentation,teams-notifications,docker-hub,release-management,repository-cleanup,pr-automation,issue-triage"
+            ACTIONS="teams-notification,security-generate,readme-generate,docker-build,version-bump,pr-labeler,issue-manager"
             ;;
         security-focused)
             WORKFLOWS="security-management,teams-notifications"
@@ -314,22 +319,54 @@ EOF
     fi
     
     # Copy language-specific configs based on detected project type or user selection
-    # This could be enhanced to auto-detect project type
     if [[ "$PROJECT_TYPE" == "nodejs" ]]; then
-        mkdir -p "$config_base/nodejs-build"
-        cp ".github/config/nodejs-build/default.yml" "$config_base/nodejs-build/" 2>/dev/null || {
-            create_nodejs_default_config "$config_base/nodejs-build/default.yml"
-        }
+        copy_directory_configs "$config_base" "nodejs-build"
     elif [[ "$PROJECT_TYPE" == "dotnet" ]]; then
-        mkdir -p "$config_base/dotnet-build"
-        cp ".github/config/dotnet-build/default.yml" "$config_base/dotnet-build/" 2>/dev/null || {
-            create_dotnet_default_config "$config_base/dotnet-build/default.yml"
-        }
+        copy_directory_configs "$config_base" "dotnet-build"
+        copy_directory_configs "$config_base" "dotnet-desktop-build"
     elif [[ "$PROJECT_TYPE" == "python" ]]; then
-        mkdir -p "$config_base/python-build"
-        cp ".github/config/python-build/default.yml" "$config_base/python-build/" 2>/dev/null || {
-            create_python_default_config "$config_base/python-build/default.yml"
+        copy_directory_configs "$config_base" "python-build"
+    elif [[ "$PROJECT_TYPE" == "php" ]]; then
+        copy_directory_configs "$config_base" "php-build"
+    fi
+    
+    # Copy additional configs based on workflows and features
+    if [[ "$WORKFLOWS" == *"release"* ]] || [[ "$ACTIONS" == *"release"* ]]; then
+        copy_directory_configs "$config_base" "release"
+    fi
+    
+    if [[ "$WORKFLOWS" == *"pr"* ]] || [[ "$WORKFLOWS" == *"pull"* ]]; then
+        copy_directory_configs "$config_base" "pr-labeler"
+    fi
+    
+    if [[ "$WORKFLOWS" == *"issue"* ]] || [[ "$WORKFLOWS" == *"triage"* ]]; then
+        copy_directory_configs "$config_base" "issues"
+    fi
+    
+    if [[ "$WORKFLOWS" == *"cleanup"* ]] || [[ "$WORKFLOWS" == *"maintenance"* ]]; then
+        copy_directory_configs "$config_base" "repository-cleanup"
+    fi
+    
+    # Copy general configs
+    copy_directory_configs "$config_base" "security"
+    copy_directory_configs "$config_base" "license"
+}
+
+# Helper function to copy entire config directories
+copy_directory_configs() {
+    local target_base="$1"
+    local config_dir="$2"
+    local source_dir=".github/config/$config_dir"
+    local target_dir="$target_base/$config_dir"
+    
+    if [[ -d "$source_dir" ]]; then
+        log_info "  Copying $config_dir configs..."
+        mkdir -p "$target_dir"
+        cp -r "$source_dir"/* "$target_dir/" 2>/dev/null || {
+            log_warning "Could not copy all files from $config_dir"
         }
+    else
+        log_warning "Source directory $source_dir not found"
     fi
 }
 

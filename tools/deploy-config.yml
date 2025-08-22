@@ -60,6 +60,36 @@ profiles:
     variables_recommended:
       - "TEAMS_NOTIFICATION_LEVEL"
 
+  # Enterprise profile - Complete with advanced features
+  enterprise:
+    description: "Enterprise-grade workflows with full feature set"
+    workflows:
+      - "ci-cd"
+      - "security-management"
+      - "documentation"
+      - "teams-notifications"
+      - "docker-hub"
+      - "release-management"
+      - "repository-cleanup"
+      - "pr-automation"
+      - "issue-triage"
+    actions:
+      - "teams-notification"
+      - "security-generate"
+      - "readme-generate"
+      - "docker-build"
+      - "version-bump"
+      - "pr-labeler"
+      - "issue-manager"
+    secrets_required:
+      - "TEAMS_WEBHOOK_URL"
+      - "DOCKER_PASSWORD"
+      - "GITGUARDIAN_API_KEY"
+    variables_recommended:
+      - "TEAMS_NOTIFICATION_LEVEL"
+      - "TEAMS_MENTION_ON_FAILURE"
+      - "TEAMS_MENTION_ON_PR_REVIEW"
+
   # Documentation only profile
   docs-only:
     description: "Documentation automation workflows only"
