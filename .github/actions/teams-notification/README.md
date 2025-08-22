@@ -192,9 +192,21 @@ mentions:
     config-file: 'failure'
 ```
 
-### Rich Notification with Custom Facts
+### Rich Notification with Custom Facts and Workflow Logs
 
 ```yaml
+- name: 📊 Capture Deployment Logs
+  id: deploy-logs
+  run: |
+    echo "logs<<EOF" >> $GITHUB_OUTPUT
+    echo "🚀 Deployment started: $(date)" >> $GITHUB_OUTPUT
+    echo "📦 Version: ${{ github.ref_name }}" >> $GITHUB_OUTPUT
+    echo "🎯 Environment: Production" >> $GITHUB_OUTPUT
+    echo "⏱️ Duration: 12m 34s" >> $GITHUB_OUTPUT
+    echo "✅ Health Check: Passed" >> $GITHUB_OUTPUT
+    echo "🔄 Status: Deployment completed successfully" >> $GITHUB_OUTPUT
+    echo "EOF" >> $GITHUB_OUTPUT
+
 - name: 🚀 Deployment Notification
   uses: bauer-group/automation-templates/.github/actions/teams-notification@main
   with:
@@ -220,6 +232,9 @@ mentions:
     theme-color: '20c997'
     mention-users: 'stakeholders,product-team'
     config-file: 'success'
+    show-logs: 'true'
+    logs-title: 'Deployment Log'
+    workflow-logs: ${{ steps.deploy-logs.outputs.logs }}
 ```
 
 ### Issue Notification with Priority Handling

@@ -91,6 +91,17 @@ inputs:
     description: 'Request timeout in seconds'
     required: false
     default: '30'
+  workflow-logs:
+    description: 'Workflow logs or output to include'
+    required: false
+  show-logs:
+    description: 'Show workflow logs section'
+    required: false
+    default: 'false'
+  logs-title:
+    description: 'Title for logs section'
+    required: false
+    default: 'Workflow Output'
 
 outputs:
   status:
@@ -212,9 +223,13 @@ runs:
         SHORT_SHA=$(echo "${{ inputs.sha }}" | head -c 8)
         echo "short-sha=$SHORT_SHA" >> $GITHUB_OUTPUT
         
-        # Current timestamp
+        # Current timestamp in ISO 8601 format for Teams locale support
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
         echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+        
+        # Formatted timestamp for display (Teams will localize this automatically)
+        DISPLAY_TIMESTAMP="{{DATE($TIMESTAMP, SHORT)}} {{TIME($TIMESTAMP, SHORT)}}"
+        echo "display-timestamp=$DISPLAY_TIMESTAMP" >> $GITHUB_OUTPUT
 
     - name: 🎨 Generate Adaptive Card
       id: card
@@ -278,7 +293,7 @@ runs:
                               },
                               {
                                 "type": "TextBlock",
-                                "text": "👤 ${{ inputs.actor }} • 🌿 ${{ steps.event-data.outputs.ref-name }} • 📅 ${{ steps.event-data.outputs.timestamp }}",
+                                "text": "👤 ${{ inputs.actor }} • 🌿 ${{ steps.event-data.outputs.ref-name }} • 📅 ${{ steps.event-data.outputs.display-timestamp }}",
                                 "size": "Small",
                                 "color": "Default",
                                 "wrap": true,
@@ -364,6 +379,33 @@ runs:
           fi
           
           cat >> "$CARD_FILE" << 'EOF'
+                    ]
+                  },
+        EOF
+        fi
+        
+        # Add workflow logs section if enabled
+        if [[ "${{ inputs.show-logs }}" == "true" ]] && [[ -n "${{ inputs.workflow-logs }}" ]]; then
+          cat >> "$CARD_FILE" << 'EOF'
+                  {
+                    "type": "Container",
+                    "style": "default",
+                    "items": [
+                      {
+                        "type": "TextBlock",
+                        "text": "📋 **${{ inputs.logs-title }}**",
+                        "weight": "Bolder",
+                        "size": "Medium",
+                        "spacing": "Medium"
+                      },
+                      {
+                        "type": "TextBlock",
+                        "text": "```\n${{ inputs.workflow-logs }}\n```",
+                        "wrap": true,
+                        "fontType": "Monospace",
+                        "size": "Small",
+                        "spacing": "Small"
+                      }
                     ]
                   },
         EOF
