@@ -1,0 +1,255 @@
+# 🚀 Automation Templates Deployment Configuration
+# Configure deployment profiles and settings for reusable automations
+
+# Deployment Profiles
+profiles:
+  # Basic profile - Essential workflows for most repositories
+  basic:
+    description: "Core workflows for CI/CD, security, and documentation"
+    workflows:
+      - "ci-cd"
+      - "security-management"
+      - "documentation"
+      - "teams-notifications"
+    actions:
+      - "teams-notification"
+      - "security-generate"
+      - "readme-generate"
+    secrets_required:
+      - "TEAMS_WEBHOOK_URL"
+    variables_recommended:
+      - "TEAMS_NOTIFICATION_LEVEL"
+
+  # Complete profile - All available automations
+  complete:
+    description: "All available automation workflows and actions"
+    workflows:
+      - "ci-cd"
+      - "security-management"
+      - "documentation"
+      - "teams-notifications"
+      - "docker-hub"
+      - "release-management"
+    actions:
+      - "teams-notification"
+      - "security-generate"
+      - "readme-generate"
+      - "docker-build"
+      - "version-bump"
+    secrets_required:
+      - "TEAMS_WEBHOOK_URL"
+      - "DOCKER_PASSWORD"
+      - "GITGUARDIAN_API_KEY"
+    variables_recommended:
+      - "TEAMS_NOTIFICATION_LEVEL"
+      - "TEAMS_MENTION_ON_FAILURE"
+      - "TEAMS_MENTION_ON_PR_REVIEW"
+
+  # Security-focused profile - Security and compliance only
+  security-focused:
+    description: "Security management and notification workflows"
+    workflows:
+      - "security-management"
+      - "teams-notifications"
+    actions:
+      - "security-generate"
+      - "teams-notification"
+    secrets_required:
+      - "TEAMS_WEBHOOK_URL"
+      - "GITGUARDIAN_API_KEY"
+    variables_recommended:
+      - "TEAMS_NOTIFICATION_LEVEL"
+
+  # Documentation only profile
+  docs-only:
+    description: "Documentation automation workflows only"
+    workflows:
+      - "documentation"
+    actions:
+      - "readme-generate"
+      - "security-generate"
+    secrets_required: []
+    variables_recommended: []
+
+# Available Workflows
+workflows:
+  ci-cd:
+    name: "CI/CD Pipeline"
+    description: "Continuous integration and deployment workflow"
+    file: "ci-cd.yml"
+    secrets_used:
+      - "TEAMS_WEBHOOK_URL"
+      - "DOCKER_PASSWORD"
+    triggers:
+      - "push"
+      - "pull_request"
+      - "workflow_dispatch"
+
+  security-management:
+    name: "Security Policy Management"
+    description: "Automated security policy generation and validation"
+    file: "security-management.yml"
+    secrets_used:
+      - "GITGUARDIAN_API_KEY"
+    triggers:
+      - "push"
+      - "pull_request"
+      - "workflow_dispatch"
+      - "workflow_call"
+
+  documentation:
+    name: "Documentation Management"
+    description: "Automated README and documentation updates"
+    file: "documentation.yml"
+    secrets_used: []
+    triggers:
+      - "push"
+      - "workflow_dispatch"
+
+  teams-notifications:
+    name: "Teams Notifications"
+    description: "Microsoft Teams notifications for repository events"
+    file: "teams-notifications.yml"
+    secrets_used:
+      - "TEAMS_WEBHOOK_URL"
+    triggers:
+      - "workflow_run"
+      - "issues"
+      - "pull_request"
+      - "push"
+      - "release"
+      - "workflow_dispatch"
+
+  docker-hub:
+    name: "Docker Hub Integration"
+    description: "Docker image building and publishing"
+    file: "docker-hub.yml"
+    secrets_used:
+      - "DOCKER_PASSWORD"
+      - "TEAMS_WEBHOOK_URL"
+    triggers:
+      - "push"
+      - "workflow_dispatch"
+
+  release-management:
+    name: "Release Management"
+    description: "Automated release creation and management"
+    file: "release-management.yml"
+    secrets_used:
+      - "TEAMS_WEBHOOK_URL"
+    triggers:
+      - "push"
+      - "workflow_dispatch"
+
+# Available Actions
+actions:
+  teams-notification:
+    name: "Teams Notification"
+    description: "Send formatted notifications to Microsoft Teams"
+    path: ".github/actions/teams-notification"
+    inputs:
+      - "webhook-url"
+      - "event-type"
+      - "title"
+      - "summary"
+
+  security-generate:
+    name: "Security Policy Generator"
+    description: "Generate SECURITY.MD from template with version information"
+    path: ".github/actions/security-generate"
+    inputs:
+      - "template-path"
+      - "output-path"
+      - "force-update"
+      - "custom-version"
+
+  readme-generate:
+    name: "README Generator"
+    description: "Generate README.MD from template with repository information"
+    path: ".github/actions/readme-generate"
+    inputs:
+      - "template-path"
+      - "output-path"
+      - "force-update"
+
+  docker-build:
+    name: "Docker Build Action"
+    description: "Build and push Docker images with security scanning"
+    path: ".github/actions/docker-build"
+    inputs:
+      - "dockerfile-path"
+      - "image-name"
+      - "registry"
+
+  version-bump:
+    name: "Version Bump"
+    description: "Automated version bumping with semantic versioning"
+    path: ".github/actions/version-bump"
+    inputs:
+      - "version-type"
+      - "tag-prefix"
+
+# Deployment Settings
+deployment:
+  # Repository settings
+  template_repo: "bauer-group/automation-templates"
+  branch: "main"
+  
+  # File paths in target repository
+  workflows_path: ".github/workflows"
+  actions_path: ".github/actions"
+  config_path: ".github/config/automation-templates"
+  
+  # Generated files
+  setup_doc: "AUTOMATION-SETUP.md"
+  config_file: "config.yml"
+  
+  # Deployment options
+  force_overwrite: false
+  create_pr: true
+  auto_merge: false
+  
+  # Git settings for deployment commits
+  commit_author_name: "Automation Templates Bot"
+  commit_author_email: "automation@bauer-group.com"
+  commit_message_prefix: "feat: deploy automation templates"
+
+# Required Secrets Documentation
+secrets:
+  TEAMS_WEBHOOK_URL:
+    description: "Microsoft Teams webhook URL for notifications"
+    required_for:
+      - "teams-notifications"
+      - "ci-cd"
+      - "docker-hub"
+    setup_url: "https://docs.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook"
+
+  DOCKER_PASSWORD:
+    description: "Docker Hub password or access token"
+    required_for:
+      - "docker-hub"
+      - "ci-cd"
+    setup_url: "https://docs.docker.com/docker-hub/access-tokens/"
+
+  GITGUARDIAN_API_KEY:
+    description: "GitGuardian API key for secrets scanning"
+    required_for:
+      - "security-management"
+    setup_url: "https://dashboard.gitguardian.com/api/v1/docs"
+
+# Repository Variables Documentation
+variables:
+  TEAMS_NOTIFICATION_LEVEL:
+    description: "Notification level for Teams (all/errors-only)"
+    default: "errors-only"
+    values: ["all", "errors-only"]
+
+  TEAMS_MENTION_ON_FAILURE:
+    description: "Users to mention on workflow failures (comma-separated)"
+    default: ""
+    example: "@user1,@user2"
+
+  TEAMS_MENTION_ON_PR_REVIEW:
+    description: "Users to mention when PR is ready for review"
+    default: ""
+    example: "@reviewer1,@reviewer2"
