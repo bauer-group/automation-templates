@@ -1,0 +1,316 @@
+# 🔧 Development Repository Cleanup Configuration
+# Development-focused cleanup profile for development and staging environments
+
+profile:
+  name: "Development Cleanup"
+  description: "Development-focused cleanup profile optimized for development and staging environments"
+  risk_level: "medium"
+  version: "1.0.0"
+  recommended_for:
+    - "Development environments"
+    - "Staging repositories"
+    - "Feature development repositories"
+    - "CI/CD testing environments"
+    - "Experimental projects"
+  
+  # Profile characteristics
+  characteristics:
+    - "Optimized for development workflows"
+    - "Cleans up development artifacts"
+    - "Preserves main development branches"
+    - "Focuses on workflow runs and merged PRs"
+    - "Balances cleanup with development needs"
+
+# Cleanup operations configuration
+operations:
+  releases: false          # Keep releases for version tracking
+  tags: false             # Keep tags for development milestones
+  branches: true          # Clean up feature branches
+  pull_requests: true     # Clean up merged/closed PRs
+  workflow_runs: true     # Clean workflow runs actively
+  issues: false           # Keep issues for development tracking
+
+# Filtering and age-based configuration
+filters:
+  # Development-friendly age threshold - 3 months
+  max_age_days: 90
+  
+  # Protect main development branches
+  protected_branches:
+    - "main"
+    - "master"
+    - "develop" 
+    - "development"
+    - "dev"
+    - "staging"
+    - "stage"
+    - "test"
+    - "testing"
+    - "integration"
+    - "release/*"
+    - "hotfix/*"
+  
+  # Include development-specific patterns
+  include_patterns:
+    - "feature/.*"     # Feature branches
+    - "bugfix/.*"      # Bug fix branches  
+    - "experimental/.*" # Experimental branches
+    - "temp/.*"        # Temporary branches
+    - "wip/.*"         # Work in progress branches
+  
+  # Exclude important development items
+  exclude_patterns:
+    - ".*keep.*"
+    - ".*important.*"
+    - ".*demo.*"
+    - ".*presentation.*"
+    - ".*stable.*"
+    - ".*milestone.*"
+
+# Execution settings
+execution:
+  # Medium batch sizes for balanced performance
+  batch_size: 25
+  
+  # Standard delays
+  batch_delay: 3
+  
+  # Default to dry run
+  dry_run_default: true
+  
+  # No force delete in development mode
+  force_delete: false
+  
+  # Verbose logging for development transparency
+  verbose: true
+  
+  # Can skip confirmation for development environments
+  skip_confirmation: false
+
+# Safety and protection settings
+safety:
+  # Standard confirmation requirements
+  require_confirmation: true
+  
+  # Reasonable limits for development
+  max_items_per_operation: 200
+  
+  # Emergency threshold
+  emergency_stop_threshold: 1000
+  
+  # Development-focused safety checks
+  safety_checks:
+    - "verify_branch_protection"
+    - "check_active_development"
+    - "validate_development_patterns"
+    - "confirm_staging_environment"
+
+# PR-specific configuration
+pull_request_handling:
+  action: "comment-and-close"
+  
+  # Development-friendly closure comment
+  comment: |
+    🔧 **Development Cleanup Notice**
+    
+    This pull request is being closed as part of our development environment cleanup process.
+    
+    **Why was this closed?**
+    - This PR has been inactive for more than 3 months
+    - It appears to be merged or no longer needed
+    - This helps keep our development environment organized
+    
+    **To reopen this PR:**
+    - Simply reopen it if you're still working on it
+    - Add the `keep-open` label to prevent future cleanup
+    - Contact the development team if you have questions
+    
+    **Development Team:** This cleanup helps maintain a clean development environment while preserving all code and discussions.
+    
+    *This is an automated action by the BAUER GROUP Repository Cleanup system.*
+  
+  # Development age threshold
+  min_age_for_closure: 90  # 3 months
+  
+  # Only close merged or closed PRs
+  only_close_inactive: true
+
+# Branch-specific configuration
+branches:
+  # Focus on development branch patterns
+  cleanup_merged_branches: true
+  cleanup_stale_branches: true
+  
+  # Age thresholds for development
+  merged_branch_age_days: 14   # Clean merged branches quickly
+  stale_branch_age_days: 90    # Keep stale branches longer for development
+  
+  # Activity thresholds
+  min_commits_to_keep: 1       # Keep even single-commit branches briefly
+  
+  # Development branch patterns to clean
+  target_patterns:
+    - "feature/.*"
+    - "bugfix/.*"
+    - "fix/.*"
+    - "improvement/.*"
+    - "refactor/.*"
+    - "experiment/.*"
+    - "temp/.*"
+    - "wip/.*"
+    - "test/.*"
+  
+  # Always preserve certain patterns
+  preserve_patterns:
+    - "release/.*"
+    - "hotfix/.*"
+    - "support/.*"
+    - ".*demo.*"
+
+# Workflow run specific settings
+workflow_runs:
+  # Keep recent runs for development analysis
+  keep_successful_runs_days: 30
+  keep_failed_runs_days: 60
+  
+  # Keep protected branch runs longer
+  always_keep_protected_branches: true
+  
+  # Development-focused retention
+  extended_retention:
+    - conclusion: "success"
+      days: 30
+    - conclusion: "failure"
+      days: 60      # Keep failures longer for debugging
+    - conclusion: "cancelled"
+      days: 14
+  
+  # Keep runs from development branches
+  keep_development_branches: true
+  development_branches:
+    - "develop"
+    - "development"
+    - "staging"
+
+# Issue handling (disabled but configured)
+issue_handling:
+  enabled: false
+  action: "close"
+  min_age_for_closure: 180  # 6 months if enabled
+  
+  comment: |
+    🔧 **Development Cleanup Notice**
+    
+    This issue is being closed as part of development environment maintenance.
+    Please reopen if still relevant to current development efforts.
+
+# Development-specific features
+development_features:
+  # Clean up CI/CD artifacts
+  cleanup_ci_artifacts: true
+  
+  # Clean up test artifacts
+  cleanup_test_artifacts: true
+  
+  # Preserve development milestones
+  preserve_milestones: true
+  
+  # Keep recent development activity
+  preserve_recent_activity_days: 7
+
+# Reporting configuration
+reporting:
+  # Development-focused reports
+  detailed_reports: true
+  
+  # Include development metrics
+  include_development_metrics: true
+  
+  # Report format
+  format: "markdown"
+  
+  # Development statistics
+  development_stats: true
+  
+  # Branch cleanup statistics
+  branch_cleanup_stats: true
+
+# Emergency procedures
+emergency:
+  # Enable emergency procedures
+  enabled: true
+  
+  # Development team contact
+  contact: "development-team"
+  
+  # Development-focused emergency conditions
+  stop_conditions:
+    - "more_than_1000_items_per_operation"
+    - "active_development_detected"
+    - "recent_deployment_detected"
+    - "pending_release_detected"
+
+# Audit and compliance
+audit:
+  # Development audit logging
+  enabled: true
+  
+  # Log development decisions
+  log_decisions: true
+  
+  # Include development impact
+  include_development_impact: true
+  
+  # Development compliance
+  compliance:
+    - "development_workflow"
+    - "ci_cd_pipeline"
+    - "testing_requirements"
+
+# Integration settings
+integration:
+  # Development notifications
+  notifications:
+    on_start: true
+    on_completion: true
+    on_errors: true
+    on_development_impact: true
+    
+  # Development approval workflow
+  approval:
+    required: false
+    approvers: []
+    
+  # No rollback needed for development cleanup
+  rollback:
+    enabled: false
+    retention_days: 0
+
+# CI/CD specific configuration
+cicd:
+  # Clean up old CI/CD runs
+  cleanup_old_runs: true
+  
+  # Preserve recent builds
+  preserve_recent_builds_days: 7
+  
+  # Keep successful deployments longer
+  deployment_retention_days: 30
+  
+  # Test result retention
+  test_result_retention_days: 30
+
+# Development environment settings
+environment:
+  # Environment type
+  type: "development"
+  
+  # Allow more aggressive cleanup in development
+  allow_aggressive_pr_cleanup: true
+  allow_aggressive_branch_cleanup: true
+  
+  # Preserve development tools
+  preserve_development_tools: true
+  
+  # Keep debugging information
+  keep_debug_info_days: 14

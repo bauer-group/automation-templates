@@ -1,0 +1,219 @@
+# 🛡️ Conservative Repository Cleanup Configuration
+# Safe, minimal-risk cleanup profile for production repositories and active projects
+
+profile:
+  name: "Conservative Cleanup"
+  description: "Minimal risk cleanup profile suitable for production repositories and active development projects"
+  risk_level: "low"
+  version: "1.0.0"
+  recommended_for: 
+    - "Production repositories"
+    - "Active development projects"
+    - "Repositories with valuable history"
+    - "Team collaboration environments"
+  
+  # Profile characteristics
+  characteristics:
+    - "Preserves most historical data"
+    - "Long age thresholds"
+    - "Extensive branch protection"
+    - "Workflow runs cleanup only"
+    - "Safe for automated execution"
+
+# Cleanup operations configuration
+operations:
+  releases: false           # Keep all releases - they contain valuable artifacts
+  tags: false              # Keep all tags - important for version tracking
+  branches: false          # Keep branches - manual review preferred
+  pull_requests: false     # Keep PRs - valuable for code review history
+  workflow_runs: true      # Clean old workflow runs - safe storage savings
+  issues: false            # Keep issues - important for project tracking
+
+# Filtering and age-based configuration
+filters:
+  # Only cleanup items older than 2 years
+  max_age_days: 730
+  
+  # Comprehensive branch protection
+  protected_branches:
+    - "main"
+    - "master"  
+    - "develop"
+    - "development"
+    - "staging"
+    - "stage"
+    - "production"
+    - "prod"
+    - "release"
+    - "release/*"
+    - "hotfix/*"
+    - "support/*"
+  
+  # Include only specific patterns for workflow runs
+  include_patterns:
+    - ".*"  # Include all by default, then exclude via exclude patterns
+  
+  # Exclude important patterns
+  exclude_patterns:
+    - ".*keep.*"
+    - ".*important.*"
+    - ".*preserve.*"
+    - ".*permanent.*"
+    - ".*archive.*"
+    - ".*milestone.*"
+    - ".*release.*"
+    - ".*stable.*"
+
+# Execution settings
+execution:
+  # Small batch sizes for careful processing
+  batch_size: 10
+  
+  # Longer delays to avoid rate limiting
+  batch_delay: 5
+  
+  # Default to dry run for safety
+  dry_run_default: true
+  
+  # Never force delete in conservative mode
+  force_delete: false
+  
+  # Enable verbose logging for transparency
+  verbose: true
+  
+  # Always require confirmation
+  skip_confirmation: false
+
+# Safety and protection settings
+safety:
+  # Always require confirmation for non-dry runs
+  require_confirmation: true
+  
+  # Limit number of items per operation
+  max_items_per_operation: 100
+  
+  # Emergency stop if too many items would be affected
+  emergency_stop_threshold: 500
+  
+  # Additional safety checks
+  safety_checks:
+    - "verify_branch_protection"
+    - "check_recent_activity"
+    - "validate_patterns"
+    - "confirm_age_thresholds"
+
+# PR-specific configuration
+pull_request_handling:
+  action: "close"  # Just close, don't delete
+  
+  # Polite closure comment
+  comment: |
+    🛡️ **Conservative Cleanup Notice**
+    
+    This pull request is being closed as part of our conservative repository maintenance process. 
+    
+    **Why was this closed?**
+    - This PR is older than 2 years and appears inactive
+    - Our conservative cleanup policy preserves all code and discussion
+    - No data has been lost - the PR can be reopened at any time
+    
+    **To reopen this PR:**
+    - Simply reopen it if it's still relevant
+    - Add the `keep-open` label to prevent future cleanup
+    - Contact the repository maintainers if you have questions
+    
+    *This is an automated action by the BAUER GROUP Repository Cleanup system.*
+  
+  # Only close very old, inactive PRs
+  min_age_for_closure: 730  # 2 years
+
+# Issue-specific configuration (disabled in conservative mode)
+issue_handling:
+  enabled: false
+  action: "close"
+  min_age_for_closure: 1095  # 3 years
+  comment: "This issue is being closed due to inactivity. Please reopen if still relevant."
+
+# Workflow run specific settings
+workflow_runs:
+  # Keep successful runs longer
+  keep_successful_runs_days: 180
+  
+  # Keep failed runs for analysis
+  keep_failed_runs_days: 365
+  
+  # Always keep runs from protected branches
+  always_keep_protected_branches: true
+  
+  # Keep runs with certain conclusions longer
+  extended_retention:
+    - conclusion: "success"
+      days: 180
+    - conclusion: "failure" 
+      days: 365
+    - conclusion: "cancelled"
+      days: 90
+
+# Reporting configuration
+reporting:
+  # Generate detailed reports
+  detailed_reports: true
+  
+  # Include safety analysis
+  include_safety_analysis: true
+  
+  # Report format
+  format: "markdown"
+  
+  # Include preservation statistics
+  preservation_stats: true
+
+# Emergency procedures
+emergency:
+  # Conservative mode has strict emergency procedures
+  enabled: true
+  
+  # Emergency contact
+  contact: "repository-maintainers"
+  
+  # Emergency stop conditions
+  stop_conditions:
+    - "more_than_100_items_per_operation"
+    - "protected_branch_deletion_attempt"
+    - "recent_activity_detected"
+    - "pattern_mismatch_exceeds_10_percent"
+
+# Audit and compliance
+audit:
+  # Full audit logging in conservative mode
+  enabled: true
+  
+  # Log all decisions
+  log_decisions: true
+  
+  # Include reasoning for each action
+  include_reasoning: true
+  
+  # Compliance requirements
+  compliance:
+    - "data_retention_policy"
+    - "change_management"
+    - "approval_workflow"
+
+# Integration settings
+integration:
+  # Notification settings
+  notifications:
+    on_start: true
+    on_completion: true 
+    on_errors: true
+    
+  # Approval workflow
+  approval:
+    required: false  # Optional for conservative mode
+    approvers: []
+    
+  # Rollback capability
+  rollback:
+    enabled: false  # No rollback needed for conservative cleanup
+    retention_days: 0

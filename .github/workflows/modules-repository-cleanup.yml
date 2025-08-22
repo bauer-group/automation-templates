@@ -1,0 +1,463 @@
+name: 🧹 Repository Cleanup Module
+
+on:
+  workflow_call:
+    inputs:
+      # Repository Configuration
+      target-repository:
+        description: 'Target repository for cleanup (defaults to current repository)'
+        type: string
+        required: false
+        default: ''
+      
+      # Cleanup Operations Configuration
+      cleanup-releases:
+        description: 'Delete repository releases'
+        type: boolean
+        required: false
+        default: false
+      
+      cleanup-tags:
+        description: 'Delete repository tags'
+        type: boolean
+        required: false
+        default: false
+      
+      cleanup-branches:
+        description: 'Delete branches (except protected ones)'
+        type: boolean
+        required: false
+        default: false
+      
+      cleanup-pull-requests:
+        description: 'Close open pull requests'
+        type: boolean
+        required: false
+        default: false
+      
+      cleanup-workflow-runs:
+        description: 'Delete workflow run history'
+        type: boolean
+        required: false
+        default: false
+      
+      cleanup-issues:
+        description: 'Close open issues'
+        type: boolean
+        required: false
+        default: false
+      
+      # Configuration Profile
+      config-profile:
+        description: 'Configuration profile to use (aggressive, conservative, custom)'
+        type: string
+        required: false
+        default: 'conservative'
+      
+      # Age-based Filtering
+      max-age-days:
+        description: 'Only cleanup items older than specified days (0 = no age limit)'
+        type: number
+        required: false
+        default: 365
+      
+      # Branch Protection
+      protected-branches:
+        description: 'Comma-separated list of branches to protect from deletion'
+        type: string
+        required: false
+        default: 'main,master,develop,staging,production'
+      
+      # PR Handling Configuration
+      pr-action:
+        description: 'Action for pull requests (close, comment-and-close)'
+        type: string
+        required: false
+        default: 'comment-and-close'
+      
+      pr-comment:
+        description: 'Comment to add before closing PRs'
+        type: string
+        required: false
+        default: '🧹 This pull request is being closed as part of automated repository cleanup. If this PR should remain open, please reopen it and add the `keep-open` label.'
+      
+      # Execution Configuration
+      dry-run:
+        description: 'Perform dry run without making actual changes'
+        type: boolean
+        required: false
+        default: true
+      
+      # Advanced Filtering
+      include-patterns:
+        description: 'JSON array of regex patterns to include in cleanup'
+        type: string
+        required: false
+        default: '[]'
+      
+      exclude-patterns:
+        description: 'JSON array of regex patterns to exclude from cleanup'
+        type: string
+        required: false
+        default: '[".*keep.*", ".*important.*", ".*preserve.*"]'
+      
+      # Performance Configuration
+      batch-size:
+        description: 'Number of items to process in each batch'
+        type: number
+        required: false
+        default: 25
+      
+      batch-delay:
+        description: 'Delay in seconds between batches'
+        type: number
+        required: false
+        default: 3
+      
+      # Security Configuration
+      force-delete:
+        description: 'Force delete protected items (use with extreme caution)'
+        type: boolean
+        required: false
+        default: false
+      
+      skip-confirmation:
+        description: 'Skip interactive confirmation prompts'
+        type: boolean
+        required: false
+        default: true
+      
+      # Reporting Configuration
+      generate-report:
+        description: 'Generate detailed cleanup report'
+        type: boolean
+        required: false
+        default: true
+      
+      verbose:
+        description: 'Enable verbose logging'
+        type: boolean
+        required: false
+        default: false
+
+    outputs:
+      cleanup-success:
+        description: 'Whether cleanup completed successfully'
+        value: ${{ jobs.repository-cleanup.outputs.cleanup-success }}
+      
+      items-processed:
+        description: 'Total number of items processed'
+        value: ${{ jobs.repository-cleanup.outputs.items-processed }}
+      
+      items-deleted:
+        description: 'Total number of items deleted'
+        value: ${{ jobs.repository-cleanup.outputs.items-deleted }}
+      
+      items-skipped:
+        description: 'Total number of items skipped'
+        value: ${{ jobs.repository-cleanup.outputs.items-skipped }}
+      
+      errors-count:
+        description: 'Number of errors encountered'
+        value: ${{ jobs.repository-cleanup.outputs.errors-count }}
+      
+      execution-time:
+        description: 'Total execution time in seconds'
+        value: ${{ jobs.repository-cleanup.outputs.execution-time }}
+      
+      cleanup-summary:
+        description: 'Detailed cleanup summary (JSON format)'
+        value: ${{ jobs.repository-cleanup.outputs.cleanup-summary }}
+
+jobs:
+  # Pre-flight validation and configuration loading
+  pre-flight-check:
+    name: 🔍 Pre-flight Validation
+    runs-on: ubuntu-latest
+    
+    outputs:
+      config-validated: ${{ steps.validation.outputs.config-validated }}
+      effective-config: ${{ steps.config-loader.outputs.effective-config }}
+    
+    steps:
+      - name: 🔄 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Validate Configuration
+        id: validation
+        run: |
+          echo "🔍 Validating cleanup configuration..."
+          
+          # Validate target repository format
+          TARGET_REPO="${{ inputs.target-repository }}"
+          if [[ -n "$TARGET_REPO" ]]; then
+            if [[ ! "$TARGET_REPO" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
+              echo "❌ Invalid target repository format: $TARGET_REPO"
+              echo "Expected format: owner/repo"
+              exit 1
+            fi
+          fi
+          
+          # Validate numerical inputs
+          MAX_AGE="${{ inputs.max-age-days }}"
+          BATCH_SIZE="${{ inputs.batch-size }}"
+          BATCH_DELAY="${{ inputs.batch-delay }}"
+          
+          if [[ ! "$MAX_AGE" =~ ^[0-9]+$ ]] || [ "$MAX_AGE" -lt 0 ]; then
+            echo "❌ Invalid max-age-days: $MAX_AGE"
+            exit 1
+          fi
+          
+          if [[ ! "$BATCH_SIZE" =~ ^[1-9][0-9]*$ ]] || [ "$BATCH_SIZE" -gt 100 ] || [ "$BATCH_SIZE" -lt 1 ]; then
+            echo "❌ Invalid batch-size: $BATCH_SIZE"
+            echo "Expected integer between 1 and 100"
+            exit 1
+          fi
+          
+          if [[ ! "$BATCH_DELAY" =~ ^[0-9]+$ ]] || [ "$BATCH_DELAY" -gt 60 ]; then
+            echo "❌ Invalid batch-delay: $BATCH_DELAY"
+            echo "Expected integer between 0 and 60"
+            exit 1
+          fi
+          
+          # Validate JSON patterns
+          INCLUDE_PATTERNS='${{ inputs.include-patterns }}'
+          EXCLUDE_PATTERNS='${{ inputs.exclude-patterns }}'
+          
+          echo "$INCLUDE_PATTERNS" | python3 -m json.tool > /dev/null || {
+            echo "❌ Invalid include-patterns JSON format"
+            exit 1
+          }
+          
+          echo "$EXCLUDE_PATTERNS" | python3 -m json.tool > /dev/null || {
+            echo "❌ Invalid exclude-patterns JSON format"
+            exit 1
+          }
+          
+          # Check if any cleanup operation is enabled
+          CLEANUP_ENABLED=false
+          for operation in cleanup-releases cleanup-tags cleanup-branches cleanup-pull-requests cleanup-workflow-runs cleanup-issues; do
+            if [[ "${{ inputs[operation] }}" == "true" ]]; then
+              CLEANUP_ENABLED=true
+              break
+            fi
+          done
+          
+          if [[ "$CLEANUP_ENABLED" != "true" ]]; then
+            echo "⚠️ No cleanup operations enabled"
+            echo "At least one cleanup operation must be enabled"
+            exit 1
+          fi
+          
+          # Validate configuration profile
+          CONFIG_PROFILE="${{ inputs.config-profile }}"
+          case "$CONFIG_PROFILE" in
+            aggressive|conservative|custom)
+              echo "✅ Valid configuration profile: $CONFIG_PROFILE"
+              ;;
+            *)
+              echo "❌ Invalid configuration profile: $CONFIG_PROFILE"
+              echo "Expected: aggressive, conservative, or custom"
+              exit 1
+              ;;
+          esac
+          
+          echo "✅ Configuration validation completed"
+          echo "config-validated=true" >> $GITHUB_OUTPUT
+      
+      - name: ⚙️ Load Configuration Profile
+        id: config-loader
+        run: |
+          echo "⚙️ Loading configuration profile..."
+          
+          CONFIG_PROFILE="${{ inputs.config-profile }}"
+          
+          # Load configuration based on profile
+          case "$CONFIG_PROFILE" in
+            aggressive)
+              echo "🔥 Loading aggressive cleanup profile..."
+              CONFIG_FILE=".github/config/repository-cleanup/aggressive.yml"
+              ;;
+            conservative)
+              echo "🛡️ Loading conservative cleanup profile..."
+              CONFIG_FILE=".github/config/repository-cleanup/conservative.yml"
+              ;;
+            custom)
+              echo "🔧 Using custom configuration..."
+              CONFIG_FILE=".github/config/repository-cleanup/custom.yml"
+              ;;
+          esac
+          
+          # Create effective configuration JSON
+          cat << EOF > effective_config.json
+          {
+            "profile": "$CONFIG_PROFILE",
+            "config_file": "$CONFIG_FILE",
+            "operations": {
+              "releases": ${{ inputs.cleanup-releases }},
+              "tags": ${{ inputs.cleanup-tags }},
+              "branches": ${{ inputs.cleanup-branches }},
+              "pull_requests": ${{ inputs.cleanup-pull-requests }},
+              "workflow_runs": ${{ inputs.cleanup-workflow-runs }},
+              "issues": ${{ inputs.cleanup-issues }}
+            },
+            "filters": {
+              "max_age_days": ${{ inputs.max-age-days }},
+              "protected_branches": "${{ inputs.protected-branches }}",
+              "include_patterns": ${{ inputs.include-patterns }},
+              "exclude_patterns": ${{ inputs.exclude-patterns }}
+            },
+            "execution": {
+              "dry_run": ${{ inputs.dry-run }},
+              "batch_size": ${{ inputs.batch-size }},
+              "batch_delay": ${{ inputs.batch-delay }},
+              "force_delete": ${{ inputs.force-delete }},
+              "verbose": ${{ inputs.verbose }}
+            }
+          }
+          EOF
+          
+          EFFECTIVE_CONFIG=$(cat effective_config.json | jq -c .)
+          echo "effective-config=$EFFECTIVE_CONFIG" >> $GITHUB_OUTPUT
+          
+          echo "✅ Configuration loaded successfully"
+
+  # Main cleanup execution
+  repository-cleanup:
+    name: 🧹 Execute Repository Cleanup
+    needs: pre-flight-check
+    runs-on: ubuntu-latest
+    
+    outputs:
+      cleanup-success: ${{ steps.cleanup-action.conclusion == 'success' }}
+      items-processed: ${{ steps.cleanup-action.outputs.items-processed }}
+      items-deleted: ${{ steps.cleanup-action.outputs.items-deleted }}
+      items-skipped: ${{ steps.cleanup-action.outputs.items-skipped }}
+      errors-count: ${{ steps.cleanup-action.outputs.errors-count }}
+      execution-time: ${{ steps.cleanup-action.outputs.execution-time }}
+      cleanup-summary: ${{ steps.cleanup-action.outputs.cleanup-summary }}
+    
+    steps:
+      - name: 🔄 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🧹 Execute Repository Cleanup
+        id: cleanup-action
+        uses: ./.github/actions/repository-cleanup
+        with:
+          repository: ${{ inputs.target-repository || github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cleanup-releases: ${{ inputs.cleanup-releases }}
+          cleanup-tags: ${{ inputs.cleanup-tags }}
+          cleanup-branches: ${{ inputs.cleanup-branches }}
+          cleanup-pull-requests: ${{ inputs.cleanup-pull-requests }}
+          cleanup-workflow-runs: ${{ inputs.cleanup-workflow-runs }}
+          cleanup-issues: ${{ inputs.cleanup-issues }}
+          max-age-days: ${{ inputs.max-age-days }}
+          protected-branches: ${{ inputs.protected-branches }}
+          pr-action: ${{ inputs.pr-action }}
+          pr-comment: ${{ inputs.pr-comment }}
+          dry-run: ${{ inputs.dry-run }}
+          batch-size: ${{ inputs.batch-size }}
+          batch-delay: ${{ inputs.batch-delay }}
+          force-delete: ${{ inputs.force-delete }}
+          skip-confirmation: ${{ inputs.skip-confirmation }}
+          include-patterns: ${{ inputs.include-patterns }}
+          exclude-patterns: ${{ inputs.exclude-patterns }}
+          verbose: ${{ inputs.verbose }}
+          log-format: 'text'
+
+  # Post-cleanup reporting and notifications
+  post-cleanup-report:
+    name: 📊 Post-Cleanup Reporting
+    if: always() && inputs.generate-report
+    needs: [pre-flight-check, repository-cleanup]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📊 Generate Comprehensive Report
+        run: |
+          echo "📊 Generating comprehensive cleanup report..."
+          
+          # Create detailed report
+          cat << EOF > cleanup_report.md
+          # 🧹 Repository Cleanup Report
+          
+          ## 📋 Execution Summary
+          
+          - **Repository:** ${{ inputs.target-repository || github.repository }}
+          - **Execution Mode:** ${{ inputs.dry-run == true && '🔍 Dry Run' || '🔧 Live Execution' }}
+          - **Configuration Profile:** ${{ inputs.config-profile }}
+          - **Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          - **Workflow Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          ## 🎯 Operations Performed
+          
+          | Operation | Enabled | Items Processed | Items Deleted | Items Skipped | Errors |
+          |-----------|---------|-----------------|---------------|---------------|---------|
+          | 🚀 **Releases** | ${{ inputs.cleanup-releases && '✅' || '❌' }} | - | - | - | - |
+          | 🏷️ **Tags** | ${{ inputs.cleanup-tags && '✅' || '❌' }} | - | - | - | - |
+          | 🌿 **Branches** | ${{ inputs.cleanup-branches && '✅' || '❌' }} | - | - | - | - |
+          | 🔀 **Pull Requests** | ${{ inputs.cleanup-pull-requests && '✅' || '❌' }} | - | - | - | - |
+          | ⚙️ **Workflow Runs** | ${{ inputs.cleanup-workflow-runs && '✅' || '❌' }} | - | - | - | - |
+          | 🐛 **Issues** | ${{ inputs.cleanup-issues && '✅' || '❌' }} | - | - | - | - |
+          
+          ## 📈 Statistics
+          
+          - **Total Items Processed:** ${{ needs.repository-cleanup.outputs.items-processed || '0' }}
+          - **Total Items Deleted:** ${{ needs.repository-cleanup.outputs.items-deleted || '0' }}
+          - **Total Items Skipped:** ${{ needs.repository-cleanup.outputs.items-skipped || '0' }}
+          - **Total Errors:** ${{ needs.repository-cleanup.outputs.errors-count || '0' }}
+          - **Execution Time:** ${{ needs.repository-cleanup.outputs.execution-time || '0' }} seconds
+          
+          ## ⚙️ Configuration Used
+          
+          ```json
+          ${{ needs.pre-flight-check.outputs.effective-config }}
+          ```
+          
+          ## 🔍 Filters Applied
+          
+          - **Age Filter:** ${{ inputs.max-age-days > 0 && format('Items older than {0} days', inputs.max-age-days) || 'No age limit' }}
+          - **Protected Branches:** \`${{ inputs.protected-branches }}\`
+          - **Include Patterns:** \`${{ inputs.include-patterns }}\`
+          - **Exclude Patterns:** \`${{ inputs.exclude-patterns }}\`
+          
+          ## 🎯 Status
+          
+          ${{ needs.repository-cleanup.outputs.cleanup-success == 'true' && '✅ **Cleanup completed successfully**' || '❌ **Cleanup completed with errors**' }}
+          
+          ${{ inputs.dry-run == true && '> ⚠️ **Note:** This was a dry run execution. No actual changes were made to the repository.' || '> 🔧 **Note:** This was a live execution. Changes have been applied to the repository.' }}
+          
+          ---
+          
+          *Generated by **BAUER GROUP** Repository Cleanup Module v1.0*
+          EOF
+          
+          # Add to job summary
+          cat cleanup_report.md >> $GITHUB_STEP_SUMMARY
+          
+          # Create artifact
+          echo "📄 Creating cleanup report artifact..."
+          mkdir -p reports
+          cp cleanup_report.md "reports/cleanup-report-$(date +%Y%m%d-%H%M%S).md"
+      
+      - name: 📤 Upload Cleanup Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository-cleanup-report-${{ github.run_id }}
+          path: reports/
+          retention-days: 30
+      
+      - name: 🔔 Notify on Failures
+        if: needs.repository-cleanup.outputs.cleanup-success != 'true'
+        run: |
+          echo "🚨 Repository cleanup completed with errors!"
+          echo "Please check the logs and report for details."
+          
+          if [[ "${{ inputs.dry-run }}" != "true" ]]; then
+            echo "⚠️ Some items may not have been cleaned up due to errors."
+            echo "Consider running the cleanup again with verbose logging enabled."
+          fi
+          
+          exit 1

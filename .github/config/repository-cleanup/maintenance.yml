@@ -1,0 +1,333 @@
+# 🔄 Maintenance Repository Cleanup Configuration
+# Scheduled maintenance profile for regular housekeeping operations
+
+profile:
+  name: "Maintenance Cleanup"
+  description: "Scheduled maintenance profile for regular repository housekeeping and automated cleanup operations"
+  risk_level: "medium"
+  version: "1.0.0"
+  recommended_for:
+    - "Scheduled maintenance workflows"
+    - "Regular housekeeping automation"
+    - "Monthly/quarterly cleanup tasks"
+    - "Storage optimization routines"
+    - "Automated maintenance pipelines"
+  
+  # Profile characteristics
+  characteristics:
+    - "Balanced approach to cleanup"
+    - "Suitable for automation"
+    - "Regular maintenance intervals"
+    - "Preserves important history"
+    - "Optimizes storage usage"
+  
+  # Maintenance schedule recommendations
+  schedule_recommendations:
+    - "Monthly for workflow runs"
+    - "Quarterly for branches and PRs"
+    - "Bi-annually for releases and tags"
+    - "As-needed for issues"
+
+# Cleanup operations configuration
+operations:
+  releases: true           # Clean old releases periodically
+  tags: false             # Keep tags for version history
+  branches: true          # Clean stale branches
+  pull_requests: true     # Clean merged/closed PRs
+  workflow_runs: true     # Regular workflow cleanup
+  issues: false           # Keep issues for project tracking
+
+# Filtering and age-based configuration
+filters:
+  # Balanced age threshold - 1 year
+  max_age_days: 365
+  
+  # Standard branch protection
+  protected_branches:
+    - "main"
+    - "master"
+    - "develop"
+    - "development"
+    - "staging"
+    - "stage"
+    - "production"
+    - "prod"
+    - "release"
+    - "release/*"
+    - "hotfix/*"
+    - "support/*"
+  
+  # Maintenance-focused patterns
+  include_patterns:
+    - ".*"  # Include all by default
+  
+  # Exclude important items
+  exclude_patterns:
+    - ".*keep.*"
+    - ".*important.*"
+    - ".*preserve.*"
+    - ".*permanent.*"
+    - ".*lts.*"
+    - ".*stable.*"
+    - ".*milestone.*"
+    - "v[0-9]+\\.[0-9]+\\.[0-9]+$"  # Semantic versions
+
+# Execution settings
+execution:
+  # Efficient batch sizes
+  batch_size: 30
+  
+  # Standard delays
+  batch_delay: 3
+  
+  # Can run live for maintenance
+  dry_run_default: false
+  
+  # No force delete in maintenance mode
+  force_delete: false
+  
+  # Standard logging
+  verbose: false
+  
+  # Skip confirmation for automated maintenance
+  skip_confirmation: true
+
+# Safety and protection settings
+safety:
+  # Minimal confirmation for automated maintenance
+  require_confirmation: false
+  
+  # Standard limits
+  max_items_per_operation: 300
+  
+  # Emergency threshold
+  emergency_stop_threshold: 1500
+  
+  # Maintenance safety checks
+  safety_checks:
+    - "verify_maintenance_window"
+    - "check_recent_activity"
+    - "validate_age_thresholds"
+    - "confirm_automated_execution"
+
+# PR-specific configuration
+pull_request_handling:
+  action: "close"
+  
+  # Maintenance closure comment
+  comment: |
+    🔄 **Scheduled Maintenance Cleanup**
+    
+    This pull request is being closed as part of our scheduled repository maintenance.
+    
+    **Why was this closed?**
+    - This PR has been inactive for over 1 year
+    - It was merged or closed previously
+    - This is part of our regular maintenance cycle
+    
+    **Important:**
+    - All code and discussions remain accessible
+    - You can reopen this PR if needed
+    - Add the `keep-open` label to prevent future cleanup
+    
+    **Maintenance Schedule:** This cleanup runs automatically to keep our repository organized and optimize storage.
+    
+    *This is an automated maintenance action by the BAUER GROUP Repository Cleanup system.*
+  
+  # Maintenance age threshold
+  min_age_for_closure: 365  # 1 year
+
+# Branch-specific configuration
+branches:
+  # Maintenance branch cleanup
+  cleanup_merged_branches: true
+  cleanup_stale_branches: true
+  
+  # Maintenance age thresholds
+  merged_branch_age_days: 90    # 3 months for merged branches
+  stale_branch_age_days: 365    # 1 year for stale branches
+  
+  # Activity threshold
+  min_commits_to_keep: 3
+  
+  # Maintenance patterns
+  maintenance_patterns:
+    - "feature/.*"
+    - "bugfix/.*"
+    - "fix/.*"
+    - "temp/.*"
+    - "wip/.*"
+    - "experiment/.*"
+  
+  # Always preserve
+  preserve_patterns:
+    - "release/.*"
+    - "hotfix/.*"
+    - "support/.*"
+
+# Workflow run specific settings
+workflow_runs:
+  # Maintenance retention periods
+  keep_successful_runs_days: 90   # 3 months
+  keep_failed_runs_days: 180      # 6 months
+  
+  # Keep protected branch runs longer
+  always_keep_protected_branches: true
+  
+  # Maintenance retention
+  extended_retention:
+    - conclusion: "success"
+      days: 90
+    - conclusion: "failure"
+      days: 180
+    - conclusion: "cancelled"
+      days: 30
+  
+  # Special retention for releases
+  release_run_retention_days: 365
+
+# Release-specific configuration
+releases:
+  # Keep recent releases
+  keep_recent_releases: 10
+  
+  # Age threshold for releases
+  max_age_days: 730  # 2 years
+  
+  # Keep major versions
+  keep_major_versions: true
+  
+  # Keep stable releases longer
+  stable_release_retention_days: 1095  # 3 years
+
+# Maintenance scheduling
+maintenance_schedule:
+  # Recommended intervals
+  workflow_runs: "monthly"
+  pull_requests: "quarterly" 
+  branches: "monthly"
+  releases: "bi-annually"
+  
+  # Maintenance windows
+  preferred_time: "02:00-06:00 UTC"
+  preferred_days: ["Sunday", "Saturday"]
+  
+  # Batch processing
+  enable_batch_processing: true
+  max_duration_hours: 4
+
+# Reporting configuration
+reporting:
+  # Maintenance reports
+  detailed_reports: true
+  
+  # Include maintenance metrics
+  include_maintenance_metrics: true
+  
+  # Report format
+  format: "markdown"
+  
+  # Storage optimization stats
+  storage_optimization_stats: true
+  
+  # Maintenance effectiveness
+  effectiveness_metrics: true
+
+# Emergency procedures
+emergency:
+  # Enable emergency procedures
+  enabled: true
+  
+  # Maintenance team contact
+  contact: "maintenance-team"
+  
+  # Maintenance emergency conditions
+  stop_conditions:
+    - "more_than_1500_items_per_operation"
+    - "maintenance_window_exceeded"
+    - "system_load_too_high"
+    - "recent_critical_activity"
+
+# Audit and compliance
+audit:
+  # Maintenance audit logging
+  enabled: true
+  
+  # Log maintenance decisions
+  log_decisions: true
+  
+  # Include maintenance impact
+  include_maintenance_impact: true
+  
+  # Maintenance compliance
+  compliance:
+    - "maintenance_policy"
+    - "data_retention_policy"
+    - "change_management"
+
+# Integration settings
+integration:
+  # Maintenance notifications
+  notifications:
+    on_start: true
+    on_completion: true
+    on_errors: true
+    on_storage_savings: true
+    
+  # No approval needed for maintenance
+  approval:
+    required: false
+    approvers: []
+    
+  # No rollback for maintenance
+  rollback:
+    enabled: false
+    retention_days: 0
+
+# Automation settings
+automation:
+  # Enable automated execution
+  automated_execution: true
+  
+  # Scheduling
+  schedule_expression: "0 2 * * 0"  # Every Sunday at 2 AM
+  
+  # Pre-execution checks
+  pre_execution_checks:
+    - "verify_maintenance_window"
+    - "check_system_load"
+    - "validate_no_active_deployments"
+  
+  # Post-execution actions
+  post_execution_actions:
+    - "generate_maintenance_report"
+    - "update_maintenance_log"
+    - "notify_maintenance_completion"
+
+# Performance optimization
+performance:
+  # Optimize for maintenance operations
+  parallel_processing: true
+  max_parallel_operations: 3
+  
+  # Resource limits
+  memory_limit: "2Gi"
+  cpu_limit: "1000m"
+  
+  # Timeout settings
+  operation_timeout_minutes: 30
+  total_timeout_hours: 4
+
+# Storage optimization
+storage:
+  # Calculate storage savings
+  calculate_savings: true
+  
+  # Storage metrics
+  track_storage_metrics: true
+  
+  # Optimization targets
+  target_storage_reduction: "20%"
+  
+  # Storage reporting
+  include_storage_analysis: true

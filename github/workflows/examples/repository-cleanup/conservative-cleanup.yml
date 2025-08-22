@@ -1,0 +1,262 @@
+name: 🛡️ Conservative Repository Cleanup
+
+# This workflow demonstrates safe, conservative repository cleanup
+# Perfect for production repositories and active development projects
+
+on:
+  # Manual trigger only for safety
+  workflow_dispatch:
+    inputs:
+      confirm-cleanup:
+        description: 'Type "CONFIRM" to proceed with cleanup'
+        required: true
+        default: ''
+      
+      target-repository:
+        description: 'Target repository (leave empty for current repo)'
+        required: false
+        default: ''
+      
+      dry-run:
+        description: 'Perform dry run (recommended)'
+        type: boolean
+        required: false
+        default: true
+      
+      max-age-days:
+        description: 'Maximum age in days (items older than this will be cleaned)'
+        type: number
+        required: false
+        default: 730  # 2 years
+      
+      cleanup-workflow-runs:
+        description: 'Clean up old workflow runs'
+        type: boolean
+        required: false
+        default: true
+      
+      enable-verbose-logging:
+        description: 'Enable detailed logging'
+        type: boolean
+        required: false
+        default: false
+
+# Permissions required for repository cleanup
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  # Pre-cleanup validation
+  validate-inputs:
+    name: 🔍 Validate Cleanup Request
+    runs-on: ubuntu-latest
+    
+    outputs:
+      proceed-with-cleanup: ${{ steps.validation.outputs.proceed }}
+    
+    steps:
+      - name: 🔍 Validate Confirmation
+        id: validation
+        run: |
+          if [[ "${{ github.event.inputs.confirm-cleanup }}" != "CONFIRM" ]]; then
+            echo "❌ Cleanup not confirmed. Please type 'CONFIRM' to proceed."
+            echo "🛡️ This safety measure prevents accidental cleanup operations."
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "✅ Cleanup confirmed by user"
+          echo "proceed=true" >> $GITHUB_OUTPUT
+      
+      - name: 📋 Display Configuration
+        run: |
+          echo "### 🛡️ Conservative Cleanup Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Target Repository:** ${{ github.event.inputs.target-repository || github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Execution Mode:** ${{ github.event.inputs.dry-run == 'true' && '🔍 Dry Run' || '🔧 Live Execution' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Max Age:** ${{ github.event.inputs.max-age-days }} days" >> $GITHUB_STEP_SUMMARY
+          echo "**Profile:** Conservative (Low Risk)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Operations Enabled:**" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚀 Releases: ❌ Disabled (Conservative)" >> $GITHUB_STEP_SUMMARY
+          echo "- 🏷️ Tags: ❌ Disabled (Conservative)" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌿 Branches: ❌ Disabled (Conservative)" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔀 Pull Requests: ❌ Disabled (Conservative)" >> $GITHUB_STEP_SUMMARY
+          echo "- ⚙️ Workflow Runs: ${{ github.event.inputs.cleanup-workflow-runs == 'true' && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🐛 Issues: ❌ Disabled (Conservative)" >> $GITHUB_STEP_SUMMARY
+
+  # Execute conservative cleanup
+  conservative-cleanup:
+    name: 🧹 Execute Conservative Cleanup
+    needs: validate-inputs
+    if: needs.validate-inputs.outputs.proceed-with-cleanup == 'true'
+    uses: ./.github/workflows/modules-repository-cleanup.yml
+    
+    with:
+      # Repository configuration
+      target-repository: ${{ github.event.inputs.target-repository }}
+      config-profile: 'conservative'
+      
+      # Conservative operations - only workflow runs by default
+      cleanup-releases: false
+      cleanup-tags: false  
+      cleanup-branches: false
+      cleanup-pull-requests: false
+      cleanup-workflow-runs: ${{ github.event.inputs.cleanup-workflow-runs == 'true' }}
+      cleanup-issues: false
+      
+      # Conservative age limits
+      max-age-days: ${{ fromJSON(github.event.inputs.max-age-days) }}
+      
+      # Comprehensive branch protection
+      protected-branches: 'main,master,develop,development,staging,stage,production,prod,release,release/*,hotfix/*,support/*'
+      
+      # Conservative patterns - exclude everything important
+      exclude-patterns: |
+        [
+          ".*keep.*",
+          ".*important.*", 
+          ".*preserve.*",
+          ".*permanent.*",
+          ".*archive.*",
+          ".*milestone.*",
+          ".*release.*",
+          ".*stable.*",
+          ".*lts.*",
+          ".*production.*",
+          ".*prod.*"
+        ]
+      
+      # Execution configuration
+      dry-run: ${{ github.event.inputs.dry-run == 'true' }}
+      batch-size: 10
+      batch-delay: 5
+      skip-confirmation: true  # We already confirmed above
+      
+      # Reporting
+      generate-report: true
+      verbose: ${{ github.event.inputs.enable-verbose-logging == 'true' }}
+    
+    secrets: inherit
+
+  # Post-cleanup analysis and recommendations
+  post-cleanup-analysis:
+    name: 📊 Post-Cleanup Analysis
+    needs: [validate-inputs, conservative-cleanup]
+    if: always() && needs.validate-inputs.outputs.proceed-with-cleanup == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📊 Analyze Cleanup Results
+        run: |
+          echo "### 📊 Conservative Cleanup Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Display results
+          echo "**Cleanup Results:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Success: ${{ needs.conservative-cleanup.outputs.cleanup-success }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📈 Items Processed: ${{ needs.conservative-cleanup.outputs.items-processed || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🗑️ Items Deleted: ${{ needs.conservative-cleanup.outputs.items-deleted || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏭️ Items Skipped: ${{ needs.conservative-cleanup.outputs.items-skipped || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ❌ Errors: ${{ needs.conservative-cleanup.outputs.errors-count || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏱️ Duration: ${{ needs.conservative-cleanup.outputs.execution-time || '0' }} seconds" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Conservative recommendations
+          echo "**🛡️ Conservative Cleanup Recommendations:**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. **Regular Schedule:** Run this cleanup monthly for workflow runs" >> $GITHUB_STEP_SUMMARY
+          echo "2. **Gradual Approach:** Consider enabling PR cleanup after 1+ year" >> $GITHUB_STEP_SUMMARY  
+          echo "3. **Branch Review:** Manually review old branches before enabling branch cleanup" >> $GITHUB_STEP_SUMMARY
+          echo "4. **Release Strategy:** Keep all releases for version history in conservative mode" >> $GITHUB_STEP_SUMMARY
+          echo "5. **Monitoring:** Monitor repository size and adjust age thresholds as needed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ github.event.inputs.dry-run }}" == "true" ]]; then
+            echo "**🔍 Dry Run Results:**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "This was a dry run - no actual changes were made. Review the results above and:" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Re-run with dry-run: false if results look good" >> $GITHUB_STEP_SUMMARY
+            echo "- 🔧 Adjust configuration if changes needed" >> $GITHUB_STEP_SUMMARY
+            echo "- 📞 Contact administrators if you have questions" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**🔧 Live Execution Complete:**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Conservative cleanup has been executed. Changes are permanent." >> $GITHUB_STEP_SUMMARY
+            echo "- 📊 Review the detailed cleanup report above" >> $GITHUB_STEP_SUMMARY
+            echo "- 📝 Document any issues or unexpected results" >> $GITHUB_STEP_SUMMARY
+            echo "- 🔄 Schedule regular maintenance cleanups" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 🎯 Provide Next Steps
+        run: |
+          echo "### 🎯 Recommended Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          ITEMS_PROCESSED=${{ needs.conservative-cleanup.outputs.items-processed || '0' }}
+          ITEMS_DELETED=${{ needs.conservative-cleanup.outputs.items-deleted || '0' }}
+          
+          if [[ "$ITEMS_PROCESSED" -gt 0 ]]; then
+            echo "**Based on your cleanup results:**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [[ "$ITEMS_DELETED" -gt 100 ]]; then
+              echo "🎉 **Excellent cleanup results!** Consider:" >> $GITHUB_STEP_SUMMARY
+              echo "- 📅 Setting up monthly automated cleanup" >> $GITHUB_STEP_SUMMARY
+              echo "- 🔧 Gradually enabling additional operations" >> $GITHUB_STEP_SUMMARY
+            elif [[ "$ITEMS_DELETED" -gt 10 ]]; then
+              echo "✅ **Good cleanup results.** Consider:" >> $GITHUB_STEP_SUMMARY
+              echo "- 🔄 Running cleanup quarterly" >> $GITHUB_STEP_SUMMARY
+              echo "- 📊 Monitoring repository size trends" >> $GITHUB_STEP_SUMMARY  
+            else
+              echo "ℹ️ **Minimal cleanup needed.** Your repository is well-maintained!" >> $GITHUB_STEP_SUMMARY
+              echo "- 🎯 Consider increasing cleanup frequency" >> $GITHUB_STEP_SUMMARY
+              echo "- 📈 Monitor for future cleanup opportunities" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "ℹ️ **No items found for cleanup.** Your repository is very clean!" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Current maintenance practices are excellent" >> $GITHUB_STEP_SUMMARY
+            echo "- 📅 Schedule periodic checks for the future" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**🔗 Additional Resources:**" >> $GITHUB_STEP_SUMMARY
+          echo "- [Repository Cleanup Documentation](../../actions/repository-cleanup/README.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Other Cleanup Examples](./)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Configuration Profiles](../../config/repository-cleanup/)" >> $GITHUB_STEP_SUMMARY
+
+      - name: ⚠️ Handle Cleanup Errors
+        if: needs.conservative-cleanup.outputs.cleanup-success != 'true'
+        run: |
+          echo "🚨 Cleanup completed with errors!"
+          echo ""
+          echo "**Error Analysis:**"
+          echo "- Errors encountered: ${{ needs.conservative-cleanup.outputs.errors-count || 'Unknown' }}"
+          echo "- Items successfully processed: ${{ needs.conservative-cleanup.outputs.items-processed || '0' }}"
+          echo ""
+          echo "**Recommended Actions:**"
+          echo "1. Review the detailed cleanup logs above"
+          echo "2. Check repository permissions"
+          echo "3. Verify GitHub token has required scopes"
+          echo "4. Consider running with verbose logging enabled"
+          echo "5. Contact repository administrators if issues persist"
+          echo ""
+          echo "**Common Issues:**"
+          echo "- Permission denied: Ensure admin access to repository"  
+          echo "- Rate limiting: Increase batch delays in configuration"
+          echo "- Protected items: Review protected branch configuration"
+          
+          exit 1
+
+# Example of scheduling this workflow (commented out for safety)
+# Uncomment and customize the schedule as needed
+#
+# on:
+#   schedule:
+#     # Run monthly on the first Sunday at 2 AM UTC
+#     - cron: '0 2 1 * 0'
+#   workflow_dispatch:
+#     # Keep manual trigger available

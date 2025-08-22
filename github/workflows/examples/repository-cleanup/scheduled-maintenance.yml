@@ -1,0 +1,385 @@
+name: 🔄 Scheduled Repository Maintenance
+
+# This workflow demonstrates automated scheduled repository maintenance
+# Perfect for regular housekeeping and automated cleanup operations
+
+on:
+  # Scheduled execution - runs monthly on first Sunday at 2 AM UTC
+  schedule:
+    - cron: '0 2 1 * 0'  # Monthly on first Sunday
+  
+  # Manual trigger for testing and one-off maintenance
+  workflow_dispatch:
+    inputs:
+      maintenance-type:
+        description: 'Type of maintenance to perform'
+        type: choice
+        required: false
+        default: 'standard'
+        options:
+          - 'standard'
+          - 'light'
+          - 'comprehensive'
+      
+      dry-run:
+        description: 'Perform dry run'
+        type: boolean
+        required: false
+        default: false  # Scheduled maintenance can run live
+      
+      custom-age-days:
+        description: 'Custom age threshold (leave empty for profile default)'
+        type: number
+        required: false
+      
+      notify-on-completion:
+        description: 'Send completion notification'
+        type: boolean
+        required: false
+        default: true
+
+# Permissions for scheduled maintenance
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  # Pre-maintenance system check
+  pre-maintenance-check:
+    name: 🔍 Pre-Maintenance System Check
+    runs-on: ubuntu-latest
+    
+    outputs:
+      maintenance-approved: ${{ steps.system-check.outputs.approved }}
+      maintenance-type: ${{ steps.config.outputs.maintenance-type }}
+      age-threshold: ${{ steps.config.outputs.age-threshold }}
+    
+    steps:
+      - name: 🔄 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: ⚙️ Configure Maintenance Parameters
+        id: config
+        run: |
+          # Determine maintenance type
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            MAINTENANCE_TYPE="standard"
+            echo "🔄 Scheduled maintenance - using standard profile"
+          else
+            MAINTENANCE_TYPE="${{ github.event.inputs.maintenance-type }}"
+            echo "🔧 Manual maintenance - using $MAINTENANCE_TYPE profile"
+          fi
+          
+          # Set age threshold based on maintenance type
+          case "$MAINTENANCE_TYPE" in
+            light)
+              AGE_DAYS=730  # 2 years
+              ;;
+            standard)
+              AGE_DAYS=365  # 1 year
+              ;;
+            comprehensive)
+              AGE_DAYS=180  # 6 months
+              ;;
+            *)
+              AGE_DAYS=365  # Default to 1 year
+              ;;
+          esac
+          
+          # Override with custom age if provided
+          if [[ -n "${{ github.event.inputs.custom-age-days }}" ]] && [[ "${{ github.event.inputs.custom-age-days }}" -gt 0 ]]; then
+            AGE_DAYS=${{ github.event.inputs.custom-age-days }}
+            echo "🎯 Using custom age threshold: $AGE_DAYS days"
+          fi
+          
+          echo "maintenance-type=$MAINTENANCE_TYPE" >> $GITHUB_OUTPUT
+          echo "age-threshold=$AGE_DAYS" >> $GITHUB_OUTPUT
+      
+      - name: 🔍 System Health Check
+        id: system-check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔍 Performing pre-maintenance system checks..."
+          
+          # Check current time (maintenance window)
+          CURRENT_HOUR=$(date -u +%H)
+          if [[ "${{ github.event_name }}" == "schedule" ]] && [[ "$CURRENT_HOUR" -lt 1 || "$CURRENT_HOUR" -gt 6 ]]; then
+            echo "⚠️ Outside preferred maintenance window (01:00-06:00 UTC)"
+            echo "Current time: $(date -u)"
+          fi
+          
+          # Check repository activity
+          echo "📊 Checking recent repository activity..."
+          RECENT_COMMITS=$(gh api "repos/${{ github.repository }}/commits?since=$(date -d '7 days ago' --iso-8601)" --jq 'length')
+          OPEN_PRS=$(gh api "repos/${{ github.repository }}/pulls?state=open" --jq 'length')
+          OPEN_ISSUES=$(gh api "repos/${{ github.repository }}/issues?state=open" --jq 'length')
+          
+          echo "📈 Recent commits (7 days): $RECENT_COMMITS"
+          echo "🔀 Open pull requests: $OPEN_PRS"
+          echo "🐛 Open issues: $OPEN_ISSUES"
+          
+          # Determine if maintenance should proceed
+          if [[ "$RECENT_COMMITS" -gt 50 ]]; then
+            echo "⚠️ High activity detected ($RECENT_COMMITS recent commits)"
+            echo "Consider postponing maintenance during high activity periods"
+          fi
+          
+          # Check for active workflows
+          ACTIVE_WORKFLOWS=$(gh api "repos/${{ github.repository }}/actions/runs?status=in_progress" --jq 'length')
+          if [[ "$ACTIVE_WORKFLOWS" -gt 0 ]]; then
+            echo "⚠️ $ACTIVE_WORKFLOWS active workflows detected"
+            echo "Waiting 2 minutes for workflows to complete..."
+            sleep 120
+          fi
+          
+          echo "✅ System health check completed"
+          echo "approved=true" >> $GITHUB_OUTPUT
+      
+      - name: 📋 Display Maintenance Plan
+        run: |
+          echo "### 🔄 Scheduled Maintenance Plan" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Execution Details:**" >> $GITHUB_STEP_SUMMARY
+          echo "- 🗓️ **Schedule**: ${{ github.event_name == 'schedule' && 'Automated (Monthly)' || 'Manual Trigger' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ⚙️ **Type**: ${{ steps.config.outputs.maintenance-type }} maintenance" >> $GITHUB_STEP_SUMMARY
+          echo "- 📅 **Age Threshold**: ${{ steps.config.outputs.age-threshold }} days" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔧 **Mode**: ${{ github.event.inputs.dry-run == 'true' && 'Dry Run' || 'Live Execution' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 **Timestamp**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          case "${{ steps.config.outputs.maintenance-type }}" in
+            light)
+              echo "**🌙 Light Maintenance Operations:**" >> $GITHUB_STEP_SUMMARY
+              echo "- ⚙️ Workflow runs cleanup (2+ years old)" >> $GITHUB_STEP_SUMMARY
+              echo "- 🔀 Closed PR cleanup (2+ years old)" >> $GITHUB_STEP_SUMMARY
+              ;;
+            standard)
+              echo "**🔄 Standard Maintenance Operations:**" >> $GITHUB_STEP_SUMMARY
+              echo "- ⚙️ Workflow runs cleanup (1+ year old)" >> $GITHUB_STEP_SUMMARY
+              echo "- 🔀 Pull request cleanup (1+ year old)" >> $GITHUB_STEP_SUMMARY
+              echo "- 🌿 Stale branch cleanup (1+ year old)" >> $GITHUB_STEP_SUMMARY
+              ;;
+            comprehensive)
+              echo "**🧹 Comprehensive Maintenance Operations:**" >> $GITHUB_STEP_SUMMARY
+              echo "- ⚙️ Workflow runs cleanup (6+ months old)" >> $GITHUB_STEP_SUMMARY
+              echo "- 🔀 Pull request cleanup (6+ months old)" >> $GITHUB_STEP_SUMMARY
+              echo "- 🌿 Branch cleanup (6+ months old)" >> $GITHUB_STEP_SUMMARY
+              echo "- 🚀 Old release cleanup (6+ months old)" >> $GITHUB_STEP_SUMMARY
+              ;;
+          esac
+
+  # Execute maintenance based on type
+  execute-maintenance:
+    name: 🧹 Execute Scheduled Maintenance
+    needs: pre-maintenance-check
+    if: needs.pre-maintenance-check.outputs.maintenance-approved == 'true'
+    uses: ./.github/workflows/modules-repository-cleanup.yml
+    
+    with:
+      # Use maintenance configuration profile
+      config-profile: 'maintenance'
+      
+      # Configure operations based on maintenance type
+      cleanup-releases: ${{ needs.pre-maintenance-check.outputs.maintenance-type == 'comprehensive' }}
+      cleanup-tags: false  # Never cleanup tags in maintenance
+      cleanup-branches: ${{ needs.pre-maintenance-check.outputs.maintenance-type != 'light' }}
+      cleanup-pull-requests: ${{ needs.pre-maintenance-check.outputs.maintenance-type != 'light' }}
+      cleanup-workflow-runs: true  # Always cleanup workflow runs
+      cleanup-issues: false  # Never cleanup issues in maintenance
+      
+      # Age configuration
+      max-age-days: ${{ fromJSON(needs.pre-maintenance-check.outputs.age-threshold) }}
+      
+      # Maintenance-appropriate branch protection
+      protected-branches: 'main,master,develop,development,staging,stage,production,prod,release,release/*,hotfix/*,support/*'
+      
+      # PR handling with maintenance message
+      pr-action: 'comment-and-close'
+      pr-comment: |
+        🔄 **Scheduled Maintenance Cleanup**
+        
+        This pull request is being closed as part of our automated repository maintenance.
+        
+        **Maintenance Details:**
+        - **Type**: ${{ needs.pre-maintenance-check.outputs.maintenance-type }} maintenance
+        - **Schedule**: Monthly automated maintenance
+        - **Age Threshold**: Items older than ${{ needs.pre-maintenance-check.outputs.age-threshold }} days
+        
+        **Why was this closed?**
+        - This PR has been inactive for over ${{ needs.pre-maintenance-check.outputs.age-threshold }} days
+        - It was already merged or closed
+        - This helps keep our repository organized and optimize storage
+        
+        **To prevent future closure:**
+        - Add the `keep-open` label to important PRs
+        - Keep PRs active with recent comments or updates
+        
+        **Questions?** Contact the repository maintainers or check our maintenance schedule.
+        
+        *This is an automated maintenance action by the BAUER GROUP Repository Cleanup system.*
+      
+      # Maintenance exclusions - preserve important items
+      exclude-patterns: |
+        [
+          ".*keep.*",
+          ".*important.*",
+          ".*preserve.*",
+          ".*milestone.*",
+          ".*lts.*",
+          ".*stable.*",
+          "v[0-9]+\\.[0-9]+\\.[0-9]+$"
+        ]
+      
+      # Execution configuration for automated maintenance
+      dry-run: ${{ github.event.inputs.dry-run == 'true' }}
+      batch-size: 30
+      batch-delay: 3
+      skip-confirmation: true  # Automated maintenance can skip confirmation
+      
+      # Reporting configuration
+      generate-report: true
+      verbose: false  # Keep logs concise for scheduled runs
+    
+    secrets: inherit
+
+  # Post-maintenance reporting and monitoring
+  post-maintenance-report:
+    name: 📊 Post-Maintenance Report
+    needs: [pre-maintenance-check, execute-maintenance]
+    if: always() && needs.pre-maintenance-check.outputs.maintenance-approved == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📊 Generate Maintenance Report
+        run: |
+          echo "### 📊 Maintenance Completion Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Maintenance Session:**" >> $GITHUB_STEP_SUMMARY
+          echo "- 🗓️ **Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- ⚙️ **Type**: ${{ needs.pre-maintenance-check.outputs.maintenance-type }} maintenance" >> $GITHUB_STEP_SUMMARY
+          echo "- 📅 **Age Threshold**: ${{ needs.pre-maintenance-check.outputs.age-threshold }} days" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ **Status**: ${{ needs.execute-maintenance.outputs.cleanup-success == 'true' && 'Completed Successfully' || 'Completed with Issues' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "**📈 Maintenance Statistics:**" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 Items Processed: ${{ needs.execute-maintenance.outputs.items-processed || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🗑️ Items Cleaned: ${{ needs.execute-maintenance.outputs.items-deleted || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏭️ Items Skipped: ${{ needs.execute-maintenance.outputs.items-skipped || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ❌ Errors: ${{ needs.execute-maintenance.outputs.errors-count || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏱️ Duration: ${{ needs.execute-maintenance.outputs.execution-time || '0' }} seconds" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Maintenance effectiveness analysis
+          ITEMS_DELETED=${{ needs.execute-maintenance.outputs.items-deleted || '0' }}
+          MAINTENANCE_TYPE="${{ needs.pre-maintenance-check.outputs.maintenance-type }}"
+          
+          echo "**🎯 Maintenance Effectiveness:**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "$ITEMS_DELETED" -gt 100 ]]; then
+            echo "✅ **Highly Effective**: Significant cleanup achieved ($ITEMS_DELETED items)" >> $GITHUB_STEP_SUMMARY
+            echo "- Repository storage optimized" >> $GITHUB_STEP_SUMMARY
+            echo "- Maintenance schedule is appropriate" >> $GITHUB_STEP_SUMMARY
+            echo "- Continue current maintenance frequency" >> $GITHUB_STEP_SUMMARY
+          elif [[ "$ITEMS_DELETED" -gt 10 ]]; then
+            echo "✅ **Moderately Effective**: Good maintenance results ($ITEMS_DELETED items)" >> $GITHUB_STEP_SUMMARY
+            echo "- Regular cleanup preventing buildup" >> $GITHUB_STEP_SUMMARY
+            echo "- Current schedule working well" >> $GITHUB_STEP_SUMMARY
+          elif [[ "$ITEMS_DELETED" -gt 0 ]]; then
+            echo "✅ **Well Maintained**: Minimal cleanup needed ($ITEMS_DELETED items)" >> $GITHUB_STEP_SUMMARY
+            echo "- Repository is well-maintained" >> $GITHUB_STEP_SUMMARY
+            echo "- Consider reducing maintenance frequency" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **Excellently Maintained**: No cleanup required" >> $GITHUB_STEP_SUMMARY
+            echo "- Repository maintenance is excellent" >> $GITHUB_STEP_SUMMARY
+            echo "- Consider extending maintenance intervals" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📅 Schedule Next Maintenance
+        run: |
+          echo "### 📅 Next Maintenance Schedule" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Calculate next scheduled maintenance
+          NEXT_MONTH=$(date -d "next month" "+%Y-%m")
+          FIRST_SUNDAY=$(date -d "$NEXT_MONTH-01 +$(( (7 - $(date -d "$NEXT_MONTH-01" +%u)) % 7 )) days" "+%Y-%m-%d")
+          
+          echo "**Scheduled Maintenance:**" >> $GITHUB_STEP_SUMMARY
+          echo "- 🗓️ **Next Run**: $FIRST_SUNDAY at 02:00 UTC" >> $GITHUB_STEP_SUMMARY
+          echo "- ⚙️ **Type**: Standard maintenance" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 **Frequency**: Monthly (First Sunday)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "**Maintenance Recommendations:**" >> $GITHUB_STEP_SUMMARY
+          
+          ITEMS_DELETED=${{ needs.execute-maintenance.outputs.items-deleted || '0' }}
+          
+          if [[ "$ITEMS_DELETED" -gt 500 ]]; then
+            echo "- 📈 Consider increasing maintenance frequency to bi-weekly" >> $GITHUB_STEP_SUMMARY
+            echo "- 🔧 Repository has high activity - more frequent cleanup beneficial" >> $GITHUB_STEP_SUMMARY
+          elif [[ "$ITEMS_DELETED" -lt 10 ]]; then
+            echo "- 📉 Consider reducing maintenance frequency to quarterly" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Repository is well-maintained with current practices" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ✅ Current monthly schedule is optimal" >> $GITHUB_STEP_SUMMARY
+            echo "- 🔄 Continue with current maintenance approach" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 🔔 Send Maintenance Notification
+        if: github.event.inputs.notify-on-completion == 'true' || github.event_name == 'schedule'
+        run: |
+          echo "🔔 Sending maintenance completion notification..."
+          
+          # Create notification message
+          cat << EOF > maintenance_notification.md
+          # 🔄 Scheduled Maintenance Completed
+          
+          **Repository**: ${{ github.repository }}
+          **Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          **Type**: ${{ needs.pre-maintenance-check.outputs.maintenance-type }} maintenance
+          
+          ## Results
+          - ✅ Status: ${{ needs.execute-maintenance.outputs.cleanup-success == 'true' && 'Success' || 'Issues Detected' }}
+          - 📊 Items Processed: ${{ needs.execute-maintenance.outputs.items-processed || '0' }}
+          - 🗑️ Items Cleaned: ${{ needs.execute-maintenance.outputs.items-deleted || '0' }}
+          - ⏱️ Duration: ${{ needs.execute-maintenance.outputs.execution-time || '0' }} seconds
+          
+          ## Next Maintenance
+          Scheduled for next month's first Sunday at 02:00 UTC
+          
+          ---
+          *Automated by BAUER GROUP Repository Cleanup*
+          EOF
+          
+          echo "📤 Maintenance notification prepared"
+          # Note: In a real implementation, you might send this via email, Slack, etc.
+
+      - name: ❌ Handle Maintenance Issues
+        if: needs.execute-maintenance.outputs.cleanup-success != 'true'
+        run: |
+          echo "⚠️ Maintenance completed with issues"
+          echo ""
+          echo "**Issue Summary:**"
+          echo "- Errors: ${{ needs.execute-maintenance.outputs.errors-count || 'Unknown' }}"
+          echo "- Successful operations: ${{ needs.execute-maintenance.outputs.items-deleted || '0' }}"
+          echo ""
+          echo "**Recommended Actions:**"
+          echo "1. Review maintenance logs for specific errors"
+          echo "2. Check repository permissions and settings"
+          echo "3. Consider manual intervention for failed operations"
+          echo "4. Monitor next scheduled maintenance run"
+          echo ""
+          echo "**Automated Recovery:**"
+          echo "- Next maintenance run will retry failed operations"
+          echo "- No immediate action required unless errors persist"
+          
+          # Don't fail the workflow for maintenance issues
+          # Just log them for review
+          echo "::warning::Maintenance completed with ${{ needs.execute-maintenance.outputs.errors-count || '0' }} errors"
+
+# This workflow is designed to run automatically on a schedule
+# It performs regular maintenance to keep repositories clean and optimized
+# The maintenance level can be adjusted based on repository needs
