@@ -43,14 +43,11 @@ When reporting a vulnerability, please provide:
 
 We actively maintain and provide security updates for supported versions:
 
-| Version | Support Status | Security Updates |
-|---------|---------------|------------------|
-| Current (main) | ✅ Full Support | ✅ Yes |
-| Previous Releases | ❌ End of Life | ❌ No |
+{{SUPPORTED_VERSIONS_TABLE}}
 
 ### Version Support Policy
 
-- **Current Version**: Full feature and security support for the latest release
+- **Current Version**: Full feature and security support for the latest release ({{CURRENT_VERSION}})
 - **Previous Versions**: No support provided - users should upgrade to the current version
 - **Security Updates**: Only applied to the current version
 
@@ -312,8 +309,10 @@ We recognize security contributors through:
 
 This security policy is subject to BAUER GROUP's information security policies and applicable laws. By using this repository, you agree to follow these security guidelines and report any security issues responsibly.
 
-**Last Updated**: August 2025  
-**Next Review**: February 2026
+**Last Updated**: {{LAST_UPDATED}}  
+**Next Review**: {{NEXT_REVIEW}}  
+**Policy Version**: {{POLICY_VERSION}}  
+**Repository Version**: {{CURRENT_VERSION}}
 
 ---
 

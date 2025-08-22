@@ -66,7 +66,7 @@ A clear and concise description of the feature you'd like to see implemented.
 **Breaking Changes**: Yes / No - If yes, explain migration path
 
 **Documentation Needs**: 
-- [ ] New README sections
+- [ ] New README.MD sections
 - [ ] Example workflows
 - [ ] Configuration documentation
 - [ ] Migration guide

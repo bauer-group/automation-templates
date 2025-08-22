@@ -45,7 +45,7 @@ Describe what you expected to happen instead.
 
 - **Runner OS**: <!-- ubuntu-latest, windows-latest, macos-latest -->
 - **GitHub Actions Version**: <!-- If applicable -->
-- **Template Version**: <!-- e.g. v0.18.0, main, specific commit -->
+- **Template Version**: <!-- e.g. v0.20.0, main, specific commit -->
 
 ## 📋 Error Output
 
