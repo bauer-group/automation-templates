@@ -1,0 +1,371 @@
+# 🚨 Emergency Repository Cleanup Configuration
+# Emergency cleanup profile for critical storage recovery and urgent cleanup situations
+
+profile:
+  name: "Emergency Cleanup"
+  description: "Emergency cleanup profile for critical storage recovery, urgent cleanup situations, and space-critical operations"
+  risk_level: "critical"
+  version: "1.0.0"
+  recommended_for:
+    - "Storage space emergencies"
+    - "Critical cleanup situations"
+    - "Repository size limit issues"
+    - "Urgent space recovery"
+    - "System maintenance emergencies"
+  
+  # Profile characteristics
+  characteristics:
+    - "Maximum data removal"
+    - "Minimal protection"
+    - "Emergency-focused operations"
+    - "Fast execution"
+    - "Storage optimization priority"
+  
+  # Critical warnings
+  warnings:
+    - "🚨 CRITICAL: This profile removes significant amounts of data"
+    - "🚨 CRITICAL: Only use in genuine emergency situations"
+    - "🚨 CRITICAL: Always create backups before execution"
+    - "🚨 CRITICAL: Cannot be undone after execution"
+    - "🚨 CRITICAL: Requires administrator approval"
+  
+  # Emergency use cases
+  emergency_scenarios:
+    - "Storage quota exceeded"
+    - "Repository size limits reached"
+    - "System disk space critical"
+    - "Performance degradation due to size"
+    - "Compliance-mandated cleanup"
+
+# Cleanup operations configuration - ALL ENABLED
+operations:
+  releases: true           # Remove old releases immediately
+  tags: true              # Remove old tags (keep only recent)
+  branches: true          # Remove all non-essential branches
+  pull_requests: true     # Close/remove all old PRs
+  workflow_runs: true     # Remove all old workflow runs
+  issues: true            # Close old issues
+
+# Filtering and age-based configuration
+filters:
+  # Emergency age threshold - 1 month
+  max_age_days: 30
+  
+  # Absolute minimum branch protection
+  protected_branches:
+    - "main"
+    - "master"
+  
+  # Emergency includes everything
+  include_patterns:
+    - ".*"  # Everything is included
+  
+  # Minimal exclusions - only absolute essentials
+  exclude_patterns:
+    - "v[0-9]+\\.[0-9]+\\.[0-9]+$"  # Current semantic versions only
+    - ".*current.*"
+    - ".*active.*"
+    - ".*production.*"
+    - ".*prod.*"
+
+# Execution settings
+execution:
+  # Large batch sizes for maximum efficiency
+  batch_size: 100
+  
+  # Minimal delays for speed
+  batch_delay: 1
+  
+  # Still default to dry run for safety
+  dry_run_default: true
+  
+  # Allow force delete in emergency
+  force_delete: false  # Still requires explicit override
+  
+  # Minimal logging for speed
+  verbose: false
+  
+  # Can skip confirmation with explicit override
+  skip_confirmation: false  # Still requires explicit confirmation
+
+# Safety and protection settings
+safety:
+  # Emergency requires explicit confirmation
+  require_confirmation: true
+  
+  # High limits for emergency operations
+  max_items_per_operation: 1000
+  
+  # Very high emergency threshold
+  emergency_stop_threshold: 5000
+  
+  # Emergency safety checks
+  safety_checks:
+    - "verify_emergency_authorization"
+    - "confirm_backup_status"
+    - "validate_critical_situation"
+    - "check_administrator_approval"
+
+# Emergency authorization
+authorization:
+  # Require administrator authorization
+  require_admin_approval: true
+  
+  # Emergency contact information
+  emergency_contact: "system-administrators"
+  
+  # Authorization token required
+  authorization_token_required: false
+  
+  # Approval workflow
+  approval_workflow:
+    required: false
+    emergency_override: true
+
+# PR-specific configuration
+pull_request_handling:
+  action: "comment-and-close"
+  
+  # Emergency closure comment
+  comment: |
+    🚨 **EMERGENCY CLEANUP NOTICE**
+    
+    This pull request is being closed due to an emergency repository cleanup operation.
+    
+    **EMERGENCY SITUATION:**
+    - Critical storage space recovery required
+    - Repository size limits exceeded
+    - System maintenance emergency
+    
+    **IMMEDIATE ACTION REQUIRED:**
+    - If this PR contains critical code, please reopen immediately
+    - Add the `emergency-keep` label to prevent closure
+    - Contact system administrators if this affects production
+    
+    **DATA PRESERVATION:**
+    - All code and discussions are preserved
+    - This PR can be reopened at any time
+    - No actual code has been deleted
+    
+    **EMERGENCY CONTACT:** system-administrators@company.com
+    
+    *This is an EMERGENCY automated action by the BAUER GROUP Repository Cleanup system.*
+  
+  # Emergency age threshold
+  min_age_for_closure: 30  # 1 month
+
+# Issue-specific configuration
+issue_handling:
+  enabled: true
+  action: "comment-and-close"
+  min_age_for_closure: 30  # 1 month
+  
+  comment: |
+    🚨 **EMERGENCY CLEANUP NOTICE**
+    
+    This issue is being closed due to an emergency repository cleanup operation.
+    
+    **EMERGENCY SITUATION:**
+    - Critical storage space recovery in progress
+    - Repository maintenance emergency
+    
+    **IF THIS IS CRITICAL:**
+    - Reopen this issue immediately
+    - Add the `emergency-keep` label
+    - Contact system administrators
+    
+    **EMERGENCY CONTACT:** system-administrators@company.com
+    
+    *This is an EMERGENCY automated action by the BAUER GROUP Repository Cleanup system.*
+
+# Workflow run specific settings
+workflow_runs:
+  # Emergency retention - very short
+  keep_successful_runs_days: 7
+  keep_failed_runs_days: 14
+  
+  # Even protected branches have minimal retention
+  always_keep_protected_branches: false
+  
+  # Emergency retention
+  extended_retention:
+    - conclusion: "success"
+      days: 7
+    - conclusion: "failure"
+      days: 14
+    - conclusion: "cancelled"
+      days: 3
+
+# Release-specific configuration
+releases:
+  # Keep only very recent releases
+  keep_recent_releases: 3
+  
+  # Very short age threshold
+  max_age_days: 90
+  
+  # Keep only current major version
+  keep_major_versions: false
+  
+  # Minimal stable release retention
+  stable_release_retention_days: 90
+
+# Tag-specific configuration
+tags:
+  # Keep only very recent tags
+  keep_recent_tags: 5
+  
+  # Short age threshold
+  max_age_days: 90
+  
+  # Only keep current semantic versions
+  preserve_semantic_versions: true
+  
+  # Patterns to keep - minimal
+  always_keep_patterns:
+    - "v[0-9]+\\.[0-9]+\\.[0-9]+$"  # Only current semantic versions
+
+# Branch-specific configuration
+branches:
+  # Aggressive branch cleanup
+  cleanup_merged_branches: true
+  cleanup_stale_branches: true
+  
+  # Very short age thresholds
+  merged_branch_age_days: 7     # 1 week
+  stale_branch_age_days: 30     # 1 month
+  
+  # Minimal activity threshold
+  min_commits_to_keep: 0
+  
+  # Emergency branch patterns - clean everything
+  emergency_cleanup_all: true
+
+# Emergency procedures
+emergency:
+  # Emergency procedures enabled
+  enabled: true
+  
+  # Emergency escalation
+  escalation_contact: "emergency-response-team"
+  
+  # Emergency stop conditions
+  stop_conditions:
+    - "more_than_5000_items_per_operation"
+    - "system_resources_exhausted"
+    - "authorization_revoked"
+    - "manual_emergency_stop"
+  
+  # Emergency monitoring
+  monitor_system_resources: true
+  max_system_load: 0.8
+  max_memory_usage: "80%"
+
+# Reporting configuration
+reporting:
+  # Emergency reports
+  detailed_reports: true
+  emergency_report: true
+  
+  # Critical metrics
+  include_critical_metrics: true
+  
+  # Storage savings - critical for emergency
+  storage_savings_analysis: true
+  
+  # Emergency effectiveness
+  emergency_effectiveness_metrics: true
+
+# Audit and compliance
+audit:
+  # Full emergency audit logging
+  enabled: true
+  emergency_audit: true
+  
+  # Log all emergency decisions
+  log_decisions: true
+  log_emergency_justification: true
+  
+  # Emergency compliance
+  compliance:
+    - "emergency_procedures"
+    - "data_retention_policy"
+    - "administrator_approval"
+    - "backup_verification"
+
+# Integration settings
+integration:
+  # Emergency notifications
+  notifications:
+    on_start: true
+    on_completion: true
+    on_errors: true
+    on_emergency_completion: true
+    emergency_escalation: true
+    
+  # Emergency approval
+  approval:
+    required: true
+    emergency_approval: true
+    approvers: ["system-administrators"]
+    
+  # No rollback for emergency operations
+  rollback:
+    enabled: false
+    retention_days: 0
+
+# Pre-execution emergency checks
+pre_execution_checks:
+  # Critical checks before emergency execution
+  verify_emergency_situation: true
+  check_authorization: true
+  validate_backup_exists: true
+  confirm_administrator_approval: true
+  
+  # System checks
+  check_system_resources: true
+  verify_emergency_window: true
+  confirm_no_active_users: true
+
+# Post-execution emergency actions
+post_execution_actions:
+  # Emergency reporting
+  generate_emergency_report: true
+  notify_emergency_completion: true
+  
+  # System verification
+  verify_system_stability: true
+  check_critical_functions: true
+  
+  # Documentation
+  document_emergency_actions: true
+  update_emergency_log: true
+
+# Emergency monitoring
+monitoring:
+  # Real-time monitoring during emergency
+  enable_real_time_monitoring: true
+  
+  # Resource monitoring
+  monitor_disk_space: true
+  monitor_system_load: true
+  monitor_memory_usage: true
+  
+  # Progress monitoring
+  track_cleanup_progress: true
+  estimate_completion_time: true
+  
+  # Alert thresholds
+  alert_on_high_deletion_rate: true
+  alert_on_system_stress: true
+
+# Recovery and rollback
+recovery:
+  # Emergency recovery procedures
+  emergency_recovery_plan: true
+  
+  # Recovery contact
+  recovery_contact: "disaster-recovery-team"
+  
+  # Recovery documentation
+  document_recovery_steps: false  # No recovery for emergency cleanup

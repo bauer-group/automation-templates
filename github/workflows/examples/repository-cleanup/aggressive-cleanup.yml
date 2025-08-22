@@ -1,0 +1,376 @@
+name: 🔥 Aggressive Repository Cleanup
+
+# This workflow demonstrates comprehensive aggressive repository cleanup
+# ⚠️ WARNING: This will delete significant amounts of repository data
+# Only use for archived repositories or major cleanup operations
+
+on:
+  # Manual trigger only with additional safety measures
+  workflow_dispatch:
+    inputs:
+      confirm-aggressive-cleanup:
+        description: 'Type "AGGRESSIVE_CLEANUP_CONFIRMED" to proceed'
+        required: true
+        default: ''
+      
+      target-repository:
+        description: 'Target repository (leave empty for current repo)'
+        required: false
+        default: ''
+      
+      dry-run:
+        description: 'Perform dry run (STRONGLY recommended)'
+        type: boolean
+        required: false
+        default: true
+      
+      max-age-days:
+        description: 'Maximum age in days (aggressive default: 180 days)'
+        type: number
+        required: false
+        default: 180
+      
+      cleanup-all-operations:
+        description: 'Enable ALL cleanup operations'
+        type: boolean
+        required: false
+        default: false
+      
+      acknowledge-data-loss:
+        description: 'I acknowledge this will permanently delete data'
+        type: boolean
+        required: true
+        default: false
+      
+      backup-confirmed:
+        description: 'I confirm backups exist if needed'
+        type: boolean
+        required: false
+        default: false
+
+# Required permissions for aggressive cleanup
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+  metadata: read
+
+jobs:
+  # Comprehensive pre-cleanup safety validation
+  safety-validation:
+    name: 🛡️ Safety Validation & Warnings
+    runs-on: ubuntu-latest
+    
+    outputs:
+      proceed-with-cleanup: ${{ steps.safety-check.outputs.proceed }}
+      repository-archived: ${{ steps.repo-check.outputs.archived }}
+    
+    steps:
+      - name: 🔄 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🛡️ Safety Confirmation Check
+        id: safety-check
+        run: |
+          # Check confirmation phrase
+          if [[ "${{ github.event.inputs.confirm-aggressive-cleanup }}" != "AGGRESSIVE_CLEANUP_CONFIRMED" ]]; then
+            echo "❌ Aggressive cleanup not properly confirmed"
+            echo "🚨 Please type 'AGGRESSIVE_CLEANUP_CONFIRMED' exactly to proceed"
+            echo "🛡️ This safety measure prevents accidental aggressive operations"
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Check data loss acknowledgment
+          if [[ "${{ github.event.inputs.acknowledge-data-loss }}" != "true" ]]; then
+            echo "❌ Data loss not acknowledged"
+            echo "🚨 You must acknowledge potential data loss to proceed"
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "✅ Safety confirmations validated"
+          echo "proceed=true" >> $GITHUB_OUTPUT
+      
+      - name: 🔍 Repository Status Check
+        id: repo-check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if repository is archived
+          REPO="${{ github.event.inputs.target-repository || github.repository }}"
+          
+          ARCHIVED=$(gh api "repos/$REPO" --jq '.archived')
+          echo "archived=$ARCHIVED" >> $GITHUB_OUTPUT
+          
+          if [[ "$ARCHIVED" == "true" ]]; then
+            echo "✅ Repository is archived - aggressive cleanup is appropriate"
+          else
+            echo "⚠️ Repository is NOT archived"
+            echo "🔥 Aggressive cleanup on active repositories requires extra caution"
+          fi
+          
+          # Check recent activity
+          RECENT_COMMITS=$(gh api "repos/$REPO/commits" --jq 'length')
+          if [[ "$RECENT_COMMITS" -gt 0 ]]; then
+            LAST_COMMIT_DATE=$(gh api "repos/$REPO/commits" --jq '.[0].commit.committer.date')
+            echo "📅 Last commit: $LAST_COMMIT_DATE"
+            
+            # Check if commit is recent (within 30 days)
+            THIRTY_DAYS_AGO=$(date -d '30 days ago' --iso-8601)
+            if [[ "$LAST_COMMIT_DATE" > "$THIRTY_DAYS_AGO" ]]; then
+              echo "⚠️ WARNING: Recent activity detected within 30 days"
+              echo "🚨 This may not be suitable for aggressive cleanup"
+            fi
+          fi
+      
+      - name: 📋 Display Aggressive Configuration
+        run: |
+          echo "### 🔥 Aggressive Cleanup Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ **WARNING: This is an aggressive cleanup operation that will permanently delete data**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Target Repository:** ${{ github.event.inputs.target-repository || github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Execution Mode:** ${{ github.event.inputs.dry-run == 'true' && '🔍 Dry Run' || '🔧 LIVE EXECUTION' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Max Age:** ${{ github.event.inputs.max-age-days }} days (⚠️ Aggressive)" >> $GITHUB_STEP_SUMMARY
+          echo "**Profile:** Aggressive (High Risk)" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository Archived:** ${{ steps.repo-check.outputs.archived }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Operations to be Enabled:**" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚀 Releases: ${{ github.event.inputs.cleanup-all-operations == 'true' && '🔥 ENABLED' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🏷️ Tags: ${{ github.event.inputs.cleanup-all-operations == 'true' && '🔥 ENABLED' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌿 Branches: ${{ github.event.inputs.cleanup-all-operations == 'true' && '🔥 ENABLED' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔀 Pull Requests: ${{ github.event.inputs.cleanup-all-operations == 'true' && '🔥 ENABLED' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ⚙️ Workflow Runs: 🔥 ENABLED" >> $GITHUB_STEP_SUMMARY
+          echo "- 🐛 Issues: ${{ github.event.inputs.cleanup-all-operations == 'true' && '🔥 ENABLED' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**⚠️ Data Loss Warning:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Deleted items cannot be recovered" >> $GITHUB_STEP_SUMMARY
+          echo "- Always ensure backups exist for important data" >> $GITHUB_STEP_SUMMARY
+          echo "- Test with dry-run first" >> $GITHUB_STEP_SUMMARY
+
+  # Pre-cleanup backup reminder
+  backup-reminder:
+    name: 💾 Backup Reminder
+    needs: safety-validation
+    if: needs.safety-validation.outputs.proceed-with-cleanup == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 💾 Backup Status Check
+        run: |
+          echo "### 💾 Backup Verification" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ github.event.inputs.backup-confirmed }}" == "true" ]]; then
+            echo "✅ **Backup confirmed by user**" >> $GITHUB_STEP_SUMMARY
+            echo "- User has confirmed backups exist" >> $GITHUB_STEP_SUMMARY
+            echo "- Proceeding with aggressive cleanup" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Backup not explicitly confirmed**" >> $GITHUB_STEP_SUMMARY
+            echo "- Consider creating backups before proceeding" >> $GITHUB_STEP_SUMMARY
+            echo "- Important repository data may be permanently lost" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Backup Recommendations:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Export important issues and discussions" >> $GITHUB_STEP_SUMMARY
+          echo "- Archive critical releases and assets" >> $GITHUB_STEP_SUMMARY
+          echo "- Document important branch information" >> $GITHUB_STEP_SUMMARY
+          echo "- Clone repository locally if needed" >> $GITHUB_STEP_SUMMARY
+
+  # Execute aggressive cleanup
+  aggressive-cleanup:
+    name: 🔥 Execute Aggressive Cleanup
+    needs: [safety-validation, backup-reminder]
+    if: needs.safety-validation.outputs.proceed-with-cleanup == 'true'
+    uses: ./.github/workflows/modules-repository-cleanup.yml
+    
+    with:
+      # Repository configuration
+      target-repository: ${{ github.event.inputs.target-repository }}
+      config-profile: 'aggressive'
+      
+      # Aggressive operations configuration
+      cleanup-releases: ${{ github.event.inputs.cleanup-all-operations == 'true' }}
+      cleanup-tags: ${{ github.event.inputs.cleanup-all-operations == 'true' }}
+      cleanup-branches: ${{ github.event.inputs.cleanup-all-operations == 'true' }}
+      cleanup-pull-requests: ${{ github.event.inputs.cleanup-all-operations == 'true' }}
+      cleanup-workflow-runs: true  # Always clean workflow runs in aggressive mode
+      cleanup-issues: ${{ github.event.inputs.cleanup-all-operations == 'true' }}
+      
+      # Aggressive age limits
+      max-age-days: ${{ fromJSON(github.event.inputs.max-age-days) }}
+      
+      # Minimal branch protection - only core branches
+      protected-branches: 'main,master'
+      
+      # PR handling with clear communication
+      pr-action: 'comment-and-close'
+      pr-comment: |
+        🔥 **Aggressive Cleanup Notice**
+        
+        This pull request is being closed as part of an aggressive repository cleanup operation.
+        
+        **Why was this closed?**
+        - This PR is older than ${{ github.event.inputs.max-age-days }} days
+        - The repository is undergoing comprehensive cleanup
+        - This is part of an aggressive cleanup operation
+        
+        **Important:**
+        - The PR discussion and code remain accessible
+        - You can reopen this PR if it's still needed
+        - For questions, contact the repository administrators
+        
+        *This is an automated action by the BAUER GROUP Repository Cleanup system.*
+      
+      # Minimal exclusions for aggressive mode
+      exclude-patterns: |
+        [
+          ".*critical.*",
+          ".*production.*",
+          ".*prod.*",
+          "v[0-9]+\\.[0-9]+\\.[0-9]+$"
+        ]
+      
+      # Execution configuration optimized for speed
+      dry-run: ${{ github.event.inputs.dry-run == 'true' }}
+      batch-size: 50
+      batch-delay: 2
+      skip-confirmation: true
+      
+      # Comprehensive reporting
+      generate-report: true
+      verbose: true
+    
+    secrets: inherit
+
+  # Post-cleanup analysis with detailed impact assessment
+  post-cleanup-analysis:
+    name: 📊 Aggressive Cleanup Impact Analysis
+    needs: [safety-validation, backup-reminder, aggressive-cleanup]
+    if: always() && needs.safety-validation.outputs.proceed-with-cleanup == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📊 Analyze Aggressive Cleanup Impact
+        run: |
+          echo "### 🔥 Aggressive Cleanup Impact Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Display comprehensive results
+          echo "**Cleanup Results:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Success: ${{ needs.aggressive-cleanup.outputs.cleanup-success }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 📈 Items Processed: ${{ needs.aggressive-cleanup.outputs.items-processed || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🗑️ Items Deleted: ${{ needs.aggressive-cleanup.outputs.items-deleted || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏭️ Items Skipped: ${{ needs.aggressive-cleanup.outputs.items-skipped || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ❌ Errors: ${{ needs.aggressive-cleanup.outputs.errors-count || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏱️ Duration: ${{ needs.aggressive-cleanup.outputs.execution-time || '0' }} seconds" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Impact assessment
+          ITEMS_DELETED=${{ needs.aggressive-cleanup.outputs.items-deleted || '0' }}
+          ITEMS_PROCESSED=${{ needs.aggressive-cleanup.outputs.items-processed || '0' }}
+          
+          echo "**🎯 Impact Assessment:**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "$ITEMS_DELETED" -gt 1000 ]]; then
+            echo "🔥 **Major Impact**: $ITEMS_DELETED items deleted" >> $GITHUB_STEP_SUMMARY
+            echo "- Significant repository size reduction achieved" >> $GITHUB_STEP_SUMMARY
+            echo "- Substantial storage optimization completed" >> $GITHUB_STEP_SUMMARY
+          elif [[ "$ITEMS_DELETED" -gt 100 ]]; then
+            echo "🎯 **Moderate Impact**: $ITEMS_DELETED items deleted" >> $GITHUB_STEP_SUMMARY
+            echo "- Good repository cleanup achieved" >> $GITHUB_STEP_SUMMARY
+            echo "- Noticeable storage optimization" >> $GITHUB_STEP_SUMMARY
+          elif [[ "$ITEMS_DELETED" -gt 0 ]]; then
+            echo "📊 **Minor Impact**: $ITEMS_DELETED items deleted" >> $GITHUB_STEP_SUMMARY
+            echo "- Repository was already well-maintained" >> $GITHUB_STEP_SUMMARY
+            echo "- Limited cleanup opportunities available" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ **No Impact**: No items required cleanup" >> $GITHUB_STEP_SUMMARY
+            echo "- Repository is extremely well-maintained" >> $GITHUB_STEP_SUMMARY
+            echo "- No cleanup was necessary" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ github.event.inputs.dry-run }}" == "true" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**🔍 Dry Run Results:**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> ⚠️ **This was a dry run - no actual changes were made**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+            echo "1. 📊 Review the impact analysis above" >> $GITHUB_STEP_SUMMARY
+            echo "2. 🛡️ Ensure backups exist for important data" >> $GITHUB_STEP_SUMMARY
+            echo "3. 🔧 Re-run with dry-run: false if ready to proceed" >> $GITHUB_STEP_SUMMARY
+            echo "4. 📞 Contact administrators if you have concerns" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**🔧 Live Execution Complete:**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> 🔥 **Aggressive cleanup has been executed - changes are permanent**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Post-Cleanup Actions:**" >> $GITHUB_STEP_SUMMARY
+            echo "1. 📊 Monitor repository for any issues" >> $GITHUB_STEP_SUMMARY
+            echo "2. 📝 Document the cleanup operation for records" >> $GITHUB_STEP_SUMMARY
+            echo "3. 🔍 Verify critical functionality still works" >> $GITHUB_STEP_SUMMARY
+            echo "4. 📞 Notify stakeholders of completion" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: ⚠️ Handle Aggressive Cleanup Errors
+        if: needs.aggressive-cleanup.outputs.cleanup-success != 'true'
+        run: |
+          echo "🚨 Aggressive cleanup completed with errors!"
+          echo ""
+          echo "**Error Analysis:**"
+          echo "- Errors encountered: ${{ needs.aggressive-cleanup.outputs.errors-count || 'Unknown' }}"
+          echo "- Items successfully processed: ${{ needs.aggressive-cleanup.outputs.items-processed || '0' }}"
+          echo "- Items successfully deleted: ${{ needs.aggressive-cleanup.outputs.items-deleted || '0' }}"
+          echo ""
+          echo "**Critical Actions Required:**"
+          echo "1. 🔍 Review detailed cleanup logs immediately"
+          echo "2. 📊 Assess partial cleanup impact"
+          echo "3. 🛡️ Verify repository integrity"
+          echo "4. 📞 Contact administrators immediately"
+          echo "5. 📝 Document errors for investigation"
+          echo ""
+          echo "**Aggressive Cleanup Considerations:**"
+          echo "- Some errors may be expected with aggressive operations"
+          echo "- Protected items may have caused some failures"
+          echo "- Rate limiting may have interrupted operations"
+          echo "- Permissions issues may require administrator intervention"
+          
+          exit 1
+
+      - name: 📈 Storage and Performance Impact
+        if: needs.aggressive-cleanup.outputs.cleanup-success == 'true'
+        run: |
+          echo "### 📈 Storage and Performance Impact" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          ITEMS_DELETED=${{ needs.aggressive-cleanup.outputs.items-deleted || '0' }}
+          
+          if [[ "$ITEMS_DELETED" -gt 0 ]]; then
+            echo "**Estimated Benefits:**" >> $GITHUB_STEP_SUMMARY
+            echo "- 💾 **Storage**: Significant reduction in repository size" >> $GITHUB_STEP_SUMMARY
+            echo "- ⚡ **Performance**: Faster clone and fetch operations" >> $GITHUB_STEP_SUMMARY
+            echo "- 🧹 **Maintenance**: Reduced maintenance overhead" >> $GITHUB_STEP_SUMMARY
+            echo "- 📊 **Analytics**: Cleaner repository analytics" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Long-term Impact:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Repository is now optimized for archival or minimal maintenance" >> $GITHUB_STEP_SUMMARY
+            echo "- Future cleanup operations should require less aggressive settings" >> $GITHUB_STEP_SUMMARY
+            echo "- Consider implementing regular maintenance to avoid future buildup" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**🔗 Additional Resources:**" >> $GITHUB_STEP_SUMMARY
+          echo "- [Repository Cleanup Documentation](../../actions/repository-cleanup/README.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Conservative Cleanup Example](./conservative-cleanup.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Maintenance Cleanup Example](./scheduled-maintenance.yml)" >> $GITHUB_STEP_SUMMARY
+
+# WARNING NOTICE
+# This workflow is intentionally designed for aggressive cleanup operations
+# It will permanently delete repository data and cannot be undone
+# Always test with dry-run first and ensure backups exist

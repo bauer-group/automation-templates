@@ -1,0 +1,304 @@
+# 🔥 Aggressive Repository Cleanup Configuration
+# Comprehensive cleanup profile for archived projects and major cleanup operations
+
+profile:
+  name: "Aggressive Cleanup"
+  description: "Comprehensive cleanup profile for archived repositories, storage recovery, and major cleanup operations"
+  risk_level: "high"
+  version: "1.0.0"
+  recommended_for:
+    - "Archived repositories"
+    - "Storage space recovery"
+    - "Repository decommissioning"
+    - "Major cleanup operations"
+    - "Proof-of-concept repositories"
+  
+  # Profile characteristics
+  characteristics:
+    - "Removes most historical data"
+    - "Short age thresholds"
+    - "Minimal branch protection"
+    - "All operations enabled"
+    - "Requires careful consideration"
+  
+  # Warnings
+  warnings:
+    - "⚠️ This profile will delete significant amounts of data"
+    - "⚠️ Always run dry-run first"
+    - "⚠️ Ensure backups exist before execution"
+    - "⚠️ Not suitable for active development repositories"
+
+# Cleanup operations configuration
+operations:
+  releases: true           # Remove old releases to save space
+  tags: true              # Remove old tags (keep semantic version tags)
+  branches: true          # Remove stale branches
+  pull_requests: true     # Close and clean old PRs
+  workflow_runs: true     # Clean all old workflow runs
+  issues: true            # Close old issues
+
+# Filtering and age-based configuration  
+filters:
+  # Aggressive age threshold - 6 months
+  max_age_days: 180
+  
+  # Minimal branch protection - only core branches
+  protected_branches:
+    - "main"
+    - "master"
+  
+  # Include most items for cleanup
+  include_patterns:
+    - ".*"  # Include everything by default
+  
+  # Minimal exclusions - only critical items
+  exclude_patterns:
+    - ".*critical.*"
+    - ".*production.*"
+    - ".*prod.*"
+    - "v[0-9]+\\.[0-9]+\\.[0-9]+$"  # Semantic version tags
+    - ".*lts.*"  # Long-term support items
+
+# Execution settings
+execution:
+  # Larger batch sizes for efficiency
+  batch_size: 50
+  
+  # Shorter delays for faster execution
+  batch_delay: 2
+  
+  # Still default to dry run for safety
+  dry_run_default: true
+  
+  # Allow force delete for stubborn items
+  force_delete: false  # Still false by default, can be overridden
+  
+  # Verbose logging for transparency
+  verbose: true
+  
+  # Can skip confirmation if explicitly set
+  skip_confirmation: false
+
+# Safety and protection settings
+safety:
+  # Require confirmation for aggressive operations
+  require_confirmation: true
+  
+  # Higher limits due to aggressive nature
+  max_items_per_operation: 500
+  
+  # Higher emergency threshold
+  emergency_stop_threshold: 2000
+  
+  # Additional safety checks
+  safety_checks:
+    - "verify_repository_status"
+    - "check_recent_commits"
+    - "validate_backup_existence"
+    - "confirm_aggressive_mode"
+
+# PR-specific configuration
+pull_request_handling:
+  action: "comment-and-close"
+  
+  # Clear closure comment
+  comment: |
+    🔥 **Aggressive Cleanup Notice**
+    
+    This pull request is being closed as part of an aggressive repository cleanup operation.
+    
+    **Why was this closed?**
+    - This PR is older than 6 months
+    - The repository is being cleaned up or archived
+    - This is part of a comprehensive cleanup operation
+    
+    **Important:**
+    - The PR discussion and code remain accessible
+    - You can reopen this PR if it's still needed
+    - For questions, contact the repository administrators
+    
+    *This is an automated action by the BAUER GROUP Repository Cleanup system.*
+  
+  # Aggressive age threshold
+  min_age_for_closure: 180  # 6 months
+
+# Issue-specific configuration
+issue_handling:
+  enabled: true
+  action: "comment-and-close"
+  min_age_for_closure: 180  # 6 months
+  
+  comment: |
+    🔥 **Aggressive Cleanup Notice**
+    
+    This issue is being closed as part of an aggressive repository cleanup operation.
+    
+    **Why was this closed?**
+    - This issue is older than 6 months
+    - The repository is being cleaned up or archived
+    - This helps reduce repository maintenance overhead
+    
+    **Important:**
+    - The issue can be reopened if still relevant
+    - All discussion history is preserved
+    - For urgent matters, contact the repository administrators
+    
+    *This is an automated action by the BAUER GROUP Repository Cleanup system.*
+
+# Workflow run specific settings
+workflow_runs:
+  # Short retention for all runs
+  keep_successful_runs_days: 30
+  keep_failed_runs_days: 90
+  
+  # Even protected branches have limited retention
+  always_keep_protected_branches: false
+  
+  # Minimal extended retention
+  extended_retention:
+    - conclusion: "success"
+      days: 30
+    - conclusion: "failure"
+      days: 90
+    - conclusion: "cancelled"
+      days: 14
+
+# Release-specific configuration
+releases:
+  # Keep only recent releases
+  keep_recent_releases: 5
+  
+  # Keep only semantic version releases
+  keep_semantic_versions: true
+  
+  # Age threshold for releases
+  max_age_days: 365
+  
+  # Preserve pre-releases differently
+  prerelease_retention_days: 90
+
+# Tag-specific configuration  
+tags:
+  # Preserve semantic version tags
+  preserve_semantic_versions: true
+  
+  # Keep recent tags
+  keep_recent_tags: 10
+  
+  # Age threshold
+  max_age_days: 365
+  
+  # Patterns to always keep
+  always_keep_patterns:
+    - "v[0-9]+\\.[0-9]+\\.[0-9]+$"
+    - ".*release.*"
+    - ".*stable.*"
+
+# Branch-specific configuration
+branches:
+  # Aggressive branch cleanup
+  cleanup_merged_branches: true
+  cleanup_stale_branches: true
+  
+  # Age thresholds
+  merged_branch_age_days: 30
+  stale_branch_age_days: 90
+  
+  # Activity threshold
+  min_commits_to_keep: 5
+  
+  # Always preserve certain patterns
+  preserve_patterns:
+    - "release/*"
+    - "hotfix/*"
+
+# Reporting configuration
+reporting:
+  # Detailed reports for aggressive cleanup
+  detailed_reports: true
+  
+  # Include impact analysis
+  include_impact_analysis: true
+  
+  # Report format
+  format: "markdown"
+  
+  # Include space savings estimates
+  space_savings_analysis: true
+
+# Emergency procedures
+emergency:
+  # Enable emergency procedures
+  enabled: true
+  
+  # Emergency contact
+  contact: "repository-administrators"
+  
+  # Emergency stop conditions
+  stop_conditions:
+    - "more_than_2000_items_per_operation"
+    - "recent_commits_detected"
+    - "active_development_detected"
+    - "backup_verification_failed"
+
+# Audit and compliance
+audit:
+  # Full audit logging
+  enabled: true
+  
+  # Log all decisions
+  log_decisions: true
+  
+  # Include impact assessment
+  include_impact_assessment: true
+  
+  # Compliance requirements
+  compliance:
+    - "change_management"
+    - "data_retention_policy"
+    - "backup_verification"
+
+# Integration settings
+integration:
+  # Comprehensive notifications
+  notifications:
+    on_start: true
+    on_completion: true
+    on_errors: true
+    on_major_deletions: true
+    
+  # Approval workflow
+  approval:
+    required: false  # Can be enabled for extra safety
+    approvers: []
+    
+  # Rollback capability
+  rollback:
+    enabled: false  # No rollback for aggressive cleanup
+    retention_days: 0
+
+# Pre-execution checks
+pre_execution_checks:
+  # Verify repository status
+  check_repository_archived: false  # Don't require archived status
+  check_recent_activity: true       # Warn if recent activity
+  check_open_issues: true          # Warn if many open issues
+  check_pending_prs: true          # Warn if pending PRs
+  
+  # Backup verification
+  require_backup_confirmation: false  # Optional
+  verify_backup_exists: false        # Optional
+
+# Post-execution actions
+post_execution_actions:
+  # Generate comprehensive report
+  generate_full_report: true
+  
+  # Calculate space savings
+  calculate_space_savings: true
+  
+  # Archive cleanup logs
+  archive_logs: true
+  
+  # Notify stakeholders
+  notify_completion: true
