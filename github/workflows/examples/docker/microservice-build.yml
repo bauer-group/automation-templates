@@ -1,0 +1,97 @@
+name: Docker Microservice Build Example
+# Example: Microservice Docker build with service mesh and comprehensive testing
+# This example demonstrates microservice-specific patterns and Kubernetes deployment
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'api/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'helm/**'
+      - '.dockerignore'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'api/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'helm/**'
+      - '.dockerignore'
+
+env:
+  SERVICE_NAME: 'user-service'
+  NAMESPACE: 'microservices'
+  REGISTRY: 'ghcr.io'
+
+jobs:
+  docker-build:
+    name: Build & Deploy Microservice
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      # Microservice specific configuration
+      config-file: 'microservice'
+      
+      # Service configuration
+      image-name: ${{ env.SERVICE_NAME }}
+      image-tag: ${{ github.ref_name }}-${{ github.run_number }}
+      registry: ${{ env.REGISTRY }}
+      
+      # Build configuration for microservices
+      dockerfile: './Dockerfile'
+      context: '.'
+      target: 'runtime'
+      platforms: 'linux/amd64,linux/arm64'
+      
+      # Microservice build arguments
+      build-args: |
+        SERVICE_NAME=${{ env.SERVICE_NAME }}
+        SERVICE_VERSION=${{ github.ref_name }}
+        BUILDTIME=${{ github.event.head_commit.timestamp }}
+        VERSION=${{ github.sha }}
+        ENVIRONMENT=production
+        LOG_LEVEL=info
+      
+      # Critical security for microservices
+      security-scan: true
+      fail-on-severity: 'CRITICAL'
+      generate-sbom: true
+      sbom-format: 'cyclonedx'
+      sign-image: true
+      
+      # Comprehensive microservice testing
+      run-tests: true
+      test-command: 'docker run --rm $IMAGE_TAG test'
+      integration-tests: true
+      contract-tests: true
+      
+      # Performance optimization
+      cache-enabled: true
+      parallel-builds: true
+      build-timeout: 30
+      
+      # Microservice deployment with Helm
+      deploy: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') }}
+      deployment-environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+      deployment-command: 'helm upgrade --install ${{ env.SERVICE_NAME }} ./helm --namespace ${{ env.NAMESPACE }} --set image.tag=$IMAGE_TAG --set environment=${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}'
+      
+      # Service mesh configuration
+      service-mesh: true
+      mesh-type: 'istio'
+      
+      # Monitoring and observability
+      monitoring-enabled: true
+      metrics-port: 9090
+      health-port: 8080
+      tracing-enabled: true
+      
+    secrets:
+      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      KUBECONFIG: ${{ secrets.KUBECONFIG }}
+      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}

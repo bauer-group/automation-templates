@@ -1,0 +1,79 @@
+name: Docker Web Application Build Example
+# Example: Complete web application Docker build with testing and deployment
+# This example demonstrates web-specific optimizations and configurations
+
+on:
+  push:
+    branches: [ main, develop, release/* ]
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'public/**'
+      - 'package*.json'
+      - 'yarn.lock'
+      - '.dockerignore'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'public/**'
+      - 'package*.json'
+      - 'yarn.lock'
+      - '.dockerignore'
+
+env:
+  APP_NAME: 'my-web-app'
+  REGISTRY: 'ghcr.io'
+
+jobs:
+  docker-build:
+    name: Build & Deploy Web Application
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      # Web application specific configuration
+      config-file: 'web-application'
+      
+      # Image configuration
+      image-name: ${{ env.APP_NAME }}
+      image-tag: ${{ github.ref_name }}-${{ github.sha }}
+      registry: ${{ env.REGISTRY }}
+      
+      # Build configuration
+      dockerfile: './Dockerfile'
+      context: '.'
+      target: 'production'
+      platforms: 'linux/amd64,linux/arm64'
+      
+      # Build arguments for web apps
+      build-args: |
+        NODE_ENV=production
+        APP_VERSION=${{ github.ref_name }}
+        BUILD_DATE=${{ github.event.head_commit.timestamp }}
+        COMMIT_SHA=${{ github.sha }}
+        APP_PORT=3000
+      
+      # Enhanced security for web applications
+      security-scan: true
+      fail-on-severity: 'HIGH'
+      generate-sbom: true
+      sign-image: true
+      
+      # Web application testing
+      run-tests: true
+      test-command: 'docker run --rm $IMAGE_TAG npm test'
+      
+      # Health checks
+      health-check: true
+      health-endpoint: '/health'
+      
+      # Conditional deployment
+      deploy: ${{ github.ref == 'refs/heads/main' }}
+      deployment-environment: 'staging'
+      deployment-command: 'kubectl set image deployment/webapp container=$IMAGE_URL'
+      
+    secrets:
+      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      KUBECONFIG: ${{ secrets.KUBECONFIG }}
+      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}

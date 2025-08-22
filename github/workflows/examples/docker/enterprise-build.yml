@@ -1,0 +1,160 @@
+name: Docker Enterprise Build Example
+# Example: Enterprise-grade Docker build with maximum security and compliance
+# This example demonstrates enterprise security, compliance, and governance requirements
+
+on:
+  push:
+    branches: [ main, release/* ]
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'k8s/**'
+      - 'helm/**'
+      - '.dockerignore'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'k8s/**'
+      - 'helm/**'
+      - '.dockerignore'
+  schedule:
+    # Weekly security scan
+    - cron: '0 2 * * 1'
+
+env:
+  APP_NAME: 'enterprise-app'
+  ENTERPRISE_REGISTRY: 'enterprise-registry.company.com'
+  COMPLIANCE_REQUIRED: 'true'
+
+jobs:
+  compliance-check:
+    name: Compliance Validation
+    runs-on: ubuntu-latest
+    outputs:
+      approved: ${{ steps.compliance.outputs.approved }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Compliance Check
+        id: compliance
+        run: |
+          # Validate compliance requirements
+          echo "approved=true" >> $GITHUB_OUTPUT
+          
+  docker-build:
+    name: Enterprise Docker Build
+    needs: compliance-check
+    if: needs.compliance-check.outputs.approved == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      # Enterprise configuration with maximum security
+      config-file: 'enterprise'
+      
+      # Enterprise image configuration
+      image-name: ${{ env.APP_NAME }}
+      image-tag: ${{ github.ref_name }}-${{ github.run_number }}-${{ github.sha }}
+      registry: ${{ env.ENTERPRISE_REGISTRY }}
+      
+      # Enterprise build configuration
+      dockerfile: './Dockerfile'
+      context: '.'
+      target: 'production'
+      platforms: 'linux/amd64,linux/arm64'
+      
+      # Enterprise build arguments
+      build-args: |
+        BUILDTIME=${{ github.event.head_commit.timestamp }}
+        VERSION=${{ github.sha }}
+        ENVIRONMENT=production
+        COMPLIANCE_MODE=enabled
+        AUDIT_LOGGING=enabled
+        ENCRYPTION=enabled
+      
+      # Maximum security configuration
+      security-scan: true
+      scanner: 'trivy'
+      fail-on-severity: 'MEDIUM'
+      ignore-unfixed: false
+      generate-sbom: true
+      sbom-format: 'spdx'
+      sign-image: true
+      vulnerability-database: 'enterprise'
+      compliance-scanning: true
+      secret-scanning: true
+      license-scanning: true
+      
+      # Comprehensive enterprise testing
+      run-tests: true
+      test-command: 'docker run --rm $IMAGE_TAG test --enterprise'
+      integration-tests: true
+      contract-tests: true
+      security-tests: true
+      performance-tests: true
+      compliance-tests: true
+      
+      # Enterprise performance requirements
+      builder-driver: 'kubernetes'
+      build-timeout: 60
+      parallel-builds: true
+      build-attestation: true
+      
+      # Enterprise deployment with approval
+      deploy: ${{ github.ref == 'refs/heads/main' }}
+      deployment-environment: 'production'
+      deployment-command: 'kubectl apply -f k8s/enterprise/ --dry-run=server'
+      approval-required: true
+      
+      # Governance and compliance
+      policy-enforcement: true
+      admission-controller: 'OPA'
+      network-policies: true
+      pod-security-standards: 'restricted'
+      
+      # Enterprise monitoring
+      monitoring-enabled: true
+      full-observability: true
+      apm-enabled: true
+      log-aggregation: 'splunk'
+      metrics-system: 'prometheus'
+      alerting: 'pagerduty'
+      sla-monitoring: true
+      
+      # Backup and disaster recovery
+      backup-enabled: true
+      backup-schedule: '0 2 * * *'
+      backup-retention: '90d'
+      cross-region-backup: true
+      
+      # Audit and compliance
+      audit-enabled: true
+      audit-log-level: 'detailed'
+      audit-retention: '7y'
+      compliance-reports: true
+      
+    secrets:
+      REGISTRY_TOKEN: ${{ secrets.ENTERPRISE_REGISTRY_TOKEN }}
+      KUBECONFIG: ${{ secrets.ENTERPRISE_KUBECONFIG }}
+      COSIGN_PRIVATE_KEY: ${{ secrets.ENTERPRISE_COSIGN_KEY }}
+      COSIGN_PASSWORD: ${{ secrets.ENTERPRISE_COSIGN_PASSWORD }}
+      ENTERPRISE_LICENSE: ${{ secrets.ENTERPRISE_LICENSE }}
+      COMPLIANCE_TOKEN: ${{ secrets.COMPLIANCE_TOKEN }}
+      
+  security-report:
+    name: Security Report
+    needs: docker-build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Security Report
+        run: |
+          echo "Enterprise security scan completed"
+          # Generate compliance report
+          
+      - name: Notify Security Team
+        if: failure()
+        run: |
+          echo "Security scan failed - notifying security team"
+          # Send notification to security team
