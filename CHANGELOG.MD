@@ -1,3 +1,26 @@
+## [0.15.0](https://github.com/bauer-group/automation-templates/compare/v0.14.0...v0.15.0) (2025-08-22)
+
+### 🚀 Features
+
+* Add conservative repository cleanup workflow ([a23d0a9](https://github.com/bauer-group/automation-templates/commit/a23d0a9cdd235fcc0f3acf2a04e68670ee201179))
+* Update repository cleanup module name for clarity ([064e47d](https://github.com/bauer-group/automation-templates/commit/064e47df9a91d1372712ed623d3321ee4c211637))
+
+### 🐛 Bug Fixes
+
+* Improve file change detection logic in documentation workflow ([d362312](https://github.com/bauer-group/automation-templates/commit/d36231296f66543a2a28d7fe4eaf6bc624ed6689))
+
+### ♻️ Code Refactoring
+
+* Enhance summary reporting in repository cleanup and docker build workflows ([767adf5](https://github.com/bauer-group/automation-templates/commit/767adf5d1eac35482d281266e85fd4075ee3f9aa))
+* Enhance workflow condition checks for documentation updates ([6c8e369](https://github.com/bauer-group/automation-templates/commit/6c8e369b316b42dbdf9081360fed04bc5b3da4a4))
+* Improve input descriptions and validation for repository cleanup workflow ([8e63a28](https://github.com/bauer-group/automation-templates/commit/8e63a284a968536c93d0b88261d7ba5bb926c62a))
+* Optimize cleanup option check in repository cleanup action ([79e80db](https://github.com/bauer-group/automation-templates/commit/79e80dbd3fb4537c0b59a0a97db2598c72e0932b))
+* Remove unnecessary metadata permission from repository cleanup workflow ([56268f6](https://github.com/bauer-group/automation-templates/commit/56268f66511c590817ad69dc57e2d05286cbbf4a))
+* Rewrite branch protection script with enhanced logging and dependency management ([cf48194](https://github.com/bauer-group/automation-templates/commit/cf4819483e20d241b6e35196f195ebb7ebf3b8f6))
+* Simplify batch size validation and remove unnecessary checks in repository cleanup workflow ([fe84418](https://github.com/bauer-group/automation-templates/commit/fe84418c3d65e585e0cdf45be81278b97b31ba51))
+* Simplify cleanup operation check in repository cleanup workflow ([a8637d5](https://github.com/bauer-group/automation-templates/commit/a8637d5b2c2a3bd375921739a28a8247b6f3d837))
+* Update default values for custom operations and batch size in repository cleanup workflow ([033f6c9](https://github.com/bauer-group/automation-templates/commit/033f6c9403e343580207fcb726a54833887346bf))
+
 ## [0.14.0](https://github.com/bauer-group/automation-templates/compare/v0.13.0...v0.14.0) (2025-08-22)
 
 ### 🚀 Features
