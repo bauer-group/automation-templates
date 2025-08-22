@@ -1,3 +1,17 @@
+## [0.18.0](https://github.com/bauer-group/automation-templates/compare/v0.17.0...v0.18.0) (2025-08-22)
+
+### 🚀 Features
+
+* Add Docker Hub README synchronization workflow example ([71abc41](https://github.com/bauer-group/automation-templates/commit/71abc419152277101bc38a743bdc012562dfa56e))
+* Add workflow logs feature to Microsoft Teams notifications for enhanced visibility ([16744ec](https://github.com/bauer-group/automation-templates/commit/16744ec04648bec0f017f74f09d15892cfc16cb8))
+
+### 🐛 Bug Fixes
+
+* Enhance Microsoft Teams notification formatting for improved clarity and detail ([8e4f98f](https://github.com/bauer-group/automation-templates/commit/8e4f98f1a469fa1d7e7694a83e16c80597d6bd5f))
+* Format custom-facts in notifications for better readability ([fdcc0e2](https://github.com/bauer-group/automation-templates/commit/fdcc0e2d9a33c3cac7825b6d3b79584368515ec9))
+* Format timestamp for German locale in Microsoft Teams notifications ([1a12d4d](https://github.com/bauer-group/automation-templates/commit/1a12d4d4a226f9537c1ded8dfa341b3a88318824))
+* Improve formatting of custom-facts in notifications for better readability ([f2de7e0](https://github.com/bauer-group/automation-templates/commit/f2de7e0477e2c904639663d2b3c406e3e49b4081))
+
 ## [0.17.0](https://github.com/bauer-group/automation-templates/compare/v0.16.0...v0.17.0) (2025-08-22)
 
 ### 🚀 Features
