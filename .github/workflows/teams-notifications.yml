@@ -285,7 +285,7 @@ jobs:
           event-type: 'push'
           title: '🚀 New Commits Pushed'
           summary: 'New commits pushed to **${{ github.ref_name }}**'
-          details: '📝 Message: ${{ github.event.head_commit.message }}'
+          details: '📝 ${{ github.event.head_commit.message }}'
           repository-name: ${{ github.repository }}
           repository-url: ${{ github.server_url }}/${{ github.repository }}
           actor: ${{ github.event.head_commit.author.username }}
