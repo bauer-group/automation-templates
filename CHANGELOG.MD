@@ -1,3 +1,11 @@
+## [0.21.0](https://github.com/bauer-group/automation-templates/compare/v0.20.0...v0.21.0) (2025-08-22)
+
+### 🚀 Features
+
+* Add guide for local GitHub workflow testing using nektos/act ([0b57467](https://github.com/bauer-group/automation-templates/commit/0b574674190c0a474ff9720e5bb32e5fdf38d645))
+* Add support for Ubuntu 24.04 in nektos/act configuration ([5fc4418](https://github.com/bauer-group/automation-templates/commit/5fc441882d824c1bebc319de1215d4b0ad79c782))
+* Enable explicit documentation and security management updates after successful releases ([809e55e](https://github.com/bauer-group/automation-templates/commit/809e55e2ee5e6cfdbce66e0a405364f508b7827f))
+
 ## [0.20.0](https://github.com/bauer-group/automation-templates/compare/v0.19.0...v0.20.0) (2025-08-22)
 
 ### 🚀 Features
