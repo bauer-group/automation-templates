@@ -13,6 +13,17 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 
 [![🔄 CI/CD Pipeline (Automatic Release)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
 [![📄 Documentation Management](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml)
+[![🛡️ Security Policy Management](https://github.com/bauer-group/automation-templates/actions/workflows/security-management.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/security-management.yml)
+
+## 📋 Project Resources
+
+| Resource | Description | Link |
+|----------|-------------|------|
+| **🔒 Security Policy** | Vulnerability reporting and security guidelines | [SECURITY.MD](SECURITY.MD) |
+| **🤝 Code of Conduct** | Community standards and behavior guidelines | [CODE_OF_CONDUCT.MD](CODE_OF_CONDUCT.MD) |
+| **🛠️ Contributing Guide** | Development workflow and contribution standards | [CONTRIBUTING.MD](CONTRIBUTING.MD) |
+| **📄 License** | Project licensing information | [LICENSE](LICENSE) |
+| **📊 Issue Templates** | Structured issue reporting templates | [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) |
 
 ## 🛡️ Security Scanning
 
@@ -232,6 +243,17 @@ Enterprise-grade security scanning and compliance automation.
 | **🟢 PHP Build** | Available | PHP and Composer automation |
 | **🟡 Go Build** | Planned | Go module and build automation |
 | **🟡 Rust Build** | Planned | Cargo and Rust build automation |
+
+### 📋 Repository Management Workflows
+
+| Workflow | Purpose | Auto-Generated Files |
+|----------|---------|---------------------|
+| **📄 Documentation Management** | Auto-generates README.MD from template | [README.MD](README.MD) |
+| **🛡️ Security Policy Management** | Auto-generates SECURITY.MD from template | [SECURITY.MD](SECURITY.MD) |
+| **🔔 Teams Notifications** | Sends workflow notifications to Microsoft Teams | - |
+| **🚀 Automatic Release** | Automated semantic versioning and releases | [CHANGELOG.MD](CHANGELOG.MD) |
+
+These workflows ensure that documentation stays current with version changes and repository updates.
 
 ## 🔧 Configuration
 
@@ -624,11 +646,32 @@ gh auth status --show-token
 - [🔄 **CI/CD Examples**](github/workflows/examples/ci-cd/) - General CI/CD pipeline examples
 - [📝 **Documentation Examples**](github/workflows/examples/documentation/) - Documentation automation examples
 
-## 📞 Support
+## 📞 Support & Community
 
-- **Issues:** [GitHub Issues]({{REPO_URL}}/issues)
-- **Documentation:** [Project Wiki]({{REPO_URL}}/wiki)
-- **Security:** [Security Policy]({{REPO_URL}}/security/policy)
+### 🆘 Getting Help
+
+| Need Help With | Resource | Link |
+|----------------|----------|------|
+| **🐛 Bug Reports** | GitHub Issues with Bug Report template | [Report Bug]({{REPO_URL}}/issues/new?template=BUG_REPORT.MD) |
+| **✨ Feature Requests** | GitHub Issues with Feature Request template | [Request Feature]({{REPO_URL}}/issues/new?template=FEATURE_REQUEST.MD) |
+| **🛠️ Workflow Support** | GitHub Issues with Workflow Support template | [Get Support]({{REPO_URL}}/issues/new?template=WORKFLOW_SUPPORT.MD) |
+| **📚 Documentation Issues** | GitHub Issues with Documentation template | [Report Doc Issue]({{REPO_URL}}/issues/new?template=DOCUMENTATION.MD) |
+| **🔒 Security Vulnerabilities** | Security Advisories (preferred) or Email | [Security Policy](SECURITY.MD) |
+
+### 🤝 Community
+
+- **💬 Discussions:** [GitHub Discussions]({{REPO_URL}}/discussions) - Ask questions and share ideas
+- **🛠️ Contributing:** [Contributing Guide](CONTRIBUTING.MD) - Learn how to contribute
+- **📋 Code of Conduct:** [Code of Conduct](CODE_OF_CONDUCT.MD) - Community standards
+- **📧 Enterprise Support:** [support@bauer-group.com](mailto:support@bauer-group.com)
+- **🌐 Support Portal:** [https://support.bauer-group.com](https://support.bauer-group.com)
+
+### 📖 Documentation
+
+- **📖 Project Wiki:** [{{REPO_URL}}/wiki]({{REPO_URL}}/wiki)
+- **📝 Examples:** [github/workflows/examples/](github/workflows/examples/)
+- **🔧 Configuration Templates:** [.github/config/](.github/config/)
+- **⚙️ Action Documentation:** [.github/actions/](.github/actions/)
 
 ## 📄 License
 

@@ -146,10 +146,22 @@ Most workflows support configuration through:
 
 ## Support
 
-For detailed documentation, see:
+### Build Workflow Documentation
+- [Docker Build Documentation](../../../docs/workflows/docker-build.md)
+- [Python Build Documentation](../../../docs/workflows/python-build.md)
 - [.NET Desktop Build Documentation](../../../docs/workflows/dotnet-desktop-build.md)
 - [.NET Build Documentation](../../../docs/workflows/dotnet-build.md)
 - [Node.js Build Documentation](../../../docs/workflows/nodejs-build.md)
+
+### Management & Notification Workflows
+- [Teams Notifications Documentation](../../../docs/workflows/teams-notifications.md)
+- [Documentation Management Workflow](../../../.github/workflows/documentation.yml)
+- [Security Policy Management Workflow](../../../.github/workflows/security-management.yml)
+
+### Project Resources
+- [Contributing Guidelines](../../../CONTRIBUTING.MD) - Learn how to contribute
+- [Security Policy](../../../SECURITY.MD) - Security and vulnerability reporting
+- [Code of Conduct](../../../CODE_OF_CONDUCT.MD) - Community standards
 
 ## Contributing
 
