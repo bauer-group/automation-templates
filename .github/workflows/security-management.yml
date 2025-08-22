@@ -250,10 +250,10 @@ jobs:
           
           # Check for required security policy sections
           REQUIRED_SECTIONS=(
-            "## 🚨 Reporting Security Vulnerabilities"
-            "## 🔐 Supported Versions"
-            "## 🛡️ Security Measures"
-            "## 📞 Emergency Contacts"
+            "Reporting Security Vulnerabilities"
+            "Supported Versions"
+            "Security Measures"
+            "Emergency Contacts"
           )
           
           MISSING_SECTIONS=()
