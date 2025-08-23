@@ -62,6 +62,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          fetch-tags: true
 
       - name: 🔍 Check if workflow should run
         id: should-run
@@ -229,6 +230,7 @@ jobs:
           
           git add README.MD
           git commit -m "$COMMIT_MSG" || echo "No changes to commit"
+          git fetch --tags origin
           git pull --rebase origin main
           git push
 
