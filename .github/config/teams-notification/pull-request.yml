@@ -1,6 +1,6 @@
 # 🔔 Teams Notification Pull Request Configuration
 # Optimized configuration for GitHub Pull Request events
-# Author: BAUER GROUP IT
+# Author: BAUER GROUP
 # Version: 1.0.0
 
 # Inherit from default configuration
@@ -9,92 +9,92 @@ extends: "default"
 # Theme configuration for PR types
 theme:
   colors:
-    pr_opened: "007bff"           # Blue for new PRs
-    pr_closed: "6c757d"           # Gray for closed PRs
-    pr_merged: "28a745"           # Green for merged PRs
+    pr_opened: "007bff" # Blue for new PRs
+    pr_closed: "6c757d" # Gray for closed PRs
+    pr_merged: "28a745" # Green for merged PRs
     pr_ready_for_review: "17a2b8" # Teal for review requests
-    pr_draft: "ffc107"            # Yellow for draft PRs
-    default: "007bff"             # Default to PR blue
+    pr_draft: "ffc107" # Yellow for draft PRs
+    default: "007bff" # Default to PR blue
 
 # Card styling optimized for code review workflow
 card:
-  style: "default"                # Neutral styling for PRs
+  style: "default" # Neutral styling for PRs
   width: "Full"
-  
+
 # Feature toggles for PR management
 features:
-  mentions: true                  # Enable mentions for reviewers
-  facts: true                     # Show PR metadata
-  actions: true                   # Show action buttons
-  timestamps: true                # Include timestamps
-  avatars: true                   # Show user avatars
-  retry: true                     # Enable retry
-  
+  mentions: true # Enable mentions for reviewers
+  facts: true # Show PR metadata
+  actions: true # Show action buttons
+  timestamps: true # Include timestamps
+  avatars: true # Show user avatars
+  retry: true # Enable retry
+
 # Notification settings
 notifications:
-  timeout: 30                     # Standard timeout
-  retry_count: 3                  # Standard retries
-  retry_delay: 2                  # Standard delay
-  
+  timeout: 30 # Standard timeout
+  retry_count: 3 # Standard retries
+  retry_delay: 2 # Standard delay
+
 # Content optimized for PR information
 content:
-  title_max_length: 100          # Standard PR title length
-  summary_max_length: 500        # Good summary length
-  details_max_length: 1000       # Detailed PR descriptions
-  
+  title_max_length: 100 # Standard PR title length
+  summary_max_length: 500 # Good summary length
+  details_max_length: 1000 # Detailed PR descriptions
+
 # Default mentions for PR events
 mentions:
-  pr_opened: []                   # Don't mention on open (too noisy)
-  pr_ready_for_review:            # Mention reviewers when ready
+  pr_opened: [] # Don't mention on open (too noisy)
+  pr_ready_for_review: # Mention reviewers when ready
     - "code-reviewers"
     - "maintainers"
-  pr_closed: []                   # Closure notifications are informational
-  pr_merged:                      # Celebrate merges
+  pr_closed: [] # Closure notifications are informational
+  pr_merged: # Celebrate merges
     - "team-leads"
-  
+
 # Formatting optimized for code review
 formatting:
-  use_emojis: true               # PR workflow emojis
-  bold_titles: true              # Emphasize PR titles
-  code_formatting: true          # Code-related formatting
+  use_emojis: true # PR workflow emojis
+  bold_titles: true # Emphasize PR titles
+  code_formatting: true # Code-related formatting
 
 # PR-specific settings
 pr_settings:
-  show_changes: true             # Display additions/deletions
-  show_files_changed: true       # Display file count
-  show_commits: true             # Display commit count
-  show_base_branch: true         # Display target branch
-  show_head_branch: true         # Display source branch
-  show_draft_status: true        # Indicate if PR is draft
-  show_mergeable_status: true    # Show if PR can be merged
-  
+  show_changes: true # Display additions/deletions
+  show_files_changed: true # Display file count
+  show_commits: true # Display commit count
+  show_base_branch: true # Display target branch
+  show_head_branch: true # Display source branch
+  show_draft_status: true # Indicate if PR is draft
+  show_mergeable_status: true # Show if PR can be merged
+
 # Size-based handling
 pr_size:
-  small: 50                      # Lines changed threshold for small PRs
-  medium: 200                    # Lines changed threshold for medium PRs
-  large: 500                     # Lines changed threshold for large PRs
-  
+  small: 50 # Lines changed threshold for small PRs
+  medium: 200 # Lines changed threshold for medium PRs
+  large: 500 # Lines changed threshold for large PRs
+
 # Review requirements
 review:
-  mention_on_large_pr: true      # Mention additional reviewers for large PRs
-  large_pr_mentions:             # Additional mentions for large PRs
+  mention_on_large_pr: true # Mention additional reviewers for large PRs
+  large_pr_mentions: # Additional mentions for large PRs
     - "senior-developers"
     - "architects"
-  critical_files:                # Files that trigger special handling
+  critical_files: # Files that trigger special handling
     - "package.json"
     - "requirements.txt"
     - "Dockerfile"
     - "*.sql"
     - "*.config"
-  
+
 # Branch-specific settings
 branches:
-  protected:                     # Protected branch names
+  protected: # Protected branch names
     - "main"
     - "master"
     - "develop"
     - "production"
-  mention_on_protected: true     # Extra mentions for protected branch PRs
-  protected_branch_mentions:     # Additional mentions for protected branches
+  mention_on_protected: true # Extra mentions for protected branch PRs
+  protected_branch_mentions: # Additional mentions for protected branches
     - "maintainers"
     - "release-managers"

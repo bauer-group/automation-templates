@@ -1,6 +1,6 @@
 # 🔔 Teams Notification Release Configuration
 # Optimized configuration for GitHub Release events
-# Author: BAUER GROUP IT
+# Author: BAUER GROUP
 # Version: 1.0.0
 
 # Inherit from default configuration
@@ -9,120 +9,120 @@ extends: "default"
 # Theme configuration for release events
 theme:
   colors:
-    release: "20c997"             # Teal for releases
-    release_published: "28a745"   # Green for published releases
-    release_created: "17a2b8"     # Light blue for created releases
-    release_edited: "ffc107"      # Yellow for edited releases
-    release_prerelease: "fd7e14"  # Orange for prereleases
-    release_draft: "6c757d"       # Gray for draft releases
-    default: "20c997"             # Default to teal
+    release: "20c997" # Teal for releases
+    release_published: "28a745" # Green for published releases
+    release_created: "17a2b8" # Light blue for created releases
+    release_edited: "ffc107" # Yellow for edited releases
+    release_prerelease: "fd7e14" # Orange for prereleases
+    release_draft: "6c757d" # Gray for draft releases
+    default: "20c997" # Default to teal
 
 # Card styling optimized for release announcements
 card:
-  style: "good"                   # Positive styling for releases
+  style: "good" # Positive styling for releases
   width: "Full"
-  
+
 # Feature toggles for release notifications
 features:
-  mentions: true                  # Enable mentions for releases
-  facts: true                     # Show release metadata
-  actions: true                   # Show action buttons
-  timestamps: true                # Include timestamps
-  avatars: true                   # Show publisher avatars
-  retry: true                     # Enable retry
-  
+  mentions: true # Enable mentions for releases
+  facts: true # Show release metadata
+  actions: true # Show action buttons
+  timestamps: true # Include timestamps
+  avatars: true # Show publisher avatars
+  retry: true # Enable retry
+
 # Notification settings
 notifications:
-  timeout: 30                     # Standard timeout
-  retry_count: 3                  # Standard retries
-  retry_delay: 2                  # Standard delay
-  
+  timeout: 30 # Standard timeout
+  retry_count: 3 # Standard retries
+  retry_delay: 2 # Standard delay
+
 # Content optimized for release information
 content:
-  title_max_length: 120          # Longer for release titles
-  summary_max_length: 800        # Detailed release summaries
-  details_max_length: 2000       # Full release notes
-  
+  title_max_length: 120 # Longer for release titles
+  summary_max_length: 800 # Detailed release summaries
+  details_max_length: 2000 # Full release notes
+
 # Default mentions for release events
 mentions:
-  release_published:              # Celebrate published releases
+  release_published: # Celebrate published releases
     - "team-leads"
     - "stakeholders"
     - "product-managers"
-  release_created: []             # Don't mention on creation
-  release_edited: []              # Don't mention on edits
-  release_prerelease:             # Notify testers for prereleases
+  release_created: [] # Don't mention on creation
+  release_edited: [] # Don't mention on edits
+  release_prerelease: # Notify testers for prereleases
     - "qa-team"
     - "beta-testers"
-  
+
 # Formatting optimized for release announcements
 formatting:
-  use_emojis: true               # Celebratory emojis
-  bold_titles: true              # Emphasize release titles
-  code_formatting: true          # Code formatting for technical details
+  use_emojis: true # Celebratory emojis
+  bold_titles: true # Emphasize release titles
+  code_formatting: true # Code formatting for technical details
 
 # Release-specific settings
 release_settings:
-  show_tag: true                 # Display release tag
-  show_assets: true              # Display release assets
-  show_changelog: true           # Display changelog/release notes
-  show_download_count: false     # Don't show download count (not available on creation)
-  show_prerelease_status: true   # Indicate if prerelease
-  show_draft_status: true        # Indicate if draft
-  truncate_changelog: true       # Truncate long changelogs
-  max_changelog_length: 1500     # Maximum changelog length to display
-  
+  show_tag: true # Display release tag
+  show_assets: true # Display release assets
+  show_changelog: true # Display changelog/release notes
+  show_download_count: false # Don't show download count (not available on creation)
+  show_prerelease_status: true # Indicate if prerelease
+  show_draft_status: true # Indicate if draft
+  truncate_changelog: true # Truncate long changelogs
+  max_changelog_length: 1500 # Maximum changelog length to display
+
 # Version handling
 version_handling:
-  semantic_versioning: true      # Recognize semantic versioning
-  major_version_special: true    # Special handling for major versions
+  semantic_versioning: true # Recognize semantic versioning
+  major_version_special: true # Special handling for major versions
   breaking_change_detection: true # Detect breaking changes in changelog
-  
+
 # Special handling for different release types
 release_types:
-  major:                         # Major version releases
+  major: # Major version releases
     special_mentions:
       - "all-developers"
       - "product-team"
-    theme_color: "dc3545"        # Red for attention
-    
-  minor:                         # Minor version releases
+    theme_color: "dc3545" # Red for attention
+
+  minor: # Minor version releases
     special_mentions:
       - "team-leads"
-    theme_color: "28a745"        # Green for features
-    
-  patch:                         # Patch releases
+    theme_color: "28a745" # Green for features
+
+  patch: # Patch releases
     special_mentions: []
-    theme_color: "17a2b8"        # Teal for fixes
-    
-  prerelease:                    # Prerelease versions
+    theme_color: "17a2b8" # Teal for fixes
+
+  prerelease: # Prerelease versions
     special_mentions:
       - "qa-team"
       - "beta-testers"
-    theme_color: "fd7e14"        # Orange for caution
-    
+    theme_color: "fd7e14" # Orange for caution
+
 # Asset handling
 assets:
-  show_binary_assets: true       # Show binary downloads
-  show_source_assets: false      # Hide source code assets (always present)
-  group_by_platform: true        # Group assets by platform
-  supported_platforms:           # Recognized platforms
+  show_binary_assets: true # Show binary downloads
+  show_source_assets: false # Hide source code assets (always present)
+  group_by_platform: true # Group assets by platform
+  supported_platforms: # Recognized platforms
     - "windows"
     - "linux"
     - "macos"
     - "docker"
-    
+
 # Changelog parsing
 changelog:
-  parse_sections: true           # Parse changelog sections
-  recognized_sections:           # Known changelog sections
+  parse_sections: true # Parse changelog sections
+  recognized_sections: # Known changelog sections
     - "Added"
     - "Changed"
     - "Deprecated"
     - "Removed"
     - "Fixed"
     - "Security"
-  breaking_change_keywords:      # Keywords that indicate breaking changes
+  breaking_change_keywords: # Keywords that indicate breaking changes
     - "BREAKING"
     - "BREAKING CHANGE"
     - "breaking change"
