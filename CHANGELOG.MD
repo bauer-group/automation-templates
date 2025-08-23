@@ -1,3 +1,10 @@
+## [0.22.2](https://github.com/bauer-group/automation-templates/compare/v0.22.1...v0.22.2) (2025-08-23)
+
+### 🐛 Bug Fixes
+
+* enable fetching tags in documentation and security management workflows ([de61f0e](https://github.com/bauer-group/automation-templates/commit/de61f0e7ea2fbc6c20a30eddeab6836c6f16b078))
+* ensure newline at end of file in deployment scripts ([547a9f2](https://github.com/bauer-group/automation-templates/commit/547a9f285674a0e78a3a3a78d596e153ab8afd55))
+
 ## [0.22.1](https://github.com/bauer-group/automation-templates/compare/v0.22.0...v0.22.1) (2025-08-23)
 
 ### 🐛 Bug Fixes
