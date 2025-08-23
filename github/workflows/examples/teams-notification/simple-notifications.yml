@@ -1,7 +1,7 @@
 # 🔔 Simple Teams Notifications Example
 # Basic implementation of Teams notifications for common repository events
-# Author: BAUER GROUP IT
-# 
+# Author: BAUER GROUP
+#
 # This example demonstrates the simplest way to implement Teams notifications
 # for the most common repository events without complex configuration.
 
@@ -12,15 +12,15 @@ on:
   workflow_run:
     workflows: ["*"]
     types: [completed]
-  
+
   # Issue events
   issues:
     types: [opened, closed]
-  
+
   # Pull request events
   pull_request:
     types: [opened, closed]
-  
+
   # Push to main branches
   push:
     branches: [main, master, develop]
@@ -46,19 +46,19 @@ jobs:
         uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
-          event-type: 'workflow_success'
-          title: '✅ Workflow Success'
-          summary: 'Workflow **${{ github.event.workflow_run.name }}** completed successfully'
+          event-type: "workflow_success"
+          title: "✅ Workflow Success"
+          summary: "Workflow **${{ github.event.workflow_run.name }}** completed successfully"
 
       - name: 🔔 Failure Notification
         if: github.event.workflow_run.conclusion == 'failure'
         uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
-          event-type: 'workflow_failure'
-          title: '❌ Workflow Failed'
-          summary: 'Workflow **${{ github.event.workflow_run.name }}** failed'
-          mention-users: 'devops-team'
+          event-type: "workflow_failure"
+          title: "❌ Workflow Failed"
+          summary: "Workflow **${{ github.event.workflow_run.name }}** failed"
+          mention-users: "devops-team"
 
   # Simple issue notifications
   issue-notifications:
@@ -74,9 +74,9 @@ jobs:
         uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
-          event-type: 'issue_opened'
-          title: '🐛 New Issue'
-          summary: '**#${{ github.event.issue.number }}**: ${{ github.event.issue.title }}'
+          event-type: "issue_opened"
+          title: "🐛 New Issue"
+          summary: "**#${{ github.event.issue.number }}**: ${{ github.event.issue.title }}"
           issue-number: ${{ github.event.issue.number }}
           issue-url: ${{ github.event.issue.html_url }}
 
@@ -85,9 +85,9 @@ jobs:
         uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
-          event-type: 'issue_closed'
-          title: '✅ Issue Closed'
-          summary: '**#${{ github.event.issue.number }}**: ${{ github.event.issue.title }}'
+          event-type: "issue_closed"
+          title: "✅ Issue Closed"
+          summary: "**#${{ github.event.issue.number }}**: ${{ github.event.issue.title }}"
           issue-number: ${{ github.event.issue.number }}
           issue-url: ${{ github.event.issue.html_url }}
 
@@ -105,9 +105,9 @@ jobs:
         uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
-          event-type: 'pr_opened'
-          title: '🔀 New Pull Request'
-          summary: '**#${{ github.event.pull_request.number }}**: ${{ github.event.pull_request.title }}'
+          event-type: "pr_opened"
+          title: "🔀 New Pull Request"
+          summary: "**#${{ github.event.pull_request.number }}**: ${{ github.event.pull_request.title }}"
           pr-number: ${{ github.event.pull_request.number }}
           pr-url: ${{ github.event.pull_request.html_url }}
 
@@ -116,9 +116,9 @@ jobs:
         uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
-          event-type: 'pr_merged'
-          title: '🎉 PR Merged'
-          summary: '**#${{ github.event.pull_request.number }}**: ${{ github.event.pull_request.title }}'
+          event-type: "pr_merged"
+          title: "🎉 PR Merged"
+          summary: "**#${{ github.event.pull_request.number }}**: ${{ github.event.pull_request.title }}"
           pr-number: ${{ github.event.pull_request.number }}
           pr-url: ${{ github.event.pull_request.html_url }}
 
@@ -135,6 +135,6 @@ jobs:
         uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
-          event-type: 'push'
-          title: '🚀 Code Pushed'
-          summary: 'New commits pushed to **${{ github.ref_name }}**'
+          event-type: "push"
+          title: "🚀 Code Pushed"
+          summary: "New commits pushed to **${{ github.ref_name }}**"

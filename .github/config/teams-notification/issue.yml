@@ -1,6 +1,6 @@
 # 🔔 Teams Notification Issue Configuration
 # Optimized configuration for GitHub Issues events
-# Author: BAUER GROUP IT
+# Author: BAUER GROUP
 # Version: 1.0.0
 
 # Inherit from default configuration
@@ -9,75 +9,75 @@ extends: "default"
 # Theme configuration for issue types
 theme:
   colors:
-    issue_opened: "fd7e14"        # Orange for new issues
-    issue_closed: "28a745"        # Green for closed issues
-    issue_reopened: "dc3545"      # Red for reopened issues
-    issue_assigned: "007bff"      # Blue for assignments
-    issue_labeled: "6f42c1"       # Purple for labels
-    default: "fd7e14"             # Default to warning orange
+    issue_opened: "fd7e14" # Orange for new issues
+    issue_closed: "28a745" # Green for closed issues
+    issue_reopened: "dc3545" # Red for reopened issues
+    issue_assigned: "007bff" # Blue for assignments
+    issue_labeled: "6f42c1" # Purple for labels
+    default: "fd7e14" # Default to warning orange
 
 # Card styling optimized for issue tracking
 card:
-  style: "default"                # Neutral styling for issues
+  style: "default" # Neutral styling for issues
   width: "Full"
-  
+
 # Feature toggles for issue management
 features:
-  mentions: true                  # Enable mentions for issue assignees
-  facts: true                     # Show issue metadata
-  actions: true                   # Show action buttons
-  timestamps: true                # Include timestamps
-  avatars: true                   # Show user avatars
-  retry: true                     # Enable retry
-  
+  mentions: true # Enable mentions for issue assignees
+  facts: true # Show issue metadata
+  actions: true # Show action buttons
+  timestamps: true # Include timestamps
+  avatars: true # Show user avatars
+  retry: true # Enable retry
+
 # Notification settings
 notifications:
-  timeout: 30                     # Standard timeout
-  retry_count: 3                  # Standard retries
-  retry_delay: 2                  # Standard delay
-  
+  timeout: 30 # Standard timeout
+  retry_count: 3 # Standard retries
+  retry_delay: 2 # Standard delay
+
 # Content optimized for issue information
 content:
-  title_max_length: 120          # Longer for issue titles
-  summary_max_length: 600        # Good summary length
-  details_max_length: 1200       # Detailed issue descriptions
-  
+  title_max_length: 120 # Longer for issue titles
+  summary_max_length: 600 # Good summary length
+  details_max_length: 1200 # Detailed issue descriptions
+
 # Default mentions for issue events
 mentions:
-  issue_opened:                   # New issues
+  issue_opened: # New issues
     - "maintainers"
     - "triage-team"
-  issue_assigned: []              # Assignee already knows
-  issue_labeled: []               # Labeling doesn't need mentions
-  issue_closed: []                # Closure notifications are informational
-  issue_reopened:                 # Reopened issues need attention
+  issue_assigned: [] # Assignee already knows
+  issue_labeled: [] # Labeling doesn't need mentions
+  issue_closed: [] # Closure notifications are informational
+  issue_reopened: # Reopened issues need attention
     - "maintainers"
-  
+
 # Formatting optimized for issue tracking
 formatting:
-  use_emojis: true               # Issue type emojis
-  bold_titles: true              # Emphasize issue titles
-  code_formatting: true          # Code snippets in issue descriptions
+  use_emojis: true # Issue type emojis
+  bold_titles: true # Emphasize issue titles
+  code_formatting: true # Code snippets in issue descriptions
 
 # Issue-specific settings
 issue_settings:
-  show_labels: true              # Display issue labels
-  show_assignees: true           # Display assignees
-  show_milestone: true           # Display milestone if set
-  show_project: true             # Display project if assigned
-  truncate_body: true            # Truncate long issue bodies
-  priority_labels:               # Labels that indicate priority
+  show_labels: true # Display issue labels
+  show_assignees: true # Display assignees
+  show_milestone: true # Display milestone if set
+  show_project: true # Display project if assigned
+  truncate_body: true # Truncate long issue bodies
+  priority_labels: # Labels that indicate priority
     - "priority:critical"
     - "priority:high"
     - "bug"
     - "security"
-  
+
 # Priority handling
 priority:
-  critical_labels:               # Labels that trigger special handling
+  critical_labels: # Labels that trigger special handling
     - "critical"
     - "security"
     - "data-loss"
-  high_priority_mentions:        # Additional mentions for critical issues
+  high_priority_mentions: # Additional mentions for critical issues
     - "security-team"
     - "senior-developers"

@@ -1,6 +1,6 @@
 # 🔔 Teams Notification Success Configuration
 # Optimized configuration for success events (workflows, deployments, etc.)
-# Author: BAUER GROUP IT
+# Author: BAUER GROUP
 # Version: 1.0.0
 
 # Inherit from default configuration
@@ -9,47 +9,47 @@ extends: "default"
 # Theme configuration
 theme:
   colors:
-    workflow_success: "28a745"    # Success Green
-    pr_merged: "28a745"           # Success Green
-    issue_closed: "28a745"        # Success Green
-    release: "20c997"             # Success Teal
-    default: "28a745"             # Default to success green
+    workflow_success: "28a745" # Success Green
+    pr_merged: "28a745" # Success Green
+    issue_closed: "28a745" # Success Green
+    release: "20c997" # Success Teal
+    default: "28a745" # Default to success green
 
 # Card styling optimized for positive events
 card:
-  style: "good"                   # Use positive styling
+  style: "good" # Use positive styling
   width: "Full"
-  
+
 # Feature toggles - minimize noise for success events
 features:
-  mentions: false                 # Don't mention users for success (unless specified)
-  facts: true                     # Show facts section
-  actions: true                   # Show action buttons
-  timestamps: true                # Include timestamps
-  avatars: true                   # Show user avatars
-  retry: true                     # Enable retry
-  
+  mentions: false # Don't mention users for success (unless specified)
+  facts: true # Show facts section
+  actions: true # Show action buttons
+  timestamps: true # Include timestamps
+  avatars: true # Show user avatars
+  retry: true # Enable retry
+
 # Notification settings - less aggressive for success
 notifications:
-  timeout: 15                     # Shorter timeout for success
-  retry_count: 2                  # Fewer retries needed
-  retry_delay: 1                  # Shorter delay
-  
+  timeout: 15 # Shorter timeout for success
+  retry_count: 2 # Fewer retries needed
+  retry_delay: 1 # Shorter delay
+
 # Content optimized for success messages
 content:
-  title_max_length: 80           # Shorter titles for success
-  summary_max_length: 300        # Concise summaries
-  details_max_length: 500        # Brief details
-  
+  title_max_length: 80 # Shorter titles for success
+  summary_max_length: 300 # Concise summaries
+  details_max_length: 500 # Brief details
+
 # Default mentions - generally empty for success events
 mentions:
-  workflow_success: []            # No mentions for successful workflows
-  pr_merged: []                   # No mentions for merged PRs
-  issue_closed: []                # No mentions for closed issues
-  release: []                     # No mentions for releases
-  
+  workflow_success: [] # No mentions for successful workflows
+  pr_merged: [] # No mentions for merged PRs
+  issue_closed: [] # No mentions for closed issues
+  release: [] # No mentions for releases
+
 # Formatting optimized for positive messaging
 formatting:
-  use_emojis: true               # Celebratory emojis
-  bold_titles: true              # Emphasize success
-  code_formatting: false         # Less technical detail needed
+  use_emojis: true # Celebratory emojis
+  bold_titles: true # Emphasize success
+  code_formatting: false # Less technical detail needed
