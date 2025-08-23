@@ -1,3 +1,10 @@
+## [0.22.1](https://github.com/bauer-group/automation-templates/compare/v0.22.0...v0.22.1) (2025-08-23)
+
+### 🐛 Bug Fixes
+
+* add git pull --rebase to documentation and security management workflows ([791b9c5](https://github.com/bauer-group/automation-templates/commit/791b9c5388f4ffa087756606d609f9e9fa1136a3))
+* ensure newline at end of file in deployment scripts ([d48618b](https://github.com/bauer-group/automation-templates/commit/d48618b02eb611ed21a8465722c5e590ef723421))
+
 ## [0.22.0](https://github.com/bauer-group/automation-templates/compare/v0.21.0...v0.22.0) (2025-08-22)
 
 ### 🚀 Features
