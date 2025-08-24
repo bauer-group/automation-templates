@@ -1,0 +1,75 @@
+name: '🔗 Action Resolver'
+description: 'Resolves action paths for local and external workflow usage'
+author: 'BAUER GROUP'
+branding:
+  icon: 'link'
+  color: 'blue'
+
+inputs:
+  action-name:
+    description: 'Name of the action to resolve (e.g., teams-notification, security-scan)'
+    required: true
+  repository:
+    description: 'Repository containing the automation templates'
+    required: false
+    default: 'bauer-group/automation-templates'
+  ref:
+    description: 'Git reference (branch/tag) to use for external actions'
+    required: false
+    default: 'main'
+  current-repository:
+    description: 'Current repository context'
+    required: false
+    default: ${{ github.repository }}
+
+outputs:
+  action-path:
+    description: 'Resolved action path for use in workflow steps'
+    value: ${{ steps.resolve.outputs.action-path }}
+  is-local:
+    description: 'Whether the action is being used locally'
+    value: ${{ steps.resolve.outputs.is-local }}
+  repository-info:
+    description: 'Information about the resolved repository context'
+    value: ${{ steps.resolve.outputs.repository-info }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🔍 Resolve Action Path
+      id: resolve
+      shell: bash
+      run: |
+        CURRENT_REPO="${{ inputs.current-repository }}"
+        TARGET_REPO="${{ inputs.repository }}"
+        ACTION_NAME="${{ inputs.action-name }}"
+        REF="${{ inputs.ref }}"
+        
+        echo "🔍 Resolving action path for: $ACTION_NAME"
+        echo "📍 Current repository: $CURRENT_REPO"
+        echo "🎯 Target repository: $TARGET_REPO"
+        
+        # Check if we're running in the automation templates repository
+        if [[ "$CURRENT_REPO" == "$TARGET_REPO" ]]; then
+          # Local usage - use relative path
+          ACTION_PATH="./.github/actions/$ACTION_NAME"
+          IS_LOCAL="true"
+          REPO_INFO="local"
+          echo "✅ Using local action path: $ACTION_PATH"
+        else
+          # External usage - use remote repository reference
+          ACTION_PATH="$TARGET_REPO/.github/actions/$ACTION_NAME@$REF"
+          IS_LOCAL="false"
+          REPO_INFO="external:$TARGET_REPO@$REF"
+          echo "🌐 Using external action path: $ACTION_PATH"
+        fi
+        
+        # Set outputs
+        echo "action-path=$ACTION_PATH" >> $GITHUB_OUTPUT
+        echo "is-local=$IS_LOCAL" >> $GITHUB_OUTPUT
+        echo "repository-info=$REPO_INFO" >> $GITHUB_OUTPUT
+        
+        echo "🎉 Action resolution complete!"
+        echo "   Path: $ACTION_PATH"
+        echo "   Local: $IS_LOCAL"
+        echo "   Info: $REPO_INFO"
