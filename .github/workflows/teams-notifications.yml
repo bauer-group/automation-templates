@@ -1,6 +1,19 @@
 name: 🔔 Teams Notifications
 
 on:
+  # Workflow call (for cross-repo usage)
+  workflow_call:
+    inputs:
+      notification-level:
+        description: 'Notification level (all or errors-only)'
+        required: false
+        type: string
+        default: 'errors-only'
+    secrets:
+      TEAMS_WEBHOOK_URL:
+        description: 'Teams webhook URL'
+        required: false
+        
   # Workflow events
   workflow_run:
     workflows: ["*"]
@@ -61,7 +74,9 @@ permissions:
 
 env:
   # Notification level: 'all' sends all notifications, 'errors-only' sends only failures
-  NOTIFICATION_LEVEL: ${{ github.event.inputs.notification-level || vars.TEAMS_NOTIFICATION_LEVEL || 'errors-only' }}
+  NOTIFICATION_LEVEL: ${{ inputs.notification-level || github.event.inputs.notification-level || vars.TEAMS_NOTIFICATION_LEVEL || 'errors-only' }}
+  # Teams webhook URL from secret
+  TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_URL }}
 
 jobs:
   # Handle workflow completion notifications

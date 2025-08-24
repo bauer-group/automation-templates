@@ -1,6 +1,49 @@
 name: 🏷️ Pull Request Labeler
 
 on:
+  # Workflow call (for cross-repo usage)
+  workflow_call:
+    inputs:
+      config-path:
+        description: 'Path to labeler configuration file'
+        required: false
+        type: string
+        default: '.github/config/pr-labeler/path-labels.yml'
+      sync-labels:
+        description: 'Remove labels when files no longer match'
+        required: false
+        type: boolean
+        default: true
+      auto-assign:
+        description: 'Automatically assign reviewers based on CODEOWNERS'
+        required: false
+        type: boolean
+        default: false
+      size-labels:
+        description: 'Add size labels (XS, S, M, L, XL, XXL)'
+        required: false
+        type: boolean
+        default: true
+      priority-labels:
+        description: 'Add priority labels based on keywords'
+        required: false
+        type: boolean
+        default: true
+      type-labels:
+        description: 'Add type labels based on branch names and PR title'
+        required: false
+        type: boolean
+        default: true
+      custom-rules:
+        description: 'Path to custom triage rules file'
+        required: false
+        type: string
+        default: '.github/config/pr-labeler/triage-rules.yml'
+    secrets:
+      token:
+        description: 'GitHub Token with pull-requests write permission'
+        required: false
+        
   pull_request_target:
     types: [opened, edited, synchronize, reopened]
 
@@ -13,11 +56,11 @@ jobs:
     name: 🏷️ Label & Triage
     uses: ./.github/workflows/modules-pr-labeler.yml
     with:
-      config-path: '.github/config/pr-labeler/path-labels.yml'
-      sync-labels: true
-      auto-assign: false
-      size-labels: true
-      priority-labels: true
-      type-labels: true
-      custom-rules: '.github/config/pr-labeler/triage-rules.yml'
+      config-path: ${{ inputs.config-path || '.github/config/pr-labeler/path-labels.yml' }}
+      sync-labels: ${{ inputs.sync-labels != null && inputs.sync-labels || true }}
+      auto-assign: ${{ inputs.auto-assign != null && inputs.auto-assign || false }}
+      size-labels: ${{ inputs.size-labels != null && inputs.size-labels || true }}
+      priority-labels: ${{ inputs.priority-labels != null && inputs.priority-labels || true }}
+      type-labels: ${{ inputs.type-labels != null && inputs.type-labels || true }}
+      custom-rules: ${{ inputs.custom-rules || '.github/config/pr-labeler/triage-rules.yml' }}
     secrets: inherit
