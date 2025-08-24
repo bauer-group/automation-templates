@@ -14,7 +14,7 @@ This module solves the problem that reusable workflows don't know whether they a
 steps:
   - name: 🔗 Resolve Action Paths
     id: resolver
-    uses: bauer-group/automation-templates/.github/actions/action-resolver@main
+    uses: ${{ github.repository == 'bauer-group/automation-templates' && './.github/actions/action-resolver' || 'bauer-group/automation-templates/.github/actions/action-resolver@main' }}
     with:
       action-name: 'teams-notification'
 
