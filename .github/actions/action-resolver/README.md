@@ -12,14 +12,22 @@ This module solves the problem that reusable workflows don't know whether they a
 
 ```yaml
 steps:
-  - name: 🔗 Resolve Action Paths
+  - name: 🔗 Resolve Action Paths (External)
     id: resolver
-    uses: ${{ github.repository == 'bauer-group/automation-templates' && './.github/actions/action-resolver' || 'bauer-group/automation-templates/.github/actions/action-resolver@main' }}
+    uses: bauer-group/automation-templates/.github/actions/action-resolver@main
+    if: github.repository != 'bauer-group/automation-templates'
+    with:
+      action-name: 'teams-notification'
+      
+  - name: 🔗 Resolve Action Paths (Local)
+    id: resolver-local
+    uses: ./.github/actions/action-resolver
+    if: github.repository == 'bauer-group/automation-templates'
     with:
       action-name: 'teams-notification'
 
   - name: Use Resolved Action
-    uses: ${{ steps.resolver.outputs.action-path }}
+    uses: ${{ steps.resolver.outputs.action-path || steps.resolver-local.outputs.action-path }}
     with:
       # Your action inputs here
 ```

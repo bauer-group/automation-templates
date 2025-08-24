@@ -85,11 +85,8 @@ jobs:
     runs-on: ubuntu-latest
     name: 🔄 Workflow Notifications
     steps:
-      - name: 🔗 Resolve Action Paths
-        id: resolver
-        uses: ${{ github.repository == 'bauer-group/automation-templates' && './.github/actions/action-resolver' || 'bauer-group/automation-templates/.github/actions/action-resolver@main' }}
-        with:
-          action-name: 'teams-notification'
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
 
       - name: 📊 Get Workflow Logs
         id: get-logs
@@ -105,7 +102,7 @@ jobs:
 
       - name: 🔔 Send Workflow Success Notification
         if: github.event.workflow_run.conclusion == 'success' && env.NOTIFICATION_LEVEL == 'all'
-        uses: ${{ steps.resolver.outputs.action-path }}
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
           event-type: 'workflow_success'
@@ -141,7 +138,7 @@ jobs:
 
       - name: 🔔 Send Workflow Failure Notification
         if: github.event.workflow_run.conclusion == 'failure'
-        uses: ${{ steps.resolver.outputs.action-path }}
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
           event-type: 'workflow_failure'
@@ -173,7 +170,7 @@ jobs:
 
       - name: 🔔 Send Issue Opened Notification
         if: github.event.action == 'opened' && env.NOTIFICATION_LEVEL == 'all'
-        uses: ./.github/actions/teams-notification
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
           event-type: 'issue_opened'
@@ -195,7 +192,7 @@ jobs:
 
       - name: 🔔 Send Issue Closed Notification
         if: github.event.action == 'closed' && env.NOTIFICATION_LEVEL == 'all'
-        uses: ./.github/actions/teams-notification
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
           event-type: 'issue_closed'
@@ -220,7 +217,7 @@ jobs:
 
       - name: 🔔 Send PR Opened Notification
         if: github.event.action == 'opened' && env.NOTIFICATION_LEVEL == 'all'
-        uses: ./.github/actions/teams-notification
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
           event-type: 'pr_opened'
@@ -245,7 +242,7 @@ jobs:
 
       - name: 🔔 Send PR Closed Notification
         if: github.event.action == 'closed' && github.event.pull_request.merged == false && env.NOTIFICATION_LEVEL == 'all'
-        uses: ./.github/actions/teams-notification
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
           event-type: 'pr_closed'
@@ -261,7 +258,7 @@ jobs:
 
       - name: 🔔 Send PR Merged Notification
         if: github.event.action == 'closed' && github.event.pull_request.merged == true && env.NOTIFICATION_LEVEL == 'all'
-        uses: ./.github/actions/teams-notification
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
           event-type: 'pr_merged'
@@ -284,7 +281,7 @@ jobs:
 
       - name: 🔔 Send PR Ready for Review Notification
         if: github.event.action == 'ready_for_review' && env.NOTIFICATION_LEVEL == 'all'
-        uses: ./.github/actions/teams-notification
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
           event-type: 'pr_opened'
@@ -310,7 +307,7 @@ jobs:
 
       - name: 🔔 Send Push Notification
         if: env.NOTIFICATION_LEVEL == 'all'
-        uses: ./.github/actions/teams-notification
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
           event-type: 'push'
@@ -340,7 +337,7 @@ jobs:
 
       - name: 🔔 Send Release Notification
         if: github.event.action == 'published' && env.NOTIFICATION_LEVEL == 'all'
-        uses: ./.github/actions/teams-notification
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
           event-type: 'release'
@@ -369,7 +366,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 🔔 Send Test Notification
-        uses: ./.github/actions/teams-notification
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
         with:
           webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
           event-type: ${{ github.event.inputs.event-type }}
