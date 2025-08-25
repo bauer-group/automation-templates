@@ -71,7 +71,7 @@ jobs:
 
       - name: 📝 Generate README with Custom Action
         id: generate
-        uses: ./.github/actions/readme-generate
+        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
         with:
           template-path: ${{ inputs.template-path || 'docs/README.template.MD' }}
           output-path: ${{ inputs.output-path || 'README.MD' }}

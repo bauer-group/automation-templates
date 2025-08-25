@@ -102,7 +102,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Python Environment
-        uses: ./.github/actions/python-setup
+        uses: bauer-group/automation-templates/.github/actions/python-setup@main
         with:
           python-version: '3.11'
           requirements-files: 'requirements.txt,requirements-test.txt'

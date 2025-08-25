@@ -208,7 +208,7 @@ jobs:
       - name: 🛡️ Generate Professional Security Policy
         id: generate
         if: steps.should-run.outputs.should_run == 'true'
-        uses: ./.github/actions/security-generate
+        uses: bauer-group/automation-templates/.github/actions/security-generate@main
         with:
           config-file: '.github/config/security-policy/config.yml'
           force-update: ${{ inputs.force-update || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' }}

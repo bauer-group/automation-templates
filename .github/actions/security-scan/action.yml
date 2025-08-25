@@ -130,7 +130,7 @@ runs:
     - name: 🛡️ GitGuardian Security Scan
       id: gitguardian-scan
       if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitguardian' || inputs.scan-engine == 'both') && env.SKIP_GITGUARDIAN != 'true'
-      uses: ./.github/actions/gitguardian-scan
+      uses: bauer-group/automation-templates/.github/actions/gitguardian-scan@main
       with:
         scan-mode: 'ci'
         fail-on-findings: 'false'

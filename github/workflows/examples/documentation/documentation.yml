@@ -71,7 +71,7 @@ jobs:
 
       - name: 📝 Generate Professional README
         id: generate
-        uses: ./.github/actions/readme-generate
+        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
         with:
           template-path: 'docs/README.template.MD'
           output-path: 'README.MD'

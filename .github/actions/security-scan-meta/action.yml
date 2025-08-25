@@ -127,7 +127,7 @@ runs:
     - name: 🔍 Run Gitleaks Security Scan
       id: gitleaks-scan
       if: contains(env.ENGINES_TO_USE, 'gitleaks')
-      uses: ./.github/actions/gitleaks-scan
+      uses: bauer-group/automation-templates/.github/actions/gitleaks-scan@main
       with:
         fail-on-findings: 'false'  # Let meta package handle failure
         config-path: ${{ inputs.gitleaks-config }}
@@ -140,7 +140,7 @@ runs:
     - name: 🛡️ Run GitGuardian Security Scan  
       id: gitguardian-scan
       if: contains(env.ENGINES_TO_USE, 'gitguardian')
-      uses: ./.github/actions/gitguardian-scan
+      uses: bauer-group/automation-templates/.github/actions/gitguardian-scan@main
       with:
         fail-on-findings: 'false'  # Let meta package handle failure
         scan-mode: ${{ inputs.gitguardian-mode }}

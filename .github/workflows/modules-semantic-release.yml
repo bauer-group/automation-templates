@@ -52,7 +52,7 @@ jobs:
           
       - name: 🚀 Semantic Release
         id: semantic
-        uses: ./.github/actions/semantic-release
+        uses: bauer-group/automation-templates/.github/actions/semantic-release@main
         with:
           dry-run: ${{ inputs.dry-run }}
           branches: ${{ inputs.target-branch }}

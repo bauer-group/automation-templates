@@ -346,7 +346,7 @@ jobs:
       
       - name: 🧹 Execute Repository Cleanup
         id: cleanup-action
-        uses: ./.github/actions/repository-cleanup
+        uses: bauer-group/automation-templates/.github/actions/repository-cleanup@main
         with:
           repository: ${{ inputs.target-repository || github.repository }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

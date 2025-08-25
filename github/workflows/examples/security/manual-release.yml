@@ -201,7 +201,7 @@ jobs:
 
       - name: 📝 Generate Changelog
         id: changelog
-        uses: ./.github/actions/generate-changelog
+        uses: bauer-group/automation-templates/.github/actions/generate-changelog@main
         with:
           from-tag: v${{ needs.validate-inputs.outputs.current-version }}
           to-tag: HEAD
