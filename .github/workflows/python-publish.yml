@@ -219,7 +219,7 @@ jobs:
           lfs: true
       
       - name: 🐍 Setup Python Environment
-        uses: ./.github/actions/python-setup
+        uses: bauer-group/automation-templates/.github/actions/python-setup@main
         with:
           python-version: ${{ inputs.python-version }}
           package-manager: 'auto'
@@ -230,7 +230,7 @@ jobs:
       
       - name: 🧪 Run Tests
         if: inputs.run-tests
-        uses: ./.github/actions/python-test
+        uses: bauer-group/automation-templates/.github/actions/python-test@main
         with:
           test-framework: 'pytest'
           test-path: 'tests'
@@ -251,7 +251,7 @@ jobs:
           fail_ci_if_error: false
       
       - name: 🔍 Run Code Quality Checks
-        uses: ./.github/actions/python-quality
+        uses: bauer-group/automation-templates/.github/actions/python-quality@main
         with:
           working-directory: ${{ inputs.working-directory }}
           run-lint: true
@@ -276,7 +276,7 @@ jobs:
       
       - name: 📦 Build and Publish Package
         id: package
-        uses: ./.github/actions/python-package
+        uses: bauer-group/automation-templates/.github/actions/python-package@main
         with:
           working-directory: ${{ inputs.working-directory }}
           package-version: ${{ inputs.package-version }}
