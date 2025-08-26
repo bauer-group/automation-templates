@@ -1,0 +1,221 @@
+# Multi-Platform Matrix Configuration
+# ===================================
+# Configuration for testing across multiple platforms and compilers
+
+name: "Multi-Platform Matrix Build"
+description: "Cross-platform testing with multiple OS and compiler combinations"
+
+# Build Environment
+environment:
+  # Matrix of platforms to test
+  matrix:
+    os:
+      - "ubuntu-latest"
+      - "ubuntu-20.04"
+      - "macos-latest"
+      - "macos-12"
+    
+    compiler:
+      - "gcc"
+      - "clang"
+    
+    include:
+      - os: "ubuntu-latest"
+        compiler: "gcc"
+        cc: "gcc"
+        cxx: "g++"
+        packages: "build-essential"
+      
+      - os: "ubuntu-latest"
+        compiler: "clang"
+        cc: "clang"
+        cxx: "clang++"
+        packages: "clang"
+      
+      - os: "ubuntu-20.04"
+        compiler: "gcc"
+        cc: "gcc"
+        cxx: "g++"
+        packages: "build-essential"
+      
+      - os: "ubuntu-20.04"
+        compiler: "clang"
+        cc: "clang"
+        cxx: "clang++"
+        packages: "clang"
+      
+      - os: "macos-latest"
+        compiler: "gcc"
+        cc: "gcc-13"
+        cxx: "g++-13"
+        packages: "gcc"
+      
+      - os: "macos-latest"
+        compiler: "clang"
+        cc: "clang"
+        cxx: "clang++"
+        packages: ""
+      
+      - os: "macos-12"
+        compiler: "gcc"
+        cc: "gcc-12"
+        cxx: "g++-12"
+        packages: "gcc@12"
+      
+      - os: "macos-12"
+        compiler: "clang"
+        cc: "clang"
+        cxx: "clang++"
+        packages: ""
+  
+  # Common dependencies
+  dependencies:
+    ubuntu:
+      - autoconf
+      - automake
+      - libtool
+      - pkg-config
+      - make
+    
+    fedora:
+      - autoconf
+      - automake
+      - libtool
+      - pkgconfig
+      - make
+    
+    macos:
+      - autoconf
+      - automake
+      - libtool
+      - pkg-config
+
+# Configure Stage
+configure:
+  script: "./configure"
+  args:
+    - "--enable-shared"
+    - "--enable-static"
+  
+  # Platform-specific configure args
+  platform_args:
+    linux:
+      - "--enable-linux-specific"
+    
+    macos:
+      - "--enable-macos-specific"
+  
+  generate_if_missing: true
+  autoreconf_args: ["-fiv"]
+  cache_enabled: true
+
+# Build Stage
+build:
+  targets: ["all"]
+  parallel_jobs: "auto"
+  make_args: []
+  fail_on_warnings: false
+  
+  # Compiler-specific flags
+  compiler_flags:
+    gcc:
+      CFLAGS: "-O2 -g -Wall -Wextra"
+      CXXFLAGS: "-O2 -g -Wall -Wextra"
+    
+    clang:
+      CFLAGS: "-O2 -g -Wall -Wextra -Weverything -Wno-padded"
+      CXXFLAGS: "-O2 -g -Wall -Wextra -Weverything -Wno-padded"
+
+# Test Stage
+test:
+  enabled: true
+  targets: ["check"]
+  parallel: true
+  continue_on_error: false
+  
+  # Platform-specific test settings
+  platform_settings:
+    linux:
+      timeout: 15
+      retries: 2
+    
+    macos:
+      timeout: 20
+      retries: 3
+  
+  # Test environment
+  env:
+    VERBOSE: "1"
+
+# Distribution Check
+distcheck:
+  enabled: false  # Disabled in matrix builds to save time
+  target: "distcheck"
+  timeout_minutes: 30
+
+# Artifacts
+artifacts:
+  enabled: true
+  matrix_specific: true
+  paths:
+    - "config.log"
+    - "config.status"
+    - "**/*.log"
+    - "test-*.log"
+  
+  # Platform-specific artifacts
+  platform_artifacts:
+    linux:
+      - "*.so"
+      - "*.a"
+    
+    macos:
+      - "*.dylib"
+      - "*.a"
+
+# Caching
+cache:
+  enabled: true
+  matrix_specific: true
+  paths:
+    - "~/.cache/"
+    - ".deps/"
+    - "config.cache"
+    - "autom4te.cache/"
+  
+  key_files:
+    - "Makefile.am"
+    - "configure.ac"
+    - "*.c"
+    - "*.h"
+
+# Quality Settings
+quality:
+  warnings_as_errors: false
+  static_analysis: false  # Disabled in matrix to save time
+  code_coverage: false
+  
+  # Matrix-specific quality settings
+  matrix_quality:
+    - os: "ubuntu-latest"
+      compiler: "gcc"
+      coverage: true
+    
+    - os: "ubuntu-latest"
+      compiler: "clang"
+      static_analysis: true
+
+# Documentation
+documentation:
+  generate: false  # Only generate on one platform
+  formats: []
+
+# Matrix Strategy
+strategy:
+  fail_fast: false
+  max_parallel: 6
+  
+  # Exclude problematic combinations
+  exclude:
+    - os: "macos-12"
+      compiler: "gcc"  # GCC on older macOS can be problematic

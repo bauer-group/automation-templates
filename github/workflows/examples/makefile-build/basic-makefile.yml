@@ -1,0 +1,56 @@
+# Basic Makefile Build Example
+# ===========================
+# Simple workflow for projects with a basic Makefile
+
+name: 🔨 Basic Makefile Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: 🔨 Build & Test
+    uses: bauer-group/automation-templates/.github/workflows/makefile-build.yml@main
+    with:
+      # Basic configuration
+      config-file: 'default'
+      
+      # Build settings
+      make-targets: 'all'
+      check-targets: 'check test'
+      
+      # Enable basic features
+      cache-enabled: true
+      generate-reports: true
+      upload-artifacts: true
+      
+      # Parallel compilation
+      parallel-jobs: 'auto'
+      
+      # Working directory (if Makefile is not in root)
+      working-directory: '.'
+
+# Alternative: Direct action usage
+# ================================
+# If you prefer to use the action directly instead of the workflow
+
+# jobs:
+#   build:
+#     name: 🔨 Build & Test
+#     runs-on: ubuntu-latest
+#     
+#     steps:
+#       - name: 🔍 Checkout Code
+#         uses: actions/checkout@v4
+#       
+#       - name: 🔨 Build with Makefile
+#         uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+#         with:
+#           config-file: 'default'
+#           make-targets: 'all'
+#           check-targets: 'check'
+#           cache-enabled: true
+#           generate-reports: true

@@ -1,0 +1,193 @@
+# Linux Kernel Module Example
+# ============================
+# Workflow for building and testing Linux kernel modules
+
+name: 🐧 Kernel Module Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  # Kernel development environment
+  KBUILD_VERBOSE: 1
+  MODULE_NAME: "my_module"
+
+jobs:
+  build-module:
+    name: 🐧 Build Kernel Module
+    uses: bauer-group/automation-templates/.github/workflows/makefile-build.yml@main
+    with:
+      # Use kernel module configuration
+      config-file: 'kernel-module'
+      
+      # Kernel module targets
+      make-targets: 'modules'
+      check-targets: 'modules_check'
+      
+      # No distcheck for kernel modules
+      distcheck-enabled: false
+      
+      # System dependencies (kernel headers)
+      install-dependencies: true
+      
+      # Cache build artifacts
+      cache-enabled: true
+      parallel-jobs: 'auto'
+      
+      # Quality assurance
+      generate-reports: true
+      upload-artifacts: true
+      
+      # Linux only
+      runs-on: 'ubuntu-latest'
+
+  # Test with multiple kernel versions
+  multi-kernel:
+    name: 🐧 Multi-Kernel Build
+    strategy:
+      matrix:
+        kernel_version:
+          - "5.4"   # LTS
+          - "5.15"  # LTS
+          - "6.1"   # LTS
+          - "6.6"   # LTS
+        include:
+          - kernel_version: "5.4"
+            ubuntu_version: "ubuntu-20.04"
+          - kernel_version: "5.15"
+            ubuntu_version: "ubuntu-22.04"
+          - kernel_version: "6.1"
+            ubuntu_version: "ubuntu-22.04"
+          - kernel_version: "6.6"
+            ubuntu_version: "ubuntu-24.04"
+    
+    runs-on: ${{ matrix.ubuntu_version }}
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 🐧 Install Kernel Headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y linux-headers-generic build-essential
+          
+          # Show kernel version info
+          uname -r
+          ls -la /lib/modules/$(uname -r)/build
+      
+      - name: 🔨 Build Module
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: 'kernel-module'
+          make-targets: 'modules'
+          check-targets: 'modules_check'
+          install-dependencies: false  # Already installed above
+          generate-reports: true
+      
+      - name: 🔍 Module Information
+        run: |
+          echo "Built kernel modules:"
+          find . -name "*.ko" -exec ls -la {} \;
+          find . -name "*.ko" -exec modinfo {} \;
+
+  # Security and compliance check
+  security-check:
+    name: 🛡️ Security & Compliance
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 🛡️ Security Scan
+        uses: bauer-group/automation-templates/.github/actions/gitleaks-scan@main
+      
+      - name: 📋 Code Style Check
+        run: |
+          # Install kernel coding style checker
+          wget -O checkpatch.pl https://raw.githubusercontent.com/torvalds/linux/master/scripts/checkpatch.pl
+          chmod +x checkpatch.pl
+          
+          # Check coding style
+          ./checkpatch.pl --no-tree --show-types -f *.c *.h || true
+      
+      - name: 🔍 Static Analysis
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sparse
+          
+          # Run sparse static analysis
+          make C=1 modules || true
+
+  # Load testing (requires special setup)
+  load-test:
+    name: 🧪 Module Load Test
+    needs: build-module
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 🔨 Build Module
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: 'kernel-module'
+          make-targets: 'modules'
+          generate-reports: false
+      
+      - name: 🧪 Test Module Loading (Simulation)
+        run: |
+          echo "Module load test simulation"
+          
+          # Check module dependencies
+          if [ -f *.ko ]; then
+            modinfo *.ko | grep -E "(depends|license|author|description)"
+          fi
+          
+          # Simulate module loading (without actually loading)
+          echo "Module would be loaded with: insmod $(ls *.ko | head -1)"
+          echo "Module would be unloaded with: rmmod $(basename $(ls *.ko | head -1) .ko)"
+          
+          # Check module symbols
+          if command -v nm >/dev/null 2>&1; then
+            nm *.ko | grep -E "(init|exit)_module" || true
+          fi
+
+  # Documentation generation
+  documentation:
+    name: 📚 Generate Documentation
+    needs: build-module
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 📚 Generate Module Documentation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y kernel-doc
+          
+          # Generate documentation from kernel-doc comments
+          if command -v kernel-doc >/dev/null 2>&1; then
+            for file in *.c *.h; do
+              if [ -f "$file" ]; then
+                echo "Generating documentation for $file"
+                kernel-doc -html "$file" > "${file%.*}.html" || true
+              fi
+            done
+          fi
+      
+      - name: 📤 Upload Documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-module-docs
+          path: "*.html"
+          if-no-files-found: ignore

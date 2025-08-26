@@ -1,0 +1,146 @@
+# CMake Makefile Generator Example
+# ================================
+# Workflow for CMake projects using Makefile generator
+
+name: 🔨 CMake Makefile Build
+
+on:
+  push:
+    branches: [ main, develop, 'feature/*' ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  # CMake environment
+  CMAKE_BUILD_PARALLEL_LEVEL: 4
+  CTEST_OUTPUT_ON_FAILURE: 1
+
+jobs:
+  build-and-test:
+    name: 🔨 CMake Build & Test
+    uses: bauer-group/automation-templates/.github/workflows/makefile-build.yml@main
+    with:
+      # Use CMake-specific configuration
+      config-file: 'cmake-makefile'
+      
+      # CMake configure (replaces ./configure)
+      configure-script: 'cmake'
+      configure-args: '-S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON'
+      
+      # Build in the build directory
+      working-directory: 'build'
+      make-targets: 'all'
+      
+      # Use CTest for testing
+      check-targets: 'test'
+      
+      # Package creation instead of distcheck
+      distcheck-enabled: false
+      
+      # System dependencies
+      install-dependencies: true
+      
+      # Performance options
+      cache-enabled: true
+      parallel-jobs: 'auto'
+      
+      # Quality options
+      generate-reports: true
+      upload-artifacts: true
+
+  # Multi-configuration build
+  multi-config:
+    name: 🔨 Multi-Config Build
+    strategy:
+      matrix:
+        build_type: [Debug, Release, RelWithDebInfo]
+        include:
+          - build_type: Debug
+            enable_coverage: true
+          - build_type: Release
+            enable_tests: true
+          - build_type: RelWithDebInfo
+            enable_profiling: true
+    
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 🔨 Build ${{ matrix.build_type }}
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: 'cmake-makefile'
+          configure-script: 'cmake'
+          configure-args: '-S . -B build-${{ matrix.build_type }} -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}'
+          working-directory: 'build-${{ matrix.build_type }}'
+          make-targets: 'all'
+          check-targets: 'test'
+          cache-enabled: true
+          generate-reports: true
+      
+      - name: 📤 Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cmake-build-${{ matrix.build_type }}
+          path: build-${{ matrix.build_type }}/
+
+  # Package creation
+  package:
+    name: 📦 Create Package
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 📦 Create Packages
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: 'cmake-makefile'
+          configure-script: 'cmake'
+          configure-args: '-S . -B build -DCMAKE_BUILD_TYPE=Release'
+          working-directory: 'build'
+          make-targets: 'package'
+          check-targets: ''  # No tests for packaging
+          distcheck-enabled: false
+          generate-reports: false
+      
+      - name: 📤 Upload Packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: cmake-packages
+          path: |
+            build/*.tar.gz
+            build/*.zip
+            build/*.deb
+            build/*.rpm
+
+  # Windows build (using Visual Studio)
+  windows-build:
+    name: 🪟 Windows Build
+    runs-on: windows-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Setup MSVC
+        uses: microsoft/setup-msbuild@v2
+      
+      - name: 🔨 CMake Configure
+        run: |
+          cmake -S . -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release
+      
+      - name: 🔨 Build with NMake
+        run: |
+          cd build
+          nmake
+      
+      - name: 🧪 Run Tests
+        run: |
+          cd build
+          ctest --output-on-failure

@@ -1,0 +1,440 @@
+# Comprehensive Makefile Build Example
+# =====================================
+# Enterprise-grade CI/CD pipeline with all features enabled
+
+name: 🚀 Comprehensive Build Pipeline
+
+on:
+  push:
+    branches: [ main, develop, 'release/*', 'hotfix/*' ]
+  pull_request:
+    branches: [ main, develop ]
+  release:
+    types: [published, created]
+  schedule:
+    # Weekly comprehensive build
+    - cron: '0 2 * * 1'
+
+env:
+  # Build environment
+  DEBIAN_FRONTEND: noninteractive
+  BUILD_TYPE: "comprehensive"
+
+jobs:
+  # Pre-flight checks
+  pre-flight:
+    name: 🔍 Pre-flight Checks
+    runs-on: ubuntu-latest
+    
+    outputs:
+      should-build: ${{ steps.changes.outputs.code }}
+      version: ${{ steps.version.outputs.version }}
+      release-build: ${{ github.event_name == 'release' }}
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🔍 Check for Code Changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            code:
+              - '**/*.c'
+              - '**/*.h'
+              - '**/*.cpp'
+              - '**/*.hpp'
+              - '**/Makefile*'
+              - '**/configure*'
+              - '**/*.ac'
+              - '**/*.am'
+              - '**/*.in'
+      
+      - name: 📝 Determine Version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+
+  # Security and compliance scan
+  security-compliance:
+    name: 🛡️ Security & Compliance
+    needs: pre-flight
+    if: needs.pre-flight.outputs.should-build == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🛡️ Secret Detection
+        uses: bauer-group/automation-templates/.github/actions/gitleaks-scan@main
+        with:
+          fail-on-findings: true
+      
+      - name: 🛡️ Advanced Security Scan
+        uses: bauer-group/automation-templates/.github/actions/gitguardian-scan@main
+        with:
+          api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+          fail-on-findings: false  # Don't block on enterprise scan
+        continue-on-error: true
+      
+      - name: 📋 License Compliance
+        uses: bauer-group/automation-templates/.github/actions/license-compliance@main
+        with:
+          fail-on-issues: false
+          generate-report: true
+
+  # Multi-platform build matrix
+  build-matrix:
+    name: 🌐 Build (${{ matrix.os }}, ${{ matrix.compiler }}, ${{ matrix.config }})
+    needs: [pre-flight, security-compliance]
+    if: needs.pre-flight.outputs.should-build == 'true'
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-20.04, macos-latest]
+        compiler: [gcc, clang]
+        config: [debug, release]
+        include:
+          # Ubuntu builds
+          - os: ubuntu-latest
+            compiler: gcc
+            config: debug
+            build_type: Debug
+            cc: gcc
+            cxx: g++
+          - os: ubuntu-latest
+            compiler: gcc
+            config: release
+            build_type: Release
+            cc: gcc
+            cxx: g++
+          - os: ubuntu-latest
+            compiler: clang
+            config: debug
+            build_type: Debug
+            cc: clang
+            cxx: clang++
+          - os: ubuntu-latest
+            compiler: clang
+            config: release
+            build_type: Release
+            cc: clang
+            cxx: clang++
+          
+          # Ubuntu 20.04 builds
+          - os: ubuntu-20.04
+            compiler: gcc
+            config: release
+            build_type: Release
+            cc: gcc
+            cxx: g++
+          - os: ubuntu-20.04
+            compiler: clang
+            config: release
+            build_type: Release
+            cc: clang
+            cxx: clang++
+          
+          # macOS builds
+          - os: macos-latest
+            compiler: clang
+            config: release
+            build_type: Release
+            cc: clang
+            cxx: clang++
+          - os: macos-latest
+            compiler: gcc
+            config: release
+            build_type: Release
+            cc: gcc-13
+            cxx: g++-13
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🔧 Setup Compiler Environment
+        run: |
+          export CC=${{ matrix.cc }}
+          export CXX=${{ matrix.cxx }}
+          echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
+          echo "CXX=${{ matrix.cxx }}" >> $GITHUB_ENV
+          
+          # Set build-specific flags
+          if [ "${{ matrix.config }}" = "debug" ]; then
+            echo "CFLAGS=-O0 -g3 -Wall -Wextra -DDEBUG" >> $GITHUB_ENV
+            echo "CXXFLAGS=-O0 -g3 -Wall -Wextra -DDEBUG" >> $GITHUB_ENV
+          else
+            echo "CFLAGS=-O3 -DNDEBUG -Wall -Wextra" >> $GITHUB_ENV
+            echo "CXXFLAGS=-O3 -DNDEBUG -Wall -Wextra" >> $GITHUB_ENV
+          fi
+      
+      - name: 🔨 Build & Test
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: 'autotools'
+          make-targets: 'all'
+          check-targets: 'check'
+          distcheck-enabled: ${{ matrix.config == 'release' && matrix.os == 'ubuntu-latest' && matrix.compiler == 'gcc' }}
+          cache-enabled: true
+          parallel-jobs: 'auto'
+          generate-reports: true
+          fail-on-warnings: ${{ matrix.config == 'release' }}
+      
+      - name: 📤 Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.config }}
+          path: |
+            build-artifacts/
+            **/*.log
+          retention-days: 7
+
+  # Performance benchmarking
+  performance-benchmark:
+    name: ⚡ Performance Benchmark
+    needs: [pre-flight, build-matrix]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'release'
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: ⚡ Build Optimized Version
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: 'default'
+          make-targets: 'all'
+          check-targets: ''
+          configure-args: '--enable-optimization --disable-debug'
+          generate-reports: false
+        env:
+          CFLAGS: "-O3 -march=native -DNDEBUG"
+          CXXFLAGS: "-O3 -march=native -DNDEBUG"
+      
+      - name: ⚡ Run Benchmarks
+        run: |
+          echo "⚡ Running performance benchmarks..."
+          
+          # Time the build process
+          time make clean
+          time make all
+          
+          # Run performance tests if available
+          if make -q benchmark >/dev/null 2>&1; then
+            make benchmark
+          elif make -q perf >/dev/null 2>&1; then
+            make perf
+          else
+            echo "No benchmark targets available"
+          fi
+
+  # Code quality analysis
+  code-quality:
+    name: 🔍 Code Quality Analysis
+    needs: pre-flight
+    if: needs.pre-flight.outputs.should-build == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 📦 Install Analysis Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cppcheck \
+            clang-tidy \
+            vera++ \
+            lizard \
+            sloccount
+      
+      - name: 🔍 Static Analysis
+        run: |
+          # CppCheck
+          cppcheck --enable=all --xml --xml-version=2 . 2> cppcheck.xml
+          
+          # Clang-tidy (if CMake project)
+          if [ -f CMakeLists.txt ]; then
+            cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+            clang-tidy -p build **/*.cpp **/*.c > clang-tidy.txt || true
+          fi
+          
+          # Code complexity
+          lizard . -o lizard.txt || true
+          
+          # Lines of code
+          sloccount . > sloccount.txt || true
+      
+      - name: 📊 Generate Quality Report
+        run: |
+          cat > quality-report.md << EOF
+          # Code Quality Report
+          
+          ## Metrics
+          - Build Date: $(date)
+          - Commit: ${{ github.sha }}
+          - Branch: ${{ github.ref_name }}
+          
+          ## Static Analysis
+          - CppCheck: $(wc -l < cppcheck.xml 2>/dev/null || echo "0") issues
+          - Lines of Code: $(grep "Total Physical" sloccount.txt | awk '{print $4}' 2>/dev/null || echo "N/A")
+          
+          EOF
+      
+      - name: 📤 Upload Quality Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-quality-reports
+          path: |
+            cppcheck.xml
+            clang-tidy.txt
+            lizard.txt
+            sloccount.txt
+            quality-report.md
+
+  # Documentation generation
+  documentation:
+    name: 📚 Generate Documentation
+    needs: build-matrix
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'release'
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 📚 Install Documentation Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            doxygen \
+            graphviz \
+            texlive-latex-base \
+            texlive-latex-extra
+      
+      - name: 📚 Generate Documentation
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: 'autotools'
+          make-targets: 'doc html pdf'
+          check-targets: ''
+          distcheck-enabled: false
+          generate-reports: false
+      
+      - name: 📤 Upload Documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-documentation
+          path: |
+            doc/
+            *.pdf
+            *.html
+
+  # Release preparation
+  release-preparation:
+    name: 🚀 Release Preparation
+    needs: [build-matrix, code-quality, performance-benchmark]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' || (github.ref == 'refs/heads/main' && needs.pre-flight.outputs.release-build == 'true')
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🚀 Create Release Build
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: 'autotools'
+          make-targets: 'dist'
+          check-targets: 'distcheck'
+          distcheck-enabled: true
+          generate-reports: true
+          fail-on-warnings: true
+        env:
+          CFLAGS: "-O3 -DNDEBUG"
+          CXXFLAGS: "-O3 -DNDEBUG"
+      
+      - name: 📦 Prepare Release Artifacts
+        run: |
+          mkdir -p release-artifacts/
+          
+          # Copy distribution files
+          find . -name "*.tar.gz" -exec cp {} release-artifacts/ \;
+          find . -name "*.tar.bz2" -exec cp {} release-artifacts/ \;
+          find . -name "*.tar.xz" -exec cp {} release-artifacts/ \;
+          
+          # Generate checksums
+          cd release-artifacts/
+          for file in *; do
+            if [ -f "$file" ]; then
+              sha256sum "$file" >> CHECKSUMS.txt
+              md5sum "$file" >> CHECKSUMS.md5
+            fi
+          done
+      
+      - name: 📤 Upload Release Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: release-artifacts/
+
+  # Final summary
+  build-summary:
+    name: 📊 Build Summary
+    needs: [pre-flight, security-compliance, build-matrix, code-quality, documentation, release-preparation]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: 📊 Generate Build Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          # 🚀 Comprehensive Build Summary
+          
+          ## Build Information
+          - **Trigger:** ${{ github.event_name }}
+          - **Branch/Tag:** ${{ github.ref_name }}
+          - **Commit:** \`${{ github.sha }}\`
+          - **Version:** ${{ needs.pre-flight.outputs.version }}
+          
+          ## Pipeline Results
+          | Stage | Status | Details |
+          |-------|--------|---------|
+          | 🔍 Pre-flight | ${{ needs.pre-flight.result }} | Code changes: ${{ needs.pre-flight.outputs.should-build }} |
+          | 🛡️ Security & Compliance | ${{ needs.security-compliance.result }} | Security scan completed |
+          | 🌐 Multi-Platform Build | ${{ needs.build-matrix.result }} | Matrix build across platforms |
+          | 🔍 Code Quality | ${{ needs.code-quality.result }} | Static analysis completed |
+          | 📚 Documentation | ${{ needs.documentation.result }} | Documentation generated |
+          | 🚀 Release Preparation | ${{ needs.release-preparation.result }} | Release artifacts created |
+          
+          ## Build Artifacts
+          - Platform builds available for download
+          - Code quality reports generated
+          - Documentation artifacts created
+          - Release packages prepared (if applicable)
+          
+          ## Build Date
+          $(date)
+          EOF

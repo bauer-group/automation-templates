@@ -1,0 +1,332 @@
+# Security-Focused Build Example
+# ===============================
+# Enhanced security scanning and compliance for Makefile projects
+
+name: 🛡️ Security-Focused Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Daily security scan
+    - cron: '0 4 * * *'
+
+env:
+  # Security environment
+  CFLAGS: "-O2 -g -Wall -Wextra -Werror -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+  CXXFLAGS: "-O2 -g -Wall -Wextra -Werror -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+  LDFLAGS: "-Wl,-z,relro,-z,now"
+
+jobs:
+  # Pre-build security scan
+  security-scan:
+    name: 🛡️ Pre-Build Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+      
+      - name: 🛡️ Gitleaks Secret Scan
+        uses: bauer-group/automation-templates/.github/actions/gitleaks-scan@main
+        with:
+          fail-on-findings: true
+      
+      - name: 🛡️ GitGuardian Security Scan
+        uses: bauer-group/automation-templates/.github/actions/gitguardian-scan@main
+        with:
+          api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+          fail-on-findings: true
+        continue-on-error: true  # GitGuardian might not be available
+      
+      - name: 🔍 Semgrep Static Analysis
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/c
+            p/cpp
+        continue-on-error: true
+
+  # Secure build with hardening
+  secure-build:
+    name: 🔨 Secure Build & Test
+    needs: security-scan
+    uses: bauer-group/automation-templates/.github/workflows/makefile-build.yml@main
+    with:
+      # Security-focused configuration
+      config-file: 'default'
+      
+      # Hardened build settings
+      fail-on-warnings: true
+      
+      # Build and test
+      make-targets: 'all'
+      check-targets: 'check'
+      distcheck-enabled: true
+      
+      # Enable security features
+      security-scan: true
+      
+      # Quality assurance
+      generate-reports: true
+      upload-artifacts: true
+      
+      # System hardening
+      install-dependencies: true
+      cache-enabled: true
+      parallel-jobs: 'auto'
+
+  # Binary analysis
+  binary-analysis:
+    name: 🔍 Binary Security Analysis
+    needs: secure-build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 🔨 Build for Analysis
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: 'default'
+          make-targets: 'all'
+          fail-on-warnings: false  # Focus on building
+          generate-reports: false
+      
+      - name: 📦 Install Analysis Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            binutils \
+            checksec \
+            file \
+            objdump \
+            readelf \
+            strings
+      
+      - name: 🔍 Binary Security Check
+        run: |
+          echo "🔍 Analyzing built binaries..."
+          
+          # Find all executable files
+          executables=$(find . -type f -executable -not -path "./.git/*" -not -name "*.sh" -not -name "configure")
+          
+          if [ -n "$executables" ]; then
+            for exe in $executables; do
+              echo "Analyzing: $exe"
+              
+              # File type
+              file "$exe"
+              
+              # Security features check
+              if command -v checksec >/dev/null 2>&1; then
+                checksec --file="$exe"
+              fi
+              
+              # ELF analysis
+              if file "$exe" | grep -q ELF; then
+                echo "ELF Security Analysis:"
+                readelf -d "$exe" | grep -E "(RELRO|BIND_NOW|STACK)" || true
+                objdump -h "$exe" | grep -E "(\.got|\.plt)" || true
+              fi
+              
+              # Check for dangerous functions
+              strings "$exe" | grep -E "(strcpy|sprintf|gets|system)" || echo "No dangerous functions found"
+              
+              echo "---"
+            done
+          else
+            echo "No executables found for analysis"
+          fi
+      
+      - name: 📊 Generate Security Report
+        run: |
+          cat > security-report.md << EOF
+          # Binary Security Analysis Report
+          
+          ## Executables Analyzed
+          \`\`\`
+          $(find . -type f -executable -not -path "./.git/*" -not -name "*.sh" -not -name "configure" | wc -l) executables found
+          \`\`\`
+          
+          ## Security Features
+          - Stack protection: Enabled (CFLAGS: -fstack-protector-strong)
+          - Fortify source: Enabled (CFLAGS: -D_FORTIFY_SOURCE=2)
+          - RELRO: Enabled (LDFLAGS: -Wl,-z,relro,-z,now)
+          
+          ## Build Date
+          $(date)
+          EOF
+      
+      - name: 📤 Upload Security Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-analysis-report
+          path: security-report.md
+
+  # Dependency vulnerability scan
+  dependency-scan:
+    name: 🔍 Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 📦 Install Vulnerability Scanners
+        run: |
+          # Install dependency scanners
+          sudo apt-get update
+          sudo apt-get install -y \
+            apt-show-versions \
+            debsecan
+      
+      - name: 🔍 System Package Vulnerabilities
+        run: |
+          echo "🔍 Scanning system packages for vulnerabilities..."
+          
+          # Ubuntu/Debian specific
+          if command -v debsecan >/dev/null 2>&1; then
+            debsecan --suite $(lsb_release -cs) || true
+          fi
+          
+          # List installed packages
+          dpkg -l > installed-packages.txt
+      
+      - name: 🔍 C/C++ Library Analysis
+        run: |
+          echo "🔍 Analyzing linked libraries..."
+          
+          # Find and analyze shared libraries
+          find . -name "*.so" -o -name "*.so.*" | while read lib; do
+            echo "Library: $lib"
+            ldd "$lib" 2>/dev/null || true
+            echo "---"
+          done
+      
+      - name: 📤 Upload Dependency Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-scan-report
+          path: |
+            installed-packages.txt
+
+  # License compliance
+  license-compliance:
+    name: 📋 License Compliance
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 📋 License Compliance Check
+        uses: bauer-group/automation-templates/.github/actions/license-compliance@main
+        with:
+          fail-on-issues: true
+          generate-report: true
+        continue-on-error: true
+      
+      - name: 🔍 Manual License Check
+        run: |
+          echo "🔍 Manual license compliance check..."
+          
+          # Check for license files
+          find . -name "LICENSE*" -o -name "COPYING*" -o -name "COPYRIGHT*" | head -10
+          
+          # Check source file headers
+          echo "Checking source file license headers..."
+          find . -name "*.c" -o -name "*.h" -o -name "*.cpp" | head -5 | while read file; do
+            echo "File: $file"
+            head -20 "$file" | grep -i -E "(license|copyright|gpl|bsd|mit|apache)" || echo "No license header found"
+            echo "---"
+          done
+
+  # SAST (Static Application Security Testing)
+  static-security-analysis:
+    name: 🔍 Static Security Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 📦 Install Security Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cppcheck \
+            clang-tidy \
+            splint \
+            flawfinder \
+            rats
+      
+      - name: 🔍 CppCheck Analysis
+        run: |
+          echo "🔍 Running CppCheck security analysis..."
+          cppcheck --enable=all --xml --xml-version=2 . 2> cppcheck-report.xml || true
+          cppcheck --enable=all . 2>&1 | tee cppcheck-report.txt || true
+      
+      - name: 🔍 Flawfinder Analysis
+        run: |
+          echo "🔍 Running Flawfinder security analysis..."
+          flawfinder --html . > flawfinder-report.html || true
+          flawfinder . > flawfinder-report.txt || true
+      
+      - name: 🔍 RATS Analysis
+        run: |
+          echo "🔍 Running RATS security analysis..."
+          rats --html . > rats-report.html || true
+          rats . > rats-report.txt || true
+      
+      - name: 📤 Upload SAST Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-analysis-reports
+          path: |
+            cppcheck-report.*
+            flawfinder-report.*
+            rats-report.*
+
+  # Final security summary
+  security-summary:
+    name: 📊 Security Summary
+    needs: [security-scan, secure-build, binary-analysis, dependency-scan, license-compliance, static-security-analysis]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: 📊 Generate Security Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          # 🛡️ Security Analysis Summary
+          
+          ## Results Overview
+          | Component | Status |
+          |-----------|--------|
+          | Pre-build Security Scan | ${{ needs.security-scan.result }} |
+          | Secure Build | ${{ needs.secure-build.result }} |
+          | Binary Analysis | ${{ needs.binary-analysis.result }} |
+          | Dependency Scan | ${{ needs.dependency-scan.result }} |
+          | License Compliance | ${{ needs.license-compliance.result }} |
+          | Static Security Analysis | ${{ needs.static-security-analysis.result }} |
+          
+          ## Security Hardening Applied
+          - ✅ Stack protection enabled
+          - ✅ Fortify source enabled  
+          - ✅ RELRO protection enabled
+          - ✅ Warnings treated as errors
+          - ✅ Static analysis performed
+          - ✅ Secret scanning performed
+          - ✅ License compliance checked
+          
+          ## Build Date
+          $(date)
+          EOF

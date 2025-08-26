@@ -1,0 +1,161 @@
+# Autotools Project Configuration
+# ==============================
+# Optimized configuration for GNU autotools-based projects
+
+name: "Autotools Project Build"
+description: "Configuration for projects using GNU autotools (autoconf, automake, libtool)"
+
+# Build Environment
+environment:
+  # System dependencies for autotools
+  dependencies:
+    ubuntu:
+      - build-essential
+      - autoconf
+      - automake
+      - libtool
+      - pkg-config
+      - gettext
+      - autopoint
+      - make
+      - texinfo
+      - help2man
+    
+    fedora:
+      - "@development-tools"
+      - autoconf
+      - automake
+      - libtool
+      - pkgconfig
+      - gettext-devel
+      - make
+      - texinfo
+      - help2man
+    
+    macos:
+      - autoconf
+      - automake
+      - libtool
+      - pkg-config
+      - gettext
+      - texinfo
+      - help2man
+
+# Configure Stage
+configure:
+  script: "./configure"
+  args:
+    - "--enable-shared"
+    - "--enable-static"
+    - "--with-pic"
+  
+  # Generate configure if missing
+  generate_if_missing: true
+  autoreconf_args: ["-fiv", "--install"]
+  
+  # Enable configure caching
+  cache_enabled: true
+  cache_file: "config.cache"
+
+# Build Stage
+build:
+  targets: ["all"]
+  parallel_jobs: "auto"
+  make_args: []
+  fail_on_warnings: false
+  
+  # Build environment
+  env:
+    CFLAGS: "-O2 -g -Wall"
+    CXXFLAGS: "-O2 -g -Wall"
+    LDFLAGS: "-Wl,--as-needed"
+
+# Test Stage
+test:
+  enabled: true
+  targets: ["check", "installcheck"]
+  parallel: true
+  continue_on_error: false
+  
+  # Test environment
+  env:
+    VERBOSE: "1"
+    TESTS_ENVIRONMENT: "LC_ALL=C"
+
+# Distribution Check
+distcheck:
+  enabled: true
+  target: "distcheck"
+  timeout_minutes: 45
+  
+  # Additional distcheck args
+  env:
+    DISTCHECK_CONFIGURE_FLAGS: "--enable-shared --enable-static"
+
+# Installation Test
+install:
+  enabled: false
+  prefix: "/tmp/test-install"
+  targets: ["install", "installcheck"]
+
+# Artifacts
+artifacts:
+  enabled: true
+  paths:
+    # Configure artifacts
+    - "config.log"
+    - "config.status"
+    - "config.h"
+    - "Makefile"
+    - "autom4te.cache/"
+    
+    # Build artifacts
+    - "**/*.log"
+    - "libtool"
+    
+    # Distribution
+    - "*.tar.gz"
+    - "*.tar.bz2"
+    - "*.tar.xz"
+  
+  # Test results
+  test_results:
+    - "test-*.log"
+    - "**/*.tap"
+    - "tests/**/*.log"
+    - "**/test-results.xml"
+
+# Caching
+cache:
+  enabled: true
+  paths:
+    - "~/.cache/"
+    - ".deps/"
+    - "config.cache"
+    - "autom4te.cache/"
+    - "m4/"
+  
+  key_files:
+    - "Makefile.am"
+    - "Makefile.in"
+    - "configure.ac"
+    - "configure.in"
+    - "aclocal.m4"
+    - "config.h.in"
+
+# Quality Settings
+quality:
+  warnings_as_errors: false
+  static_analysis: true
+  code_coverage: false
+  
+  # Static analysis tools
+  static_tools:
+    - "cppcheck"
+    - "scan-build"
+
+# Documentation
+documentation:
+  generate: true
+  formats: ["man", "info", "html"]
+  targets: ["doc", "pdf", "html"]

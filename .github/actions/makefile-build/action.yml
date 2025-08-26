@@ -1,0 +1,303 @@
+name: '🔨 Makefile Build'
+description: 'Professional Makefile-based build automation with configuration, dependencies, checks, and distribution validation'
+author: 'BAUER GROUP - Automation Templates'
+
+branding:
+  icon: 'settings'
+  color: 'blue'
+
+inputs:
+  config-file:
+    description: 'Configuration file name from .github/config/makefile-build/ (without .yml extension)'
+    required: false
+    default: 'default'
+  
+  working-directory:
+    description: 'Working directory for Makefile operations'
+    required: false
+    default: '.'
+  
+  configure-script:
+    description: 'Configuration script to run (e.g., ./configure, ./autogen.sh)'
+    required: false
+    default: './configure'
+  
+  configure-args:
+    description: 'Additional arguments for configure script'
+    required: false
+    default: ''
+  
+  make-targets:
+    description: 'Space-separated list of make targets to run (e.g., "all install")'
+    required: false
+    default: 'all'
+  
+  check-targets:
+    description: 'Space-separated list of check targets to run (e.g., "check test")'
+    required: false
+    default: 'check'
+  
+  distcheck-enabled:
+    description: 'Enable distribution check (make distcheck)'
+    required: false
+    default: 'true'
+  
+  install-dependencies:
+    description: 'Install system dependencies before building'
+    required: false
+    default: 'true'
+  
+  cache-enabled:
+    description: 'Enable caching of build artifacts'
+    required: false
+    default: 'true'
+  
+  parallel-jobs:
+    description: 'Number of parallel jobs for make (-j flag)'
+    required: false
+    default: 'auto'
+  
+  fail-on-warnings:
+    description: 'Treat warnings as errors'
+    required: false
+    default: 'false'
+  
+  generate-reports:
+    description: 'Generate build and test reports'
+    required: false
+    default: 'true'
+
+outputs:
+  build-status:
+    description: 'Build status (success/failure)'
+    value: ${{ steps.build.outcome }}
+  
+  test-status:
+    description: 'Test status (success/failure)'
+    value: ${{ steps.test.outcome }}
+  
+  distcheck-status:
+    description: 'Distribution check status (success/failure/skipped)'
+    value: ${{ steps.distcheck.outcome }}
+  
+  build-time:
+    description: 'Total build time in seconds'
+    value: ${{ steps.timing.outputs.build-time }}
+  
+  artifacts-path:
+    description: 'Path to generated artifacts'
+    value: ${{ steps.artifacts.outputs.path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 📋 Load Configuration
+      id: config
+      shell: bash
+      run: |
+        CONFIG_FILE="${{ inputs.config-file }}"
+        CONFIG_PATH=".github/config/makefile-build/${CONFIG_FILE}.yml"
+        
+        echo "Loading configuration from: $CONFIG_PATH"
+        
+        if [[ -f "$CONFIG_PATH" ]]; then
+          echo "config-exists=true" >> $GITHUB_OUTPUT
+          echo "config-path=$CONFIG_PATH" >> $GITHUB_OUTPUT
+        else
+          echo "config-exists=false" >> $GITHUB_OUTPUT
+          echo "Using default configuration"
+        fi
+        
+        echo "working-directory=${{ inputs.working-directory }}" >> $GITHUB_OUTPUT
+
+    - name: 🔧 Setup Build Environment
+      shell: bash
+      working-directory: ${{ steps.config.outputs.working-directory }}
+      run: |
+        echo "🔧 Setting up build environment..."
+        
+        # Install basic build tools
+        if [[ "${{ inputs.install-dependencies }}" == "true" ]]; then
+          echo "📦 Installing system dependencies..."
+          
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y build-essential autoconf automake libtool pkg-config
+          elif command -v yum >/dev/null 2>&1; then
+            sudo yum groupinstall -y "Development Tools"
+            sudo yum install -y autoconf automake libtool pkgconfig
+          elif command -v brew >/dev/null 2>&1; then
+            brew install autoconf automake libtool pkg-config
+          else
+            echo "⚠️  Package manager not found. Skipping dependency installation."
+          fi
+        fi
+        
+        # Setup parallel jobs
+        if [[ "${{ inputs.parallel-jobs }}" == "auto" ]]; then
+          PARALLEL_JOBS=$(nproc)
+        else
+          PARALLEL_JOBS="${{ inputs.parallel-jobs }}"
+        fi
+        
+        echo "MAKEFLAGS=-j${PARALLEL_JOBS}" >> $GITHUB_ENV
+        echo "🔧 Using ${PARALLEL_JOBS} parallel jobs"
+
+    - name: 📂 Setup Cache
+      if: inputs.cache-enabled == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/
+          .deps/
+          config.cache
+          autom4te.cache/
+        key: makefile-${{ runner.os }}-${{ hashFiles('**/Makefile*', '**/configure*', '**/*.ac', '**/*.am') }}
+        restore-keys: |
+          makefile-${{ runner.os }}-
+
+    - name: ⏰ Start Timing
+      id: start-time
+      shell: bash
+      run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+
+    - name: 🎯 Run Configure
+      id: configure
+      shell: bash
+      working-directory: ${{ steps.config.outputs.working-directory }}
+      run: |
+        echo "🎯 Running configuration..."
+        
+        CONFIGURE_SCRIPT="${{ inputs.configure-script }}"
+        CONFIGURE_ARGS="${{ inputs.configure-args }}"
+        
+        if [[ -x "$CONFIGURE_SCRIPT" ]]; then
+          echo "📝 Running: $CONFIGURE_SCRIPT $CONFIGURE_ARGS"
+          $CONFIGURE_SCRIPT $CONFIGURE_ARGS
+        elif [[ -f "configure.ac" || -f "configure.in" ]]; then
+          echo "📝 Generating configure script with autoreconf..."
+          autoreconf -fiv
+          ./configure $CONFIGURE_ARGS
+        elif [[ -f "CMakeLists.txt" ]]; then
+          echo "📝 Detected CMake project, creating Makefile..."
+          cmake -S . -B build
+        else
+          echo "⚠️  No configure script found, assuming Makefile is ready"
+        fi
+
+    - name: 🔨 Build Project
+      id: build
+      shell: bash
+      working-directory: ${{ steps.config.outputs.working-directory }}
+      run: |
+        echo "🔨 Building project..."
+        
+        MAKE_TARGETS="${{ inputs.make-targets }}"
+        
+        if [[ "${{ inputs.fail-on-warnings }}" == "true" ]]; then
+          export CFLAGS="$CFLAGS -Werror"
+          export CXXFLAGS="$CXXFLAGS -Werror"
+        fi
+        
+        echo "📝 Running: make $MAKE_TARGETS"
+        make $MAKE_TARGETS
+
+    - name: 🧪 Run Tests
+      id: test
+      shell: bash
+      working-directory: ${{ steps.config.outputs.working-directory }}
+      run: |
+        echo "🧪 Running tests..."
+        
+        CHECK_TARGETS="${{ inputs.check-targets }}"
+        
+        for target in $CHECK_TARGETS; do
+          if make -q $target >/dev/null 2>&1; then
+            echo "📝 Running: make $target"
+            make $target
+          else
+            echo "⚠️  Target '$target' not available, skipping"
+          fi
+        done
+
+    - name: 📦 Distribution Check
+      id: distcheck
+      if: inputs.distcheck-enabled == 'true'
+      shell: bash
+      working-directory: ${{ steps.config.outputs.working-directory }}
+      run: |
+        echo "📦 Running distribution check..."
+        
+        if make -q distcheck >/dev/null 2>&1; then
+          echo "📝 Running: make distcheck"
+          make distcheck
+        else
+          echo "⚠️  Target 'distcheck' not available, skipping"
+        fi
+
+    - name: 📊 Generate Artifacts
+      id: artifacts
+      if: inputs.generate-reports == 'true'
+      shell: bash
+      working-directory: ${{ steps.config.outputs.working-directory }}
+      run: |
+        echo "📊 Generating build artifacts..."
+        
+        ARTIFACTS_DIR="build-artifacts"
+        mkdir -p "$ARTIFACTS_DIR"
+        
+        # Copy common build outputs
+        find . -name "*.log" -exec cp {} "$ARTIFACTS_DIR/" \; 2>/dev/null || true
+        find . -name "config.status" -exec cp {} "$ARTIFACTS_DIR/" \; 2>/dev/null || true
+        find . -name "Makefile" -exec cp {} "$ARTIFACTS_DIR/Makefile.generated" \; 2>/dev/null || true
+        
+        # Copy test results
+        find . -name "test-*.log" -exec cp {} "$ARTIFACTS_DIR/" \; 2>/dev/null || true
+        find . -name "*.tap" -exec cp {} "$ARTIFACTS_DIR/" \; 2>/dev/null || true
+        find . -name "*.xml" -path "*/test*" -exec cp {} "$ARTIFACTS_DIR/" \; 2>/dev/null || true
+        
+        # Generate build summary
+        cat > "$ARTIFACTS_DIR/build-summary.txt" << EOF
+        Build Summary
+        =============
+        Date: $(date)
+        Hostname: $(hostname)
+        OS: $(uname -a)
+        Make Version: $(make --version | head -1)
+        Targets Built: ${{ inputs.make-targets }}
+        Tests Run: ${{ inputs.check-targets }}
+        Distribution Check: ${{ inputs.distcheck-enabled }}
+        Parallel Jobs: ${MAKEFLAGS}
+        EOF
+        
+        echo "path=$ARTIFACTS_DIR" >> $GITHUB_OUTPUT
+
+    - name: ⏰ Calculate Build Time
+      id: timing
+      shell: bash
+      run: |
+        START_TIME="${{ steps.start-time.outputs.start-time }}"
+        END_TIME=$(date +%s)
+        BUILD_TIME=$((END_TIME - START_TIME))
+        
+        echo "build-time=$BUILD_TIME" >> $GITHUB_OUTPUT
+        echo "🕐 Total build time: ${BUILD_TIME} seconds"
+
+    - name: 🎯 Build Summary
+      shell: bash
+      run: |
+        echo "🎯 Makefile Build Summary"
+        echo "========================="
+        echo "Working Directory: ${{ steps.config.outputs.working-directory }}"
+        echo "Configure Status: ${{ steps.configure.outcome }}"
+        echo "Build Status: ${{ steps.build.outcome }}"
+        echo "Test Status: ${{ steps.test.outcome }}"
+        echo "Distcheck Status: ${{ steps.distcheck.outcome }}"
+        echo "Build Time: ${{ steps.timing.outputs.build-time }}s"
+        
+        if [[ "${{ steps.build.outcome }}" == "success" ]]; then
+          echo "✅ Build completed successfully!"
+        else
+          echo "❌ Build failed!"
+          exit 1
+        fi
