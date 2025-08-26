@@ -1,3 +1,20 @@
+## [0.23.0](https://github.com/bauer-group/automation-templates/compare/v0.22.2...v0.23.0) (2025-08-26)
+
+### 🚀 Features
+
+* add .claude/ to .gitignore ([3fb68e5](https://github.com/bauer-group/automation-templates/commit/3fb68e51c716ac9ebf43752e50a4f95458405909))
+* Add comprehensive CI/CD workflows for Makefile projects ([8f5d4ca](https://github.com/bauer-group/automation-templates/commit/8f5d4ca1d5f06e0a2c9396aaa41d6a19abcd6372))
+* enhance workflows with detailed input descriptions for PR labeler and Teams notifications ([de95a84](https://github.com/bauer-group/automation-templates/commit/de95a842e6874735ddabe1a1ec050962b200167b))
+* implement Action Resolver for dynamic action path resolution in workflows ([56c735e](https://github.com/bauer-group/automation-templates/commit/56c735eddb72bc9f92de0ba73d18ecb83d9690b5))
+* refactor action path resolution for Teams notifications to use explicit paths for local and external workflows ([67f94b0](https://github.com/bauer-group/automation-templates/commit/67f94b0c9043b610d791628389a3e14beddac1dd))
+* update action path resolution for local and external workflows in Teams notifications ([c5a55ac](https://github.com/bauer-group/automation-templates/commit/c5a55ac94e27f82a5b4b3295b89e9d0bf7a029fb))
+* update action references to use explicit paths for modular components in workflows ([79d3d75](https://github.com/bauer-group/automation-templates/commit/79d3d75c36187f4e8025dd83ed69703c456f07bb))
+
+### 🔧 Maintenance
+
+* remove outdated README.md for workflows ([5044c92](https://github.com/bauer-group/automation-templates/commit/5044c926379fd222aa599f8c817b2ea5fa1b6888))
+* update AI model from gpt-3.5-turbo to gpt-4o in workflows ([62d3049](https://github.com/bauer-group/automation-templates/commit/62d3049c17e7ae64824225f48216f0a3a8c0372e))
+
 ## [0.22.2](https://github.com/bauer-group/automation-templates/compare/v0.22.1...v0.22.2) (2025-08-23)
 
 ### 🐛 Bug Fixes
