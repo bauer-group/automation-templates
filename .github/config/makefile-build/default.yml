@@ -1,0 +1,111 @@
+# Default Makefile Build Configuration
+# ====================================
+# Basic configuration for standard autotools/make projects
+
+name: "Default Makefile Build"
+description: "Standard configuration for autotools-based projects with configure script"
+
+# Build Environment
+environment:
+  # System dependencies to install
+  dependencies:
+    ubuntu:
+      - build-essential
+      - autoconf
+      - automake
+      - libtool
+      - pkg-config
+      - make
+    
+    fedora:
+      - "@development-tools"
+      - autoconf
+      - automake
+      - libtool
+      - pkgconfig
+      - make
+    
+    macos:
+      - autoconf
+      - automake
+      - libtool
+      - pkg-config
+
+# Configure Stage
+configure:
+  script: "./configure"
+  args: []
+  generate_if_missing: true
+  autoreconf_args: ["-fiv"]
+  cache_enabled: true
+
+# Build Stage  
+build:
+  targets: ["all"]
+  parallel_jobs: "auto"
+  make_args: []
+  fail_on_warnings: false
+  
+  # Environment variables for build
+  env:
+    CFLAGS: "-O2 -g"
+    CXXFLAGS: "-O2 -g"
+
+# Test Stage
+test:
+  enabled: true
+  targets: ["check"]
+  parallel: true
+  continue_on_error: false
+  
+  # Test-specific environment
+  env:
+    VERBOSE: "1"
+
+# Distribution Check
+distcheck:
+  enabled: true
+  target: "distcheck"
+  timeout_minutes: 30
+
+# Artifacts
+artifacts:
+  enabled: true
+  paths:
+    - "config.log"
+    - "config.status"
+    - "Makefile"
+    - "**/*.log"
+  
+  # Test results
+  test_results:
+    - "test-*.log"
+    - "**/*.tap"
+    - "**/test-results.xml"
+
+# Caching
+cache:
+  enabled: true
+  paths:
+    - "~/.cache/"
+    - ".deps/"
+    - "config.cache"
+    - "autom4te.cache/"
+  
+  key_files:
+    - "Makefile.am"
+    - "Makefile.in"
+    - "configure.ac"
+    - "configure.in"
+    - "configure"
+
+# Quality Settings
+quality:
+  warnings_as_errors: false
+  static_analysis: false
+  code_coverage: false
+
+# Documentation
+documentation:
+  generate: false
+  formats: []

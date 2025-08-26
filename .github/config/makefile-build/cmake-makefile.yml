@@ -1,0 +1,168 @@
+# CMake Makefile Generator Configuration
+# =====================================
+# Configuration for CMake projects using Makefile generator
+
+name: "CMake Makefile Build"
+description: "Configuration for CMake projects generating Makefiles"
+
+# Build Environment
+environment:
+  # System dependencies for CMake
+  dependencies:
+    ubuntu:
+      - build-essential
+      - cmake
+      - ninja-build
+      - pkg-config
+      - make
+    
+    fedora:
+      - "@development-tools"
+      - cmake
+      - ninja-build
+      - pkgconfig
+      - make
+    
+    macos:
+      - cmake
+      - ninja
+      - pkg-config
+
+# Configure Stage (CMake)
+configure:
+  script: "cmake"
+  args:
+    - "-S"
+    - "."
+    - "-B"
+    - "build"
+    - "-DCMAKE_BUILD_TYPE=Release"
+    - "-DBUILD_TESTING=ON"
+  
+  generate_if_missing: false
+  cache_enabled: true
+
+# Build Stage
+build:
+  targets: ["all"]
+  parallel_jobs: "auto"
+  make_args: []
+  fail_on_warnings: false
+  
+  # Use cmake --build for cross-platform compatibility
+  use_cmake_build: true
+  cmake_build_args:
+    - "--build"
+    - "build"
+    - "--parallel"
+  
+  # Build environment
+  env:
+    CMAKE_BUILD_PARALLEL_LEVEL: "auto"
+
+# Test Stage  
+test:
+  enabled: true
+  targets: ["test"]
+  parallel: true
+  continue_on_error: false
+  
+  # Use ctest for testing
+  use_ctest: true
+  ctest_args:
+    - "--test-dir"
+    - "build"
+    - "--parallel"
+    - "auto"
+    - "--output-on-failure"
+  
+  # Test environment
+  env:
+    CTEST_OUTPUT_ON_FAILURE: "1"
+
+# Distribution Check
+distcheck:
+  enabled: false
+  target: "package"
+  timeout_minutes: 30
+
+# Installation Test
+install:
+  enabled: false
+  prefix: "/tmp/test-install"
+  targets: ["install"]
+  cmake_install_args:
+    - "--install"
+    - "build"
+    - "--prefix"
+
+# Artifacts
+artifacts:
+  enabled: true
+  paths:
+    # CMake artifacts
+    - "build/CMakeCache.txt"
+    - "build/CMakeFiles/CMakeOutput.log"
+    - "build/CMakeFiles/CMakeError.log"
+    - "build/compile_commands.json"
+    
+    # Build artifacts
+    - "build/**/*.log"
+    - "build/Makefile"
+    
+    # Test results
+    - "build/Testing/"
+    
+    # Packages
+    - "build/*.tar.gz"
+    - "build/*.zip"
+    - "build/*.deb"
+    - "build/*.rpm"
+  
+  # Test results
+  test_results:
+    - "build/Testing/**/*.xml"
+    - "build/test-*.log"
+    - "build/**/*.tap"
+
+# Caching
+cache:
+  enabled: true
+  paths:
+    - "~/.cache/cmake"
+    - "build/_deps/"
+    - "build/CMakeFiles/"
+  
+  key_files:
+    - "CMakeLists.txt"
+    - "cmake/**/*.cmake"
+    - "*.cmake"
+    - "conanfile.txt"
+    - "vcpkg.json"
+
+# Quality Settings
+quality:
+  warnings_as_errors: false
+  static_analysis: true
+  code_coverage: true
+  
+  # CMake-specific quality options
+  cmake_options:
+    - "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    - "-DENABLE_TESTING=ON"
+    - "-DENABLE_COVERAGE=ON"
+  
+  # Static analysis tools
+  static_tools:
+    - "clang-tidy"
+    - "cppcheck"
+
+# Documentation
+documentation:
+  generate: true
+  formats: ["html"]
+  targets: ["doc", "doxygen"]
+  cmake_doc_args:
+    - "--build"
+    - "build"
+    - "--target"

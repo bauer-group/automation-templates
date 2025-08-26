@@ -1,0 +1,102 @@
+# GNU Autotools Project Example
+# =============================
+# Workflow for projects using GNU autotools (autoconf, automake, libtool)
+
+name: 🔨 Autotools Build & Test
+
+on:
+  push:
+    branches: [ main, develop, 'release/*' ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Weekly build to catch dependency issues
+    - cron: '0 2 * * 1'
+
+env:
+  # Autotools environment
+  ACLOCAL_PATH: "/usr/share/aclocal"
+
+jobs:
+  build-and-test:
+    name: 🔨 Build, Test & Distribution Check
+    uses: bauer-group/automation-templates/.github/workflows/makefile-build.yml@main
+    with:
+      # Use autotools-optimized configuration
+      config-file: 'autotools'
+      
+      # Configure stage
+      configure-script: './configure'
+      configure-args: '--enable-shared --enable-static --with-pic'
+      
+      # Build targets
+      make-targets: 'all'
+      
+      # Test targets (including install test)
+      check-targets: 'check installcheck'
+      
+      # Enable distribution check (important for autotools)
+      distcheck-enabled: true
+      
+      # System dependencies
+      install-dependencies: true
+      
+      # Performance options
+      cache-enabled: true
+      parallel-jobs: 'auto'
+      
+      # Quality assurance
+      fail-on-warnings: false  # Autotools can be verbose
+      generate-reports: true
+      upload-artifacts: true
+      
+      # Runner selection
+      runs-on: 'ubuntu-latest'
+
+  # Optional: Test installation
+  install-test:
+    name: 🔧 Installation Test
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Test Installation
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: 'autotools'
+          configure-args: '--prefix=/tmp/test-install'
+          make-targets: 'all install'
+          check-targets: 'installcheck'
+          generate-reports: false
+
+  # Optional: Build documentation
+  documentation:
+    name: 📚 Build Documentation
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 📚 Build Documentation
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: 'autotools'
+          make-targets: 'doc html pdf'
+          check-targets: ''  # No tests for doc build
+          distcheck-enabled: false
+          generate-reports: false
+      
+      - name: 📤 Upload Documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: |
+            doc/
+            *.pdf
+            *.html

@@ -1,0 +1,277 @@
+name: 🔨 Makefile Build & Test
+
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: 'Configuration file name from .github/config/makefile-build/ (without .yml extension)'
+        type: string
+        default: 'default'
+        required: false
+      
+      working-directory:
+        description: 'Working directory for Makefile operations'
+        type: string
+        default: '.'
+        required: false
+      
+      configure-script:
+        description: 'Configuration script to run (e.g., ./configure, ./autogen.sh)'
+        type: string
+        default: './configure'
+        required: false
+      
+      configure-args:
+        description: 'Additional arguments for configure script'
+        type: string
+        default: ''
+        required: false
+      
+      make-targets:
+        description: 'Space-separated list of make targets to run'
+        type: string
+        default: 'all'
+        required: false
+      
+      check-targets:
+        description: 'Space-separated list of check targets to run'
+        type: string
+        default: 'check'
+        required: false
+      
+      distcheck-enabled:
+        description: 'Enable distribution check (make distcheck)'
+        type: boolean
+        default: true
+        required: false
+      
+      install-dependencies:
+        description: 'Install system dependencies before building'
+        type: boolean
+        default: true
+        required: false
+      
+      cache-enabled:
+        description: 'Enable caching of build artifacts'
+        type: boolean
+        default: true
+        required: false
+      
+      parallel-jobs:
+        description: 'Number of parallel jobs for make (-j flag)'
+        type: string
+        default: 'auto'
+        required: false
+      
+      fail-on-warnings:
+        description: 'Treat warnings as errors'
+        type: boolean
+        default: false
+        required: false
+      
+      generate-reports:
+        description: 'Generate build and test reports'
+        type: boolean
+        default: true
+        required: false
+      
+      upload-artifacts:
+        description: 'Upload build artifacts and reports'
+        type: boolean
+        default: true
+        required: false
+      
+      security-scan:
+        description: 'Run security scanning on the codebase'
+        type: boolean
+        default: false
+        required: false
+      
+      runs-on:
+        description: 'Runner type to use for the build'
+        type: string
+        default: 'ubuntu-latest'
+        required: false
+
+    outputs:
+      build-status:
+        description: 'Build status (success/failure)'
+        value: ${{ jobs.build.outputs.build-status }}
+      
+      test-status:
+        description: 'Test status (success/failure)'
+        value: ${{ jobs.build.outputs.test-status }}
+      
+      distcheck-status:
+        description: 'Distribution check status (success/failure/skipped)'
+        value: ${{ jobs.build.outputs.distcheck-status }}
+      
+      build-time:
+        description: 'Total build time in seconds'
+        value: ${{ jobs.build.outputs.build-time }}
+      
+      artifacts-url:
+        description: 'URL to uploaded artifacts'
+        value: ${{ jobs.build.outputs.artifacts-url }}
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+  security-scan:
+    name: 🛡️ Security Scan
+    if: inputs.security-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🛡️ Run Security Scan
+        uses: bauer-group/automation-templates/.github/actions/gitleaks-scan@main
+        with:
+          fail-on-findings: true
+
+  build:
+    name: 🔨 Build & Test
+    needs: [security-scan]
+    if: always() && (needs.security-scan.result == 'success' || needs.security-scan.result == 'skipped')
+    runs-on: ${{ inputs.runs-on }}
+    
+    outputs:
+      build-status: ${{ steps.build.outputs.build-status }}
+      test-status: ${{ steps.build.outputs.test-status }}
+      distcheck-status: ${{ steps.build.outputs.distcheck-status }}
+      build-time: ${{ steps.build.outputs.build-time }}
+      artifacts-url: ${{ steps.upload.outputs.artifact-url }}
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📋 Workflow Information
+        run: |
+          echo "🔨 Makefile Build & Test Workflow"
+          echo "================================="
+          echo "Repository: ${{ github.repository }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "SHA: ${{ github.sha }}"
+          echo "Runner: ${{ inputs.runs-on }}"
+          echo "Config: ${{ inputs.config-file }}"
+          echo "Working Directory: ${{ inputs.working-directory }}"
+          echo "Make Targets: ${{ inputs.make-targets }}"
+          echo "Check Targets: ${{ inputs.check-targets }}"
+          echo "Distcheck: ${{ inputs.distcheck-enabled }}"
+          echo "Cache: ${{ inputs.cache-enabled }}"
+          echo "Parallel Jobs: ${{ inputs.parallel-jobs }}"
+
+      - name: 🔨 Build with Makefile
+        id: build
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: ${{ inputs.config-file }}
+          working-directory: ${{ inputs.working-directory }}
+          configure-script: ${{ inputs.configure-script }}
+          configure-args: ${{ inputs.configure-args }}
+          make-targets: ${{ inputs.make-targets }}
+          check-targets: ${{ inputs.check-targets }}
+          distcheck-enabled: ${{ inputs.distcheck-enabled }}
+          install-dependencies: ${{ inputs.install-dependencies }}
+          cache-enabled: ${{ inputs.cache-enabled }}
+          parallel-jobs: ${{ inputs.parallel-jobs }}
+          fail-on-warnings: ${{ inputs.fail-on-warnings }}
+          generate-reports: ${{ inputs.generate-reports }}
+
+      - name: 📤 Upload Build Artifacts
+        id: upload
+        if: inputs.upload-artifacts && steps.build.outputs.artifacts-path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: makefile-build-artifacts-${{ github.run_number }}
+          path: ${{ steps.build.outputs.artifacts-path }}
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: 📊 Build Report
+        if: always()
+        run: |
+          echo "📊 Final Build Report"
+          echo "===================="
+          echo "🔨 Build Status: ${{ steps.build.outputs.build-status }}"
+          echo "🧪 Test Status: ${{ steps.build.outputs.test-status }}"
+          echo "📦 Distcheck Status: ${{ steps.build.outputs.distcheck-status }}"
+          echo "⏰ Build Time: ${{ steps.build.outputs.build-time }}s"
+          
+          if [[ "${{ steps.upload.outcome }}" == "success" ]]; then
+            echo "📤 Artifacts uploaded successfully"
+          fi
+          
+          # Create job summary
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          # 🔨 Makefile Build Summary
+          
+          ## 📊 Results
+          | Component | Status | Details |
+          |-----------|--------|---------|
+          | 🔨 Build | ${{ steps.build.outputs.build-status }} | Targets: ${{ inputs.make-targets }} |
+          | 🧪 Tests | ${{ steps.build.outputs.test-status }} | Targets: ${{ inputs.check-targets }} |
+          | 📦 Distcheck | ${{ steps.build.outputs.distcheck-status }} | Enabled: ${{ inputs.distcheck-enabled }} |
+          | ⏰ Duration | ${{ steps.build.outputs.build-time }}s | Parallel Jobs: ${{ inputs.parallel-jobs }} |
+          
+          ## 🔧 Configuration
+          - **Config File:** ${{ inputs.config-file }}
+          - **Working Directory:** ${{ inputs.working-directory }}
+          - **Configure Script:** ${{ inputs.configure-script }}
+          - **Cache Enabled:** ${{ inputs.cache-enabled }}
+          - **Fail on Warnings:** ${{ inputs.fail-on-warnings }}
+          
+          EOF
+
+  matrix-build:
+    name: 🌐 Multi-Platform Build
+    if: inputs.config-file == 'matrix' || inputs.config-file == 'comprehensive'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-20.04, macos-latest]
+        include:
+          - os: ubuntu-latest
+            install-cmd: 'sudo apt-get update && sudo apt-get install -y'
+            deps: 'build-essential autoconf automake libtool pkg-config'
+          - os: ubuntu-20.04
+            install-cmd: 'sudo apt-get update && sudo apt-get install -y'
+            deps: 'build-essential autoconf automake libtool pkg-config'
+          - os: macos-latest
+            install-cmd: 'brew install'
+            deps: 'autoconf automake libtool pkg-config'
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📦 Install Dependencies
+        if: inputs.install-dependencies
+        run: ${{ matrix.install-cmd }} ${{ matrix.deps }}
+
+      - name: 🔨 Build on ${{ matrix.os }}
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: ${{ inputs.config-file }}
+          working-directory: ${{ inputs.working-directory }}
+          configure-script: ${{ inputs.configure-script }}
+          configure-args: ${{ inputs.configure-args }}
+          make-targets: ${{ inputs.make-targets }}
+          check-targets: ${{ inputs.check-targets }}
+          distcheck-enabled: false  # Skip distcheck in matrix builds
+          install-dependencies: false  # Already installed above
+          cache-enabled: ${{ inputs.cache-enabled }}
+          parallel-jobs: ${{ inputs.parallel-jobs }}
+          fail-on-warnings: ${{ inputs.fail-on-warnings }}
+          generate-reports: false  # Reduce artifact volume

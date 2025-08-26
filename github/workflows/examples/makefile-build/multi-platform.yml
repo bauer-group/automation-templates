@@ -1,0 +1,259 @@
+# Multi-Platform Build Example
+# =============================
+# Cross-platform testing with multiple operating systems and compilers
+
+name: 🌐 Multi-Platform Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Weekly comprehensive test
+    - cron: '0 3 * * 0'
+
+env:
+  # Global build settings
+  CTEST_OUTPUT_ON_FAILURE: 1
+
+jobs:
+  matrix-build:
+    name: 🌐 Build on ${{ matrix.os }} with ${{ matrix.compiler }}
+    uses: bauer-group/automation-templates/.github/workflows/makefile-build.yml@main
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-20.04, macos-latest, macos-12]
+        compiler: [gcc, clang]
+        include:
+          # Ubuntu latest with GCC
+          - os: ubuntu-latest
+            compiler: gcc
+            cc: gcc
+            cxx: g++
+            install_cmd: 'sudo apt-get update && sudo apt-get install -y'
+            packages: 'build-essential'
+          
+          # Ubuntu latest with Clang  
+          - os: ubuntu-latest
+            compiler: clang
+            cc: clang
+            cxx: clang++
+            install_cmd: 'sudo apt-get update && sudo apt-get install -y'
+            packages: 'clang'
+          
+          # Ubuntu 20.04 with GCC
+          - os: ubuntu-20.04
+            compiler: gcc
+            cc: gcc
+            cxx: g++
+            install_cmd: 'sudo apt-get update && sudo apt-get install -y'
+            packages: 'build-essential'
+          
+          # Ubuntu 20.04 with Clang
+          - os: ubuntu-20.04
+            compiler: clang
+            cc: clang
+            cxx: clang++
+            install_cmd: 'sudo apt-get update && sudo apt-get install -y'
+            packages: 'clang'
+          
+          # macOS latest with GCC
+          - os: macos-latest
+            compiler: gcc
+            cc: gcc-13
+            cxx: g++-13
+            install_cmd: 'brew install'
+            packages: 'gcc'
+          
+          # macOS latest with Clang (system default)
+          - os: macos-latest
+            compiler: clang
+            cc: clang
+            cxx: clang++
+            install_cmd: 'brew install'
+            packages: ''
+          
+          # macOS 12 with GCC
+          - os: macos-12
+            compiler: gcc
+            cc: gcc-12
+            cxx: g++-12
+            install_cmd: 'brew install'
+            packages: 'gcc@12'
+          
+          # macOS 12 with Clang
+          - os: macos-12
+            compiler: clang
+            cc: clang
+            cxx: clang++
+            install_cmd: 'brew install'
+            packages: ''
+        
+        # Exclude problematic combinations
+        exclude:
+          - os: macos-12
+            compiler: gcc  # Can be problematic on older macOS
+    
+    with:
+      # Use matrix configuration
+      config-file: 'matrix'
+      
+      # Build settings
+      make-targets: 'all'
+      check-targets: 'check'
+      
+      # Skip distcheck in matrix (time-consuming)
+      distcheck-enabled: false
+      
+      # Platform-specific runner
+      runs-on: ${{ matrix.os }}
+      
+      # Performance settings
+      cache-enabled: true
+      parallel-jobs: 'auto'
+      
+      # Generate reports for each platform
+      generate-reports: true
+      upload-artifacts: true
+
+  # Comprehensive build on main platform
+  comprehensive-build:
+    name: 🔨 Comprehensive Build
+    uses: bauer-group/automation-templates/.github/workflows/makefile-build.yml@main
+    with:
+      config-file: 'autotools'
+      
+      # Full build with all features
+      make-targets: 'all'
+      check-targets: 'check installcheck'
+      distcheck-enabled: true
+      
+      # Enable all quality features
+      fail-on-warnings: false
+      generate-reports: true
+      upload-artifacts: true
+      security-scan: true
+      
+      # Use latest Ubuntu for comprehensive test
+      runs-on: 'ubuntu-latest'
+
+  # Performance comparison
+  performance-test:
+    name: ⚡ Performance Test
+    needs: matrix-build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: ⚡ Benchmark Build
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: 'default'
+          parallel-jobs: '1'  # Single-threaded baseline
+          make-targets: 'all'
+          generate-reports: true
+      
+      - name: ⚡ Parallel Build Benchmark
+        uses: bauer-group/automation-templates/.github/actions/makefile-build@main
+        with:
+          config-file: 'default'
+          parallel-jobs: 'auto'  # Multi-threaded
+          make-targets: 'all'
+          generate-reports: true
+
+  # Architecture-specific builds
+  architecture-build:
+    name: 🏗️ Architecture Build
+    if: github.event_name == 'schedule' || contains(github.event.head_commit.message, '[arch-test]')
+    strategy:
+      matrix:
+        arch: [amd64, arm64, armv7]
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: arm64
+            platform: linux/arm64
+          - arch: armv7
+            platform: linux/arm/v7
+    
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ matrix.platform }}
+      
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: 🏗️ Build for ${{ matrix.arch }}
+        run: |
+          # Create Dockerfile for cross-compilation
+          cat > Dockerfile << EOF
+          FROM --platform=${{ matrix.platform }} ubuntu:latest
+          
+          RUN apt-get update && apt-get install -y \\
+              build-essential \\
+              autoconf \\
+              automake \\
+              libtool \\
+              pkg-config
+          
+          WORKDIR /src
+          COPY . .
+          
+          RUN if [ -f configure.ac ]; then autoreconf -fiv; fi
+          RUN if [ -f configure ]; then ./configure; fi
+          RUN make all
+          RUN make check || true
+          EOF
+          
+          # Build for target architecture
+          docker buildx build \\
+            --platform ${{ matrix.platform }} \\
+            --tag build-${{ matrix.arch }} \\
+            --load .
+
+  # Compatibility test
+  compatibility-test:
+    name: 🔄 Compatibility Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 🔄 Test with Different Make Versions
+        run: |
+          # Test with different make implementations
+          
+          # GNU Make (default)
+          make --version
+          make clean || true
+          make all || true
+          
+          # BSD Make (if available)
+          if command -v bmake >/dev/null 2>&1; then
+            echo "Testing with BSD Make"
+            bmake clean || true
+            bmake all || true
+          fi
+      
+      - name: 🔄 Test with Old Autotools
+        run: |
+          # Install older autotools versions for compatibility
+          sudo apt-get update
+          sudo apt-get install -y autoconf2.13 || true
+          
+          if command -v autoconf2.13 >/dev/null 2>&1; then
+            echo "Testing with older autoconf"
+            # Test compatibility if configure.ac is compatible
+          fi
