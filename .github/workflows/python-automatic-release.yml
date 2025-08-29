@@ -851,3 +851,68 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+
+  # Sync CHANGELOG from release tag to main branch
+  sync-changelog:
+    name: Sync CHANGELOG to Main Branch
+    if: needs.release-management.outputs.release-created == 'true'
+    needs: [release-management, update-security-management]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Main Branch
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          fetch-tags: true
+          ref: main
+
+      - name: 📝 Extract CHANGELOG from Release
+        run: |
+          TAG="${{ needs.release-management.outputs.tag-name }}"
+          VERSION="${{ needs.release-management.outputs.version }}"
+          
+          echo "📝 Extracting changelog from release $TAG"
+          
+          # Get release notes from GitHub API
+          RELEASE_NOTES=$(gh release view "$TAG" --json body --jq '.body' 2>/dev/null || echo "")
+          
+          if [ -z "$RELEASE_NOTES" ]; then
+            echo "⚠️ No release notes found for $TAG"
+            exit 0
+          fi
+          
+          # Check if CHANGELOG already contains this version
+          if grep -q "## \[${VERSION}\]" CHANGELOG.MD 2>/dev/null; then
+            echo "ℹ️ CHANGELOG already contains version ${VERSION}"
+            exit 0
+          fi
+          
+          echo "📝 Adding version ${VERSION} to CHANGELOG"
+          
+          # Create temporary file with new changelog entry
+          echo "$RELEASE_NOTES" > temp_new_entry.md
+          echo "" >> temp_new_entry.md
+          
+          # Prepend new entry to existing CHANGELOG
+          if [ -f "CHANGELOG.MD" ]; then
+            cat CHANGELOG.MD >> temp_new_entry.md
+          fi
+          
+          mv temp_new_entry.md CHANGELOG.MD
+          
+          echo "✅ CHANGELOG updated with release $TAG"
+
+      - name: 💾 Commit CHANGELOG Updates
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "📋 CHANGELOG Sync"
+          
+          if [[ -n $(git status --porcelain CHANGELOG.MD) ]]; then
+            git add CHANGELOG.MD
+            git commit -m "docs: sync CHANGELOG from release ${{ needs.release-management.outputs.tag-name }}"
+            git push origin main
+            echo "✅ CHANGELOG synchronized to main branch"
+          else
+            echo "ℹ️ No CHANGELOG changes to commit"
+          fi
