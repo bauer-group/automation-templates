@@ -50,6 +50,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           
+      - name: 📥 Sync with Remote
+        run: |
+          echo "🔄 Fetching latest changes to ensure branch is up-to-date"
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Actions"
+          git fetch origin
+          git reset --hard origin/${{ inputs.target-branch }}
+          git clean -fd
+          echo "✅ Branch synchronized with remote"
+          
       - name: 🚀 Semantic Release
         id: semantic
         uses: bauer-group/automation-templates/.github/actions/semantic-release@main
