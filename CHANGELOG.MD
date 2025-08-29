@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/bauer-group/automation-templates/compare/v1.0.0...v1.0.1) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* add newline at end of file in CONFIG.YML and generate_readme.py ([7074bf1](https://github.com/bauer-group/automation-templates/commit/7074bf1c892a9999e86e1b950ed663ab5f71cfa1))
+* correct tag output mapping in semantic-release workflow ([9465d92](https://github.com/bauer-group/automation-templates/commit/9465d924e91d74f125822650c87b9e1826407250))
+
 ## [1.0.0](https://github.com/bauer-group/automation-templates/compare/v0.25.0...v1.0.0) (2025-08-29)
 
 ### ⚠ BREAKING CHANGES
