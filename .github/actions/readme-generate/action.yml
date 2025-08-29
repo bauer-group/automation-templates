@@ -214,40 +214,38 @@ runs:
         echo "Repository: $REPO_FULL_NAME"
         
         # Create temporary file for processing
-        TEMP_FILE=$(mktemp)
+        TEMP_FILE="${OUTPUT_PATH}.tmp"
         
-        # Copy template and replace placeholders
-        cp "$TEMPLATE_PATH" "$TEMP_FILE"
-        
-        # Replace basic placeholders
-        sed -i "s|{{VERSION}}|$CURRENT_VERSION|g" "$TEMP_FILE"
-        sed -i "s|{{DATE}}|$CURRENT_DATE|g" "$TEMP_FILE"
-        sed -i "s|{{DATETIME}}|$CURRENT_DATETIME|g" "$TEMP_FILE"
-        sed -i "s|{{YEAR}}|$CURRENT_YEAR|g" "$TEMP_FILE"
-        sed -i "s|{{REPO_FULL_NAME}}|$REPO_FULL_NAME|g" "$TEMP_FILE"
-        sed -i "s|{{REPO_URL}}|$REPO_URL|g" "$TEMP_FILE"
-        sed -i "s|{{REPO_OWNER}}|$REPO_OWNER|g" "$TEMP_FILE"
-        sed -i "s|{{REPO_NAME}}|$REPO_NAME|g" "$TEMP_FILE"
-        sed -i "s|{{CURRENT_BRANCH}}|$CURRENT_BRANCH|g" "$TEMP_FILE"
+        # Start with template content and replace placeholders in chain
+        cat "$TEMPLATE_PATH" | \
+        sed "s|{{VERSION}}|$CURRENT_VERSION|g" | \
+        sed "s|{{DATE}}|$CURRENT_DATE|g" | \
+        sed "s|{{DATETIME}}|$CURRENT_DATETIME|g" | \
+        sed "s|{{YEAR}}|$CURRENT_YEAR|g" | \
+        sed "s|{{REPO_FULL_NAME}}|$REPO_FULL_NAME|g" | \
+        sed "s|{{REPO_URL}}|$REPO_URL|g" | \
+        sed "s|{{REPO_OWNER}}|$REPO_OWNER|g" | \
+        sed "s|{{REPO_NAME}}|$REPO_NAME|g" | \
+        sed "s|{{CURRENT_BRANCH}}|$CURRENT_BRANCH|g" > "$TEMP_FILE"
         
         # Replace input placeholders (only if provided)
         if [ -n "${{ inputs.project-name }}" ]; then
-          sed -i "s|{{PROJECT_NAME}}|${{ inputs.project-name }}|g" "$TEMP_FILE"
+          sed "s|{{PROJECT_NAME}}|${{ inputs.project-name }}|g" "$TEMP_FILE" > "${TEMP_FILE}.new" && mv "${TEMP_FILE}.new" "$TEMP_FILE"
         fi
         if [ -n "${{ inputs.company-name }}" ]; then
-          sed -i "s|{{COMPANY_NAME}}|${{ inputs.company-name }}|g" "$TEMP_FILE"
+          sed "s|{{COMPANY_NAME}}|${{ inputs.company-name }}|g" "$TEMP_FILE" > "${TEMP_FILE}.new" && mv "${TEMP_FILE}.new" "$TEMP_FILE"
         fi
         if [ -n "${{ inputs.project-description }}" ]; then
-          sed -i "s|{{PROJECT_DESCRIPTION}}|${{ inputs.project-description }}|g" "$TEMP_FILE"
+          sed "s|{{PROJECT_DESCRIPTION}}|${{ inputs.project-description }}|g" "$TEMP_FILE" > "${TEMP_FILE}.new" && mv "${TEMP_FILE}.new" "$TEMP_FILE"
         fi
         if [ -n "${{ inputs.contact-email }}" ]; then
-          sed -i "s|{{CONTACT_EMAIL}}|${{ inputs.contact-email }}|g" "$TEMP_FILE"
+          sed "s|{{CONTACT_EMAIL}}|${{ inputs.contact-email }}|g" "$TEMP_FILE" > "${TEMP_FILE}.new" && mv "${TEMP_FILE}.new" "$TEMP_FILE"
         fi
         if [ -n "${{ inputs.documentation-url }}" ]; then
-          sed -i "s|{{DOCUMENTATION_URL}}|${{ inputs.documentation-url }}|g" "$TEMP_FILE"
+          sed "s|{{DOCUMENTATION_URL}}|${{ inputs.documentation-url }}|g" "$TEMP_FILE" > "${TEMP_FILE}.new" && mv "${TEMP_FILE}.new" "$TEMP_FILE"
         fi
         if [ -n "${{ inputs.support-url }}" ]; then
-          sed -i "s|{{SUPPORT_URL}}|${{ inputs.support-url }}|g" "$TEMP_FILE"
+          sed "s|{{SUPPORT_URL}}|${{ inputs.support-url }}|g" "$TEMP_FILE" > "${TEMP_FILE}.new" && mv "${TEMP_FILE}.new" "$TEMP_FILE"
         fi
         
         # Check if output file exists and compare
