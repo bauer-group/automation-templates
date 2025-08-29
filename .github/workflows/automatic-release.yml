@@ -236,7 +236,6 @@ jobs:
     uses: ./.github/workflows/documentation.yml
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
-      custom-version: ${{ needs.release-management.outputs.version }}
       force-update: true
     permissions:
       contents: write
@@ -294,7 +293,6 @@ jobs:
     uses: ./.github/workflows/security-management.yml
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
-      custom-version: ${{ needs.release-management.outputs.version }}
       force-update: true
     permissions:
       contents: write
