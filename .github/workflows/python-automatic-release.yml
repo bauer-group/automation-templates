@@ -627,7 +627,7 @@ jobs:
           git config --local user.name "GitHub Action"
 
           if [[ -n $(git status --porcelain) ]]; then
-            git add INSTALLATION.MD || true
+            git add INSTALLATION.MD setup.py || true
             git commit -m "docs: add installation guide for release ${{ needs.release-management.outputs.tag-name }}" || true
             git push origin ${{ needs.release-management.outputs.tag-name }} || true
           else
