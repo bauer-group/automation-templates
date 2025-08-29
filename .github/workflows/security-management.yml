@@ -165,8 +165,29 @@ jobs:
           custom-version: ${{ inputs.custom-version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || (github.event_name == 'workflow_call' && inputs.tag-name) || '' }}
           policy-version: ${{ inputs.policy-version || '' }}
 
+      - name: 🔄 Sync with Latest Main
+        if: steps.should-run.outputs.should_run == 'true' && github.event_name != 'pull_request'
+        run: |
+          # Clean up any existing git state
+          git rebase --abort || true
+          git merge --abort || true
+          
+          # Sync with latest main to avoid conflicts
+          git fetch origin main
+          git reset --hard origin/main
+
+      - name: 🛡️ Re-Generate Security Policy with Latest State
+        id: regenerate
+        if: steps.should-run.outputs.should_run == 'true' && github.event_name != 'pull_request'
+        uses: bauer-group/automation-templates/.github/actions/security-generate@main
+        with:
+          config-file: '.github/config/security-policy/config.yml'
+          force-update: ${{ inputs.force-update || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' }}
+          custom-version: ${{ inputs.custom-version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || (github.event_name == 'workflow_call' && inputs.tag-name) || '' }}
+          policy-version: ${{ inputs.policy-version || '' }}
+
       - name: 🛡️ Commit and Push Changes
-        if: steps.should-run.outputs.should_run == 'true' && steps.generate.outputs.changes_detected == 'true' && github.event_name != 'pull_request'
+        if: steps.should-run.outputs.should_run == 'true' && (steps.generate.outputs.changes_detected == 'true' || steps.regenerate.outputs.changes_detected == 'true') && github.event_name != 'pull_request'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "🛡️ Security Policy Bot"
@@ -189,25 +210,15 @@ jobs:
           
           COMMIT_MSG="$COMMIT_MSG [automated]"
           
-          # Clean up any existing git state
-          git rebase --abort || true
-          git merge --abort || true
-          git clean -fd || true
-          
-          # Sync with latest main using merge instead of rebase
-          git fetch origin main
-          git reset --hard origin/main
-          
-          # Re-generate the file to ensure we have latest changes
-          echo "Regenerating SECURITY with latest repository state..."
           git add SECURITY.MD
           
           # Only commit if there are actual changes
           if git diff --staged --quiet; then
-            echo "No changes detected, skipping commit"
+            echo "No changes detected in SECURITY.MD, skipping commit"
           else
+            echo "Changes detected in SECURITY.MD, committing..."
             git commit -m "$COMMIT_MSG"
-            git push
+            git push origin main
           fi
 
   # Validate security policy structure and content
