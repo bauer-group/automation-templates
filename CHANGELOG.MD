@@ -1,3 +1,13 @@
+## [1.0.2](https://github.com/bauer-group/automation-templates/compare/v1.0.1...v1.0.2) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* correct semantic-release output mapping for proper version/tag display ([96fa89d](https://github.com/bauer-group/automation-templates/commit/96fa89d94aed8845e0a4274b6a44d55aca952664))
+* remove unnecessary blank line before main execution ([eac7ed8](https://github.com/bauer-group/automation-templates/commit/eac7ed85cd44dc341acf69ed3800170e5b69f7c4))
+* remove unnecessary blank line before main function ([34819b9](https://github.com/bauer-group/automation-templates/commit/34819b95ff55bfc3cebc8c5c302577a8f2a675ff))
+* replace rebase with merge in security management to avoid conflicts ([5dfddb3](https://github.com/bauer-group/automation-templates/commit/5dfddb3cf4d6e3da137f05f567efa2c186097f40))
+* use correct action output references for version and tag mapping ([01e4de8](https://github.com/bauer-group/automation-templates/commit/01e4de8c19cfc9cbc92f7138136d844647815c2b))
+
 ## [1.0.1](https://github.com/bauer-group/automation-templates/compare/v1.0.0...v1.0.1) (2025-08-29)
 
 ### 🐛 Bug Fixes
