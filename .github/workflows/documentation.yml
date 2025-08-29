@@ -38,6 +38,11 @@ on:
         type: boolean
         required: false
         default: false
+      custom-version:
+        description: 'Custom version to use in documentation (overrides auto-detection)'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: write
