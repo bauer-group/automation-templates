@@ -1,3 +1,9 @@
+## [1.1.11](https://github.com/bauer-group/automation-templates/compare/v1.1.10...v1.1.11) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* correct workflow order to preserve generated content ([70e7d11](https://github.com/bauer-group/automation-templates/commit/70e7d11b0882ffda7e7522db6cafb2c14a08b83d))
+
 ## [1.1.10](https://github.com/bauer-group/automation-templates/compare/v1.1.9...v1.1.10) (2025-08-29)
 
 ### 🐛 Bug Fixes
