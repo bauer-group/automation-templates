@@ -320,6 +320,7 @@ jobs:
           VERSION="${{ needs.release-management.outputs.version }}"
           
           echo "📝 Extracting changelog from release $TAG"
+          echo "🔍 Looking for version: ${VERSION}"
           
           # Get release notes from GitHub API
           RELEASE_NOTES=$(gh release view "$TAG" --json body --jq '.body' 2>/dev/null || echo "")
@@ -329,9 +330,17 @@ jobs:
             exit 0
           fi
           
-          # Check if CHANGELOG already contains this version
+          echo "📄 Release notes found:"
+          echo "$RELEASE_NOTES" | head -3
+          
+          # Check if CHANGELOG already contains this version (check both with and without v prefix)
           if grep -q "## \[${VERSION}\]" CHANGELOG.MD 2>/dev/null; then
             echo "ℹ️ CHANGELOG already contains version ${VERSION}"
+            exit 0
+          fi
+          
+          if grep -q "## \[v${VERSION}\]" CHANGELOG.MD 2>/dev/null; then
+            echo "ℹ️ CHANGELOG already contains version v${VERSION}"  
             exit 0
           fi
           
@@ -348,7 +357,7 @@ jobs:
           
           mv temp_new_entry.md CHANGELOG.MD
           
-          echo "✅ CHANGELOG updated with release $TAG"
+          echo "✅ CHANGELOG updated with release $TAG (version ${VERSION})"
 
       - name: 💾 Commit CHANGELOG Updates
         run: |
