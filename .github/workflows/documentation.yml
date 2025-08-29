@@ -5,6 +5,8 @@ name: 📄 Documentation Management
 
 on:
   push:
+    branches: 
+      - main
     tags:
       - 'v*.*.*'
       - 'v*'
@@ -18,11 +20,12 @@ on:
       force-update:
         description: 'Force README update even without changes'
         type: boolean
-        default: true
+        default: false
       custom-version:
         description: 'Custom version for README'
         type: string
         default: ''
+  # Triggered by other workflows when tags are created
   workflow_call:
     inputs:
       tag-name:
@@ -35,11 +38,6 @@ on:
         type: boolean
         required: false
         default: false
-      custom-version:
-        description: 'Custom version to use in documentation (overrides auto-detection)'
-        type: string
-        required: false
-        default: ''
 
 permissions:
   contents: write
@@ -230,25 +228,11 @@ jobs:
           
           COMMIT_MSG="$COMMIT_MSG [automated]"
           
-          # Commit changes if any exist
-          if [[ -n $(git status --porcelain README.MD) ]]; then
-            git add README.MD
-            git commit -m "$COMMIT_MSG"
-            
-            # Pull and push with retry logic
-            MAX_RETRIES=3
-            for i in $(seq 1 $MAX_RETRIES); do
-              git pull --no-edit --strategy=recursive origin main && git push origin main && break
-              if [ $i -eq $MAX_RETRIES ]; then
-                echo "Failed to push after $MAX_RETRIES attempts"
-                exit 1
-              fi
-              echo "Retry $i/$MAX_RETRIES after 2s..."
-              sleep 2
-            done
-          else
-            echo "No changes to README.MD"
-          fi
+          git add README.MD
+          git commit -m "$COMMIT_MSG" || echo "No changes to commit"
+          git fetch --tags origin
+          git pull --no-edit --strategy=recursive origin main
+          git push
 
   # Validate documentation links and structure
   validate-documentation:

@@ -61,12 +61,12 @@ jobs:
       - name: 📊 Process Results
         id: release
         run: |
-          # Use the action's defined outputs correctly
-          if [ "${{ steps.semantic.outputs.release-created }}" = "true" ]; then
+          # Use cycjimmy semantic-release action outputs correctly
+          if [ "${{ steps.semantic.outputs.new_release_published }}" = "true" ]; then
             echo "release-created=true" >> $GITHUB_OUTPUT
-            # Use action's defined outputs  
-            VERSION="${{ steps.semantic.outputs.version }}"
-            TAG="${{ steps.semantic.outputs.tag }}"
+            # Use cycjimmy action direct outputs
+            VERSION="${{ steps.semantic.outputs.new_release_version }}"
+            TAG="v${{ steps.semantic.outputs.new_release_version }}"
             
             # Fallback if tag is empty, create from version
             if [ -z "$TAG" ]; then
