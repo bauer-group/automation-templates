@@ -1,3 +1,9 @@
+## [1.1.9](https://github.com/bauer-group/automation-templates/compare/v1.1.8...v1.1.9) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* resolve git rebase conflicts in documentation workflows ([23666e3](https://github.com/bauer-group/automation-templates/commit/23666e30da310b90118c889abf917e9ce1737e47))
+
 ## [1.1.8](https://github.com/bauer-group/automation-templates/compare/v1.1.7...v1.1.8) (2025-08-29)
 
 ### 🐛 Bug Fixes
