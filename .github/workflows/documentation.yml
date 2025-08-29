@@ -183,20 +183,20 @@ jobs:
           
           COMMIT_MSG="$COMMIT_MSG [automated]"
           
+          # Always sync with latest main before committing
+          git fetch origin main
+          git pull --rebase origin main || true
+          
           git add README.MD
           git commit -m "$COMMIT_MSG" || echo "No changes to commit"
-          git fetch --tags origin
           
-          # Switch to main branch if we're in detached HEAD (tag trigger)
-          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
-            git checkout main
-            git pull --no-edit --strategy=recursive --no-rebase origin main || git rebase --abort || true
-            git cherry-pick HEAD@{1} || git cherry-pick --abort || true
-          else
-            git pull --no-edit --strategy=recursive --no-rebase origin main || git pull --rebase origin main || true
+          # Try to push, if it fails, sync and retry
+          if ! git push; then
+            echo "Push failed, syncing with remote and retrying..."
+            git fetch origin main
+            git pull --rebase origin main
+            git push
           fi
-          
-          git push
 
   # Validate documentation links and structure
   validate-documentation:
