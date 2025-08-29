@@ -320,7 +320,7 @@ This security policy is subject to BAUER GROUP's information security policies a
 **Last Updated**: 2025-08-29 10:44:20 UTC  
 **Next Review**: August 2026  
 **Policy Version**: 1.0.0  
-**Repository Version**: v1.0.1
+**Repository Version**: v1.0.2
 
 ---
 
