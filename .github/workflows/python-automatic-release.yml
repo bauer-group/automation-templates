@@ -34,9 +34,6 @@ on:
       PYPI_API_TOKEN:
         description: "PyPI API token for publishing"
         required: true
-      GITHUB_TOKEN:
-        description: "GitHub token for releases and packages"
-        required: true
       GITGUARDIAN_API_KEY:
         description: "GitGuardian API key for security scanning"
         required: false
