@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any
 import urllib.request
 import re
 
+# Configuration
 TEMPLATE_PATH = "docs/README.template.MD"
 OUTPUT_PATH = "README.MD"
 
