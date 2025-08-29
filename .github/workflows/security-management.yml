@@ -200,13 +200,19 @@ jobs:
             git checkout --ours SECURITY.MD  # Keep our generated version
             git add SECURITY.MD
             git commit -m "$COMMIT_MSG"
+            git push origin main
           else
             echo "Clean merge successful"
             git add SECURITY.MD
-            git commit -m "$COMMIT_MSG"
+            
+            # Only commit if there are changes
+            if git diff --staged --quiet; then
+              echo "No changes to commit after merge"
+            else
+              git commit -m "$COMMIT_MSG"
+              git push origin main
+            fi
           fi
-          
-          git push origin main
 
   # Validate security policy structure and content
   validate-security-policy:
