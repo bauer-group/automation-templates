@@ -1,3 +1,13 @@
+## [1.2.0](https://github.com/bauer-group/automation-templates/compare/v1.1.13...v1.2.0) (2025-08-29)
+
+### 🚀 Features
+
+* refactor README generator action to work inline without external scripts ([0a866ca](https://github.com/bauer-group/automation-templates/commit/0a866caa74f2bd03a7cb2d92aedac81bb9039a21))
+
+### 🐛 Bug Fixes
+
+* resolve sed temporary file issues in README generator action ([521b555](https://github.com/bauer-group/automation-templates/commit/521b5559d722aa3e6c2e6c9ca061256a7e8050d4))
+
 ## [1.1.13](https://github.com/bauer-group/automation-templates/compare/v1.1.12...v1.1.13) (2025-08-29)
 
 ### 🐛 Bug Fixes
