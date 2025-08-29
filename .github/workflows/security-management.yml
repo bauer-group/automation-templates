@@ -246,9 +246,9 @@ jobs:
           
           git add SECURITY.MD
           git commit -m "$COMMIT_MSG" || echo "No changes to commit"
-          git fetch --tags origin
-          git pull --rebase origin main
-          git push
+          git fetch origin main
+          git merge origin/main --no-edit || echo "No merge needed"
+          git push origin main
 
   # Validate security policy structure and content
   validate-security-policy:
