@@ -162,8 +162,35 @@ jobs:
           force-update: ${{ inputs.force-update || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' }}
           custom-version: ${{ inputs.custom-version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || (github.event_name == 'workflow_call' && inputs.tag-name) || '' }}
 
+      - name: 🔄 Sync with Latest Main
+        if: steps.should-run.outputs.should_run == 'true' && github.event_name != 'pull_request'
+        run: |
+          # Clean up any existing git state
+          git rebase --abort || true
+          git merge --abort || true
+          
+          # Sync with latest main to avoid conflicts
+          git fetch origin main
+          git reset --hard origin/main
+
+      - name: 📝 Re-Generate README with Latest State
+        id: regenerate
+        if: steps.should-run.outputs.should_run == 'true' && github.event_name != 'pull_request'
+        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
+        with:
+          template-path: 'docs/README.template.MD'
+          output-path: 'README.MD'
+          project-name: 'Automation Templates'
+          company-name: 'BAUER GROUP'
+          project-description: 'Professional automation templates and workflows with modular, reusable components for GitHub repositories'
+          contact-email: 'support@bauer-group.com'
+          documentation-url: 'https://github.com/bauer-group/automation-templates/wiki'
+          support-url: 'https://github.com/bauer-group/automation-templates/issues'
+          force-update: ${{ inputs.force-update || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_call' }}
+          custom-version: ${{ inputs.custom-version || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || (github.event_name == 'workflow_call' && inputs.tag-name) || '' }}
+
       - name: 📄 Commit and Push Changes
-        if: steps.should-run.outputs.should_run == 'true' && steps.generate.outputs.changes_detected == 'true' && github.event_name != 'pull_request'
+        if: steps.should-run.outputs.should_run == 'true' && (steps.generate.outputs.changes_detected == 'true' || steps.regenerate.outputs.changes_detected == 'true') && github.event_name != 'pull_request'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "📄 README Bot"
@@ -183,25 +210,15 @@ jobs:
           
           COMMIT_MSG="$COMMIT_MSG [automated]"
           
-          # Clean up any existing git state
-          git rebase --abort || true
-          git merge --abort || true
-          git clean -fd || true
-          
-          # Sync with latest main using merge instead of rebase
-          git fetch origin main
-          git reset --hard origin/main
-          
-          # Re-generate the file to ensure we have latest changes
-          echo "Regenerating README with latest repository state..."
           git add README.MD
           
           # Only commit if there are actual changes
           if git diff --staged --quiet; then
-            echo "No changes detected, skipping commit"
+            echo "No changes detected in README.MD, skipping commit"
           else
+            echo "Changes detected in README.MD, committing..."
             git commit -m "$COMMIT_MSG"
-            git push
+            git push origin main
           fi
 
   # Validate documentation links and structure
