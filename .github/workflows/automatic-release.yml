@@ -97,11 +97,33 @@ jobs:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
       version: ${{ needs.release-management.outputs.version }}
 
+  # Update documentation for new release
+  update-documentation:
+    name: Update Documentation
+    if: needs.release-management.outputs.release-created == 'true'
+    needs: [release-management, artifact-generation]
+    uses: ./.github/workflows/documentation.yml
+    with:
+      force-update: true
+      custom-version: ${{ needs.release-management.outputs.version }}
+    secrets: inherit
+
+  # Update security policy for new release  
+  update-security:
+    name: Update Security Policy
+    if: needs.release-management.outputs.release-created == 'true'
+    needs: [release-management, artifact-generation]
+    uses: ./.github/workflows/security-management.yml
+    with:
+      force-update: true
+      custom-version: ${{ needs.release-management.outputs.version }}
+    secrets: inherit
+
   # Pipeline summary
   pipeline-summary:
     name: Pipeline Summary
     if: always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch')
-    needs: [security-scan, license-compliance, release-management, artifact-generation]
+    needs: [security-scan, license-compliance, release-management, artifact-generation, update-documentation, update-security]
     runs-on: ubuntu-latest
     
     steps:
