@@ -1,3 +1,9 @@
+## [1.1.2](https://github.com/bauer-group/automation-templates/compare/v1.1.1...v1.1.2) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* make semantic-release robust against parallel workflow conflicts ([4e7f6cf](https://github.com/bauer-group/automation-templates/commit/4e7f6cf02e895a2ed9f78932a141d12a945d2230))
+
 ## [1.1.1](https://github.com/bauer-group/automation-templates/compare/v1.1.0...v1.1.1) (2025-08-29)
 
 ### 🐛 Bug Fixes
