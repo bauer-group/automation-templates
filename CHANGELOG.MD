@@ -1,3 +1,12 @@
+## [0.24.0](https://github.com/bauer-group/automation-templates/compare/v0.23.0...v0.24.0) (2025-08-29)
+
+### 🚀 Features
+
+* Add NocoDB SimpleClient release workflow example ([d21b69b](https://github.com/bauer-group/automation-templates/commit/d21b69b20ab92f218f4e22d1bd9e261d9bcc2979))
+* Add Python automatic release workflow with security scans and publishing steps ([182cf81](https://github.com/bauer-group/automation-templates/commit/182cf81ccb28d174d13a8f7d225128437c5f30fc))
+* Add setup.py to installation guide update in release workflow ([65b76fb](https://github.com/bauer-group/automation-templates/commit/65b76fbdf23bef2283950092e2dfdbaa6a4b9cb7))
+* Update Python automatic release workflow with enhanced versioning and installation guide ([1c64da4](https://github.com/bauer-group/automation-templates/commit/1c64da4d5a64546a137a16701c1ef2d75073dbc0))
+
 ## [0.23.0](https://github.com/bauer-group/automation-templates/compare/v0.22.2...v0.23.0) (2025-08-26)
 
 ### 🚀 Features
