@@ -233,11 +233,25 @@ jobs:
           
           COMMIT_MSG="$COMMIT_MSG [automated]"
           
-          git add README.MD
-          git commit -m "$COMMIT_MSG" || echo "No changes to commit"
-          git fetch --tags origin
-          git pull --rebase origin main
-          git push
+          # Commit changes if any exist
+          if [[ -n $(git status --porcelain README.MD) ]]; then
+            git add README.MD
+            git commit -m "$COMMIT_MSG"
+            
+            # Pull and push with retry logic
+            MAX_RETRIES=3
+            for i in $(seq 1 $MAX_RETRIES); do
+              git pull --no-edit origin main && git push origin main && break
+              if [ $i -eq $MAX_RETRIES ]; then
+                echo "Failed to push after $MAX_RETRIES attempts"
+                exit 1
+              fi
+              echo "Retry $i/$MAX_RETRIES after 2s..."
+              sleep 2
+            done
+          else
+            echo "No changes to README.MD"
+          fi
 
   # Validate documentation links and structure
   validate-documentation:
