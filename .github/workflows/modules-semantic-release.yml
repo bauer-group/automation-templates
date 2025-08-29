@@ -62,11 +62,11 @@ jobs:
         id: release
         run: |
           # Map outputs from action
-          if [ "${{ steps.semantic.outputs.release-created }}" = "true" ]; then
+          if [ "${{ steps.semantic.outputs.new_release_published }}" = "true" ]; then
             echo "release-created=true" >> $GITHUB_OUTPUT
             # Use new_release_version for version output
             VERSION="${{ steps.semantic.outputs.new_release_version }}"
-            TAG="${{ steps.semantic.outputs.new_release_git_tag }}"
+            TAG="${{ steps.semantic.outputs.tag }}"
             
             # Fallback if tag is empty, create from version
             if [ -z "$TAG" ]; then
@@ -75,7 +75,7 @@ jobs:
             
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
             echo "tag=${TAG}" >> $GITHUB_OUTPUT
-            echo "✅ Released version: ${{ steps.semantic.outputs.tag }}"
+            echo "✅ Released version: ${TAG} (v${VERSION})"
           else
             echo "release-created=false" >> $GITHUB_OUTPUT
             echo "ℹ️ No release created (no releasable changes)"
