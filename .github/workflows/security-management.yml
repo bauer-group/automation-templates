@@ -252,7 +252,7 @@ jobs:
             # Pull and push with retry logic
             MAX_RETRIES=3
             for i in $(seq 1 $MAX_RETRIES); do
-              git pull --no-edit --strategy=merge origin main && git push origin main && break
+              git pull --no-edit --strategy=recursive origin main && git push origin main && break
               if [ $i -eq $MAX_RETRIES ]; then
                 echo "Failed to push after $MAX_RETRIES attempts"
                 exit 1
