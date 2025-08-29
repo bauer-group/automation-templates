@@ -5,10 +5,12 @@ name: 📄 Documentation Management
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
-      - 'v*'
-      - '[0-9]+.[0-9]+.[0-9]+'
+    branches: [main]
+    paths:
+      - 'docs/README.template.MD'
+      - 'scripts/generate_readme.py'
+      - '.github/actions/readme-generate/**'
+      - '.github/workflows/documentation.yml'
   pull_request:
     branches: [main]
     paths:
@@ -68,12 +70,9 @@ jobs:
           echo "🔍 Determining if workflow should run..."
           echo "Event: ${{ github.event_name }}"
           echo "Ref: ${{ github.ref }}"
-          echo "Ref Name: ${{ github.ref_name }}"
-          echo "Ref Type: ${{ github.ref_type }}"
           echo "Force Update: ${{ inputs.force-update }}"
-          echo "Tag Name Input: ${{ inputs.tag-name }}"
           
-          # Always run if force-update is true (from workflow_call or manual trigger)
+          # Always run if force-update is true (from manual trigger)
           if [[ "${{ inputs.force-update }}" == "true" ]]; then
             echo "🔄 ✅ FORCE UPDATE ENABLED - will run regardless of other conditions"
             echo "should_run=true" >> $GITHUB_OUTPUT
@@ -81,18 +80,9 @@ jobs:
             exit 0
           fi
           
-          # Always run for tags - HIGHEST PRIORITY
-          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]] || [[ "${{ startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
-            echo "🏷️ ✅ FORCE RUNNING FOR TAG: ${{ github.ref_name }}"
-            echo "🏷️ This will force update documentation regardless of file changes"
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "skip_reason=" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
           # Always run for workflow_call (called by other workflows)
           if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
-            echo "✅ Running for workflow call (tag: ${{ inputs.tag-name || 'none' }})"
+            echo "✅ Running for workflow call"
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "skip_reason=" >> $GITHUB_OUTPUT
             exit 0
@@ -114,66 +104,17 @@ jobs:
             exit 0
           fi
           
-          # For push events, check if relevant files changed (but NOT for tags)
+          # For push events to main, workflow should trigger based on paths filter
           if [[ "${{ github.event_name }}" == "push" ]]; then
-            # Double-check this isn't a tag push (should have been caught above)
-            if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
-              echo "🏷️ EMERGENCY TAG DETECTION - This is a tag push that should have been caught earlier!"
-              echo "🏷️ ✅ FORCE RUNNING FOR TAG: ${{ github.ref_name }}"
-              echo "🏷️ This will force update documentation regardless of file changes"
-              echo "should_run=true" >> $GITHUB_OUTPUT
-              echo "skip_reason=" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            
-            echo "📋 Checking for relevant file changes in push to ${{ github.ref_name }}..."
-            
-            # Get changed files in this push
-            CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} 2>/dev/null || echo "")
-            
-            # Fallback if github.event.before is not available
-            if [ -z "$CHANGED_FILES" ]; then
-              CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD)
-            fi
-            
-            echo "Changed files in this push:"
-            echo "$CHANGED_FILES"
-            
-            # Check if any relevant files changed
-            RELEVANT_CHANGED=false
-            while IFS= read -r file; do
-              if [ -n "$file" ]; then
-                echo "Checking file: $file"
-                if [[ "$file" == "docs/README.template.MD" ]] || \
-                   [[ "$file" == .github/actions/readme-generate/* ]] || \
-                   [[ "$file" == ".github/workflows/documentation.yml" ]]; then
-                  echo "Relevant file changed: $file"
-                  RELEVANT_CHANGED=true
-                  break
-                fi
-              fi
-            done <<< "$CHANGED_FILES"
-            
-            if [ "$RELEVANT_CHANGED" = "true" ]; then
-              echo "should_run=true" >> $GITHUB_OUTPUT
-              echo "skip_reason=" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            
-            echo "No relevant files changed - skipping workflow"
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "skip_reason=No documentation-related files changed" >> $GITHUB_OUTPUT
-            
-            # Create a minimal summary for skipped runs
-            echo "### 📄 Documentation Workflow" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "⏭️ **Skipped** - No documentation-related files were modified" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Files checked:" >> $GITHUB_STEP_SUMMARY
-            echo "- \`docs/README.template.MD\`" >> $GITHUB_STEP_SUMMARY
-            echo "- \`.github/actions/readme-generate/**\`" >> $GITHUB_STEP_SUMMARY
-            echo "- \`.github/workflows/documentation.yml\`" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Running for push to main (paths filter applies automatically)"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
+            exit 0
           fi
+          
+          # Default fallback
+          echo "should_run=true" >> $GITHUB_OUTPUT
+          echo "skip_reason=" >> $GITHUB_OUTPUT
 
       - name: 🔍 Validate Prerequisites
         if: steps.should-run.outputs.should_run == 'true'
@@ -229,16 +170,7 @@ jobs:
           git add README.MD
           git commit -m "$COMMIT_MSG" || echo "No changes to commit"
           git fetch --tags origin
-          
-          # Switch to main branch if we're in detached HEAD (tag trigger)
-          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
-            git checkout main
-            git pull --no-edit --strategy=recursive origin main
-            git cherry-pick HEAD@{1}
-          else
-            git pull --no-edit --strategy=recursive origin main
-          fi
-          
+          git pull --no-edit --strategy=recursive origin main
           git push
 
   # Validate documentation links and structure
