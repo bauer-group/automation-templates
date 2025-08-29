@@ -1,3 +1,30 @@
+## [1.0.0](https://github.com/bauer-group/automation-templates/compare/v0.25.0...v1.0.0) (2025-08-29)
+
+### ⚠ BREAKING CHANGES
+
+* test major version bump for workflow validation
+
+### 🚀 Features
+
+* add CHANGELOG sync from release tags to main branch ([e423d85](https://github.com/bauer-group/automation-templates/commit/e423d855f5a92402ece98245bd5dccf8ed7348b4))
+* Add custom version parameter to documentation and security workflows ([f2866be](https://github.com/bauer-group/automation-templates/commit/f2866be3be03545f8a31c0247a319559ae8df8b2))
+* Add example workflow for NocoDB SimpleClient library release process ([d2eb43f](https://github.com/bauer-group/automation-templates/commit/d2eb43f1f0a51ac098835aed264051dd64cc46a6))
+* Add tag verification and update documentation/security policies in release tags ([85a7194](https://github.com/bauer-group/automation-templates/commit/85a7194f24859d808b522b5c6a23a2dd67bda486))
+* trigger new major release for testing ([e4f9a92](https://github.com/bauer-group/automation-templates/commit/e4f9a927770b805fd866b79f32977c70850e0632))
+* Update deployment profiles and workflows for enhanced automation and security ([71abb43](https://github.com/bauer-group/automation-templates/commit/71abb43689380bfeae0e86639753b884f62c4a22))
+
+### 🐛 Bug Fixes
+
+* remove duplicate v0.26.0 entry from CHANGELOG ([2de0cbf](https://github.com/bauer-group/automation-templates/commit/2de0cbf4ece5ab636e62f5dc085f84482705690a))
+
+### ♻️ Code Refactoring
+
+* Remove custom version parameter from documentation and security updates in release workflows ([4320a34](https://github.com/bauer-group/automation-templates/commit/4320a3446d89992d041d4703f07cdebf8ddf7440))
+
+### 🔧 Maintenance
+
+* **release:** 0.26.0 [skip ci] ([f2ca698](https://github.com/bauer-group/automation-templates/commit/f2ca6984dc3febe5aa67c7184660be905ca9ea55))
+
 ## [0.26.0](https://github.com/bauer-group/automation-templates/compare/v0.25.0...v0.26.0) (2025-08-29)
 
 ### 🚀 Features
