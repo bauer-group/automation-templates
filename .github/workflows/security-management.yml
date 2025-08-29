@@ -244,11 +244,30 @@ jobs:
           
           COMMIT_MSG="$COMMIT_MSG [automated]"
           
-          git add SECURITY.MD
-          git commit -m "$COMMIT_MSG" || echo "No changes to commit"
+          # Pull latest changes first to avoid conflicts
           git fetch origin main
-          git merge origin/main --no-edit || echo "No merge needed"
-          git push origin main
+          git reset --hard origin/main
+          
+          # Re-generate security policy on latest main
+          if [ -n "${{ inputs.custom-version }}" ]; then
+            echo "🔄 Re-generating security policy with version: ${{ inputs.custom-version }}"
+            cd "$GITHUB_WORKSPACE"
+            python -c "
+          import sys
+          sys.path.append('$GITHUB_WORKSPACE/.github/actions/security-generate')
+          from generate_security import main
+          main('${{ inputs.custom-version }}')
+            "
+          fi
+          
+          # Check if there are changes to commit
+          if [[ -n $(git status --porcelain SECURITY.MD) ]]; then
+            git add SECURITY.MD
+            git commit -m "$COMMIT_MSG"
+            git push origin main
+          else
+            echo "No changes to SECURITY.MD"
+          fi
 
   # Validate security policy structure and content
   validate-security-policy:
