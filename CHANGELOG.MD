@@ -1,3 +1,9 @@
+## [1.1.13](https://github.com/bauer-group/automation-templates/compare/v1.1.12...v1.1.13) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* preserve generated content during git merge operations ([baadd38](https://github.com/bauer-group/automation-templates/commit/baadd383a8d4760b1c14e54cc8529184677c7b24))
+
 ## [1.1.12](https://github.com/bauer-group/automation-templates/compare/v1.1.11...v1.1.12) (2025-08-29)
 
 ### 🐛 Bug Fixes
