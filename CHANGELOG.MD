@@ -1,3 +1,14 @@
+## [1.1.3](https://github.com/bauer-group/automation-templates/compare/v1.1.2...v1.1.3) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* ensure paths are ignored for pull requests in automatic release workflow ([5c9f414](https://github.com/bauer-group/automation-templates/commit/5c9f4146406d82eb5cab7f15009eba188ae50537))
+* finalize workflow validation and ensure [skip ci] removal is active ([e99caeb](https://github.com/bauer-group/automation-templates/commit/e99caebf9aae911a5a9e69b3246558a51730dff4))
+
+### 🔧 Maintenance
+
+* remove outdated comment about workflow validation ([85304c3](https://github.com/bauer-group/automation-templates/commit/85304c311710885a6bbdea8aac2bf3be0b6c6203))
+
 ## [1.1.2](https://github.com/bauer-group/automation-templates/compare/v1.1.1...v1.1.2) (2025-08-29)
 
 ### 🐛 Bug Fixes
