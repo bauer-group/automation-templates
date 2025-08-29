@@ -13,6 +13,25 @@
 * decouple documentation and security workflows - now independent tag-triggered only ([7ea649a](https://github.com/bauer-group/automation-templates/commit/7ea649aa800a870890b4d49bb0cca2ee80a0d0af))
 * decouple workflows - documentation and security now independent tag-triggered, automatic-release simplified ([20b9ce1](https://github.com/bauer-group/automation-templates/commit/20b9ce16058436c92a7eeb5f0b9a3f853388a8c8))
 
+### 🔧 Maintenance
+
+* **release:** 1.0.5 [skip ci] ([f94807f](https://github.com/bauer-group/automation-templates/commit/f94807fba2309f3d609079d387d1019c4b5f2814))
+
+## [1.0.5](https://github.com/bauer-group/automation-templates/compare/v1.0.4...v1.0.5) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* add workflow validation comment for testing release workflow ([2336518](https://github.com/bauer-group/automation-templates/commit/2336518ce7154b086ebdb04706344280071dba74))
+* remove unnecessary newline before main execution block in generate_readme.py ([31553bf](https://github.com/bauer-group/automation-templates/commit/31553bf7670a30a3e6d00fd8207b924df6c2a2c2))
+* resolve tag conflict and ensure semantic-release workflow consistency ([98e4dff](https://github.com/bauer-group/automation-templates/commit/98e4dfff26c7708e780524affe6e12319e6cb87a))
+* restore v0.23.0 workflow functionality with git merge strategy and semantic-release output fixes ([bb51862](https://github.com/bauer-group/automation-templates/commit/bb518625f368f0ea101609a96aa576a006fad921))
+* test workflow decoupling and validation ([f25b9ce](https://github.com/bauer-group/automation-templates/commit/f25b9ce76eba2b19a59f44e663895f02f90ac223))
+
+### ♻️ Code Refactoring
+
+* decouple documentation and security workflows - now independent tag-triggered only ([7ea649a](https://github.com/bauer-group/automation-templates/commit/7ea649aa800a870890b4d49bb0cca2ee80a0d0af))
+* decouple workflows - documentation and security now independent tag-triggered, automatic-release simplified ([20b9ce1](https://github.com/bauer-group/automation-templates/commit/20b9ce16058436c92a7eeb5f0b9a3f853388a8c8))
+
 ## [1.0.4](https://github.com/bauer-group/automation-templates/compare/v1.0.3...v1.0.4) (2025-08-29)
 
 ### 🐛 Bug Fixes
