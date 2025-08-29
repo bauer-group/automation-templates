@@ -7,7 +7,7 @@ profiles:
   basic:
     description: "Core workflows for CI/CD, security, and documentation"
     workflows:
-      - "ci-cd"
+      - "automatic-release"
       - "security-management"
       - "documentation"
       - "teams-notifications"
@@ -15,8 +15,10 @@ profiles:
       - "teams-notification"
       - "security-generate"
       - "readme-generate"
+      - "semantic-release"
     secrets_required:
       - "TEAMS_WEBHOOK_URL"
+      - "GITGUARDIAN_API_KEY"
     variables_recommended:
       - "TEAMS_NOTIFICATION_LEVEL"
 
@@ -24,22 +26,30 @@ profiles:
   complete:
     description: "All available automation workflows and actions"
     workflows:
-      - "ci-cd"
+      - "automatic-release"
+      - "python-automatic-release"
       - "security-management"
       - "documentation"
       - "teams-notifications"
-      - "docker-hub"
-      - "release-management"
+      - "docker-build"
+      - "python-build"
+      - "nodejs-build"
+      - "makefile-build"
     actions:
       - "teams-notification"
       - "security-generate"
       - "readme-generate"
+      - "semantic-release"
       - "docker-build"
-      - "version-bump"
+      - "python-setup"
+      - "python-test"
+      - "python-quality"
+      - "python-package"
     secrets_required:
       - "TEAMS_WEBHOOK_URL"
       - "DOCKER_PASSWORD"
       - "GITGUARDIAN_API_KEY"
+      - "PYPI_API_TOKEN"
     variables_recommended:
       - "TEAMS_NOTIFICATION_LEVEL"
       - "TEAMS_MENTION_ON_FAILURE"
@@ -60,31 +70,59 @@ profiles:
     variables_recommended:
       - "TEAMS_NOTIFICATION_LEVEL"
 
+  # Python profile - Python-specific workflows
+  python:
+    description: "Python project workflows with testing and PyPI publishing"
+    workflows:
+      - "python-automatic-release"
+      - "security-management"
+      - "documentation"
+    actions:
+      - "python-setup"
+      - "python-test"
+      - "python-quality"
+      - "python-package"
+      - "semantic-release"
+      - "security-generate"
+      - "readme-generate"
+    secrets_required:
+      - "PYPI_API_TOKEN"
+      - "GITGUARDIAN_API_KEY"
+    variables_recommended:
+      - "PYTHON_VERSION"
+
   # Enterprise profile - Complete with advanced features
   enterprise:
     description: "Enterprise-grade workflows with full feature set"
     workflows:
-      - "ci-cd"
+      - "automatic-release"
+      - "python-automatic-release"
       - "security-management"
       - "documentation"
       - "teams-notifications"
-      - "docker-hub"
-      - "release-management"
+      - "docker-build"
       - "repository-cleanup"
-      - "pr-automation"
-      - "issue-triage"
+      - "pr-labeler"
+      - "issue-automation"
+      - "ai-issue-summary"
     actions:
       - "teams-notification"
       - "security-generate"
       - "readme-generate"
+      - "semantic-release"
       - "docker-build"
-      - "version-bump"
-      - "pr-labeler"
-      - "issue-manager"
+      - "python-setup"
+      - "python-test"
+      - "python-quality"
+      - "python-package"
+      - "labeler-triage"
+      - "repository-cleanup"
     secrets_required:
       - "TEAMS_WEBHOOK_URL"
       - "DOCKER_PASSWORD"
       - "GITGUARDIAN_API_KEY"
+      - "PYPI_API_TOKEN"
+      - "OPENAI_API_KEY"
     variables_recommended:
       - "TEAMS_NOTIFICATION_LEVEL"
       - "TEAMS_MENTION_ON_FAILURE"
@@ -103,17 +141,29 @@ profiles:
 
 # Available Workflows
 workflows:
-  ci-cd:
-    name: "CI/CD Pipeline"
-    description: "Continuous integration and deployment workflow"
-    file: "ci-cd.yml"
+  automatic-release:
+    name: "Automatic Release Pipeline"
+    description: "Main CI/CD pipeline with semantic release and modular components"
+    file: "automatic-release.yml"
     secrets_used:
-      - "TEAMS_WEBHOOK_URL"
-      - "DOCKER_PASSWORD"
+      - "GITGUARDIAN_API_KEY"
+      - "GITLEAKS_LICENSE"
     triggers:
       - "push"
       - "pull_request"
       - "workflow_dispatch"
+
+  python-automatic-release:
+    name: "Python Automatic Release"
+    description: "Python package testing, building and PyPI publishing workflow"
+    file: "python-automatic-release.yml"
+    type: "workflow_call"
+    secrets_used:
+      - "PYPI_API_TOKEN"
+      - "GITGUARDIAN_API_KEY"
+      - "GITLEAKS_LICENSE"
+    triggers:
+      - "workflow_call"
 
   security-management:
     name: "Security Policy Management"
@@ -134,7 +184,10 @@ workflows:
     secrets_used: []
     triggers:
       - "push"
+      - "tags"
+      - "pull_request"
       - "workflow_dispatch"
+      - "workflow_call"
 
   teams-notifications:
     name: "Teams Notifications"
@@ -150,25 +203,78 @@ workflows:
       - "release"
       - "workflow_dispatch"
 
-  docker-hub:
-    name: "Docker Hub Integration"
-    description: "Docker image building and publishing"
-    file: "docker-hub.yml"
+  docker-build:
+    name: "Docker Build"
+    description: "Docker image building with security scanning"
+    file: "docker-build.yml"
+    type: "workflow_call"
     secrets_used:
       - "DOCKER_PASSWORD"
-      - "TEAMS_WEBHOOK_URL"
     triggers:
-      - "push"
+      - "workflow_call"
+
+  python-build:
+    name: "Python Build"
+    description: "Python testing and quality checks"
+    file: "python-build.yml"
+    type: "workflow_call"
+    secrets_used: []
+    triggers:
+      - "workflow_call"
+
+  nodejs-build:
+    name: "Node.js Build"
+    description: "Node.js testing and building"
+    file: "nodejs-build.yml"
+    type: "workflow_call"
+    secrets_used: []
+    triggers:
+      - "workflow_call"
+
+  makefile-build:
+    name: "Makefile Build"
+    description: "C/C++ projects with Makefile support"
+    file: "makefile-build.yml"
+    type: "workflow_call"
+    secrets_used: []
+    triggers:
+      - "workflow_call"
+
+  repository-cleanup:
+    name: "Repository Cleanup"
+    description: "Automated repository maintenance and cleanup"
+    file: "repository-cleanup.yml"
+    secrets_used: []
+    triggers:
+      - "schedule"
       - "workflow_dispatch"
 
-  release-management:
-    name: "Release Management"
-    description: "Automated release creation and management"
-    file: "release-management.yml"
-    secrets_used:
-      - "TEAMS_WEBHOOK_URL"
+  pr-labeler:
+    name: "PR Labeler"
+    description: "Automated pull request labeling and triage"
+    file: "pr-labeler.yml"
+    secrets_used: []
     triggers:
-      - "push"
+      - "pull_request"
+      - "workflow_dispatch"
+
+  issue-automation:
+    name: "Issue Automation"
+    description: "Automated issue management and triage"
+    file: "issue-automation.yml"
+    secrets_used: []
+    triggers:
+      - "issues"
+      - "workflow_dispatch"
+
+  ai-issue-summary:
+    name: "AI Issue Summary"
+    description: "AI-powered issue summarization and analysis"
+    file: "ai-issue-summary.yml"
+    secrets_used:
+      - "OPENAI_API_KEY"
+    triggers:
+      - "issues"
       - "workflow_dispatch"
 
 # Available Actions
@@ -188,10 +294,12 @@ actions:
     description: "Generate SECURITY.MD from template with version information"
     path: ".github/actions/security-generate"
     inputs:
+      - "config-file"
       - "template-path"
       - "output-path"
       - "force-update"
       - "custom-version"
+      - "policy-version"
 
   readme-generate:
     name: "README Generator"
@@ -200,7 +308,26 @@ actions:
     inputs:
       - "template-path"
       - "output-path"
+      - "project-name"
+      - "company-name"
+      - "project-description"
+      - "contact-email"
+      - "documentation-url"
+      - "support-url"
       - "force-update"
+      - "custom-version"
+      - "validate-output"
+
+  semantic-release:
+    name: "Semantic Release"
+    description: "Automated semantic versioning and release creation"
+    path: ".github/actions/semantic-release"
+    inputs:
+      - "dry-run"
+      - "branches"
+      - "extra-plugins"
+      - "node-version"
+      - "token"
 
   docker-build:
     name: "Docker Build Action"
@@ -210,14 +337,119 @@ actions:
       - "dockerfile-path"
       - "image-name"
       - "registry"
+      - "platforms"
+      - "build-args"
+      - "security-scan"
 
-  version-bump:
-    name: "Version Bump"
-    description: "Automated version bumping with semantic versioning"
-    path: ".github/actions/version-bump"
+  python-setup:
+    name: "Python Setup"
+    description: "Setup Python environment with caching"
+    path: ".github/actions/python-setup"
     inputs:
-      - "version-type"
-      - "tag-prefix"
+      - "python-version"
+      - "cache-dependency-path"
+      - "install-dependencies"
+
+  python-test:
+    name: "Python Test"
+    description: "Run Python tests with coverage"
+    path: ".github/actions/python-test"
+    inputs:
+      - "test-command"
+      - "coverage-report"
+      - "minimum-coverage"
+
+  python-quality:
+    name: "Python Quality"
+    description: "Run Python code quality checks"
+    path: ".github/actions/python-quality"
+    inputs:
+      - "enable-flake8"
+      - "enable-black"
+      - "enable-isort"
+      - "enable-mypy"
+
+  python-package:
+    name: "Python Package"
+    description: "Build and publish Python packages"
+    path: ".github/actions/python-package"
+    inputs:
+      - "build-wheel"
+      - "build-sdist"
+      - "pypi-token"
+      - "test-pypi"
+
+  security-scan:
+    name: "Security Scan"
+    description: "Comprehensive security scanning with multiple engines"
+    path: ".github/actions/security-scan"
+    inputs:
+      - "scan-engine"
+      - "gitguardian-api-key"
+      - "gitleaks-license"
+      - "fail-on-findings"
+
+  gitleaks-scan:
+    name: "Gitleaks Scan"
+    description: "Git secrets scanning with Gitleaks"
+    path: ".github/actions/gitleaks-scan"
+    inputs:
+      - "config-path"
+      - "fail-on-findings"
+      - "license"
+
+  gitguardian-scan:
+    name: "GitGuardian Scan"
+    description: "Secrets detection with GitGuardian"
+    path: ".github/actions/gitguardian-scan"
+    inputs:
+      - "api-key"
+      - "minimum-severity"
+      - "fail-on-findings"
+
+  license-compliance:
+    name: "License Compliance"
+    description: "License scanning and SBOM generation"
+    path: ".github/actions/license-compliance"
+    inputs:
+      - "fail-on-forbidden"
+      - "fail-on-unknown"
+      - "generate-sbom"
+
+  labeler-triage:
+    name: "Labeler Triage"
+    description: "Automated issue and PR labeling"
+    path: ".github/actions/labeler-triage"
+    inputs:
+      - "config-path"
+      - "enable-auto-assign"
+
+  repository-cleanup:
+    name: "Repository Cleanup"
+    description: "Automated repository maintenance"
+    path: ".github/actions/repository-cleanup"
+    inputs:
+      - "cleanup-branches"
+      - "cleanup-artifacts"
+      - "cleanup-releases"
+
+  makefile-build:
+    name: "Makefile Build"
+    description: "Build C/C++ projects using Makefile"
+    path: ".github/actions/makefile-build"
+    inputs:
+      - "target"
+      - "install-dependencies"
+      - "compiler"
+
+  artifact-generator:
+    name: "Artifact Generator"
+    description: "Generate release artifacts"
+    path: ".github/actions/artifact-generator"
+    inputs:
+      - "artifact-types"
+      - "include-source"
+      - "compress-artifacts"
 
 # Deployment Settings
 deployment:
@@ -250,22 +482,40 @@ secrets:
     description: "Microsoft Teams webhook URL for notifications"
     required_for:
       - "teams-notifications"
-      - "ci-cd"
-      - "docker-hub"
     setup_url: "https://docs.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook"
 
   DOCKER_PASSWORD:
     description: "Docker Hub password or access token"
     required_for:
-      - "docker-hub"
-      - "ci-cd"
+      - "docker-build"
     setup_url: "https://docs.docker.com/docker-hub/access-tokens/"
 
   GITGUARDIAN_API_KEY:
     description: "GitGuardian API key for secrets scanning"
     required_for:
+      - "automatic-release"
+      - "python-automatic-release"
       - "security-management"
     setup_url: "https://dashboard.gitguardian.com/api/v1/docs"
+
+  GITLEAKS_LICENSE:
+    description: "Gitleaks Pro license key (optional)"
+    required_for:
+      - "automatic-release"
+      - "python-automatic-release"
+    setup_url: "https://gitleaks.io/"
+
+  PYPI_API_TOKEN:
+    description: "PyPI API token for package publishing"
+    required_for:
+      - "python-automatic-release"
+    setup_url: "https://pypi.org/help/#apitoken"
+
+  OPENAI_API_KEY:
+    description: "OpenAI API key for AI-powered features"
+    required_for:
+      - "ai-issue-summary"
+    setup_url: "https://platform.openai.com/api-keys"
 
 # Repository Variables Documentation
 variables:
@@ -283,3 +533,23 @@ variables:
     description: "Users to mention when PR is ready for review"
     default: ""
     example: "@reviewer1,@reviewer2"
+
+  PYTHON_VERSION:
+    description: "Python version to use for Python workflows"
+    default: "3.12"
+    example: "3.11"
+
+  NODE_VERSION:
+    description: "Node.js version to use for Node.js workflows"
+    default: "20"
+    example: "18"
+
+  SECURITY_SCAN_ENGINE:
+    description: "Security scanning engine to use"
+    default: "both"
+    values: ["gitleaks", "gitguardian", "both"]
+
+  MINIMUM_COVERAGE:
+    description: "Minimum test coverage percentage"
+    default: "80"
+    example: "90"
