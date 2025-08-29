@@ -61,21 +61,12 @@ jobs:
       - name: 📊 Process Results
         id: release
         run: |
-          # Use cycjimmy semantic-release action outputs correctly
-          if [ "${{ steps.semantic.outputs.new_release_published }}" = "true" ]; then
+          # Map outputs from action
+          if [ "${{ steps.semantic.outputs.release-created }}" = "true" ]; then
             echo "release-created=true" >> $GITHUB_OUTPUT
-            # Use cycjimmy action direct outputs
-            VERSION="${{ steps.semantic.outputs.new_release_version }}"
-            TAG="v${{ steps.semantic.outputs.new_release_version }}"
-            
-            # Fallback if tag is empty, create from version
-            if [ -z "$TAG" ]; then
-              TAG="v${VERSION}"
-            fi
-            
-            echo "version=${VERSION}" >> $GITHUB_OUTPUT
-            echo "tag=${TAG}" >> $GITHUB_OUTPUT
-            echo "✅ Released version: ${TAG} (v${VERSION})"
+            echo "version=${{ steps.semantic.outputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ steps.semantic.outputs.tag }}" >> $GITHUB_OUTPUT
+            echo "✅ Released version: ${{ steps.semantic.outputs.tag }}"
           else
             echo "release-created=false" >> $GITHUB_OUTPUT
             echo "ℹ️ No release created (no releasable changes)"
