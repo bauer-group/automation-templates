@@ -1,3 +1,9 @@
+## [1.1.8](https://github.com/bauer-group/automation-templates/compare/v1.1.7...v1.1.8) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* improve git sync in documentation and security workflows ([fae9e9c](https://github.com/bauer-group/automation-templates/commit/fae9e9c4b180441f5b30a583d1730d1578984186))
+
 ## [1.1.7](https://github.com/bauer-group/automation-templates/compare/v1.1.6...v1.1.7) (2025-08-29)
 
 ### 🐛 Bug Fixes
