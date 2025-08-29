@@ -189,20 +189,26 @@ jobs:
           
           COMMIT_MSG="$COMMIT_MSG [automated]"
           
+          # Save the generated SECURITY before any git operations
+          cp SECURITY.MD SECURITY.MD.generated
+          
           # Clean up any existing git state and sync with remote
           git rebase --abort || true
           git merge --abort || true
           git fetch origin main
           
-          # Try a simple merge approach
+          # Try a simple merge approach but restore generated content
           if ! git merge origin/main --no-edit; then
             echo "Merge conflict detected, resolving..."
-            git checkout --ours SECURITY.MD  # Keep our generated version
+            # Restore our generated version
+            cp SECURITY.MD.generated SECURITY.MD
             git add SECURITY.MD
             git commit -m "$COMMIT_MSG"
             git push origin main
           else
             echo "Clean merge successful"
+            # Restore our generated version (merge may have overwritten it)
+            cp SECURITY.MD.generated SECURITY.MD
             git add SECURITY.MD
             
             # Only commit if there are changes
@@ -213,6 +219,9 @@ jobs:
               git push origin main
             fi
           fi
+          
+          # Clean up
+          rm -f SECURITY.MD.generated
 
   # Validate security policy structure and content
   validate-security-policy:

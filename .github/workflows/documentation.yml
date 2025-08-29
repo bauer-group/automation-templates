@@ -183,20 +183,26 @@ jobs:
           
           COMMIT_MSG="$COMMIT_MSG [automated]"
           
+          # Save the generated README before any git operations
+          cp README.MD README.MD.generated
+          
           # Clean up any existing git state and sync with remote
           git rebase --abort || true
           git merge --abort || true
           git fetch origin main
           
-          # Try a simple merge approach
+          # Try a simple merge approach but restore generated content
           if ! git merge origin/main --no-edit; then
             echo "Merge conflict detected, resolving..."
-            git checkout --ours README.MD  # Keep our generated version
+            # Restore our generated version
+            cp README.MD.generated README.MD
             git add README.MD
             git commit -m "$COMMIT_MSG"
             git push origin main
           else
             echo "Clean merge successful"
+            # Restore our generated version (merge may have overwritten it)
+            cp README.MD.generated README.MD
             git add README.MD
             
             # Only commit if there are changes
@@ -207,6 +213,9 @@ jobs:
               git push origin main
             fi
           fi
+          
+          # Clean up
+          rm -f README.MD.generated
 
   # Validate documentation links and structure
   validate-documentation:
