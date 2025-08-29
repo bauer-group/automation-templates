@@ -1,3 +1,15 @@
+## [1.1.5](https://github.com/bauer-group/automation-templates/compare/v1.1.4...v1.1.5) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* disable automatic [skip ci] in semantic-release action ([b44abe8](https://github.com/bauer-group/automation-templates/commit/b44abe821c8c61a7a79d3ed44a112180879e89e9))
+* remove [skip ci] from repository semantic-release configuration ([99481f9](https://github.com/bauer-group/automation-templates/commit/99481f9180627fa6e74953c559c4166e51708236))
+* remove unnecessary blank line before main execution block ([3cfdaf3](https://github.com/bauer-group/automation-templates/commit/3cfdaf3bae46ad2a622b05080eb9fa6065818bd7))
+
+### 🔧 Maintenance
+
+* remove unnecessary ci: false parameter from semantic-release action ([adab4f4](https://github.com/bauer-group/automation-templates/commit/adab4f4599f53dbfa52750a9c392f99b3ac92375))
+
 ## [1.1.4](https://github.com/bauer-group/automation-templates/compare/v1.1.3...v1.1.4) (2025-08-29)
 
 ### 🐛 Bug Fixes
