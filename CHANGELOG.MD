@@ -1,3 +1,10 @@
+## [1.1.6](https://github.com/bauer-group/automation-templates/compare/v1.1.5...v1.1.6) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* correct GitHub Actions syntax for tag and branch triggers ([297c2a2](https://github.com/bauer-group/automation-templates/commit/297c2a298a2dfcc47cbb11e747cee2308be87d83))
+* use correct GitHub Actions syntax for tag creation triggers ([87e2078](https://github.com/bauer-group/automation-templates/commit/87e20784d6071ec7bf5171ee879b2a7b2f7e8d7a))
+
 ## [1.1.5](https://github.com/bauer-group/automation-templates/compare/v1.1.4...v1.1.5) (2025-08-29)
 
 ### 🐛 Bug Fixes
