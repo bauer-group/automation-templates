@@ -1,3 +1,13 @@
+## [1.1.0](https://github.com/bauer-group/automation-templates/compare/v1.0.6...v1.1.0) (2025-08-29)
+
+### 🚀 Features
+
+* restore tag-triggered documentation and security workflows ([f7e6ad6](https://github.com/bauer-group/automation-templates/commit/f7e6ad6488b75fd6baa5c22a4699bad67184c22a))
+
+### ♻️ Code Refactoring
+
+* simplify documentation and security workflows to main-branch triggers only ([724d98f](https://github.com/bauer-group/automation-templates/commit/724d98fb2bb9f1939753321b3ce1fd4aa3456be6))
+
 ## [1.0.6](https://github.com/bauer-group/automation-templates/compare/v1.0.5...v1.0.6) (2025-08-29)
 
 ### 🐛 Bug Fixes
