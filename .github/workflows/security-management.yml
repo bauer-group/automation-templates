@@ -240,7 +240,16 @@ jobs:
           git add SECURITY.MD
           git commit -m "$COMMIT_MSG" || echo "No changes to commit"
           git fetch --tags origin
-          git pull --no-edit --strategy=recursive origin main
+          
+          # Switch to main branch if we're in detached HEAD (tag trigger)
+          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
+            git checkout main
+            git pull --no-edit --strategy=recursive origin main
+            git cherry-pick HEAD@{1}
+          else
+            git pull --no-edit --strategy=recursive origin main
+          fi
+          
           git push
 
   # Validate security policy structure and content
