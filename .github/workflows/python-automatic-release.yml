@@ -856,7 +856,7 @@ jobs:
   sync-changelog:
     name: Sync CHANGELOG to Main Branch
     if: needs.release-management.outputs.release-created == 'true'
-    needs: [release-management, update-security-management]
+    needs: [release-management]
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout Main Branch
