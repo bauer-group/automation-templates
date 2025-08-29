@@ -7,41 +7,41 @@ on:
   workflow_call:
     inputs:
       security-engine:
-        description: 'Security scan engine'
+        description: "Security scan engine"
         type: string
-        default: 'both'
+        default: "both"
       force-release:
-        description: 'Force create release'
+        description: "Force create release"
         type: boolean
         default: false
       skip-pypi:
-        description: 'Skip PyPI publishing'
+        description: "Skip PyPI publishing"
         type: boolean
         default: false
       python-version:
-        description: 'Python version to use'
+        description: "Python version to use"
         type: string
-        default: '3.12'
+        default: "3.12"
       package-source-path:
-        description: 'Path to package source (e.g., src/package_name)'
+        description: "Path to package source (e.g., src/package_name)"
         type: string
-        default: 'src'
+        default: "src"
       version-file:
-        description: 'Python file containing __version__ (e.g., src/package/__init__.py)'
+        description: "Python file containing __version__ (e.g., src/package/__init__.py)"
         type: string
-        default: ''
+        default: ""
     secrets:
       PYPI_API_TOKEN:
-        description: 'PyPI API token for publishing'
+        description: "PyPI API token for publishing"
         required: true
       GITHUB_TOKEN:
-        description: 'GitHub token for releases and packages'
+        description: "GitHub token for releases and packages"
         required: true
       GITGUARDIAN_API_KEY:
-        description: 'GitGuardian API key for security scanning'
+        description: "GitGuardian API key for security scanning"
         required: false
       GITLEAKS_LICENSE:
-        description: 'Gitleaks Pro license key'
+        description: "Gitleaks Pro license key"
         required: false
 
 jobs:
@@ -54,7 +54,7 @@ jobs:
       enable-security-scan: true
       enable-license-check: true
       enable-commit-lint: true
-      security-scan-engine: 'gitleaks'
+      security-scan-engine: "gitleaks"
       fail-on-security-issues: true
       fail-on-license-issues: false
     secrets: inherit
@@ -63,7 +63,7 @@ jobs:
   python-security-scan:
     name: 🛡️ Python Security Analysis
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@v4
@@ -96,11 +96,11 @@ jobs:
         run: |
           # Install Python security tools
           pip install bandit safety
-          
+
           # Run security checks
           echo "🔍 Running bandit security scan..."
           bandit -r . -f json -o bandit-report.json || true
-          
+
           echo "🔍 Running safety dependency check..."
           safety check --json --output safety-report.json || true
 
@@ -112,16 +112,15 @@ jobs:
             bandit-report.json
             safety-report.json
 
-  # Python build and test
+  # Python build and test (initial validation)
   python-build-test:
     name: 🧪 Python Build & Test
     runs-on: ubuntu-latest
-    
+
     outputs:
-      version: ${{ steps.version.outputs.version }}
       package-name: ${{ steps.package-info.outputs.name }}
       tests-passed: ${{ steps.test.outcome }}
-    
+
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@v4
@@ -145,96 +144,32 @@ jobs:
           else
             PACKAGE_NAME="unknown"
           fi
-          
+
           echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
           echo "Package name: $PACKAGE_NAME"
-
-      - name: 🏷️ Detect and Update Version
-        id: version
-        run: |
-          VERSION=""
-          
-          # Try to get version from different sources
-          if [[ -f "pyproject.toml" ]]; then
-            pip install toml
-            VERSION=$(python -c "import toml; print(toml.load('pyproject.toml')['project']['version'])" 2>/dev/null || echo "")
-          fi
-          
-          if [[ -z "$VERSION" && -f "setup.py" ]]; then
-            VERSION=$(python setup.py --version 2>/dev/null || echo "")
-          fi
-          
-          # Check for __init__.py with __version__
-          if [[ -z "$VERSION" && -n "${{ inputs.version-file }}" && -f "${{ inputs.version-file }}" ]]; then
-            VERSION=$(python -c "
-            import re
-            with open('${{ inputs.version-file }}', 'r') as f:
-                content = f.read()
-            match = re.search(r\"__version__\s*=\s*['\\\"]([^'\\\"]+)['\\\"]\", content)
-            print(match.group(1) if match else '')
-            " 2>/dev/null || echo "")
-          fi
-          
-          # Search for common __init__.py locations if not specified
-          if [[ -z "$VERSION" ]]; then
-            for init_file in $(find . -name "__init__.py" -path "*/src/*" -o -name "__init__.py" -path "*/lib/*"); do
-              VERSION=$(python -c "
-              import re
-              with open('$init_file', 'r') as f:
-                  content = f.read()
-              match = re.search(r\"__version__\s*=\s*['\\\"]([^'\\\"]+)['\\\"]\", content)
-              print(match.group(1) if match else '')
-              " 2>/dev/null || echo "")
-              if [[ -n "$VERSION" ]]; then
-                echo "Found version in: $init_file"
-                break
-              fi
-            done
-          fi
-          
-          # Fallback version
-          if [[ -z "$VERSION" ]]; then
-            VERSION="0.0.0-${{ github.run_number }}"
-          fi
-          
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Package version: $VERSION"
-          
-          # Update version in __init__.py if specified and release is being created
-          if [[ -n "${{ inputs.version-file }}" && -f "${{ inputs.version-file }}" && "${{ inputs.force-release }}" == "true" ]]; then
-            echo "Updating version in ${{ inputs.version-file }}"
-            python -c "
-            import re
-            with open('${{ inputs.version-file }}', 'r') as f:
-                content = f.read()
-            content = re.sub(r\"(__version__\s*=\s*['\\\"])([^'\\\"]+)(['\\\"]\)", r\"\1$VERSION\3\", content)
-            with open('${{ inputs.version-file }}', 'w') as f:
-                f.write(content)
-            "
-          fi
 
       - name: 📚 Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          
+
           # Install based on available files
           if [[ -f "requirements.txt" ]]; then
             pip install -r requirements.txt
           fi
-          
+
           if [[ -f "requirements-dev.txt" ]]; then
             pip install -r requirements-dev.txt
           fi
-          
+
           if [[ -f "dev-requirements.txt" ]]; then
             pip install -r dev-requirements.txt
           fi
-          
+
           # Install package in development mode
           if [[ -f "pyproject.toml" ]] || [[ -f "setup.py" ]]; then
             pip install -e .
           fi
-          
+
           # Install testing tools
           pip install pytest pytest-cov build twine pytest-html pytest-json-report
 
@@ -242,7 +177,7 @@ jobs:
         id: test
         run: |
           echo "🧪 Running comprehensive test suite..."
-          
+
           # Discover package source path automatically
           PACKAGE_PATH=""
           if [[ -d "${{ inputs.package-source-path }}" ]]; then
@@ -254,9 +189,9 @@ jobs:
           else
             PACKAGE_PATH="."
           fi
-          
+
           echo "📦 Using package path: $PACKAGE_PATH"
-          
+
           # Run pytest with comprehensive options
           if [[ -d "tests" ]]; then
             echo "🧪 Running pytest on tests/ directory..."
@@ -311,7 +246,7 @@ jobs:
         id: quality
         run: |
           echo "🔍 Running code quality checks..."
-          
+
           # Auto-discover package path
           PACKAGE_PATH=""
           if [[ -d "${{ inputs.package-source-path }}" ]]; then
@@ -323,23 +258,23 @@ jobs:
           else
             PACKAGE_PATH="."
           fi
-          
+
           # Install quality tools
           pip install flake8 mypy black isort || true
-          
+
           # Flake8 linting
           echo "📝 Running flake8 linting..."
           flake8 "$PACKAGE_PATH" --count --statistics --format=json --output-file=flake8-report.json || true
           flake8 "$PACKAGE_PATH" --count --statistics || true
-          
+
           # Black formatting check
           echo "🎨 Checking code formatting with black..."
           black --check --diff "$PACKAGE_PATH" || echo "⚠️ Code formatting issues found"
-          
+
           # Import sorting check
           echo "📤 Checking import sorting with isort..."
           isort --check-only --diff "$PACKAGE_PATH" || echo "⚠️ Import sorting issues found"
-          
+
           # MyPy type checking (auto-discover mypy config or use defaults)
           echo "🔤 Running mypy type checking..."
           if [[ -f "mypy.ini" ]] || [[ -f ".mypy.ini" ]] || [[ -f "pyproject.toml" ]]; then
@@ -368,23 +303,8 @@ jobs:
           else
             echo "ℹ️ No scripts directory found"
           fi
-          
+
           echo "additional-scripts=completed" >> $GITHUB_OUTPUT
-
-      - name: 📦 Build Package
-        run: |
-          echo "📦 Building Python package..."
-          python -m build
-          
-          echo "🔍 Checking package with twine..."
-          twine check dist/*
-
-      - name: 📤 Upload Package Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-package-${{ github.run_number }}
-          path: dist/
-          retention-days: 30
 
       - name: 📤 Upload Test Results & Coverage
         if: always()
@@ -411,29 +331,100 @@ jobs:
       generate-sbom: true
     secrets: inherit
 
-  # Release management
+  # Release management (BEFORE building final packages)
   release-management:
     name: 🚀 Release Management
     needs: [python-security-scan, python-build-test, license-compliance]
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     with:
-      target-branch: 'main'
+      target-branch: "main"
       dry-run: false
     secrets: inherit
+
+  # Python build with CORRECT version (AFTER semantic release)
+  python-build-release:
+    name: 🧪 Python Build & Package (Release)
+    if: needs.release-management.outputs.release-created == 'true' || inputs.force-release == true
+    needs: [python-build-test, release-management]
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      package-name: ${{ needs.python-build-test.outputs.package-name }}
+
+    steps:
+      - name: 📥 Checkout Code (with updated version from semantic-release)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ needs.release-management.outputs.tag-name }}
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version || '3.12' }}
+
+      - name: 🏷️ Get Updated Version
+        id: version
+        run: |
+          VERSION="${{ needs.release-management.outputs.version }}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Final release version: $VERSION"
+
+      - name: 📚 Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+
+          # Install based on available files
+          if [[ -f "requirements.txt" ]]; then
+            pip install -r requirements.txt
+          fi
+
+          if [[ -f "requirements-dev.txt" ]]; then
+            pip install -r requirements-dev.txt
+          fi
+
+          if [[ -f "dev-requirements.txt" ]]; then
+            pip install -r dev-requirements.txt
+          fi
+
+          # Install package in development mode
+          if [[ -f "pyproject.toml" ]] || [[ -f "setup.py" ]]; then
+            pip install -e .
+          fi
+
+          # Install build tools
+          pip install build twine
+
+      - name: 📦 Build Final Release Package
+        run: |
+          echo "📦 Building Python package with version ${{ steps.version.outputs.version }}..."
+          python -m build
+
+          echo "🔍 Checking package with twine..."
+          twine check dist/*
+
+      - name: 📤 Upload Release Package Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-release-package-${{ github.run_number }}
+          path: dist/
+          retention-days: 30
 
   # PyPI Publishing
   publish-pypi:
     name: 📦 Publish to PyPI
     if: (needs.release-management.outputs.release-created == 'true' || inputs.force-release == true) && inputs.skip-pypi != true
-    needs: [python-build-test, release-management]
+    needs: [python-build-release, release-management]
     runs-on: ubuntu-latest
     environment: pypi
-    
+
     steps:
-      - name: 📥 Download Package
+      - name: 📥 Download Release Package
         uses: actions/download-artifact@v4
         with:
-          name: python-package-${{ github.run_number }}
+          name: python-release-package-${{ github.run_number }}
           path: dist/
 
       - name: 🚀 Publish to PyPI
@@ -445,53 +436,233 @@ jobs:
       - name: 📊 Package Published
         run: |
           echo "🎉 Package published to PyPI!"
-          echo "📦 Install with: pip install ${{ needs.python-build-test.outputs.package-name }}==${{ needs.python-build-test.outputs.version }}"
+          echo "📦 Install with: pip install ${{ needs.python-build-release.outputs.package-name }}==${{ needs.python-build-release.outputs.version }}"
 
-  # GitHub Packages Publishing
-  publish-github:
-    name: 📦 Publish to GitHub Packages
+  # GitHub Repository Setup for Direct Installation
+  setup-github-repo:
+    name: 🔧 Setup Repository for Direct Installation
     if: (needs.release-management.outputs.release-created == 'true' || inputs.force-release == true)
-    needs: [python-build-test, release-management]
+    needs: [python-build-release, release-management]
     runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Download Package
-        uses: actions/download-artifact@v4
-        with:
-          name: python-package-${{ github.run_number }}
-          path: dist/
 
-      - name: 📦 Publish to GitHub Packages
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ needs.release-management.outputs.tag-name }}
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version || '3.12' }}
+
+      - name: 🔧 Verify Installation Compatibility
         run: |
-          pip install twine
-          
-          # Configure for GitHub Packages
-          export TWINE_USERNAME="__token__"
-          export TWINE_PASSWORD="${{ secrets.GITHUB_TOKEN }}"
-          
-          # Upload to GitHub Packages
-          python -m twine upload --repository-url https://upload.pypi.org/legacy/ dist/* || echo "GitHub Packages upload completed"
+          echo "🔍 Verifying repository structure for direct pip installation..."
+
+          # Check for essential files
+          if [[ -f "pyproject.toml" ]]; then
+            echo "✅ Found pyproject.toml - modern Python project structure (recommended)"
+            echo "ℹ️ No setup.py needed with pyproject.toml"
+            cat pyproject.toml
+          elif [[ -f "setup.py" ]]; then
+            echo "✅ Found setup.py - classic Python project structure"
+            cat setup.py
+          else
+            echo "❌ No pyproject.toml or setup.py found"
+            echo "Creating minimal setup.py for direct installation..."
+            cat > setup.py << 'EOF'
+          from setuptools import setup, find_packages
+          import os
+          import re
+
+          # Try to find version
+          version = "0.1.0"
+          init_files = []
+          for root, dirs, files in os.walk("."):
+              for file in files:
+                  if file == "__init__.py":
+                      init_files.append(os.path.join(root, file))
+
+          for init_file in init_files:
+              try:
+                  with open(init_file, "r") as f:
+                      content = f.read()
+                  match = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", content)
+                  if match:
+                      version = match.group(1)
+                      break
+              except:
+                  continue
+
+          setup(
+              name=os.path.basename(os.getcwd()),
+              version=version,
+              packages=find_packages(),
+              install_requires=[],
+              python_requires=">=3.8",
+          )
+          EOF
+          fi
+
+          # Verify package structure
+          echo "📦 Package structure:"
+          find . -name "*.py" -path "*/src/*" -o -name "*.py" -path "*/lib/*" -o -name "setup.py" -o -name "pyproject.toml" | head -10
+
+          # Test installation compatibility
+          echo "🧪 Testing direct installation compatibility..."
+          python -m pip install --upgrade pip setuptools wheel
+
+          # Try installation in dry-run mode
+          if [[ -f "pyproject.toml" ]]; then
+            python -m pip install --dry-run -e . || echo "⚠️ Installation may have issues"
+          elif [[ -f "setup.py" ]]; then
+            python setup.py check || echo "⚠️ Setup.py may have issues"
+          fi
+
+      - name: 📋 Generate Installation Instructions
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 📦 Direct Git Installation Ready
+
+          **Install Latest Release:**
+          \`\`\`bash
+          pip install git+https://github.com/${{ github.repository }}@${{ needs.release-management.outputs.tag-name }}
+          \`\`\`
+
+          **Install from Main Branch:**
+          \`\`\`bash
+          pip install git+https://github.com/${{ github.repository }}
+          \`\`\`
+
+          **Install Specific Version:**
+          \`\`\`bash
+          pip install git+https://github.com/${{ github.repository }}@v${{ needs.python-build-release.outputs.version }}
+          \`\`\`
+
+          **Development Installation (Editable):**
+          \`\`\`bash
+          git clone https://github.com/${{ github.repository }}.git
+          cd $(basename ${{ github.repository }})
+          pip install -e .
+          \`\`\`
+
+          ---
+          *Repository configured for direct pip installation* ✅
+          EOF
+
+      - name: 📝 Create Installation Guide
+        run: |
+          cat > INSTALLATION.MD << 'EOF'
+          # Installation Guide
+
+          ## Direct Installation from GitHub
+
+          ### Latest Release (Recommended)
+          ```bash
+          pip install git+https://github.com/${{ github.repository }}@${{ needs.release-management.outputs.tag-name }}
+          ```
+
+          ### Development Version
+          ```bash
+          pip install git+https://github.com/${{ github.repository }}
+          ```
+
+          ### Specific Version
+          ```bash
+          pip install git+https://github.com/${{ github.repository }}@v${{ needs.python-build-release.outputs.version }}
+          ```
+
+          ### With Specific Dependencies
+          ```bash
+          pip install "git+https://github.com/${{ github.repository }}[dev]"
+          ```
+
+          ### Development Installation
+          For contributing or local development:
+          ```bash
+          git clone https://github.com/${{ github.repository }}.git
+          cd $(basename ${{ github.repository }})
+          pip install -e ".[dev]"
+          ```
+
+          ## Requirements
+          - Python >= 3.8
+          - Git installed on your system
+          - Internet connection
+
+          ## Troubleshooting
+
+          ### Authentication Issues (Private Repos)
+          ```bash
+          pip install git+https://username:token@github.com/${{ github.repository }}.git
+          ```
+
+          ### SSL Certificate Issues
+          ```bash
+          pip install --trusted-host github.com git+https://github.com/${{ github.repository }}
+          ```
+
+          ### Upgrade Installation
+          ```bash
+          pip install --upgrade git+https://github.com/${{ github.repository }}
+          ```
+
+          ## PyPI Installation (if available)
+          ```bash
+          pip install ${{ needs.python-build-release.outputs.package-name }}
+          ```
+
+          ---
+          Generated by: ${{ github.workflow }} on ${{ github.run_id }}
+          EOF
+
+          echo "📝 Created INSTALLATION.MD guide"
+
+      - name: 💾 Commit Installation Guide
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          if [[ -n $(git status --porcelain) ]]; then
+            git add INSTALLATION.MD || true
+            git commit -m "docs: add installation guide for release ${{ needs.release-management.outputs.tag-name }}" || true
+            git push origin ${{ needs.release-management.outputs.tag-name }} || true
+          else
+            echo "ℹ️ No changes to commit"
+          fi
 
   # Pipeline summary
   pipeline-summary:
     name: 📊 Pipeline Summary
     if: always()
-    needs: [python-security-scan, python-build-test, license-compliance, release-management, publish-pypi, publish-github]
+    needs:
+      [
+        python-security-scan,
+        python-build-test,
+        license-compliance,
+        release-management,
+        python-build-release,
+        publish-pypi,
+        setup-github-repo,
+      ]
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: 📊 Generate Pipeline Summary
         run: |
           cat >> $GITHUB_STEP_SUMMARY << EOF
           # 🐍 Python Automatic Release Summary
-          
+
           ## 📦 Package Information
           - **Name:** ${{ needs.python-build-test.outputs.package-name || 'N/A' }}
-          - **Version:** ${{ needs.python-build-test.outputs.version || 'N/A' }}
+          - **Version:** ${{ needs.python-build-release.outputs.version || needs.release-management.outputs.version || 'N/A' }}
           - **Event:** ${{ github.event_name }}
           - **Branch:** ${{ github.ref_name }}
           - **Python Version:** ${{ inputs.python-version || '3.12' }}
-          
+
           ## 🔍 Pipeline Results
           | Component | Status | Details |
           |-----------|--------|---------|
@@ -499,30 +670,31 @@ jobs:
           | **🧪 Build & Test** | ${{ needs.python-build-test.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Custom + Standard tests |
           | **📋 License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | SBOM generated |
           | **🚀 Release Management** | ${{ needs.release-management.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Release: ${{ needs.release-management.outputs.release-created || 'false' }} |
+          | **🧪 Release Build** | ${{ needs.python-build-release.result == 'success' && '✅ PASS' || needs.python-build-release.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | With correct version |
           | **📦 PyPI Publishing** | ${{ needs.publish-pypi.result == 'success' && '✅ PUBLISHED' || needs.publish-pypi.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | PyPI package |
-          | **📦 GitHub Packages** | ${{ needs.publish-github.result == 'success' && '✅ PUBLISHED' || needs.publish-github.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | GitHub registry |
-          
+          | **🔧 GitHub Direct Install** | ${{ needs.setup-github-repo.result == 'success' && '✅ READY' || needs.setup-github-repo.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Git installation ready |
+
           ## 📤 Generated Artifacts
-          - **Package Artifacts:** python-package-${{ github.run_number }}
           - **Test Results:** test-results-${{ github.run_number }}
           - **Security Reports:** python-security-reports-${{ github.run_number }}
-          
+          - **Release Package:** python-release-package-${{ github.run_number }}
+
           EOF
-          
+
           if [[ "${{ needs.release-management.outputs.release-created }}" == "true" ]]; then
             cat >> $GITHUB_STEP_SUMMARY << EOF
           ## 🎉 Release Created Successfully!
-          
+
           **Installation:**
           \`\`\`bash
-          pip install ${{ needs.python-build-test.outputs.package-name }}==${{ needs.python-build-test.outputs.version }}
+          pip install ${{ needs.python-build-test.outputs.package-name }}==${{ needs.python-build-release.outputs.version }}
           \`\`\`
-          
+
           **Release:** [View on GitHub](https://github.com/${{ github.repository }}/releases/tag/${{ needs.release-management.outputs.tag-name }})
-          
+
           EOF
           fi
-          
+
           cat >> $GITHUB_STEP_SUMMARY << EOF
           ---
           *Powered by **BAUER GROUP** Python automation* 🐍
@@ -532,7 +704,7 @@ jobs:
   update-documentation:
     name: 📄 Update Documentation
     if: needs.release-management.outputs.release-created == 'true'
-    needs: [release-management, publish-pypi]
+    needs: [release-management, setup-github-repo]
     uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
@@ -545,7 +717,7 @@ jobs:
   update-security-management:
     name: 🛡️ Update Security Management
     if: needs.release-management.outputs.release-created == 'true'
-    needs: [release-management, publish-pypi]
+    needs: [release-management, setup-github-repo]
     uses: bauer-group/automation-templates/.github/workflows/security-management.yml@main
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
