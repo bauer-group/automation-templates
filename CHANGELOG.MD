@@ -1,3 +1,9 @@
+## [1.1.12](https://github.com/bauer-group/automation-templates/compare/v1.1.11...v1.1.12) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* handle clean git merge without changes gracefully ([e2b056e](https://github.com/bauer-group/automation-templates/commit/e2b056ef20205ff37c369ba2e6e47fa080f46e70))
+
 ## [1.1.11](https://github.com/bauer-group/automation-templates/compare/v1.1.10...v1.1.11) (2025-08-29)
 
 ### 🐛 Bug Fixes
