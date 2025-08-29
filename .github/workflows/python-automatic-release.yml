@@ -697,27 +697,163 @@ jobs:
           *Powered by **BAUER GROUP** Python automation* 🐍
           EOF
 
-  # Documentation Update (matches automatic-release.yml pattern)
-  update-documentation:
-    name: 📄 Update Documentation
+  # Verify tag availability before documentation updates
+  verify-tag-availability:
+    name: Verify Tag Availability
     if: needs.release-management.outputs.release-created == 'true'
-    needs: [release-management, setup-github-repo, pipeline-summary]
+    needs: [release-management, setup-github-repo]
+    runs-on: ubuntu-latest
+    outputs:
+      tag-verified: ${{ steps.verify.outputs.tag-verified }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 🔍 Verify Tag Availability
+        id: verify
+        run: |
+          TAG="${{ needs.release-management.outputs.tag-name }}"
+          echo "🔍 Verifying availability of tag: $TAG"
+          
+          # Retry logic for tag verification
+          MAX_RETRIES=10  # 10 retries = 45 seconds max
+          RETRY_COUNT=0
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            # Fetch latest tags from remote
+            git fetch --tags origin
+            
+            # Check if tag exists
+            if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+              echo "✅ Tag $TAG is available"
+              echo "tag-verified=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "⏳ Tag not yet available, attempt $RETRY_COUNT/$MAX_RETRIES"
+            
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+              # Progressive delay: 1s, 2s, 3s...
+              DELAY=$RETRY_COUNT
+              echo "⏳ Waiting ${DELAY}s before retry..."
+              sleep $DELAY
+            fi
+          done
+          
+          echo "❌ Tag $TAG not available after $MAX_RETRIES attempts"
+          echo "tag-verified=false" >> $GITHUB_OUTPUT
+          exit 1
+
+  # Step 1: Update documentation in the release tag
+  update-documentation-in-tag:
+    name: Update Documentation in Release Tag
+    if: needs.release-management.outputs.release-created == 'true'
+    needs: [verify-tag-availability]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Release Tag
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ needs.release-management.outputs.tag-name }}
+
+      - name: 📝 Update Documentation in Tag
+        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
+        with:
+          force-update: true
+          custom-version: ${{ needs.release-management.outputs.version }}
+          tag-name: ${{ needs.release-management.outputs.tag-name }}
+          
+      - name: 💾 Commit Documentation to Release Tag
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          if [[ -n $(git status --porcelain) ]]; then
+            git add README.MD SECURITY.MD || true
+            git commit -m "docs: update documentation for release ${{ needs.release-management.outputs.tag-name }}
+
+            🤖 Generated with Claude Code
+            
+            Co-Authored-By: Claude <noreply@anthropic.com>" || true
+            
+            # Force update the tag
+            git tag -d ${{ needs.release-management.outputs.tag-name }} || true
+            git tag ${{ needs.release-management.outputs.tag-name }}
+            git push origin ${{ needs.release-management.outputs.tag-name }} --force
+          fi
+
+  # Step 1: Update security in the release tag
+  update-security-in-tag:
+    name: Update Security in Release Tag
+    if: needs.release-management.outputs.release-created == 'true'
+    needs: [update-documentation-in-tag]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Release Tag
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ needs.release-management.outputs.tag-name }}
+
+      - name: 🛡️ Update Security Policy in Tag
+        uses: bauer-group/automation-templates/.github/actions/security-generate@main
+        with:
+          force-update: true
+          custom-version: ${{ needs.release-management.outputs.version }}
+          tag-name: ${{ needs.release-management.outputs.tag-name }}
+          
+      - name: 💾 Commit Security Policy to Release Tag
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          if [[ -n $(git status --porcelain) ]]; then
+            git add SECURITY.MD || true
+            git commit -m "security: update security policy for release ${{ needs.release-management.outputs.tag-name }}
+
+            🤖 Generated with Claude Code
+            
+            Co-Authored-By: Claude <noreply@anthropic.com>" || true
+            
+            # Force update the tag
+            git tag -d ${{ needs.release-management.outputs.tag-name }} || true
+            git tag ${{ needs.release-management.outputs.tag-name }}
+            git push origin ${{ needs.release-management.outputs.tag-name }} --force
+          fi
+
+  # Step 2: Update documentation in main branch
+  update-documentation:
+    name: 📄 Update Documentation in Main
+    if: needs.release-management.outputs.release-created == 'true'
+    needs: [update-documentation-in-tag]
     uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
+      custom-version: ${{ needs.release-management.outputs.version }}
       force-update: true
     permissions:
       contents: write
       pull-requests: write
 
-  # Security Management Update (matches automatic-release.yml pattern)
+  # Step 2: Update security in main branch
   update-security-management:
-    name: 🛡️ Update Security Management
+    name: 🛡️ Update Security Management in Main
     if: needs.release-management.outputs.release-created == 'true'
-    needs: [release-management, setup-github-repo, pipeline-summary]
+    needs: [update-security-in-tag]
     uses: bauer-group/automation-templates/.github/workflows/security-management.yml@main
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
+      custom-version: ${{ needs.release-management.outputs.version }}
       force-update: true
     permissions:
       contents: write
