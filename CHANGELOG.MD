@@ -1,3 +1,14 @@
+## [1.1.1](https://github.com/bauer-group/automation-templates/compare/v1.1.0...v1.1.1) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* improve git pull robustness in parallel workflows ([8f1ddc7](https://github.com/bauer-group/automation-templates/commit/8f1ddc785f556b781fe7d3b6b4e751ae29225770))
+* prevent parallel workflow conflicts with semantic-release ([8046b59](https://github.com/bauer-group/automation-templates/commit/8046b59b1740baf28685512188b973b908f33e91))
+
+### 🔧 Maintenance
+
+* remove workflow testing comment from generate_readme.py ([edf2c61](https://github.com/bauer-group/automation-templates/commit/edf2c61a7458142116c7b889c473a341898e2d3b))
+
 ## [1.1.0](https://github.com/bauer-group/automation-templates/compare/v1.0.6...v1.1.0) (2025-08-29)
 
 ### 🚀 Features
