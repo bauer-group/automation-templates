@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-# Workflow system fully validated and production ready
-
 import os
 import json
 import subprocess
