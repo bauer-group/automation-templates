@@ -701,7 +701,7 @@ jobs:
   update-documentation:
     name: 📄 Update Documentation
     if: needs.release-management.outputs.release-created == 'true'
-    needs: [release-management, setup-github-repo]
+    needs: [release-management, setup-github-repo, pipeline-summary]
     uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
@@ -714,7 +714,7 @@ jobs:
   update-security-management:
     name: 🛡️ Update Security Management
     if: needs.release-management.outputs.release-created == 'true'
-    needs: [release-management, setup-github-repo]
+    needs: [release-management, setup-github-repo, pipeline-summary]
     uses: bauer-group/automation-templates/.github/workflows/security-management.yml@main
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}

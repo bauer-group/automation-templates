@@ -138,7 +138,7 @@ jobs:
   update-documentation:
     name: Update Documentation
     if: needs.release-management.outputs.release-created == 'true'
-    needs: [release-management, artifact-generation]
+    needs: [release-management, artifact-generation, pipeline-summary]
     uses: ./.github/workflows/documentation.yml
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
@@ -153,7 +153,7 @@ jobs:
   update-security-management:
     name: Update Security Management
     if: needs.release-management.outputs.release-created == 'true'
-    needs: [release-management, artifact-generation]
+    needs: [release-management, artifact-generation, pipeline-summary]
     uses: ./.github/workflows/security-management.yml
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
