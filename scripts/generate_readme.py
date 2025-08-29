@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+# Workflow validation test
 import os
 import json
 import subprocess
@@ -358,7 +359,6 @@ def main():
     except Exception as e:
         print(f"Error writing output: {e}")
         return 1
-
 
 if __name__ == "__main__":
     exit(main())
