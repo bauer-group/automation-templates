@@ -76,7 +76,7 @@ jobs:
           python-version: ${{ inputs.python-version || '3.12' }}
 
       - name: 🛡️ Gitleaks Secret Scan
-        if: contains(inputs.security-engine || 'both', 'gitleaks') || contains(inputs.security-engine || 'both', 'both')
+        if: inputs.security-engine == 'gitleaks' || inputs.security-engine == 'both' || inputs.security-engine == ''
         uses: bauer-group/automation-templates/.github/actions/gitleaks-scan@main
         with:
           fail-on-findings: true
@@ -85,7 +85,7 @@ jobs:
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       - name: 🛡️ GitGuardian Security Scan
-        if: (contains(inputs.security-engine || 'both', 'gitguardian') || contains(inputs.security-engine || 'both', 'both')) && secrets.GITGUARDIAN_API_KEY
+        if: inputs.security-engine == 'gitguardian' || inputs.security-engine == 'both' || inputs.security-engine == ''
         uses: bauer-group/automation-templates/.github/actions/gitguardian-scan@main
         with:
           api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
