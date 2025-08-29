@@ -11,7 +11,7 @@ on:
       - 'scripts/generate_readme.py'
       - '.github/actions/readme-generate/**'
       - '.github/workflows/documentation.yml'
-  push:
+  create:
     tags:
       - 'v*.*.*'
       - 'v*'
