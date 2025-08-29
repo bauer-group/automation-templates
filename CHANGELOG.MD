@@ -1,3 +1,18 @@
+## [1.0.4](https://github.com/bauer-group/automation-templates/compare/v1.0.3...v1.0.4) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* add a newline before the main execution block in generate_readme.py ([e875975](https://github.com/bauer-group/automation-templates/commit/e87597539419007d85a05299789fed517992f57e))
+* add merge strategy to git pull to resolve divergent branches error ([87f648d](https://github.com/bauer-group/automation-templates/commit/87f648d84128823f8f52ffa1f9e1470087cf5351))
+* correct workflow dependencies and external references - remove circular deps, use relative paths ([44fc8e0](https://github.com/bauer-group/automation-templates/commit/44fc8e0c213a0950dbd72d08fd8df415f78d8977))
+* remove unnecessary newline before main execution block in generate_readme.py ([68a2f42](https://github.com/bauer-group/automation-templates/commit/68a2f4278dd7d206f1fa5b4542c039740495bbc3))
+* use correct semantic-release action output names (release-created, version, tag) ([564f6d2](https://github.com/bauer-group/automation-templates/commit/564f6d28e2f770bd33ad54008a33d6cf03175b52))
+* use recursive merge strategy instead of invalid merge strategy ([ea9ed5f](https://github.com/bauer-group/automation-templates/commit/ea9ed5fcf3d9615bc36a495f96c96943c1efcb9a))
+
+### ⏪ Reverts
+
+* restore [@main](https://github.com/main) references in python-automatic-release for external repository usage ([462b0e9](https://github.com/bauer-group/automation-templates/commit/462b0e9199275d8c4006225171fe0c81b9c385ae))
+
 ## [1.0.3](https://github.com/bauer-group/automation-templates/compare/v1.0.2...v1.0.3) (2025-08-29)
 
 ### 🐛 Bug Fixes
