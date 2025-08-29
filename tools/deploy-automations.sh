@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 🚀 Automation Templates Deployment Tool (Bash Shell Wrapper)
+# 🚀 Automation Templates Deployment Tool (Bash Wrapper)
 # This is a lightweight wrapper around the Python implementation
 
 set -euo pipefail
