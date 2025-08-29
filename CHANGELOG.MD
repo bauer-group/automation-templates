@@ -1,3 +1,9 @@
+## [1.0.6](https://github.com/bauer-group/automation-templates/compare/v1.0.5...v1.0.6) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* resolve detached HEAD issue in tag-triggered documentation and security workflows ([9a8c5e1](https://github.com/bauer-group/automation-templates/commit/9a8c5e1da307ecdc581b15ac67719f5a044a5bed))
+
 ## [1.0.5](https://github.com/bauer-group/automation-templates/compare/v1.0.4...v1.0.5) (2025-08-29)
 
 ### 🐛 Bug Fixes
