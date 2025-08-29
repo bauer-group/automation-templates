@@ -1,3 +1,15 @@
+## [0.25.0](https://github.com/bauer-group/automation-templates/compare/v0.24.0...v0.25.0) (2025-08-29)
+
+### 🚀 Features
+
+* Add Python package release examples and documentation ([9067447](https://github.com/bauer-group/automation-templates/commit/9067447129d5f97c6826ffde0c43118ebf74814b))
+
+### 🐛 Bug Fixes
+
+* Remove GITHUB_TOKEN requirement from Python automatic release workflow ([89340c7](https://github.com/bauer-group/automation-templates/commit/89340c734a220b27ca61bde4f717c39227606978))
+* Update job dependencies for documentation and security management updates ([fba1881](https://github.com/bauer-group/automation-templates/commit/fba1881f68af173c9dda229f4dfda1f265cbee05))
+* Update security engine conditions for Gitleaks and GitGuardian scans ([99d02ea](https://github.com/bauer-group/automation-templates/commit/99d02eaeb770fc3124bbf8a106304912b7ebb3d0))
+
 ## [0.24.0](https://github.com/bauer-group/automation-templates/compare/v0.23.0...v0.24.0) (2025-08-29)
 
 ### 🚀 Features
