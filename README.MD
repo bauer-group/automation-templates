@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-08-29 15:06:44 UTC -->
+<!-- Generated on 2025-08-29 15:34:34 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -9,7 +9,7 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 
 **Repository Information:**
 
-- **Version:** 1.1.12 (2025-08-29)
+- **Version:** 1.1.13 (2025-08-29)
 - **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)
 - **Branch:** main
 - **Architecture:** Modular, Reusable, Enterprise-Ready
@@ -39,8 +39,8 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
     scan-engines: 'gitleaks,gitguardian'
     scan-scope: 'all'
     fail-on-findings: true
-    github-token: $
-    gitguardian-api-key: $
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
 ```
 
 ### Individual Engines
@@ -51,7 +51,7 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 - name: ⚡ Fast Secrets Scan
   uses: gitleaks/gitleaks-action@v2
   env:
-    GITHUB_TOKEN: $
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 #### GitGuardian (Enterprise)
@@ -60,7 +60,7 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 - name: 🛡️ Advanced Security Scan
   uses: GitGuardian/ggshield-action@v1
   with:
-    api-key: $
+    api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
     args: secret scan path .
 ```
 
@@ -88,13 +88,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
+          
       - name: 🚀 Semantic Release
         uses: bauer-group/automation-templates/.github/actions/semantic-release@main
         with:
           dry-run: false
           branches: main
-          token: $
+          token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## 🏗️ Repository Structure
@@ -189,10 +189,10 @@ jobs:
     with:
       config-file: 'web-application'
       image-name: 'my-app'
-      image-tag: $
+      image-tag: ${{ github.sha }}
       security-scan: true
     secrets:
-      REGISTRY_TOKEN: $
+      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### 🐍 Python Build System
@@ -224,7 +224,7 @@ jobs:
       run-tests: true
       collect-coverage: true
     secrets:
-      CODECOV_TOKEN: $
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 ```
 
 ### 🛡️ Security & Compliance System
@@ -290,11 +290,11 @@ paths-ignore:
   - .git/**
   - node_modules/**
   - vendor/**
-
+  
 secret:
   minimum-severity: medium
   ignore-known-secrets: false
-
+  
 policies:
   all-policies: true
 ```
@@ -333,10 +333,10 @@ module.exports = {
    ```bash
    # For Docker projects
    cp .github/workflows/examples/docker/web-application-build.yml .github/workflows/
-
+   
    # For Python projects  
    cp .github/workflows/examples/python-build/web-application.yml .github/workflows/
-
+   
    # For general CI/CD
    cp .github/workflows/examples/ci-cd/comprehensive-ci-cd.yml .github/workflows/
    ```
@@ -345,17 +345,17 @@ module.exports = {
 
    ```bash
    # Basic (always required)
-   gh secret set GITHUB_TOKEN --body "$"
-
+   gh secret set GITHUB_TOKEN --body "${{ secrets.GITHUB_TOKEN }}"
+   
    # Docker builds
    gh secret set REGISTRY_TOKEN --body "your-registry-token"
    gh secret set COSIGN_PRIVATE_KEY --body "$(cat cosign.key)"
    gh secret set COSIGN_PASSWORD --body "your-cosign-password"
-
+   
    # Python publishing
    gh secret set PYPI_API_TOKEN --body "your-pypi-token"
    gh secret set CODECOV_TOKEN --body "your-codecov-token"
-
+   
    # Security scanning
    gh secret set GITGUARDIAN_API_KEY --body "your-gitguardian-key"
    ```
@@ -365,10 +365,10 @@ module.exports = {
    ```bash
    # Edit Docker configuration
    vim .github/config/docker-build/web-application.yml
-
+   
    # Edit Python configuration  
    vim .github/config/python-build/application.yml
-
+   
    # Update commit linting rules
    vim .github/config/commitlint.config.js
    ```
@@ -393,16 +393,16 @@ jobs:
     with:
       config-file: 'web-application'
       image-name: 'my-webapp'
-      image-tag: $-$
+      image-tag: ${{ github.ref_name }}-${{ github.sha }}
       platforms: 'linux/amd64,linux/arm64'
       security-scan: true
       generate-sbom: true
       sign-image: true
-      deploy: $
+      deploy: ${{ github.ref == 'refs/heads/main' }}
     secrets:
-      REGISTRY_TOKEN: $
-      COSIGN_PRIVATE_KEY: $
-      COSIGN_PASSWORD: $
+      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
 ```
 
 #### 🐍 Python Project Setup
@@ -429,8 +429,8 @@ jobs:
       security-scan: true
       quality-checks: true
     secrets:
-      CODECOV_TOKEN: $
-
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      
   publish:
     if: github.ref == 'refs/heads/main'
     needs: build
@@ -440,7 +440,7 @@ jobs:
       package-manager: 'poetry'
       registry: 'pypi'
     secrets:
-      PYPI_API_TOKEN: $
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
 ```
 
 ### Using Individual Actions
@@ -452,7 +452,7 @@ jobs:
   uses: bauer-group/automation-templates/.github/actions/docker-build@main
   with:
     image-name: 'my-app'
-    image-tag: $
+    image-tag: ${{ github.sha }}
     platforms: 'linux/amd64,linux/arm64'
     security-scan: true
     fail-on-severity: 'HIGH'
@@ -480,8 +480,8 @@ jobs:
   with:
     scan-engines: 'both'
     fail-on-findings: true
-    github-token: $
-    gitguardian-api-key: $
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
 ```
 
 ## 🔄 Best Practices
@@ -682,4 +682,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-08-29 15:06:44 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-08-29 15:34:34 UTC from [docs/README.template.MD](docs/README.template.MD)*
