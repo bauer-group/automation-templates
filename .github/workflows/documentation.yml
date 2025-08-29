@@ -5,6 +5,12 @@ name: 📄 Documentation Management
 
 on:
   push:
+    branches: [main]
+    paths:
+      - 'docs/README.template.MD'
+      - 'scripts/generate_readme.py'
+      - '.github/actions/readme-generate/**'
+      - '.github/workflows/documentation.yml'
     tags:
       - 'v*.*.*'
       - 'v*'
