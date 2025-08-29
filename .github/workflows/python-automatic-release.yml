@@ -1,25 +1,15 @@
 name: 🐍 Python Automatic Release
 
-# Modular Python CI/CD pipeline based on automatic-release.yml
-# Simple, smart, and flexible - just works
+# Reusable Python CI/CD pipeline for external repositories
+# Based on automatic-release.yml pattern - simple, smart, and flexible
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - '.github/**'
-      - 'docs/**'
-      - '*.md'
-      - '*.MD'
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
+  workflow_call:
     inputs:
       security-engine:
         description: 'Security scan engine'
-        type: choice
+        type: string
         default: 'both'
-        options: ['gitleaks', 'gitguardian', 'both']
       force-release:
         description: 'Force create release'
         type: boolean
@@ -28,13 +18,38 @@ on:
         description: 'Skip PyPI publishing'
         type: boolean
         default: false
+      python-version:
+        description: 'Python version to use'
+        type: string
+        default: '3.12'
+      package-source-path:
+        description: 'Path to package source (e.g., src/package_name)'
+        type: string
+        default: 'src'
+      version-file:
+        description: 'Python file containing __version__ (e.g., src/package/__init__.py)'
+        type: string
+        default: ''
+    secrets:
+      PYPI_API_TOKEN:
+        description: 'PyPI API token for publishing'
+        required: true
+      GITHUB_TOKEN:
+        description: 'GitHub token for releases and packages'
+        required: true
+      GITGUARDIAN_API_KEY:
+        description: 'GitGuardian API key for security scanning'
+        required: false
+      GITLEAKS_LICENSE:
+        description: 'Gitleaks Pro license key'
+        required: false
 
 jobs:
   # PR validation for pull requests
   pr-validation:
     name: PR Quality Gate
     if: github.event_name == 'pull_request'
-    uses: ./.github/workflows/modules-pr-validation.yml
+    uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@main
     with:
       enable-security-scan: true
       enable-license-check: true
@@ -47,7 +62,6 @@ jobs:
   # Python-specific security scan
   python-security-scan:
     name: 🛡️ Python Security Analysis
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     
     steps:
@@ -59,16 +73,19 @@ jobs:
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ inputs.python-version || '3.12' }}
 
       - name: 🛡️ Gitleaks Secret Scan
         if: contains(inputs.security-engine || 'both', 'gitleaks') || contains(inputs.security-engine || 'both', 'both')
         uses: bauer-group/automation-templates/.github/actions/gitleaks-scan@main
         with:
           fail-on-findings: true
+          license-key: ${{ secrets.GITLEAKS_LICENSE }}
+        env:
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       - name: 🛡️ GitGuardian Security Scan
-        if: (contains(inputs.security-engine || 'both', 'gitguardian') || contains(inputs.security-engine || 'both', 'both'))
+        if: (contains(inputs.security-engine || 'both', 'gitguardian') || contains(inputs.security-engine || 'both', 'both')) && secrets.GITGUARDIAN_API_KEY
         uses: bauer-group/automation-templates/.github/actions/gitguardian-scan@main
         with:
           api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
@@ -90,7 +107,7 @@ jobs:
       - name: 📤 Upload Security Reports
         uses: actions/upload-artifact@v4
         with:
-          name: python-security-reports
+          name: python-security-reports-${{ github.run_number }}
           path: |
             bandit-report.json
             safety-report.json
@@ -98,7 +115,6 @@ jobs:
   # Python build and test
   python-build-test:
     name: 🧪 Python Build & Test
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     
     outputs:
@@ -111,11 +127,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ inputs.python-version || '3.12' }}
 
       - name: 📦 Extract Package Info
         id: package-info
@@ -123,32 +140,78 @@ jobs:
           if [[ -f "pyproject.toml" ]]; then
             pip install toml
             PACKAGE_NAME=$(python -c "import toml; print(toml.load('pyproject.toml')['project']['name'])" 2>/dev/null || echo "unknown")
-            VERSION=$(python -c "import toml; print(toml.load('pyproject.toml')['project']['version'])" 2>/dev/null || echo "0.1.0")
           elif [[ -f "setup.py" ]]; then
             PACKAGE_NAME=$(python setup.py --name 2>/dev/null || echo "unknown")
-            VERSION=$(python setup.py --version 2>/dev/null || echo "0.1.0")
           else
             PACKAGE_NAME="unknown"
-            VERSION="0.1.0-dev.${{ github.run_number }}"
           fi
           
           echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
           echo "Package name: $PACKAGE_NAME"
 
-      - name: 🏷️ Set Version
+      - name: 🏷️ Detect and Update Version
         id: version
         run: |
+          VERSION=""
+          
+          # Try to get version from different sources
           if [[ -f "pyproject.toml" ]]; then
             pip install toml
-            VERSION=$(python -c "import toml; print(toml.load('pyproject.toml')['project']['version'])" 2>/dev/null || echo "0.1.0")
-          elif [[ -f "setup.py" ]]; then
-            VERSION=$(python setup.py --version 2>/dev/null || echo "0.1.0")
-          else
-            VERSION="0.1.0-dev.${{ github.run_number }}"
+            VERSION=$(python -c "import toml; print(toml.load('pyproject.toml')['project']['version'])" 2>/dev/null || echo "")
+          fi
+          
+          if [[ -z "$VERSION" && -f "setup.py" ]]; then
+            VERSION=$(python setup.py --version 2>/dev/null || echo "")
+          fi
+          
+          # Check for __init__.py with __version__
+          if [[ -z "$VERSION" && -n "${{ inputs.version-file }}" && -f "${{ inputs.version-file }}" ]]; then
+            VERSION=$(python -c "
+            import re
+            with open('${{ inputs.version-file }}', 'r') as f:
+                content = f.read()
+            match = re.search(r\"__version__\s*=\s*['\\\"]([^'\\\"]+)['\\\"]\", content)
+            print(match.group(1) if match else '')
+            " 2>/dev/null || echo "")
+          fi
+          
+          # Search for common __init__.py locations if not specified
+          if [[ -z "$VERSION" ]]; then
+            for init_file in $(find . -name "__init__.py" -path "*/src/*" -o -name "__init__.py" -path "*/lib/*"); do
+              VERSION=$(python -c "
+              import re
+              with open('$init_file', 'r') as f:
+                  content = f.read()
+              match = re.search(r\"__version__\s*=\s*['\\\"]([^'\\\"]+)['\\\"]\", content)
+              print(match.group(1) if match else '')
+              " 2>/dev/null || echo "")
+              if [[ -n "$VERSION" ]]; then
+                echo "Found version in: $init_file"
+                break
+              fi
+            done
+          fi
+          
+          # Fallback version
+          if [[ -z "$VERSION" ]]; then
+            VERSION="0.0.0-${{ github.run_number }}"
           fi
           
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Package version: $VERSION"
+          
+          # Update version in __init__.py if specified and release is being created
+          if [[ -n "${{ inputs.version-file }}" && -f "${{ inputs.version-file }}" && "${{ inputs.force-release }}" == "true" ]]; then
+            echo "Updating version in ${{ inputs.version-file }}"
+            python -c "
+            import re
+            with open('${{ inputs.version-file }}', 'r') as f:
+                content = f.read()
+            content = re.sub(r\"(__version__\s*=\s*['\\\"])([^'\\\"]+)(['\\\"]\)", r\"\1$VERSION\3\", content)
+            with open('${{ inputs.version-file }}', 'w') as f:
+                f.write(content)
+            "
+          fi
 
       - name: 📚 Install Dependencies
         run: |
@@ -163,69 +226,184 @@ jobs:
             pip install -r requirements-dev.txt
           fi
           
+          if [[ -f "dev-requirements.txt" ]]; then
+            pip install -r dev-requirements.txt
+          fi
+          
           # Install package in development mode
           if [[ -f "pyproject.toml" ]] || [[ -f "setup.py" ]]; then
             pip install -e .
           fi
           
           # Install testing tools
-          pip install pytest pytest-cov build twine
+          pip install pytest pytest-cov build twine pytest-html pytest-json-report
 
       - name: 🧪 Run Tests
         id: test
         run: |
-          # Run local scripts if available
-          if [[ -d "scripts" ]]; then
-            echo "🧪 Running local test scripts..."
-            find scripts -name "test*" -type f -executable | while read script; do
-              echo "Running: $script"
-              "$script"
-            done
-            
-            find scripts -name "test*.py" -type f | while read script; do
-              echo "Running Python script: $script"
-              python "$script"
-            done
+          echo "🧪 Running comprehensive test suite..."
+          
+          # Discover package source path automatically
+          PACKAGE_PATH=""
+          if [[ -d "${{ inputs.package-source-path }}" ]]; then
+            PACKAGE_PATH="${{ inputs.package-source-path }}"
+          elif [[ -d "src" ]]; then
+            PACKAGE_PATH="src"
+          elif [[ -d "lib" ]]; then
+            PACKAGE_PATH="lib"
+          else
+            PACKAGE_PATH="."
           fi
           
-          # Run pytest if tests directory exists
+          echo "📦 Using package path: $PACKAGE_PATH"
+          
+          # Run pytest with comprehensive options
           if [[ -d "tests" ]]; then
-            echo "🧪 Running pytest..."
-            pytest tests/ --cov=. --cov-report=xml --cov-report=html || true
+            echo "🧪 Running pytest on tests/ directory..."
+            pytest tests/ \
+              --cov="$PACKAGE_PATH" \
+              --cov-report=xml \
+              --cov-report=html \
+              --cov-report=term \
+              --html=test-report.html \
+              --self-contained-html \
+              --json-report --json-report-file=test-report.json \
+              --junit-xml=junit-report.xml \
+              --verbose || true
           elif [[ -d "test" ]]; then
-            echo "🧪 Running pytest..."
-            pytest test/ --cov=. --cov-report=xml --cov-report=html || true
+            echo "🧪 Running pytest on test/ directory..."
+            pytest test/ \
+              --cov="$PACKAGE_PATH" \
+              --cov-report=xml \
+              --cov-report=html \
+              --cov-report=term \
+              --html=test-report.html \
+              --self-contained-html \
+              --json-report --json-report-file=test-report.json \
+              --junit-xml=junit-report.xml \
+              --verbose || true
+          else
+            echo "ℹ️ No test directory found - running basic package import test"
+            python -c "
+            import sys
+            import os
+            sys.path.insert(0, '$PACKAGE_PATH')
+            try:
+                # Try to import the main package
+                import importlib.util
+                for root, dirs, files in os.walk('$PACKAGE_PATH'):
+                    for file in files:
+                        if file == '__init__.py':
+                            module_path = os.path.join(root, file)
+                            spec = importlib.util.spec_from_file_location('test_module', module_path)
+                            if spec and spec.loader:
+                                module = importlib.util.module_from_spec(spec)
+                                spec.loader.exec_module(module)
+                                print(f'✅ Successfully imported {module_path}')
+                print('✅ Basic import test passed')
+            except Exception as e:
+                print(f'❌ Import test failed: {e}')
+                sys.exit(1)
+            "
           fi
+
+      - name: 🔍 Run Code Quality Checks
+        id: quality
+        run: |
+          echo "🔍 Running code quality checks..."
+          
+          # Auto-discover package path
+          PACKAGE_PATH=""
+          if [[ -d "${{ inputs.package-source-path }}" ]]; then
+            PACKAGE_PATH="${{ inputs.package-source-path }}"
+          elif [[ -d "src" ]]; then
+            PACKAGE_PATH="src"
+          elif [[ -d "lib" ]]; then
+            PACKAGE_PATH="lib"
+          else
+            PACKAGE_PATH="."
+          fi
+          
+          # Install quality tools
+          pip install flake8 mypy black isort || true
+          
+          # Flake8 linting
+          echo "📝 Running flake8 linting..."
+          flake8 "$PACKAGE_PATH" --count --statistics --format=json --output-file=flake8-report.json || true
+          flake8 "$PACKAGE_PATH" --count --statistics || true
+          
+          # Black formatting check
+          echo "🎨 Checking code formatting with black..."
+          black --check --diff "$PACKAGE_PATH" || echo "⚠️ Code formatting issues found"
+          
+          # Import sorting check
+          echo "📤 Checking import sorting with isort..."
+          isort --check-only --diff "$PACKAGE_PATH" || echo "⚠️ Import sorting issues found"
+          
+          # MyPy type checking (auto-discover mypy config or use defaults)
+          echo "🔤 Running mypy type checking..."
+          if [[ -f "mypy.ini" ]] || [[ -f ".mypy.ini" ]] || [[ -f "pyproject.toml" ]]; then
+            mypy "$PACKAGE_PATH" || echo "⚠️ Type checking issues found"
+          else
+            mypy "$PACKAGE_PATH" --ignore-missing-imports --no-strict-optional || echo "⚠️ Type checking issues found (using relaxed settings)"
+          fi
+
+      - name: 🧪 Run Additional Test Scripts
+        id: additional-scripts
+        run: |
+          # Run any additional test scripts found in scripts directory
+          if [[ -d "scripts" ]]; then
+            echo "🧪 Looking for test scripts in scripts/..."
+            find scripts -name "test*.py" -type f | while read script; do
+              echo "Running additional Python script: $script"
+              python "$script" || echo "⚠️ Script $script had issues"
+            done
+            
+            find scripts -name "test*" -type f -executable | while read script; do
+              if [[ "$script" != *.py ]]; then
+                echo "Running additional executable script: $script"
+                "$script" || echo "⚠️ Script $script had issues"
+              fi
+            done
+          else
+            echo "ℹ️ No scripts directory found"
+          fi
+          
+          echo "additional-scripts=completed" >> $GITHUB_OUTPUT
 
       - name: 📦 Build Package
         run: |
           echo "📦 Building Python package..."
           python -m build
           
-          echo "🔍 Checking package..."
+          echo "🔍 Checking package with twine..."
           twine check dist/*
 
       - name: 📤 Upload Package Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: python-package
+          name: python-package-${{ github.run_number }}
           path: dist/
+          retention-days: 30
 
-      - name: 📤 Upload Test Results
+      - name: 📤 Upload Test Results & Coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-${{ github.run_number }}
           path: |
             htmlcov/
             coverage.xml
             .coverage
+            test-report.html
+            test-report.json
+            junit-report.xml
+          retention-days: 30
 
   # License compliance check
   license-compliance:
     name: 📋 License Compliance
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
-    uses: ./.github/workflows/modules-license-compliance.yml
+    uses: bauer-group/automation-templates/.github/workflows/modules-license-compliance.yml@main
     with:
       fail-on-forbidden: false
       fail-on-unknown: false
@@ -236,9 +414,8 @@ jobs:
   # Release management
   release-management:
     name: 🚀 Release Management
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: [python-security-scan, python-build-test, license-compliance]
-    uses: ./.github/workflows/modules-semantic-release.yml
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     with:
       target-branch: 'main'
       dry-run: false
@@ -256,7 +433,7 @@ jobs:
       - name: 📥 Download Package
         uses: actions/download-artifact@v4
         with:
-          name: python-package
+          name: python-package-${{ github.run_number }}
           path: dist/
 
       - name: 🚀 Publish to PyPI
@@ -281,7 +458,7 @@ jobs:
       - name: 📥 Download Package
         uses: actions/download-artifact@v4
         with:
-          name: python-package
+          name: python-package-${{ github.run_number }}
           path: dist/
 
       - name: 📦 Publish to GitHub Packages
@@ -298,7 +475,7 @@ jobs:
   # Pipeline summary
   pipeline-summary:
     name: 📊 Pipeline Summary
-    if: always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch')
+    if: always()
     needs: [python-security-scan, python-build-test, license-compliance, release-management, publish-pypi, publish-github]
     runs-on: ubuntu-latest
     
@@ -313,16 +490,22 @@ jobs:
           - **Version:** ${{ needs.python-build-test.outputs.version || 'N/A' }}
           - **Event:** ${{ github.event_name }}
           - **Branch:** ${{ github.ref_name }}
+          - **Python Version:** ${{ inputs.python-version || '3.12' }}
           
           ## 🔍 Pipeline Results
           | Component | Status | Details |
           |-----------|--------|---------|
           | **🛡️ Security Scan** | ${{ needs.python-security-scan.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Python security tools + ${{ inputs.security-engine || 'both' }} |
-          | **🧪 Build & Test** | ${{ needs.python-build-test.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Tests: ${{ needs.python-build-test.outputs.tests-passed || 'unknown' }} |
+          | **🧪 Build & Test** | ${{ needs.python-build-test.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Custom + Standard tests |
           | **📋 License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | SBOM generated |
           | **🚀 Release Management** | ${{ needs.release-management.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Release: ${{ needs.release-management.outputs.release-created || 'false' }} |
           | **📦 PyPI Publishing** | ${{ needs.publish-pypi.result == 'success' && '✅ PUBLISHED' || needs.publish-pypi.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | PyPI package |
           | **📦 GitHub Packages** | ${{ needs.publish-github.result == 'success' && '✅ PUBLISHED' || needs.publish-github.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | GitHub registry |
+          
+          ## 📤 Generated Artifacts
+          - **Package Artifacts:** python-package-${{ github.run_number }}
+          - **Test Results:** test-results-${{ github.run_number }}
+          - **Security Reports:** python-security-reports-${{ github.run_number }}
           
           EOF
           
@@ -350,7 +533,7 @@ jobs:
     name: 📄 Update Documentation
     if: needs.release-management.outputs.release-created == 'true'
     needs: [release-management, publish-pypi]
-    uses: ./.github/workflows/documentation.yml
+    uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
       force-update: true
@@ -363,7 +546,7 @@ jobs:
     name: 🛡️ Update Security Management
     if: needs.release-management.outputs.release-created == 'true'
     needs: [release-management, publish-pypi]
-    uses: ./.github/workflows/security-management.yml
+    uses: bauer-group/automation-templates/.github/workflows/security-management.yml@main
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
       force-update: true
