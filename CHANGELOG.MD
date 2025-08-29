@@ -1,3 +1,10 @@
+## [1.1.7](https://github.com/bauer-group/automation-templates/compare/v1.1.6...v1.1.7) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* add missing custom-version input to workflow_call sections ([6ca65ae](https://github.com/bauer-group/automation-templates/commit/6ca65aef696a7b48a14bc3d27dd4774fa74a87b2))
+* ensure documentation and security workflows run after releases ([4c9dc65](https://github.com/bauer-group/automation-templates/commit/4c9dc656052da01c94c7563441904fb3c83ea2f3))
+
 ## [1.1.6](https://github.com/bauer-group/automation-templates/compare/v1.1.5...v1.1.6) (2025-08-29)
 
 ### 🐛 Bug Fixes
