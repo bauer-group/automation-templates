@@ -66,7 +66,7 @@ jobs:
             echo "release-created=true" >> $GITHUB_OUTPUT
             # Use new_release_version for version output
             VERSION="${{ steps.semantic.outputs.new_release_version }}"
-            TAG="${{ steps.semantic.outputs.new_release_git_tag || steps.release.outputs.tag }}"
+            TAG="${{ steps.semantic.outputs.new_release_git_tag }}"
             
             # Fallback if tag is empty, create from version
             if [ -z "$TAG" ]; then
