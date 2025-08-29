@@ -1,3 +1,14 @@
+## [1.0.3](https://github.com/bauer-group/automation-templates/compare/v1.0.2...v1.0.3) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* implement hard reset strategy in security management to prevent conflicts ([f354443](https://github.com/bauer-group/automation-templates/commit/f3544439050956ea6f9d274866650f04d05231d8))
+* improve error handling in README generation script ([a3eb933](https://github.com/bauer-group/automation-templates/commit/a3eb93340b4bd5444301695500518f45c8b9c46c))
+* remove unnecessary blank line before main execution ([d0f970b](https://github.com/bauer-group/automation-templates/commit/d0f970b14b3a64405d21d42629dd230278d1b72d))
+* remove unnecessary blank line before the main function ([02dd4c9](https://github.com/bauer-group/automation-templates/commit/02dd4c946b96971618693e482a6bfe5f83c013dc))
+* resolve all workflow issues - correct semantic-release outputs, remove rebase conflicts, add retry logic ([e6e2e91](https://github.com/bauer-group/automation-templates/commit/e6e2e9113382bcd5b1ab2424fd0d8d5a9e29a20e))
+* update documentation versions to correct v1.0.2 ([07914bd](https://github.com/bauer-group/automation-templates/commit/07914bd70f25e20cc8d9bae630b83cceb20f7f81))
+
 ## [1.0.2](https://github.com/bauer-group/automation-templates/compare/v1.0.1...v1.0.2) (2025-08-29)
 
 ### 🐛 Bug Fixes
