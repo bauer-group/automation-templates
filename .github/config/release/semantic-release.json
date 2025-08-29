@@ -46,7 +46,7 @@
     }],
     ["@semantic-release/git", {
       "assets": ["CHANGELOG.MD"],
-      "message": "chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"
+      "message": "chore(release): ${nextRelease.version} [automated]\n\n${nextRelease.notes}"
     }],
     ["@semantic-release/github", {
       "successComment": false,
