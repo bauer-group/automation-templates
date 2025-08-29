@@ -1,0 +1,53 @@
+# Example for NocoDB SimpleClient Library
+# ======================================
+# Complete usage example with all trigger events
+
+name: 🚀 Release NocoDB SimpleClient
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '.github/**'
+      - 'docs/**'
+      - '*.md'
+      - '*.MD'
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      security-engine:
+        description: 'Security scan engine'
+        type: choice
+        default: 'both'
+        options: ['gitleaks', 'gitguardian', 'both']
+      force-release:
+        description: 'Force create release'
+        type: boolean
+        default: false
+      skip-pypi:
+        description: 'Skip PyPI publishing'
+        type: boolean
+        default: false
+
+jobs:
+  release:
+    name: 📦 Python Package Pipeline
+    uses: bauer-group/automation-templates/.github/workflows/python-automatic-release.yml@main
+    with:
+      # Python Configuration
+      python-version: '3.12'
+      
+      # Version file location (optional - auto-discovered if not specified)
+      version-file: 'src/nocodb_simple_client/__init__.py'
+      
+      # Security scanning
+      security-engine: ${{ inputs.security-engine || 'both' }}
+      
+      # Release control
+      force-release: ${{ inputs.force-release || false }}
+      skip-pypi: ${{ inputs.skip-pypi || false }}
+      
+    secrets: inherit
