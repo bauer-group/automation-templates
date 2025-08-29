@@ -42,6 +42,11 @@ on:
         type: boolean
         required: false
         default: false
+      custom-version:
+        description: 'Custom version for SECURITY.MD'
+        type: string
+        required: false
+        default: ''
       policy-version:
         description: 'Security policy version (semantic versioning: x.y.z)'
         type: string
