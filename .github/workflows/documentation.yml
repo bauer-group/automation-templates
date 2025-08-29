@@ -11,6 +11,10 @@ on:
       - 'scripts/generate_readme.py'
       - '.github/actions/readme-generate/**'
       - '.github/workflows/documentation.yml'
+    tags:
+      - 'v*.*.*'
+      - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+'
   pull_request:
     branches: [main]
     paths:
@@ -25,7 +29,7 @@ on:
         description: 'Custom version for README'
         type: string
         default: ''
-  # Triggered by other workflows when tags are created
+  
   workflow_call:
     inputs:
       tag-name:
@@ -70,11 +74,21 @@ jobs:
           echo "🔍 Determining if workflow should run..."
           echo "Event: ${{ github.event_name }}"
           echo "Ref: ${{ github.ref }}"
+          echo "Ref Type: ${{ github.ref_type }}"
           echo "Force Update: ${{ inputs.force-update }}"
           
           # Always run if force-update is true (from manual trigger)
           if [[ "${{ inputs.force-update }}" == "true" ]]; then
             echo "🔄 ✅ FORCE UPDATE ENABLED - will run regardless of other conditions"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Always run for tags - update README with new version
+          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "🏷️ ✅ RUNNING FOR TAG: ${{ github.ref_name }}"
+            echo "🏷️ Updating README with new version information"
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "skip_reason=" >> $GITHUB_OUTPUT
             exit 0
@@ -170,7 +184,16 @@ jobs:
           git add README.MD
           git commit -m "$COMMIT_MSG" || echo "No changes to commit"
           git fetch --tags origin
-          git pull --no-edit --strategy=recursive origin main
+          
+          # Switch to main branch if we're in detached HEAD (tag trigger)
+          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
+            git checkout main
+            git pull --no-edit --strategy=recursive origin main
+            git cherry-pick HEAD@{1}
+          else
+            git pull --no-edit --strategy=recursive origin main
+          fi
+          
           git push
 
   # Validate documentation links and structure
