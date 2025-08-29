@@ -1,3 +1,9 @@
+## [1.1.10](https://github.com/bauer-group/automation-templates/compare/v1.1.9...v1.1.10) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* restructure workflow steps to prevent sync conflicts ([b17d401](https://github.com/bauer-group/automation-templates/commit/b17d40196ad80b667b2f96c842331e2bcfcafcbd))
+
 ## [1.1.9](https://github.com/bauer-group/automation-templates/compare/v1.1.8...v1.1.9) (2025-08-29)
 
 ### 🐛 Bug Fixes
