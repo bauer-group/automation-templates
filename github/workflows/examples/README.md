@@ -35,6 +35,9 @@ github/workflows/examples/
 │   ├── react-app-deploy.yml
 │   ├── nextjs-docker-deploy.yml
 │   └── monorepo-turborepo.yml
+├── python-release/           # Python package release examples
+│   ├── nocodb-simpleclient-example.yml
+│   └── README.MD
 ├── release/                 # Release automation examples
 │   ├── semantic-release.yml
 │   └── simple-release.yml
@@ -89,6 +92,13 @@ For building Node.js applications and packages
 - `nodejs-build/react-app-deploy.yml` - React deployment
 - `nodejs-build/nextjs-docker-deploy.yml` - Next.js with Docker
 - `nodejs-build/monorepo-turborepo.yml` - Monorepo management
+
+### Python Release (`python-automatic-release.yml`)
+For building and releasing Python packages with comprehensive CI/CD
+
+**Examples:**
+- `python-release/nocodb-simpleclient-example.yml` - Complete Python package release
+- `python-release/README.MD` - Detailed documentation and GitHub Packages installation guide
 
 ### CI/CD Pipelines
 Complete CI/CD pipeline configurations
