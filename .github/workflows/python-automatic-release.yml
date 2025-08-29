@@ -767,9 +767,10 @@ jobs:
       - name: 📝 Update Documentation in Tag
         uses: bauer-group/automation-templates/.github/actions/readme-generate@main
         with:
+          template-path: 'docs/README.template.MD'
+          output-path: 'README.MD'
           force-update: true
           custom-version: ${{ needs.release-management.outputs.version }}
-          tag-name: ${{ needs.release-management.outputs.tag-name }}
           
       - name: 💾 Commit Documentation to Release Tag
         run: |
@@ -778,11 +779,7 @@ jobs:
           
           if [[ -n $(git status --porcelain) ]]; then
             git add README.MD SECURITY.MD || true
-            git commit -m "docs: update documentation for release ${{ needs.release-management.outputs.tag-name }}
-
-            🤖 Generated with Claude Code
-            
-            Co-Authored-By: Claude <noreply@anthropic.com>" || true
+            git commit -m "docs: update documentation for release ${{ needs.release-management.outputs.tag-name }}" || true
             
             # Force update the tag
             git tag -d ${{ needs.release-management.outputs.tag-name }} || true
@@ -808,9 +805,9 @@ jobs:
       - name: 🛡️ Update Security Policy in Tag
         uses: bauer-group/automation-templates/.github/actions/security-generate@main
         with:
+          config-file: '.github/config/security-policy/config.yml'
           force-update: true
           custom-version: ${{ needs.release-management.outputs.version }}
-          tag-name: ${{ needs.release-management.outputs.tag-name }}
           
       - name: 💾 Commit Security Policy to Release Tag
         run: |
@@ -819,11 +816,7 @@ jobs:
           
           if [[ -n $(git status --porcelain) ]]; then
             git add SECURITY.MD || true
-            git commit -m "security: update security policy for release ${{ needs.release-management.outputs.tag-name }}
-
-            🤖 Generated with Claude Code
-            
-            Co-Authored-By: Claude <noreply@anthropic.com>" || true
+            git commit -m "security: update security policy for release ${{ needs.release-management.outputs.tag-name }}" || true
             
             # Force update the tag
             git tag -d ${{ needs.release-management.outputs.tag-name }} || true
@@ -839,6 +832,7 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
+      custom-version: ${{ needs.release-management.outputs.version }}
       force-update: true
     permissions:
       contents: write
@@ -852,6 +846,7 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/security-management.yml@main
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
+      custom-version: ${{ needs.release-management.outputs.version }}
       force-update: true
     permissions:
       contents: write

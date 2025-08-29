@@ -47,6 +47,11 @@ on:
         type: string
         required: false
         default: '1.0.0'
+      custom-version:
+        description: 'Custom version to use in security policy (overrides auto-detection)'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: write
