@@ -10,6 +10,7 @@ on:
       - 'docs/SECURITY.template.MD'
       - '.github/actions/security-generate/**'
       - '.github/workflows/security-management.yml'
+  push:
     tags:
       - 'v*.*.*'
       - 'v*'
