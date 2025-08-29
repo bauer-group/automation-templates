@@ -194,10 +194,10 @@ jobs:
           # Switch to main branch if we're in detached HEAD (tag trigger)
           if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
             git checkout main
-            git pull --no-edit --strategy=recursive origin main
-            git cherry-pick HEAD@{1}
+            git pull --no-edit --strategy=recursive --no-rebase origin main || git rebase --abort || true
+            git cherry-pick HEAD@{1} || git cherry-pick --abort || true
           else
-            git pull --no-edit --strategy=recursive origin main
+            git pull --no-edit --strategy=recursive --no-rebase origin main || git pull --rebase origin main || true
           fi
           
           git push
