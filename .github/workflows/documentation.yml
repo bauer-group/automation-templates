@@ -39,6 +39,11 @@ on:
         type: boolean
         required: false
         default: false
+      custom-version:
+        description: 'Custom version for README'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: write
