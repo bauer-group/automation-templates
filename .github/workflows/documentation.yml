@@ -19,6 +19,7 @@ on:
     branches: [main]
     paths:
       - 'docs/README.template.MD'
+
   workflow_dispatch:
     inputs:
       force-update:

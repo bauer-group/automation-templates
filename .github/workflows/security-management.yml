@@ -18,6 +18,7 @@ on:
     branches: [main]
     paths:
       - 'docs/SECURITY.template.MD'
+
   workflow_dispatch:
     inputs:
       force-update:
