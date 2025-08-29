@@ -2,6 +2,20 @@
 
 ### 🚀 Features
 
+* add CHANGELOG sync from release tags to main branch ([e423d85](https://github.com/bauer-group/automation-templates/commit/e423d855f5a92402ece98245bd5dccf8ed7348b4))
+* Add custom version parameter to documentation and security workflows ([f2866be](https://github.com/bauer-group/automation-templates/commit/f2866be3be03545f8a31c0247a319559ae8df8b2))
+* Add example workflow for NocoDB SimpleClient library release process ([d2eb43f](https://github.com/bauer-group/automation-templates/commit/d2eb43f1f0a51ac098835aed264051dd64cc46a6))
+* Add tag verification and update documentation/security policies in release tags ([85a7194](https://github.com/bauer-group/automation-templates/commit/85a7194f24859d808b522b5c6a23a2dd67bda486))
+* Update deployment profiles and workflows for enhanced automation and security ([71abb43](https://github.com/bauer-group/automation-templates/commit/71abb43689380bfeae0e86639753b884f62c4a22))
+
+### ♻️ Code Refactoring
+
+* Remove custom version parameter from documentation and security updates in release workflows ([4320a34](https://github.com/bauer-group/automation-templates/commit/4320a3446d89992d041d4703f07cdebf8ddf7440))
+
+## [0.26.0](https://github.com/bauer-group/automation-templates/compare/v0.25.0...v0.26.0) (2025-08-29)
+
+### 🚀 Features
+
 * Add custom version parameter to documentation and security workflows ([f2866be](https://github.com/bauer-group/automation-templates/commit/f2866be3be03545f8a31c0247a319559ae8df8b2))
 * Add example workflow for NocoDB SimpleClient library release process ([d2eb43f](https://github.com/bauer-group/automation-templates/commit/d2eb43f1f0a51ac098835aed264051dd64cc46a6))
 * Add tag verification and update documentation/security policies in release tags ([85a7194](https://github.com/bauer-group/automation-templates/commit/85a7194f24859d808b522b5c6a23a2dd67bda486))
