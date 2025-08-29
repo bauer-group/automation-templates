@@ -839,7 +839,6 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
-      custom-version: ${{ needs.release-management.outputs.version }}
       force-update: true
     permissions:
       contents: write
@@ -853,7 +852,6 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/security-management.yml@main
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
-      custom-version: ${{ needs.release-management.outputs.version }}
       force-update: true
     permissions:
       contents: write
