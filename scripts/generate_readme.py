@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-# Workflow testing - documentation workflow trigger test
 import os
 import json
 import subprocess
