@@ -1,3 +1,10 @@
+## [1.1.4](https://github.com/bauer-group/automation-templates/compare/v1.1.3...v1.1.4) (2025-08-29)
+
+### 🐛 Bug Fixes
+
+* add a blank line before the main execution block for better readability ([ab19582](https://github.com/bauer-group/automation-templates/commit/ab19582bd0592a22d20ccc4ceb489a12a0d7cca9))
+* update paths in workflows to include documentation and security templates ([300838d](https://github.com/bauer-group/automation-templates/commit/300838d9696a9bab6e37ae695abaeaee66c15c5b))
+
 ## [1.1.3](https://github.com/bauer-group/automation-templates/compare/v1.1.2...v1.1.3) (2025-08-29)
 
 ### 🐛 Bug Fixes
