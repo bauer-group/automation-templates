@@ -139,7 +139,7 @@ jobs:
   verify-tag-availability:
     name: Verify Tag Availability
     if: needs.release-management.outputs.release-created == 'true'
-    needs: [release-management, artifact-generation]
+    needs: release-management
     runs-on: ubuntu-latest
     outputs:
       tag-verified: ${{ steps.verify.outputs.tag-verified }}

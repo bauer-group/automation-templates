@@ -46,7 +46,7 @@ jobs:
   pr-validation:
     name: PR Quality Gate
     if: github.event_name == 'pull_request'
-    uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@main
+    uses: ./.github/workflows/modules-pr-validation.yml
     with:
       enable-security-scan: true
       enable-license-check: true
@@ -320,7 +320,7 @@ jobs:
   # License compliance check
   license-compliance:
     name: 📋 License Compliance
-    uses: bauer-group/automation-templates/.github/workflows/modules-license-compliance.yml@main
+    uses: ./.github/workflows/modules-license-compliance.yml
     with:
       fail-on-forbidden: false
       fail-on-unknown: false
@@ -332,7 +332,7 @@ jobs:
   release-management:
     name: 🚀 Release Management
     needs: [python-security-scan, python-build-test, license-compliance]
-    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    uses: ./.github/workflows/modules-semantic-release.yml
     with:
       target-branch: "main"
       dry-run: false
@@ -829,7 +829,7 @@ jobs:
     name: 📄 Update Documentation in Main
     if: needs.release-management.outputs.release-created == 'true'
     needs: [update-documentation-in-tag]
-    uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
+    uses: ./.github/workflows/documentation.yml
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
       custom-version: ${{ needs.release-management.outputs.version }}
@@ -843,7 +843,7 @@ jobs:
     name: 🛡️ Update Security Management in Main
     if: needs.release-management.outputs.release-created == 'true'
     needs: [update-security-in-tag]
-    uses: bauer-group/automation-templates/.github/workflows/security-management.yml@main
+    uses: ./.github/workflows/security-management.yml
     with:
       tag-name: ${{ needs.release-management.outputs.tag-name }}
       custom-version: ${{ needs.release-management.outputs.version }}
