@@ -1,3 +1,13 @@
+## [1.3.0](https://github.com/bauer-group/automation-templates/compare/v1.2.0...v1.3.0) (2025-08-29)
+
+### 🚀 Features
+
+* remove obsolete Python script for README generation ([fac3d4b](https://github.com/bauer-group/automation-templates/commit/fac3d4bf809464d2ce8924c00101cd2c9a5eb4e5))
+
+### 🐛 Bug Fixes
+
+* update comment for consistency in deploy-automations.sh ([e379015](https://github.com/bauer-group/automation-templates/commit/e3790153cc169c6b8bc6c6071584ec3fe05fc67a))
+
 ## [1.2.0](https://github.com/bauer-group/automation-templates/compare/v1.1.13...v1.2.0) (2025-08-29)
 
 ### 🚀 Features
