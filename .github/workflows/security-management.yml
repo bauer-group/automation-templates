@@ -5,11 +5,6 @@ name: 🛡️ Security Policy Management
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'docs/SECURITY.template.MD'
-      - '.github/actions/security-generate/**'
-      - '.github/workflows/security-management.yml'
     tags:
       - 'v*.*.*'
       - 'v*'
