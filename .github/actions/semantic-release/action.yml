@@ -107,6 +107,7 @@ runs:
       with:
         dry_run: ${{ inputs.dry-run }}
         branches: ${{ inputs.branches }}
+        ci: false
         extra_plugins: |
           @semantic-release/changelog
           @semantic-release/git
