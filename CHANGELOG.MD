@@ -1,3 +1,18 @@
+## [1.4.0](https://github.com/bauer-group/automation-templates/compare/v1.3.8...v1.4.0) (2025-08-30)
+
+### 🚀 Features
+
+* enhance Python automatic release workflow with reusable inputs and improved security scan options ([7710d02](https://github.com/bauer-group/automation-templates/commit/7710d02e79b048a180e0ff2d24f9a22659497452))
+
+### 🐛 Bug Fixes
+
+* update default security scan engine to 'both' in PR validation workflow ([02d5bd0](https://github.com/bauer-group/automation-templates/commit/02d5bd06acef8fffbaa98be30b5dcdc979b1873b))
+
+### ♻️ Code Refactoring
+
+* remove artifact-types input from Python release workflows for simplification ([4685c3b](https://github.com/bauer-group/automation-templates/commit/4685c3b560c2598a457d05a5f25b9a9e83717278))
+* update Python CI/CD pipeline names and improve example workflow configuration ([2dc9671](https://github.com/bauer-group/automation-templates/commit/2dc96714a939151e8b3136b8598d6dfaebecfc57))
+
 ## [1.3.8](https://github.com/bauer-group/automation-templates/compare/v1.3.7...v1.3.8) (2025-08-30)
 
 ### 🐛 Bug Fixes
