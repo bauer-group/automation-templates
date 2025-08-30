@@ -2,7 +2,7 @@
 # =====================================
 # Complete usage example for Python projects using the modernized automation templates
 
-name: 🐍 Python Package Release Pipeline
+name: 🐍 Python CI/CD Pipeline (Automatic Release)
 
 on:
   push:
