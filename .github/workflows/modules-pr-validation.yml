@@ -22,7 +22,7 @@ on:
         description: 'Security scan engine for PR validation'
         required: false
         type: string
-        default: 'gitleaks'
+        default: 'both'
       fail-on-security-issues:
         description: 'Fail PR validation on security issues'
         required: false
