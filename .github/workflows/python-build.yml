@@ -597,7 +597,29 @@ jobs:
               $COVERAGE_ARGS \
               ${{ inputs.test-args }}
           elif [ "${{ inputs.test-framework }}" = "unittest" ]; then
-            python -m unittest discover -s ${{ inputs.test-path }} -v
+            pip install xmlrunner
+            python -c "
+import sys
+import os
+import unittest
+import xmlrunner
+
+# Add test path to sys.path
+sys.path.insert(0, '${{ inputs.test-path }}')
+
+# Discover and run tests
+loader = unittest.TestLoader()
+start_dir = '${{ inputs.test-path }}'
+suite = loader.discover(start_dir, pattern='test*.py')
+
+# Run tests with XML output
+with open('$TEST_RESULTS_DIR/unittest-report.xml', 'wb') as output:
+    runner = xmlrunner.XMLTestRunner(output=output)
+    result = runner.run(suite)
+    
+# Exit with proper code
+sys.exit(0 if result.wasSuccessful() else 1)
+"
           fi
           
           echo "results=success" >> $GITHUB_OUTPUT
@@ -648,8 +670,21 @@ jobs:
           echo "path=$PACKAGE_FILE" >> $GITHUB_OUTPUT
           echo "Package built: $PACKAGE_FILE"
       
-      - name: 📊 Test Report
+      - name: 📊 Check Test Report Files
+        id: check-reports
         if: always() && inputs.run-tests
+        shell: bash
+        run: |
+          if ls ${{ runner.temp }}/test-results/*.xml 1> /dev/null 2>&1; then
+            echo "reports-exist=true" >> $GITHUB_OUTPUT
+            echo "✅ Test report files found"
+          else
+            echo "reports-exist=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No test report files found"
+          fi
+
+      - name: 📊 Test Report
+        if: always() && inputs.run-tests && steps.check-reports.outputs.reports-exist == 'true'
         uses: dorny/test-reporter@v1
         with:
           name: 'Python Tests - ${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}'
