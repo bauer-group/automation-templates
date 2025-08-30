@@ -4,9 +4,9 @@ author: 'BAUER GROUP'
 
 inputs:
   python-version:
-    description: 'Python version to use (e.g., 3.11, 3.11.x)'
+    description: 'Python version to use (e.g., 3.12, 3.11.x)'
     required: false
-    default: '3.11'
+    default: '3.12'
   python-version-file:
     description: 'Path to .python-version or pyproject.toml file'
     required: false

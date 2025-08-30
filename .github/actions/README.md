@@ -82,7 +82,7 @@ jobs:
   python-ci:
     uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
     with:
-      python-version: '3.11'
+      python-version: '3.12'
       run-tests: true
       collect-coverage: true
       run-security-scan: true
@@ -140,7 +140,7 @@ jobs:
 - name: 🐍 Setup Python Environment
   uses: bauer-group/automation-templates/.github/actions/python-setup@main
   with:
-    python-version: '3.11'
+    python-version: '3.12'
     package-manager: 'pip'
     requirements-files: 'requirements.txt,requirements-dev.txt'
     cache-dependencies: true

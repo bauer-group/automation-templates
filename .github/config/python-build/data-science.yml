@@ -2,7 +2,7 @@
 # Configuration for Jupyter notebooks, data analysis, and ML projects
 
 python:
-  version: "3.11"
+  version: "3.12"
   cache: "pip"
 
 dependencies:

@@ -5,9 +5,9 @@ name: FastAPI Application CI/CD
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -22,46 +22,46 @@ jobs:
     uses: ./.github/workflows/python-build.yml
     with:
       # Python Configuration
-      python-version: '3.11'
-      working-directory: '.'
-      project-type: 'web-app'
-      
+      python-version: "3.12"
+      working-directory: "."
+      project-type: "web-app"
+
       # Dependencies
       requirements-files: '["requirements.txt", "requirements-dev.txt", "requirements-test.txt"]'
       install-dev-requirements: true
-      package-manager: 'pip'
+      package-manager: "pip"
       cache-dependencies: true
-      
+
       # Testing with services
       run-tests: true
-      test-framework: 'pytest'
-      test-path: 'tests'
-      test-args: '-v --tb=short'
+      test-framework: "pytest"
+      test-path: "tests"
+      test-args: "-v --tb=short"
       collect-coverage: true
       coverage-threshold: 85
-      coverage-format: 'xml,html'
+      coverage-format: "xml,html"
       coverage-fail-under: true
-      
+
       # Code Quality (strict for web apps)
       run-lint: true
-      linter: 'ruff'
+      linter: "ruff"
       run-format-check: true
-      formatter: 'black'
+      formatter: "black"
       format-check-only: true
       run-import-sort: true
-      import-sorter: 'isort'
+      import-sorter: "isort"
       run-type-check: true
-      type-checker: 'mypy'
-      
+      type-checker: "mypy"
+
       # Security (important for web apps)
       run-security-scan: true
       security-tools: '["bandit", "safety"]'
       security-fail-on-error: true
-      
+
       # Artifacts
       upload-artifacts: true
-      artifact-name: 'fastapi-app'
-      
+      artifact-name: "fastapi-app"
+
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
@@ -71,7 +71,7 @@ jobs:
     needs: test-and-build
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    
+
     services:
       postgres:
         image: postgres:15
@@ -104,8 +104,8 @@ jobs:
       - name: Setup Python Environment
         uses: bauer-group/automation-templates/.github/actions/python-setup@main
         with:
-          python-version: '3.11'
-          requirements-files: 'requirements.txt,requirements-test.txt'
+          python-version: "3.12"
+          requirements-files: "requirements.txt,requirements-test.txt"
           install-dev-requirements: true
 
       - name: Set up environment variables
@@ -127,7 +127,7 @@ jobs:
           # Start the application in background
           uvicorn app.main:app --host 0.0.0.0 --port 8000 &
           sleep 10
-          
+
           # Test API endpoints
           curl -f http://localhost:8000/health || exit 1
           curl -f http://localhost:8000/docs || exit 1
@@ -138,7 +138,7 @@ jobs:
     needs: test-and-build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -180,14 +180,14 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ghcr.io/${{ github.repository }}:${{ github.sha }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
+          format: "sarif"
+          output: "trivy-results.sarif"
 
       - name: Upload security scan results
         if: github.event_name != 'pull_request'
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: "trivy-results.sarif"
 
   # Deploy to staging
   deploy-staging:

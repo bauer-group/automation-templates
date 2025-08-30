@@ -200,7 +200,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           
       - name: Install dependencies
         run: pip install -r requirements.txt

@@ -85,7 +85,7 @@ inputs:
   python-version:
     description: 'Python version for building'
     required: false
-    default: '3.11'
+    default: '3.12'
 
 outputs:
   package-version:

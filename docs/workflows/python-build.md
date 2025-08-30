@@ -18,7 +18,7 @@ Das Python Build System bietet mehrere vorgefertigte Workflows für unterschiedl
 Grundlegender CI-Workflow für Python-Anwendungen.
 
 **Features:**
-- Python 3.11 Setup
+- Python 3.12 Setup
 - Virtual Environment
 - Dependency Installation
 - Security Checks (Safety, Bandit)
@@ -126,7 +126,7 @@ Grundkonfiguration für einfache Python-Projekte.
 
 ```yaml
 python:
-  version: "3.11"
+  version: "3.12"
   cache: "pip"
 
 testing:
@@ -145,7 +145,7 @@ Konfiguration für Web-Anwendungen (Flask, Django, FastAPI).
 
 ```yaml
 python:
-  version: "3.11"
+  version: "3.12"
 
 testing:
   coverage_threshold: 85
@@ -190,7 +190,7 @@ Spezielle Konfiguration für Data Science Projekte.
 
 ```yaml
 python:
-  version: "3.11"
+  version: "3.12"
   conda_support: true
 
 notebooks:
@@ -283,7 +283,7 @@ AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
 ```yaml
 env:
-  PYTHON_VERSION: "3.11"
+  PYTHON_version: "3.12"
   DATABASE_URL: "postgresql://user:pass@localhost/db"
   REDIS_URL: "redis://localhost:6379"
   SECRET_KEY: ${{ secrets.SECRET_KEY }}
@@ -330,14 +330,14 @@ addopts =
 # pyproject.toml
 [tool.black]
 line-length = 88
-target-version = ['py311']
+target-version = ['py312']
 
 [tool.isort]
 profile = "black"
 multi_line_output = 3
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 ```
 
@@ -376,9 +376,9 @@ skips = ["B101", "B601"]
 4. **Docker Build Fehler**
    ```bash
    # Multi-stage Build verwenden
-   FROM python:3.11-slim as builder
+   FROM python:3.12-slim as builder
    # ... build steps
-   FROM python:3.11-slim as runtime
+   FROM python:3.12-slim as runtime
    ```
 
 ### Performance Optimierung
@@ -387,7 +387,7 @@ skips = ["B101", "B601"]
    ```yaml
    - uses: actions/setup-python@v5
      with:
-       python-version: "3.11"
+       python-version: "3.12"
        cache: 'pip'
    ```
 
@@ -415,13 +415,13 @@ skips = ["B101", "B601"]
 ```yaml
 # Vorher (Travis CI)
 language: python
-python: "3.11"
+python: "3.12"
 script: pytest
 
 # Nachher (GitHub Actions)
 - uses: actions/setup-python@v5
   with:
-    python-version: "3.11"
+    python-version: "3.12"
 - run: pytest
 ```
 
@@ -430,7 +430,7 @@ script: pytest
 ```yaml
 # Vorher (GitLab CI)
 test:
-  image: python:3.11
+  image: python:3.12
   script:
     - pip install -r requirements.txt
     - pytest
@@ -438,7 +438,7 @@ test:
 # Nachher (GitHub Actions)
 - uses: actions/setup-python@v5
   with:
-    python-version: "3.11"
+    python-version: "3.12"
     cache: 'pip'
 - run: |
     pip install -r requirements.txt
