@@ -1,44 +1,46 @@
-name: 🐍 Python Automatic Release
+name: 🐍 Python Automatic Release (Reusable)
 
 # Reusable Python CI/CD pipeline for external repositories
-# Based on automatic-release.yml pattern - simple, smart, and flexible
+# Based on the modular architecture pattern from automatic-release.yml
 
 on:
   workflow_call:
     inputs:
       security-engine:
-        description: "Security scan engine"
-        type: string
-        default: "both"
+        description: 'Security scan engine'
+        type: choice
+        default: 'both'
+        options: ['gitleaks', 'gitguardian', 'both']
       force-release:
-        description: "Force create release"
+        description: 'Force create release'
         type: boolean
         default: false
       skip-pypi:
-        description: "Skip PyPI publishing"
+        description: 'Skip PyPI publishing'
         type: boolean
         default: false
       python-version:
-        description: "Python version to use"
+        description: 'Python version to use'
         type: string
-        default: "3.12"
+        default: '3.12'
       package-source-path:
-        description: "Path to package source (e.g., src/package_name)"
+        description: 'Path to package source (e.g., src/package_name)'
         type: string
-        default: "src"
-      version-file:
-        description: "Python file containing __version__ (e.g., src/package/__init__.py)"
-        type: string
-        default: ""
+        default: 'src'
+      artifact-types:
+        description: 'Artifact types to generate'
+        type: choice
+        default: 'source'
+        options: ['source', 'binaries', 'docker', 'all']
     secrets:
       PYPI_API_TOKEN:
-        description: "PyPI API token for publishing"
+        description: 'PyPI API token for publishing'
         required: true
       GITGUARDIAN_API_KEY:
-        description: "GitGuardian API key for security scanning"
+        description: 'GitGuardian API key for security scanning'
         required: false
       GITLEAKS_LICENSE:
-        description: "Gitleaks Pro license key"
+        description: 'Gitleaks Pro license key'
         required: false
 
 jobs:
@@ -51,275 +53,39 @@ jobs:
       enable-security-scan: true
       enable-license-check: true
       enable-commit-lint: true
-      security-scan-engine: "gitleaks"
+      security-scan-engine: ${{ inputs.security-engine || 'both' }}
       fail-on-security-issues: true
       fail-on-license-issues: false
     secrets: inherit
 
-  # Python-specific security scan
-  python-security-scan:
-    name: 🛡️ Python Security Analysis
-    runs-on: ubuntu-latest
+  # Python-specific quality and security scan
+  python-quality-scan:
+    name: Python Quality & Security
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call'
+    uses: bauer-group/automation-templates/.github/workflows/modules-python-build.yml@main
+    with:
+      python-version: ${{ inputs.python-version || '3.12' }}
+      package-source-path: ${{ inputs.package-source-path || 'src' }}
+      security-engine: ${{ inputs.security-engine || 'both' }}
+      skip-pypi: true  # We handle PyPI publishing separately
+    secrets: inherit
 
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python-version || '3.12' }}
-
-      - name: 🛡️ Gitleaks Secret Scan
-        if: inputs.security-engine == 'gitleaks' || inputs.security-engine == 'both' || inputs.security-engine == ''
-        uses: bauer-group/automation-templates/.github/actions/gitleaks-scan@main
-        with:
-          fail-on-findings: true
-          license-key: ${{ secrets.GITLEAKS_LICENSE }}
-        env:
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-
-      - name: 🛡️ GitGuardian Security Scan
-        if: inputs.security-engine == 'gitguardian' || inputs.security-engine == 'both' || inputs.security-engine == ''
-        uses: bauer-group/automation-templates/.github/actions/gitguardian-scan@main
-        with:
-          api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
-          fail-on-findings: false
-        continue-on-error: true
-
-      - name: 🔍 Python Security Tools
-        run: |
-          # Install Python security tools
-          pip install bandit safety
-
-          # Run security checks
-          echo "🔍 Running bandit security scan..."
-          bandit -r . -f json -o bandit-report.json || true
-
-          echo "🔍 Running safety dependency check..."
-          safety check --json --output safety-report.json || true
-
-      - name: 📤 Upload Security Reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-security-reports-${{ github.run_number }}
-          path: |
-            bandit-report.json
-            safety-report.json
-
-  # Python build and test (initial validation)
-  python-build-test:
-    name: 🧪 Python Build & Test
-    runs-on: ubuntu-latest
-
-    outputs:
-      package-name: ${{ steps.package-info.outputs.name }}
-      tests-passed: ${{ steps.test.outcome }}
-
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python-version || '3.12' }}
-
-      - name: 📦 Extract Package Info
-        id: package-info
-        run: |
-          if [[ -f "pyproject.toml" ]]; then
-            pip install toml
-            PACKAGE_NAME=$(python -c "import toml; print(toml.load('pyproject.toml')['project']['name'])" 2>/dev/null || echo "unknown")
-          elif [[ -f "setup.py" ]]; then
-            PACKAGE_NAME=$(python setup.py --name 2>/dev/null || echo "unknown")
-          else
-            PACKAGE_NAME="unknown"
-          fi
-
-          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
-          echo "Package name: $PACKAGE_NAME"
-
-      - name: 📚 Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-
-          # Install based on available files
-          if [[ -f "requirements.txt" ]]; then
-            pip install -r requirements.txt
-          fi
-
-          if [[ -f "requirements-dev.txt" ]]; then
-            pip install -r requirements-dev.txt
-          fi
-
-          if [[ -f "dev-requirements.txt" ]]; then
-            pip install -r dev-requirements.txt
-          fi
-
-          # Install package in development mode
-          if [[ -f "pyproject.toml" ]] || [[ -f "setup.py" ]]; then
-            pip install -e .
-          fi
-
-          # Install testing tools
-          pip install pytest pytest-cov build twine pytest-html pytest-json-report
-
-      - name: 🧪 Run Tests
-        id: test
-        run: |
-          echo "🧪 Running comprehensive test suite..."
-
-          # Discover package source path automatically
-          PACKAGE_PATH=""
-          if [[ -d "${{ inputs.package-source-path }}" ]]; then
-            PACKAGE_PATH="${{ inputs.package-source-path }}"
-          elif [[ -d "src" ]]; then
-            PACKAGE_PATH="src"
-          elif [[ -d "lib" ]]; then
-            PACKAGE_PATH="lib"
-          else
-            PACKAGE_PATH="."
-          fi
-
-          echo "📦 Using package path: $PACKAGE_PATH"
-
-          # Run pytest with comprehensive options
-          if [[ -d "tests" ]]; then
-            echo "🧪 Running pytest on tests/ directory..."
-            pytest tests/ \
-              --cov="$PACKAGE_PATH" \
-              --cov-report=xml \
-              --cov-report=html \
-              --cov-report=term \
-              --html=test-report.html \
-              --self-contained-html \
-              --json-report --json-report-file=test-report.json \
-              --junit-xml=junit-report.xml \
-              --verbose || true
-          elif [[ -d "test" ]]; then
-            echo "🧪 Running pytest on test/ directory..."
-            pytest test/ \
-              --cov="$PACKAGE_PATH" \
-              --cov-report=xml \
-              --cov-report=html \
-              --cov-report=term \
-              --html=test-report.html \
-              --self-contained-html \
-              --json-report --json-report-file=test-report.json \
-              --junit-xml=junit-report.xml \
-              --verbose || true
-          else
-            echo "ℹ️ No test directory found - running basic package import test"
-            python -c "
-            import sys
-            import os
-            sys.path.insert(0, '$PACKAGE_PATH')
-            try:
-                # Try to import the main package
-                import importlib.util
-                for root, dirs, files in os.walk('$PACKAGE_PATH'):
-                    for file in files:
-                        if file == '__init__.py':
-                            module_path = os.path.join(root, file)
-                            spec = importlib.util.spec_from_file_location('test_module', module_path)
-                            if spec and spec.loader:
-                                module = importlib.util.module_from_spec(spec)
-                                spec.loader.exec_module(module)
-                                print(f'✅ Successfully imported {module_path}')
-                print('✅ Basic import test passed')
-            except Exception as e:
-                print(f'❌ Import test failed: {e}')
-                sys.exit(1)
-            "
-          fi
-
-      - name: 🔍 Run Code Quality Checks
-        id: quality
-        run: |
-          echo "🔍 Running code quality checks..."
-
-          # Auto-discover package path
-          PACKAGE_PATH=""
-          if [[ -d "${{ inputs.package-source-path }}" ]]; then
-            PACKAGE_PATH="${{ inputs.package-source-path }}"
-          elif [[ -d "src" ]]; then
-            PACKAGE_PATH="src"
-          elif [[ -d "lib" ]]; then
-            PACKAGE_PATH="lib"
-          else
-            PACKAGE_PATH="."
-          fi
-
-          # Install quality tools
-          pip install flake8 mypy black isort || true
-
-          # Flake8 linting
-          echo "📝 Running flake8 linting..."
-          flake8 "$PACKAGE_PATH" --count --statistics --format=json --output-file=flake8-report.json || true
-          flake8 "$PACKAGE_PATH" --count --statistics || true
-
-          # Black formatting check
-          echo "🎨 Checking code formatting with black..."
-          black --check --diff "$PACKAGE_PATH" || echo "⚠️ Code formatting issues found"
-
-          # Import sorting check
-          echo "📤 Checking import sorting with isort..."
-          isort --check-only --diff "$PACKAGE_PATH" || echo "⚠️ Import sorting issues found"
-
-          # MyPy type checking (auto-discover mypy config or use defaults)
-          echo "🔤 Running mypy type checking..."
-          if [[ -f "mypy.ini" ]] || [[ -f ".mypy.ini" ]] || [[ -f "pyproject.toml" ]]; then
-            mypy "$PACKAGE_PATH" || echo "⚠️ Type checking issues found"
-          else
-            mypy "$PACKAGE_PATH" --ignore-missing-imports --no-strict-optional || echo "⚠️ Type checking issues found (using relaxed settings)"
-          fi
-
-      - name: 🧪 Run Additional Test Scripts
-        id: additional-scripts
-        run: |
-          # Run any additional test scripts found in scripts directory
-          if [[ -d "scripts" ]]; then
-            echo "🧪 Looking for test scripts in scripts/..."
-            find scripts -name "test*.py" -type f | while read script; do
-              echo "Running additional Python script: $script"
-              python "$script" || echo "⚠️ Script $script had issues"
-            done
-            
-            find scripts -name "test*" -type f -executable | while read script; do
-              if [[ "$script" != *.py ]]; then
-                echo "Running additional executable script: $script"
-                "$script" || echo "⚠️ Script $script had issues"
-              fi
-            done
-          else
-            echo "ℹ️ No scripts directory found"
-          fi
-
-          echo "additional-scripts=completed" >> $GITHUB_OUTPUT
-
-      - name: 📤 Upload Test Results & Coverage
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ github.run_number }}
-          path: |
-            htmlcov/
-            coverage.xml
-            .coverage
-            test-report.html
-            test-report.json
-            junit-report.xml
-          retention-days: 30
+  # Comprehensive security scan
+  security-scan:
+    name: Security Analysis
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call'
+    uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
+    with:
+      scan-engine: ${{ inputs.security-engine || 'both' }}
+      scan-type: 'all'
+      fail-on-findings: false
+      minimum-severity: 'medium'
+    secrets: inherit
 
   # License compliance check
   license-compliance:
-    name: 📋 License Compliance
+    name: License Compliance
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call'
     uses: bauer-group/automation-templates/.github/workflows/modules-license-compliance.yml@main
     with:
       fail-on-forbidden: false
@@ -328,600 +94,115 @@ jobs:
       generate-sbom: true
     secrets: inherit
 
-  # Release management (BEFORE building final packages)
+  # Release management
   release-management:
-    name: 🚀 Release Management
-    needs: [python-security-scan, python-build-test, license-compliance]
+    name: Release Management
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call'
+    needs: [python-quality-scan, security-scan, license-compliance]
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     with:
-      target-branch: "main"
+      target-branch: 'main'
       dry-run: false
     secrets: inherit
 
-  # Python build with CORRECT version (AFTER semantic release)
-  python-build-release:
-    name: 🧪 Python Build & Package (Release)
-    if: needs.release-management.outputs.release-created == 'true' || inputs.force-release == true
-    needs: [python-build-test, release-management]
-    runs-on: ubuntu-latest
-
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      package-name: ${{ needs.python-build-test.outputs.package-name }}
-
-    steps:
-      - name: 📥 Checkout Code (with updated version from semantic-release)
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ needs.release-management.outputs.tag-name }}
-
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python-version || '3.12' }}
-
-      - name: 🏷️ Get Updated Version
-        id: version
-        run: |
-          VERSION="${{ needs.release-management.outputs.version }}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Final release version: $VERSION"
-
-      - name: 📚 Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-
-          # Install based on available files
-          if [[ -f "requirements.txt" ]]; then
-            pip install -r requirements.txt
-          fi
-
-          if [[ -f "requirements-dev.txt" ]]; then
-            pip install -r requirements-dev.txt
-          fi
-
-          if [[ -f "dev-requirements.txt" ]]; then
-            pip install -r dev-requirements.txt
-          fi
-
-          # Install package in development mode
-          if [[ -f "pyproject.toml" ]] || [[ -f "setup.py" ]]; then
-            pip install -e .
-          fi
-
-          # Install build tools
-          pip install build twine
-
-      - name: 📦 Build Final Release Package
-        run: |
-          echo "📦 Building Python package with version ${{ steps.version.outputs.version }}..."
-          python -m build
-
-          echo "🔍 Checking package with twine..."
-          twine check dist/*
-
-      - name: 📤 Upload Release Package Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-release-package-${{ github.run_number }}
-          path: dist/
-          retention-days: 30
-
-  # PyPI Publishing
+  # Python package publishing to PyPI
   publish-pypi:
-    name: 📦 Publish to PyPI
-    if: (needs.release-management.outputs.release-created == 'true' || inputs.force-release == true) && inputs.skip-pypi != true
-    needs: [python-build-release, release-management]
-    runs-on: ubuntu-latest
-    environment: pypi
+    name: Publish to PyPI
+    if: needs.release-management.outputs.release-created == 'true' && inputs.skip-pypi != true
+    needs: [release-management, python-quality-scan]
+    uses: bauer-group/automation-templates/.github/workflows/modules-python-build.yml@main
+    with:
+      python-version: ${{ inputs.python-version || '3.12' }}
+      package-source-path: ${{ inputs.package-source-path || 'src' }}
+      security-engine: ${{ inputs.security-engine || 'both' }}
+      skip-pypi: false
+      release-version: ${{ needs.release-management.outputs.version }}
+      release-tag: ${{ needs.release-management.outputs.tag-name }}
+    secrets: inherit
 
-    steps:
-      - name: 📥 Download Release Package
-        uses: actions/download-artifact@v4
-        with:
-          name: python-release-package-${{ github.run_number }}
-          path: dist/
+  # Artifact generation for releases
+  artifact-generation:
+    name: Generate Artifacts
+    if: needs.release-management.outputs.release-created == 'true'
+    needs: release-management
+    uses: bauer-group/automation-templates/.github/workflows/modules-artifact-generation.yml@main
+    with:
+      artifact-types: ${{ inputs.artifact-types || 'source' }}
+      tag-name: ${{ needs.release-management.outputs.tag-name }}
+      version: ${{ needs.release-management.outputs.version }}
 
-      - name: 🚀 Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
-          skip-existing: true
+  # Update documentation for new release
+  update-documentation:
+    name: Update Documentation
+    if: needs.release-management.outputs.release-created == 'true'
+    needs: [release-management, publish-pypi, artifact-generation]
+    uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
+    with:
+      force-update: true
+      custom-version: ${{ needs.release-management.outputs.version }}
+    secrets: inherit
 
-      - name: 📊 Package Published
-        run: |
-          echo "🎉 Package published to PyPI!"
-          echo "📦 Install with: pip install ${{ needs.python-build-release.outputs.package-name }}==${{ needs.python-build-release.outputs.version }}"
-
-  # GitHub Repository Setup for Direct Installation
-  setup-github-repo:
-    name: 🔧 Setup Repository for Direct Installation
-    if: (needs.release-management.outputs.release-created == 'true' || inputs.force-release == true)
-    needs: [python-build-release, release-management]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ needs.release-management.outputs.tag-name }}
-
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python-version || '3.12' }}
-
-      - name: 🔧 Verify Installation Compatibility
-        run: |
-          echo "🔍 Verifying repository structure for direct pip installation..."
-
-          # Check for essential files
-          if [[ -f "pyproject.toml" ]]; then
-            echo "✅ Found pyproject.toml - modern Python project structure (recommended)"
-            echo "ℹ️ No setup.py needed with pyproject.toml"
-            cat pyproject.toml
-          elif [[ -f "setup.py" ]]; then
-            echo "✅ Found setup.py - classic Python project structure"
-            cat setup.py
-          else
-            echo "❌ No pyproject.toml or setup.py found"
-            echo "Creating minimal setup.py for direct installation..."
-            cat > setup.py << 'EOF'
-          from setuptools import setup, find_packages
-          import os
-          import re
-
-          # Try to find version
-          version = "0.1.0"
-          init_files = []
-          for root, dirs, files in os.walk("."):
-              for file in files:
-                  if file == "__init__.py":
-                      init_files.append(os.path.join(root, file))
-
-          for init_file in init_files:
-              try:
-                  with open(init_file, "r") as f:
-                      content = f.read()
-                  match = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", content)
-                  if match:
-                      version = match.group(1)
-                      break
-              except:
-                  continue
-
-          setup(
-              name=os.path.basename(os.getcwd()),
-              version=version,
-              packages=find_packages(),
-              install_requires=[],
-              python_requires=">=3.8",
-          )
-          EOF
-          fi
-
-          # Verify package structure
-          echo "📦 Package structure:"
-          find . -name "*.py" -path "*/src/*" -o -name "*.py" -path "*/lib/*" -o -name "setup.py" -o -name "pyproject.toml" | head -10
-
-          # Test installation compatibility
-          echo "🧪 Testing direct installation compatibility..."
-          python -m pip install --upgrade pip setuptools wheel
-
-          # Try installation in dry-run mode
-          if [[ -f "pyproject.toml" ]]; then
-            python -m pip install --dry-run -e . || echo "⚠️ Installation may have issues"
-          elif [[ -f "setup.py" ]]; then
-            python setup.py check || echo "⚠️ Setup.py may have issues"
-          fi
-
-      - name: 📋 Generate Installation Instructions
-        run: |
-          cat >> $GITHUB_STEP_SUMMARY << EOF
-          ## 📦 Direct Git Installation Ready
-
-          **Install Latest Release:**
-          \`\`\`bash
-          pip install git+https://github.com/${{ github.repository }}@${{ needs.release-management.outputs.tag-name }}
-          \`\`\`
-
-          **Install from Main Branch:**
-          \`\`\`bash
-          pip install git+https://github.com/${{ github.repository }}
-          \`\`\`
-
-          **Install Specific Version:**
-          \`\`\`bash
-          pip install git+https://github.com/${{ github.repository }}@v${{ needs.python-build-release.outputs.version }}
-          \`\`\`
-
-          **Development Installation (Editable):**
-          \`\`\`bash
-          git clone https://github.com/${{ github.repository }}.git
-          cd $(basename ${{ github.repository }})
-          pip install -e .
-          \`\`\`
-
-          ---
-          *Repository configured for direct pip installation* ✅
-          EOF
-
-      - name: 📝 Create Installation Guide
-        run: |
-          cat > INSTALLATION.MD << 'EOF'
-          # Installation Guide
-
-          ## Direct Installation from GitHub
-
-          ### Latest Release (Recommended)
-          ```bash
-          pip install git+https://github.com/${{ github.repository }}@${{ needs.release-management.outputs.tag-name }}
-          ```
-
-          ### Development Version
-          ```bash
-          pip install git+https://github.com/${{ github.repository }}
-          ```
-
-          ### Specific Version
-          ```bash
-          pip install git+https://github.com/${{ github.repository }}@v${{ needs.python-build-release.outputs.version }}
-          ```
-
-          ### With Specific Dependencies
-          ```bash
-          pip install "git+https://github.com/${{ github.repository }}[dev]"
-          ```
-
-          ### Development Installation
-          For contributing or local development:
-          ```bash
-          git clone https://github.com/${{ github.repository }}.git
-          cd $(basename ${{ github.repository }})
-          pip install -e ".[dev]"
-          ```
-
-          ## Requirements
-          - Python >= 3.8
-          - Git installed on your system
-          - Internet connection
-
-          ## Troubleshooting
-
-          ### Authentication Issues (Private Repos)
-          ```bash
-          pip install git+https://username:token@github.com/${{ github.repository }}.git
-          ```
-
-          ### SSL Certificate Issues
-          ```bash
-          pip install --trusted-host github.com git+https://github.com/${{ github.repository }}
-          ```
-
-          ### Upgrade Installation
-          ```bash
-          pip install --upgrade git+https://github.com/${{ github.repository }}
-          ```
-
-          ## PyPI Installation (if available)
-          ```bash
-          pip install ${{ needs.python-build-release.outputs.package-name }}
-          ```
-
-          ---
-          Generated by: ${{ github.workflow }} on ${{ github.run_id }}
-          EOF
-
-          echo "📝 Created INSTALLATION.MD guide"
-
-      - name: 💾 Commit Installation Guide
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-
-          if [[ -n $(git status --porcelain) ]]; then
-            git add INSTALLATION.MD setup.py || true
-            git commit -m "docs: add installation guide for release ${{ needs.release-management.outputs.tag-name }}" || true
-            git push origin ${{ needs.release-management.outputs.tag-name }} || true
-          else
-            echo "ℹ️ No changes to commit"
-          fi
+  # Update security policy for new release (runs after documentation to avoid race condition)
+  update-security:
+    name: Update Security Policy
+    if: needs.release-management.outputs.release-created == 'true'
+    needs: [release-management, publish-pypi, artifact-generation, update-documentation]
+    uses: bauer-group/automation-templates/.github/workflows/security-management.yml@main
+    with:
+      force-update: true
+      custom-version: ${{ needs.release-management.outputs.version }}
+    secrets: inherit
 
   # Pipeline summary
   pipeline-summary:
-    name: 📊 Pipeline Summary
-    if: always()
-    needs:
-      [
-        python-security-scan,
-        python-build-test,
-        license-compliance,
-        release-management,
-        python-build-release,
-        publish-pypi,
-        setup-github-repo,
-      ]
+    name: Pipeline Summary
+    if: always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call')
+    needs: [python-quality-scan, security-scan, license-compliance, release-management, publish-pypi, artifact-generation, update-documentation, update-security]
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: 📊 Generate Pipeline Summary
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << EOF
-          # 🐍 Python Automatic Release Summary
-
-          ## 📦 Package Information
-          - **Name:** ${{ needs.python-build-test.outputs.package-name || 'N/A' }}
-          - **Version:** ${{ needs.python-build-release.outputs.version || needs.release-management.outputs.version || 'N/A' }}
-          - **Event:** ${{ github.event_name }}
-          - **Branch:** ${{ github.ref_name }}
-          - **Python Version:** ${{ inputs.python-version || '3.12' }}
-
-          ## 🔍 Pipeline Results
-          | Component | Status | Details |
-          |-----------|--------|---------|
-          | **🛡️ Security Scan** | ${{ needs.python-security-scan.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Python security tools + ${{ inputs.security-engine || 'both' }} |
-          | **🧪 Build & Test** | ${{ needs.python-build-test.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Custom + Standard tests |
-          | **📋 License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | SBOM generated |
-          | **🚀 Release Management** | ${{ needs.release-management.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Release: ${{ needs.release-management.outputs.release-created || 'false' }} |
-          | **🧪 Release Build** | ${{ needs.python-build-release.result == 'success' && '✅ PASS' || needs.python-build-release.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | With correct version |
-          | **📦 PyPI Publishing** | ${{ needs.publish-pypi.result == 'success' && '✅ PUBLISHED' || needs.publish-pypi.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | PyPI package |
-          | **🔧 GitHub Direct Install** | ${{ needs.setup-github-repo.result == 'success' && '✅ READY' || needs.setup-github-repo.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Git installation ready |
-
-          ## 📤 Generated Artifacts
-          - **Test Results:** test-results-${{ github.run_number }}
-          - **Security Reports:** python-security-reports-${{ github.run_number }}
-          - **Release Package:** python-release-package-${{ github.run_number }}
-
-          EOF
-
-          if [[ "${{ needs.release-management.outputs.release-created }}" == "true" ]]; then
-            cat >> $GITHUB_STEP_SUMMARY << EOF
-          ## 🎉 Release Created Successfully!
-
-          **Installation:**
-          \`\`\`bash
-          pip install ${{ needs.python-build-test.outputs.package-name }}==${{ needs.python-build-release.outputs.version }}
-          \`\`\`
-
-          **Release:** [View on GitHub](https://github.com/${{ github.repository }}/releases/tag/${{ needs.release-management.outputs.tag-name }})
-
-          EOF
-          fi
-
-          cat >> $GITHUB_STEP_SUMMARY << EOF
-          ---
-          *Powered by **BAUER GROUP** Python automation* 🐍
-          EOF
-
-  # Verify tag availability before documentation updates
-  verify-tag-availability:
-    name: Verify Tag Availability
-    if: needs.release-management.outputs.release-created == 'true'
-    needs: [release-management, setup-github-repo]
-    runs-on: ubuntu-latest
-    outputs:
-      tag-verified: ${{ steps.verify.outputs.tag-verified }}
-    steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: 🔍 Verify Tag Availability
-        id: verify
-        run: |
-          TAG="${{ needs.release-management.outputs.tag-name }}"
-          echo "🔍 Verifying availability of tag: $TAG"
+          echo "### 🐍 Python CI/CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Architecture:** Modular Python Workflow Components" >> $GITHUB_STEP_SUMMARY
+          echo "**Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Python Version:** ${{ inputs.python-version || '3.12' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           
-          # Retry logic for tag verification
-          MAX_RETRIES=10  # 10 retries = 45 seconds max
-          RETRY_COUNT=0
+          echo "| Module | Status | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Python Quality & Security** | ${{ needs.python-quality-scan.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Package build & tests |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Engine: ${{ inputs.security-engine || 'both' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | SBOM generated |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Release Management** | ${{ needs.release-management.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Created: ${{ needs.release-management.outputs.release-created || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **PyPI Publishing** | ${{ needs.publish-pypi.result == 'success' && '✅ PUBLISHED' || needs.publish-pypi.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Skip PyPI: ${{ inputs.skip-pypi || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Artifact Generation** | ${{ needs.artifact-generation.result == 'success' && '✅ PASS' || needs.artifact-generation.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Types: ${{ inputs.artifact-types || 'source' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            # Fetch latest tags from remote
-            git fetch --tags origin
+          if [ "${{ needs.release-management.outputs.release-created }}" = "true" ]; then
+            echo "🎉 **Python Release ${{ needs.release-management.outputs.version }} created successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Installation:**" >> $GITHUB_STEP_SUMMARY
             
-            # Check if tag exists
-            if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
-              echo "✅ Tag $TAG is available"
-              echo "tag-verified=true" >> $GITHUB_OUTPUT
-              exit 0
+            if [ "${{ inputs.skip-pypi }}" != "true" ] && [ "${{ needs.publish-pypi.result }}" = "success" ]; then
+              echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+              echo "pip install <package-name>==${{ needs.release-management.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+              echo "pip install git+https://github.com/${{ github.repository }}@${{ needs.release-management.outputs.tag-name }}" >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
             fi
             
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            echo "⏳ Tag not yet available, attempt $RETRY_COUNT/$MAX_RETRIES"
-            
-            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-              # Progressive delay: 1s, 2s, 3s...
-              DELAY=$RETRY_COUNT
-              echo "⏳ Waiting ${DELAY}s before retry..."
-              sleep $DELAY
-            fi
-          done
-          
-          echo "❌ Tag $TAG not available after $MAX_RETRIES attempts"
-          echo "tag-verified=false" >> $GITHUB_OUTPUT
-          exit 1
-
-  # Step 1: Update documentation in the release tag
-  update-documentation-in-tag:
-    name: Update Documentation in Release Tag
-    if: needs.release-management.outputs.release-created == 'true'
-    needs: [verify-tag-availability]
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Checkout Release Tag
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-          fetch-tags: true
-          ref: ${{ needs.release-management.outputs.tag-name }}
-
-      - name: 📝 Update Documentation in Tag
-        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
-        with:
-          template-path: 'docs/README.template.MD'
-          output-path: 'README.MD'
-          force-update: true
-          custom-version: ${{ needs.release-management.outputs.version }}
-          
-      - name: 💾 Commit Documentation to Release Tag
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          
-          if [[ -n $(git status --porcelain) ]]; then
-            git add README.MD SECURITY.MD || true
-            git commit -m "docs: update documentation for release ${{ needs.release-management.outputs.tag-name }}" || true
-            
-            # Force update the tag
-            git tag -d ${{ needs.release-management.outputs.tag-name }} || true
-            git tag ${{ needs.release-management.outputs.tag-name }}
-            git push origin ${{ needs.release-management.outputs.tag-name }} --force
-          fi
-
-  # Step 1: Update security in the release tag
-  update-security-in-tag:
-    name: Update Security in Release Tag
-    if: needs.release-management.outputs.release-created == 'true'
-    needs: [update-documentation-in-tag]
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Checkout Release Tag
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-          fetch-tags: true
-          ref: ${{ needs.release-management.outputs.tag-name }}
-
-      - name: 🛡️ Update Security Policy in Tag
-        uses: bauer-group/automation-templates/.github/actions/security-generate@main
-        with:
-          config-file: '.github/config/security-policy/config.yml'
-          force-update: true
-          custom-version: ${{ needs.release-management.outputs.version }}
-          
-      - name: 💾 Commit Security Policy to Release Tag
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          
-          if [[ -n $(git status --porcelain) ]]; then
-            git add SECURITY.MD || true
-            git commit -m "security: update security policy for release ${{ needs.release-management.outputs.tag-name }}" || true
-            
-            # Force update the tag
-            git tag -d ${{ needs.release-management.outputs.tag-name }} || true
-            git tag ${{ needs.release-management.outputs.tag-name }}
-            git push origin ${{ needs.release-management.outputs.tag-name }} --force
-          fi
-
-  # Step 2: Update documentation in main branch
-  update-documentation:
-    name: 📄 Update Documentation in Main
-    if: needs.release-management.outputs.release-created == 'true'
-    needs: [update-documentation-in-tag]
-    uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
-    with:
-      tag-name: ${{ needs.release-management.outputs.tag-name }}
-      custom-version: ${{ needs.release-management.outputs.version }}
-      force-update: true
-    permissions:
-      contents: write
-      pull-requests: write
-
-  # Step 2: Update security in main branch
-  update-security-management:
-    name: 🛡️ Update Security Management in Main
-    if: needs.release-management.outputs.release-created == 'true'
-    needs: [update-security-in-tag]
-    uses: bauer-group/automation-templates/.github/workflows/security-management.yml@main
-    with:
-      tag-name: ${{ needs.release-management.outputs.tag-name }}
-      custom-version: ${{ needs.release-management.outputs.version }}
-      force-update: true
-    permissions:
-      contents: write
-      pull-requests: write
-
-  # Sync CHANGELOG from release tag to main branch
-  sync-changelog:
-    name: Sync CHANGELOG to Main Branch
-    if: needs.release-management.outputs.release-created == 'true'
-    needs: [release-management]
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Checkout Main Branch
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-          fetch-tags: true
-          ref: main
-
-      - name: 📝 Extract CHANGELOG from Release
-        run: |
-          TAG="${{ needs.release-management.outputs.tag-name }}"
-          VERSION="${{ needs.release-management.outputs.version }}"
-          
-          echo "📝 Extracting changelog from release $TAG"
-          echo "🔍 Looking for version: ${VERSION}"
-          
-          # Get release notes from GitHub API
-          RELEASE_NOTES=$(gh release view "$TAG" --json body --jq '.body' 2>/dev/null || echo "")
-          
-          if [ -z "$RELEASE_NOTES" ]; then
-            echo "⚠️ No release notes found for $TAG"
-            exit 0
-          fi
-          
-          echo "📄 Release notes found:"
-          echo "$RELEASE_NOTES" | head -3
-          
-          # Check if CHANGELOG already contains this version (check both with and without v prefix)
-          if grep -q "## \[${VERSION}\]" CHANGELOG.MD 2>/dev/null; then
-            echo "ℹ️ CHANGELOG already contains version ${VERSION}"
-            exit 0
-          fi
-          
-          if grep -q "## \[v${VERSION}\]" CHANGELOG.MD 2>/dev/null; then
-            echo "ℹ️ CHANGELOG already contains version v${VERSION}"  
-            exit 0
-          fi
-          
-          echo "📝 Adding version ${VERSION} to CHANGELOG"
-          
-          # Create temporary file with new changelog entry
-          echo "$RELEASE_NOTES" > temp_new_entry.md
-          echo "" >> temp_new_entry.md
-          
-          # Prepend new entry to existing CHANGELOG
-          if [ -f "CHANGELOG.MD" ]; then
-            cat CHANGELOG.MD >> temp_new_entry.md
-          fi
-          
-          mv temp_new_entry.md CHANGELOG.MD
-          
-          echo "✅ CHANGELOG updated with release $TAG (version ${VERSION})"
-
-      - name: 💾 Commit CHANGELOG Updates
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "📋 CHANGELOG Sync"
-          
-          if [[ -n $(git status --porcelain CHANGELOG.MD) ]]; then
-            git add CHANGELOG.MD
-            git commit -m "docs: sync CHANGELOG from release ${{ needs.release-management.outputs.tag-name }}"
-            git push origin main
-            echo "✅ CHANGELOG synchronized to main branch"
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Release:** [View on GitHub](https://github.com/${{ github.repository }}/releases/tag/${{ needs.release-management.outputs.tag-name }})" >> $GITHUB_STEP_SUMMARY
           else
-            echo "ℹ️ No CHANGELOG changes to commit"
+            echo "ℹ️ **No release created.** Pipeline completed successfully." >> $GITHUB_STEP_SUMMARY
           fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Powered by **BAUER GROUP** Python automation templates* 🐍" >> $GITHUB_STEP_SUMMARY
