@@ -1,8 +1,8 @@
-# Example for NocoDB SimpleClient Library
-# ======================================
-# Complete usage example with all trigger events
+# Example: Python Package CI/CD Pipeline
+# =====================================
+# Complete usage example for Python projects using the modernized automation templates
 
-name: 🚀 Release NocoDB SimpleClient
+name: 🐍 Python Package Release Pipeline
 
 on:
   push:
@@ -14,8 +14,11 @@ on:
       - '*.MD'
   pull_request:
     branches: [ main ]
-  release:
-    types: [published]
+    paths-ignore:
+      - '.github/**'
+      - 'docs/**'
+      - '*.md'
+      - '*.MD'
   workflow_dispatch:
     inputs:
       security-engine:
@@ -31,24 +34,33 @@ on:
         description: 'Skip PyPI publishing'
         type: boolean
         default: false
+      python-version:
+        description: 'Python version to use'
+        type: string
+        default: '3.12'
+      artifact-types:
+        description: 'Types of artifacts to generate'
+        type: choice
+        default: 'source'
+        options: ['source', 'binaries', 'docker', 'all']
 
 jobs:
-  release:
-    name: 📦 Python Package Pipeline
+  # Main Python CI/CD Pipeline using modular automation templates
+  python-pipeline:
+    name: 🐍 Python Release Pipeline
     uses: bauer-group/automation-templates/.github/workflows/python-automatic-release.yml@main
     with:
       # Python Configuration
-      python-version: '3.12'
+      python-version: ${{ inputs.python-version || '3.12' }}
+      package-source-path: 'src'  # Adjust to your package structure
       
-      # Version file location (optional - auto-discovered if not specified)
-      version-file: 'src/nocodb_simple_client/__init__.py'
-      
-      # Security scanning
+      # Security Configuration  
       security-engine: ${{ inputs.security-engine || 'both' }}
       
-      # Release control
+      # Release Configuration
       force-release: ${{ inputs.force-release || false }}
       skip-pypi: ${{ inputs.skip-pypi || false }}
+      artifact-types: ${{ inputs.artifact-types || 'source' }}
       
     secrets: inherit
     
