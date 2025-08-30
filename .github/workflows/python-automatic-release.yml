@@ -7,10 +7,9 @@ on:
   workflow_call:
     inputs:
       security-engine:
-        description: 'Security scan engine'
-        type: choice
+        description: 'Security scan engine (gitleaks, gitguardian, both)'
+        type: string
         default: 'both'
-        options: ['gitleaks', 'gitguardian', 'both']
       force-release:
         description: 'Force create release'
         type: boolean
