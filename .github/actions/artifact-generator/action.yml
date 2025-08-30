@@ -124,7 +124,7 @@ runs:
               ARCHIVE_NAME="${PROJECT_NAME}-${VERSION}-source.zip"
               
               # Create zip directly with proper structure
-              zip -r "artifacts/$ARCHIVE_NAME" . -x ".git/*" $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ /g' | sed 's/[^ ]*/&\/*/g')
+              zip -r "artifacts/$ARCHIVE_NAME" . -x ".git/*" "artifacts/*" $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ /g' | sed 's/[^ ]*/&\/*/g')
               
               GENERATED_ARCHIVES="$GENERATED_ARCHIVES,$ARCHIVE_NAME"
               echo "✅ Created: $ARCHIVE_NAME"
@@ -133,7 +133,7 @@ runs:
             "tar.gz")
               echo "Creating TAR.GZ archive..."
               ARCHIVE_NAME="${PROJECT_NAME}-${VERSION}-source.tar.gz"
-              tar -czf "artifacts/$ARCHIVE_NAME" --exclude='.git' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g') --transform "s,^,${PROJECT_NAME}-${VERSION}/," .
+              tar -czf "artifacts/$ARCHIVE_NAME" --exclude='.git' --exclude='artifacts' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g') --transform "s,^,${PROJECT_NAME}-${VERSION}/," .
               GENERATED_ARCHIVES="$GENERATED_ARCHIVES,$ARCHIVE_NAME"
               echo "✅ Created: $ARCHIVE_NAME"
               ;;
