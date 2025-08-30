@@ -1,3 +1,9 @@
+## [1.3.3](https://github.com/bauer-group/automation-templates/compare/v1.3.2...v1.3.3) (2025-08-30)
+
+### 🐛 Bug Fixes
+
+* update PyYAML version to 6.0.2 in requirements.txt ([f95a912](https://github.com/bauer-group/automation-templates/commit/f95a9129f589472ddf69c2cae9b3a7aee4ee6382))
+
 ## [1.3.2](https://github.com/bauer-group/automation-templates/compare/v1.3.1...v1.3.2) (2025-08-30)
 
 ### 🐛 Bug Fixes
