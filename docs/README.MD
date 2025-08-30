@@ -24,12 +24,23 @@ Master template for generating repository README files with dynamic content inje
 
 **Usage:**
 
-```bash
-# Generate README from template
-python scripts/generate_readme.py \
-  --template docs/README.template.MD \
-  --output README.MD \
-  --variables project-vars.json
+```yaml
+# Use via GitHub workflow call
+- name: 📝 Generate README
+  uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
+  with:
+    force-update: true
+    custom-version: "1.0.0"
+    
+# Or use the action directly
+- name: 📝 Generate README 
+  uses: bauer-group/automation-templates/.github/actions/readme-generate@main
+  with:
+    template-path: 'docs/README.template.MD'
+    output-path: 'README.MD'
+    project-name: 'My Project'
+    company-name: 'My Company'
+    custom-version: '1.0.0'
 ```
 
 **Template Variables:**
@@ -207,12 +218,12 @@ jobs:
         run: |
           pip install jinja2 pyyaml markdown
           
-      - name: Generate documentation
-        run: |
-          python scripts/generate_readme.py \
-            --template docs/README.template.MD \
-            --output README.MD \
-            --auto-variables
+      - name: 📝 Generate Professional README
+        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
+        with:
+          template-path: 'docs/README.template.MD'
+          output-path: 'README.MD'
+          force-update: true
             
       - name: Commit documentation
         run: |
@@ -225,24 +236,24 @@ jobs:
 
 ### Manual Generation
 
-```bash
-# Basic generation
-python scripts/generate_readme.py
+```yaml
+# Manual trigger workflow
+name: Manual README Generation
+on: workflow_dispatch
 
-# With custom template
-python scripts/generate_readme.py \
-  --template docs/custom-template.MD \
-  --output docs/generated/README.MD
-
-# With variable file
-python scripts/generate_readme.py \
-  --template docs/README.template.MD \
-  --variables docs/project-vars.json \
-  --output README.MD
-
-# Multiple outputs
-python scripts/generate_readme.py \
-  --template docs/README.template.MD \
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 📝 Generate README
+        uses: bauer-group/automation-templates/.github/actions/readme-generate@main
+        with:
+          template-path: 'docs/README.template.MD'
+          output-path: 'README.MD'
+          project-name: 'My Project'
+          company-name: 'My Company'
+          force-update: true
   --outputs "README.MD,docs/generated/README.html,docs/generated/README.pdf"
 ```
 
