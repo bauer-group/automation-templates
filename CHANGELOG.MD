@@ -1,3 +1,9 @@
+## [1.3.2](https://github.com/bauer-group/automation-templates/compare/v1.3.1...v1.3.2) (2025-08-30)
+
+### 🐛 Bug Fixes
+
+* add retry logic to documentation workflow for concurrent push conflicts ([b05652d](https://github.com/bauer-group/automation-templates/commit/b05652d9c0a74a20c5104ed74b781009b9d0f1fd))
+
 ## [1.3.1](https://github.com/bauer-group/automation-templates/compare/v1.3.0...v1.3.1) (2025-08-30)
 
 ### 🐛 Bug Fixes
