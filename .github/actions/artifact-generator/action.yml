@@ -18,7 +18,7 @@ inputs:
     required: false
     default: ''
   source-formats:
-    description: 'Source archive formats (zip,tar.gz,tar.xz)'
+    description: 'Source archive formats (zip,tar.gz)'
     required: false
     default: 'zip,tar.gz'
   exclude-paths:
@@ -138,13 +138,6 @@ runs:
               echo "✅ Created: $ARCHIVE_NAME"
               ;;
               
-            "tar.xz")
-              echo "Creating TAR.XZ archive..."
-              ARCHIVE_NAME="${PROJECT_NAME}-${VERSION}-source.tar.xz"
-              tar -cJf "artifacts/$ARCHIVE_NAME" --exclude='.git' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g') --transform "s,^,${PROJECT_NAME}-${VERSION}/," .
-              GENERATED_ARCHIVES="$GENERATED_ARCHIVES,$ARCHIVE_NAME"
-              echo "✅ Created: $ARCHIVE_NAME"
-              ;;
           esac
         done
         
