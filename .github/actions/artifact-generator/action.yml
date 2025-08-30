@@ -129,7 +129,15 @@ runs:
               mkdir -p "$TEMP_DIR"
               
               # Copy files excluding specified paths
-              rsync -av --exclude='.git' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g' | sed 's/^/--exclude=/') . "$TEMP_DIR/" || cp -r . "$TEMP_DIR/"
+              # Use rsync to copy contents (not the directory itself)
+              rsync -av --exclude='.git' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g' | sed 's/^/--exclude=/') ./ "$TEMP_DIR/" 2>/dev/null || {
+                # Fallback: copy all contents except excluded paths
+                for item in *; do
+                  if [[ "$item" != ".git" ]] && [[ ! "${{ inputs.exclude-paths }}" =~ "$item" ]]; then
+                    cp -r "$item" "$TEMP_DIR/"
+                  fi
+                done
+              }
               
               # Rename temp dir to final structure and create zip
               mv "$TEMP_DIR" "$FINAL_DIR"
@@ -148,7 +156,7 @@ runs:
                 TEMP_DIR="temp-${PROJECT_NAME}-${VERSION}"
                 FINAL_DIR="${PROJECT_NAME}-${VERSION}"
                 mkdir -p "$TEMP_DIR"
-                rsync -av --exclude='.git' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g' | sed 's/^/--exclude=/') . "$TEMP_DIR/"
+                rsync -av --exclude='.git' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g' | sed 's/^/--exclude=/') ./ "$TEMP_DIR/"
                 mv "$TEMP_DIR" "$FINAL_DIR"
                 tar -czf "artifacts/$ARCHIVE_NAME" "$FINAL_DIR"
                 rm -rf "$FINAL_DIR"
@@ -165,7 +173,7 @@ runs:
                 TEMP_DIR="temp-${PROJECT_NAME}-${VERSION}"
                 FINAL_DIR="${PROJECT_NAME}-${VERSION}"
                 mkdir -p "$TEMP_DIR"
-                rsync -av --exclude='.git' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g' | sed 's/^/--exclude=/') . "$TEMP_DIR/"
+                rsync -av --exclude='.git' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g' | sed 's/^/--exclude=/') ./ "$TEMP_DIR/"
                 mv "$TEMP_DIR" "$FINAL_DIR"
                 tar -cJf "artifacts/$ARCHIVE_NAME" "$FINAL_DIR"
                 rm -rf "$FINAL_DIR"
