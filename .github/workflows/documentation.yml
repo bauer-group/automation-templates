@@ -190,28 +190,56 @@ jobs:
           git merge --abort || true
           git fetch origin main
           
-          # Try a simple merge approach but restore generated content
-          if ! git merge origin/main --no-edit; then
-            echo "Merge conflict detected, resolving..."
-            # Restore our generated version
-            cp README.MD.generated README.MD
-            git add README.MD
-            git commit -m "$COMMIT_MSG"
-            git push origin main
-          else
-            echo "Clean merge successful"
-            # Restore our generated version (merge may have overwritten it)
-            cp README.MD.generated README.MD
-            git add README.MD
+          # Try merge and push with retry logic
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            echo "Attempt $((RETRY_COUNT + 1)) of $MAX_RETRIES"
             
-            # Only commit if there are changes
-            if git diff --staged --quiet; then
-              echo "No changes to commit after merge"
-            else
+            # Fresh fetch before each attempt
+            git fetch origin main
+            
+            # Try merge
+            if ! git merge origin/main --no-edit; then
+              echo "Merge conflict detected, resolving..."
+              # Restore our generated version
+              cp README.MD.generated README.MD
+              git add README.MD
               git commit -m "$COMMIT_MSG"
-              git push origin main
+            else
+              echo "Clean merge successful"
+              # Restore our generated version (merge may have overwritten it)
+              cp README.MD.generated README.MD
+              git add README.MD
+              
+              # Only commit if there are changes
+              if git diff --staged --quiet; then
+                echo "No changes to commit after merge"
+                break
+              else
+                git commit -m "$COMMIT_MSG"
+              fi
             fi
-          fi
+            
+            # Try push
+            if git push origin main; then
+              echo "✅ Push successful"
+              break
+            else
+              echo "⚠️ Push failed, retrying..."
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "Waiting 5 seconds before retry..."
+                sleep 5
+                # Reset to clean state for retry
+                git reset --hard HEAD~1
+              else
+                echo "❌ Failed to push after $MAX_RETRIES attempts"
+                exit 1
+              fi
+            fi
+          done
           
           # Clean up
           rm -f README.MD.generated
