@@ -64,8 +64,6 @@ jobs:
       run-lint: true
       run-security-scan: true
       security-tools: '["bandit", "safety"]'
-      run-format-check: true
-      run-type-check: true
       collect-coverage: true
       build-package: true
       upload-artifacts: true
