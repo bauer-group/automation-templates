@@ -110,11 +110,11 @@ runs:
           CURRENT_VERSION="${{ inputs.custom-version }}"
           echo "Using custom version: $CURRENT_VERSION"
         else
-          # Try to get latest tag
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          # Try to get latest tag (search all tags, not just reachable ones)
+          LATEST_TAG=$(git tag --sort=-version:refname | head -1 2>/dev/null || echo "")
           if [ -n "$LATEST_TAG" ]; then
             CURRENT_VERSION="${LATEST_TAG#v}"
-            echo "Using latest tag: $CURRENT_VERSION"
+            echo "Using latest tag: $CURRENT_VERSION (from tag: $LATEST_TAG)"
           else
             CURRENT_VERSION="0.1.0"
             echo "No tags found, using: $CURRENT_VERSION"
