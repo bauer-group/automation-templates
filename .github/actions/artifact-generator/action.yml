@@ -133,7 +133,7 @@ runs:
             "tar.gz")
               echo "Creating TAR.GZ archive..."
               ARCHIVE_NAME="${PROJECT_NAME}-${VERSION}-source.tar.gz"
-              tar -czf "artifacts/$ARCHIVE_NAME" --exclude='.git' --exclude='artifacts' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g') .
+              tar -czf "artifacts/$ARCHIVE_NAME" --exclude='.git' --exclude='artifacts' $(echo "${{ inputs.exclude-paths }}" | sed 's/,/ --exclude=/g') *
               GENERATED_ARCHIVES="$GENERATED_ARCHIVES,$ARCHIVE_NAME"
               echo "✅ Created: $ARCHIVE_NAME"
               ;;
