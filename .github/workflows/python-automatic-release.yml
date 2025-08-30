@@ -27,11 +27,6 @@ on:
         description: 'Path to package source (e.g., src/package_name)'
         type: string
         default: 'src'
-      artifact-types:
-        description: 'Artifact types to generate'
-        type: choice
-        default: 'source'
-        options: ['source', 'binaries', 'docker', 'all']
     secrets:
       PYPI_API_TOKEN:
         description: 'PyPI API token for publishing'
@@ -131,7 +126,7 @@ jobs:
     needs: release-management
     uses: bauer-group/automation-templates/.github/workflows/modules-artifact-generation.yml@main
     with:
-      artifact-types: ${{ inputs.artifact-types || 'source' }}
+      artifact-types: 'source'
       tag-name: ${{ needs.release-management.outputs.tag-name }}
       version: ${{ needs.release-management.outputs.version }}
 
