@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/bauer-group/automation-templates/compare/v1.3.0...v1.3.1) (2025-08-30)
+
+### 🐛 Bug Fixes
+
+* ensure newline at end of file in deploy-automations.sh ([ba18ab3](https://github.com/bauer-group/automation-templates/commit/ba18ab3056a4b3d4672bf3b93d752abbaa8391d6))
+* improve version detection and clean workflow path filters ([724e1bf](https://github.com/bauer-group/automation-templates/commit/724e1bf02a99245449ee9ba12a9a9e0d697428aa))
+
 ## [1.3.0](https://github.com/bauer-group/automation-templates/compare/v1.2.0...v1.3.0) (2025-08-29)
 
 ### 🚀 Features
