@@ -1,3 +1,10 @@
+## [1.3.8](https://github.com/bauer-group/automation-templates/compare/v1.3.7...v1.3.8) (2025-08-30)
+
+### 🐛 Bug Fixes
+
+* update example value for minimum coverage in deployment config ([09e90e6](https://github.com/bauer-group/automation-templates/commit/09e90e6f3c752b6d2e068a1df9f4dec3237c3ecf))
+* update security policy job dependencies to include documentation update ([257c823](https://github.com/bauer-group/automation-templates/commit/257c8232aec2c912509567f857882820fa827953))
+
 ## [1.3.7](https://github.com/bauer-group/automation-templates/compare/v1.3.6...v1.3.7) (2025-08-30)
 
 ### 🐛 Bug Fixes
