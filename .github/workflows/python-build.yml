@@ -261,7 +261,7 @@ on:
         description: 'Python version matrix as JSON array'
         type: string
         required: false
-        default: '["3.11"]'
+        default: '["3.12"]'
       
       matrix-fail-fast:
         description: 'Fail fast in matrix builds'
@@ -354,7 +354,7 @@ jobs:
     strategy:
       matrix:
         os: ${{ inputs.enable-matrix && fromJson(inputs.matrix-os) || fromJson('["ubuntu-latest"]') }}
-        python-version: ${{ inputs.enable-matrix && fromJson(inputs.matrix-python) || fromJson('["3.11"]') }}
+        python-version: ${{ inputs.enable-matrix && fromJson(inputs.matrix-python) || fromJson('["3.12"]') }}
       fail-fast: ${{ inputs.matrix-fail-fast }}
     
     outputs:

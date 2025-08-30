@@ -5,9 +5,9 @@ name: Python Application CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
   workflow_dispatch:
 
 permissions:
@@ -21,43 +21,43 @@ jobs:
     uses: ./.github/workflows/python-build.yml
     with:
       # Basic Configuration
-      python-version: '3.11'
-      working-directory: '.'
-      project-type: 'app'
-      
+      python-version: "3.12"
+      working-directory: "."
+      project-type: "app"
+
       # Dependencies
       requirements-files: '["requirements.txt", "requirements-dev.txt"]'
       install-dev-requirements: true
-      package-manager: 'pip'
+      package-manager: "pip"
       cache-dependencies: true
-      
+
       # Testing
       run-tests: true
-      test-framework: 'pytest'
-      test-path: 'tests'
+      test-framework: "pytest"
+      test-path: "tests"
       collect-coverage: true
       coverage-threshold: 80
-      coverage-format: 'xml,html'
-      
+      coverage-format: "xml,html"
+
       # Code Quality
       run-lint: true
-      linter: 'flake8'
+      linter: "flake8"
       max-line-length: 127
       run-format-check: false
       run-type-check: false
-      
+
       # Security
       run-security-scan: true
       security-tools: '["bandit", "safety"]'
       security-fail-on-error: false
-      
+
       # Artifacts
       upload-artifacts: true
-      artifact-name: 'python-app'
-      
+      artifact-name: "python-app"
+
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      
+
   # Optional: Deploy to staging after successful build
   deploy-staging:
     name: Deploy to Staging
@@ -67,14 +67,14 @@ jobs:
     environment:
       name: staging
       url: https://staging.example.com
-    
+
     steps:
       - name: Deploy Application
         run: |
           echo "Deploying Python application to staging..."
           # Add your deployment commands here
           # Example: kubectl, docker, rsync, etc.
-          
+
   # Optional: Deploy to production after successful build on main
   deploy-production:
     name: Deploy to Production
@@ -84,7 +84,7 @@ jobs:
     environment:
       name: production
       url: https://example.com
-    
+
     steps:
       - name: Deploy Application
         run: |

@@ -5,27 +5,27 @@ name: ML Model Training & Deployment
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
     paths:
-      - 'src/**'
-      - 'models/**'
-      - 'data/**'
-      - 'notebooks/**'
+      - "src/**"
+      - "models/**"
+      - "data/**"
+      - "notebooks/**"
   pull_request:
-    branches: [ main ]
+    branches: [main]
   schedule:
     # Retrain model weekly on Sundays at 2 AM UTC
-    - cron: '0 2 * * 0'
+    - cron: "0 2 * * 0"
   workflow_dispatch:
     inputs:
       retrain_model:
-        description: 'Force model retraining'
+        description: "Force model retraining"
         required: false
-        default: 'false'
+        default: "false"
         type: boolean
 
 env:
-  PYTHON_VERSION: "3.11"
+  PYTHON_version: "3.12"
   MODEL_NAME: "my-ml-model"
   EXPERIMENT_NAME: "github-actions-training"
 
@@ -40,34 +40,34 @@ jobs:
     timeout-minutes: 20
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python ${{ env.PYTHON_VERSION }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-        cache: 'pip'
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -r requirements-ml.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-ml.txt
 
-    - name: Validate data schema
-      run: |
-        python scripts/validate_data.py --data-path data/raw/
+      - name: Validate data schema
+        run: |
+          python scripts/validate_data.py --data-path data/raw/
 
-    - name: Data quality checks
-      run: |
-        python scripts/data_quality.py --input data/raw/ --output reports/
+      - name: Data quality checks
+        run: |
+          python scripts/data_quality.py --input data/raw/ --output reports/
 
-    - name: Upload data quality reports
-      uses: actions/upload-artifact@v4
-      with:
-        name: data-quality-reports
-        path: reports/
+      - name: Upload data quality reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-quality-reports
+          path: reports/
 
   model-training:
     needs: data-validation
@@ -75,60 +75,60 @@ jobs:
     timeout-minutes: 60
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python ${{ env.PYTHON_VERSION }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-        cache: 'pip'
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -r requirements-ml.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-ml.txt
 
-    - name: Preprocess data
-      run: |
-        python scripts/preprocess.py --input data/raw/ --output data/processed/
+      - name: Preprocess data
+        run: |
+          python scripts/preprocess.py --input data/raw/ --output data/processed/
 
-    - name: Train model
-      run: |
-        python scripts/train.py \
-          --data data/processed/ \
-          --model-name ${{ env.MODEL_NAME }} \
-          --experiment-name ${{ env.EXPERIMENT_NAME }} \
-          --output models/
+      - name: Train model
+        run: |
+          python scripts/train.py \
+            --data data/processed/ \
+            --model-name ${{ env.MODEL_NAME }} \
+            --experiment-name ${{ env.EXPERIMENT_NAME }} \
+            --output models/
 
-    - name: Evaluate model
-      run: |
-        python scripts/evaluate.py \
-          --model models/${{ env.MODEL_NAME }} \
-          --data data/processed/test/ \
-          --output reports/evaluation/
+      - name: Evaluate model
+        run: |
+          python scripts/evaluate.py \
+            --model models/${{ env.MODEL_NAME }} \
+            --data data/processed/test/ \
+            --output reports/evaluation/
 
-    - name: Model validation
-      run: |
-        python scripts/validate_model.py \
-          --model models/${{ env.MODEL_NAME }} \
-          --threshold 0.85
+      - name: Model validation
+        run: |
+          python scripts/validate_model.py \
+            --model models/${{ env.MODEL_NAME }} \
+            --threshold 0.85
 
-    - name: Generate model documentation
-      run: |
-        python scripts/generate_model_docs.py \
-          --model models/${{ env.MODEL_NAME }} \
-          --output docs/model/
+      - name: Generate model documentation
+        run: |
+          python scripts/generate_model_docs.py \
+            --model models/${{ env.MODEL_NAME }} \
+            --output docs/model/
 
-    - name: Upload model artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: model-artifacts
-        path: |
-          models/
-          reports/evaluation/
-          docs/model/
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-artifacts
+          path: |
+            models/
+            reports/evaluation/
+            docs/model/
 
   model-testing:
     needs: model-training
@@ -136,78 +136,78 @@ jobs:
     timeout-minutes: 30
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python ${{ env.PYTHON_VERSION }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-        cache: 'pip'
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -r requirements-ml.txt
-        pip install pytest pytest-cov
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-ml.txt
+          pip install pytest pytest-cov
 
-    - name: Download model artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: model-artifacts
+      - name: Download model artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: model-artifacts
 
-    - name: Test model inference
-      run: |
-        pytest tests/test_model_inference.py -v
+      - name: Test model inference
+        run: |
+          pytest tests/test_model_inference.py -v
 
-    - name: Test model performance
-      run: |
-        pytest tests/test_model_performance.py -v
+      - name: Test model performance
+        run: |
+          pytest tests/test_model_performance.py -v
 
-    - name: Integration tests
-      run: |
-        pytest tests/test_integration.py -v
+      - name: Integration tests
+        run: |
+          pytest tests/test_integration.py -v
 
-    - name: Load testing
-      run: |
-        python scripts/load_test.py --model models/${{ env.MODEL_NAME }}
+      - name: Load testing
+        run: |
+          python scripts/load_test.py --model models/${{ env.MODEL_NAME }}
 
   security-scan:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python ${{ env.PYTHON_VERSION }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-        cache: 'pip'
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install safety bandit
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install safety bandit
 
-    - name: Check for vulnerabilities in dependencies
-      run: |
-        safety check --json --output safety-report.json
+      - name: Check for vulnerabilities in dependencies
+        run: |
+          safety check --json --output safety-report.json
 
-    - name: Security linting
-      run: |
-        bandit -r src/ -f json -o bandit-report.json
+      - name: Security linting
+        run: |
+          bandit -r src/ -f json -o bandit-report.json
 
-    - name: Upload security reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: security-reports
-        path: |
-          safety-report.json
-          bandit-report.json
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            safety-report.json
+            bandit-report.json
 
   docker-build:
     needs: [model-testing, security-scan]
@@ -215,46 +215,46 @@ jobs:
     timeout-minutes: 20
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Download model artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: model-artifacts
+      - name: Download model artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: model-artifacts
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Log in to GitHub Container Registry
-      if: github.event_name != 'pull_request'
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ghcr.io/${{ github.repository }}/ml-service
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix={{branch}}-
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/ml-service
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: Dockerfile.ml-service
-        platforms: linux/amd64
-        push: ${{ github.event_name != 'pull_request' }}
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.ml-service
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy-staging:
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
@@ -265,16 +265,16 @@ jobs:
       url: https://ml-api-staging.example.com
 
     steps:
-    - name: Deploy ML service to staging
-      run: |
-        echo "Deploying ML service to staging..."
-        # kubectl set image deployment/ml-service ml-service=ghcr.io/${{ github.repository }}/ml-service:${{ github.sha }}
+      - name: Deploy ML service to staging
+        run: |
+          echo "Deploying ML service to staging..."
+          # kubectl set image deployment/ml-service ml-service=ghcr.io/${{ github.repository }}/ml-service:${{ github.sha }}
 
-    - name: Run smoke tests
-      run: |
-        echo "Running smoke tests..."
-        # curl -f https://ml-api-staging.example.com/health
-        # curl -f https://ml-api-staging.example.com/predict -X POST -d '{"data": "test"}'
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests..."
+          # curl -f https://ml-api-staging.example.com/health
+          # curl -f https://ml-api-staging.example.com/predict -X POST -d '{"data": "test"}'
 
   deploy-production:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -285,20 +285,20 @@ jobs:
       url: https://ml-api.example.com
 
     steps:
-    - name: Deploy ML service to production
-      run: |
-        echo "Deploying ML service to production..."
-        # kubectl set image deployment/ml-service ml-service=ghcr.io/${{ github.repository }}/ml-service:${{ github.sha }}
+      - name: Deploy ML service to production
+        run: |
+          echo "Deploying ML service to production..."
+          # kubectl set image deployment/ml-service ml-service=ghcr.io/${{ github.repository }}/ml-service:${{ github.sha }}
 
-    - name: Run production smoke tests
-      run: |
-        echo "Running production smoke tests..."
-        # curl -f https://ml-api.example.com/health
+      - name: Run production smoke tests
+        run: |
+          echo "Running production smoke tests..."
+          # curl -f https://ml-api.example.com/health
 
-    - name: Update model registry
-      run: |
-        echo "Updating model registry..."
-        # python scripts/update_model_registry.py --model-version ${{ github.sha }}
+      - name: Update model registry
+        run: |
+          echo "Updating model registry..."
+          # python scripts/update_model_registry.py --model-version ${{ github.sha }}
 
   monitoring-setup:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -306,7 +306,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Setup model monitoring
-      run: |
-        echo "Setting up model monitoring..."
-        # Configure drift detection, performance monitoring, etc.
+      - name: Setup model monitoring
+        run: |
+          echo "Setting up model monitoring..."
+          # Configure drift detection, performance monitoring, etc.

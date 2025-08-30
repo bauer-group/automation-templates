@@ -1,778 +1,778 @@
-name: '🧹 Repository Cleanup'
-description: 'Comprehensive repository cleanup with configurable parameters for releases, branches, tags, PRs and workflow runs'
-author: 'BAUER GROUP'
+name: "🧹 Repository Cleanup"
+description: "Comprehensive repository cleanup with configurable parameters for releases, branches, tags, PRs and workflow runs"
+author: "BAUER GROUP"
 
 branding:
-  icon: 'trash-2'
-  color: 'red'
+    icon: "trash-2"
+    color: "red"
 
 inputs:
-  # Repository Configuration
-  repository:
-    description: 'Target repository in format owner/repo (defaults to current repository)'
-    required: false
-    default: ${{ github.repository }}
-  
-  github-token:
-    description: 'GitHub token with appropriate permissions'
-    required: true
-  
-  # Cleanup Configuration
-  cleanup-releases:
-    description: 'Delete releases'
-    required: false
-    default: 'false'
-  
-  cleanup-tags:
-    description: 'Delete tags'
-    required: false
-    default: 'false'
-  
-  cleanup-branches:
-    description: 'Delete branches (except protected ones)'
-    required: false
-    default: 'false'
-  
-  cleanup-pull-requests:
-    description: 'Close/delete pull requests'
-    required: false
-    default: 'false'
-  
-  cleanup-workflow-runs:
-    description: 'Delete workflow runs'
-    required: false
-    default: 'false'
-  
-  cleanup-issues:
-    description: 'Close issues'
-    required: false
-    default: 'false'
-  
-  # Age-based Filtering
-  max-age-days:
-    description: 'Only cleanup items older than this many days (0 = no age limit)'
-    required: false
-    default: '0'
-  
-  # Branch Protection
-  protected-branches:
-    description: 'Comma-separated list of branches to protect from deletion'
-    required: false
-    default: 'main,master,develop,staging'
-  
-  # PR Handling
-  pr-action:
-    description: 'Action for PRs: close, comment-and-close'
-    required: false
-    default: 'close'
-  
-  pr-comment:
-    description: 'Comment to add before closing PRs'
-    required: false
-    default: '🧹 This PR is being closed as part of repository cleanup automation.'
-  
-  # Dry Run
-  dry-run:
-    description: 'Perform dry run without making actual changes'
-    required: false
-    default: 'true'
-  
-  # Batch Configuration
-  batch-size:
-    description: 'Number of items to process in each batch'
-    required: false
-    default: '50'
-  
-  batch-delay:
-    description: 'Delay in seconds between batches to avoid rate limiting'
-    required: false
-    default: '2'
-  
-  # Advanced Options
-  force-delete:
-    description: 'Force delete protected items (use with extreme caution)'
-    required: false
-    default: 'false'
-  
-  skip-confirmation:
-    description: 'Skip interactive confirmation prompts'
-    required: false
-    default: 'false'
-  
-  # Filtering Options
-  include-patterns:
-    description: 'JSON array of patterns to include (regex support)'
-    required: false
-    default: '[]'
-  
-  exclude-patterns:
-    description: 'JSON array of patterns to exclude (regex support)'
-    required: false
-    default: '[]'
-  
-  # Logging
-  verbose:
-    description: 'Enable verbose logging'
-    required: false
-    default: 'false'
-  
-  log-format:
-    description: 'Log format: text, json'
-    required: false
-    default: 'text'
+    # Repository Configuration
+    repository:
+        description: "Target repository in format owner/repo (defaults to current repository)"
+        required: false
+        default: ${{ github.repository }}
+
+    github-token:
+        description: "GitHub token with appropriate permissions"
+        required: true
+
+    # Cleanup Configuration
+    cleanup-releases:
+        description: "Delete releases"
+        required: false
+        default: "false"
+
+    cleanup-tags:
+        description: "Delete tags"
+        required: false
+        default: "false"
+
+    cleanup-branches:
+        description: "Delete branches (except protected ones)"
+        required: false
+        default: "false"
+
+    cleanup-pull-requests:
+        description: "Close/delete pull requests"
+        required: false
+        default: "false"
+
+    cleanup-workflow-runs:
+        description: "Delete workflow runs"
+        required: false
+        default: "false"
+
+    cleanup-issues:
+        description: "Close issues"
+        required: false
+        default: "false"
+
+    # Age-based Filtering
+    max-age-days:
+        description: "Only cleanup items older than this many days (0 = no age limit)"
+        required: false
+        default: "0"
+
+    # Branch Protection
+    protected-branches:
+        description: "Comma-separated list of branches to protect from deletion"
+        required: false
+        default: "main,master,develop,staging"
+
+    # PR Handling
+    pr-action:
+        description: "Action for PRs: close, comment-and-close"
+        required: false
+        default: "close"
+
+    pr-comment:
+        description: "Comment to add before closing PRs"
+        required: false
+        default: "🧹 This PR is being closed as part of repository cleanup automation."
+
+    # Dry Run
+    dry-run:
+        description: "Perform dry run without making actual changes"
+        required: false
+        default: "true"
+
+    # Batch Configuration
+    batch-size:
+        description: "Number of items to process in each batch"
+        required: false
+        default: "50"
+
+    batch-delay:
+        description: "Delay in seconds between batches to avoid rate limiting"
+        required: false
+        default: "2"
+
+    # Advanced Options
+    force-delete:
+        description: "Force delete protected items (use with extreme caution)"
+        required: false
+        default: "false"
+
+    skip-confirmation:
+        description: "Skip interactive confirmation prompts"
+        required: false
+        default: "false"
+
+    # Filtering Options
+    include-patterns:
+        description: "JSON array of patterns to include (regex support)"
+        required: false
+        default: "[]"
+
+    exclude-patterns:
+        description: "JSON array of patterns to exclude (regex support)"
+        required: false
+        default: "[]"
+
+    # Logging
+    verbose:
+        description: "Enable verbose logging"
+        required: false
+        default: "false"
+
+    log-format:
+        description: "Log format: text, json"
+        required: false
+        default: "text"
 
 outputs:
-  cleanup-summary:
-    description: 'Summary of cleanup operations performed'
-    value: ${{ steps.cleanup.outputs.summary }}
-  
-  items-processed:
-    description: 'Total number of items processed'
-    value: ${{ steps.cleanup.outputs.items-processed }}
-  
-  items-deleted:
-    description: 'Total number of items deleted'
-    value: ${{ steps.cleanup.outputs.items-deleted }}
-  
-  items-skipped:
-    description: 'Total number of items skipped'
-    value: ${{ steps.cleanup.outputs.items-skipped }}
-  
-  errors-count:
-    description: 'Number of errors encountered'
-    value: ${{ steps.cleanup.outputs.errors-count }}
-  
-  execution-time:
-    description: 'Total execution time in seconds'
-    value: ${{ steps.cleanup.outputs.execution-time }}
+    cleanup-summary:
+        description: "Summary of cleanup operations performed"
+        value: ${{ steps.cleanup.outputs.summary }}
+
+    items-processed:
+        description: "Total number of items processed"
+        value: ${{ steps.cleanup.outputs.items-processed }}
+
+    items-deleted:
+        description: "Total number of items deleted"
+        value: ${{ steps.cleanup.outputs.items-deleted }}
+
+    items-skipped:
+        description: "Total number of items skipped"
+        value: ${{ steps.cleanup.outputs.items-skipped }}
+
+    errors-count:
+        description: "Number of errors encountered"
+        value: ${{ steps.cleanup.outputs.errors-count }}
+
+    execution-time:
+        description: "Total execution time in seconds"
+        value: ${{ steps.cleanup.outputs.execution-time }}
 
 runs:
-  using: 'composite'
-  steps:
-    - name: 🔍 Validate Inputs
-      shell: bash
-      run: |
-        echo "🔍 Validating cleanup configuration..."
-        
-        # Parse repository
-        REPO="${{ inputs.repository }}"
-        IFS='/' read -r OWNER REPO_NAME <<< "$REPO"
-        
-        if [[ -z "$OWNER" || -z "$REPO_NAME" ]]; then
-          echo "❌ Invalid repository format: $REPO"
-          echo "Expected format: owner/repo"
-          exit 1
-        fi
-        
-        # Validate age filter
-        MAX_AGE="${{ inputs.max-age-days }}"
-        if ! [[ "$MAX_AGE" =~ ^[0-9]+$ ]]; then
-          echo "❌ Invalid max-age-days: $MAX_AGE"
-          echo "Expected positive integer"
-          exit 1
-        fi
-        
-        # Validate batch configuration
-        BATCH_SIZE="${{ inputs.batch-size }}"
-        BATCH_DELAY="${{ inputs.batch-delay }}"
-        
-        if ! [[ "$BATCH_SIZE" =~ ^[1-9][0-9]*$ ]] || [ "$BATCH_SIZE" -gt 100 ]; then
-          echo "❌ Invalid batch-size: $BATCH_SIZE"
-          echo "Expected integer between 1 and 100"
-          exit 1
-        fi
-        
-        if ! [[ "$BATCH_DELAY" =~ ^[0-9]+$ ]]; then
-          echo "❌ Invalid batch-delay: $BATCH_DELAY"
-          echo "Expected non-negative integer"
-          exit 1
-        fi
-        
-        # Check if any cleanup option is enabled
-        CLEANUP_ENABLED=false
-        
-        if [[ "${{ inputs.cleanup-releases }}" == "true" ]] || \
-           [[ "${{ inputs.cleanup-tags }}" == "true" ]] || \
-           [[ "${{ inputs.cleanup-branches }}" == "true" ]] || \
-           [[ "${{ inputs.cleanup-pull-requests }}" == "true" ]] || \
-           [[ "${{ inputs.cleanup-workflow-runs }}" == "true" ]] || \
-           [[ "${{ inputs.cleanup-issues }}" == "true" ]]; then
-          CLEANUP_ENABLED=true
-        fi
-        
-        if [[ "$CLEANUP_ENABLED" != "true" ]]; then
-          echo "⚠️ No cleanup operations enabled"
-          echo "At least one cleanup option must be set to 'true'"
-          exit 1
-        fi
-        
-        echo "✅ Configuration validation completed"
-        echo "Repository: $OWNER/$REPO_NAME"
-        echo "Dry run: ${{ inputs.dry-run }}"
-        echo "Max age: $MAX_AGE days"
+    using: "composite"
+    steps:
+        - name: 🔍 Validate Inputs
+          shell: bash
+          run: |
+              echo "🔍 Validating cleanup configuration..."
 
-    - name: 🔧 Setup Python Environment
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+              # Parse repository
+              REPO="${{ inputs.repository }}"
+              IFS='/' read -r OWNER REPO_NAME <<< "$REPO"
 
-    - name: 📦 Install Dependencies
-      shell: bash
-      run: |
-        pip install --upgrade pip
-        pip install requests PyGithub python-dateutil
+              if [[ -z "$OWNER" || -z "$REPO_NAME" ]]; then
+                echo "❌ Invalid repository format: $REPO"
+                echo "Expected format: owner/repo"
+                exit 1
+              fi
 
-    - name: 🧹 Execute Repository Cleanup
-      id: cleanup
-      shell: bash
-      env:
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-        REPOSITORY: ${{ inputs.repository }}
-        CLEANUP_RELEASES: ${{ inputs.cleanup-releases }}
-        CLEANUP_TAGS: ${{ inputs.cleanup-tags }}
-        CLEANUP_BRANCHES: ${{ inputs.cleanup-branches }}
-        CLEANUP_PRS: ${{ inputs.cleanup-pull-requests }}
-        CLEANUP_WORKFLOWS: ${{ inputs.cleanup-workflow-runs }}
-        CLEANUP_ISSUES: ${{ inputs.cleanup-issues }}
-        MAX_AGE_DAYS: ${{ inputs.max-age-days }}
-        PROTECTED_BRANCHES: ${{ inputs.protected-branches }}
-        PR_ACTION: ${{ inputs.pr-action }}
-        PR_COMMENT: ${{ inputs.pr-comment }}
-        DRY_RUN: ${{ inputs.dry-run }}
-        BATCH_SIZE: ${{ inputs.batch-size }}
-        BATCH_DELAY: ${{ inputs.batch-delay }}
-        FORCE_DELETE: ${{ inputs.force-delete }}
-        SKIP_CONFIRMATION: ${{ inputs.skip-confirmation }}
-        INCLUDE_PATTERNS: ${{ inputs.include-patterns }}
-        EXCLUDE_PATTERNS: ${{ inputs.exclude-patterns }}
-        VERBOSE: ${{ inputs.verbose }}
-        LOG_FORMAT: ${{ inputs.log-format }}
-      run: |
-        cat << 'EOF' > cleanup_script.py
-        #!/usr/bin/env python3
-        import os
-        import sys
-        import json
-        import re
-        import time
-        from datetime import datetime, timedelta, timezone
-        from typing import List, Dict, Optional, Any
-        from github import Github, GithubException
-        import requests
-        from dateutil.parser import parse as parse_date
-        
-        class RepositoryCleanup:
-            def __init__(self):
-                self.github = Github(os.environ['GITHUB_TOKEN'])
-                self.repo_name = os.environ['REPOSITORY']
-                self.repo = self.github.get_repo(self.repo_name)
-                
-                # Configuration
-                self.dry_run = os.environ.get('DRY_RUN', 'true').lower() == 'true'
-                self.max_age_days = int(os.environ.get('MAX_AGE_DAYS', '0'))
-                self.batch_size = int(os.environ.get('BATCH_SIZE', '50'))
-                self.batch_delay = int(os.environ.get('BATCH_DELAY', '2'))
-                self.verbose = os.environ.get('VERBOSE', 'false').lower() == 'true'
-                self.force_delete = os.environ.get('FORCE_DELETE', 'false').lower() == 'true'
-                
-                # Protected branches
-                self.protected_branches = set(
-                    branch.strip() for branch in 
-                    os.environ.get('PROTECTED_BRANCHES', 'main,master,develop,staging').split(',')
-                )
-                
-                # Patterns
-                self.include_patterns = json.loads(os.environ.get('INCLUDE_PATTERNS', '[]'))
-                self.exclude_patterns = json.loads(os.environ.get('EXCLUDE_PATTERNS', '[]'))
-                
-                # Statistics
-                self.stats = {
-                    'processed': 0,
-                    'deleted': 0,
-                    'skipped': 0,
-                    'errors': 0,
-                    'start_time': time.time()
-                }
-                
-                # Age cutoff
-                if self.max_age_days > 0:
-                    self.age_cutoff = datetime.now(timezone.utc) - timedelta(days=self.max_age_days)
-                else:
-                    self.age_cutoff = None
-                
-                print(f"🧹 Repository Cleanup initialized")
-                print(f"📁 Repository: {self.repo_name}")
-                print(f"🔍 Dry run: {self.dry_run}")
-                print(f"📅 Max age: {self.max_age_days} days" if self.max_age_days > 0 else "📅 No age limit")
-                print(f"🛡️ Protected branches: {', '.join(self.protected_branches)}")
-        
-            def log(self, message: str, level: str = "INFO"):
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                prefix = "🔍 [DRY-RUN]" if self.dry_run else "🔧"
-                
-                if level == "ERROR":
-                    emoji = "❌"
-                elif level == "WARNING":
-                    emoji = "⚠️"
-                elif level == "SUCCESS":
-                    emoji = "✅"
-                else:
-                    emoji = "ℹ️"
-                
-                log_message = f"{prefix} [{timestamp}] {emoji} {message}"
-                print(log_message)
-        
-            def matches_patterns(self, name: str) -> bool:
-                """Check if name matches include/exclude patterns"""
-                # Check exclude patterns first
-                for pattern in self.exclude_patterns:
-                    if re.search(pattern, name):
-                        return False
-                
-                # If include patterns exist, name must match at least one
-                if self.include_patterns:
-                    return any(re.search(pattern, name) for pattern in self.include_patterns)
-                
-                return True
-        
-            def is_too_recent(self, date_obj) -> bool:
-                """Check if item is too recent to delete"""
-                if not self.age_cutoff:
-                    return False
-                
-                if hasattr(date_obj, 'created_at'):
-                    item_date = date_obj.created_at
-                elif hasattr(date_obj, 'updated_at'):
-                    item_date = date_obj.updated_at
-                else:
-                    return False
-                
-                return item_date > self.age_cutoff
-        
-            def cleanup_releases(self):
-                if os.environ.get('CLEANUP_RELEASES', 'false').lower() != 'true':
-                    return
-                
-                self.log("🚀 Starting release cleanup...")
-                
-                try:
-                    releases = list(self.repo.get_releases())
-                    self.log(f"Found {len(releases)} releases")
-                    
-                    for i, release in enumerate(releases):
-                        self.stats['processed'] += 1
-                        
-                        if not self.matches_patterns(release.name or release.tag_name):
-                            self.stats['skipped'] += 1
-                            self.log(f"Skipped release {release.tag_name} (pattern mismatch)")
-                            continue
-                        
-                        if self.is_too_recent(release):
-                            self.stats['skipped'] += 1
-                            self.log(f"Skipped release {release.tag_name} (too recent)")
-                            continue
-                        
-                        if not self.dry_run:
-                            try:
-                                release.delete_release()
-                                self.stats['deleted'] += 1
-                                self.log(f"Deleted release: {release.tag_name}", "SUCCESS")
-                            except GithubException as e:
-                                self.stats['errors'] += 1
-                                self.log(f"Failed to delete release {release.tag_name}: {e}", "ERROR")
-                        else:
-                            self.stats['deleted'] += 1
-                            self.log(f"Would delete release: {release.tag_name}")
-                        
-                        # Rate limiting
-                        if (i + 1) % self.batch_size == 0:
-                            time.sleep(self.batch_delay)
-                            
-                except Exception as e:
-                    self.log(f"Error during release cleanup: {e}", "ERROR")
-                    self.stats['errors'] += 1
-        
-            def cleanup_tags(self):
-                if os.environ.get('CLEANUP_TAGS', 'false').lower() != 'true':
-                    return
-                
-                self.log("🏷️ Starting tag cleanup...")
-                
-                try:
-                    tags = list(self.repo.get_tags())
-                    self.log(f"Found {len(tags)} tags")
-                    
-                    for i, tag in enumerate(tags):
-                        self.stats['processed'] += 1
-                        
-                        if not self.matches_patterns(tag.name):
-                            self.stats['skipped'] += 1
-                            self.log(f"Skipped tag {tag.name} (pattern mismatch)")
-                            continue
-                        
-                        # Check if tag has associated release
-                        try:
-                            release = self.repo.get_release(tag.name)
-                            if release:
-                                self.stats['skipped'] += 1
-                                self.log(f"Skipped tag {tag.name} (has associated release)")
-                                continue
-                        except GithubException:
-                            pass  # No associated release, proceed with deletion
-                        
-                        if not self.dry_run:
-                            try:
-                                # Delete tag reference
-                                self.repo.get_git_ref(f"tags/{tag.name}").delete()
-                                self.stats['deleted'] += 1
-                                self.log(f"Deleted tag: {tag.name}", "SUCCESS")
-                            except GithubException as e:
-                                self.stats['errors'] += 1
-                                self.log(f"Failed to delete tag {tag.name}: {e}", "ERROR")
-                        else:
-                            self.stats['deleted'] += 1
-                            self.log(f"Would delete tag: {tag.name}")
-                        
-                        # Rate limiting
-                        if (i + 1) % self.batch_size == 0:
-                            time.sleep(self.batch_delay)
-                            
-                except Exception as e:
-                    self.log(f"Error during tag cleanup: {e}", "ERROR")
-                    self.stats['errors'] += 1
-        
-            def cleanup_branches(self):
-                if os.environ.get('CLEANUP_BRANCHES', 'false').lower() != 'true':
-                    return
-                
-                self.log("🌿 Starting branch cleanup...")
-                
-                try:
-                    branches = list(self.repo.get_branches())
-                    self.log(f"Found {len(branches)} branches")
-                    
-                    for i, branch in enumerate(branches):
-                        self.stats['processed'] += 1
-                        
-                        if branch.name in self.protected_branches:
-                            self.stats['skipped'] += 1
-                            self.log(f"Skipped protected branch: {branch.name}")
-                            continue
-                        
-                        if not self.matches_patterns(branch.name):
-                            self.stats['skipped'] += 1
-                            self.log(f"Skipped branch {branch.name} (pattern mismatch)")
-                            continue
-                        
-                        # Check if branch is protected
-                        if branch.protected and not self.force_delete:
-                            self.stats['skipped'] += 1
-                            self.log(f"Skipped protected branch: {branch.name}")
-                            continue
-                        
-                        if not self.dry_run:
-                            try:
-                                self.repo.get_git_ref(f"heads/{branch.name}").delete()
-                                self.stats['deleted'] += 1
-                                self.log(f"Deleted branch: {branch.name}", "SUCCESS")
-                            except GithubException as e:
-                                self.stats['errors'] += 1
-                                self.log(f"Failed to delete branch {branch.name}: {e}", "ERROR")
-                        else:
-                            self.stats['deleted'] += 1
-                            self.log(f"Would delete branch: {branch.name}")
-                        
-                        # Rate limiting
-                        if (i + 1) % self.batch_size == 0:
-                            time.sleep(self.batch_delay)
-                            
-                except Exception as e:
-                    self.log(f"Error during branch cleanup: {e}", "ERROR")
-                    self.stats['errors'] += 1
-        
-            def cleanup_pull_requests(self):
-                if os.environ.get('CLEANUP_PRS', 'false').lower() != 'true':
-                    return
-                
-                self.log("🔀 Starting pull request cleanup...")
-                pr_action = os.environ.get('PR_ACTION', 'close')
-                pr_comment = os.environ.get('PR_COMMENT', '🧹 This PR is being closed as part of repository cleanup automation.')
-                
-                try:
-                    # Get open PRs
-                    prs = list(self.repo.get_pulls(state='open'))
-                    self.log(f"Found {len(prs)} open pull requests")
-                    
-                    for i, pr in enumerate(prs):
-                        self.stats['processed'] += 1
-                        
-                        if not self.matches_patterns(f"PR-{pr.number}"):
-                            self.stats['skipped'] += 1
-                            self.log(f"Skipped PR #{pr.number} (pattern mismatch)")
-                            continue
-                        
-                        if self.is_too_recent(pr):
-                            self.stats['skipped'] += 1
-                            self.log(f"Skipped PR #{pr.number} (too recent)")
-                            continue
-                        
-                        if not self.dry_run:
-                            try:
-                                if pr_action == 'comment-and-close' and pr_comment:
-                                    pr.create_issue_comment(pr_comment)
-                                
-                                pr.edit(state='closed')
-                                self.stats['deleted'] += 1
-                                self.log(f"Closed PR #{pr.number}: {pr.title}", "SUCCESS")
-                            except GithubException as e:
-                                self.stats['errors'] += 1
-                                self.log(f"Failed to close PR #{pr.number}: {e}", "ERROR")
-                        else:
-                            self.stats['deleted'] += 1
-                            self.log(f"Would close PR #{pr.number}: {pr.title}")
-                        
-                        # Rate limiting
-                        if (i + 1) % self.batch_size == 0:
-                            time.sleep(self.batch_delay)
-                            
-                except Exception as e:
-                    self.log(f"Error during PR cleanup: {e}", "ERROR")
-                    self.stats['errors'] += 1
-        
-            def cleanup_workflow_runs(self):
-                if os.environ.get('CLEANUP_WORKFLOWS', 'false').lower() != 'true':
-                    return
-                
-                self.log("⚙️ Starting workflow runs cleanup...")
-                
-                try:
-                    # Use GitHub API directly for workflow runs
-                    headers = {
-                        'Authorization': f'token {os.environ["GITHUB_TOKEN"]}',
-                        'Accept': 'application/vnd.github.v3+json'
-                    }
-                    
-                    page = 1
-                    total_processed = 0
-                    
-                    while True:
-                        url = f"https://api.github.com/repos/{self.repo_name}/actions/runs"
-                        params = {'per_page': self.batch_size, 'page': page}
-                        
-                        response = requests.get(url, headers=headers, params=params)
-                        response.raise_for_status()
-                        
-                        data = response.json()
-                        workflow_runs = data.get('workflow_runs', [])
-                        
-                        if not workflow_runs:
-                            break
-                        
-                        self.log(f"Processing page {page}: {len(workflow_runs)} workflow runs")
-                        
-                        for run in workflow_runs:
-                            self.stats['processed'] += 1
-                            total_processed += 1
-                            
-                            run_name = f"{run['name']}-{run['id']}"
-                            if not self.matches_patterns(run_name):
-                                self.stats['skipped'] += 1
-                                continue
-                            
-                            # Check age
-                            if self.age_cutoff:
-                                created_at = parse_date(run['created_at'])
-                                if created_at > self.age_cutoff:
-                                    self.stats['skipped'] += 1
-                                    continue
-                            
-                            if not self.dry_run:
-                                try:
-                                    delete_url = f"https://api.github.com/repos/{self.repo_name}/actions/runs/{run['id']}"
-                                    delete_response = requests.delete(delete_url, headers=headers)
-                                    
-                                    if delete_response.status_code == 204:
-                                        self.stats['deleted'] += 1
-                                        self.log(f"Deleted workflow run: {run['name']} (#{run['id']})", "SUCCESS")
-                                    else:
-                                        self.stats['errors'] += 1
-                                        self.log(f"Failed to delete workflow run #{run['id']}: HTTP {delete_response.status_code}", "ERROR")
-                                except Exception as e:
-                                    self.stats['errors'] += 1
-                                    self.log(f"Failed to delete workflow run #{run['id']}: {e}", "ERROR")
-                            else:
-                                self.stats['deleted'] += 1
-                                self.log(f"Would delete workflow run: {run['name']} (#{run['id']})")
-                        
-                        page += 1
-                        time.sleep(self.batch_delay)
-                        
-                        # Safety limit
-                        if total_processed > 10000:
-                            self.log("Reached processing limit of 10,000 workflow runs", "WARNING")
-                            break
-                            
-                except Exception as e:
-                    self.log(f"Error during workflow runs cleanup: {e}", "ERROR")
-                    self.stats['errors'] += 1
-        
-            def cleanup_issues(self):
-                if os.environ.get('CLEANUP_ISSUES', 'false').lower() != 'true':
-                    return
-                
-                self.log("🐛 Starting issues cleanup...")
-                
-                try:
-                    # Get open issues (excluding PRs)
-                    issues = list(self.repo.get_issues(state='open'))
-                    # Filter out PRs (issues that have pull_request attribute)
-                    issues = [issue for issue in issues if not issue.pull_request]
-                    
-                    self.log(f"Found {len(issues)} open issues")
-                    
-                    for i, issue in enumerate(issues):
-                        self.stats['processed'] += 1
-                        
-                        if not self.matches_patterns(f"Issue-{issue.number}"):
-                            self.stats['skipped'] += 1
-                            self.log(f"Skipped issue #{issue.number} (pattern mismatch)")
-                            continue
-                        
-                        if self.is_too_recent(issue):
-                            self.stats['skipped'] += 1
-                            self.log(f"Skipped issue #{issue.number} (too recent)")
-                            continue
-                        
-                        if not self.dry_run:
-                            try:
-                                issue.edit(state='closed')
-                                self.stats['deleted'] += 1
-                                self.log(f"Closed issue #{issue.number}: {issue.title}", "SUCCESS")
-                            except GithubException as e:
-                                self.stats['errors'] += 1
-                                self.log(f"Failed to close issue #{issue.number}: {e}", "ERROR")
-                        else:
-                            self.stats['deleted'] += 1
-                            self.log(f"Would close issue #{issue.number}: {issue.title}")
-                        
-                        # Rate limiting
-                        if (i + 1) % self.batch_size == 0:
-                            time.sleep(self.batch_delay)
-                            
-                except Exception as e:
-                    self.log(f"Error during issues cleanup: {e}", "ERROR")
-                    self.stats['errors'] += 1
-        
-            def generate_summary(self) -> Dict[str, Any]:
-                execution_time = int(time.time() - self.stats['start_time'])
-                
-                summary = {
-                    'repository': self.repo_name,
-                    'dry_run': self.dry_run,
-                    'execution_time': execution_time,
-                    'statistics': {
-                        'total_processed': self.stats['processed'],
-                        'total_deleted': self.stats['deleted'],
-                        'total_skipped': self.stats['skipped'],
-                        'total_errors': self.stats['errors']
-                    },
-                    'configuration': {
-                        'max_age_days': self.max_age_days,
-                        'protected_branches': list(self.protected_branches),
-                        'batch_size': self.batch_size,
-                        'batch_delay': self.batch_delay,
-                        'operations_enabled': {
-                            'releases': os.environ.get('CLEANUP_RELEASES', 'false').lower() == 'true',
-                            'tags': os.environ.get('CLEANUP_TAGS', 'false').lower() == 'true',
-                            'branches': os.environ.get('CLEANUP_BRANCHES', 'false').lower() == 'true',
-                            'pull_requests': os.environ.get('CLEANUP_PRS', 'false').lower() == 'true',
-                            'workflow_runs': os.environ.get('CLEANUP_WORKFLOWS', 'false').lower() == 'true',
-                            'issues': os.environ.get('CLEANUP_ISSUES', 'false').lower() == 'true'
-                        }
-                    }
-                }
-                
-                return summary
-        
-            def run(self):
-                self.log("🚀 Starting repository cleanup process...")
-                
-                # Execute cleanup operations
-                self.cleanup_releases()
-                self.cleanup_tags()
-                self.cleanup_branches()
-                self.cleanup_pull_requests()
-                self.cleanup_workflow_runs()
-                self.cleanup_issues()
-                
-                # Generate summary
-                summary = self.generate_summary()
-                
-                self.log(f"📊 Cleanup Summary:")
-                self.log(f"   📁 Repository: {summary['repository']}")
-                self.log(f"   ⏱️ Execution time: {summary['execution_time']} seconds")
-                self.log(f"   📈 Processed: {summary['statistics']['total_processed']} items")
-                self.log(f"   🗑️ Deleted: {summary['statistics']['total_deleted']} items")
-                self.log(f"   ⏭️ Skipped: {summary['statistics']['total_skipped']} items")
-                self.log(f"   ❌ Errors: {summary['statistics']['total_errors']} items")
-                
-                if self.dry_run:
-                    self.log("🔍 This was a dry run - no actual changes were made", "WARNING")
-                
-                # Set GitHub Actions outputs
-                summary_json = json.dumps(summary, indent=2)
-                
-                with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-                    f.write(f"summary<<EOF\n{summary_json}\nEOF\n")
-                    f.write(f"items-processed={summary['statistics']['total_processed']}\n")
-                    f.write(f"items-deleted={summary['statistics']['total_deleted']}\n")
-                    f.write(f"items-skipped={summary['statistics']['total_skipped']}\n")
-                    f.write(f"errors-count={summary['statistics']['total_errors']}\n")
-                    f.write(f"execution-time={summary['execution_time']}\n")
-                
-                return summary['statistics']['total_errors'] == 0
-        
-        if __name__ == "__main__":
-            cleanup = RepositoryCleanup()
-            success = cleanup.run()
-            sys.exit(0 if success else 1)
-        EOF
-        
-        python cleanup_script.py
+              # Validate age filter
+              MAX_AGE="${{ inputs.max-age-days }}"
+              if ! [[ "$MAX_AGE" =~ ^[0-9]+$ ]]; then
+                echo "❌ Invalid max-age-days: $MAX_AGE"
+                echo "Expected positive integer"
+                exit 1
+              fi
 
-    - name: 📊 Generate Cleanup Report
-      if: always()
-      shell: bash
-      run: |
-        echo "### 🧹 Repository Cleanup Report" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Repository:** ${{ inputs.repository }}" >> $GITHUB_STEP_SUMMARY
-        echo "**Execution Mode:** ${{ inputs.dry-run == 'true' && '🔍 Dry Run' || '🔧 Live Execution' }}" >> $GITHUB_STEP_SUMMARY
-        echo "**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        
-        echo "| Operation | Enabled | Items Processed | Items Deleted | Errors |" >> $GITHUB_STEP_SUMMARY
-        echo "|-----------|---------|-----------------|---------------|---------|" >> $GITHUB_STEP_SUMMARY
-        echo "| **🚀 Releases** | ${{ inputs.cleanup-releases == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **🏷️ Tags** | ${{ inputs.cleanup-tags == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **🌿 Branches** | ${{ inputs.cleanup-branches == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **🔀 Pull Requests** | ${{ inputs.cleanup-pull-requests == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **⚙️ Workflow Runs** | ${{ inputs.cleanup-workflow-runs == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **🐛 Issues** | ${{ inputs.cleanup-issues == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        
-        echo "**Summary:**" >> $GITHUB_STEP_SUMMARY
-        echo "- 📈 Total Items Processed: ${{ steps.cleanup.outputs.items-processed || '0' }}" >> $GITHUB_STEP_SUMMARY
-        echo "- 🗑️ Total Items Deleted: ${{ steps.cleanup.outputs.items-deleted || '0' }}" >> $GITHUB_STEP_SUMMARY
-        echo "- ⏭️ Total Items Skipped: ${{ steps.cleanup.outputs.items-skipped || '0' }}" >> $GITHUB_STEP_SUMMARY
-        echo "- ❌ Total Errors: ${{ steps.cleanup.outputs.errors-count || '0' }}" >> $GITHUB_STEP_SUMMARY
-        echo "- ⏱️ Execution Time: ${{ steps.cleanup.outputs.execution-time || '0' }} seconds" >> $GITHUB_STEP_SUMMARY
-        
-        if [[ "${{ inputs.dry-run }}" == "true" ]]; then
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> ⚠️ **Note:** This was a dry run execution. No actual changes were made to the repository." >> $GITHUB_STEP_SUMMARY
-        fi
-        
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "---" >> $GITHUB_STEP_SUMMARY
-        echo "*Generated by **BAUER GROUP** Repository Cleanup Action* 🧹" >> $GITHUB_STEP_SUMMARY
+              # Validate batch configuration
+              BATCH_SIZE="${{ inputs.batch-size }}"
+              BATCH_DELAY="${{ inputs.batch-delay }}"
+
+              if ! [[ "$BATCH_SIZE" =~ ^[1-9][0-9]*$ ]] || [ "$BATCH_SIZE" -gt 100 ]; then
+                echo "❌ Invalid batch-size: $BATCH_SIZE"
+                echo "Expected integer between 1 and 100"
+                exit 1
+              fi
+
+              if ! [[ "$BATCH_DELAY" =~ ^[0-9]+$ ]]; then
+                echo "❌ Invalid batch-delay: $BATCH_DELAY"
+                echo "Expected non-negative integer"
+                exit 1
+              fi
+
+              # Check if any cleanup option is enabled
+              CLEANUP_ENABLED=false
+
+              if [[ "${{ inputs.cleanup-releases }}" == "true" ]] || \
+                 [[ "${{ inputs.cleanup-tags }}" == "true" ]] || \
+                 [[ "${{ inputs.cleanup-branches }}" == "true" ]] || \
+                 [[ "${{ inputs.cleanup-pull-requests }}" == "true" ]] || \
+                 [[ "${{ inputs.cleanup-workflow-runs }}" == "true" ]] || \
+                 [[ "${{ inputs.cleanup-issues }}" == "true" ]]; then
+                CLEANUP_ENABLED=true
+              fi
+
+              if [[ "$CLEANUP_ENABLED" != "true" ]]; then
+                echo "⚠️ No cleanup operations enabled"
+                echo "At least one cleanup option must be set to 'true'"
+                exit 1
+              fi
+
+              echo "✅ Configuration validation completed"
+              echo "Repository: $OWNER/$REPO_NAME"
+              echo "Dry run: ${{ inputs.dry-run }}"
+              echo "Max age: $MAX_AGE days"
+
+        - name: 🔧 Setup Python Environment
+          uses: actions/setup-python@v4
+          with:
+              python-version: "3.12"
+
+        - name: 📦 Install Dependencies
+          shell: bash
+          run: |
+              pip install --upgrade pip
+              pip install requests PyGithub python-dateutil
+
+        - name: 🧹 Execute Repository Cleanup
+          id: cleanup
+          shell: bash
+          env:
+              GITHUB_TOKEN: ${{ inputs.github-token }}
+              REPOSITORY: ${{ inputs.repository }}
+              CLEANUP_RELEASES: ${{ inputs.cleanup-releases }}
+              CLEANUP_TAGS: ${{ inputs.cleanup-tags }}
+              CLEANUP_BRANCHES: ${{ inputs.cleanup-branches }}
+              CLEANUP_PRS: ${{ inputs.cleanup-pull-requests }}
+              CLEANUP_WORKFLOWS: ${{ inputs.cleanup-workflow-runs }}
+              CLEANUP_ISSUES: ${{ inputs.cleanup-issues }}
+              MAX_AGE_DAYS: ${{ inputs.max-age-days }}
+              PROTECTED_BRANCHES: ${{ inputs.protected-branches }}
+              PR_ACTION: ${{ inputs.pr-action }}
+              PR_COMMENT: ${{ inputs.pr-comment }}
+              DRY_RUN: ${{ inputs.dry-run }}
+              BATCH_SIZE: ${{ inputs.batch-size }}
+              BATCH_DELAY: ${{ inputs.batch-delay }}
+              FORCE_DELETE: ${{ inputs.force-delete }}
+              SKIP_CONFIRMATION: ${{ inputs.skip-confirmation }}
+              INCLUDE_PATTERNS: ${{ inputs.include-patterns }}
+              EXCLUDE_PATTERNS: ${{ inputs.exclude-patterns }}
+              VERBOSE: ${{ inputs.verbose }}
+              LOG_FORMAT: ${{ inputs.log-format }}
+          run: |
+              cat << 'EOF' > cleanup_script.py
+              #!/usr/bin/env python3
+              import os
+              import sys
+              import json
+              import re
+              import time
+              from datetime import datetime, timedelta, timezone
+              from typing import List, Dict, Optional, Any
+              from github import Github, GithubException
+              import requests
+              from dateutil.parser import parse as parse_date
+
+              class RepositoryCleanup:
+                  def __init__(self):
+                      self.github = Github(os.environ['GITHUB_TOKEN'])
+                      self.repo_name = os.environ['REPOSITORY']
+                      self.repo = self.github.get_repo(self.repo_name)
+                      
+                      # Configuration
+                      self.dry_run = os.environ.get('DRY_RUN', 'true').lower() == 'true'
+                      self.max_age_days = int(os.environ.get('MAX_AGE_DAYS', '0'))
+                      self.batch_size = int(os.environ.get('BATCH_SIZE', '50'))
+                      self.batch_delay = int(os.environ.get('BATCH_DELAY', '2'))
+                      self.verbose = os.environ.get('VERBOSE', 'false').lower() == 'true'
+                      self.force_delete = os.environ.get('FORCE_DELETE', 'false').lower() == 'true'
+                      
+                      # Protected branches
+                      self.protected_branches = set(
+                          branch.strip() for branch in 
+                          os.environ.get('PROTECTED_BRANCHES', 'main,master,develop,staging').split(',')
+                      )
+                      
+                      # Patterns
+                      self.include_patterns = json.loads(os.environ.get('INCLUDE_PATTERNS', '[]'))
+                      self.exclude_patterns = json.loads(os.environ.get('EXCLUDE_PATTERNS', '[]'))
+                      
+                      # Statistics
+                      self.stats = {
+                          'processed': 0,
+                          'deleted': 0,
+                          'skipped': 0,
+                          'errors': 0,
+                          'start_time': time.time()
+                      }
+                      
+                      # Age cutoff
+                      if self.max_age_days > 0:
+                          self.age_cutoff = datetime.now(timezone.utc) - timedelta(days=self.max_age_days)
+                      else:
+                          self.age_cutoff = None
+                      
+                      print(f"🧹 Repository Cleanup initialized")
+                      print(f"📁 Repository: {self.repo_name}")
+                      print(f"🔍 Dry run: {self.dry_run}")
+                      print(f"📅 Max age: {self.max_age_days} days" if self.max_age_days > 0 else "📅 No age limit")
+                      print(f"🛡️ Protected branches: {', '.join(self.protected_branches)}")
+
+                  def log(self, message: str, level: str = "INFO"):
+                      timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                      prefix = "🔍 [DRY-RUN]" if self.dry_run else "🔧"
+                      
+                      if level == "ERROR":
+                          emoji = "❌"
+                      elif level == "WARNING":
+                          emoji = "⚠️"
+                      elif level == "SUCCESS":
+                          emoji = "✅"
+                      else:
+                          emoji = "ℹ️"
+                      
+                      log_message = f"{prefix} [{timestamp}] {emoji} {message}"
+                      print(log_message)
+
+                  def matches_patterns(self, name: str) -> bool:
+                      """Check if name matches include/exclude patterns"""
+                      # Check exclude patterns first
+                      for pattern in self.exclude_patterns:
+                          if re.search(pattern, name):
+                              return False
+                      
+                      # If include patterns exist, name must match at least one
+                      if self.include_patterns:
+                          return any(re.search(pattern, name) for pattern in self.include_patterns)
+                      
+                      return True
+
+                  def is_too_recent(self, date_obj) -> bool:
+                      """Check if item is too recent to delete"""
+                      if not self.age_cutoff:
+                          return False
+                      
+                      if hasattr(date_obj, 'created_at'):
+                          item_date = date_obj.created_at
+                      elif hasattr(date_obj, 'updated_at'):
+                          item_date = date_obj.updated_at
+                      else:
+                          return False
+                      
+                      return item_date > self.age_cutoff
+
+                  def cleanup_releases(self):
+                      if os.environ.get('CLEANUP_RELEASES', 'false').lower() != 'true':
+                          return
+                      
+                      self.log("🚀 Starting release cleanup...")
+                      
+                      try:
+                          releases = list(self.repo.get_releases())
+                          self.log(f"Found {len(releases)} releases")
+                          
+                          for i, release in enumerate(releases):
+                              self.stats['processed'] += 1
+                              
+                              if not self.matches_patterns(release.name or release.tag_name):
+                                  self.stats['skipped'] += 1
+                                  self.log(f"Skipped release {release.tag_name} (pattern mismatch)")
+                                  continue
+                              
+                              if self.is_too_recent(release):
+                                  self.stats['skipped'] += 1
+                                  self.log(f"Skipped release {release.tag_name} (too recent)")
+                                  continue
+                              
+                              if not self.dry_run:
+                                  try:
+                                      release.delete_release()
+                                      self.stats['deleted'] += 1
+                                      self.log(f"Deleted release: {release.tag_name}", "SUCCESS")
+                                  except GithubException as e:
+                                      self.stats['errors'] += 1
+                                      self.log(f"Failed to delete release {release.tag_name}: {e}", "ERROR")
+                              else:
+                                  self.stats['deleted'] += 1
+                                  self.log(f"Would delete release: {release.tag_name}")
+                              
+                              # Rate limiting
+                              if (i + 1) % self.batch_size == 0:
+                                  time.sleep(self.batch_delay)
+                                  
+                      except Exception as e:
+                          self.log(f"Error during release cleanup: {e}", "ERROR")
+                          self.stats['errors'] += 1
+
+                  def cleanup_tags(self):
+                      if os.environ.get('CLEANUP_TAGS', 'false').lower() != 'true':
+                          return
+                      
+                      self.log("🏷️ Starting tag cleanup...")
+                      
+                      try:
+                          tags = list(self.repo.get_tags())
+                          self.log(f"Found {len(tags)} tags")
+                          
+                          for i, tag in enumerate(tags):
+                              self.stats['processed'] += 1
+                              
+                              if not self.matches_patterns(tag.name):
+                                  self.stats['skipped'] += 1
+                                  self.log(f"Skipped tag {tag.name} (pattern mismatch)")
+                                  continue
+                              
+                              # Check if tag has associated release
+                              try:
+                                  release = self.repo.get_release(tag.name)
+                                  if release:
+                                      self.stats['skipped'] += 1
+                                      self.log(f"Skipped tag {tag.name} (has associated release)")
+                                      continue
+                              except GithubException:
+                                  pass  # No associated release, proceed with deletion
+                              
+                              if not self.dry_run:
+                                  try:
+                                      # Delete tag reference
+                                      self.repo.get_git_ref(f"tags/{tag.name}").delete()
+                                      self.stats['deleted'] += 1
+                                      self.log(f"Deleted tag: {tag.name}", "SUCCESS")
+                                  except GithubException as e:
+                                      self.stats['errors'] += 1
+                                      self.log(f"Failed to delete tag {tag.name}: {e}", "ERROR")
+                              else:
+                                  self.stats['deleted'] += 1
+                                  self.log(f"Would delete tag: {tag.name}")
+                              
+                              # Rate limiting
+                              if (i + 1) % self.batch_size == 0:
+                                  time.sleep(self.batch_delay)
+                                  
+                      except Exception as e:
+                          self.log(f"Error during tag cleanup: {e}", "ERROR")
+                          self.stats['errors'] += 1
+
+                  def cleanup_branches(self):
+                      if os.environ.get('CLEANUP_BRANCHES', 'false').lower() != 'true':
+                          return
+                      
+                      self.log("🌿 Starting branch cleanup...")
+                      
+                      try:
+                          branches = list(self.repo.get_branches())
+                          self.log(f"Found {len(branches)} branches")
+                          
+                          for i, branch in enumerate(branches):
+                              self.stats['processed'] += 1
+                              
+                              if branch.name in self.protected_branches:
+                                  self.stats['skipped'] += 1
+                                  self.log(f"Skipped protected branch: {branch.name}")
+                                  continue
+                              
+                              if not self.matches_patterns(branch.name):
+                                  self.stats['skipped'] += 1
+                                  self.log(f"Skipped branch {branch.name} (pattern mismatch)")
+                                  continue
+                              
+                              # Check if branch is protected
+                              if branch.protected and not self.force_delete:
+                                  self.stats['skipped'] += 1
+                                  self.log(f"Skipped protected branch: {branch.name}")
+                                  continue
+                              
+                              if not self.dry_run:
+                                  try:
+                                      self.repo.get_git_ref(f"heads/{branch.name}").delete()
+                                      self.stats['deleted'] += 1
+                                      self.log(f"Deleted branch: {branch.name}", "SUCCESS")
+                                  except GithubException as e:
+                                      self.stats['errors'] += 1
+                                      self.log(f"Failed to delete branch {branch.name}: {e}", "ERROR")
+                              else:
+                                  self.stats['deleted'] += 1
+                                  self.log(f"Would delete branch: {branch.name}")
+                              
+                              # Rate limiting
+                              if (i + 1) % self.batch_size == 0:
+                                  time.sleep(self.batch_delay)
+                                  
+                      except Exception as e:
+                          self.log(f"Error during branch cleanup: {e}", "ERROR")
+                          self.stats['errors'] += 1
+
+                  def cleanup_pull_requests(self):
+                      if os.environ.get('CLEANUP_PRS', 'false').lower() != 'true':
+                          return
+                      
+                      self.log("🔀 Starting pull request cleanup...")
+                      pr_action = os.environ.get('PR_ACTION', 'close')
+                      pr_comment = os.environ.get('PR_COMMENT', '🧹 This PR is being closed as part of repository cleanup automation.')
+                      
+                      try:
+                          # Get open PRs
+                          prs = list(self.repo.get_pulls(state='open'))
+                          self.log(f"Found {len(prs)} open pull requests")
+                          
+                          for i, pr in enumerate(prs):
+                              self.stats['processed'] += 1
+                              
+                              if not self.matches_patterns(f"PR-{pr.number}"):
+                                  self.stats['skipped'] += 1
+                                  self.log(f"Skipped PR #{pr.number} (pattern mismatch)")
+                                  continue
+                              
+                              if self.is_too_recent(pr):
+                                  self.stats['skipped'] += 1
+                                  self.log(f"Skipped PR #{pr.number} (too recent)")
+                                  continue
+                              
+                              if not self.dry_run:
+                                  try:
+                                      if pr_action == 'comment-and-close' and pr_comment:
+                                          pr.create_issue_comment(pr_comment)
+                                      
+                                      pr.edit(state='closed')
+                                      self.stats['deleted'] += 1
+                                      self.log(f"Closed PR #{pr.number}: {pr.title}", "SUCCESS")
+                                  except GithubException as e:
+                                      self.stats['errors'] += 1
+                                      self.log(f"Failed to close PR #{pr.number}: {e}", "ERROR")
+                              else:
+                                  self.stats['deleted'] += 1
+                                  self.log(f"Would close PR #{pr.number}: {pr.title}")
+                              
+                              # Rate limiting
+                              if (i + 1) % self.batch_size == 0:
+                                  time.sleep(self.batch_delay)
+                                  
+                      except Exception as e:
+                          self.log(f"Error during PR cleanup: {e}", "ERROR")
+                          self.stats['errors'] += 1
+
+                  def cleanup_workflow_runs(self):
+                      if os.environ.get('CLEANUP_WORKFLOWS', 'false').lower() != 'true':
+                          return
+                      
+                      self.log("⚙️ Starting workflow runs cleanup...")
+                      
+                      try:
+                          # Use GitHub API directly for workflow runs
+                          headers = {
+                              'Authorization': f'token {os.environ["GITHUB_TOKEN"]}',
+                              'Accept': 'application/vnd.github.v3+json'
+                          }
+                          
+                          page = 1
+                          total_processed = 0
+                          
+                          while True:
+                              url = f"https://api.github.com/repos/{self.repo_name}/actions/runs"
+                              params = {'per_page': self.batch_size, 'page': page}
+                              
+                              response = requests.get(url, headers=headers, params=params)
+                              response.raise_for_status()
+                              
+                              data = response.json()
+                              workflow_runs = data.get('workflow_runs', [])
+                              
+                              if not workflow_runs:
+                                  break
+                              
+                              self.log(f"Processing page {page}: {len(workflow_runs)} workflow runs")
+                              
+                              for run in workflow_runs:
+                                  self.stats['processed'] += 1
+                                  total_processed += 1
+                                  
+                                  run_name = f"{run['name']}-{run['id']}"
+                                  if not self.matches_patterns(run_name):
+                                      self.stats['skipped'] += 1
+                                      continue
+                                  
+                                  # Check age
+                                  if self.age_cutoff:
+                                      created_at = parse_date(run['created_at'])
+                                      if created_at > self.age_cutoff:
+                                          self.stats['skipped'] += 1
+                                          continue
+                                  
+                                  if not self.dry_run:
+                                      try:
+                                          delete_url = f"https://api.github.com/repos/{self.repo_name}/actions/runs/{run['id']}"
+                                          delete_response = requests.delete(delete_url, headers=headers)
+                                          
+                                          if delete_response.status_code == 204:
+                                              self.stats['deleted'] += 1
+                                              self.log(f"Deleted workflow run: {run['name']} (#{run['id']})", "SUCCESS")
+                                          else:
+                                              self.stats['errors'] += 1
+                                              self.log(f"Failed to delete workflow run #{run['id']}: HTTP {delete_response.status_code}", "ERROR")
+                                      except Exception as e:
+                                          self.stats['errors'] += 1
+                                          self.log(f"Failed to delete workflow run #{run['id']}: {e}", "ERROR")
+                                  else:
+                                      self.stats['deleted'] += 1
+                                      self.log(f"Would delete workflow run: {run['name']} (#{run['id']})")
+                              
+                              page += 1
+                              time.sleep(self.batch_delay)
+                              
+                              # Safety limit
+                              if total_processed > 10000:
+                                  self.log("Reached processing limit of 10,000 workflow runs", "WARNING")
+                                  break
+                                  
+                      except Exception as e:
+                          self.log(f"Error during workflow runs cleanup: {e}", "ERROR")
+                          self.stats['errors'] += 1
+
+                  def cleanup_issues(self):
+                      if os.environ.get('CLEANUP_ISSUES', 'false').lower() != 'true':
+                          return
+                      
+                      self.log("🐛 Starting issues cleanup...")
+                      
+                      try:
+                          # Get open issues (excluding PRs)
+                          issues = list(self.repo.get_issues(state='open'))
+                          # Filter out PRs (issues that have pull_request attribute)
+                          issues = [issue for issue in issues if not issue.pull_request]
+                          
+                          self.log(f"Found {len(issues)} open issues")
+                          
+                          for i, issue in enumerate(issues):
+                              self.stats['processed'] += 1
+                              
+                              if not self.matches_patterns(f"Issue-{issue.number}"):
+                                  self.stats['skipped'] += 1
+                                  self.log(f"Skipped issue #{issue.number} (pattern mismatch)")
+                                  continue
+                              
+                              if self.is_too_recent(issue):
+                                  self.stats['skipped'] += 1
+                                  self.log(f"Skipped issue #{issue.number} (too recent)")
+                                  continue
+                              
+                              if not self.dry_run:
+                                  try:
+                                      issue.edit(state='closed')
+                                      self.stats['deleted'] += 1
+                                      self.log(f"Closed issue #{issue.number}: {issue.title}", "SUCCESS")
+                                  except GithubException as e:
+                                      self.stats['errors'] += 1
+                                      self.log(f"Failed to close issue #{issue.number}: {e}", "ERROR")
+                              else:
+                                  self.stats['deleted'] += 1
+                                  self.log(f"Would close issue #{issue.number}: {issue.title}")
+                              
+                              # Rate limiting
+                              if (i + 1) % self.batch_size == 0:
+                                  time.sleep(self.batch_delay)
+                                  
+                      except Exception as e:
+                          self.log(f"Error during issues cleanup: {e}", "ERROR")
+                          self.stats['errors'] += 1
+
+                  def generate_summary(self) -> Dict[str, Any]:
+                      execution_time = int(time.time() - self.stats['start_time'])
+                      
+                      summary = {
+                          'repository': self.repo_name,
+                          'dry_run': self.dry_run,
+                          'execution_time': execution_time,
+                          'statistics': {
+                              'total_processed': self.stats['processed'],
+                              'total_deleted': self.stats['deleted'],
+                              'total_skipped': self.stats['skipped'],
+                              'total_errors': self.stats['errors']
+                          },
+                          'configuration': {
+                              'max_age_days': self.max_age_days,
+                              'protected_branches': list(self.protected_branches),
+                              'batch_size': self.batch_size,
+                              'batch_delay': self.batch_delay,
+                              'operations_enabled': {
+                                  'releases': os.environ.get('CLEANUP_RELEASES', 'false').lower() == 'true',
+                                  'tags': os.environ.get('CLEANUP_TAGS', 'false').lower() == 'true',
+                                  'branches': os.environ.get('CLEANUP_BRANCHES', 'false').lower() == 'true',
+                                  'pull_requests': os.environ.get('CLEANUP_PRS', 'false').lower() == 'true',
+                                  'workflow_runs': os.environ.get('CLEANUP_WORKFLOWS', 'false').lower() == 'true',
+                                  'issues': os.environ.get('CLEANUP_ISSUES', 'false').lower() == 'true'
+                              }
+                          }
+                      }
+                      
+                      return summary
+
+                  def run(self):
+                      self.log("🚀 Starting repository cleanup process...")
+                      
+                      # Execute cleanup operations
+                      self.cleanup_releases()
+                      self.cleanup_tags()
+                      self.cleanup_branches()
+                      self.cleanup_pull_requests()
+                      self.cleanup_workflow_runs()
+                      self.cleanup_issues()
+                      
+                      # Generate summary
+                      summary = self.generate_summary()
+                      
+                      self.log(f"📊 Cleanup Summary:")
+                      self.log(f"   📁 Repository: {summary['repository']}")
+                      self.log(f"   ⏱️ Execution time: {summary['execution_time']} seconds")
+                      self.log(f"   📈 Processed: {summary['statistics']['total_processed']} items")
+                      self.log(f"   🗑️ Deleted: {summary['statistics']['total_deleted']} items")
+                      self.log(f"   ⏭️ Skipped: {summary['statistics']['total_skipped']} items")
+                      self.log(f"   ❌ Errors: {summary['statistics']['total_errors']} items")
+                      
+                      if self.dry_run:
+                          self.log("🔍 This was a dry run - no actual changes were made", "WARNING")
+                      
+                      # Set GitHub Actions outputs
+                      summary_json = json.dumps(summary, indent=2)
+                      
+                      with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                          f.write(f"summary<<EOF\n{summary_json}\nEOF\n")
+                          f.write(f"items-processed={summary['statistics']['total_processed']}\n")
+                          f.write(f"items-deleted={summary['statistics']['total_deleted']}\n")
+                          f.write(f"items-skipped={summary['statistics']['total_skipped']}\n")
+                          f.write(f"errors-count={summary['statistics']['total_errors']}\n")
+                          f.write(f"execution-time={summary['execution_time']}\n")
+                      
+                      return summary['statistics']['total_errors'] == 0
+
+              if __name__ == "__main__":
+                  cleanup = RepositoryCleanup()
+                  success = cleanup.run()
+                  sys.exit(0 if success else 1)
+              EOF
+
+              python cleanup_script.py
+
+        - name: 📊 Generate Cleanup Report
+          if: always()
+          shell: bash
+          run: |
+              echo "### 🧹 Repository Cleanup Report" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "**Repository:** ${{ inputs.repository }}" >> $GITHUB_STEP_SUMMARY
+              echo "**Execution Mode:** ${{ inputs.dry-run == 'true' && '🔍 Dry Run' || '🔧 Live Execution' }}" >> $GITHUB_STEP_SUMMARY
+              echo "**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+
+              echo "| Operation | Enabled | Items Processed | Items Deleted | Errors |" >> $GITHUB_STEP_SUMMARY
+              echo "|-----------|---------|-----------------|---------------|---------|" >> $GITHUB_STEP_SUMMARY
+              echo "| **🚀 Releases** | ${{ inputs.cleanup-releases == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+              echo "| **🏷️ Tags** | ${{ inputs.cleanup-tags == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+              echo "| **🌿 Branches** | ${{ inputs.cleanup-branches == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+              echo "| **🔀 Pull Requests** | ${{ inputs.cleanup-pull-requests == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+              echo "| **⚙️ Workflow Runs** | ${{ inputs.cleanup-workflow-runs == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+              echo "| **🐛 Issues** | ${{ inputs.cleanup-issues == 'true' && '✅' || '❌' }} | ${{ steps.cleanup.outputs.items-processed || '0' }} | ${{ steps.cleanup.outputs.items-deleted || '0' }} | ${{ steps.cleanup.outputs.errors-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+
+              echo "**Summary:**" >> $GITHUB_STEP_SUMMARY
+              echo "- 📈 Total Items Processed: ${{ steps.cleanup.outputs.items-processed || '0' }}" >> $GITHUB_STEP_SUMMARY
+              echo "- 🗑️ Total Items Deleted: ${{ steps.cleanup.outputs.items-deleted || '0' }}" >> $GITHUB_STEP_SUMMARY
+              echo "- ⏭️ Total Items Skipped: ${{ steps.cleanup.outputs.items-skipped || '0' }}" >> $GITHUB_STEP_SUMMARY
+              echo "- ❌ Total Errors: ${{ steps.cleanup.outputs.errors-count || '0' }}" >> $GITHUB_STEP_SUMMARY
+              echo "- ⏱️ Execution Time: ${{ steps.cleanup.outputs.execution-time || '0' }} seconds" >> $GITHUB_STEP_SUMMARY
+
+              if [[ "${{ inputs.dry-run }}" == "true" ]]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "> ⚠️ **Note:** This was a dry run execution. No actual changes were made to the repository." >> $GITHUB_STEP_SUMMARY
+              fi
+
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "---" >> $GITHUB_STEP_SUMMARY
+              echo "*Generated by **BAUER GROUP** Repository Cleanup Action* 🧹" >> $GITHUB_STEP_SUMMARY

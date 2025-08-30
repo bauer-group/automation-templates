@@ -216,7 +216,7 @@ jobs:
     uses: {{REPO_FULL_NAME}}/.github/workflows/python-build.yml@main
     with:
       config-file: 'application'
-      python-version: '3.11'
+      python-version: '3.12'
       package-manager: 'poetry'
       run-tests: true
       collect-coverage: true
@@ -419,7 +419,7 @@ jobs:
     uses: {{REPO_FULL_NAME}}/.github/workflows/python-build.yml@main
     with:
       config-file: 'application'
-      python-version: '3.11'
+      python-version: '3.12'
       package-manager: 'poetry'
       run-tests: true
       collect-coverage: true
@@ -463,7 +463,7 @@ jobs:
 - name: Setup Python Environment  
   uses: {{REPO_FULL_NAME}}/.github/actions/python-setup@main
   with:
-    python-version: '3.11'
+    python-version: '3.12'
     package-manager: 'poetry'
     cache-enabled: true
     install-dependencies: true

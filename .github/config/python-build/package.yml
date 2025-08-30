@@ -3,7 +3,7 @@
 
 python:
   versions: ["3.9", "3.10", "3.11", "3.12"]
-  primary_version: "3.11"
+  primary_version: "3.12"
   cache: "pip"
 
 matrix:

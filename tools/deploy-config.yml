@@ -537,7 +537,7 @@ variables:
   PYTHON_VERSION:
     description: "Python version to use for Python workflows"
     default: "3.12"
-    example: "3.11"
+    example: "3.12"
 
   NODE_VERSION:
     description: "Node.js version to use for Node.js workflows"

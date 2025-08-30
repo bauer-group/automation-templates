@@ -5,9 +5,9 @@ name: Python Package CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
   workflow_dispatch:
 
 permissions:
@@ -25,50 +25,50 @@ jobs:
       matrix-os: '["ubuntu-latest", "windows-latest", "macos-latest"]'
       matrix-python: '["3.9", "3.10", "3.11", "3.12"]'
       matrix-fail-fast: false
-      
+
       # Basic Configuration
-      working-directory: '.'
-      project-type: 'package'
-      
+      working-directory: "."
+      project-type: "package"
+
       # Dependencies
       requirements-files: '["requirements.txt", "requirements-dev.txt"]'
       install-dev-requirements: true
-      package-manager: 'pip'
+      package-manager: "pip"
       cache-dependencies: true
-      
+
       # Testing
       run-tests: true
-      test-framework: 'pytest'
-      test-path: 'tests'
+      test-framework: "pytest"
+      test-path: "tests"
       collect-coverage: true
       coverage-threshold: 90
-      coverage-format: 'xml,html'
+      coverage-format: "xml,html"
       coverage-fail-under: false
-      
+
       # Code Quality
       run-lint: true
-      linter: 'ruff'
+      linter: "ruff"
       run-format-check: true
-      formatter: 'black'
+      formatter: "black"
       format-check-only: true
       run-import-sort: true
       run-type-check: true
-      type-checker: 'mypy'
-      
+      type-checker: "mypy"
+
       # Security
       run-security-scan: true
       security-tools: '["bandit", "safety"]'
       security-fail-on-error: false
-      
+
       # Package Building
       build-package: true
       build-tools: '["build", "twine"]'
       package-check: true
-      
+
       # Artifacts
       upload-artifacts: true
-      artifact-name: 'python-package'
-      
+      artifact-name: "python-package"
+
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
@@ -79,13 +79,13 @@ jobs:
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     uses: ./.github/workflows/python-publish.yml
     with:
-      python-version: '3.11'
-      publish-to: 'testpypi'
-      run-tests: false  # Already tested in build job
+      python-version: "3.12"
+      publish-to: "testpypi"
+      run-tests: false # Already tested in build job
       validate-package: true
       run-security-scan: true
       create-github-release: false
-      environment: 'testpypi'
+      environment: "testpypi"
     secrets:
       TEST_PYPI_API_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -97,16 +97,16 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     uses: ./.github/workflows/python-publish.yml
     with:
-      python-version: '3.11'
-      publish-to: 'pypi'
-      run-tests: false  # Already tested in build job
+      python-version: "3.12"
+      publish-to: "pypi"
+      run-tests: false # Already tested in build job
       validate-package: true
       run-security-scan: true
       create-github-release: true
       release-draft: false
       release-prerelease: false
       generate-docs: true
-      environment: 'pypi'
+      environment: "pypi"
     secrets:
       PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

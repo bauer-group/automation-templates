@@ -58,7 +58,7 @@ jobs:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
-        python-version: "3.11"
+        python-version: "3.12"
         cache: 'pip'
     - name: Install dependencies
       run: |
@@ -256,11 +256,11 @@ pytest --cov=src --cov-fail-under=80
 **Docker Build langsam**
 ```dockerfile
 # Lösung: Multi-stage Build verwenden
-FROM python:3.11-slim as builder
+FROM python:3.12-slim as builder
 COPY requirements.txt .
 RUN pip install --user -r requirements.txt
 
-FROM python:3.11-slim
+FROM python:3.12-slim
 COPY --from=builder /root/.local /root/.local
 ```
 

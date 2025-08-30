@@ -92,7 +92,7 @@ jobs:
   release:
     uses: bauer-group/automation-templates/.github/workflows/python-automatic-release.yml@main
     with:
-      python-version: '3.11'
+      python-version: '3.12'
       security-engine: 'both'
       force-release: false
       skip-pypi: false
@@ -235,7 +235,7 @@ jobs:
   release:
     uses: bauer-group/automation-templates/.github/workflows/python-automatic-release.yml@main
     with:
-      python-version: '3.11'
+      python-version: '3.12'
     secrets: inherit
 ```
 

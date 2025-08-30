@@ -48,7 +48,7 @@ inputs:
   format-target-version:
     description: 'Python target version for formatting'
     required: false
-    default: 'py311'
+    default: 'py312'
   # Import Sorting
   run-import-sort:
     description: 'Check/fix import sorting'
