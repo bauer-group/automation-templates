@@ -1,3 +1,10 @@
+## [1.3.5](https://github.com/bauer-group/automation-templates/compare/v1.3.4...v1.3.5) (2025-08-30)
+
+### 🐛 Bug Fixes
+
+* add missing newline at end of deploy-config.yml ([52853c9](https://github.com/bauer-group/automation-templates/commit/52853c9642636c6c73bb3c8021fd93f7d5a08f4b))
+* exclude artifacts directory from generated zip and tar.gz archives ([360bb4b](https://github.com/bauer-group/automation-templates/commit/360bb4b54453cbee720ce72bb3cdbc137cdaff72))
+
 ## [1.3.4](https://github.com/bauer-group/automation-templates/compare/v1.3.3...v1.3.4) (2025-08-30)
 
 ### 🐛 Bug Fixes
