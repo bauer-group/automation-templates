@@ -599,25 +599,13 @@ jobs:
           elif [ "${{ inputs.test-framework }}" = "unittest" ]; then
             pip install xmlrunner
             python -c "
-import sys
-import os
-import unittest
-import xmlrunner
-
-# Add test path to sys.path
+import sys, os, unittest, xmlrunner
 sys.path.insert(0, '${{ inputs.test-path }}')
-
-# Discover and run tests
 loader = unittest.TestLoader()
-start_dir = '${{ inputs.test-path }}'
-suite = loader.discover(start_dir, pattern='test*.py')
-
-# Run tests with XML output
+suite = loader.discover('${{ inputs.test-path }}', pattern='test*.py')
 with open('$TEST_RESULTS_DIR/unittest-report.xml', 'wb') as output:
     runner = xmlrunner.XMLTestRunner(output=output)
     result = runner.run(suite)
-    
-# Exit with proper code
 sys.exit(0 if result.wasSuccessful() else 1)
 "
           fi
