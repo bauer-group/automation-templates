@@ -8,7 +8,7 @@ on:
         description: 'Python version(s) - comma-separated for multiple'
         type: string
         required: false
-        default: '3.11'
+        default: '3.12'
       
       python-version-file:
         description: 'Path to .python-version or pyproject.toml file'
