@@ -109,7 +109,7 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     if: needs.release-management.outputs.release-created == 'true' && inputs.skip-pypi != true
-    needs: [release-management, python-quality-scan]
+    needs: release-management
     uses: bauer-group/automation-templates/.github/workflows/python-publish.yml@main
     with:
       python-version: ${{ inputs.python-version || '3.12' }}
@@ -176,7 +176,7 @@ jobs:
           echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | SBOM generated |" >> $GITHUB_STEP_SUMMARY
           echo "| **Release Management** | ${{ needs.release-management.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Created: ${{ needs.release-management.outputs.release-created || 'false' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **PyPI Publishing** | ${{ needs.publish-pypi.result == 'success' && '✅ PUBLISHED' || needs.publish-pypi.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Skip PyPI: ${{ inputs.skip-pypi || 'false' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Artifact Generation** | ${{ needs.artifact-generation.result == 'success' && '✅ PASS' || needs.artifact-generation.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Types: ${{ inputs.artifact-types || 'source' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Artifact Generation** | ${{ needs.artifact-generation.result == 'success' && '✅ PASS' || needs.artifact-generation.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Types: source |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ "${{ needs.release-management.outputs.release-created }}" = "true" ]; then
