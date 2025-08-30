@@ -112,7 +112,7 @@ jobs:
   update-security:
     name: Update Security Policy
     if: needs.release-management.outputs.release-created == 'true'
-    needs: [release-management, artifact-generation]
+    needs: [release-management, artifact-generation, update-documentation]
     uses: ./.github/workflows/security-management.yml
     with:
       force-update: true
