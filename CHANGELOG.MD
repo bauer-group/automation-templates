@@ -1,3 +1,14 @@
+## [1.4.1](https://github.com/bauer-group/automation-templates/compare/v1.4.0...v1.4.1) (2025-08-30)
+
+### ♻️ Code Refactoring
+
+* update security scan engine input type and description in CI/CD pipeline ([3473f2a](https://github.com/bauer-group/automation-templates/commit/3473f2a361bb7de60123c5e21ceb746bd3acfe1c))
+
+### 🔧 Maintenance
+
+* update default Python version to 3.12 in build and publish workflows ([11fa942](https://github.com/bauer-group/automation-templates/commit/11fa942b07848ed132190dda396a81f8616eeb8e))
+* update pipeline name for clarity in python-example.yml ([d785880](https://github.com/bauer-group/automation-templates/commit/d785880d85dc64b8238469e65d2fa361e5aca27b))
+
 ## [1.4.0](https://github.com/bauer-group/automation-templates/compare/v1.3.8...v1.4.0) (2025-08-30)
 
 ### 🚀 Features
