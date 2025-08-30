@@ -113,7 +113,6 @@ jobs:
     with:
       python-version: ${{ inputs.python-version || '3.12' }}
       package-version: ${{ needs.release-management.outputs.version }}
-      build-package: true
     secrets: inherit
 
   # Artifact generation for releases
