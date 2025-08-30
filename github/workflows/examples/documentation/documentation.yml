@@ -10,8 +10,6 @@ on:
       - 'docs/README.template.MD'
       - '.github/actions/readme-generate/**'
       - '.github/workflows/documentation.yml'
-  create:
-    # Triggers when a tag or branch is created
   pull_request:
     branches: [main]
     paths:
@@ -26,6 +24,24 @@ on:
         description: 'Custom version for README'
         type: string
         default: ''
+  
+  workflow_call:
+    inputs:
+      tag-name:
+        description: 'Tag name that triggered the documentation update'
+        type: string
+        required: false
+        default: ''
+      force-update:
+        description: 'Force README update even without changes'
+        type: boolean
+        required: false
+        default: false
+      custom-version:
+        description: 'Custom version for README'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -36,17 +52,11 @@ jobs:
   generate-documentation:
     name: Generate Documentation
     runs-on: ubuntu-latest
-    # Only run on push to main, PRs, manual trigger, or when a version tag is created
-    if: |
-      github.event_name == 'push' || 
-      github.event_name == 'pull_request' || 
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'create' && github.ref_type == 'tag' && (startsWith(github.ref_name, 'v') || contains(github.ref_name, '.')))
     outputs:
-      readme_updated: ${{ steps.generate.outputs.readme_updated }}
-      changes_detected: ${{ steps.generate.outputs.changes_detected }}
-      validation_passed: ${{ steps.generate.outputs.validation_passed }}
-      file_size: ${{ steps.generate.outputs.file_size }}
+      should_run: ${{ steps.should-run.outputs.should_run }}
+      readme_updated: ${{ steps.generate.outputs.readme_updated || 'false' }}
+      changes_detected: ${{ steps.generate.outputs.changes_detected || 'false' }}
+      validation_passed: ${{ steps.generate.outputs.validation_passed || steps.should-run.outputs.should_run == 'false' && 'skipped' || 'false' }}
       unresolved_placeholders: ${{ steps.generate.outputs.unresolved_placeholders }}
     
     steps:
