@@ -38,11 +38,6 @@ on:
         description: 'Python version to use'
         type: string
         default: '3.12'
-      artifact-types:
-        description: 'Types of artifacts to generate'
-        type: choice
-        default: 'source'
-        options: ['source', 'binaries', 'docker', 'all']
 
 jobs:
   # Main Python CI/CD Pipeline using modular automation templates
@@ -60,7 +55,6 @@ jobs:
       # Release Configuration
       force-release: ${{ inputs.force-release || false }}
       skip-pypi: ${{ inputs.skip-pypi || false }}
-      artifact-types: ${{ inputs.artifact-types || 'source' }}
       
     secrets: inherit
     
