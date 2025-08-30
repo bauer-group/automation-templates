@@ -1,3 +1,11 @@
+## [1.3.4](https://github.com/bauer-group/automation-templates/compare/v1.3.3...v1.3.4) (2025-08-30)
+
+### 🐛 Bug Fixes
+
+* add newline at end of python-example.yml ([83ae0b9](https://github.com/bauer-group/automation-templates/commit/83ae0b914dd7574d5c29594a9f61cede7a54c490))
+* prevent nested project directories in release artifacts ([04430df](https://github.com/bauer-group/automation-templates/commit/04430dfb3eb6b9a287d10d1888ae429648e1ccde))
+* remove temp- prefix from release artifact directory structure ([37b6074](https://github.com/bauer-group/automation-templates/commit/37b60748e0572bc2f973af18bb8d00be7fe98545))
+
 ## [1.3.3](https://github.com/bauer-group/automation-templates/compare/v1.3.2...v1.3.3) (2025-08-30)
 
 ### 🐛 Bug Fixes
