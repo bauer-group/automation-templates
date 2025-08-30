@@ -289,9 +289,9 @@ runs:
         fi
         
         # Validate and count unresolved placeholders
-        UNRESOLVED=$(grep -o "{{[^}]*}}" "$OUTPUT_PATH" | wc -l 2>/dev/null || echo "0")
+        UNRESOLVED=$(grep -o "{{[^}]*}}" "$OUTPUT_PATH" 2>/dev/null | wc -l || echo "0")
         
-        if [ "${UNRESOLVED:-0}" -gt 0 ] 2>/dev/null; then
+        if [ "$UNRESOLVED" -gt 0 ]; then
           echo "⚠️ Found $UNRESOLVED unresolved placeholders:"
           grep -o "{{[^}]*}}" "$OUTPUT_PATH" | sort | uniq | head -5
         fi
