@@ -55,7 +55,7 @@ jobs:
   # Python-specific quality and security scan
   python-quality-scan:
     name: Python Quality & Security
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call'
+    if: github.event_name == 'push' || github.event_name == 'workflow_call'
     uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
     with:
       python-version: ${{ inputs.python-version || '3.12' }}
@@ -72,7 +72,7 @@ jobs:
   # Comprehensive security scan
   security-scan:
     name: Security Analysis
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call'
+    if: github.event_name == 'push' || github.event_name == 'workflow_call'
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
       scan-engine: ${{ inputs.security-engine || 'both' }}
@@ -84,7 +84,7 @@ jobs:
   # License compliance check
   license-compliance:
     name: License Compliance
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call'
+    if: github.event_name == 'push' || github.event_name == 'workflow_call'
     uses: bauer-group/automation-templates/.github/workflows/modules-license-compliance.yml@main
     with:
       fail-on-forbidden: false
@@ -96,7 +96,7 @@ jobs:
   # Release management
   release-management:
     name: Release Management
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call'
+    if: github.event_name == 'push' || github.event_name == 'workflow_call'
     needs: [python-quality-scan, security-scan, license-compliance]
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     with:
