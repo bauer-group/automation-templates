@@ -1,6 +1,6 @@
-name: 🐍 Python Automatic Release (Reusable)
+name: 🐍 Python CI/CD Pipeline (Automatic Release)
 
-# Reusable Python CI/CD pipeline for external repositories
+# Reusable Python CI/CD pipeline for repositories
 # Based on the modular architecture pattern from automatic-release.yml
 
 on:
@@ -62,12 +62,19 @@ jobs:
   python-quality-scan:
     name: Python Quality & Security
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call'
-    uses: bauer-group/automation-templates/.github/workflows/modules-python-build.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
     with:
       python-version: ${{ inputs.python-version || '3.12' }}
-      package-source-path: ${{ inputs.package-source-path || 'src' }}
-      security-engine: ${{ inputs.security-engine || 'both' }}
-      skip-pypi: true  # We handle PyPI publishing separately
+      working-directory: '.'
+      run-tests: true
+      run-lint: true
+      run-security-scan: true
+      security-tools: '["bandit", "safety"]'
+      run-format-check: true
+      run-type-check: true
+      collect-coverage: true
+      build-package: true
+      upload-artifacts: true
     secrets: inherit
 
   # Comprehensive security scan
@@ -110,14 +117,11 @@ jobs:
     name: Publish to PyPI
     if: needs.release-management.outputs.release-created == 'true' && inputs.skip-pypi != true
     needs: [release-management, python-quality-scan]
-    uses: bauer-group/automation-templates/.github/workflows/modules-python-build.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/python-publish.yml@main
     with:
       python-version: ${{ inputs.python-version || '3.12' }}
-      package-source-path: ${{ inputs.package-source-path || 'src' }}
-      security-engine: ${{ inputs.security-engine || 'both' }}
-      skip-pypi: false
-      release-version: ${{ needs.release-management.outputs.version }}
-      release-tag: ${{ needs.release-management.outputs.tag-name }}
+      package-version: ${{ needs.release-management.outputs.version }}
+      build-package: true
     secrets: inherit
 
   # Artifact generation for releases
