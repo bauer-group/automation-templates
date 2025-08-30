@@ -84,6 +84,7 @@ jobs:
     with:
       target-branch: 'main'
       dry-run: false
+      force-release: ${{ inputs.force-release || false }}
     secrets: inherit
 
   # Artifact generation for releases
