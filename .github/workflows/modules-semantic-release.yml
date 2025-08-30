@@ -18,6 +18,11 @@ on:
         required: false
         type: string
         default: '20'
+      force-release:
+        description: 'Force create release even without conventional commits'
+        required: false
+        type: boolean
+        default: false
     outputs:
       release-created:
         description: 'Whether a release was created'
@@ -67,6 +72,7 @@ jobs:
           dry-run: ${{ inputs.dry-run }}
           branches: ${{ inputs.target-branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          force-release: ${{ inputs.force-release }}
           
       - name: 📊 Process Results
         id: release
