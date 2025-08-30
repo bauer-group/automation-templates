@@ -1,3 +1,16 @@
+## [1.5.0](https://github.com/bauer-group/automation-templates/compare/v1.4.1...v1.5.0) (2025-08-30)
+
+### 🚀 Features
+
+* add force-release option to release management job ([90923d1](https://github.com/bauer-group/automation-templates/commit/90923d10715945161a9d696290b42477f1912b83))
+* add force-release option to semantic release configuration ([9b45f07](https://github.com/bauer-group/automation-templates/commit/9b45f070f530dafb7155122ec6fc11c1e70723d1))
+* add force-release option to semantic release workflows ([f915d13](https://github.com/bauer-group/automation-templates/commit/f915d13a0d2b2de7809b4247f2657b14db1f8007))
+
+### ♻️ Code Refactoring
+
+* remove build-package option from publish-pypi job ([e32a5c7](https://github.com/bauer-group/automation-templates/commit/e32a5c77f4eb1532d987606457090e74a87ef143))
+* remove format and type check options from Python CI/CD pipeline ([661d765](https://github.com/bauer-group/automation-templates/commit/661d76558e58e73f796e3235b1adad9fc0a4b9d2))
+
 ## [1.4.1](https://github.com/bauer-group/automation-templates/compare/v1.4.0...v1.4.1) (2025-08-30)
 
 ### ♻️ Code Refactoring
