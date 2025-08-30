@@ -598,16 +598,7 @@ jobs:
               ${{ inputs.test-args }}
           elif [ "${{ inputs.test-framework }}" = "unittest" ]; then
             pip install xmlrunner
-            python -c "
-import sys, os, unittest, xmlrunner
-sys.path.insert(0, '${{ inputs.test-path }}')
-loader = unittest.TestLoader()
-suite = loader.discover('${{ inputs.test-path }}', pattern='test*.py')
-with open('$TEST_RESULTS_DIR/unittest-report.xml', 'wb') as output:
-    runner = xmlrunner.XMLTestRunner(output=output)
-    result = runner.run(suite)
-sys.exit(0 if result.wasSuccessful() else 1)
-"
+            python -c "import sys, os, unittest, xmlrunner; sys.path.insert(0, '${{ inputs.test-path }}'); loader = unittest.TestLoader(); suite = loader.discover('${{ inputs.test-path }}', pattern='test*.py'); output = open('\$TEST_RESULTS_DIR/unittest-report.xml', 'wb'); runner = xmlrunner.XMLTestRunner(output=output); result = runner.run(suite); output.close(); sys.exit(0 if result.wasSuccessful() else 1)"
           fi
           
           echo "results=success" >> $GITHUB_OUTPUT
