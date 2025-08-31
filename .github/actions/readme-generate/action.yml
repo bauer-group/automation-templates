@@ -56,9 +56,9 @@ outputs:
   current_version:
     description: 'The current version that was used'
     value: ${{ steps.generate.outputs.current_version }}
-  unresolved_placeholders:
-    description: 'Number of unresolved placeholders found'
-    value: ${{ steps.generate.outputs.unresolved_placeholders }}
+  unresolved_found:
+    description: 'Whether unresolved placeholders were found'
+    value: ${{ steps.generate.outputs.unresolved_found }}
 
 runs:
   using: composite
@@ -292,12 +292,16 @@ runs:
         if grep -q "{{[^}]*}}" "$OUTPUT_PATH" 2>/dev/null; then
           echo "⚠️ Found unresolved placeholders:"
           grep -o "{{[^}]*}}" "$OUTPUT_PATH" | sort | uniq | head -5
+          UNRESOLVED_FOUND="true"
+        else
+          UNRESOLVED_FOUND="false"
         fi
         
         # Set outputs
         echo "changes_detected=$CHANGES_DETECTED" >> $GITHUB_OUTPUT
         echo "validation_passed=true" >> $GITHUB_OUTPUT
         echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        echo "unresolved_found=$UNRESOLVED_FOUND" >> $GITHUB_OUTPUT
         
         # Cleanup
         rm -f "$TEMP_FILE"
