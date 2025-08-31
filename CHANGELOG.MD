@@ -1,3 +1,11 @@
+## [1.6.1](https://github.com/bauer-group/automation-templates/compare/v1.6.0...v1.6.1) (2025-08-31)
+
+### 🐛 Bug Fixes
+
+* improve unresolved placeholders check in README generator ([139e4b2](https://github.com/bauer-group/automation-templates/commit/139e4b28476325a404bc5351fec2433e856cb456))
+* rename unresolved placeholders output for clarity ([cb82fa5](https://github.com/bauer-group/automation-templates/commit/cb82fa59429574f5f5c6eb19e9b449eaea188b1e))
+* rename unresolved placeholders output for consistency ([0629fe2](https://github.com/bauer-group/automation-templates/commit/0629fe266687fd48f712e5c28d3cc6d03843f420))
+
 ## [1.6.0](https://github.com/bauer-group/automation-templates/compare/v1.5.0...v1.6.0) (2025-08-31)
 
 ### 🚀 Features
