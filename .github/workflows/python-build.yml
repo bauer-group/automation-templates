@@ -628,7 +628,7 @@ jobs:
           mkdir -p "$TEST_RESULTS_DIR"
           
           if [ -n "${{ inputs.test-command }}" ]; then
-            ${{ inputs.test-command }}
+            eval "${{ inputs.test-command }}"
           elif [ "${{ inputs.test-framework }}" = "pytest" ]; then
             pip install pytest pytest-xdist
             if [ "${{ inputs.collect-coverage }}" = "true" ]; then
