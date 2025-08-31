@@ -1,3 +1,24 @@
+## [1.6.0](https://github.com/bauer-group/automation-templates/compare/v1.5.0...v1.6.0) (2025-08-31)
+
+### 🚀 Features
+
+* enhance unittest integration with XML output and report checks ([725069e](https://github.com/bauer-group/automation-templates/commit/725069e988ea37ca7fda3785effd70f74f5d2fa0))
+* update working directory input for Python build and publish jobs ([525b950](https://github.com/bauer-group/automation-templates/commit/525b950a62daa8470ad6903925bbc388dfd438f7))
+
+### 🐛 Bug Fixes
+
+* ensure newline at end of file in deploy-automations.sh ([9023b08](https://github.com/bauer-group/automation-templates/commit/9023b084b63a18449b68cfd44f3196bffd0ea60e))
+* handle unset variable for unresolved placeholders count in README generation ([211cfdb](https://github.com/bauer-group/automation-templates/commit/211cfdbd97ba689480d97145b8f71d071ac442ab))
+* improve unresolved placeholders counting in README generation ([e2d30a9](https://github.com/bauer-group/automation-templates/commit/e2d30a9b5324a5eb8493889c7025eddf476e8f87))
+* remove branch check from workflow conditions to simplify execution ([388e295](https://github.com/bauer-group/automation-templates/commit/388e29507fb1a149d4973b10b76ef903722d956e))
+* simplify dependencies for PyPI publishing and clarify artifact generation summary ([1bdade8](https://github.com/bauer-group/automation-templates/commit/1bdade8835561c993bcee15df06b58ef0758ff7e))
+* streamline unittest execution in Python build workflow ([fc6d27c](https://github.com/bauer-group/automation-templates/commit/fc6d27cfb44eb27cfda1287cdd5ed7b64d877a40))
+* update artifact generation summary to include wheel type ([db00856](https://github.com/bauer-group/automation-templates/commit/db0085666d76e0062c97da394f5acf7aaf75d963))
+
+### ♻️ Code Refactoring
+
+* simplify unittest execution in Python build workflow ([30abb72](https://github.com/bauer-group/automation-templates/commit/30abb7284b936d837be4d9911f26ad36a34ce08b))
+
 ## [1.5.0](https://github.com/bauer-group/automation-templates/compare/v1.4.1...v1.5.0) (2025-08-30)
 
 ### 🚀 Features
