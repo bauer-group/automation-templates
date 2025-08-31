@@ -11,9 +11,9 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 - **Branch:** {{CURRENT_BRANCH}}
 - **Architecture:** Modular, Reusable, Enterprise-Ready
 
-[![🔄 CI/CD Pipeline (Automatic Release)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
-[![📄 Documentation Management](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml)
-[![🛡️ Security Policy Management](https://github.com/bauer-group/automation-templates/actions/workflows/security-management.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/security-management.yml)
+[![🔄 CI/CD](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/automatic-release.yml)
+[![📄 Documentation](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/documentation.yml)
+[![🛡️ Security Policy](https://github.com/bauer-group/automation-templates/actions/workflows/security-management.yml/badge.svg)](https://github.com/bauer-group/automation-templates/actions/workflows/security-management.yml)
 
 ## 📋 Project Resources
 
@@ -681,3 +681,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 *Generated on {{DATETIME}} from [docs/README.template.MD](docs/README.template.MD)*
+
