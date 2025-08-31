@@ -57,7 +57,7 @@ jobs:
       readme_updated: ${{ steps.generate.outputs.readme_updated || 'false' }}
       changes_detected: ${{ steps.generate.outputs.changes_detected || 'false' }}
       validation_passed: ${{ steps.generate.outputs.validation_passed || steps.should-run.outputs.should_run == 'false' && 'skipped' || 'false' }}
-      unresolved_placeholders: ${{ steps.generate.outputs.unresolved_placeholders }}
+      unresolved_found: ${{ steps.generate.outputs.unresolved_found }}
     
     steps:
       - name: 🚀 Checkout Repository
