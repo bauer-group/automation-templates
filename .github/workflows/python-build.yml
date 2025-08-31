@@ -451,7 +451,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           if [ -n "${{ inputs.install-command }}" ]; then
-            ${{ inputs.install-command }}
+            eval "${{ inputs.install-command }}"
           elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
             poetry install
           elif [ "${{ inputs.package-manager }}" = "pipenv" ]; then
