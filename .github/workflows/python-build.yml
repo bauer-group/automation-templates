@@ -457,22 +457,70 @@ jobs:
           elif [ "${{ inputs.package-manager }}" = "pipenv" ]; then
             pipenv install --dev
           else
-            # pip installation
-            REQUIREMENTS_FILES='${{ inputs.requirements-files }}'
-            echo "$REQUIREMENTS_FILES" | jq -r '.[]' | while read -r file; do
-              if [ -f "$file" ]; then
-                echo "Installing from $file"
-                pip install -r "$file"
+            # Modern pyproject.toml-based project
+            if [ -f "pyproject.toml" ]; then
+              echo "🔧 Detected pyproject.toml - using modern Python packaging"
+              
+              # Check if project has dependencies defined in pyproject.toml
+              if python3 -c "import tomllib; config = tomllib.load(open('pyproject.toml', 'rb')); exit(0 if 'dependencies' in config.get('project', {}) else 1)" 2>/dev/null; then
+                echo "📦 Installing dependencies from pyproject.toml"
+                pip install -e .
+              else
+                echo "⚠️ No dependencies found in pyproject.toml, trying requirements files"
+                # Fallback to requirements files if pyproject.toml has no dependencies
+                REQUIREMENTS_FILES='${{ inputs.requirements-files }}'
+                echo "$REQUIREMENTS_FILES" | jq -r '.[]' | while read -r file; do
+                  if [ -f "$file" ]; then
+                    echo "Installing from $file"
+                    pip install -r "$file"
+                  fi
+                done
+                # Still install the package itself
+                pip install -e .
               fi
-            done
-            
-            if [ "${{ inputs.install-dev-requirements }}" = "true" ] && [ -f "requirements-dev.txt" ]; then
-              pip install -r requirements-dev.txt
-            fi
-            
-            # Install package in development mode if setup.py or pyproject.toml exists
-            if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
+              
+              # Install optional dev dependencies from pyproject.toml
+              if [ "${{ inputs.install-dev-requirements }}" = "true" ]; then
+                if python3 -c "import tomllib; config = tomllib.load(open('pyproject.toml', 'rb')); exit(0 if 'optional-dependencies' in config.get('project', {}) else 1)" 2>/dev/null; then
+                  echo "🔧 Installing optional dev dependencies from pyproject.toml"
+                  pip install -e ".[dev]" 2>/dev/null || pip install -e ".[development]" 2>/dev/null || echo "⚠️ No [dev] or [development] optional dependencies found"
+                fi
+              fi
+              
+            # Legacy setup.py-based project  
+            elif [ -f "setup.py" ]; then
+              echo "🔧 Detected setup.py - using legacy Python packaging"
+              
+              # Install from requirements files first
+              REQUIREMENTS_FILES='${{ inputs.requirements-files }}'
+              echo "$REQUIREMENTS_FILES" | jq -r '.[]' | while read -r file; do
+                if [ -f "$file" ]; then
+                  echo "Installing from $file"
+                  pip install -r "$file"
+                fi
+              done
+              
+              if [ "${{ inputs.install-dev-requirements }}" = "true" ] && [ -f "requirements-dev.txt" ]; then
+                pip install -r requirements-dev.txt
+              fi
+              
+              # Install package in development mode
               pip install -e .
+              
+            # Requirements-only project (no package)
+            else
+              echo "📦 Installing from requirements files only"
+              REQUIREMENTS_FILES='${{ inputs.requirements-files }}'
+              echo "$REQUIREMENTS_FILES" | jq -r '.[]' | while read -r file; do
+                if [ -f "$file" ]; then
+                  echo "Installing from $file"
+                  pip install -r "$file"
+                fi
+              done
+              
+              if [ "${{ inputs.install-dev-requirements }}" = "true" ] && [ -f "requirements-dev.txt" ]; then
+                pip install -r requirements-dev.txt
+              fi
             fi
           fi
       
