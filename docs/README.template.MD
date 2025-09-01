@@ -123,7 +123,8 @@ jobs:
 │   │   └── commitlint.config.js # Commit linting rules
 │   └── workflows/            # 🚀 Reusable Workflows
 │       ├── docker-build.yml       # Docker build & deploy workflow
-│       ├── python-publish.yml     # Python package publishing
+│       ├── python-build.yml       # Python application builds & testing
+│       ├── python-semantic-release.yml # Python package semantic releases
 │       ├── zephyr-build.yml       # Zephyr RTOS build & test workflow
 │       ├── dotnet-build.yml       # .NET build & test workflow
 │       ├── dotnet-desktop-build.yml # .NET desktop application builds
@@ -501,7 +502,7 @@ jobs:
   publish:
     if: github.ref == 'refs/heads/main'
     needs: build
-    uses: {{REPO_FULL_NAME}}/.github/workflows/python-publish.yml@main
+    uses: {{REPO_FULL_NAME}}/.github/workflows/python-semantic-release.yml@main
     with:
       config-file: 'application'
       package-manager: 'poetry'
