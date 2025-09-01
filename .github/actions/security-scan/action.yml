@@ -483,6 +483,7 @@ runs:
         name: security-scan-reports
         path: security-reports/
         retention-days: 30
+        if-no-files-found: ignore
 
     - name: 🚨 Fail on Security Issues
       if: inputs.fail-on-findings == 'true' && (steps.process-gitleaks.outputs.secrets-found == 'true' || steps.vulnerability-scan.outputs.vulnerabilities-found == 'true')
