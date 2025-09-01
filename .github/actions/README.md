@@ -40,12 +40,9 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 
 ### 🐍 Python Development
 
-| Action | Purpose | Features | Modularer Workflow |
-|--------|---------|----------|---------------------|
-| [`python-setup`](./python-setup/) | Python environment setup | Multi-package-manager, caching | [python-build.yml](../workflows/python-build.yml) |
-| [`python-test`](./python-test/) | Comprehensive testing suite | Coverage, parallel tests, reporting | [python-build.yml](../workflows/python-build.yml) |
-| [`python-quality`](./python-quality/) | Code quality analysis | Linting, formatting, security, type checking | [python-build.yml](../workflows/python-build.yml) |
-| [`python-package`](./python-package/) | Package building & publishing | PyPI/TestPyPI, validation, signing | [python-publish.yml](../workflows/python-publish.yml) |
+> **Neu:** Python-Funktionalität wurde in die Workflows integriert:
+> - **Anwendungen**: [python-build.yml](../workflows/python-build.yml) - Inline-Implementation aller Python-Actions
+> - **Packages**: [python-semantic-release.yml](../workflows/python-semantic-release.yml) - Moderne semantic versioning
 
 ## 🚀 Quick Start
 
@@ -76,8 +73,9 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-**Python Development:**
+**Python Development (Modern):**
 ```yaml
+# Für Anwendungen (Django, FastAPI, ML, etc.)
 jobs:
   python-ci:
     uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
@@ -88,16 +86,15 @@ jobs:
       run-security-scan: true
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-  
-  python-publish:
-    needs: python-ci
-    if: startsWith(github.ref, 'refs/tags/v')
-    uses: bauer-group/automation-templates/.github/workflows/python-publish.yml@main
+
+# Für Packages (PyPI Publishing mit Semantic Versioning)  
+jobs:
+  python-release:
+    uses: bauer-group/automation-templates/.github/workflows/python-semantic-release.yml@main
     with:
-      publish-to: 'pypi'
-      create-github-release: true
-    secrets:
-      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+      python-version: '3.12'
+      skip-pypi: false
+    secrets: inherit
 ```
 
 ### 🔧 Direkte Action-Verwendung
@@ -135,30 +132,26 @@ jobs:
     token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-**Python Environment Setup:**
+**Python Development:**
 ```yaml
-- name: 🐍 Setup Python Environment
-  uses: bauer-group/automation-templates/.github/actions/python-setup@main
-  with:
-    python-version: '3.12'
-    package-manager: 'pip'
-    requirements-files: 'requirements.txt,requirements-dev.txt'
-    cache-dependencies: true
+# Für Anwendungen (Django, FastAPI, ML, etc.)
+jobs:
+  python-ci:
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    with:
+      python-version: '3.12'
+      run-tests: true
+      collect-coverage: true
+      run-security-scan: true
 
-- name: 🧪 Run Python Tests
-  uses: bauer-group/automation-templates/.github/actions/python-test@main
-  with:
-    test-framework: 'pytest'
-    collect-coverage: true
-    coverage-threshold: 80
-
-- name: 🔍 Python Quality Checks
-  uses: bauer-group/automation-templates/.github/actions/python-quality@main
-  with:
-    run-lint: true
-    linter: 'ruff'
-    run-format-check: true
-    run-security-scan: true
+# Für Packages (PyPI Publishing mit Semantic Versioning)
+jobs:
+  python-release:
+    uses: bauer-group/automation-templates/.github/workflows/python-semantic-release.yml@main
+    with:
+      python-version: '3.12'
+      skip-pypi: false
+    secrets: inherit
 ```
 
 ## 🎆 Migration zu modularen Workflows
