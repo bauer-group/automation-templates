@@ -1,3 +1,15 @@
+## [1.7.0](https://github.com/bauer-group/automation-templates/compare/v1.6.1...v1.7.0) (2025-09-01)
+
+### 🚀 Features
+
+* Add comprehensive Zephyr RTOS build examples and workflows ([2cb962d](https://github.com/bauer-group/automation-templates/commit/2cb962db18ce340656bd2e43cb7645a973ac4bdb))
+* enhance Python package installation logic for modern and legacy projects ([63de420](https://github.com/bauer-group/automation-templates/commit/63de42038957f0cb1c93da0f4920b5d664fd1951))
+
+### 🐛 Bug Fixes
+
+* use eval for executing test commands in python-build.yml ([8603cf6](https://github.com/bauer-group/automation-templates/commit/8603cf608085c522360d1a921f6e841f6928a06c))
+* use eval for install command execution in python-build.yml ([b10853b](https://github.com/bauer-group/automation-templates/commit/b10853b5f51f4af9ca6a608b0dd54ee85deb1de6))
+
 ## [1.6.1](https://github.com/bauer-group/automation-templates/compare/v1.6.0...v1.6.1) (2025-08-31)
 
 ### 🐛 Bug Fixes
