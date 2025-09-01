@@ -1,0 +1,64 @@
+name: ⚡ Multi-Board Zephyr Matrix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  matrix-build:
+    name: 🔨 Build (${{ matrix.board }}, ${{ matrix.build-type }})
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        board: 
+          - qemu_x86
+          - qemu_cortex_m3
+          - native_posix
+          - nucleo_f429zi
+          - esp32
+        build-type: [debug, release]
+        
+        # Exclude some combinations for efficiency
+        exclude:
+          - board: esp32
+            build-type: debug
+          - board: nucleo_f429zi
+            build-type: debug
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: ⚡ Build Zephyr Application
+        id: build
+        uses: bauer-group/automation-templates/.github/actions/zephyr-build@main
+        with:
+          board: ${{ matrix.board }}
+          build-type: ${{ matrix.build-type }}
+          run-tests: true
+          enable-coverage: ${{ matrix.board == 'qemu_x86' }}
+          cache-enabled: true
+          
+      - name: 📤 Upload Artifacts
+        if: matrix.build-type == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zephyr-${{ matrix.board }}-${{ matrix.build-type }}
+          path: ${{ steps.build.outputs.binary-path }}
+          retention-days: 7
+          
+      - name: 📊 Build Summary
+        run: |
+          echo "### Build Results 📊" >> $GITHUB_STEP_SUMMARY
+          echo "- **Board**: ${{ matrix.board }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Type**: ${{ matrix.build-type }}" >> $GITHUB_STEP_SUMMARY  
+          echo "- **Status**: ${{ steps.build.outputs.build-status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Time**: ${{ steps.build.outputs.build-time }}s" >> $GITHUB_STEP_SUMMARY

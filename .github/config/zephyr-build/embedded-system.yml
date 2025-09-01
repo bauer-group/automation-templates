@@ -1,0 +1,281 @@
+# Zephyr Embedded System Build Configuration
+# For industrial and automotive embedded systems
+
+zephyr:
+  # SDK Configuration
+  sdk_version: "0.17.4"
+  sdk_cache: true
+  
+  # Build Configuration
+  default_board: "nucleo_f429zi"
+  build_type: "release"
+  parallel_jobs: "auto"
+  
+  # West Configuration
+  west_workspace: true
+  update_modules: true
+
+# Build Settings  
+build:
+  cmake_args:
+    - "-DCONFIG_PRINTK=n"           # Disable debug prints
+    - "-DCONFIG_ASSERT=y"           # Enable assertions
+    - "-DCONFIG_STACK_CANARIES=y"   # Stack overflow protection
+    - "-DCONFIG_THREAD_STACK_INFO=y"
+    - "-DCONFIG_THREAD_MONITOR=y"
+    - "-DCONFIG_BOOT_BANNER=n"      # Disable boot banner
+    - "-DCONFIG_WATCHDOG=y"         # Hardware watchdog
+    - "-DCONFIG_REBOOT=y"           # System reboot capability
+  extra_flags:
+    - "-O2"                         # Optimize for performance
+    - "-DNDEBUG"
+    - "-fstack-protector-strong"    # Stack protection
+    - "-D_FORTIFY_SOURCE=2"         # Buffer overflow protection
+  enable_warnings: true
+  treat_warnings_as_errors: true    # Strict for production systems
+  optimization: "performance"
+
+# Testing Configuration
+testing:
+  enabled: true
+  twister_enabled: true
+  test_pattern: "tests/kernel/* tests/drivers/* tests/subsys/*"
+  timeout: 900  # Extended timeout for embedded tests
+  platforms: 
+    - "native_posix"
+    - "qemu_cortex_m3" 
+    - "nucleo_f429zi"
+    - "frdm_k64f"
+  
+  # Test Categories
+  unit_tests: true
+  integration_tests: true
+  benchmark_tests: true
+  stress_tests: true
+  real_time_tests: true
+  safety_tests: true
+
+# Coverage Configuration
+coverage:
+  enabled: true
+  format: ["html", "xml", "json"]
+  target_coverage: 85  # High coverage for embedded systems
+  exclude_patterns:
+    - "tests/*"
+    - "samples/*" 
+    - "build/*"
+    - "modules/hal_*"
+
+# Code Quality
+quality:
+  compliance_checks: true
+  static_analysis: true
+  checkpatch: true
+  coding_style: true
+  
+  # Embedded-specific checks
+  misra_compliance: true
+  cyclomatic_complexity: true
+  dead_code_elimination: true
+  stack_analysis: true
+
+# Dependencies
+dependencies:
+  system_packages:
+    ubuntu:
+      - "build-essential"
+      - "cmake"
+      - "ninja-build"
+      - "gperf"
+      - "ccache"
+      - "dfu-util"
+      - "device-tree-compiler"
+      - "wget"
+      - "python3-dev"
+      - "python3-pip"
+      - "python3-setuptools"
+      - "python3-wheel"
+      - "xz-utils"
+      - "file"
+      - "make"
+      - "gcc"
+      - "gcc-multilib"
+      - "g++-multilib"
+      - "libsdl2-dev"
+      - "libmagic1"
+      - "openocd"            # Hardware debugging
+      - "gdb-multiarch"      # Multi-arch debugging
+      - "stlink-tools"       # STM32 tools
+      - "valgrind"           # Memory analysis
+      - "cppcheck"           # Static analysis
+      - "splint"             # Static analysis
+    
+    macos:
+      - "cmake"
+      - "ninja"
+      - "gperf"
+      - "python3"
+      - "ccache" 
+      - "qemu"
+      - "dtc"
+      - "libmagic"
+      - "openocd"
+      - "cppcheck"
+    
+    windows:
+      - "cmake"
+      - "ninja"
+
+  python_packages:
+    - "west>=1.2.0"
+    - "pyelftools>=0.27"
+    - "pyyaml>=5.1"
+    - "canopen"
+    - "packaging"
+    - "psutil"
+    - "anytree"
+    - "intelhex"
+    - "pyserial"           # Serial communication
+    - "matplotlib"         # Data plotting
+    - "numpy"              # Numerical analysis
+
+# Embedded System Configuration
+embedded:
+  real_time: true
+  deterministic: true
+  fault_tolerance: true
+  
+  # Memory Management
+  memory_protection: true
+  stack_monitoring: true
+  heap_monitoring: true
+  
+  # Safety Features
+  watchdog: true
+  brown_out_detection: true
+  error_recovery: true
+  
+  # Communication
+  protocols:
+    - "can"
+    - "spi"
+    - "i2c" 
+    - "uart"
+    - "ethernet"
+    - "usb"
+
+# Caching Strategy
+cache:
+  enabled: true
+  directories:
+    - "~/.cache/zephyr-sdk"
+    - "~/.west"
+    - "build/"
+    - ".west/"
+    - "~/.ccache"          # Compiler cache
+  ttl: "14d"  # Longer cache for stable embedded builds
+
+# Artifacts Configuration
+artifacts:
+  enabled: true
+  retention_days: 90  # Longer retention for production builds
+  compression: true
+  
+  include:
+    - "build/zephyr/*.bin"
+    - "build/zephyr/*.hex"
+    - "build/zephyr/*.elf"
+    - "build/zephyr/zephyr.map"
+    - "build/zephyr/zephyr.dts"
+    - "**/*.log"
+    - "twister-out/**/*.xml"
+    - "coverage-report/**"
+    - "static-analysis/**"
+    - "memory-analysis/**"
+    - "performance-reports/**"
+    - "safety-reports/**"
+    - "build/zephyr/*.lst"     # Assembly listings
+    - "build/zephyr/*.s19"     # Motorola S-record format
+  
+  exclude:
+    - "build/**/*.o"
+    - "build/**/*.a"
+    - ".west/modules/**"
+
+# Security Configuration
+security:
+  scan_enabled: true
+  secret_detection: true
+  dependency_check: true
+  
+  # Embedded Security
+  firmware_signing: true
+  secure_boot: true
+  memory_protection: true
+  stack_canaries: true
+
+# Hardware Testing
+hardware:
+  enabled: true
+  runners: ["nucleo-runner", "frdm-runner", "custom-hw-runner"]
+  boards: 
+    - "nucleo_f429zi"
+    - "nucleo_f767zi" 
+    - "frdm_k64f"
+    - "mimxrt1064_evk"
+    - "stm32f4_disco"
+  flash_timeout: 120
+  test_timeout: 600
+  
+  # Hardware validation tests
+  gpio_tests: true
+  timer_tests: true
+  interrupt_tests: true
+  power_management_tests: true
+  communication_tests: true
+  stress_tests: true
+
+# Performance Analysis
+performance:
+  memory_analysis: true
+  code_size_tracking: true
+  execution_profiling: true
+  interrupt_latency: true
+  context_switch_time: true
+  
+  # Performance Thresholds
+  max_flash_size: "512KB"
+  max_ram_size: "192KB" 
+  max_boot_time: "2s"
+  max_interrupt_latency: "10us"
+  max_context_switch: "5us"
+
+# Safety and Compliance
+safety:
+  iso26262_compliance: true
+  iec61508_compliance: true
+  misra_c_compliance: true
+  
+  # Safety Analysis
+  hazard_analysis: true
+  fmea_analysis: true
+  fault_injection: true
+
+# Documentation
+documentation:
+  api_docs: true
+  safety_manual: true
+  integration_guide: true
+  test_reports: true
+
+# Notification Settings
+notifications:
+  teams_enabled: true
+  slack_enabled: false
+  email_enabled: true
+  
+  # Critical notifications
+  build_failures: true
+  test_failures: true  
+  safety_violations: true
+  security_issues: true

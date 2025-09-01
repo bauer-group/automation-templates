@@ -1,0 +1,162 @@
+# Default Zephyr RTOS Build Configuration
+# Standard configuration for Zephyr applications
+
+zephyr:
+  # SDK Configuration
+  sdk_version: "0.17.4"
+  sdk_cache: true
+  
+  # Build Configuration
+  default_board: "qemu_x86"
+  build_type: "debug"
+  parallel_jobs: "auto"
+  
+  # West Configuration
+  west_workspace: true
+  update_modules: true
+  
+# Build Settings
+build:
+  cmake_args: []
+  extra_flags: []
+  enable_warnings: true
+  treat_warnings_as_errors: false
+  optimization: "default"
+
+# Testing Configuration
+testing:
+  enabled: true
+  twister_enabled: true
+  test_pattern: "tests/*"
+  timeout: 300
+  platforms: ["native_posix", "qemu_x86"]
+  
+  # Test Categories
+  unit_tests: true
+  integration_tests: true
+  benchmark_tests: false
+
+# Coverage Configuration
+coverage:
+  enabled: false
+  format: ["html", "xml", "json"]
+  exclude_patterns:
+    - "tests/*"
+    - "samples/*"
+    - "build/*"
+
+# Code Quality
+quality:
+  compliance_checks: true
+  static_analysis: false
+  checkpatch: true
+  coding_style: true
+  
+  # Compliance Tools
+  tools:
+    gitlint: true
+    checkpatch: true
+    identity_check: true
+    kconfig_check: true
+
+# Dependencies
+dependencies:
+  system_packages:
+    ubuntu:
+      - "build-essential"
+      - "cmake"
+      - "ninja-build"
+      - "gperf"
+      - "ccache"
+      - "dfu-util"
+      - "device-tree-compiler"
+      - "wget"
+      - "python3-dev"
+      - "python3-pip"
+      - "python3-setuptools"
+      - "python3-wheel"
+      - "xz-utils"
+      - "file"
+      - "make"
+      - "gcc"
+      - "gcc-multilib"
+      - "g++-multilib"
+      - "libsdl2-dev"
+      - "libmagic1"
+    
+    macos:
+      - "cmake"
+      - "ninja"
+      - "gperf" 
+      - "python3"
+      - "ccache"
+      - "qemu"
+      - "dtc"
+      - "libmagic"
+    
+    windows:
+      - "cmake"
+      - "ninja"
+
+  python_packages:
+    - "west>=1.2.0"
+    - "pyelftools>=0.27"
+    - "pyyaml>=5.1"
+    - "canopen"
+    - "packaging"
+    - "psutil"
+    - "anytree"
+    - "intelhex"
+
+# Caching Strategy
+cache:
+  enabled: true
+  directories:
+    - "~/.cache/zephyr-sdk"
+    - "~/.west"
+    - "build/"
+    - ".west/"
+  ttl: "7d"
+
+# Artifacts Configuration  
+artifacts:
+  enabled: true
+  retention_days: 30
+  compression: true
+  
+  # Include Patterns
+  include:
+    - "build/zephyr/*.bin"
+    - "build/zephyr/*.hex" 
+    - "build/zephyr/*.elf"
+    - "build/zephyr/zephyr.map"
+    - "build/zephyr/zephyr.dts"
+    - "**/*.log"
+    - "twister-out/**/*.xml"
+    - "coverage-report/**"
+  
+  # Exclude Patterns  
+  exclude:
+    - "build/**/*.o"
+    - "build/**/*.a"
+    - ".west/modules/**"
+
+# Security Configuration
+security:
+  scan_enabled: true
+  secret_detection: true
+  dependency_check: false
+  
+# Hardware Testing (if available)
+hardware:
+  enabled: false
+  runners: []
+  boards: []
+  flash_timeout: 30
+  test_timeout: 120
+
+# Notification Settings
+notifications:
+  teams_enabled: false
+  slack_enabled: false
+  email_enabled: false

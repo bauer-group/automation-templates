@@ -1,0 +1,26 @@
+name: ⚡ Basic Zephyr Application
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: 🔨 Build Zephyr App
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: ⚡ Build Zephyr Application
+        uses: bauer-group/automation-templates/.github/actions/zephyr-build@main
+        with:
+          board: 'qemu_x86'
+          build-type: 'debug'
+          run-tests: true
+          
+      - name: 📊 Build Summary
+        run: echo "✅ Basic Zephyr build completed successfully!"

@@ -1,0 +1,250 @@
+# Zephyr Sample Application Build Configuration  
+# For demos, samples, and learning projects
+
+zephyr:
+  # SDK Configuration
+  sdk_version: "0.17.4"
+  sdk_cache: true
+  
+  # Build Configuration
+  default_board: "qemu_x86"
+  build_type: "debug"
+  parallel_jobs: "auto"
+  
+  # West Configuration
+  west_workspace: true
+  update_modules: true
+
+# Build Settings
+build:
+  cmake_args:
+    - "-DCONFIG_PRINTK=y"          # Enable debug prints
+    - "-DCONFIG_LOG=y"             # Enable logging
+    - "-DCONFIG_SHELL=y"           # Enable shell
+    - "-DCONFIG_KERNEL_SHELL=y"    # Kernel shell commands
+    - "-DCONFIG_DEVICE_SHELL=y"    # Device shell commands
+    - "-DCONFIG_BOOT_BANNER=y"     # Show boot banner
+  extra_flags:
+    - "-Og"                        # Optimize for debugging
+    - "-g"                         # Debug information
+  enable_warnings: true
+  treat_warnings_as_errors: false  # Relaxed for samples
+  optimization: "debug"
+
+# Testing Configuration
+testing:
+  enabled: true
+  twister_enabled: true
+  test_pattern: "samples/*"
+  timeout: 180  # Shorter timeout for samples
+  platforms:
+    - "native_posix"
+    - "qemu_x86"
+    - "qemu_cortex_m3"
+  
+  # Test Categories
+  unit_tests: false      # Samples don't need extensive unit tests
+  integration_tests: true
+  benchmark_tests: false
+  demo_tests: true
+
+# Coverage Configuration
+coverage:
+  enabled: false  # Not critical for samples
+  format: ["html"]
+  exclude_patterns:
+    - "tests/*"
+    - "samples/*"
+    - "build/*"
+
+# Code Quality
+quality:
+  compliance_checks: false  # Relaxed for samples
+  static_analysis: false
+  checkpatch: false
+  coding_style: true        # Keep basic style checks
+  
+  # Basic quality checks
+  build_warnings: true
+  spelling_check: false
+
+# Dependencies
+dependencies:
+  system_packages:
+    ubuntu:
+      - "build-essential"
+      - "cmake"
+      - "ninja-build"
+      - "gperf"
+      - "ccache"
+      - "dfu-util"
+      - "device-tree-compiler"
+      - "wget"
+      - "python3-dev"
+      - "python3-pip"
+      - "python3-setuptools"
+      - "python3-wheel"
+      - "xz-utils"
+      - "file"
+      - "make"
+      - "gcc"
+      - "gcc-multilib"
+      - "g++-multilib"
+      - "libsdl2-dev"
+      - "libmagic1"
+    
+    macos:
+      - "cmake"
+      - "ninja"
+      - "gperf"
+      - "python3"
+      - "ccache"
+      - "qemu"
+      - "dtc"
+      - "libmagic"
+    
+    windows:
+      - "cmake"
+      - "ninja"
+
+  python_packages:
+    - "west>=1.2.0"
+    - "pyelftools>=0.27"
+    - "pyyaml>=5.1"
+    - "canopen"
+    - "packaging"
+    - "psutil"
+    - "anytree"
+    - "intelhex"
+
+# Sample Application Configuration
+sample:
+  interactive: true
+  documentation: true
+  
+  # Common sample features
+  features:
+    - "console_output"
+    - "led_control"
+    - "button_input"
+    - "sensors"
+    - "display"
+    - "communication"
+  
+  # Educational features
+  learning_mode: true
+  verbose_output: true
+  step_by_step: true
+
+# Caching Strategy
+cache:
+  enabled: true
+  directories:
+    - "~/.cache/zephyr-sdk"
+    - "~/.west"
+    - "build/"
+    - ".west/"
+  ttl: "3d"  # Shorter cache for rapidly changing samples
+
+# Artifacts Configuration
+artifacts:
+  enabled: true
+  retention_days: 14  # Shorter retention for samples
+  compression: true
+  
+  include:
+    - "build/zephyr/*.bin"
+    - "build/zephyr/*.hex" 
+    - "build/zephyr/*.elf"
+    - "build/zephyr/zephyr.map"
+    - "build/zephyr/zephyr.dts"
+    - "**/*.log"
+    - "twister-out/**/*.xml"
+    - "sample-output/**"
+    - "demo-results/**"
+  
+  exclude:
+    - "build/**/*.o"
+    - "build/**/*.a"
+    - ".west/modules/**"
+
+# Security Configuration
+security:
+  scan_enabled: false  # Minimal for samples
+  secret_detection: true
+  dependency_check: false
+
+# Hardware Testing  
+hardware:
+  enabled: false  # Usually not needed for samples
+  runners: []
+  boards: []
+  flash_timeout: 30
+  test_timeout: 60
+
+# Documentation
+documentation:
+  readme_required: true
+  build_instructions: true
+  usage_examples: true
+  troubleshooting: true
+  
+  # Sample-specific docs
+  learning_objectives: true
+  code_walkthrough: true
+  expected_output: true
+
+# Multi-board Support
+multi_board:
+  enabled: true
+  boards:
+    - "qemu_x86"
+    - "qemu_cortex_m3"
+    - "native_posix"
+    - "nucleo_f429zi"
+    - "esp32"
+    - "nrf52840dk_nrf52840"
+  
+  # Board-specific configurations
+  board_configs:
+    esp32:
+      wifi_demos: true
+      bluetooth_demos: true
+    nucleo_f429zi:
+      gpio_demos: true
+      sensor_demos: true
+    nrf52840dk_nrf52840:
+      bluetooth_demos: true
+      low_power_demos: true
+
+# Performance Monitoring
+performance:
+  memory_analysis: true
+  code_size_tracking: true
+  boot_time_analysis: false
+  
+  # Basic thresholds for samples
+  max_flash_size: "128KB"
+  max_ram_size: "64KB"
+  max_boot_time: "10s"
+
+# Interactive Features
+interactive:
+  shell_enabled: true
+  logging_enabled: true
+  debug_output: true
+  
+  # User interaction
+  button_demos: true
+  led_demos: true
+  serial_interface: true
+
+# Notification Settings
+notifications:
+  teams_enabled: false
+  slack_enabled: false
+  email_enabled: false  # Minimal notifications for samples
+  
+  # Only critical issues
+  build_failures: false
+  demo_failures: false

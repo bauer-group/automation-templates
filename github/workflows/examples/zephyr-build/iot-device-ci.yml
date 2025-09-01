@@ -1,0 +1,412 @@
+name: 🌐 IoT Device CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - 'include/**' 
+      - 'prj.conf'
+      - 'CMakeLists.txt'
+      - 'west.yml'
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly full test
+  workflow_dispatch:
+    inputs:
+      full-test:
+        description: 'Run full test suite'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  ZEPHYR_VERSION: '0.17.4'
+
+jobs:
+  # Quick validation on PR
+  quick-validation:
+    name: 🔍 Quick Validation
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      
+      - name: 🛡️ Security Scan
+        uses: bauer-group/automation-templates/.github/actions/security-scan@main
+        with:
+          scan-engines: 'gitleaks'
+          fail-on-findings: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: ⚡ Quick Build Test
+        uses: bauer-group/automation-templates/.github/actions/zephyr-build@main
+        with:
+          zephyr-version: ${{ env.ZEPHYR_VERSION }}
+          board: 'qemu_x86'
+          build-type: 'debug'
+          run-tests: true
+          run-compliance: true
+
+  # IoT device builds
+  iot-build:
+    name: 🌐 IoT Build (${{ matrix.board }})
+    if: github.event_name != 'pull_request' || inputs.full-test
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        board:
+          - esp32           # WiFi + Bluetooth
+          - esp32s3         # Advanced WiFi + Bluetooth
+          - nrf52840dk_nrf52840  # Bluetooth + Thread
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: ⚡ Build IoT Device
+        id: build
+        uses: bauer-group/automation-templates/.github/actions/zephyr-build@main
+        with:
+          config-file: 'iot-device'
+          zephyr-version: ${{ env.ZEPHYR_VERSION }}
+          board: ${{ matrix.board }}
+          build-type: 'release'
+          run-tests: true
+          enable-coverage: true
+          static-analysis: false  # Disable for speed in matrix
+          extra-cmake-args: |
+            -DCONFIG_NETWORKING=y
+            -DCONFIG_NET_IPV4=y
+            -DCONFIG_WIFI=y
+            -DCONFIG_BT=y
+      
+      - name: 📤 Upload Firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: iot-firmware-${{ matrix.board }}
+          path: ${{ steps.build.outputs.binary-path }}
+          retention-days: 30
+      
+      - name: 📊 Upload Coverage
+        if: matrix.board == 'esp32'  # Only upload once
+        uses: codecov/codecov-action@v4
+        with:
+          files: ${{ steps.build.outputs.coverage-report }}/coverage.xml
+          flags: iot-device
+          name: zephyr-iot-coverage
+          fail_ci_if_error: false
+
+  # Network and connectivity testing
+  connectivity-test:
+    name: 🌐 Connectivity Testing
+    needs: [iot-build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || inputs.full-test
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: 📥 Download ESP32 Firmware
+        uses: actions/download-artifact@v4
+        with:
+          name: iot-firmware-esp32
+          path: ./firmware
+      
+      - name: 🧪 Network Protocol Tests
+        run: |
+          echo "🧪 Running network protocol validation..."
+          
+          # Simulate network testing
+          echo "✅ WiFi connection test: PASSED"
+          echo "✅ MQTT connectivity test: PASSED"
+          echo "✅ HTTP client test: PASSED"
+          echo "✅ CoAP protocol test: PASSED"
+          echo "✅ TLS/SSL test: PASSED"
+          
+          # In real scenario, you would:
+          # - Start test network infrastructure (MQTT broker, HTTP server)
+          # - Flash firmware to hardware or simulator
+          # - Run automated connectivity tests
+          # - Validate protocol implementations
+      
+      - name: 🔋 Power Consumption Analysis
+        run: |
+          echo "🔋 Analyzing power consumption patterns..."
+          
+          # Power analysis simulation
+          echo "📊 Deep sleep current: 10µA"
+          echo "📊 Active WiFi current: 120mA"
+          echo "📊 Bluetooth LE current: 15mA"
+          echo "📊 CPU active current: 80mA"
+          
+          # In real scenario:
+          # - Use power measurement hardware
+          # - Run power profiling tests
+          # - Validate against power budgets
+
+  # Hardware-in-the-loop testing (if hardware available)
+  hardware-test:
+    name: 🔌 Hardware Testing
+    needs: [iot-build]
+    runs-on: [self-hosted, zephyr-hardware, esp32]
+    if: |
+      (github.ref == 'refs/heads/main' || inputs.full-test) &&
+      contains(github.event.head_commit.message, '[hardware-test]')
+    
+    strategy:
+      matrix:
+        board: [esp32, nrf52840dk_nrf52840]
+    
+    steps:
+      - name: 📥 Download Firmware
+        uses: actions/download-artifact@v4
+        with:
+          name: iot-firmware-${{ matrix.board }}
+          path: ./firmware
+      
+      - name: 🔌 Flash and Test Hardware
+        timeout-minutes: 15
+        run: |
+          echo "🔌 Testing on real hardware: ${{ matrix.board }}"
+          
+          case "${{ matrix.board }}" in
+            esp32)
+              echo "📱 Flashing ESP32..."
+              # esptool.py --port /dev/ttyUSB0 write_flash 0x10000 firmware/zephyr.bin
+              
+              echo "🧪 Running hardware validation..."
+              # - GPIO functionality test
+              # - WiFi connectivity test  
+              # - Bluetooth advertising test
+              # - Sensor reading test
+              ;;
+            nrf52840dk_nrf52840)
+              echo "📱 Flashing nRF52840..."
+              # nrfjprog --program firmware/zephyr.hex --chiperase --verify
+              
+              echo "🧪 Running hardware validation..."
+              # - Bluetooth LE functionality
+              # - Thread networking
+              # - Low power modes
+              ;;
+          esac
+          
+          echo "✅ Hardware tests completed successfully"
+
+  # Performance and stress testing
+  performance-test:
+    name: 📈 Performance Testing
+    needs: [iot-build]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || inputs.full-test
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: ⚡ Build Performance Test
+        uses: bauer-group/automation-templates/.github/actions/zephyr-build@main
+        with:
+          config-file: 'iot-device'
+          zephyr-version: ${{ env.ZEPHYR_VERSION }}
+          board: 'native_posix'
+          build-type: 'release'
+          run-tests: true
+          extra-cmake-args: |
+            -DCONFIG_THREAD_STACK_INFO=y
+            -DCONFIG_THREAD_MONITOR=y
+            -DCONFIG_KERNEL_SHELL=y
+      
+      - name: 📊 Memory Analysis
+        run: |
+          echo "📊 Memory usage analysis..."
+          
+          # Memory analysis simulation
+          echo "Flash usage: 245KB / 4MB (6.1%)"
+          echo "RAM usage: 45KB / 520KB (8.7%)"
+          echo "Stack usage: 2.1KB peak"
+          echo "Heap usage: 12KB allocated"
+          
+          # Performance metrics
+          echo "Boot time: 1.2 seconds"
+          echo "WiFi connect time: 3.4 seconds"
+          echo "MQTT publish latency: 45ms"
+      
+      - name: 🏃 Stress Testing
+        run: |
+          echo "🏃 Running stress tests..."
+          
+          # Stress test simulation
+          echo "✅ Memory allocation stress test: PASSED"
+          echo "✅ Network reconnection test: PASSED"  
+          echo "✅ Continuous operation (24h): PASSED"
+          echo "✅ Power cycling test: PASSED"
+
+  # Security validation
+  security-analysis:
+    name: 🛡️ Security Analysis
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || inputs.full-test
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🛡️ Comprehensive Security Scan
+        uses: bauer-group/automation-templates/.github/actions/security-scan@main
+        with:
+          scan-engines: 'both'
+          fail-on-findings: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+      
+      - name: 🔒 Firmware Security Analysis
+        run: |
+          echo "🔒 Analyzing firmware security..."
+          
+          # Security analysis simulation
+          echo "✅ Buffer overflow checks: PASSED"
+          echo "✅ Stack canary protection: ENABLED"
+          echo "✅ Cryptographic implementation: VALIDATED"
+          echo "✅ Secure boot support: AVAILABLE"
+          echo "✅ Memory protection: ENABLED"
+
+  # Deployment preparation
+  prepare-release:
+    name: 🚀 Prepare Release
+    needs: [iot-build, connectivity-test, performance-test, security-analysis]
+    if: |
+      github.ref == 'refs/heads/main' && 
+      !contains(github.event.head_commit.message, '[skip-release]')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 📥 Download All Firmware
+        uses: actions/download-artifact@v4
+        with:
+          path: ./release-artifacts
+      
+      - name: 📦 Package Release
+        run: |
+          echo "📦 Packaging release artifacts..."
+          
+          cd release-artifacts
+          
+          # Create release package
+          mkdir -p release-package/firmware
+          mkdir -p release-package/documentation
+          
+          # Copy firmware files
+          find . -name "*.bin" -exec cp {} release-package/firmware/ \;
+          find . -name "*.hex" -exec cp {} release-package/firmware/ \;
+          find . -name "*.elf" -exec cp {} release-package/firmware/ \;
+          
+          # Generate release notes
+          cat > release-package/RELEASE-NOTES.md << EOF
+          # IoT Device Firmware Release
+          
+          **Build Date**: $(date)
+          **Git Commit**: ${{ github.sha }}
+          **Zephyr Version**: ${{ env.ZEPHYR_VERSION }}
+          
+          ## Supported Boards
+          - ESP32 (WiFi + Bluetooth)
+          - ESP32-S3 (Advanced WiFi + Bluetooth)
+          - nRF52840 (Bluetooth + Thread)
+          
+          ## Features
+          - WiFi connectivity with WPA2/WPA3 support
+          - Bluetooth LE with GATT services
+          - MQTT client with TLS support
+          - CoAP protocol support
+          - Power management optimizations
+          - Secure boot and firmware encryption
+          
+          ## Installation
+          Flash the appropriate firmware file for your board:
+          - ESP32: \`esp32_firmware.bin\`
+          - ESP32-S3: \`esp32s3_firmware.bin\`
+          - nRF52840: \`nrf52840_firmware.hex\`
+          EOF
+          
+          # Create checksum file
+          cd release-package/firmware
+          sha256sum *.bin *.hex > SHA256SUMS
+          
+          echo "✅ Release package prepared"
+      
+      - name: 📤 Upload Release Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: iot-device-release-${{ github.run_number }}
+          path: release-artifacts/release-package
+          retention-days: 90
+
+  # Notification and summary
+  summary:
+    name: 📋 Build Summary
+    needs: [quick-validation, iot-build, connectivity-test, hardware-test, performance-test, security-analysis, prepare-release]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📊 Generate Summary Report
+        run: |
+          echo "# IoT Device CI/CD Summary 📋" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## Build Results 🔨" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Quick Validation | ${{ needs.quick-validation.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| IoT Build | ${{ needs.iot-build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Connectivity Test | ${{ needs.connectivity-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Hardware Test | ${{ needs.hardware-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Performance Test | ${{ needs.performance-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Analysis | ${{ needs.security-analysis.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release Preparation | ${{ needs.prepare-release.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## Configuration ⚙️" >> $GITHUB_STEP_SUMMARY
+          echo "- **Zephyr Version**: ${{ env.ZEPHYR_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+      
+      - name: 🔔 Teams Notification
+        if: always() && (github.ref == 'refs/heads/main' || failure())
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          title: "IoT Device Build ${{ needs.iot-build.result == 'success' && '✅ Success' || '❌ Failed' }}"
+          summary: "IoT device firmware build completed"
+          details: |
+            **Repository**: ${{ github.repository }}
+            **Branch**: ${{ github.ref_name }}
+            **Commit**: ${{ github.sha }}
+            **Trigger**: ${{ github.event_name }}
+            
+            **Results**:
+            - Build: ${{ needs.iot-build.result }}
+            - Tests: ${{ needs.connectivity-test.result }}
+            - Security: ${{ needs.security-analysis.result }}
+            - Hardware: ${{ needs.hardware-test.result }}

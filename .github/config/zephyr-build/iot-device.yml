@@ -1,0 +1,223 @@
+# Zephyr IoT Device Build Configuration
+# Optimized for IoT devices with connectivity features
+
+zephyr:
+  # SDK Configuration
+  sdk_version: "0.17.4"
+  sdk_cache: true
+  
+  # Build Configuration  
+  default_board: "esp32"
+  build_type: "release"
+  parallel_jobs: "auto"
+  
+  # West Configuration
+  west_workspace: true
+  update_modules: true
+
+# Build Settings
+build:
+  cmake_args:
+    - "-DCONFIG_NETWORKING=y"
+    - "-DCONFIG_NET_IPV4=y"
+    - "-DCONFIG_NET_IPV6=y"
+    - "-DCONFIG_WIFI=y"
+    - "-DCONFIG_BT=y"
+    - "-DCONFIG_BT_PERIPHERAL=y"
+  extra_flags:
+    - "-Os"  # Optimize for size
+    - "-DNDEBUG"
+  enable_warnings: true
+  treat_warnings_as_errors: false
+  optimization: "size"
+
+# Testing Configuration
+testing:
+  enabled: true
+  twister_enabled: true
+  test_pattern: "tests/net/* tests/bluetooth/*"
+  timeout: 600  # Longer timeout for network tests
+  platforms: ["native_posix", "qemu_x86", "esp32"]
+  
+  # Test Categories
+  unit_tests: true
+  integration_tests: true
+  benchmark_tests: true
+  network_tests: true
+  bluetooth_tests: true
+
+# Coverage Configuration
+coverage:
+  enabled: true
+  format: ["html", "xml"]
+  exclude_patterns:
+    - "tests/*"
+    - "samples/*"
+    - "build/*"
+    - "modules/*"
+
+# Code Quality
+quality:
+  compliance_checks: true
+  static_analysis: true
+  checkpatch: true
+  coding_style: true
+  
+  # IoT-specific checks
+  security_analysis: true
+  crypto_validation: true
+
+# Dependencies
+dependencies:
+  system_packages:
+    ubuntu:
+      - "build-essential"
+      - "cmake"
+      - "ninja-build"
+      - "gperf"
+      - "ccache" 
+      - "dfu-util"
+      - "device-tree-compiler"
+      - "wget"
+      - "python3-dev"
+      - "python3-pip"
+      - "python3-setuptools"
+      - "python3-wheel"
+      - "xz-utils"
+      - "file"
+      - "make"
+      - "gcc"
+      - "gcc-multilib"
+      - "g++-multilib"
+      - "libsdl2-dev"
+      - "libmagic1"
+      - "mosquitto-clients"  # MQTT testing
+      - "bluez"              # Bluetooth tools
+    
+    macos:
+      - "cmake"
+      - "ninja"
+      - "gperf"
+      - "python3" 
+      - "ccache"
+      - "qemu"
+      - "dtc"
+      - "libmagic"
+      - "mosquitto"
+    
+    windows:
+      - "cmake"
+      - "ninja"
+
+  python_packages:
+    - "west>=1.2.0"
+    - "pyelftools>=0.27"
+    - "pyyaml>=5.1"
+    - "canopen"
+    - "packaging"
+    - "psutil"
+    - "anytree"
+    - "intelhex"
+    - "paho-mqtt"          # MQTT client
+    - "cryptography"       # Crypto testing
+    - "requests"           # HTTP testing
+
+# IoT-specific Configuration
+iot:
+  protocols:
+    - "wifi"
+    - "bluetooth" 
+    - "mqtt"
+    - "coap"
+    - "http"
+    - "tls"
+  
+  security:
+    - "mbedtls"
+    - "psa_crypto"
+    - "secure_boot"
+    
+  power_management: true
+  low_power_modes: true
+
+# Caching Strategy
+cache:
+  enabled: true
+  directories:
+    - "~/.cache/zephyr-sdk"
+    - "~/.west"
+    - "build/"
+    - ".west/"
+    - "~/.espressif"  # ESP32 tools cache
+  ttl: "7d"
+
+# Artifacts Configuration
+artifacts:
+  enabled: true
+  retention_days: 30
+  compression: true
+  
+  # Include IoT-specific artifacts
+  include:
+    - "build/zephyr/*.bin"
+    - "build/zephyr/*.hex"
+    - "build/zephyr/*.elf"
+    - "build/zephyr/zephyr.map"
+    - "build/zephyr/zephyr.dts"
+    - "build/zephyr/merged.hex"    # ESP32 merged binary
+    - "build/zephyr/bootloader.bin" # ESP32 bootloader
+    - "**/*.log"
+    - "twister-out/**/*.xml"
+    - "coverage-report/**"
+    - "crypto-tests/**"
+    - "network-tests/**"
+    - "power-profiling/**"
+  
+  exclude:
+    - "build/**/*.o"
+    - "build/**/*.a"
+    - ".west/modules/**"
+
+# Security Configuration
+security:
+  scan_enabled: true
+  secret_detection: true
+  dependency_check: true
+  crypto_compliance: true
+  
+  # IoT Security Checks
+  firmware_analysis: true
+  encryption_validation: true
+  certificate_check: true
+
+# Hardware Testing
+hardware:
+  enabled: true
+  runners: ["esp32-devkit", "esp32s3-devkit"]
+  boards: ["esp32", "esp32s2", "esp32s3", "esp32c3"]
+  flash_timeout: 60  # ESP32 can take longer
+  test_timeout: 300
+  
+  # Hardware-specific tests
+  wifi_tests: true
+  bluetooth_tests: true
+  power_tests: true
+  stress_tests: true
+
+# Performance Monitoring
+performance:
+  memory_analysis: true
+  code_size_tracking: true
+  power_profiling: true
+  network_benchmarks: true
+  
+  # Thresholds
+  max_flash_size: "1MB"
+  max_ram_size: "320KB"
+  max_boot_time: "5s"
+
+# Notification Settings
+notifications:
+  teams_enabled: true
+  slack_enabled: false
+  email_enabled: true
