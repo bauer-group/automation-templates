@@ -443,7 +443,7 @@ jobs:
     if: needs.release.outputs.released == 'true' && needs.release.outputs.wheel-built == 'true' && inputs.skip-pypi != true
     needs: [release]
     runs-on: ubuntu-latest
-    environment: release
+    environment: production
     
     steps:
       - name: 📥 Download Build Artifacts
