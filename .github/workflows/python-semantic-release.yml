@@ -1,6 +1,5 @@
 name: 🐍 Python Package CI/CD Pipeline (Automatic Release)
 
-
 on:
   workflow_call:
     inputs:
