@@ -76,13 +76,13 @@ on:
         value: ${{ jobs.release.outputs.tag }}
 
 permissions:
-  contents: write
-  issues: write
-  pull-requests: write
-  id-token: write
-  checks: write
-  security-events: write
-  actions: read
+  contents: write           # Git commits, releases, workflow file access
+  issues: write            # GitHub Issues creation/updates  
+  pull-requests: write     # PR operations, comments
+  id-token: write          # PyPI Trusted Publishing
+  checks: write            # PR validation checks
+  security-events: write   # Security scan results upload
+  actions: read            # Workflow run access for security/license scans
 
 jobs:
   # PR validation for pull requests
