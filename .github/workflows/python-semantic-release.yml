@@ -326,8 +326,8 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Run semantic release
-          semantic-release publish --verbosity=INFO
+          # Run semantic release (creates version, commit, tag, and release)
+          semantic-release --verbose version
           
           # Check if release was created
           if git describe --exact-match --tags HEAD 2>/dev/null; then
