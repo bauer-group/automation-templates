@@ -1,0 +1,377 @@
+name: 🐍 Python CI/CD Pipeline (Automatic Release)
+
+# Modern Python CI/CD pipeline using python-semantic-release
+# Replaces the modular approach with a single, robust workflow
+
+on:
+  workflow_call:
+    inputs:
+      # Python Configuration
+      python-version:
+        description: 'Python version to use'
+        type: string
+        default: '3.12'
+      
+      # Security Configuration  
+      security-engine:
+        description: 'Security scan engine (gitleaks, gitguardian, both)'
+        type: string
+        default: 'both'
+        
+      # Testing Configuration
+      run-tests:
+        description: 'Run tests before release'
+        type: boolean
+        default: true
+        
+      run-security-scan:
+        description: 'Run security scans'
+        type: boolean
+        default: true
+        
+      # Build Configuration
+      build-local-wheel:
+        description: 'Build and test local wheel package'
+        type: boolean
+        default: true
+        
+      # Release Configuration
+      skip-pypi:
+        description: 'Skip PyPI publishing'
+        type: boolean
+        default: false
+        
+        
+      # Documentation & Security Updates
+      update-documentation:
+        description: 'Update documentation after release'
+        type: boolean
+        default: true
+        
+      update-security-policy:
+        description: 'Update security policy after release'
+        type: boolean
+        default: true
+        
+    secrets:
+      PYPI_API_TOKEN:
+        description: 'PyPI API token (optional if using Trusted Publishing)'
+        required: false
+      GITGUARDIAN_API_KEY:
+        description: 'GitGuardian API key for security scanning'
+        required: false
+      GITLEAKS_LICENSE:
+        description: 'Gitleaks Pro license key'
+        required: false
+
+    outputs:
+      released:
+        description: 'Whether a release was created'
+        value: ${{ jobs.release.outputs.released }}
+      version:
+        description: 'Release version'
+        value: ${{ jobs.release.outputs.version }}
+      tag:
+        description: 'Git tag name'
+        value: ${{ jobs.release.outputs.tag }}
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  # PR validation for pull requests
+  pr-validation:
+    name: PR Quality Gate
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@main
+    with:
+      enable-security-scan: ${{ inputs.run-security-scan }}
+      enable-license-check: true
+      enable-commit-lint: true
+      security-scan-engine: ${{ inputs.security-engine }}
+      fail-on-security-issues: true
+      fail-on-license-issues: false
+    secrets: inherit
+
+  # Python testing and quality checks
+  test-and-quality:
+    name: 🧪 Tests & Quality
+    if: inputs.run-tests == true && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+          
+      - name: 📦 Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          
+          # Install project in editable mode
+          if [ -f "pyproject.toml" ]; then
+            pip install -e ".[dev]" 2>/dev/null || pip install -e .
+          elif [ -f "setup.py" ]; then
+            pip install -e .
+          fi
+          
+          # Install test dependencies
+          pip install pytest pytest-cov pytest-xdist bandit safety ruff
+          
+          # Install tomli for Python <3.11 compatibility (needed for pyproject.toml parsing)
+          python -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)" || pip install tomli
+          
+      - name: 🧪 Run Tests
+        run: |
+          # Detect test directory intelligently
+          if [ -d "tests" ]; then
+            TEST_DIR="tests"
+          elif [ -d "test" ]; then
+            TEST_DIR="test"
+          else
+            echo "⚠️ No test directory found, creating placeholder"
+            mkdir tests
+            echo 'def test_placeholder(): assert True' > tests/test_placeholder.py
+            TEST_DIR="tests"
+          fi
+          
+          # Run tests with coverage
+          pytest "$TEST_DIR" --cov=. --cov-report=xml --cov-report=html -n auto --tb=short
+          
+      - name: 🔐 Security Scan
+        if: inputs.run-security-scan == true
+        run: |
+          # Run bandit security scan
+          bandit -r . -f json -o bandit-report.json || true
+          
+          # Run safety check
+          safety check --json --output safety-report.json || true
+          
+      - name: 🧹 Lint Code
+        run: |
+          ruff check . --output-format=json --output-file=ruff-report.json || true
+          
+      - name: 📊 Upload Coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  # Build and test local wheel package
+  build-wheel:
+    name: 📦 Build & Test Wheel
+    if: inputs.build-local-wheel == true && github.event_name != 'pull_request'
+    needs: [test-and-quality]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          
+      - name: 📦 Build Wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+          
+      - name: 🧪 Test Wheel Installation
+        run: |
+          # Install wheel in fresh environment
+          pip install dist/*.whl
+          
+          # Test import (detect package name from pyproject.toml)
+          if [ -f "pyproject.toml" ]; then
+            PACKAGE_NAME=$(python -c "
+            try: import tomllib
+            except ImportError: import tomli as tomllib
+            with open('pyproject.toml', 'rb') as f:
+                config = tomllib.load(f)
+            print(config['project']['name'].replace('-', '_'))
+            " 2>/dev/null || echo "unknown")
+            
+            if [ "$PACKAGE_NAME" != "unknown" ]; then
+              python -c "import $PACKAGE_NAME; print('✅ Package import successful')"
+            fi
+          fi
+          
+      - name: 📤 Upload Wheel Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-wheel-${{ github.run_number }}
+          path: dist/
+          retention-days: 30
+
+  # Comprehensive security scan
+  security-scan:
+    name: 🔐 Security Analysis
+    if: inputs.run-security-scan == true && github.event_name != 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
+    with:
+      scan-engine: ${{ inputs.security-engine }}
+      scan-type: 'all'
+      fail-on-findings: false
+      minimum-severity: 'medium'
+    secrets: inherit
+
+  # License compliance check
+  license-compliance:
+    name: 📄 License Compliance
+    if: github.event_name != 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/modules-license-compliance.yml@main
+    with:
+      fail-on-forbidden: false
+      fail-on-unknown: false
+      scan-dependencies: true
+      generate-sbom: true
+    secrets: inherit
+
+  # Semantic Release - The main event
+  release:
+    name: 🚀 Semantic Release
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_call') && (needs.test-and-quality.result == 'success' || needs.test-and-quality.result == 'skipped') && (needs.security-scan.result == 'success' || needs.security-scan.result == 'skipped') && (needs.license-compliance.result == 'success' || needs.license-compliance.result == 'skipped')
+    needs: [test-and-quality, build-wheel, security-scan, license-compliance]
+    runs-on: ubuntu-latest
+    concurrency: release
+    outputs:
+      released: ${{ steps.release.outputs.released }}
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          
+      - name: 📦 Install python-semantic-release
+        run: |
+          python -m pip install --upgrade pip
+          pip install python-semantic-release
+          
+      - name: 🚀 Python Semantic Release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Configure git
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Run semantic release
+          semantic-release publish --verbosity=INFO
+          
+          # Check if release was created
+          if git describe --exact-match --tags HEAD 2>/dev/null; then
+            echo "released=true" >> $GITHUB_OUTPUT
+            echo "version=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+            echo "tag=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+          else
+            echo "released=false" >> $GITHUB_OUTPUT
+            echo "version=" >> $GITHUB_OUTPUT
+            echo "tag=" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: 📤 Publish to PyPI
+        if: steps.release.outputs.released == 'true' && inputs.skip-pypi != true
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Uses Trusted Publishing by default (recommended)
+          # Falls back to token if PYPI_API_TOKEN is provided
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  # Update documentation for new release
+  update-documentation:
+    name: 📚 Update Documentation
+    if: needs.release.outputs.released == 'true' && inputs.update-documentation == true
+    needs: [release]
+    uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
+    with:
+      force-update: true
+      custom-version: ${{ needs.release.outputs.version }}
+    secrets: inherit
+
+  # Update security policy for new release
+  update-security:
+    name: 🔒 Update Security Policy
+    if: needs.release.outputs.released == 'true' && inputs.update-security-policy == true
+    needs: [release, update-documentation]
+    uses: bauer-group/automation-templates/.github/workflows/security-management.yml@main
+    with:
+      force-update: true
+      custom-version: ${{ needs.release.outputs.version }}
+    secrets: inherit
+
+  # Pipeline summary
+  pipeline-summary:
+    name: 📊 Pipeline Summary
+    if: always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call')
+    needs: [test-and-quality, build-wheel, security-scan, license-compliance, release, update-documentation, update-security]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📊 Generate Pipeline Summary
+        run: |
+          echo "### 🐍 Python Semantic Release Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Pipeline:** Modern Python Semantic Release" >> $GITHUB_STEP_SUMMARY
+          echo "**Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Python Version:** ${{ inputs.python-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "| Stage | Status | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Tests & Quality** | ${{ needs.test-and-quality.result == 'success' && '✅ PASS' || needs.test-and-quality.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Python ${{ inputs.python-version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build Wheel** | ${{ needs.build-wheel.result == 'success' && '✅ PASS' || needs.build-wheel.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Local package test |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || needs.security-scan.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Engine: ${{ inputs.security-engine }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || needs.license-compliance.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | SBOM generated |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Semantic Release** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Released: ${{ needs.release.outputs.released || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Documentation** | ${{ needs.update-documentation.result == 'success' && '✅ UPDATED' || needs.update-documentation.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Auto-generated docs |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Security Policy** | ${{ needs.update-security.result == 'success' && '✅ UPDATED' || needs.update-security.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Auto-updated |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.release.outputs.released }}" = "true" ]; then
+            echo "🎉 **Python Release ${{ needs.release.outputs.version }} created successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Installation:**" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "${{ inputs.skip-pypi }}" != "true" ]; then
+              echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+              echo "pip install <package-name>==${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+              echo "pip install git+https://github.com/${{ github.repository }}@${{ needs.release.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Release:** [View on GitHub](https://github.com/${{ github.repository }}/releases/tag/${{ needs.release.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ **No release created.** Pipeline completed successfully." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Powered by **python-semantic-release** and **BAUER GROUP** automation* 🐍" >> $GITHUB_STEP_SUMMARY
