@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-09-01 08:48:41 UTC -->
+<!-- Generated on 2025-09-01 16:52:52 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -103,10 +103,6 @@ jobs:
 ├── .github/
 │   ├── actions/               # 🔧 Reusable Composite Actions
 │   │   ├── docker-build/      # Docker build with security scanning
-│   │   ├── python-setup/      # Python environment setup
-│   │   ├── python-test/       # Python testing and coverage
-│   │   ├── python-quality/    # Code quality and security scanning
-│   │   ├── python-package/    # Python packaging and publishing
 │   │   ├── zephyr-build/      # Zephyr RTOS build automation
 │   │   ├── security-scan/     # Multi-engine security scanning
 │   │   ├── license-compliance/ # SPDX license compliance
@@ -118,7 +114,6 @@ jobs:
 │   │   │   ├── web-application.yml # Web app optimized
 │   │   │   ├── microservice.yml    # Microservice configuration
 │   │   │   └── enterprise.yml      # Enterprise-grade security
-│   │   ├── python-build/      # Python build configurations
 │   │   │   ├── default.yml         # Standard Python setup
 │   │   │   ├── library.yml         # Python library
 │   │   │   ├── application.yml     # Python application
@@ -131,7 +126,6 @@ jobs:
 │   │   └── commitlint.config.js # Commit linting rules
 │   └── workflows/            # 🚀 Reusable Workflows
 │       ├── docker-build.yml       # Docker build & deploy workflow
-│       ├── python-build.yml       # Python build & test workflow
 │       ├── python-publish.yml     # Python package publishing
 │       ├── zephyr-build.yml       # Zephyr RTOS build & test workflow
 │       ├── dotnet-build.yml       # .NET build & test workflow
@@ -156,7 +150,6 @@ jobs:
 │       │   ├── enterprise-build.yml
 │       │   ├── multi-platform-build.yml
 │       │   └── security-focused-build.yml
-│       ├── python-build/      # Python project examples
 │       │   ├── simple-library.yml
 │       │   ├── web-application.yml
 │       │   ├── data-science-project.yml
@@ -183,7 +176,6 @@ jobs:
 ├── docs/                    # 📚 Comprehensive Documentation
 │   ├── workflows/           # Workflow documentation
 │   │   ├── docker-build.md       # Docker system documentation
-│   │   ├── python-build.md       # Python system documentation
 │   │   ├── zephyr-build.md       # Zephyr RTOS build documentation
 │   │   ├── dotnet-build.md       # .NET build documentation
 │   │   ├── nodejs-build.md       # Node.js build documentation
@@ -225,32 +217,35 @@ jobs:
       REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### 🐍 Python Build System
+### 🐍 Python Semantic Release System
 
-Comprehensive Python automation supporting multiple package managers and deployment targets.
+Modern Python automation with semantic versioning, automated releases, and comprehensive CI/CD pipeline.
 
 | Component | Purpose | Usage |
 |-----------|---------|-------|
-| **🔧 python-setup action** | Multi-manager Python setup | Supports pip, poetry, pipenv, conda |
-| **🧪 python-test action** | Testing and coverage | pytest, unittest, nose2, tox |
-| **🔍 python-quality action** | Code quality and security | linting, formatting, security scanning |
-| **📦 python-package action** | Packaging and publishing | PyPI, TestPyPI with trusted publishing |
-| **🚀 python-build workflow** | Complete Python CI/CD | `uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main` |
-| **📤 python-publish workflow** | Package publishing | `uses: bauer-group/automation-templates/.github/workflows/python-publish.yml@main` |
+| **🚀 python-semantic-release workflow** | Complete Python Semantic Release CI/CD | `uses: bauer-group/automation-templates/.github/workflows/python-semantic-release.yml@main` |
+
+**Features:**
+- ✅ **Semantic Versioning** - Automatic version bumps based on conventional commits
+- ✅ **Trusted Publishing** - Secure PyPI publishing without API tokens
+- ✅ **Local Wheel Testing** - Pre-release package validation
+- ✅ **Documentation Updates** - Automatic documentation refresh
+- ✅ **Security Policy Updates** - Automated security policy maintenance
 
 **Quick Start - Python:**
 ```yaml
-name: 🐍 Python Build
+name: 🐍 Python Semantic Release
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
-  python:
-    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+  python-release:
+    uses: bauer-group/automation-templates/.github/workflows/python-semantic-release.yml@main
     with:
-      config-file: 'application'
       python-version: '3.12'
-      package-manager: 'poetry'
+      run-tests: true
+      build-local-wheel: true
+      update-documentation: true
       run-tests: true
       collect-coverage: true
     secrets:
@@ -404,7 +399,7 @@ module.exports = {
    cp .github/workflows/examples/docker/web-application-build.yml .github/workflows/
    
    # For Python projects  
-   cp .github/workflows/examples/python-build/web-application.yml .github/workflows/
+   cp .github/workflows/examples/python-semantic-release-example.yml .github/workflows/python-release.yml
    
    # For Zephyr RTOS projects
    cp .github/workflows/examples/zephyr-build/basic-zephyr-app.yml .github/workflows/
@@ -439,7 +434,7 @@ module.exports = {
    vim .github/config/docker-build/web-application.yml
    
    # Edit Python configuration  
-   vim .github/config/python-build/application.yml
+   vim pyproject.toml  # Configure semantic release
    
    # Edit Zephyr configuration
    vim .github/config/zephyr-build/iot-device.yml
@@ -494,7 +489,7 @@ on:
 
 jobs:
   build:
-    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/python-semantic-release.yml@main
     with:
       config-file: 'application'
       python-version: '3.12'
@@ -566,7 +561,7 @@ jobs:
 
 ```yaml
 - name: Setup Python Environment  
-  uses: bauer-group/automation-templates/.github/actions/python-setup@main
+  uses: actions/setup-python@v5
   with:
     python-version: '3.12'
     package-manager: 'poetry'
@@ -720,7 +715,7 @@ gh auth status --show-token
 ### 🚀 Workflow Systems Documentation
 
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
-- [🐍 **Python Build System**](docs/workflows/python-build.md) - Python project automation
+- [🐍 **Python Semantic Release System**](docs/workflows/python-semantic-release.md) - Modern Python CI/CD with semantic versioning
 - [⚡ **Zephyr RTOS Build System**](docs/workflows/zephyr-build.md) - Real-time OS automation with hardware testing
 - [🔨 **.NET Build System**](docs/workflows/dotnet-build.md) - .NET Core/Framework automation
 - [🖥️ **.NET Desktop Build System**](docs/workflows/dotnet-desktop-build.md) - Desktop application automation
@@ -734,11 +729,6 @@ gh auth status --show-token
 #### Docker Actions
 - [🐳 **docker-build**](.github/actions/docker-build/README.md) - Multi-platform Docker builds with security
 
-#### Python Actions
-- [🔧 **python-setup**](.github/actions/python-setup/README.md) - Multi-manager Python environment setup
-- [🧪 **python-test**](.github/actions/python-test/README.md) - Testing and coverage collection
-- [🔍 **python-quality**](.github/actions/python-quality/README.md) - Code quality and security scanning
-- [📦 **python-package**](.github/actions/python-package/README.md) - Package building and publishing
 
 #### Zephyr RTOS Actions
 - [⚡ **zephyr-build**](.github/actions/zephyr-build/README.md) - Complete Zephyr RTOS build automation with SDK management
@@ -756,7 +746,6 @@ gh auth status --show-token
 ### 📋 Configuration References
 
 - [🐳 **Docker Configurations**](.github/config/docker-build/) - Docker build configuration templates
-- [🐍 **Python Configurations**](.github/config/python-build/) - Python project configuration templates
 - [⚡ **Zephyr Configurations**](.github/config/zephyr-build/) - Zephyr RTOS build configuration templates
 - [⚙️ **Workflow Configuration**](.github/config/README.md) - General workflow configuration guide
 - [🔒 **Secrets Naming Convention**](docs/SECRETS-NAMING-CONVENTION.md) - Standardized secret naming
@@ -770,7 +759,7 @@ gh auth status --show-token
 ### 📖 Examples and Templates
 
 - [🐳 **Docker Examples**](github/workflows/examples/docker/) - Complete Docker workflow examples
-- [🐍 **Python Examples**](github/workflows/examples/python-build/) - Python project examples
+- [🐍 **Python Examples**](examples/) - Python semantic release examples and templates
 - [⚡ **Zephyr Examples**](github/workflows/examples/zephyr-build/) - Zephyr RTOS project examples
 - [🔨 **.NET Examples**](github/workflows/examples/dotnet-build/) - .NET project examples
 - [📦 **Node.js Examples**](github/workflows/examples/nodejs-build/) - Node.js project examples
@@ -814,5 +803,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-09-01 08:48:41 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-09-01 16:52:52 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
