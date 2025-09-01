@@ -115,7 +115,6 @@ jobs:
     with:
       python-version: ${{ inputs.python-version || '3.12' }}
       working-directory: '.'
-      package-source-path: ${{ inputs.package-source-path || 'src' }}
       package-version: ${{ needs.release-management.outputs.version }}
     secrets: inherit
 
