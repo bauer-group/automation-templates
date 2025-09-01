@@ -485,7 +485,7 @@ jobs:
   pipeline-summary:
     name: 📊 Pipeline Summary
     if: always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call')
-    needs: [test-and-quality, security-scan, license-compliance, release, update-documentation, update-security]
+    needs: [test-and-quality, security-scan, license-compliance, release, pypi-publish, update-documentation, update-security]
     runs-on: ubuntu-latest
     
     steps:
@@ -553,7 +553,36 @@ jobs:
           echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || needs.security-scan.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Engine: ${{ inputs.security-engine }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || needs.license-compliance.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | SBOM generated |" >> $GITHUB_STEP_SUMMARY
           echo "| **Semantic Release** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Released: ${{ needs.release.outputs.released || 'false' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **PyPI Publishing** | ${{ needs.pypi-publish.result == 'success' && '✅ PUBLISHED' || needs.pypi-publish.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Package uploaded |" >> $GITHUB_STEP_SUMMARY
+          # PyPI Publishing details with proper skip handling
+          PYPI_STATUS="❌ FAIL"
+          PYPI_DETAILS="Package upload"
+          
+          # Check if PyPI publishing was intentionally skipped
+          if [ "${{ inputs.skip-pypi }}" == "true" ]; then
+            PYPI_STATUS="⏭️ SKIP"
+            PYPI_DETAILS="PyPI upload disabled by parameter"
+          elif [ "${{ needs.release.outputs.released }}" != "true" ]; then
+            PYPI_STATUS="⏭️ SKIP"
+            PYPI_DETAILS="No release created to publish"
+          elif [ "${{ needs.release.outputs.wheel-built }}" != "true" ]; then
+            PYPI_STATUS="⏭️ SKIP"
+            PYPI_DETAILS="No wheel built to publish"
+          elif [ "${{ needs.pypi-publish.result }}" == "success" ]; then
+            PYPI_STATUS="✅ PUBLISHED"
+            PYPI_DETAILS="Package uploaded to PyPI"
+          elif [ "${{ needs.pypi-publish.result }}" == "skipped" ]; then
+            PYPI_STATUS="⏭️ SKIP"
+            PYPI_DETAILS="PyPI job skipped"
+          elif [ "${{ needs.pypi-publish.result }}" != "" ]; then
+            PYPI_STATUS="❌ FAIL"
+            PYPI_DETAILS="PyPI upload failed"
+          else
+            # Job didn't run (conditional was false)
+            PYPI_STATUS="⏭️ SKIP"
+            PYPI_DETAILS="PyPI upload not triggered"
+          fi
+          
+          echo "| **PyPI Publishing** | $PYPI_STATUS | $PYPI_DETAILS |" >> $GITHUB_STEP_SUMMARY
           echo "| **Documentation** | ${{ needs.update-documentation.result == 'success' && '✅ UPDATED' || needs.update-documentation.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Auto-generated docs |" >> $GITHUB_STEP_SUMMARY
           echo "| **Security Policy** | ${{ needs.update-security.result == 'success' && '✅ UPDATED' || needs.update-security.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Auto-updated |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
