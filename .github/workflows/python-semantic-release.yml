@@ -126,7 +126,7 @@ jobs:
           fi
           
           # Install test dependencies
-          pip install pytest pytest-cov pytest-xdist bandit safety ruff
+          pip install pytest pytest-cov pytest-xdist bandit ruff pip-audit
           
           # Install tomli for Python <3.11 compatibility (needed for pyproject.toml parsing)
           python -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)" || pip install tomli
@@ -154,8 +154,8 @@ jobs:
           # Run bandit security scan
           bandit -r . -f json -o bandit-report.json || true
           
-          # Run safety check
-          safety check --json --output safety-report.json || true
+          # Run pip-audit vulnerability check (modern replacement for safety)
+          pip-audit --format=json --output=pip-audit-report.json || echo "⚠️ Vulnerability scan completed with warnings"
           
       - name: 🧹 Lint Code
         run: |
