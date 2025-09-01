@@ -1,3 +1,17 @@
+## [1.8.0](https://github.com/bauer-group/automation-templates/compare/v1.7.0...v1.8.0) (2025-09-01)
+
+### 🚀 Features
+
+* erweitere Berechtigungen für CI/CD-Workflow um Prüf- und Sicherheitsereignisse ([bdb11f2](https://github.com/bauer-group/automation-templates/commit/bdb11f2e08e7e0ad2a2ec003359e9da1f4ac9f02))
+
+### 🐛 Bug Fixes
+
+* Remove Python Testing Action and CI/CD Workflows ([3d36c22](https://github.com/bauer-group/automation-templates/commit/3d36c226d35d981e0378b98a727fc94cdf4e0ec0))
+
+### ♻️ Code Refactoring
+
+* move commit_parser_options to a dedicated section in pyproject.toml ([23d84ee](https://github.com/bauer-group/automation-templates/commit/23d84ee8bad6b3a10ebdd6f9bcca5903b141ed34))
+
 ## [1.7.0](https://github.com/bauer-group/automation-templates/compare/v1.6.1...v1.7.0) (2025-09-01)
 
 ### 🚀 Features
