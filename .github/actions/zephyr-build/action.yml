@@ -1,0 +1,505 @@
+name: '⚡ Zephyr RTOS Build'
+description: 'Professional Zephyr RTOS build automation with west, CMake, board testing, and comprehensive validation'
+author: 'BAUER GROUP - Automation Templates'
+
+branding:
+  icon: 'cpu'
+  color: 'purple'
+
+inputs:
+  config-file:
+    description: 'Configuration file name from .github/config/zephyr-build/ (without .yml extension)'
+    required: false
+    default: 'default'
+  
+  zephyr-version:
+    description: 'Zephyr SDK version to use (e.g., 0.16.5, latest)'
+    required: false
+    default: 'latest'
+  
+  board:
+    description: 'Target board for building (e.g., qemu_x86, nucleo_f429zi, esp32)'
+    required: false
+    default: 'qemu_x86'
+  
+  application-path:
+    description: 'Path to Zephyr application directory'
+    required: false
+    default: '.'
+  
+  build-type:
+    description: 'Build configuration (debug, release, size_optimized)'
+    required: false
+    default: 'debug'
+  
+  extra-cmake-args:
+    description: 'Additional CMake arguments'
+    required: false
+    default: ''
+  
+  west-config-path:
+    description: 'Path to west.yml manifest file'
+    required: false
+    default: ''
+  
+  run-tests:
+    description: 'Run Twister tests after building'
+    required: false
+    default: 'true'
+  
+  test-pattern:
+    description: 'Test pattern for Twister (e.g., tests/*, kernel.*)'
+    required: false
+    default: 'tests/*'
+  
+  enable-coverage:
+    description: 'Enable code coverage collection'
+    required: false
+    default: 'false'
+  
+  run-compliance:
+    description: 'Run compliance checks (coding style, commit format)'
+    required: false
+    default: 'true'
+  
+  static-analysis:
+    description: 'Run static analysis tools (sparse, checkpatch)'
+    required: false
+    default: 'false'
+  
+  cache-enabled:
+    description: 'Enable caching of Zephyr SDK and build artifacts'
+    required: false
+    default: 'true'
+  
+  parallel-jobs:
+    description: 'Number of parallel build jobs'
+    required: false
+    default: 'auto'
+  
+  generate-artifacts:
+    description: 'Generate build artifacts (binaries, maps, reports)'
+    required: false
+    default: 'true'
+
+outputs:
+  build-status:
+    description: 'Build status (success/failure)'
+    value: ${{ steps.build.outcome }}
+  
+  test-status:
+    description: 'Test status (success/failure/skipped)'
+    value: ${{ steps.test.outcome }}
+  
+  compliance-status:
+    description: 'Compliance check status (success/failure/skipped)'
+    value: ${{ steps.compliance.outcome }}
+  
+  coverage-report:
+    description: 'Path to coverage report'
+    value: ${{ steps.coverage.outputs.report-path }}
+  
+  binary-path:
+    description: 'Path to generated binary files'
+    value: ${{ steps.artifacts.outputs.binary-path }}
+  
+  build-time:
+    description: 'Total build time in seconds'
+    value: ${{ steps.timing.outputs.build-time }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 📋 Load Configuration
+      id: config
+      shell: bash
+      run: |
+        CONFIG_FILE="${{ inputs.config-file }}"
+        CONFIG_PATH=".github/config/zephyr-build/${CONFIG_FILE}.yml"
+        
+        echo "Loading Zephyr configuration from: $CONFIG_PATH"
+        
+        if [[ -f "$CONFIG_PATH" ]]; then
+          echo "config-exists=true" >> $GITHUB_OUTPUT
+          echo "config-path=$CONFIG_PATH" >> $GITHUB_OUTPUT
+        else
+          echo "config-exists=false" >> $GITHUB_OUTPUT
+          echo "Using default Zephyr configuration"
+        fi
+        
+        # Determine OS-specific settings
+        case "${{ runner.os }}" in
+          Linux)
+            echo "platform=linux" >> $GITHUB_OUTPUT
+            echo "sdk-arch=linux-x86_64" >> $GITHUB_OUTPUT
+            ;;
+          macOS)
+            echo "platform=macos" >> $GITHUB_OUTPUT
+            echo "sdk-arch=macos-x86_64" >> $GITHUB_OUTPUT
+            ;;
+          Windows)
+            echo "platform=windows" >> $GITHUB_OUTPUT
+            echo "sdk-arch=windows-x86_64" >> $GITHUB_OUTPUT
+            ;;
+        esac
+
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: 📂 Setup Cache
+      if: inputs.cache-enabled == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/zephyr-sdk
+          ~/.west
+          build/
+          .west/
+        key: zephyr-${{ steps.config.outputs.platform }}-${{ inputs.zephyr-version }}-${{ inputs.board }}-${{ hashFiles('**/west.yml', '**/CMakeLists.txt', '**/prj.conf') }}
+        restore-keys: |
+          zephyr-${{ steps.config.outputs.platform }}-${{ inputs.zephyr-version }}-${{ inputs.board }}-
+          zephyr-${{ steps.config.outputs.platform }}-${{ inputs.zephyr-version }}-
+          zephyr-${{ steps.config.outputs.platform }}-
+
+    - name: ⏰ Start Timing
+      id: start-time
+      shell: bash
+      run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+
+    - name: 🔧 Install System Dependencies
+      shell: bash
+      run: |
+        echo "🔧 Installing Zephyr system dependencies..."
+        
+        case "${{ steps.config.outputs.platform }}" in
+          linux)
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              git cmake ninja-build gperf ccache dfu-util \
+              device-tree-compiler wget python3-dev python3-pip \
+              python3-setuptools python3-tk python3-wheel \
+              xz-utils file make gcc gcc-multilib g++-multilib \
+              libsdl2-dev libmagic1
+            ;;
+          macos)
+            brew install cmake ninja gperf python3 ccache qemu dtc libmagic
+            ;;
+          windows)
+            # Dependencies are typically pre-installed on Windows runners
+            choco install -y cmake ninja
+            ;;
+        esac
+
+    - name: 🛠️ Install West and Python Dependencies
+      shell: bash
+      run: |
+        echo "🛠️ Installing west and Python dependencies..."
+        
+        # Install west and common dependencies
+        pip3 install --upgrade pip
+        pip3 install west
+        pip3 install -r https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts/requirements-base.txt
+        
+        # Additional dependencies for testing and compliance
+        if [[ "${{ inputs.run-tests }}" == "true" || "${{ inputs.run-compliance }}" == "true" ]]; then
+          pip3 install -r https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts/requirements-compliance.txt
+          pip3 install -r https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/scripts/requirements-run-tests.txt
+        fi
+        
+        # Coverage dependencies
+        if [[ "${{ inputs.enable-coverage }}" == "true" ]]; then
+          pip3 install gcovr
+        fi
+        
+        # Static analysis dependencies
+        if [[ "${{ inputs.static-analysis }}" == "true" ]]; then
+          if [[ "${{ steps.config.outputs.platform }}" == "linux" ]]; then
+            sudo apt-get install -y sparse
+          fi
+        fi
+
+    - name: 📦 Setup Zephyr SDK
+      shell: bash
+      run: |
+        echo "📦 Setting up Zephyr SDK..."
+        
+        SDK_VERSION="${{ inputs.zephyr-version }}"
+        if [[ "$SDK_VERSION" == "latest" ]]; then
+          SDK_VERSION="0.17.4"  # Use known stable version as default
+        fi
+        
+        SDK_ARCH="${{ steps.config.outputs.sdk-arch }}"
+        SDK_DIR="$HOME/zephyr-sdk-${SDK_VERSION}"
+        
+        echo "SDK_VERSION=$SDK_VERSION" >> $GITHUB_ENV
+        echo "SDK_DIR=$SDK_DIR" >> $GITHUB_ENV
+        echo "ZEPHYR_SDK_INSTALL_DIR=$SDK_DIR" >> $GITHUB_ENV
+        
+        # Download and install SDK if not cached
+        if [[ ! -d "$SDK_DIR" ]]; then
+          echo "📥 Downloading Zephyr SDK $SDK_VERSION for $SDK_ARCH..."
+          
+          case "${{ steps.config.outputs.platform }}" in
+            linux)
+              wget -q "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SDK_VERSION}/zephyr-sdk-${SDK_VERSION}_${SDK_ARCH}.tar.xz"
+              tar -xf "zephyr-sdk-${SDK_VERSION}_${SDK_ARCH}.tar.xz" -C "$HOME"
+              ;;
+            macos)
+              wget -q "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SDK_VERSION}/zephyr-sdk-${SDK_VERSION}_${SDK_ARCH}.tar.xz"
+              tar -xf "zephyr-sdk-${SDK_VERSION}_${SDK_ARCH}.tar.xz" -C "$HOME"
+              ;;
+            windows)
+              # For Windows, use the setup executable
+              wget -q "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SDK_VERSION}/zephyr-sdk-${SDK_VERSION}_windows-x86_64.7z"
+              7z x "zephyr-sdk-${SDK_VERSION}_windows-x86_64.7z" -o"$HOME"
+              ;;
+          esac
+          
+          # Run SDK setup
+          cd "$SDK_DIR"
+          ./setup.sh -t all -h -c
+        else
+          echo "✅ Using cached Zephyr SDK"
+        fi
+
+    - name: 🌊 Initialize West Workspace
+      shell: bash
+      working-directory: ${{ inputs.application-path }}
+      run: |
+        echo "🌊 Initializing west workspace..."
+        
+        # Initialize west workspace
+        if [[ -n "${{ inputs.west-config-path }}" && -f "${{ inputs.west-config-path }}" ]]; then
+          echo "📝 Using custom west manifest: ${{ inputs.west-config-path }}"
+          west init -l "$(dirname "${{ inputs.west-config-path }}")"
+        elif [[ -f "west.yml" ]]; then
+          echo "📝 Using local west.yml manifest"
+          west init -l .
+        else
+          echo "📝 Initializing with Zephyr upstream"
+          west init -m https://github.com/zephyrproject-rtos/zephyr
+          cd ..
+        fi
+        
+        # Update west workspace
+        echo "📥 Updating west workspace..."
+        west update
+        
+        # Export Zephyr environment
+        echo "🔧 Setting up Zephyr environment..."
+        west zephyr-export
+        
+        # Set environment variables
+        echo "ZEPHYR_BASE=$(west list -f '{abspath}' zephyr)" >> $GITHUB_ENV
+
+    - name: 🔍 Compliance Checks
+      id: compliance
+      if: inputs.run-compliance == 'true'
+      shell: bash
+      working-directory: ${{ inputs.application-path }}
+      run: |
+        echo "🔍 Running compliance checks..."
+        
+        # Set up compliance checking
+        ZEPHYR_BASE=$(west list -f '{abspath}' zephyr)
+        
+        # Check commit format and coding style
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          python3 "$ZEPHYR_BASE/scripts/ci/check_compliance.py" \
+            -c ${{ github.event.pull_request.base.sha }}..${{ github.sha }}
+        else
+          echo "⚠️ Skipping compliance checks - not a pull request"
+        fi
+
+    - name: 🔨 Build Application
+      id: build
+      shell: bash
+      working-directory: ${{ inputs.application-path }}
+      run: |
+        echo "🔨 Building Zephyr application..."
+        
+        # Set parallel jobs
+        if [[ "${{ inputs.parallel-jobs }}" == "auto" ]]; then
+          PARALLEL_JOBS=$(nproc)
+        else
+          PARALLEL_JOBS="${{ inputs.parallel-jobs }}"
+        fi
+        
+        # Prepare build arguments
+        BUILD_ARGS=""
+        if [[ -n "${{ inputs.extra-cmake-args }}" ]]; then
+          BUILD_ARGS="${{ inputs.extra-cmake-args }}"
+        fi
+        
+        # Set build type
+        case "${{ inputs.build-type }}" in
+          debug)
+            BUILD_ARGS="$BUILD_ARGS -DCMAKE_BUILD_TYPE=Debug"
+            ;;
+          release)
+            BUILD_ARGS="$BUILD_ARGS -DCMAKE_BUILD_TYPE=Release"
+            ;;
+          size_optimized)
+            BUILD_ARGS="$BUILD_ARGS -DCMAKE_BUILD_TYPE=MinSizeRel"
+            ;;
+        esac
+        
+        # Enable coverage if requested
+        if [[ "${{ inputs.enable-coverage }}" == "true" ]]; then
+          BUILD_ARGS="$BUILD_ARGS -DCONFIG_COVERAGE=y -DCONFIG_COVERAGE_GCOV=y"
+        fi
+        
+        echo "📝 Building for board: ${{ inputs.board }}"
+        echo "📝 Build arguments: $BUILD_ARGS"
+        
+        # Build the application
+        west build -b ${{ inputs.board }} . -- $BUILD_ARGS -j$PARALLEL_JOBS
+
+    - name: 🧪 Run Tests
+      id: test
+      if: inputs.run-tests == 'true'
+      shell: bash
+      working-directory: ${{ inputs.application-path }}
+      run: |
+        echo "🧪 Running Zephyr tests with Twister..."
+        
+        ZEPHYR_BASE=$(west list -f '{abspath}' zephyr)
+        
+        # Prepare twister arguments
+        TWISTER_ARGS=""
+        TWISTER_ARGS="$TWISTER_ARGS --platform ${{ inputs.board }}"
+        TWISTER_ARGS="$TWISTER_ARGS --testsuite-root ."
+        
+        if [[ "${{ inputs.enable-coverage }}" == "true" ]]; then
+          TWISTER_ARGS="$TWISTER_ARGS --coverage"
+        fi
+        
+        # Run tests with pattern matching
+        if [[ -n "${{ inputs.test-pattern }}" ]]; then
+          echo "📝 Running tests matching pattern: ${{ inputs.test-pattern }}"
+          python3 "$ZEPHYR_BASE/scripts/twister" $TWISTER_ARGS --test ${{ inputs.test-pattern }}
+        else
+          echo "📝 Running all available tests"
+          python3 "$ZEPHYR_BASE/scripts/twister" $TWISTER_ARGS
+        fi
+
+    - name: 📊 Generate Coverage Report
+      id: coverage
+      if: inputs.enable-coverage == 'true'
+      shell: bash
+      working-directory: ${{ inputs.application-path }}
+      run: |
+        echo "📊 Generating coverage report..."
+        
+        COVERAGE_DIR="coverage-report"
+        mkdir -p "$COVERAGE_DIR"
+        
+        # Generate HTML coverage report
+        gcovr --html-details "$COVERAGE_DIR/coverage.html" \
+              --xml "$COVERAGE_DIR/coverage.xml" \
+              --json "$COVERAGE_DIR/coverage.json" \
+              build/
+        
+        echo "report-path=$COVERAGE_DIR" >> $GITHUB_OUTPUT
+        echo "✅ Coverage report generated in $COVERAGE_DIR"
+
+    - name: 🔍 Static Analysis
+      if: inputs.static-analysis == 'true' && steps.config.outputs.platform == 'linux'
+      shell: bash
+      working-directory: ${{ inputs.application-path }}
+      run: |
+        echo "🔍 Running static analysis..."
+        
+        ZEPHYR_BASE=$(west list -f '{abspath}' zephyr)
+        
+        # Run sparse if available
+        if command -v sparse >/dev/null 2>&1; then
+          echo "Running sparse analysis..."
+          west build -t sparse
+        fi
+        
+        # Run checkpatch on changed files
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          echo "Running checkpatch on changed files..."
+          git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.sha }} | \
+          grep -E '\.(c|h)$' | \
+          xargs -r "$ZEPHYR_BASE/scripts/checkpatch.pl" --no-tree -f || true
+        fi
+
+    - name: 📦 Generate Artifacts
+      id: artifacts
+      if: inputs.generate-artifacts == 'true'
+      shell: bash
+      working-directory: ${{ inputs.application-path }}
+      run: |
+        echo "📦 Generating build artifacts..."
+        
+        ARTIFACTS_DIR="zephyr-artifacts"
+        mkdir -p "$ARTIFACTS_DIR"
+        
+        # Copy binary files
+        if [[ -d "build/zephyr" ]]; then
+          cp -r build/zephyr/*.bin "$ARTIFACTS_DIR/" 2>/dev/null || true
+          cp -r build/zephyr/*.hex "$ARTIFACTS_DIR/" 2>/dev/null || true
+          cp -r build/zephyr/*.elf "$ARTIFACTS_DIR/" 2>/dev/null || true
+          cp -r build/zephyr/zephyr.map "$ARTIFACTS_DIR/" 2>/dev/null || true
+          cp -r build/zephyr/zephyr.dts "$ARTIFACTS_DIR/" 2>/dev/null || true
+        fi
+        
+        # Copy build logs
+        find build/ -name "*.log" -exec cp {} "$ARTIFACTS_DIR/" \; 2>/dev/null || true
+        
+        # Copy test results
+        find twister-out/ -name "*.xml" -exec cp {} "$ARTIFACTS_DIR/" \; 2>/dev/null || true
+        
+        # Generate build summary
+        cat > "$ARTIFACTS_DIR/build-summary.txt" << EOF
+        Zephyr Build Summary
+        ====================
+        Date: $(date)
+        Board: ${{ inputs.board }}
+        Build Type: ${{ inputs.build-type }}
+        Zephyr SDK: $SDK_VERSION
+        Application Path: ${{ inputs.application-path }}
+        Tests Enabled: ${{ inputs.run-tests }}
+        Coverage Enabled: ${{ inputs.enable-coverage }}
+        Compliance Checks: ${{ inputs.run-compliance }}
+        Static Analysis: ${{ inputs.static-analysis }}
+        EOF
+        
+        echo "binary-path=$ARTIFACTS_DIR" >> $GITHUB_OUTPUT
+        echo "✅ Artifacts generated in $ARTIFACTS_DIR"
+
+    - name: ⏰ Calculate Build Time
+      id: timing
+      shell: bash
+      run: |
+        START_TIME="${{ steps.start-time.outputs.start-time }}"
+        END_TIME=$(date +%s)
+        BUILD_TIME=$((END_TIME - START_TIME))
+        
+        echo "build-time=$BUILD_TIME" >> $GITHUB_OUTPUT
+        echo "🕐 Total build time: ${BUILD_TIME} seconds"
+
+    - name: 🎯 Build Summary
+      shell: bash
+      run: |
+        echo "🎯 Zephyr Build Summary"
+        echo "======================"
+        echo "Board: ${{ inputs.board }}"
+        echo "Build Type: ${{ inputs.build-type }}"
+        echo "SDK Version: $SDK_VERSION"
+        echo "Build Status: ${{ steps.build.outcome }}"
+        echo "Test Status: ${{ steps.test.outcome }}"
+        echo "Compliance Status: ${{ steps.compliance.outcome }}"
+        echo "Build Time: ${{ steps.timing.outputs.build-time }}s"
+        
+        if [[ "${{ steps.build.outcome }}" == "success" ]]; then
+          echo "✅ Zephyr build completed successfully!"
+        else
+          echo "❌ Zephyr build failed!"
+          exit 1
+        fi

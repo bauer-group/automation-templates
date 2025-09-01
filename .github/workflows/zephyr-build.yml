@@ -1,0 +1,346 @@
+name: ⚡ Zephyr RTOS Build & Test
+
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: 'Configuration file name from .github/config/zephyr-build/ (without .yml extension)'
+        required: false
+        type: string
+        default: 'default'
+      
+      zephyr-version:
+        description: 'Zephyr SDK version to use (e.g., 0.16.5, latest)'
+        required: false
+        type: string
+        default: 'latest'
+      
+      boards:
+        description: 'JSON array of target boards (e.g., ["qemu_x86", "nucleo_f429zi"])'
+        required: false
+        type: string
+        default: '["qemu_x86"]'
+      
+      application-path:
+        description: 'Path to Zephyr application directory'
+        required: false
+        type: string
+        default: '.'
+      
+      build-types:
+        description: 'JSON array of build types (e.g., ["debug", "release"])'
+        required: false
+        type: string
+        default: '["debug"]'
+      
+      extra-cmake-args:
+        description: 'Additional CMake arguments'
+        required: false
+        type: string
+        default: ''
+      
+      west-config-path:
+        description: 'Path to west.yml manifest file'
+        required: false
+        type: string
+        default: ''
+      
+      run-tests:
+        description: 'Run Twister tests after building'
+        required: false
+        type: boolean
+        default: true
+      
+      test-pattern:
+        description: 'Test pattern for Twister (e.g., tests/*, kernel.*)'
+        required: false
+        type: string
+        default: 'tests/*'
+      
+      enable-coverage:
+        description: 'Enable code coverage collection'
+        required: false
+        type: boolean
+        default: false
+      
+      run-compliance:
+        description: 'Run compliance checks (coding style, commit format)'
+        required: false
+        type: boolean
+        default: true
+      
+      static-analysis:
+        description: 'Run static analysis tools'
+        required: false
+        type: boolean
+        default: false
+      
+      cache-enabled:
+        description: 'Enable caching of Zephyr SDK and build artifacts'
+        required: false
+        type: boolean
+        default: true
+      
+      parallel-jobs:
+        description: 'Number of parallel build jobs'
+        required: false
+        type: string
+        default: 'auto'
+      
+      upload-artifacts:
+        description: 'Upload build artifacts'
+        required: false
+        type: boolean
+        default: true
+      
+      fail-fast:
+        description: 'Fail fast on first error in matrix builds'
+        required: false
+        type: boolean
+        default: false
+      
+      timeout-minutes:
+        description: 'Timeout for build jobs in minutes'
+        required: false
+        type: number
+        default: 60
+      
+      runner-os:
+        description: 'Runner operating systems as JSON array'
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+
+    outputs:
+      build-status:
+        description: 'Overall build status'
+        value: ${{ jobs.build.result }}
+      
+      test-results:
+        description: 'Test results summary'
+        value: ${{ jobs.build.outputs.test-summary }}
+      
+      artifact-url:
+        description: 'URL to build artifacts'
+        value: ${{ jobs.build.outputs.artifacts-url }}
+
+jobs:
+  # Security and Compliance Checks
+  security:
+    name: 🛡️ Security & Compliance
+    runs-on: ubuntu-latest
+    if: inputs.run-compliance
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: 🛡️ Security Scan
+        uses: bauer-group/automation-templates/.github/actions/security-scan@main
+        with:
+          scan-engines: 'gitleaks'
+          fail-on-findings: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📝 License Compliance
+        uses: bauer-group/automation-templates/.github/actions/license-compliance@main
+        with:
+          check-headers: true
+          allowed-licenses: 'Apache-2.0,MIT,BSD-3-Clause,BSD-2-Clause'
+
+  # Matrix Build Strategy
+  build:
+    name: 🔨 Build (${{ matrix.os }}, ${{ matrix.board }}, ${{ matrix.build-type }})
+    runs-on: ${{ matrix.os }}
+    needs: [security]
+    if: always() && (needs.security.result == 'success' || needs.security.result == 'skipped')
+    
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    
+    strategy:
+      fail-fast: ${{ inputs.fail-fast }}
+      matrix:
+        os: ${{ fromJSON(inputs.runner-os) }}
+        board: ${{ fromJSON(inputs.boards) }}
+        build-type: ${{ fromJSON(inputs.build-types) }}
+    
+    outputs:
+      test-summary: ${{ steps.test-summary.outputs.summary }}
+      artifacts-url: ${{ steps.upload.outputs.artifact-url }}
+    
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: ⚡ Zephyr Build & Test
+        id: zephyr-build
+        uses: bauer-group/automation-templates/.github/actions/zephyr-build@main
+        with:
+          config-file: ${{ inputs.config-file }}
+          zephyr-version: ${{ inputs.zephyr-version }}
+          board: ${{ matrix.board }}
+          application-path: ${{ inputs.application-path }}
+          build-type: ${{ matrix.build-type }}
+          extra-cmake-args: ${{ inputs.extra-cmake-args }}
+          west-config-path: ${{ inputs.west-config-path }}
+          run-tests: ${{ inputs.run-tests }}
+          test-pattern: ${{ inputs.test-pattern }}
+          enable-coverage: ${{ inputs.enable-coverage }}
+          run-compliance: ${{ inputs.run-compliance }}
+          static-analysis: ${{ inputs.static-analysis }}
+          cache-enabled: ${{ inputs.cache-enabled }}
+          parallel-jobs: ${{ inputs.parallel-jobs }}
+          generate-artifacts: ${{ inputs.upload-artifacts }}
+
+      - name: 📊 Test Results Summary
+        id: test-summary
+        if: inputs.run-tests
+        shell: bash
+        run: |
+          SUMMARY="Build: ${{ steps.zephyr-build.outputs.build-status }}"
+          SUMMARY="$SUMMARY, Tests: ${{ steps.zephyr-build.outputs.test-status }}"
+          SUMMARY="$SUMMARY, Board: ${{ matrix.board }}"
+          SUMMARY="$SUMMARY, Build Type: ${{ matrix.build-type }}"
+          SUMMARY="$SUMMARY, Time: ${{ steps.zephyr-build.outputs.build-time }}s"
+          
+          echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+          echo "📊 $SUMMARY"
+
+      - name: 📤 Upload Build Artifacts
+        id: upload
+        if: inputs.upload-artifacts && steps.zephyr-build.outputs.binary-path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: zephyr-build-${{ matrix.os }}-${{ matrix.board }}-${{ matrix.build-type }}
+          path: ${{ inputs.application-path }}/${{ steps.zephyr-build.outputs.binary-path }}
+          retention-days: 30
+          compression-level: 6
+
+      - name: 📤 Upload Coverage Reports
+        if: inputs.enable-coverage && steps.zephyr-build.outputs.coverage-report != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ matrix.board }}-${{ matrix.build-type }}
+          path: ${{ inputs.application-path }}/${{ steps.zephyr-build.outputs.coverage-report }}
+          retention-days: 30
+
+      - name: 📊 Upload Coverage to Codecov
+        if: inputs.enable-coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ${{ inputs.application-path }}/${{ steps.zephyr-build.outputs.coverage-report }}/coverage.xml
+          flags: ${{ matrix.board }}-${{ matrix.build-type }}
+          name: zephyr-coverage
+          fail_ci_if_error: false
+
+  # Hardware-in-the-Loop Testing (if supported boards)
+  hardware-test:
+    name: 🔌 Hardware Testing
+    runs-on: [self-hosted, zephyr-hardware]
+    needs: [build]
+    if: |
+      always() && 
+      needs.build.result == 'success' && 
+      contains(inputs.boards, 'nucleo') || 
+      contains(inputs.boards, 'esp32') || 
+      contains(inputs.boards, 'nrf')
+    
+    strategy:
+      matrix:
+        board: ${{ fromJSON(inputs.boards) }}
+    
+    steps:
+      - name: 📥 Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: zephyr-build-ubuntu-latest-${{ matrix.board }}-debug
+          path: ./artifacts
+
+      - name: 🔌 Flash and Test Hardware
+        shell: bash
+        run: |
+          echo "🔌 Testing on real hardware: ${{ matrix.board }}"
+          
+          # This would be customized based on your actual hardware setup
+          # Examples:
+          
+          case "${{ matrix.board }}" in
+            nucleo_*)
+              echo "📱 Flashing STM32 Nucleo board..."
+              # st-flash write artifacts/zephyr.bin 0x8000000
+              ;;
+            esp32*)
+              echo "📱 Flashing ESP32 board..."
+              # esptool.py write_flash 0x10000 artifacts/zephyr.bin
+              ;;
+            nrf*)
+              echo "📱 Flashing Nordic board..."
+              # nrfjprog --program artifacts/zephyr.hex --chiperase --verify
+              ;;
+            *)
+              echo "⚠️  Hardware testing not configured for ${{ matrix.board }}"
+              ;;
+          esac
+          
+          echo "🧪 Running hardware validation tests..."
+          # Add your hardware-specific test commands here
+
+  # Results Summary
+  summary:
+    name: 📋 Build Summary
+    runs-on: ubuntu-latest
+    needs: [security, build, hardware-test]
+    if: always()
+    
+    steps:
+      - name: 📊 Generate Summary
+        shell: bash
+        run: |
+          echo "# Zephyr Build Summary 📋" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## Build Results 🔨" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Security & Compliance | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build & Test | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Hardware Testing | ${{ needs.hardware-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## Configuration ⚙️" >> $GITHUB_STEP_SUMMARY
+          echo "- **Boards**: ${{ inputs.boards }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Types**: ${{ inputs.build-types }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Zephyr Version**: ${{ inputs.zephyr-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests Enabled**: ${{ inputs.run-tests }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Coverage Enabled**: ${{ inputs.enable-coverage }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Static Analysis**: ${{ inputs.static-analysis }}" >> $GITHUB_STEP_SUMMARY
+          
+          # Set final status
+          if [[ "${{ needs.build.result }}" == "success" ]]; then
+            echo "✅ All builds completed successfully!"
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Some builds failed!"
+            echo "status=failure" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: 🔔 Notify Teams
+        if: always()
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          title: "Zephyr Build ${{ steps.summary.outputs.status == 'success' && '✅ Success' || '❌ Failed' }}"
+          summary: "Build completed for boards: ${{ inputs.boards }}"
+          details: |
+            - Repository: ${{ github.repository }}
+            - Branch: ${{ github.ref_name }}
+            - Commit: ${{ github.sha }}
+            - Build Status: ${{ needs.build.result }}
+            - Hardware Test: ${{ needs.hardware-test.result }}
