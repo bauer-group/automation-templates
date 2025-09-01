@@ -80,6 +80,8 @@ permissions:
   issues: write
   pull-requests: write
   id-token: write
+  checks: write
+  security-events: write
 
 jobs:
   # PR validation for pull requests
