@@ -639,29 +639,55 @@ jobs:
             # Intelligente Test-Pfad-Erkennung
             TEST_PATH=""
             
-            # 1. Prüfe expliziten test-path Parameter
+            # 1. Expliziter test-path Parameter
             if [ -n "${{ inputs.test-path }}" ] && [ "${{ inputs.test-path }}" != "tests" ]; then
               if [ -d "${{ inputs.test-path }}" ] || [ -f "${{ inputs.test-path }}" ]; then
                 TEST_PATH="${{ inputs.test-path }}"
               fi
             fi
             
-            # 2. Prüfe pyproject.toml testpaths
+            # 2. pyproject.toml testpaths
             if [ -z "$TEST_PATH" ] && [ -f "pyproject.toml" ]; then
-              TEST_PATH=$(python3 -c 'import tomllib; config = tomllib.load(open("pyproject.toml", "rb")); testpaths = config.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("testpaths", []); print(testpaths[0] if isinstance(testpaths, list) and testpaths else testpaths if isinstance(testpaths, str) else "")' 2>/dev/null || echo "")
+              python3 -c "
+import tomllib
+try:
+    with open('pyproject.toml', 'rb') as f:
+        config = tomllib.load(f)
+    testpaths = config.get('tool', {}).get('pytest', {}).get('ini_options', {}).get('testpaths', [])
+    if testpaths:
+        if isinstance(testpaths, list):
+            print(testpaths[0])
+        else:
+            print(testpaths)
+except:
+    pass
+" > /tmp/testpath 2>/dev/null || true
+              if [ -s /tmp/testpath ]; then
+                TEST_PATH=$(cat /tmp/testpath)
+              fi
             fi
             
-            # 3. Fallback zu Standard-Pfaden
+            # 3. Standard-Pfade
             if [ -z "$TEST_PATH" ]; then
-              for path in "tests" "test" "${{ inputs.package-source-path }}/tests" "${{ inputs.package-source-path }}/test"; do
-                if [ -n "$path" ] && [ -d "$path" ]; then
+              for path in "tests" "test"; do
+                if [ -d "$path" ]; then
                   TEST_PATH="$path"
                   break
                 fi
               done
             fi
             
-            # 4. Als letzter Ausweg: Test-Struktur erstellen
+            # 4. Package-source-path Tests
+            if [ -z "$TEST_PATH" ] && [ -n "${{ inputs.package-source-path }}" ]; then
+              for path in "${{ inputs.package-source-path }}/tests" "${{ inputs.package-source-path }}/test"; do
+                if [ -d "$path" ]; then
+                  TEST_PATH="$path"
+                  break
+                fi
+              done
+            fi
+            
+            # 5. Fallback: Test-Struktur erstellen
             if [ -z "$TEST_PATH" ]; then
               echo "⚠️ No test directory found - creating minimal test structure"
               mkdir -p tests
@@ -678,15 +704,39 @@ jobs:
               # Install coverage dependencies
               pip install pytest-cov coverage[toml]
               
-              # Build coverage arguments - detect source location intelligently
-              if [ -n "${{ inputs.package-source-path }}" ] && [ -d "${{ inputs.package-source-path }}" ]; then
-                # Legacy project with explicit source path
-                COVERAGE_SOURCE="${{ inputs.package-source-path }}"
-              elif [ -f "pyproject.toml" ]; then
-                # Modern project - try to detect from pyproject.toml
-                COVERAGE_SOURCE=$(python3 -c 'import tomllib; config = tomllib.load(open("pyproject.toml", "rb")); sources = config.get("tool", {}).get("coverage", {}).get("run", {}).get("source", []); print(sources[0] if sources else ".")' 2>/dev/null || echo ".")
-              else
-                # Fallback to current directory
+              # Intelligente Coverage-Source-Erkennung
+              COVERAGE_SOURCE=""
+              
+              # 1. pyproject.toml coverage.run.source
+              if [ -f "pyproject.toml" ]; then
+                python3 -c "
+import tomllib
+try:
+    with open('pyproject.toml', 'rb') as f:
+        config = tomllib.load(f)
+    sources = config.get('tool', {}).get('coverage', {}).get('run', {}).get('source', [])
+    if sources:
+        if isinstance(sources, list):
+            print(sources[0])
+        else:
+            print(sources)
+except:
+    pass
+" > /tmp/coverage_source 2>/dev/null || true
+                if [ -s /tmp/coverage_source ]; then
+                  COVERAGE_SOURCE=$(cat /tmp/coverage_source)
+                fi
+              fi
+              
+              # 2. Expliziter package-source-path
+              if [ -z "$COVERAGE_SOURCE" ] && [ -n "${{ inputs.package-source-path }}" ]; then
+                if [ -d "${{ inputs.package-source-path }}" ]; then
+                  COVERAGE_SOURCE="${{ inputs.package-source-path }}"
+                fi
+              fi
+              
+              # 3. Fallback
+              if [ -z "$COVERAGE_SOURCE" ]; then
                 COVERAGE_SOURCE="."
               fi
               
