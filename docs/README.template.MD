@@ -20,7 +20,7 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 | Resource | Description | Link |
 |----------|-------------|------|
 | **🔒 Security Policy** | Vulnerability reporting and security guidelines | [SECURITY.MD](SECURITY.MD) |
-| **🤝 Code of Conduct** | Community standards and behavior guidelines | [CODE_OF_CONDUCT.MD](CODE_OF_CONDUCT.MD) |
+| **🤝 Code of Conduct** | Community standards and behavior guidelines | [CODE_OF_CONDUCT.MD](CODE_OF_CONDUCT.md) |
 | **🛠️ Contributing Guide** | Development workflow and contribution standards | [CONTRIBUTING.MD](CONTRIBUTING.MD) |
 | **📄 License** | Project licensing information | [LICENSE](LICENSE) |
 | **📊 Issue Templates** | Structured issue reporting templates | [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) |
@@ -104,6 +104,7 @@ jobs:
 │   │   ├── python-test/       # Python testing and coverage
 │   │   ├── python-quality/    # Code quality and security scanning
 │   │   ├── python-package/    # Python packaging and publishing
+│   │   ├── zephyr-build/      # Zephyr RTOS build automation
 │   │   ├── security-scan/     # Multi-engine security scanning
 │   │   ├── license-compliance/ # SPDX license compliance
 │   │   ├── artifact-generator/ # Multi-format artifact generation
@@ -119,11 +120,17 @@ jobs:
 │   │   │   ├── library.yml         # Python library
 │   │   │   ├── application.yml     # Python application
 │   │   │   └── data-science.yml    # Data science projects
+│   │   ├── zephyr-build/      # Zephyr RTOS build configurations
+│   │   │   ├── default.yml         # Basic Zephyr application
+│   │   │   ├── iot-device.yml      # IoT devices with connectivity
+│   │   │   ├── embedded-system.yml # Industrial/automotive systems
+│   │   │   └── sample-application.yml # Demo and learning projects
 │   │   └── commitlint.config.js # Commit linting rules
 │   └── workflows/            # 🚀 Reusable Workflows
 │       ├── docker-build.yml       # Docker build & deploy workflow
 │       ├── python-build.yml       # Python build & test workflow
 │       ├── python-publish.yml     # Python package publishing
+│       ├── zephyr-build.yml       # Zephyr RTOS build & test workflow
 │       ├── automatic-release.yml  # Automated release management
 │       ├── documentation.yml      # Documentation automation
 │       └── examples/         # 📋 Usage Examples
@@ -139,6 +146,10 @@ jobs:
 │           │   ├── web-application.yml
 │           │   ├── data-science-project.yml
 │           │   └── comprehensive-python.yml
+│           ├── zephyr-build/      # Zephyr RTOS project examples
+│           │   ├── basic-zephyr-app.yml
+│           │   ├── multi-board-matrix.yml
+│           │   └── iot-device-ci.yml
 │           ├── ci-cd/            # General CI/CD examples
 │           │   ├── comprehensive-ci-cd.yml
 │           │   └── security-focused.yml
@@ -152,6 +163,7 @@ jobs:
 │   ├── workflows/           # Workflow documentation
 │   │   ├── docker-build.md       # Docker system documentation
 │   │   ├── python-build.md       # Python system documentation
+│   │   ├── zephyr-build.md       # Zephyr RTOS build documentation
 │   │   ├── dotnet-build.md       # .NET build documentation
 │   │   ├── nodejs-build.md       # Node.js build documentation
 │   │   └── php-build.md          # PHP build documentation
@@ -234,6 +246,32 @@ Enterprise-grade security scanning and compliance automation.
 | **📋 license-compliance action** | License compliance checks | SPDX, FOSSA integration |
 | **🔍 Release Management** | Automated releases | Semantic versioning, changelog generation |
 
+### ⚡ Zephyr RTOS Build System
+
+Complete automation for Zephyr Real-Time Operating System projects with multi-platform support and hardware testing.
+
+| Component | Purpose | Usage |
+|-----------|---------|-------|
+| **🔧 zephyr-build action** | Multi-board Zephyr builds | Composite action with SDK setup, testing, coverage |
+| **🚀 zephyr-build workflow** | Complete Zephyr CI/CD | `uses: {{REPO_FULL_NAME}}/.github/workflows/zephyr-build.yml@main` |
+| **📋 Configuration Templates** | Pre-configured setups | `default`, `iot-device`, `embedded-system`, `sample-application` |
+
+**Quick Start - Zephyr:**
+```yaml
+name: ⚡ Zephyr Build
+
+on: [push]
+
+jobs:
+  zephyr:
+    uses: {{REPO_FULL_NAME}}/.github/workflows/zephyr-build.yml@main
+    with:
+      boards: '["qemu_x86", "esp32", "nucleo_f429zi"]'
+      build-types: '["debug", "release"]'
+      run-tests: true
+      enable-coverage: true
+```
+
 ### 🏗️ Additional Systems
 
 | System | Status | Description |
@@ -241,6 +279,7 @@ Enterprise-grade security scanning and compliance automation.
 | **🟢 .NET Build** | Available | Complete .NET Core/Framework automation |
 | **🟢 Node.js Build** | Available | Node.js and npm/yarn automation |
 | **🟢 PHP Build** | Available | PHP and Composer automation |
+| **🟢 Zephyr RTOS** | Available | Real-time OS build automation with hardware testing |
 | **🟡 Go Build** | Planned | Go module and build automation |
 | **🟡 Rust Build** | Planned | Cargo and Rust build automation |
 
@@ -334,6 +373,9 @@ module.exports = {
    # For Python projects  
    cp .github/workflows/examples/python-build/web-application.yml .github/workflows/
    
+   # For Zephyr RTOS projects
+   cp .github/workflows/examples/zephyr-build/basic-zephyr-app.yml .github/workflows/
+   
    # For general CI/CD
    cp .github/workflows/examples/ci-cd/comprehensive-ci-cd.yml .github/workflows/
    ```
@@ -365,6 +407,9 @@ module.exports = {
    
    # Edit Python configuration  
    vim .github/config/python-build/application.yml
+   
+   # Edit Zephyr configuration
+   vim .github/config/zephyr-build/iot-device.yml
    
    # Update commit linting rules
    vim .github/config/commitlint.config.js
@@ -440,6 +485,33 @@ jobs:
       PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
 ```
 
+#### ⚡ Zephyr RTOS Project Setup
+
+```yaml
+# .github/workflows/zephyr.yml
+name: Zephyr Build & Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  zephyr:
+    uses: {{REPO_FULL_NAME}}/.github/workflows/zephyr-build.yml@main
+    with:
+      config-file: 'iot-device'
+      boards: '["esp32", "nucleo_f429zi", "nrf52840dk_nrf52840"]'
+      build-types: '["debug", "release"]'
+      run-tests: true
+      enable-coverage: true
+      static-analysis: true
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+```
+
 ### Using Individual Actions
 
 #### 🐳 Docker Build Action
@@ -479,6 +551,20 @@ jobs:
     fail-on-findings: true
     github-token: ${{ secrets.GITHUB_TOKEN }}
     gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+```
+
+#### ⚡ Zephyr Build Action
+
+```yaml
+- name: Build Zephyr Application
+  uses: {{REPO_FULL_NAME}}/.github/actions/zephyr-build@main
+  with:
+    board: 'esp32'
+    build-type: 'release'
+    run-tests: true
+    enable-coverage: true
+    static-analysis: true
+    zephyr-version: '0.17.4'
 ```
 
 ## 🔄 Best Practices
@@ -602,6 +688,7 @@ gh auth status --show-token
 
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
 - [🐍 **Python Build System**](docs/workflows/python-build.md) - Python project automation
+- [⚡ **Zephyr RTOS Build System**](docs/workflows/zephyr-build.md) - Real-time OS automation with hardware testing
 - [🔨 **.NET Build System**](docs/workflows/dotnet-build.md) - .NET Core/Framework automation  
 - [📦 **Node.js Build System**](docs/workflows/nodejs-build.md) - Node.js and npm/yarn automation
 - [🐘 **PHP Build System**](docs/workflows/php-build.md) - PHP and Composer automation
@@ -617,6 +704,9 @@ gh auth status --show-token
 - [🔍 **python-quality**](.github/actions/python-quality/README.md) - Code quality and security scanning
 - [📦 **python-package**](.github/actions/python-package/README.md) - Package building and publishing
 
+#### Zephyr RTOS Actions
+- [⚡ **zephyr-build**](.github/actions/zephyr-build/README.md) - Complete Zephyr RTOS build automation with SDK management
+
 #### Security & Compliance Actions
 - [🛡️ **security-scan**](.github/actions/security-scan/README.md) - Multi-engine security scanning
 - [📋 **license-compliance**](.github/actions/license-compliance/README.md) - SPDX license compliance
@@ -631,6 +721,7 @@ gh auth status --show-token
 
 - [🐳 **Docker Configurations**](.github/config/docker-build/) - Docker build configuration templates
 - [🐍 **Python Configurations**](.github/config/python-build/) - Python project configuration templates
+- [⚡ **Zephyr Configurations**](.github/config/zephyr-build/) - Zephyr RTOS build configuration templates
 - [⚙️ **Workflow Configuration**](.github/config/README.md) - General workflow configuration guide
 - [🔒 **Secrets Naming Convention**](docs/SECRETS-NAMING-CONVENTION.md) - Standardized secret naming
 
@@ -644,6 +735,7 @@ gh auth status --show-token
 
 - [🐳 **Docker Examples**](github/workflows/examples/docker/) - Complete Docker workflow examples
 - [🐍 **Python Examples**](github/workflows/examples/python-build/) - Python project examples
+- [⚡ **Zephyr Examples**](github/workflows/examples/zephyr-build/) - Zephyr RTOS project examples
 - [🔄 **CI/CD Examples**](github/workflows/examples/ci-cd/) - General CI/CD pipeline examples
 - [📝 **Documentation Examples**](github/workflows/examples/documentation/) - Documentation automation examples
 
