@@ -96,11 +96,11 @@ changelog_sections = [
 
 # Commit parsing
 commit_parser = "conventional"
-commit_parser_options = {
-    allowed_tags = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "chore", "ci", "build", "revert"],
-    minor_tags = ["feat"],
-    patch_tags = ["fix", "perf"],
-}
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "chore", "ci", "build", "revert"]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
 
 # ============================================================================
 # TESTING CONFIGURATION  
