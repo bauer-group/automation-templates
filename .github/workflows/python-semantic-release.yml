@@ -101,6 +101,11 @@ jobs:
     name: 🧪 Tests & Quality
     if: inputs.run-tests == true && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    outputs:
+      tests-passed: ${{ steps.run-tests.outputs.tests-passed }}
+      coverage-percentage: ${{ steps.run-tests.outputs.coverage-percentage }}
+      security-issues-found: ${{ steps.security-scan.outputs.security-issues-found }}
+      linting-issues-found: ${{ steps.lint-code.outputs.linting-issues-found }}
     
     steps:
       - name: 📥 Checkout Repository
@@ -132,6 +137,7 @@ jobs:
           python -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)" || pip install tomli
           
       - name: 🧪 Run Tests
+        id: run-tests
         run: |
           # Detect test directory intelligently
           if [ -d "tests" ]; then
@@ -146,9 +152,34 @@ jobs:
           fi
           
           # Run tests with coverage
-          pytest "$TEST_DIR" --cov=. --cov-report=xml --cov-report=html -n auto --tb=short
+          pytest "$TEST_DIR" --cov=. --cov-report=xml --cov-report=html -n auto --tb=short -q
+          
+          # Extract test results and coverage
+          if [ $? -eq 0 ]; then
+            echo "tests-passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "tests-passed=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Extract coverage percentage if coverage.xml exists
+          if [ -f "coverage.xml" ]; then
+            COVERAGE=$(python -c "
+            import xml.etree.ElementTree as ET
+            try:
+                tree = ET.parse('coverage.xml')
+                root = tree.getroot()
+                coverage = root.attrib.get('line-rate', '0')
+                print(f'{float(coverage)*100:.1f}')
+            except:
+                print('N/A')
+            ")
+            echo "coverage-percentage=$COVERAGE" >> $GITHUB_OUTPUT
+          else
+            echo "coverage-percentage=N/A" >> $GITHUB_OUTPUT
+          fi
           
       - name: 🔐 Security Scan
+        id: security-scan
         if: inputs.run-security-scan == true
         run: |
           # Run bandit security scan
@@ -157,9 +188,57 @@ jobs:
           # Run pip-audit vulnerability check (modern replacement for safety)
           pip-audit --format=json --output=pip-audit-report.json || echo "⚠️ Vulnerability scan completed with warnings"
           
+          # Count security issues
+          BANDIT_ISSUES=0
+          VULN_ISSUES=0
+          
+          if [ -f "bandit-report.json" ]; then
+            BANDIT_ISSUES=$(python -c "
+            import json
+            try:
+                with open('bandit-report.json', 'r') as f:
+                    data = json.load(f)
+                print(len(data.get('results', [])))
+            except:
+                print(0)
+            ")
+          fi
+          
+          if [ -f "pip-audit-report.json" ]; then
+            VULN_ISSUES=$(python -c "
+            import json
+            try:
+                with open('pip-audit-report.json', 'r') as f:
+                    data = json.load(f)
+                total = sum(len(dep.get('vulns', [])) for dep in data.get('dependencies', []))
+                print(total)
+            except:
+                print(0)
+            ")
+          fi
+          
+          TOTAL_SECURITY_ISSUES=$((BANDIT_ISSUES + VULN_ISSUES))
+          echo "security-issues-found=$TOTAL_SECURITY_ISSUES" >> $GITHUB_OUTPUT
+          
       - name: 🧹 Lint Code
+        id: lint-code
         run: |
           ruff check . --output-format=json --output-file=ruff-report.json || true
+          
+          # Count linting issues
+          LINT_ISSUES=0
+          if [ -f "ruff-report.json" ]; then
+            LINT_ISSUES=$(python -c "
+            import json
+            try:
+                with open('ruff-report.json', 'r') as f:
+                    data = json.load(f)
+                print(len(data) if isinstance(data, list) else 0)
+            except:
+                print(0)
+            ")
+          fi
+          echo "linting-issues-found=$LINT_ISSUES" >> $GITHUB_OUTPUT
           
       - name: 📊 Upload Coverage
         uses: codecov/codecov-action@v4
@@ -225,6 +304,10 @@ jobs:
     if: needs.release.outputs.released == 'true' && inputs.build-local-wheel == true
     needs: [release]
     runs-on: ubuntu-latest
+    outputs:
+      wheel-built: ${{ steps.build-wheel.outputs.wheel-built }}
+      wheel-tested: ${{ steps.test-wheel.outputs.wheel-tested }}
+      package-name: ${{ steps.test-wheel.outputs.package-name }}
     
     steps:
       - name: 📥 Checkout Repository
@@ -236,16 +319,31 @@ jobs:
           python-version: ${{ inputs.python-version }}
           
       - name: 📦 Build Wheel
+        id: build-wheel
         run: |
           python -m pip install --upgrade pip build
           python -m build
           
+          # Check if wheel was built successfully
+          if ls dist/*.whl >/dev/null 2>&1; then
+            echo "wheel-built=true" >> $GITHUB_OUTPUT
+            echo "✅ Wheel built successfully: $(ls dist/*.whl)"
+          else
+            echo "wheel-built=false" >> $GITHUB_OUTPUT
+            echo "❌ Wheel build failed"
+            exit 1
+          fi
+          
       - name: 🧪 Test Wheel Installation
+        id: test-wheel
         run: |
           # Install wheel in fresh environment
           pip install dist/*.whl
           
           # Test import (detect package name from pyproject.toml)
+          WHEEL_TESTED="false"
+          PACKAGE_NAME="unknown"
+          
           if [ -f "pyproject.toml" ]; then
             PACKAGE_NAME=$(python -c "
             try: import tomllib
@@ -256,9 +354,23 @@ jobs:
             " 2>/dev/null || echo "unknown")
             
             if [ "$PACKAGE_NAME" != "unknown" ]; then
-              python -c "import $PACKAGE_NAME; print('✅ Package import successful')"
+              if python -c "import $PACKAGE_NAME; print('✅ Package import successful')" 2>/dev/null; then
+                WHEEL_TESTED="true"
+              else
+                WHEEL_TESTED="false"
+                echo "❌ Package import failed"
+              fi
+            else
+              echo "⚠️ Could not determine package name from pyproject.toml"
+              WHEEL_TESTED="unknown"
             fi
+          else
+            echo "⚠️ No pyproject.toml found"
+            WHEEL_TESTED="unknown"
           fi
+          
+          echo "wheel-tested=$WHEEL_TESTED" >> $GITHUB_OUTPUT
+          echo "package-name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
           
       - name: 📤 Upload Wheel Artifacts
         uses: actions/upload-artifact@v4
@@ -349,7 +461,7 @@ jobs:
   pipeline-summary:
     name: 📊 Pipeline Summary
     if: always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call')
-    needs: [test-and-quality, security-scan, license-compliance, release, update-documentation, update-security]
+    needs: [test-and-quality, security-scan, license-compliance, release, build-wheel, update-documentation, update-security]
     runs-on: ubuntu-latest
     
     steps:
@@ -366,8 +478,29 @@ jobs:
           
           echo "| Stage | Status | Details |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|---------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Tests & Quality** | ${{ needs.test-and-quality.result == 'success' && '✅ PASS' || needs.test-and-quality.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Python ${{ inputs.python-version }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Build Wheel** | ${{ needs.build-wheel.result == 'success' && '✅ PASS' || needs.build-wheel.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Local package test |" >> $GITHUB_STEP_SUMMARY
+          # Test & Quality details
+          TEST_DETAILS="Python ${{ inputs.python-version }}"
+          if [ "${{ needs.test-and-quality.outputs.coverage-percentage }}" != "" ]; then
+            TEST_DETAILS="$TEST_DETAILS, Coverage: ${{ needs.test-and-quality.outputs.coverage-percentage }}%"
+          fi
+          if [ "${{ needs.test-and-quality.outputs.security-issues-found }}" != "" ]; then
+            TEST_DETAILS="$TEST_DETAILS, Security: ${{ needs.test-and-quality.outputs.security-issues-found }} issues"
+          fi
+          if [ "${{ needs.test-and-quality.outputs.linting-issues-found }}" != "" ]; then
+            TEST_DETAILS="$TEST_DETAILS, Lint: ${{ needs.test-and-quality.outputs.linting-issues-found }} issues"
+          fi
+          echo "| **Tests & Quality** | ${{ needs.test-and-quality.result == 'success' && '✅ PASS' || needs.test-and-quality.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | $TEST_DETAILS |" >> $GITHUB_STEP_SUMMARY
+          # Build Wheel details
+          BUILD_DETAILS="Local package test"
+          if [ "${{ needs.build-wheel.outputs.package-name }}" != "" ] && [ "${{ needs.build-wheel.outputs.package-name }}" != "unknown" ]; then
+            BUILD_DETAILS="Package: ${{ needs.build-wheel.outputs.package-name }}"
+          fi
+          if [ "${{ needs.build-wheel.outputs.wheel-tested }}" == "true" ]; then
+            BUILD_DETAILS="$BUILD_DETAILS, Import: ✅"
+          elif [ "${{ needs.build-wheel.outputs.wheel-tested }}" == "false" ]; then
+            BUILD_DETAILS="$BUILD_DETAILS, Import: ❌"
+          fi
+          echo "| **Build Wheel** | ${{ needs.build-wheel.result == 'success' && '✅ PASS' || needs.build-wheel.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | $BUILD_DETAILS |" >> $GITHUB_STEP_SUMMARY
           echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || needs.security-scan.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Engine: ${{ inputs.security-engine }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || needs.license-compliance.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | SBOM generated |" >> $GITHUB_STEP_SUMMARY
           echo "| **Semantic Release** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Released: ${{ needs.release.outputs.released || 'false' }} |" >> $GITHUB_STEP_SUMMARY
