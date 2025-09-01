@@ -328,15 +328,8 @@ jobs:
           # Create CHANGELOG.MD if it doesn't exist (semantic-release needs it)
           if [ ! -f "CHANGELOG.MD" ]; then
             echo "📝 Creating CHANGELOG.MD for semantic-release"
-            cat > CHANGELOG.MD << 'EOF'
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-EOF
+            echo "# Changelog" > CHANGELOG.MD            
+            echo "" >> CHANGELOG.MD
             echo "✅ CHANGELOG.MD created successfully"
           else
             echo "✅ CHANGELOG.MD already exists"
