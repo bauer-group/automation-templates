@@ -299,6 +299,9 @@ jobs:
       released: ${{ steps.release.outputs.released }}
       version: ${{ steps.release.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
+      wheel-built: ${{ steps.release.outputs.wheel-built }}
+      wheel-tested: ${{ steps.release.outputs.wheel-tested }}
+      package-name: ${{ steps.release.outputs.package-name }}
       
     steps:
       - name: 📥 Checkout Repository
@@ -312,10 +315,13 @@ jobs:
         with:
           python-version: ${{ inputs.python-version }}
           
-      - name: 📦 Install python-semantic-release
+      - name: 📦 Install python-semantic-release and build tools
         run: |
           python -m pip install --upgrade pip
-          pip install python-semantic-release
+          pip install python-semantic-release build
+          
+          # Install tomli for Python <3.11 compatibility (needed for pyproject.toml parsing)
+          python -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)" || pip install tomli
           
       - name: 🚀 Python Semantic Release
         id: release
@@ -326,95 +332,68 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Run semantic release (creates version, commit, tag, and release)
+          # Run semantic release (creates version, commit, tag, release, and builds packages)
           semantic-release --verbose version
           
-          # Check if release was created
+          # Check if release was created and extract build information
           if git describe --exact-match --tags HEAD 2>/dev/null; then
             echo "released=true" >> $GITHUB_OUTPUT
-            echo "version=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
-            echo "tag=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+            VERSION=$(git describe --tags --abbrev=0)
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "tag=$VERSION" >> $GITHUB_OUTPUT
+            
+            # Check if wheel was built
+            if ls dist/*.whl >/dev/null 2>&1; then
+              echo "wheel-built=true" >> $GITHUB_OUTPUT
+              WHEEL_FILE=$(ls dist/*.whl | head -n1)
+              echo "✅ Wheel built successfully: $WHEEL_FILE"
+              
+              # Test wheel import
+              pip install "$WHEEL_FILE" 2>/dev/null || echo "⚠️ Wheel install test skipped"
+              
+              # Extract package name for testing
+              if [ -f "pyproject.toml" ]; then
+                PACKAGE_NAME=$(python -c "
+                try: import tomllib
+                except ImportError: import tomli as tomllib
+                with open('pyproject.toml', 'rb') as f:
+                    config = tomllib.load(f)
+                print(config['project']['name'].replace('-', '_'))
+                " 2>/dev/null || echo "unknown")
+                
+                if [ "$PACKAGE_NAME" != "unknown" ]; then
+                  echo "package-name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+                  if python -c "import $PACKAGE_NAME; print('✅ Package import test successful')" 2>/dev/null; then
+                    echo "wheel-tested=true" >> $GITHUB_OUTPUT
+                  else
+                    echo "wheel-tested=false" >> $GITHUB_OUTPUT
+                    echo "⚠️ Package import test failed"
+                  fi
+                else
+                  echo "package-name=unknown" >> $GITHUB_OUTPUT
+                  echo "wheel-tested=unknown" >> $GITHUB_OUTPUT
+                fi
+              else
+                echo "package-name=unknown" >> $GITHUB_OUTPUT
+                echo "wheel-tested=unknown" >> $GITHUB_OUTPUT
+              fi
+            else
+              echo "wheel-built=false" >> $GITHUB_OUTPUT
+              echo "package-name=unknown" >> $GITHUB_OUTPUT
+              echo "wheel-tested=false" >> $GITHUB_OUTPUT
+              echo "⚠️ No wheel file found in dist/"
+            fi
           else
             echo "released=false" >> $GITHUB_OUTPUT
             echo "version=" >> $GITHUB_OUTPUT
             echo "tag=" >> $GITHUB_OUTPUT
+            echo "wheel-built=false" >> $GITHUB_OUTPUT
+            echo "package-name=unknown" >> $GITHUB_OUTPUT
+            echo "wheel-tested=false" >> $GITHUB_OUTPUT
           fi
 
-  # Build and test local wheel package (AFTER semantic release)
-  build-wheel:
-    name: 📦 Build & Test Wheel  
-    if: needs.release.outputs.released == 'true' && inputs.build-local-wheel == true
-    needs: [release]
-    runs-on: ubuntu-latest
-    outputs:
-      wheel-built: ${{ steps.build-wheel.outputs.wheel-built || 'skipped' }}
-      wheel-tested: ${{ steps.test-wheel.outputs.wheel-tested || 'skipped' }}
-      package-name: ${{ steps.test-wheel.outputs.package-name || 'unknown' }}
-    
-    steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
-        
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python-version }}
-          
-      - name: 📦 Build Wheel
-        id: build-wheel
-        run: |
-          python -m pip install --upgrade pip build
-          python -m build
-          
-          # Check if wheel was built successfully
-          if ls dist/*.whl >/dev/null 2>&1; then
-            echo "wheel-built=true" >> $GITHUB_OUTPUT
-            echo "✅ Wheel built successfully: $(ls dist/*.whl)"
-          else
-            echo "wheel-built=false" >> $GITHUB_OUTPUT
-            echo "❌ Wheel build failed"
-            exit 1
-          fi
-          
-      - name: 🧪 Test Wheel Installation
-        id: test-wheel
-        run: |
-          # Install wheel in fresh environment
-          pip install dist/*.whl
-          
-          # Test import (detect package name from pyproject.toml)
-          WHEEL_TESTED="false"
-          PACKAGE_NAME="unknown"
-          
-          if [ -f "pyproject.toml" ]; then
-            PACKAGE_NAME=$(python -c "
-            try: import tomllib
-            except ImportError: import tomli as tomllib
-            with open('pyproject.toml', 'rb') as f:
-                config = tomllib.load(f)
-            print(config['project']['name'].replace('-', '_'))
-            " 2>/dev/null || echo "unknown")
-            
-            if [ "$PACKAGE_NAME" != "unknown" ]; then
-              if python -c "import $PACKAGE_NAME; print('✅ Package import successful')" 2>/dev/null; then
-                WHEEL_TESTED="true"
-              else
-                WHEEL_TESTED="false"
-                echo "❌ Package import failed"
-              fi
-            else
-              echo "⚠️ Could not determine package name from pyproject.toml"
-              WHEEL_TESTED="unknown"
-            fi
-          else
-            echo "⚠️ No pyproject.toml found"
-            WHEEL_TESTED="unknown"
-          fi
-          
-          echo "wheel-tested=$WHEEL_TESTED" >> $GITHUB_OUTPUT
-          echo "package-name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
-          
-      - name: 📤 Upload Wheel Artifacts
+      - name: 📤 Upload Build Artifacts
+        if: steps.release.outputs.released == 'true' && steps.release.outputs.wheel-built == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: python-wheel-${{ github.run_number }}
@@ -446,29 +425,20 @@ jobs:
     secrets: inherit
 
 
-  # Publish to PyPI with correct version
+  # Publish to PyPI using packages built by semantic-release
   pypi-publish:
     name: 📤 Publish to PyPI
-    if: needs.release.outputs.released == 'true' && inputs.skip-pypi != true
-    needs: [release, build-wheel]
+    if: needs.release.outputs.released == 'true' && needs.release.outputs.wheel-built == 'true' && inputs.skip-pypi != true
+    needs: [release]
     runs-on: ubuntu-latest
     environment: release
     
     steps:
-      - name: 📥 Checkout Repository  
-        uses: actions/checkout@v4
+      - name: 📥 Download Build Artifacts
+        uses: actions/download-artifact@v4
         with:
-          ref: ${{ needs.release.outputs.tag }}  # Use the new release tag
-          
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python-version }}
-          
-      - name: 📦 Build Package
-        run: |
-          python -m pip install --upgrade pip build
-          python -m build
+          name: python-wheel-${{ github.run_number }}
+          path: dist/
           
       - name: 📤 Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -503,7 +473,7 @@ jobs:
   pipeline-summary:
     name: 📊 Pipeline Summary
     if: always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call')
-    needs: [test-and-quality, security-scan, license-compliance, release, build-wheel, update-documentation, update-security]
+    needs: [test-and-quality, security-scan, license-compliance, release, update-documentation, update-security]
     runs-on: ubuntu-latest
     
     steps:
@@ -542,26 +512,32 @@ jobs:
           fi
           
           echo "| **Tests & Quality** | ${{ needs.test-and-quality.result == 'success' && '✅ PASS' || needs.test-and-quality.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | $TEST_DETAILS |" >> $GITHUB_STEP_SUMMARY
-          # Build Wheel details (with safe fallbacks for skipped jobs)
-          BUILD_DETAILS="Local package test"
+          # Build Wheel details (now integrated in semantic-release)
+          BUILD_DETAILS="Integrated with release"
           
-          if [ "${{ needs.build-wheel.result }}" != "skipped" ]; then
-            PACKAGE_NAME="${{ needs.build-wheel.outputs.package-name }}"
-            WHEEL_TESTED="${{ needs.build-wheel.outputs.wheel-tested }}"
+          if [ "${{ needs.release.outputs.released }}" == "true" ]; then
+            PACKAGE_NAME="${{ needs.release.outputs.package-name }}"
+            WHEEL_TESTED="${{ needs.release.outputs.wheel-tested }}"
+            WHEEL_BUILT="${{ needs.release.outputs.wheel-built }}"
             
             if [ "$PACKAGE_NAME" != "" ] && [ "$PACKAGE_NAME" != "unknown" ] && [ "$PACKAGE_NAME" != "null" ]; then
               BUILD_DETAILS="Package: $PACKAGE_NAME"
             fi
-            if [ "$WHEEL_TESTED" == "true" ]; then
-              BUILD_DETAILS="$BUILD_DETAILS, Import: ✅"
-            elif [ "$WHEEL_TESTED" == "false" ]; then
-              BUILD_DETAILS="$BUILD_DETAILS, Import: ❌"
+            if [ "$WHEEL_BUILT" == "true" ]; then
+              BUILD_DETAILS="$BUILD_DETAILS, Built: ✅"
+              if [ "$WHEEL_TESTED" == "true" ]; then
+                BUILD_DETAILS="$BUILD_DETAILS, Import: ✅"
+              elif [ "$WHEEL_TESTED" == "false" ]; then
+                BUILD_DETAILS="$BUILD_DETAILS, Import: ❌"
+              fi
+            else
+              BUILD_DETAILS="$BUILD_DETAILS, Built: ❌"
             fi
           else
-            BUILD_DETAILS="$BUILD_DETAILS (wheel build disabled or no release)"
+            BUILD_DETAILS="$BUILD_DETAILS (no release created)"
           fi
           
-          echo "| **Build Wheel** | ${{ needs.build-wheel.result == 'success' && '✅ PASS' || needs.build-wheel.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | $BUILD_DETAILS |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build Wheel** | ${{ needs.release.outputs.wheel-built == 'true' && '✅ PASS' || needs.release.outputs.released != 'true' && '⏭️ SKIP' || '❌ FAIL' }} | $BUILD_DETAILS |" >> $GITHUB_STEP_SUMMARY
           echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || needs.security-scan.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Engine: ${{ inputs.security-engine }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || needs.license-compliance.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | SBOM generated |" >> $GITHUB_STEP_SUMMARY
           echo "| **Semantic Release** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Released: ${{ needs.release.outputs.released || 'false' }} |" >> $GITHUB_STEP_SUMMARY
