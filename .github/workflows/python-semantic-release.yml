@@ -102,10 +102,10 @@ jobs:
     if: inputs.run-tests == true && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     outputs:
-      tests-passed: ${{ steps.run-tests.outputs.tests-passed }}
-      coverage-percentage: ${{ steps.run-tests.outputs.coverage-percentage }}
-      security-issues-found: ${{ steps.security-scan.outputs.security-issues-found }}
-      linting-issues-found: ${{ steps.lint-code.outputs.linting-issues-found }}
+      tests-passed: ${{ steps.run-tests.outputs.tests-passed || 'skipped' }}
+      coverage-percentage: ${{ steps.run-tests.outputs.coverage-percentage || 'N/A' }}
+      security-issues-found: ${{ steps.security-scan.outputs.security-issues-found || steps.security-scan-fallback.outputs.security-issues-found || '0' }}
+      linting-issues-found: ${{ steps.lint-code.outputs.linting-issues-found || '0' }}
     
     steps:
       - name: 📥 Checkout Repository
@@ -151,31 +151,43 @@ jobs:
             TEST_DIR="tests"
           fi
           
-          # Run tests with coverage
+          # Run tests with coverage (capture exit code properly)
+          set +e  # Allow command to fail without stopping the script
           pytest "$TEST_DIR" --cov=. --cov-report=xml --cov-report=html -n auto --tb=short -q
+          TEST_EXIT_CODE=$?
+          set -e  # Re-enable exit on error
           
           # Extract test results and coverage
-          if [ $? -eq 0 ]; then
+          if [ $TEST_EXIT_CODE -eq 0 ]; then
             echo "tests-passed=true" >> $GITHUB_OUTPUT
           else
             echo "tests-passed=false" >> $GITHUB_OUTPUT
+            echo "❌ Tests failed with exit code $TEST_EXIT_CODE"
           fi
           
-          # Extract coverage percentage if coverage.xml exists
+          # Extract coverage percentage if coverage.xml exists (with error handling)
           if [ -f "coverage.xml" ]; then
             COVERAGE=$(python -c "
             import xml.etree.ElementTree as ET
+            import sys
             try:
                 tree = ET.parse('coverage.xml')
                 root = tree.getroot()
                 coverage = root.attrib.get('line-rate', '0')
-                print(f'{float(coverage)*100:.1f}')
-            except:
+                result = float(coverage) * 100
+                print(f'{result:.1f}')
+            except Exception as e:
+                print('N/A', file=sys.stderr)
                 print('N/A')
-            ")
+            " 2>/dev/null || echo "N/A")
             echo "coverage-percentage=$COVERAGE" >> $GITHUB_OUTPUT
           else
             echo "coverage-percentage=N/A" >> $GITHUB_OUTPUT
+          fi
+          
+          # Fail the step if tests failed (after extracting all information)
+          if [ $TEST_EXIT_CODE -ne 0 ]; then
+            exit $TEST_EXIT_CODE
           fi
           
       - name: 🔐 Security Scan
@@ -188,56 +200,86 @@ jobs:
           # Run pip-audit vulnerability check (modern replacement for safety)
           pip-audit --format=json --output=pip-audit-report.json || echo "⚠️ Vulnerability scan completed with warnings"
           
-          # Count security issues
+          # Count security issues (with robust error handling)
           BANDIT_ISSUES=0
           VULN_ISSUES=0
           
-          if [ -f "bandit-report.json" ]; then
+          if [ -f "bandit-report.json" ] && [ -s "bandit-report.json" ]; then
             BANDIT_ISSUES=$(python -c "
             import json
+            import sys
             try:
                 with open('bandit-report.json', 'r') as f:
                     data = json.load(f)
-                print(len(data.get('results', [])))
-            except:
+                if isinstance(data, dict) and 'results' in data:
+                    print(len(data['results']))
+                else:
+                    print(0)
+            except Exception as e:
+                print(0, file=sys.stderr)
                 print(0)
-            ")
+            " 2>/dev/null || echo "0")
           fi
           
-          if [ -f "pip-audit-report.json" ]; then
+          if [ -f "pip-audit-report.json" ] && [ -s "pip-audit-report.json" ]; then
             VULN_ISSUES=$(python -c "
             import json
+            import sys
             try:
                 with open('pip-audit-report.json', 'r') as f:
                     data = json.load(f)
-                total = sum(len(dep.get('vulns', [])) for dep in data.get('dependencies', []))
-                print(total)
-            except:
+                if isinstance(data, dict) and 'dependencies' in data:
+                    total = sum(len(dep.get('vulns', [])) for dep in data['dependencies'] if isinstance(dep, dict))
+                    print(total)
+                else:
+                    print(0)
+            except Exception as e:
+                print(0, file=sys.stderr)
                 print(0)
-            ")
+            " 2>/dev/null || echo "0")
           fi
           
+          # Ensure numeric values
+          BANDIT_ISSUES=${BANDIT_ISSUES:-0}
+          VULN_ISSUES=${VULN_ISSUES:-0}
           TOTAL_SECURITY_ISSUES=$((BANDIT_ISSUES + VULN_ISSUES))
           echo "security-issues-found=$TOTAL_SECURITY_ISSUES" >> $GITHUB_OUTPUT
+          
+      - name: 🔐 Security Scan Fallback
+        id: security-scan-fallback
+        if: inputs.run-security-scan != true
+        run: |
+          echo "security-issues-found=0" >> $GITHUB_OUTPUT
           
       - name: 🧹 Lint Code
         id: lint-code
         run: |
           ruff check . --output-format=json --output-file=ruff-report.json || true
           
-          # Count linting issues
+          # Count linting issues (with robust error handling)
           LINT_ISSUES=0
-          if [ -f "ruff-report.json" ]; then
+          if [ -f "ruff-report.json" ] && [ -s "ruff-report.json" ]; then
             LINT_ISSUES=$(python -c "
             import json
+            import sys
             try:
                 with open('ruff-report.json', 'r') as f:
                     data = json.load(f)
-                print(len(data) if isinstance(data, list) else 0)
-            except:
+                if isinstance(data, list):
+                    print(len(data))
+                elif isinstance(data, dict):
+                    # Some linters return dict format
+                    print(len(data.get('messages', [])))
+                else:
+                    print(0)
+            except Exception as e:
+                print(0, file=sys.stderr)
                 print(0)
-            ")
+            " 2>/dev/null || echo "0")
           fi
+          
+          # Ensure numeric value
+          LINT_ISSUES=${LINT_ISSUES:-0}
           echo "linting-issues-found=$LINT_ISSUES" >> $GITHUB_OUTPUT
           
       - name: 📊 Upload Coverage
@@ -305,9 +347,9 @@ jobs:
     needs: [release]
     runs-on: ubuntu-latest
     outputs:
-      wheel-built: ${{ steps.build-wheel.outputs.wheel-built }}
-      wheel-tested: ${{ steps.test-wheel.outputs.wheel-tested }}
-      package-name: ${{ steps.test-wheel.outputs.package-name }}
+      wheel-built: ${{ steps.build-wheel.outputs.wheel-built || 'skipped' }}
+      wheel-tested: ${{ steps.test-wheel.outputs.wheel-tested || 'skipped' }}
+      package-name: ${{ steps.test-wheel.outputs.package-name || 'unknown' }}
     
     steps:
       - name: 📥 Checkout Repository
@@ -478,28 +520,47 @@ jobs:
           
           echo "| Stage | Status | Details |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|---------|" >> $GITHUB_STEP_SUMMARY
-          # Test & Quality details
+          # Test & Quality details (with safe fallbacks for skipped jobs)
           TEST_DETAILS="Python ${{ inputs.python-version }}"
-          if [ "${{ needs.test-and-quality.outputs.coverage-percentage }}" != "" ]; then
-            TEST_DETAILS="$TEST_DETAILS, Coverage: ${{ needs.test-and-quality.outputs.coverage-percentage }}%"
+          
+          if [ "${{ needs.test-and-quality.result }}" != "skipped" ]; then
+            COVERAGE="${{ needs.test-and-quality.outputs.coverage-percentage }}"
+            SECURITY_ISSUES="${{ needs.test-and-quality.outputs.security-issues-found }}"
+            LINT_ISSUES="${{ needs.test-and-quality.outputs.linting-issues-found }}"
+            
+            if [ "$COVERAGE" != "" ] && [ "$COVERAGE" != "N/A" ] && [ "$COVERAGE" != "null" ]; then
+              TEST_DETAILS="$TEST_DETAILS, Coverage: ${COVERAGE}%"
+            fi
+            if [ "$SECURITY_ISSUES" != "" ] && [ "$SECURITY_ISSUES" != "null" ]; then
+              TEST_DETAILS="$TEST_DETAILS, Security: ${SECURITY_ISSUES} issues"
+            fi
+            if [ "$LINT_ISSUES" != "" ] && [ "$LINT_ISSUES" != "null" ]; then
+              TEST_DETAILS="$TEST_DETAILS, Lint: ${LINT_ISSUES} issues"
+            fi
+          else
+            TEST_DETAILS="$TEST_DETAILS (tests disabled)"
           fi
-          if [ "${{ needs.test-and-quality.outputs.security-issues-found }}" != "" ]; then
-            TEST_DETAILS="$TEST_DETAILS, Security: ${{ needs.test-and-quality.outputs.security-issues-found }} issues"
-          fi
-          if [ "${{ needs.test-and-quality.outputs.linting-issues-found }}" != "" ]; then
-            TEST_DETAILS="$TEST_DETAILS, Lint: ${{ needs.test-and-quality.outputs.linting-issues-found }} issues"
-          fi
+          
           echo "| **Tests & Quality** | ${{ needs.test-and-quality.result == 'success' && '✅ PASS' || needs.test-and-quality.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | $TEST_DETAILS |" >> $GITHUB_STEP_SUMMARY
-          # Build Wheel details
+          # Build Wheel details (with safe fallbacks for skipped jobs)
           BUILD_DETAILS="Local package test"
-          if [ "${{ needs.build-wheel.outputs.package-name }}" != "" ] && [ "${{ needs.build-wheel.outputs.package-name }}" != "unknown" ]; then
-            BUILD_DETAILS="Package: ${{ needs.build-wheel.outputs.package-name }}"
+          
+          if [ "${{ needs.build-wheel.result }}" != "skipped" ]; then
+            PACKAGE_NAME="${{ needs.build-wheel.outputs.package-name }}"
+            WHEEL_TESTED="${{ needs.build-wheel.outputs.wheel-tested }}"
+            
+            if [ "$PACKAGE_NAME" != "" ] && [ "$PACKAGE_NAME" != "unknown" ] && [ "$PACKAGE_NAME" != "null" ]; then
+              BUILD_DETAILS="Package: $PACKAGE_NAME"
+            fi
+            if [ "$WHEEL_TESTED" == "true" ]; then
+              BUILD_DETAILS="$BUILD_DETAILS, Import: ✅"
+            elif [ "$WHEEL_TESTED" == "false" ]; then
+              BUILD_DETAILS="$BUILD_DETAILS, Import: ❌"
+            fi
+          else
+            BUILD_DETAILS="$BUILD_DETAILS (wheel build disabled or no release)"
           fi
-          if [ "${{ needs.build-wheel.outputs.wheel-tested }}" == "true" ]; then
-            BUILD_DETAILS="$BUILD_DETAILS, Import: ✅"
-          elif [ "${{ needs.build-wheel.outputs.wheel-tested }}" == "false" ]; then
-            BUILD_DETAILS="$BUILD_DETAILS, Import: ❌"
-          fi
+          
           echo "| **Build Wheel** | ${{ needs.build-wheel.result == 'success' && '✅ PASS' || needs.build-wheel.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | $BUILD_DETAILS |" >> $GITHUB_STEP_SUMMARY
           echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || needs.security-scan.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Engine: ${{ inputs.security-engine }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || needs.license-compliance.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | SBOM generated |" >> $GITHUB_STEP_SUMMARY
