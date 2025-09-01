@@ -59,7 +59,8 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
     with:
       python-version: ${{ inputs.python-version || '3.12' }}
-      working-directory: ${{ inputs.package-source-path || 'src' }}
+      working-directory: '.'
+      package-source-path: ${{ inputs.package-source-path || 'src' }}
       run-tests: true
       run-lint: true
       run-security-scan: true
@@ -113,7 +114,8 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/python-publish.yml@main
     with:
       python-version: ${{ inputs.python-version || '3.12' }}
-      working-directory: ${{ inputs.package-source-path || 'src' }}
+      working-directory: '.'
+      package-source-path: ${{ inputs.package-source-path || 'src' }}
       package-version: ${{ needs.release-management.outputs.version }}
     secrets: inherit
 

@@ -23,6 +23,12 @@ on:
         required: false
         default: '.'
       
+      package-source-path:
+        description: 'Path to package source code (for legacy projects)'
+        type: string
+        required: false
+        default: ''
+      
       project-type:
         description: 'Project type (app, package, web-app, data-science, microservice)'
         type: string
@@ -630,28 +636,115 @@ jobs:
           if [ -n "${{ inputs.test-command }}" ]; then
             eval "${{ inputs.test-command }}"
           elif [ "${{ inputs.test-framework }}" = "pytest" ]; then
-            # Check if tests directory exists to avoid "no tests ran" error
-            if [ ! -d "${{ inputs.test-path }}" ] && [ ! -f "${{ inputs.test-path }}" ]; then
-              echo "⚠️ Test path '${{ inputs.test-path }}' not found - creating minimal test structure"
+            # Intelligente Test-Pfad-Erkennung
+            TEST_PATH=""
+            
+            # 1. Prüfe expliziten test-path Parameter
+            if [ -n "${{ inputs.test-path }}" ] && [ "${{ inputs.test-path }}" != "tests" ]; then
+              if [ -d "${{ inputs.test-path }}" ] || [ -f "${{ inputs.test-path }}" ]; then
+                TEST_PATH="${{ inputs.test-path }}"
+              fi
+            fi
+            
+            # 2. Prüfe pyproject.toml testpaths
+            if [ -z "$TEST_PATH" ] && [ -f "pyproject.toml" ]; then
+              TEST_PATH=$(python3 -c "
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        import toml
+        tomllib = toml
+
+try:
+    with open('pyproject.toml', 'rb' if hasattr(tomllib, 'load') else 'r') as f:
+        config = tomllib.load(f)
+    testpaths = config.get('tool', {}).get('pytest', {}).get('ini_options', {}).get('testpaths', [])
+    if testpaths and isinstance(testpaths, list):
+        print(testpaths[0])
+    elif testpaths and isinstance(testpaths, str):
+        print(testpaths)
+    else:
+        print('')
+except:
+    print('')
+" 2>/dev/null || echo "")
+            fi
+            
+            # 3. Fallback zu Standard-Pfaden
+            if [ -z "$TEST_PATH" ]; then
+              for path in "tests" "test" "${{ inputs.package-source-path }}/tests" "${{ inputs.package-source-path }}/test"; do
+                if [ -n "$path" ] && [ -d "$path" ]; then
+                  TEST_PATH="$path"
+                  break
+                fi
+              done
+            fi
+            
+            # 4. Als letzter Ausweg: Test-Struktur erstellen
+            if [ -z "$TEST_PATH" ]; then
+              echo "⚠️ No test directory found - creating minimal test structure"
               mkdir -p tests
               echo 'def test_placeholder(): assert True' > tests/test_placeholder.py
               TEST_PATH="tests"
-            else
-              TEST_PATH="${{ inputs.test-path }}"
             fi
+            
+            echo "🔍 Test path detected: $TEST_PATH"
             
             # Install base testing dependencies
             pip install pytest pytest-xdist
+            
+            # Install tomli for Python <3.11 compatibility with pyproject.toml parsing
+            python3 -c "import sys; exit(0 if sys.version_info >= (3,11) else 1)" || pip install tomli
             
             if [ "${{ inputs.collect-coverage }}" = "true" ]; then
               # Install coverage dependencies
               pip install pytest-cov coverage[toml]
               
-              # Build coverage arguments
-              COVERAGE_ARGS="--cov=. --cov-report=${{ inputs.coverage-format }}"
+              # Build coverage arguments - detect source location intelligently
+              if [ -n "${{ inputs.package-source-path }}" ] && [ -d "${{ inputs.package-source-path }}" ]; then
+                # Legacy project with explicit source path
+                COVERAGE_SOURCE="${{ inputs.package-source-path }}"
+              elif [ -f "pyproject.toml" ]; then
+                # Modern project - try to detect from pyproject.toml
+                COVERAGE_SOURCE=$(python3 -c "
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        import toml
+        tomllib = toml
+
+try:
+    with open('pyproject.toml', 'rb' if hasattr(tomllib, 'load') else 'r') as f:
+        config = tomllib.load(f)
+    # Try various common patterns
+    if 'tool' in config and 'coverage' in config['tool'] and 'run' in config['tool']['coverage']:
+        sources = config['tool']['coverage']['run'].get('source', [])
+        if sources:
+            print(sources[0])
+        else:
+            print('.')
+    else:
+        print('.')
+except:
+    print('.')
+" 2>/dev/null || echo ".")
+              else
+                # Fallback to current directory
+                COVERAGE_SOURCE="."
+              fi
+              
+              COVERAGE_ARGS="--cov=$COVERAGE_SOURCE --cov-report=${{ inputs.coverage-format }}"
               if [ "${{ inputs.coverage-fail-under }}" = "true" ]; then
                 COVERAGE_ARGS="$COVERAGE_ARGS --cov-fail-under=${{ inputs.coverage-threshold }}"
               fi
+              
+              echo "🔍 Coverage source detected: $COVERAGE_SOURCE"
               
               # For pytest-xdist compatibility, we need special handling
               # First try with distributed execution and coverage
@@ -739,15 +832,18 @@ jobs:
         id: package
         if: inputs.build-package
         shell: bash
-        working-directory: ${{ inputs.working-directory }}
         run: |
           PACKAGE_OUTPUT_DIR="${{ runner.temp }}/packages"
           mkdir -p "$PACKAGE_OUTPUT_DIR"
+          
+          # pyproject.toml und setup.py sind üblicherweise im Repository-Root
+          # Daher immer vom Root aus bauen, nicht vom working-directory
           
           if [ "${{ inputs.package-manager }}" = "poetry" ]; then
             poetry build
             cp dist/* "$PACKAGE_OUTPUT_DIR/"
           else
+            # Standard Python build - läuft vom Repository-Root
             python -m build --outdir "$PACKAGE_OUTPUT_DIR"
           fi
           
