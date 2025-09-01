@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-09-01 16:52:52 UTC -->
+<!-- Generated on 2025-09-01 16:58:24 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -126,7 +126,8 @@ jobs:
 │   │   └── commitlint.config.js # Commit linting rules
 │   └── workflows/            # 🚀 Reusable Workflows
 │       ├── docker-build.yml       # Docker build & deploy workflow
-│       ├── python-publish.yml     # Python package publishing
+│       ├── python-build.yml       # Python application builds & testing
+│       ├── python-semantic-release.yml # Python package semantic releases
 │       ├── zephyr-build.yml       # Zephyr RTOS build & test workflow
 │       ├── dotnet-build.yml       # .NET build & test workflow
 │       ├── dotnet-desktop-build.yml # .NET desktop application builds
@@ -504,7 +505,7 @@ jobs:
   publish:
     if: github.ref == 'refs/heads/main'
     needs: build
-    uses: bauer-group/automation-templates/.github/workflows/python-publish.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/python-semantic-release.yml@main
     with:
       config-file: 'application'
       package-manager: 'poetry'
@@ -803,5 +804,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-09-01 16:52:52 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-09-01 16:58:24 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
