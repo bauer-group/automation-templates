@@ -1,7 +1,5 @@
-name: 🐍 Python CI/CD Pipeline (Automatic Release)
+name: 🐍 Python Package CI/CD Pipeline (Automatic Release)
 
-# Modern Python CI/CD pipeline using python-semantic-release
-# Replaces the modular approach with a single, robust workflow
 
 on:
   workflow_call:
