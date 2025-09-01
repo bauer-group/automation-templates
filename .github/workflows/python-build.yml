@@ -220,10 +220,10 @@ on:
         default: true
       
       security-tools:
-        description: 'Security tools as JSON array (bandit, safety)'
+        description: 'Security tools as JSON array (bandit, pip-audit)'
         type: string
         required: false
-        default: '["bandit", "safety"]'
+        default: '["bandit", "pip-audit"]'
       
       security-fail-on-error:
         description: 'Fail build on security issues'
@@ -547,10 +547,10 @@ jobs:
         run: |
           SECURITY_TOOLS='${{ inputs.security-tools }}'
           
-          if echo "$SECURITY_TOOLS" | jq -e '. | index("safety")' >/dev/null; then
-            pip install safety
-            echo "Running safety check..."
-            safety check --json --output safety-report.json || true
+          if echo "$SECURITY_TOOLS" | jq -e '. | index("pip-audit")' >/dev/null; then
+            pip install pip-audit
+            echo "Running pip-audit vulnerability check..."
+            pip-audit --format=json --output=pip-audit-report.json || echo "⚠️ Vulnerability scan completed with warnings"
           fi
           
           if echo "$SECURITY_TOOLS" | jq -e '. | index("bandit")' >/dev/null; then

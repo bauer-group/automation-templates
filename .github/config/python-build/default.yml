@@ -42,7 +42,7 @@ type_checking:
     fail_on_error: false
 
 security:
-  safety:
+  pip-audit:
     enabled: true
     fail_on_error: false
   bandit:
