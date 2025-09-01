@@ -371,6 +371,7 @@ jobs:
           echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || needs.security-scan.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Engine: ${{ inputs.security-engine }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || needs.license-compliance.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | SBOM generated |" >> $GITHUB_STEP_SUMMARY
           echo "| **Semantic Release** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Released: ${{ needs.release.outputs.released || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **PyPI Publishing** | ${{ needs.pypi-publish.result == 'success' && '✅ PUBLISHED' || needs.pypi-publish.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Package uploaded |" >> $GITHUB_STEP_SUMMARY
           echo "| **Documentation** | ${{ needs.update-documentation.result == 'success' && '✅ UPDATED' || needs.update-documentation.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Auto-generated docs |" >> $GITHUB_STEP_SUMMARY
           echo "| **Security Policy** | ${{ needs.update-security.result == 'success' && '✅ UPDATED' || needs.update-security.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Auto-updated |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
