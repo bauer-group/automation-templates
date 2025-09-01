@@ -648,7 +648,7 @@ jobs:
             
             # 2. Prüfe pyproject.toml testpaths
             if [ -z "$TEST_PATH" ] && [ -f "pyproject.toml" ]; then
-              TEST_PATH=$(python3 -c "
+              TEST_PATH=$(python3 -c '
 try:
     import tomllib
 except ImportError:
@@ -659,18 +659,18 @@ except ImportError:
         tomllib = toml
 
 try:
-    with open('pyproject.toml', 'rb' if hasattr(tomllib, 'load') else 'r') as f:
+    with open("pyproject.toml", "rb" if hasattr(tomllib, "load") else "r") as f:
         config = tomllib.load(f)
-    testpaths = config.get('tool', {}).get('pytest', {}).get('ini_options', {}).get('testpaths', [])
+    testpaths = config.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("testpaths", [])
     if testpaths and isinstance(testpaths, list):
         print(testpaths[0])
     elif testpaths and isinstance(testpaths, str):
         print(testpaths)
     else:
-        print('')
+        print("")
 except:
-    print('')
-" 2>/dev/null || echo "")
+    print("")
+' 2>/dev/null || echo "")
             fi
             
             # 3. Fallback zu Standard-Pfaden
@@ -709,7 +709,7 @@ except:
                 COVERAGE_SOURCE="${{ inputs.package-source-path }}"
               elif [ -f "pyproject.toml" ]; then
                 # Modern project - try to detect from pyproject.toml
-                COVERAGE_SOURCE=$(python3 -c "
+                COVERAGE_SOURCE=$(python3 -c '
 try:
     import tomllib
 except ImportError:
@@ -720,20 +720,20 @@ except ImportError:
         tomllib = toml
 
 try:
-    with open('pyproject.toml', 'rb' if hasattr(tomllib, 'load') else 'r') as f:
+    with open("pyproject.toml", "rb" if hasattr(tomllib, "load") else "r") as f:
         config = tomllib.load(f)
     # Try various common patterns
-    if 'tool' in config and 'coverage' in config['tool'] and 'run' in config['tool']['coverage']:
-        sources = config['tool']['coverage']['run'].get('source', [])
+    if "tool" in config and "coverage" in config["tool"] and "run" in config["tool"]["coverage"]:
+        sources = config["tool"]["coverage"]["run"].get("source", [])
         if sources:
             print(sources[0])
         else:
-            print('.')
+            print(".")
     else:
-        print('.')
+        print(".")
 except:
-    print('.')
-" 2>/dev/null || echo ".")
+    print(".")
+' 2>/dev/null || echo ".")
               else
                 # Fallback to current directory
                 COVERAGE_SOURCE="."
