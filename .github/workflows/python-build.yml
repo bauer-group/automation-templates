@@ -420,7 +420,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           if [ -f "pyproject.toml" ] && command -v python3 >/dev/null; then
-            VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])" 2>/dev/null || echo "")
+            VERSION=$(python3 -c "try: import tomllib; except ImportError: import tomli as tomllib; config = tomllib.load(open('pyproject.toml', 'rb')); print(config['project']['version'])" 2>/dev/null || echo "")
           fi
           
           if [ -z "$VERSION" ] && [ -f "setup.py" ]; then
@@ -468,7 +468,7 @@ jobs:
               echo "🔧 Detected pyproject.toml - using modern Python packaging"
               
               # Check if project has dependencies defined in pyproject.toml
-              if python3 -c "import tomllib; config = tomllib.load(open('pyproject.toml', 'rb')); exit(0 if 'dependencies' in config.get('project', {}) else 1)" 2>/dev/null; then
+              if python3 -c "try: import tomllib; except ImportError: import tomli as tomllib; config = tomllib.load(open('pyproject.toml', 'rb')); exit(0 if 'dependencies' in config.get('project', {}) else 1)" 2>/dev/null; then
                 echo "📦 Installing dependencies from pyproject.toml"
                 pip install -e .
               else
@@ -487,7 +487,7 @@ jobs:
               
               # Install optional dev dependencies from pyproject.toml
               if [ "${{ inputs.install-dev-requirements }}" = "true" ]; then
-                if python3 -c "import tomllib; config = tomllib.load(open('pyproject.toml', 'rb')); exit(0 if 'optional-dependencies' in config.get('project', {}) else 1)" 2>/dev/null; then
+                if python3 -c "try: import tomllib; except ImportError: import tomli as tomllib; config = tomllib.load(open('pyproject.toml', 'rb')); exit(0 if 'optional-dependencies' in config.get('project', {}) else 1)" 2>/dev/null; then
                   echo "🔧 Installing optional dev dependencies from pyproject.toml"
                   pip install -e ".[dev]" 2>/dev/null || pip install -e ".[development]" 2>/dev/null || echo "⚠️ No [dev] or [development] optional dependencies found"
                 fi
@@ -648,22 +648,11 @@ jobs:
             
             # 2. pyproject.toml testpaths
             if [ -z "$TEST_PATH" ] && [ -f "pyproject.toml" ]; then
-              python3 -c "
-import tomllib
-try:
-    with open('pyproject.toml', 'rb') as f:
-        config = tomllib.load(f)
-    testpaths = config.get('tool', {}).get('pytest', {}).get('ini_options', {}).get('testpaths', [])
-    if testpaths:
-        if isinstance(testpaths, list):
-            print(testpaths[0])
-        else:
-            print(testpaths)
-except:
-    pass
-" > /tmp/testpath 2>/dev/null || true
-              if [ -s /tmp/testpath ]; then
-                TEST_PATH=$(cat /tmp/testpath)
+              TEMP_FILE="/tmp/testpath_${{ github.run_id }}_$$"
+              python3 -c "import sys; exec('try: import tomllib\\nexcept ImportError: import tomli as tomllib\\ntry:\\n  with open(\\"pyproject.toml\\", \\"rb\\") as f: config = tomllib.load(f)\\n  testpaths = config.get(\\"tool\\", {}).get(\\"pytest\\", {}).get(\\"ini_options\\", {}).get(\\"testpaths\\", [])\\n  if testpaths and isinstance(testpaths, list) and len(testpaths) > 0: print(testpaths[0])\\n  elif testpaths and isinstance(testpaths, str): print(testpaths.strip())\\nexcept: pass')" 2>/dev/null > "$TEMP_FILE" || true
+              if [ -s "$TEMP_FILE" ]; then
+                TEST_PATH=$(cat "$TEMP_FILE")
+                rm -f "$TEMP_FILE"
               fi
             fi
             
@@ -700,6 +689,9 @@ except:
             # Install base testing dependencies
             pip install pytest pytest-xdist
             
+            # Install tomli for Python <3.11 compatibility  
+            python3 -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)" || pip install tomli
+            
             if [ "${{ inputs.collect-coverage }}" = "true" ]; then
               # Install coverage dependencies
               pip install pytest-cov coverage[toml]
@@ -709,22 +701,11 @@ except:
               
               # 1. pyproject.toml coverage.run.source
               if [ -f "pyproject.toml" ]; then
-                python3 -c "
-import tomllib
-try:
-    with open('pyproject.toml', 'rb') as f:
-        config = tomllib.load(f)
-    sources = config.get('tool', {}).get('coverage', {}).get('run', {}).get('source', [])
-    if sources:
-        if isinstance(sources, list):
-            print(sources[0])
-        else:
-            print(sources)
-except:
-    pass
-" > /tmp/coverage_source 2>/dev/null || true
-                if [ -s /tmp/coverage_source ]; then
-                  COVERAGE_SOURCE=$(cat /tmp/coverage_source)
+                TEMP_FILE="/tmp/coverage_source_${{ github.run_id }}_$$"
+                python3 -c "import sys; exec('try: import tomllib\\nexcept ImportError: import tomli as tomllib\\ntry:\\n  with open(\\"pyproject.toml\\", \\"rb\\") as f: config = tomllib.load(f)\\n  sources = config.get(\\"tool\\", {}).get(\\"coverage\\", {}).get(\\"run\\", {}).get(\\"source\\", [])\\n  if sources and isinstance(sources, list) and len(sources) > 0: print(sources[0])\\n  elif sources and isinstance(sources, str): print(sources.strip())\\nexcept: pass')" 2>/dev/null > "$TEMP_FILE" || true
+                if [ -s "$TEMP_FILE" ]; then
+                  COVERAGE_SOURCE=$(cat "$TEMP_FILE")
+                  rm -f "$TEMP_FILE"
                 fi
               fi
               
