@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-09-01 07:42:16 UTC -->
+<!-- Generated on 2025-09-01 08:48:41 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -134,29 +134,47 @@ jobs:
 │       ├── python-build.yml       # Python build & test workflow
 │       ├── python-publish.yml     # Python package publishing
 │       ├── zephyr-build.yml       # Zephyr RTOS build & test workflow
+│       ├── dotnet-build.yml       # .NET build & test workflow
+│       ├── dotnet-desktop-build.yml # .NET desktop application builds
+│       ├── nodejs-build.yml       # Node.js build & test workflow
+│       ├── php-build.yml          # PHP build & test workflow
+│       ├── makefile-build.yml     # Makefile-based build workflow
 │       ├── automatic-release.yml  # Automated release management
 │       ├── documentation.yml      # Documentation automation
-│       └── examples/         # 📋 Usage Examples
-│           ├── docker/            # Docker build examples
-│           │   ├── simple-docker-build.yml
-│           │   ├── web-application-build.yml
-│           │   ├── microservice-build.yml
-│           │   ├── enterprise-build.yml
-│           │   ├── multi-platform-build.yml
-│           │   └── security-focused-build.yml
-│           ├── python-build/      # Python project examples
-│           │   ├── simple-library.yml
-│           │   ├── web-application.yml
-│           │   ├── data-science-project.yml
-│           │   └── comprehensive-python.yml
-│           ├── zephyr-build/      # Zephyr RTOS project examples
-│           │   ├── basic-zephyr-app.yml
-│           │   ├── multi-board-matrix.yml
-│           │   └── iot-device-ci.yml
-│           ├── ci-cd/            # General CI/CD examples
-│           │   ├── comprehensive-ci-cd.yml
-│           │   └── security-focused.yml
-│           └── documentation/     # Documentation examples
+│       ├── security-management.yml # Security policy management
+│       ├── teams-notifications.yml # Microsoft Teams notifications
+│       ├── repository-cleanup.yml # Repository maintenance
+│       ├── ai-issue-summary.yml   # AI-powered issue summarization
+│       ├── issue-automation.yml   # Automated issue management
+│       ├── pr-labeler.yml         # Pull request labeling
+│       └── modules-*.yml          # Module-specific workflows
+│   └── examples/             # 📋 Usage Examples
+│       ├── docker/            # Docker build examples
+│       │   ├── simple-docker-build.yml
+│       │   ├── web-application-build.yml
+│       │   ├── microservice-build.yml
+│       │   ├── enterprise-build.yml
+│       │   ├── multi-platform-build.yml
+│       │   └── security-focused-build.yml
+│       ├── python-build/      # Python project examples
+│       │   ├── simple-library.yml
+│       │   ├── web-application.yml
+│       │   ├── data-science-project.yml
+│       │   └── comprehensive-python.yml
+│       ├── zephyr-build/      # Zephyr RTOS project examples
+│       │   ├── basic-zephyr-app.yml
+│       │   ├── multi-board-matrix.yml
+│       │   └── iot-device-ci.yml
+│       ├── dotnet-build/      # .NET project examples
+│       ├── nodejs-build/      # Node.js project examples  
+│       ├── php-build/         # PHP project examples
+│       ├── makefile-build/    # Makefile project examples
+│       ├── ci-cd/            # General CI/CD examples
+│       │   ├── comprehensive-ci-cd.yml
+│       │   └── security-focused.yml
+│       ├── documentation/     # Documentation examples
+│       ├── teams-notification/ # Teams notification examples
+│       └── repository-cleanup/ # Repository maintenance examples
 ├── github/                   # 🛠️ Repository Management Tools
 │   ├── branch-protect/       # Branch protection automation
 │   ├── cleanup/             # Repository cleanup utilities
@@ -275,16 +293,28 @@ jobs:
       enable-coverage: true
 ```
 
-### 🏗️ Additional Systems
+### 🏗️ Additional Build Systems
 
-| System | Status | Description |
-|--------|--------|-------------|
-| **🟢 .NET Build** | Available | Complete .NET Core/Framework automation |
-| **🟢 Node.js Build** | Available | Node.js and npm/yarn automation |
-| **🟢 PHP Build** | Available | PHP and Composer automation |
-| **🟢 Zephyr RTOS** | Available | Real-time OS build automation with hardware testing |
-| **🟡 Go Build** | Planned | Go module and build automation |
-| **🟡 Rust Build** | Planned | Cargo and Rust build automation |
+| System | Status | Description | Usage |
+|--------|--------|-------------|-------|
+| **🟢 .NET Build** | Available | Complete .NET Core/Framework automation | `uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main` |
+| **🟢 .NET Desktop** | Available | Desktop application builds (WPF, WinForms) | `uses: bauer-group/automation-templates/.github/workflows/dotnet-desktop-build.yml@main` |
+| **🟢 Node.js Build** | Available | Node.js and npm/yarn automation | `uses: bauer-group/automation-templates/.github/workflows/nodejs-build.yml@main` |
+| **🟢 PHP Build** | Available | PHP and Composer automation | `uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main` |
+| **🟢 Makefile Build** | Available | Makefile-based build automation | `uses: bauer-group/automation-templates/.github/workflows/makefile-build.yml@main` |
+| **🟢 Zephyr RTOS** | Available | Real-time OS build automation with hardware testing | `uses: bauer-group/automation-templates/.github/workflows/zephyr-build.yml@main` |
+| **🟡 Go Build** | Planned | Go module and build automation | - |
+| **🟡 Rust Build** | Planned | Cargo and Rust build automation | - |
+
+### 🔧 Utility & Management Systems
+
+| System | Status | Description | Usage |
+|--------|--------|-------------|-------|
+| **🟢 Teams Notifications** | Available | Microsoft Teams integration | `uses: bauer-group/automation-templates/.github/workflows/teams-notifications.yml@main` |
+| **🟢 Repository Cleanup** | Available | Automated repository maintenance | `uses: bauer-group/automation-templates/.github/workflows/repository-cleanup.yml@main` |
+| **🟢 AI Issue Summary** | Available | AI-powered issue summarization | `uses: bauer-group/automation-templates/.github/workflows/ai-issue-summary.yml@main` |
+| **🟢 Issue Automation** | Available | Automated issue management | `uses: bauer-group/automation-templates/.github/workflows/issue-automation.yml@main` |
+| **🟢 PR Labeler** | Available | Automated pull request labeling | `uses: bauer-group/automation-templates/.github/workflows/pr-labeler.yml@main` |
 
 ### 📋 Repository Management Workflows
 
@@ -692,9 +722,12 @@ gh auth status --show-token
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
 - [🐍 **Python Build System**](docs/workflows/python-build.md) - Python project automation
 - [⚡ **Zephyr RTOS Build System**](docs/workflows/zephyr-build.md) - Real-time OS automation with hardware testing
-- [🔨 **.NET Build System**](docs/workflows/dotnet-build.md) - .NET Core/Framework automation  
+- [🔨 **.NET Build System**](docs/workflows/dotnet-build.md) - .NET Core/Framework automation
+- [🖥️ **.NET Desktop Build System**](docs/workflows/dotnet-desktop-build.md) - Desktop application automation
 - [📦 **Node.js Build System**](docs/workflows/nodejs-build.md) - Node.js and npm/yarn automation
 - [🐘 **PHP Build System**](docs/workflows/php-build.md) - PHP and Composer automation
+- [🔧 **Makefile Build System**](docs/workflows/makefile-build.md) - Makefile-based build automation
+- [🔔 **Teams Notifications**](docs/workflows/teams-notifications.md) - Microsoft Teams integration
 
 ### 🔧 Actions Documentation  
 
@@ -739,8 +772,14 @@ gh auth status --show-token
 - [🐳 **Docker Examples**](github/workflows/examples/docker/) - Complete Docker workflow examples
 - [🐍 **Python Examples**](github/workflows/examples/python-build/) - Python project examples
 - [⚡ **Zephyr Examples**](github/workflows/examples/zephyr-build/) - Zephyr RTOS project examples
+- [🔨 **.NET Examples**](github/workflows/examples/dotnet-build/) - .NET project examples
+- [📦 **Node.js Examples**](github/workflows/examples/nodejs-build/) - Node.js project examples
+- [🐘 **PHP Examples**](github/workflows/examples/php-build/) - PHP project examples
+- [🔧 **Makefile Examples**](github/workflows/examples/makefile-build/) - Makefile project examples
 - [🔄 **CI/CD Examples**](github/workflows/examples/ci-cd/) - General CI/CD pipeline examples
 - [📝 **Documentation Examples**](github/workflows/examples/documentation/) - Documentation automation examples
+- [🔔 **Teams Examples**](github/workflows/examples/teams-notification/) - Teams notification examples
+- [🧹 **Cleanup Examples**](github/workflows/examples/repository-cleanup/) - Repository maintenance examples
 
 ## 📞 Support & Community
 
@@ -775,5 +814,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-09-01 07:42:16 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-09-01 08:48:41 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
