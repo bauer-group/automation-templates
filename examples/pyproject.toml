@@ -1,0 +1,252 @@
+# Example pyproject.toml configuration for Python Semantic Release
+# This shows how to configure your project for automatic semantic versioning
+
+[build-system]
+requires = ["hatchling"]  # or ["setuptools>=61.0", "wheel"] for setuptools
+build-backend = "hatchling.build"
+
+[project]
+name = "your-package-name"
+version = "0.1.0"  # This will be automatically updated by semantic-release
+description = "Your package description"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+keywords = ["keyword1", "keyword2"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "requests>=2.25.0",
+    # Add your runtime dependencies here
+]
+
+[project.optional-dependencies]
+dev = [
+    # Testing
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.0.0",
+    
+    # Code Quality
+    "ruff>=0.1.0",
+    "black>=22.0.0",
+    "mypy>=1.0.0",
+    
+    # Security
+    "bandit>=1.7.0",
+    "safety>=2.0.0",
+    
+    # Build & Release
+    "build>=0.10.0",
+    "twine>=4.0.0",
+    "python-semantic-release>=8.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-username/your-repo"
+Documentation = "https://your-username.github.io/your-repo"
+Repository = "https://github.com/your-username/your-repo.git"
+"Bug Tracker" = "https://github.com/your-username/your-repo/issues"
+Changelog = "https://github.com/your-username/your-repo/blob/main/CHANGELOG.md"
+
+# ============================================================================
+# SEMANTIC RELEASE CONFIGURATION
+# ============================================================================
+[tool.semantic_release]
+# Version management
+version_toml = ["pyproject.toml:project.version"]  # Where to update version
+version_variables = [
+    "src/your_package/__init__.py:__version__",  # Optional: update __version__ in code
+]
+
+# Git & Release configuration
+branch = "main"
+build_command = "python -m build"
+upload_to_vcs_release = true
+
+# Changelog configuration
+changelog_file = "CHANGELOG.md"
+changelog_sections = [
+    {section = "breaking", name = "Breaking Changes"},
+    {section = "feat", name = "Features"},
+    {section = "fix", name = "Bug Fixes"},
+    {section = "perf", name = "Performance Improvements"},
+    {section = "refactor", name = "Code Refactoring"},
+    {section = "style", name = "Code Style"},
+    {section = "build", name = "Build System"},
+    {section = "docs", name = "Documentation"},
+    {section = "test", name = "Tests"},
+    {section = "ci", name = "CI/CD"},
+    {section = "chore", name = "Chores"},
+    {section = "revert", name = "Reverts"},
+]
+
+# Commit parsing
+commit_parser = "conventional"
+commit_parser_options = {
+    allowed_tags = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "chore", "ci", "build", "revert"],
+    minor_tags = ["feat"],
+    patch_tags = ["fix", "perf"],
+}
+
+# ============================================================================
+# TESTING CONFIGURATION  
+# ============================================================================
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers --strict-config"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests", 
+    "slow: Slow running tests",
+]
+
+# ============================================================================
+# COVERAGE CONFIGURATION
+# ============================================================================
+[tool.coverage.run]
+source = ["src/your_package"]  # Update with your package path
+branch = true
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    ".tox/*",
+    ".venv/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError", 
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+show_missing = true
+skip_covered = false
+
+# ============================================================================
+# CODE QUALITY CONFIGURATION
+# ============================================================================
+
+# Ruff (linting and formatting)
+[tool.ruff]
+target-version = "py38"
+line-length = 100
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings  
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]  # Allow assert in tests
+
+[tool.ruff.lint.isort]
+known-first-party = ["your_package"]  # Update with your package name
+
+# Black (code formatting)
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+include = '\\.pyi?$'
+
+# MyPy (type checking)
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# ============================================================================
+# PACKAGE STRUCTURE
+# ============================================================================
+
+# For Hatchling (recommended)
+[tool.hatch.build.targets.wheel]
+packages = ["src/your_package"]  # Update with your package path
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests", 
+    "/docs",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/pyproject.toml",
+]
+
+# ============================================================================
+# SEMANTIC VERSIONING RULES
+# ============================================================================
+#
+# Commit Message Format: <type>(<scope>): <description>
+#
+# PATCH version (x.y.Z): 
+# - fix: bug fixes
+# - perf: performance improvements
+# - docs: documentation updates
+# - style: code style changes
+# - test: adding/updating tests
+# - chore: maintenance tasks
+#
+# MINOR version (x.Y.z):
+# - feat: new features
+# - feat(scope): scoped new features
+#
+# MAJOR version (X.y.z):
+# - feat!: breaking change feature
+# - fix!: breaking change bug fix  
+# - Any commit with "BREAKING CHANGE:" in body/footer
+#
+# Examples:
+# feat: add user authentication system          → 0.1.0 → 0.2.0
+# fix: resolve login timeout issue             → 0.2.0 → 0.2.1  
+# feat!: change API response format           → 0.2.1 → 1.0.0
+# docs: update installation instructions      → 0.2.1 → 0.2.1 (no bump)
+# ============================================================================
