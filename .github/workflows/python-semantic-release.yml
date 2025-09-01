@@ -323,6 +323,25 @@ jobs:
           # Install tomli for Python <3.11 compatibility (needed for pyproject.toml parsing)
           python -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)" || pip install tomli
           
+      - name: 📋 Ensure Changelog Exists
+        run: |
+          # Create CHANGELOG.MD if it doesn't exist (semantic-release needs it)
+          if [ ! -f "CHANGELOG.MD" ]; then
+            echo "📝 Creating CHANGELOG.MD for semantic-release"
+            cat > CHANGELOG.MD << 'EOF'
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+EOF
+            echo "✅ CHANGELOG.MD created successfully"
+          else
+            echo "✅ CHANGELOG.MD already exists"
+          fi
+
       - name: 🚀 Python Semantic Release
         id: release
         env:
