@@ -12,8 +12,8 @@ on:
 permissions:
   issues: write
   pull-requests: write
-  models: read
   contents: read
+  models: read
 
 jobs:
   summarize-new-issue:
