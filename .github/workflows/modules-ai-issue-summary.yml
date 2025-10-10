@@ -105,89 +105,112 @@ jobs:
         id: prompt
         run: |
           echo "📝 Preparing AI prompt..."
-          
+
+          # Store body content safely in a variable
+          ISSUE_BODY=$(cat <<'EOF_BODY'
+          ${{ steps.details.outputs.body }}
+          EOF_BODY
+          )
+
+          ISSUE_TITLE=$(cat <<'EOF_TITLE'
+          ${{ steps.details.outputs.title }}
+          EOF_TITLE
+          )
+
           # Check if custom prompt is provided
           if [ -n "${{ inputs.custom-prompt }}" ]; then
-            PROMPT="${{ inputs.custom-prompt }}"
+            cat > /tmp/prompt.txt <<EOF_PROMPT
+          ${{ inputs.custom-prompt }}
+          EOF_PROMPT
           else
             # Build prompt based on summary type
             case "${{ inputs.summary-type }}" in
               "detailed")
-                PROMPT="Provide a detailed analysis of the following GitHub ${{ steps.details.outputs.type }}:
+                cat > /tmp/prompt.txt <<EOF_PROMPT
+          Provide a detailed analysis of the following GitHub ${{ steps.details.outputs.type }}:
 
-          Title: ${{ steps.details.outputs.title }}
+          Title: ${ISSUE_TITLE}
           Author: ${{ steps.details.outputs.author }}
-          Body: ${{ steps.details.outputs.body }}
+          Body: ${ISSUE_BODY}
 
           Please include:
           1. A comprehensive summary of the issue/request
           2. Key points and requirements
           3. Potential impact and scope
           4. Suggested next steps
-          5. Any missing information needed"
+          5. Any missing information needed
+          EOF_PROMPT
                 ;;
-              
-              "technical")
-                PROMPT="Provide a technical summary of the following GitHub ${{ steps.details.outputs.type }}:
 
-          Title: ${{ steps.details.outputs.title }}
-          Body: ${{ steps.details.outputs.body }}
+              "technical")
+                cat > /tmp/prompt.txt <<EOF_PROMPT
+          Provide a technical summary of the following GitHub ${{ steps.details.outputs.type }}:
+
+          Title: ${ISSUE_TITLE}
+          Body: ${ISSUE_BODY}
 
           Focus on:
           - Technical requirements and constraints
           - Implementation considerations
           - Potential challenges
           - Architecture/design implications
-          - Performance considerations"
+          - Performance considerations
+          EOF_PROMPT
                 ;;
-              
-              "user-friendly")
-                PROMPT="Provide a simple, non-technical summary of the following GitHub ${{ steps.details.outputs.type }}:
 
-          Title: ${{ steps.details.outputs.title }}
-          Body: ${{ steps.details.outputs.body }}
+              "user-friendly")
+                cat > /tmp/prompt.txt <<EOF_PROMPT
+          Provide a simple, non-technical summary of the following GitHub ${{ steps.details.outputs.type }}:
+
+          Title: ${ISSUE_TITLE}
+          Body: ${ISSUE_BODY}
 
           Explain in plain language:
           - What the user is asking for
           - Why it might be important
           - What the expected outcome is
-          Use simple terms and avoid technical jargon."
+          Use simple terms and avoid technical jargon.
+          EOF_PROMPT
                 ;;
-              
+
               *)  # brief (default)
-                PROMPT="Summarize the following GitHub ${{ steps.details.outputs.type }} in 2-3 concise sentences:
+                cat > /tmp/prompt.txt <<EOF_PROMPT
+          Summarize the following GitHub ${{ steps.details.outputs.type }} in 2-3 concise sentences:
 
-          Title: ${{ steps.details.outputs.title }}
-          Body: ${{ steps.details.outputs.body }}
+          Title: ${ISSUE_TITLE}
+          Body: ${ISSUE_BODY}
 
-          Be clear and to the point."
+          Be clear and to the point.
+          EOF_PROMPT
                 ;;
             esac
           fi
-          
+
           # Add translation request if needed
           if [ -n "${{ inputs.translate }}" ]; then
-            PROMPT="$PROMPT
+            cat >> /tmp/prompt.txt <<EOF_TRANSLATE
 
-          Please provide the summary in ${{ inputs.translate }} language."
+          Please provide the summary in ${{ inputs.translate }} language.
+          EOF_TRANSLATE
           fi
-          
+
           # Add labeling request if needed
           if [ "${{ inputs.add-labels }}" = "true" ]; then
-            PROMPT="$PROMPT
+            cat >> /tmp/prompt.txt <<'EOF_LABELS'
 
-          Additionally, suggest appropriate labels from this list: bug, enhancement, documentation, question, help-wanted, good-first-issue, breaking-change, performance, security, test"
+          Additionally, suggest appropriate labels from this list: bug, enhancement, documentation, question, help-wanted, good-first-issue, breaking-change, performance, security, test
+          EOF_LABELS
           fi
-          
+
           # Add priority request if needed
           if [ "${{ inputs.add-priority }}" = "true" ]; then
-            PROMPT="$PROMPT
+            cat >> /tmp/prompt.txt <<'EOF_PRIORITY'
 
-          Also, suggest a priority level: low, medium, high, critical"
+          Also, suggest a priority level: low, medium, high, critical
+          EOF_PRIORITY
           fi
-          
-          # Save prompt to file for the AI inference step
-          echo "$PROMPT" > /tmp/prompt.txt
+
+          # Set output
           echo "prompt-file=/tmp/prompt.txt" >> $GITHUB_OUTPUT
       
       - name: 🧠 Run AI Inference (GitHub Models)
@@ -210,27 +233,28 @@ jobs:
             echo "⚠️ OpenAI API key not configured, skipping..."
             exit 1
           fi
-          
+
           echo "🤖 Using OpenAI API..."
-          
-          PROMPT=$(cat ${{ steps.prompt.outputs.prompt-file }})
-          
-          # Make API call to OpenAI
+
+          # Read prompt and escape it properly for JSON
+          PROMPT=$(cat ${{ steps.prompt.outputs.prompt-file }} | jq -Rs .)
+
+          # Make API call to OpenAI with properly escaped content
           RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
             -d "{
               \"model\": \"${{ inputs.model }}\",
-              \"messages\": [{\"role\": \"user\", \"content\": \"$PROMPT\"}],
+              \"messages\": [{\"role\": \"user\", \"content\": $PROMPT}],
               \"temperature\": 0.7,
               \"max_tokens\": 500
             }" | jq -r '.choices[0].message.content')
-          
+
           if [ "$RESPONSE" = "null" ] || [ -z "$RESPONSE" ]; then
             echo "⚠️ Failed to get response from OpenAI"
             exit 1
           fi
-          
+
           echo "response=$RESPONSE" >> $GITHUB_OUTPUT
       
       - name: 🧠 Fallback Summary (No AI)
