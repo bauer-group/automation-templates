@@ -1,3 +1,24 @@
+## [1.8.1](https://github.com/bauer-group/automation-templates/compare/v1.8.0...v1.8.1) (2025-09-01)
+
+### 🐛 Bug Fixes
+
+* aktualisiere Berechtigungen im CI/CD-Workflow für Aktionen ([8b6da4d](https://github.com/bauer-group/automation-templates/commit/8b6da4d527d247cb0929a6d1378613743f2668e0))
+* aktualisiere den Befehl für die semantische Veröffentlichung auf verbose Ausgabe ([c81d10c](https://github.com/bauer-group/automation-templates/commit/c81d10cd020e8e1847744d24b14d4b57fe75468b))
+* aktualisiere den Namen des CI/CD-Pipelines für Klarheit ([7a28423](https://github.com/bauer-group/automation-templates/commit/7a284235c9e17a50eb9cefd0ea863d51399e28fb))
+* aktualisiere Kommentare zu Berechtigungen im CI/CD-Workflow ([cfd8e5f](https://github.com/bauer-group/automation-templates/commit/cfd8e5fbaf5be2ebe74cd45d9e62d417da1afdaa))
+* aktualisiere Umgebungsnamen für die Veröffentlichung auf Produktion und verbessere die Beispielkonfiguration in pyproject.toml ([28109c0](https://github.com/bauer-group/automation-templates/commit/28109c0ed68fbb7048d60cf6f7d9feb3a60717f5))
+* entferne überflüssige Leerzeile am Anfang der CI/CD-Pipeline ([f87a341](https://github.com/bauer-group/automation-templates/commit/f87a341d3cc18c00be696efc0f6b603c25a87060))
+* ersetze 'safety' durch 'pip-audit' in Sicherheitskonfigurationen und -prüfungen ([514423b](https://github.com/bauer-group/automation-templates/commit/514423bfae7d14e8ef75a31ae07a7c51f2b6e327))
+* erweitere Test- und Qualitätsjob um Ausgaben für Testergebnisse, Abdeckungsquote und Sicherheits-/Linting-Probleme ([355460e](https://github.com/bauer-group/automation-templates/commit/355460e708b41bd51c015d70db9b9bd2a1e6c80d))
+* füge Bedingung hinzu, um bei fehlenden Dateien im Sicherheitsbericht zu ignorieren ([2da5a85](https://github.com/bauer-group/automation-templates/commit/2da5a85f8bbf9a5f3386b95e7a32cbfa2232825a))
+* füge Schritt hinzu, um sicherzustellen, dass CHANGELOG.MD für die semantische Veröffentlichung existiert ([0acb166](https://github.com/bauer-group/automation-templates/commit/0acb166ba9b5d8251574bba2557e98ddd085bb2e))
+* füge Statusausgabe für PyPI-Publikation im Pipeline-Zusammenfassung hinzu ([98c5e27](https://github.com/bauer-group/automation-templates/commit/98c5e2784f780e17965d6d36ee317a7ab861abd8))
+* integriere den Build- und Testprozess für Wheel-Pakete in den Semantic Release Workflow ([f2b81af](https://github.com/bauer-group/automation-templates/commit/f2b81af656749d631596a1264a55927e0905f2fd))
+* verbessere die Erstellung von CHANGELOG.MD für die semantische Veröffentlichung ([31d4a0f](https://github.com/bauer-group/automation-templates/commit/31d4a0fb0746e84153446741e2309b47d063db4b))
+* verbessere die PyPI Veröffentlichungsdetails und füge übersichtliche Statusausgaben hinzu ([7e50a53](https://github.com/bauer-group/automation-templates/commit/7e50a53e19edef47fa6df82c879f68a259e0c2f0))
+* verbessere Fehlerbehandlung und Ausgaben in der CI/CD-Pipeline für Tests, Sicherheitsanalysen und Linting ([ce86d6e](https://github.com/bauer-group/automation-templates/commit/ce86d6e072389aa0e55c3ddb5d8d5a9507f91670))
+* verschiebe und aktualisiere den Semantic Release Job im CI/CD-Workflow ([d3785b6](https://github.com/bauer-group/automation-templates/commit/d3785b64999e477df159abefa8e2cad9131a967d))
+
 ## [1.8.0](https://github.com/bauer-group/automation-templates/compare/v1.7.0...v1.8.0) (2025-09-01)
 
 ### 🚀 Features
