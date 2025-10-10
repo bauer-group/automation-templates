@@ -343,7 +343,22 @@ jobs:
           # Configure git
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
+
+          # Sync with remote to avoid push conflicts
+          echo "📥 Syncing with remote branch..."
+          git fetch origin ${{ github.ref_name }}
+
+          # Check if remote has changes
+          LOCAL=$(git rev-parse HEAD)
+          REMOTE=$(git rev-parse origin/${{ github.ref_name }})
+
+          if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "⚠️ Remote branch has changes, rebasing..."
+            git pull --rebase origin ${{ github.ref_name }}
+          else
+            echo "✅ Local and remote are in sync"
+          fi
+
           # Run semantic release (creates version, commit, tag, release, and builds packages)
           semantic-release --verbose version
           
