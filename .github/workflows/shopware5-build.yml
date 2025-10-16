@@ -236,17 +236,16 @@ jobs:
           COMPOSER_JSON=$(find . -maxdepth 5 -name "composer.json" -type f | head -1)
           BOOTSTRAP_PHP=$(find . -maxdepth 5 -name "Bootstrap.php" -type f | head -1)
 
-          # Determine plugin root directory
-          if [ -n "$PLUGIN_XML" ]; then
-            PLUGIN_ROOT_DIR=$(dirname "$PLUGIN_XML")
-            echo "Found plugin.xml at: $PLUGIN_XML"
-          elif [ -n "$PLUGIN_JSON" ]; then
-            PLUGIN_ROOT_DIR=$(dirname "$PLUGIN_JSON")
-            echo "Found plugin.json at: $PLUGIN_JSON"
-          elif [ -n "$COMPOSER_JSON" ]; then
-            PLUGIN_ROOT_DIR=$(dirname "$COMPOSER_JSON")
-            echo "Found composer.json at: $COMPOSER_JSON"
-          fi
+          # Determine plugin root directory (should be repository root, not plugin subdirectory)
+          # For Shopware 5 plugins, the structure is:
+          # - v5.1 (Legacy): repo-root/src/(Backend|Frontend|Core)/PluginName/
+          # - v5.2 (Modern): repo-root/src/PluginName/
+          # So PLUGIN_ROOT should always be "." (repository root)
+
+          # Just log the found files for debugging
+          [ -n "$PLUGIN_XML" ] && echo "Found plugin.xml at: $PLUGIN_XML"
+          [ -n "$PLUGIN_JSON" ] && echo "Found plugin.json at: $PLUGIN_JSON"
+          [ -n "$COMPOSER_JSON" ] && echo "Found composer.json at: $COMPOSER_JSON"
 
           if [ "$PLUGIN_SYSTEM" = "auto" ]; then
             # Auto-detect plugin system based on found files
@@ -647,9 +646,9 @@ jobs:
           echo "   System: $PLUGIN_SYSTEM"
           echo "   Root: $PLUGIN_ROOT"
 
-          # Create ZIP filename with version
-          # Plugin name is already clean (from directory name)
-          ZIP_FILENAME="${PLUGIN_NAME}_${PLUGIN_VERSION}.zip"
+          # Create ZIP filename with version using repository name
+          REPO_NAME="${{ github.event.repository.name }}"
+          ZIP_FILENAME="${REPO_NAME}_${PLUGIN_VERSION}.zip"
 
           echo "   ZIP filename: $ZIP_FILENAME"
 
