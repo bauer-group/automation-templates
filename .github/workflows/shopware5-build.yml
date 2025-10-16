@@ -402,28 +402,9 @@ jobs:
             echo "   ⚠️ No BAUERGROUP* directory found, will try other methods"
           fi
 
-          # Priority 2: plugin.json (for version extraction)
+          # Priority 2: plugin.json (for version extraction ONLY - name comes from directory)
           if [ -n "$PLUGIN_JSON" ] && [ -f "$PLUGIN_JSON" ]; then
             echo "📄 Reading from plugin.json: $PLUGIN_JSON"
-
-            # Extract plugin name from directory structure if not found via BAUERGROUP search
-            if [ -z "$PLUGIN_NAME" ]; then
-              # Plugin name is the directory containing plugin.json
-              # Could be: /src/PluginName/plugin.json OR /src/Core/PluginName/plugin.json
-              PLUGIN_JSON_DIR=$(dirname "$PLUGIN_JSON")
-              PLUGIN_NAME_TMP=$(basename "$PLUGIN_JSON_DIR")
-
-              # If the directory is Core/Frontend/Backend, the plugin name is the parent directory
-              if [[ "$PLUGIN_NAME_TMP" == "Core" ]] || [[ "$PLUGIN_NAME_TMP" == "Frontend" ]] || [[ "$PLUGIN_NAME_TMP" == "Backend" ]]; then
-                # Go up one level - the parent is the actual plugin name
-                PLUGIN_NAME_TMP=$(basename "$(dirname "$PLUGIN_JSON_DIR")")
-              fi
-
-              if [ -n "$PLUGIN_NAME_TMP" ]; then
-                PLUGIN_NAME="$PLUGIN_NAME_TMP"
-                echo "   ✅ Name extracted from directory: $PLUGIN_NAME"
-              fi
-            fi
 
             # Extract version - try currentVersion first (Shopware 5 standard)
             PLUGIN_VERSION_TMP=$(jq -r '.currentVersion // .version // empty' "$PLUGIN_JSON" 2>/dev/null)
@@ -436,21 +417,10 @@ jobs:
             echo ""
           fi
 
-          # Priority 2: plugin.xml (legacy plugins)
-          if [ -z "$PLUGIN_NAME" ] || [ -z "$PLUGIN_VERSION" ]; then
+          # Priority 3: plugin.xml (for version extraction ONLY - name comes from directory)
+          if [ -z "$PLUGIN_VERSION" ]; then
             if [ -n "$PLUGIN_XML" ] && [ -f "$PLUGIN_XML" ]; then
               echo "📄 Reading from plugin.xml: $PLUGIN_XML"
-
-              # Extract name from label
-              if [ -z "$PLUGIN_NAME" ]; then
-                PLUGIN_NAME_TMP=$(grep -oP '<label[^>]*>\K[^<]+' "$PLUGIN_XML" 2>/dev/null | head -1)
-                if [ -n "$PLUGIN_NAME_TMP" ]; then
-                  PLUGIN_NAME="$PLUGIN_NAME_TMP"
-                  echo "   ✅ Name extracted: $PLUGIN_NAME"
-                else
-                  echo "   ⚠️ No name found in plugin.xml"
-                fi
-              fi
 
               # Extract version
               if [ -z "$PLUGIN_VERSION" ]; then
@@ -466,27 +436,10 @@ jobs:
             fi
           fi
 
-          # Priority 3: composer.json (optional for modern plugins)
-          if [ -z "$PLUGIN_NAME" ] || [ -z "$PLUGIN_VERSION" ]; then
+          # Priority 4: composer.json (for version extraction ONLY - name comes from directory)
+          if [ -z "$PLUGIN_VERSION" ]; then
             if [ -n "$COMPOSER_JSON" ] && [ -f "$COMPOSER_JSON" ]; then
               echo "📄 Reading from composer.json: $COMPOSER_JSON"
-
-              # Extract plugin name from composer.json
-              if [ -z "$PLUGIN_NAME" ]; then
-                PLUGIN_NAME_TMP=$(jq -r '.name // empty' "$COMPOSER_JSON" 2>/dev/null | cut -d'/' -f2)
-
-                # If no name in root, try extra.shopware-plugin-class or extra.label
-                if [ -z "$PLUGIN_NAME_TMP" ]; then
-                  PLUGIN_NAME_TMP=$(jq -r '.extra."shopware-plugin-class" // .extra.label // empty' "$COMPOSER_JSON" 2>/dev/null | sed 's/.*\\/\([^\\]*\)$/\1/')
-                fi
-
-                if [ -n "$PLUGIN_NAME_TMP" ]; then
-                  PLUGIN_NAME="$PLUGIN_NAME_TMP"
-                  echo "   ✅ Name extracted: $PLUGIN_NAME"
-                else
-                  echo "   ⚠️ No name found in composer.json"
-                fi
-              fi
 
               # Extract version
               if [ -z "$PLUGIN_VERSION" ]; then
@@ -502,26 +455,16 @@ jobs:
             fi
           fi
 
-          # Priority 4: Use input plugin-name if provided
+          # Priority 5: Use input plugin-name if provided
           if [ -n "${{ inputs.plugin-name }}" ]; then
             PLUGIN_NAME="${{ inputs.plugin-name }}"
             echo "Using plugin name from input: $PLUGIN_NAME"
           fi
 
-          # Priority 5: Try to detect from directory structure
-          if [ -z "$PLUGIN_NAME" ]; then
-            # Look for main plugin PHP class in src/ directory
-            MAIN_CLASS=$(find "$PLUGIN_ROOT" -maxdepth 5 -name "*.php" -type f -exec grep -l "class.*extends.*Plugin" {} \; | head -1)
-            if [ -n "$MAIN_CLASS" ]; then
-              PLUGIN_NAME=$(basename "$MAIN_CLASS" .php)
-              echo "Detected plugin name from main class: $PLUGIN_NAME"
-            fi
-          fi
-
-          # Fallback: Use repository name
+          # Fallback: Use repository name (only if no BAUERGROUP dir was found and no input provided)
           if [ -z "$PLUGIN_NAME" ]; then
             PLUGIN_NAME="${{ github.event.repository.name }}"
-            echo "⚠️ Using repository name as fallback: $PLUGIN_NAME"
+            echo "⚠️ No BAUERGROUP* directory found, using repository name as fallback: $PLUGIN_NAME"
           fi
 
           # Fallback version
