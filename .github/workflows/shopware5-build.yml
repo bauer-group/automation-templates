@@ -378,34 +378,55 @@ jobs:
           echo "   PLUGIN_XML: $PLUGIN_XML"
           echo ""
 
-          # Priority 1: plugin.json (most common for Shopware 5 plugins)
+          # Priority 1: Find BAUERGROUP* directory under /src or /src/(Core|Frontend|Backend)/
+          echo "🔍 Searching for BAUERGROUP* plugin directory..."
+
+          # Search in common plugin locations
+          BAUERGROUP_DIR=""
+
+          # Check /src/BAUERGROUP* (modern plugins)
+          if [ -d "$PLUGIN_ROOT/src" ]; then
+            BAUERGROUP_DIR=$(find "$PLUGIN_ROOT/src" -maxdepth 1 -type d -name "BAUERGROUP*" | head -1)
+          fi
+
+          # Check /src/(Core|Frontend|Backend)/BAUERGROUP* (legacy plugins)
+          if [ -z "$BAUERGROUP_DIR" ]; then
+            BAUERGROUP_DIR=$(find "$PLUGIN_ROOT/src" -maxdepth 2 -type d -path "*/Core/BAUERGROUP*" -o -path "*/Frontend/BAUERGROUP*" -o -path "*/Backend/BAUERGROUP*" | head -1)
+          fi
+
+          if [ -n "$BAUERGROUP_DIR" ]; then
+            PLUGIN_NAME=$(basename "$BAUERGROUP_DIR")
+            echo "   ✅ Found BAUERGROUP plugin directory: $PLUGIN_NAME"
+            echo "   📁 Full path: $BAUERGROUP_DIR"
+          else
+            echo "   ⚠️ No BAUERGROUP* directory found, will try other methods"
+          fi
+
+          # Priority 2: plugin.json (for version extraction)
           if [ -n "$PLUGIN_JSON" ] && [ -f "$PLUGIN_JSON" ]; then
             echo "📄 Reading from plugin.json: $PLUGIN_JSON"
 
-            # Extract plugin name from directory structure
-            # Plugin name is the directory containing plugin.json
-            # Could be: /src/PluginName/plugin.json OR /src/Core/PluginName/plugin.json
-            PLUGIN_JSON_DIR=$(dirname "$PLUGIN_JSON")
-            PLUGIN_NAME_TMP=$(basename "$PLUGIN_JSON_DIR")
+            # Extract plugin name from directory structure if not found via BAUERGROUP search
+            if [ -z "$PLUGIN_NAME" ]; then
+              # Plugin name is the directory containing plugin.json
+              # Could be: /src/PluginName/plugin.json OR /src/Core/PluginName/plugin.json
+              PLUGIN_JSON_DIR=$(dirname "$PLUGIN_JSON")
+              PLUGIN_NAME_TMP=$(basename "$PLUGIN_JSON_DIR")
 
-            # If the directory is Core/Frontend/Backend, the plugin name is the parent directory
-            if [[ "$PLUGIN_NAME_TMP" == "Core" ]] || [[ "$PLUGIN_NAME_TMP" == "Frontend" ]] || [[ "$PLUGIN_NAME_TMP" == "Backend" ]]; then
-              # Go up one level - the parent is the actual plugin name
-              PLUGIN_NAME_TMP=$(basename "$(dirname "$PLUGIN_JSON_DIR")")
-            fi
+              # If the directory is Core/Frontend/Backend, the plugin name is the parent directory
+              if [[ "$PLUGIN_NAME_TMP" == "Core" ]] || [[ "$PLUGIN_NAME_TMP" == "Frontend" ]] || [[ "$PLUGIN_NAME_TMP" == "Backend" ]]; then
+                # Go up one level - the parent is the actual plugin name
+                PLUGIN_NAME_TMP=$(basename "$(dirname "$PLUGIN_JSON_DIR")")
+              fi
 
-            if [ -n "$PLUGIN_NAME_TMP" ]; then
-              PLUGIN_NAME="$PLUGIN_NAME_TMP"
-              echo "   ✅ Name extracted from directory: $PLUGIN_NAME"
-            else
-              echo "   ⚠️ Could not extract name from directory structure"
+              if [ -n "$PLUGIN_NAME_TMP" ]; then
+                PLUGIN_NAME="$PLUGIN_NAME_TMP"
+                echo "   ✅ Name extracted from directory: $PLUGIN_NAME"
+              fi
             fi
 
             # Extract version - try currentVersion first (Shopware 5 standard)
-            PLUGIN_VERSION_TMP=$(jq -r '.currentVersion // empty' "$PLUGIN_JSON" 2>/dev/null)
-            if [ -z "$PLUGIN_VERSION_TMP" ]; then
-              PLUGIN_VERSION_TMP=$(jq -r '.version // empty' "$PLUGIN_JSON" 2>/dev/null)
-            fi
+            PLUGIN_VERSION_TMP=$(jq -r '.currentVersion // .version // empty' "$PLUGIN_JSON" 2>/dev/null)
             if [ -n "$PLUGIN_VERSION_TMP" ]; then
               PLUGIN_VERSION="$PLUGIN_VERSION_TMP"
               echo "   ✅ Version extracted: $PLUGIN_VERSION"
@@ -689,16 +710,58 @@ jobs:
 
           echo "   ZIP filename: $ZIP_FILENAME"
 
-          # Strategy: If /src exists in plugin root, zip its content
-          # Otherwise zip the plugin root content
+          # Strategy: Determine correct ZIP structure based on plugin system and directory layout
           cd "$PLUGIN_ROOT"
 
-          if [ -d "src" ]; then
-            ZIP_SOURCE="src"
-            echo "   ZIP source: src/ directory content (src = / in ZIP)"
+          # Detect actual plugin structure
+          if [ "$PLUGIN_SYSTEM" = "legacy" ]; then
+            # Legacy plugins (v5.0-5.1): Structure is src/Backend/PluginName or src/Frontend/PluginName
+            # ZIP should contain: Backend/PluginName/* OR Frontend/PluginName/*
+
+            if [ -d "src/Backend" ] || [ -d "src/Frontend" ]; then
+              ZIP_SOURCE="src"
+              ZIP_STRUCTURE="legacy-with-namespace"
+              echo "   ZIP source: src/ (Backend/Frontend structure will be preserved)"
+            elif [ -d "Backend" ] || [ -d "Frontend" ]; then
+              ZIP_SOURCE="."
+              ZIP_STRUCTURE="legacy-root"
+              echo "   ZIP source: . (Backend/Frontend in root)"
+            else
+              ZIP_SOURCE="."
+              ZIP_STRUCTURE="legacy-fallback"
+              echo "   ⚠️ Legacy plugin but no Backend/Frontend found, using root"
+            fi
+
           else
-            ZIP_SOURCE="."
-            echo "   ZIP source: plugin root content"
+            # Modern plugins (v5.2+): Structure is src/PluginName/*
+            # ZIP should contain: PluginName/*
+
+            if [ -d "src/$PLUGIN_NAME" ]; then
+              ZIP_SOURCE="src"
+              ZIP_STRUCTURE="modern-plugin-folder"
+              echo "   ZIP source: src/ (PluginName folder will be preserved)"
+            elif [ -d "src" ]; then
+              # Check if src contains the plugin files directly
+              if [ -f "src/${PLUGIN_NAME}.php" ] || [ -f "src/plugin.json" ]; then
+                # Need to create wrapper directory
+                ZIP_SOURCE="src-wrapped"
+                ZIP_STRUCTURE="modern-needs-wrapper"
+                echo "   ZIP source: Creating wrapper directory for modern plugin"
+
+                # Create temporary structure
+                mkdir -p "/tmp/plugin-build-$$/$PLUGIN_NAME"
+                cp -r src/* "/tmp/plugin-build-$$/$PLUGIN_NAME/"
+                ZIP_SOURCE="/tmp/plugin-build-$$"
+              else
+                ZIP_SOURCE="src"
+                ZIP_STRUCTURE="modern-src-content"
+                echo "   ZIP source: src/ directory content"
+              fi
+            else
+              ZIP_SOURCE="."
+              ZIP_STRUCTURE="modern-root"
+              echo "   ZIP source: plugin root content"
+            fi
           fi
 
           # Create ZIP file
@@ -706,11 +769,11 @@ jobs:
 
           echo "🔨 Creating ZIP: ${ZIP_FILENAME}"
           echo "   From directory: $ZIP_SOURCE"
-          echo "   Files will be in ZIP root (no parent directory)"
+          echo "   Structure type: $ZIP_STRUCTURE"
 
           cd "$ZIP_SOURCE"
 
-          # Create ZIP with files directly in root
+          # Create ZIP with appropriate structure
           zip -r "$ZIP_FILE" . \
             -x "*.git*" \
             -x "*node_modules*" \
@@ -725,6 +788,11 @@ jobs:
             -x "*composer.lock" \
             -x "*.md" \
             -q
+
+          # Cleanup temporary directory if created
+          if [ "$ZIP_STRUCTURE" = "modern-needs-wrapper" ]; then
+            rm -rf "/tmp/plugin-build-$$"
+          fi
 
           cd "$WORK_DIR"
 
