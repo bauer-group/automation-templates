@@ -657,25 +657,27 @@ jobs:
 
           # Detect actual plugin structure
           if [ "$PLUGIN_SYSTEM" = "legacy" ]; then
-            # Legacy plugins (v5.0-5.1): Structure is src/Backend/PluginName or src/Frontend/PluginName
-            # ZIP should contain: Backend/PluginName/* OR Frontend/PluginName/*
+            # Legacy plugins (v5.0-5.1):
+            # Repo structure: repo-root/src/(Backend|Frontend|Core)/PluginName/
+            # ZIP should contain: (Backend|Frontend|Core)/PluginName/*
 
-            if [ -d "src/Backend" ] || [ -d "src/Frontend" ]; then
+            if [ -d "src/Backend" ] || [ -d "src/Frontend" ] || [ -d "src/Core" ]; then
               ZIP_SOURCE="src"
               ZIP_STRUCTURE="legacy-with-namespace"
-              echo "   ZIP source: src/ (Backend/Frontend structure will be preserved)"
-            elif [ -d "Backend" ] || [ -d "Frontend" ]; then
+              echo "   ZIP source: src/ (Backend/Frontend/Core structure will be preserved)"
+            elif [ -d "Backend" ] || [ -d "Frontend" ] || [ -d "Core" ]; then
               ZIP_SOURCE="."
               ZIP_STRUCTURE="legacy-root"
-              echo "   ZIP source: . (Backend/Frontend in root)"
+              echo "   ZIP source: . (Backend/Frontend/Core in root)"
             else
               ZIP_SOURCE="."
               ZIP_STRUCTURE="legacy-fallback"
-              echo "   ⚠️ Legacy plugin but no Backend/Frontend found, using root"
+              echo "   ⚠️ Legacy plugin but no Backend/Frontend/Core found, using root"
             fi
 
           else
-            # Modern plugins (v5.2+): Structure is src/PluginName/*
+            # Modern plugins (v5.2+):
+            # Repo structure: repo-root/src/PluginName/
             # ZIP should contain: PluginName/*
 
             if [ -d "src/$PLUGIN_NAME" ]; then
