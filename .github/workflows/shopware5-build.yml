@@ -266,7 +266,9 @@ jobs:
           version: ${{ inputs.shopware-cli-version }}
 
       - name: 🔐 Configure Composer Auth
-        if: secrets.COMPOSER_AUTH_JSON != ''
+        env:
+          COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH_JSON }}
+        if: env.COMPOSER_AUTH != ''
         run: |
           echo '${{ secrets.COMPOSER_AUTH_JSON }}' > auth.json
           composer config --global --auth --merge-auth auth.json
