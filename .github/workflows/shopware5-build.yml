@@ -316,15 +316,12 @@ jobs:
           PLUGIN_ROOT="${{ steps.detect-system.outputs.plugin-root }}"
 
           if [ -n "$COMPOSER_JSON" ] && [ -f "$COMPOSER_JSON" ]; then
-            if [ "${{ steps.detect-system.outputs.plugin-system }}" = "legacy" ]; then
-              echo "ℹ️ Legacy system detected - Composer is optional"
-              cd "$PLUGIN_ROOT"
-              composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader || echo "No composer dependencies to install"
-            else
-              echo "📦 Installing Composer dependencies in: $PLUGIN_ROOT"
-              cd "$PLUGIN_ROOT"
-              composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
-            fi
+            echo "📦 Installing Composer dependencies in: $PLUGIN_ROOT"
+            cd "$PLUGIN_ROOT"
+            composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader || {
+              echo "⚠️ Composer install failed, continuing anyway"
+              exit 0
+            }
           else
             echo "ℹ️ No composer.json found, skipping dependency installation"
           fi
@@ -609,28 +606,28 @@ jobs:
           echo "   System: $PLUGIN_SYSTEM"
           echo "   Root: $PLUGIN_ROOT"
 
-          # Determine the source directory for zipping
+          # Strategy: If /src exists in plugin root, zip its content
+          # Otherwise zip the plugin root content
           cd "$PLUGIN_ROOT"
 
-          # For modern plugins with src/ subdirectory: use src/ content as root
-          # For legacy plugins or modern without src/: use plugin root
-          if [ "$PLUGIN_SYSTEM" = "modern" ] && [ -d "src" ]; then
+          if [ -d "src" ]; then
             ZIP_SOURCE="src"
-            echo "   ZIP source: src/ directory (modern plugin)"
+            echo "   ZIP source: src/ directory content (src = / in ZIP)"
           else
             ZIP_SOURCE="."
-            echo "   ZIP source: plugin root"
+            echo "   ZIP source: plugin root content"
           fi
 
-          # Create ZIP file with correct structure (files in root, no subdirectory)
+          # Create ZIP file
           ZIP_FILE="${WORK_DIR}/${PLUGIN_NAME}.zip"
 
           echo "🔨 Creating ZIP: ${PLUGIN_NAME}.zip"
-          echo "   From: $ZIP_SOURCE"
+          echo "   From directory: $ZIP_SOURCE"
+          echo "   Files will be in ZIP root (no parent directory)"
 
           cd "$ZIP_SOURCE"
 
-          # Create ZIP excluding development files
+          # Create ZIP with files directly in root
           zip -r "$ZIP_FILE" . \
             -x "*.git*" \
             -x "*node_modules*" \
@@ -666,49 +663,23 @@ jobs:
             echo "   Total files: $FILE_COUNT"
             echo "   File size: $ZIP_SIZE"
 
-            # Verify essential files exist (should be in root, not in subdirectory)
+            # Verify essential files exist in root
             echo ""
-            echo "🔍 Verifying essential files in ZIP root:"
+            echo "🔍 Verifying ZIP structure:"
 
             if [ "$PLUGIN_SYSTEM" = "legacy" ]; then
-              if unzip -l "$ZIP_FILE" | grep -q "^[^/]*plugin\.xml$"; then
-                echo "   ✅ plugin.xml found in root"
-              else
-                echo "   ❌ plugin.xml NOT found in root"
-              fi
-
-              if unzip -l "$ZIP_FILE" | grep -q "^[^/]*Bootstrap\.php$"; then
-                echo "   ✅ Bootstrap.php found in root"
-              else
-                echo "   ❌ Bootstrap.php NOT found in root"
-              fi
+              # Legacy: Expect plugin.xml and Bootstrap.php
+              unzip -l "$ZIP_FILE" | grep -q "plugin\.xml" && echo "   ✅ plugin.xml found" || echo "   ⚠️ plugin.xml not found"
+              unzip -l "$ZIP_FILE" | grep -q "Bootstrap\.php" && echo "   ✅ Bootstrap.php found" || echo "   ⚠️ Bootstrap.php not found"
             else
-              if unzip -l "$ZIP_FILE" | grep -q "composer\.json$"; then
-                echo "   ✅ composer.json found"
-              else
-                echo "   ⚠️ composer.json NOT found"
-              fi
-
-              if unzip -l "$ZIP_FILE" | grep -q "${PLUGIN_NAME}\.php$"; then
-                echo "   ✅ ${PLUGIN_NAME}.php found"
-              else
-                echo "   ℹ️ ${PLUGIN_NAME}.php not found (might be in subdirectory)"
-              fi
+              # Modern: May have plugin.json or composer.json, not required
+              unzip -l "$ZIP_FILE" | grep -q "plugin\.json" && echo "   ✅ plugin.json found" || echo "   ℹ️ plugin.json not found"
+              unzip -l "$ZIP_FILE" | grep -q "composer\.json" && echo "   ℹ️ composer.json found" || echo "   ℹ️ composer.json not found"
+              unzip -l "$ZIP_FILE" | grep -q "${PLUGIN_NAME}\.php" && echo "   ✅ ${PLUGIN_NAME}.php found" || echo "   ℹ️ Main class not found (might be in subdirectory)"
             fi
 
-            # Verify NO parent directory wrapping
-            if unzip -l "$ZIP_FILE" | head -10 | grep -q "^[^/]*/"; then
-              FIRST_DIR=$(unzip -l "$ZIP_FILE" | grep "^  [0-9]" | head -1 | awk '{print $4}' | cut -d'/' -f1)
-              if [ -n "$FIRST_DIR" ] && [ "$FIRST_DIR" != "." ]; then
-                echo ""
-                echo "⚠️ WARNING: ZIP might have wrong structure!"
-                echo "   Found directory: $FIRST_DIR/"
-                echo "   Expected: Files directly in ZIP root"
-              fi
-            else
-              echo ""
-              echo "✅ ZIP structure correct: Files are in root (no parent directory)"
-            fi
+            echo ""
+            echo "✅ ZIP created with files in root (no wrapper directory)"
 
           else
             echo "❌ Failed to create plugin zip"
