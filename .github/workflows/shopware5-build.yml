@@ -365,42 +365,109 @@ jobs:
           PLUGIN_ROOT="${{ steps.detect-system.outputs.plugin-root }}"
 
           echo "📦 Extracting plugin information from: $PLUGIN_ROOT"
+          echo ""
 
           # Try to extract from found files using saved paths
           COMPOSER_JSON="${{ steps.detect-system.outputs.composer-json }}"
           PLUGIN_JSON="${{ steps.detect-system.outputs.plugin-json }}"
           PLUGIN_XML="${{ steps.detect-system.outputs.plugin-xml }}"
 
-          # Priority 1: composer.json (modern plugins)
-          if [ -n "$COMPOSER_JSON" ] && [ -f "$COMPOSER_JSON" ]; then
-            echo "Reading from: $COMPOSER_JSON"
-            # Try to extract plugin name from composer.json
-            PLUGIN_NAME=$(jq -r '.name // empty' "$COMPOSER_JSON" 2>/dev/null | cut -d'/' -f2)
+          echo "🔍 Debug: Detected files:"
+          echo "   COMPOSER_JSON: $COMPOSER_JSON"
+          echo "   PLUGIN_JSON: $PLUGIN_JSON"
+          echo "   PLUGIN_XML: $PLUGIN_XML"
+          echo ""
 
-            # If no name in root, try extra.shopware-plugin-class or extra.label
-            if [ -z "$PLUGIN_NAME" ]; then
-              PLUGIN_NAME=$(jq -r '.extra."shopware-plugin-class" // .extra.label // empty' "$COMPOSER_JSON" 2>/dev/null | sed 's/.*\\/\([^\\]*\)$/\1/')
+          # Priority 1: plugin.json (most common for Shopware 5 plugins)
+          if [ -n "$PLUGIN_JSON" ] && [ -f "$PLUGIN_JSON" ]; then
+            echo "📄 Reading from plugin.json: $PLUGIN_JSON"
+
+            # Extract name
+            PLUGIN_NAME_TMP=$(jq -r '.name // .label.en // .label.de // empty' "$PLUGIN_JSON" 2>/dev/null)
+            if [ -n "$PLUGIN_NAME_TMP" ]; then
+              PLUGIN_NAME="$PLUGIN_NAME_TMP"
+              echo "   ✅ Name extracted: $PLUGIN_NAME"
+            else
+              echo "   ⚠️ No name found in plugin.json"
             fi
 
-            # Try version
-            PLUGIN_VERSION=$(jq -r '.version // empty' "$COMPOSER_JSON" 2>/dev/null)
-          fi
-
-          # Priority 2: plugin.json (modern plugins alternative)
-          if [ -z "$PLUGIN_NAME" ] || [ -z "$PLUGIN_VERSION" ]; then
-            if [ -n "$PLUGIN_JSON" ] && [ -f "$PLUGIN_JSON" ]; then
-              echo "Reading from: $PLUGIN_JSON"
-              [ -z "$PLUGIN_NAME" ] && PLUGIN_NAME=$(jq -r '.name // .label.en // .label.de // empty' "$PLUGIN_JSON" 2>/dev/null)
-              [ -z "$PLUGIN_VERSION" ] && PLUGIN_VERSION=$(jq -r '.currentVersion // .version // empty' "$PLUGIN_JSON" 2>/dev/null)
+            # Extract version - try currentVersion first (Shopware 5 standard)
+            PLUGIN_VERSION_TMP=$(jq -r '.currentVersion // empty' "$PLUGIN_JSON" 2>/dev/null)
+            if [ -z "$PLUGIN_VERSION_TMP" ]; then
+              PLUGIN_VERSION_TMP=$(jq -r '.version // empty' "$PLUGIN_JSON" 2>/dev/null)
             fi
+            if [ -n "$PLUGIN_VERSION_TMP" ]; then
+              PLUGIN_VERSION="$PLUGIN_VERSION_TMP"
+              echo "   ✅ Version extracted: $PLUGIN_VERSION"
+            else
+              echo "   ⚠️ No version found in plugin.json"
+            fi
+            echo ""
           fi
 
-          # Priority 3: plugin.xml (legacy plugins)
+          # Priority 2: plugin.xml (legacy plugins)
           if [ -z "$PLUGIN_NAME" ] || [ -z "$PLUGIN_VERSION" ]; then
             if [ -n "$PLUGIN_XML" ] && [ -f "$PLUGIN_XML" ]; then
-              echo "Reading from: $PLUGIN_XML"
-              [ -z "$PLUGIN_NAME" ] && PLUGIN_NAME=$(grep -oP '<label[^>]*>\K[^<]+' "$PLUGIN_XML" 2>/dev/null | head -1)
-              [ -z "$PLUGIN_VERSION" ] && PLUGIN_VERSION=$(grep -oP '<version>\K[^<]+' "$PLUGIN_XML" 2>/dev/null | head -1)
+              echo "📄 Reading from plugin.xml: $PLUGIN_XML"
+
+              # Extract name from label
+              if [ -z "$PLUGIN_NAME" ]; then
+                PLUGIN_NAME_TMP=$(grep -oP '<label[^>]*>\K[^<]+' "$PLUGIN_XML" 2>/dev/null | head -1)
+                if [ -n "$PLUGIN_NAME_TMP" ]; then
+                  PLUGIN_NAME="$PLUGIN_NAME_TMP"
+                  echo "   ✅ Name extracted: $PLUGIN_NAME"
+                else
+                  echo "   ⚠️ No name found in plugin.xml"
+                fi
+              fi
+
+              # Extract version
+              if [ -z "$PLUGIN_VERSION" ]; then
+                PLUGIN_VERSION_TMP=$(grep -oP '<version>\K[^<]+' "$PLUGIN_XML" 2>/dev/null | head -1)
+                if [ -n "$PLUGIN_VERSION_TMP" ]; then
+                  PLUGIN_VERSION="$PLUGIN_VERSION_TMP"
+                  echo "   ✅ Version extracted: $PLUGIN_VERSION"
+                else
+                  echo "   ⚠️ No version found in plugin.xml"
+                fi
+              fi
+              echo ""
+            fi
+          fi
+
+          # Priority 3: composer.json (optional for modern plugins)
+          if [ -z "$PLUGIN_NAME" ] || [ -z "$PLUGIN_VERSION" ]; then
+            if [ -n "$COMPOSER_JSON" ] && [ -f "$COMPOSER_JSON" ]; then
+              echo "📄 Reading from composer.json: $COMPOSER_JSON"
+
+              # Extract plugin name from composer.json
+              if [ -z "$PLUGIN_NAME" ]; then
+                PLUGIN_NAME_TMP=$(jq -r '.name // empty' "$COMPOSER_JSON" 2>/dev/null | cut -d'/' -f2)
+
+                # If no name in root, try extra.shopware-plugin-class or extra.label
+                if [ -z "$PLUGIN_NAME_TMP" ]; then
+                  PLUGIN_NAME_TMP=$(jq -r '.extra."shopware-plugin-class" // .extra.label // empty' "$COMPOSER_JSON" 2>/dev/null | sed 's/.*\\/\([^\\]*\)$/\1/')
+                fi
+
+                if [ -n "$PLUGIN_NAME_TMP" ]; then
+                  PLUGIN_NAME="$PLUGIN_NAME_TMP"
+                  echo "   ✅ Name extracted: $PLUGIN_NAME"
+                else
+                  echo "   ⚠️ No name found in composer.json"
+                fi
+              fi
+
+              # Extract version
+              if [ -z "$PLUGIN_VERSION" ]; then
+                PLUGIN_VERSION_TMP=$(jq -r '.version // empty' "$COMPOSER_JSON" 2>/dev/null)
+                if [ -n "$PLUGIN_VERSION_TMP" ]; then
+                  PLUGIN_VERSION="$PLUGIN_VERSION_TMP"
+                  echo "   ✅ Version extracted: $PLUGIN_VERSION"
+                else
+                  echo "   ⚠️ No version found in composer.json"
+                fi
+              fi
+              echo ""
             fi
           fi
 
