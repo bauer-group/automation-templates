@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-09-01 21:30:32 UTC -->
+<!-- Generated on 2025-10-16 18:38:52 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -9,7 +9,7 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 
 **Repository Information:**
 
-- **Version:** 1.8.1 (2025-09-01)
+- **Version:** 1.9.0 (2025-10-16)
 - **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)
 - **Branch:** main
 - **Architecture:** Modular, Reusable, Enterprise-Ready
@@ -133,6 +133,7 @@ jobs:
 │       ├── dotnet-desktop-build.yml # .NET desktop application builds
 │       ├── nodejs-build.yml       # Node.js build & test workflow
 │       ├── php-build.yml          # PHP build & test workflow
+│       ├── shopware5-build.yml    # Shopware 5 plugin build & store workflow
 │       ├── makefile-build.yml     # Makefile-based build workflow
 │       ├── automatic-release.yml  # Automated release management
 │       ├── documentation.yml      # Documentation automation
@@ -160,8 +161,14 @@ jobs:
 │       │   ├── multi-board-matrix.yml
 │       │   └── iot-device-ci.yml
 │       ├── dotnet-build/      # .NET project examples
-│       ├── nodejs-build/      # Node.js project examples  
+│       ├── nodejs-build/      # Node.js project examples
 │       ├── php-build/         # PHP project examples
+│       ├── shopware5-build/   # Shopware 5 plugin examples
+│       │   ├── simple-legacy-plugin.yml
+│       │   ├── simple-modern-plugin.yml
+│       │   ├── comprehensive-plugin.yml
+│       │   ├── store-ready-plugin.yml
+│       │   └── multi-environment.yml
 │       ├── makefile-build/    # Makefile project examples
 │       ├── ci-cd/            # General CI/CD examples
 │       │   ├── comprehensive-ci-cd.yml
@@ -180,7 +187,8 @@ jobs:
 │   │   ├── zephyr-build.md       # Zephyr RTOS build documentation
 │   │   ├── dotnet-build.md       # .NET build documentation
 │   │   ├── nodejs-build.md       # Node.js build documentation
-│   │   └── php-build.md          # PHP build documentation
+│   │   ├── php-build.md          # PHP build documentation
+│   │   └── shopware5-build.md    # Shopware 5 plugin build documentation
 │   ├── README.template.MD    # This template file
 │   └── SECRETS-NAMING-CONVENTION.md # Secret naming standards
 └── scripts/                 # 🔨 Utility Scripts
@@ -289,6 +297,55 @@ jobs:
       enable-coverage: true
 ```
 
+### 🛒 Shopware 5 Plugin Build System
+
+Complete automation for Shopware 5 plugin development with support for both legacy and modern plugin systems.
+
+| Component | Purpose | Usage |
+|-----------|---------|-------|
+| **🔧 shopware5-build workflow** | Complete Shopware 5 plugin CI/CD | `uses: bauer-group/automation-templates/.github/workflows/shopware5-build.yml@main` |
+| **📋 Configuration Templates** | Pre-configured setups | `default`, `legacy-plugin`, `modern-plugin`, `store-plugin` |
+
+**Features:**
+- ✅ **Dual Plugin System Support** - Automatic detection of legacy (v5.0-5.1) and modern (v5.2+) plugins
+- ✅ **Shopware Store Integration** - Automatic upload, validation, and store page updates
+- ✅ **GitHub Release Management** - Automated releases with changelog generation
+- ✅ **Frontend Build Support** - Node.js/npm integration for asset compilation
+- ✅ **Quality Assurance** - PHPUnit, PHPStan, PHP CodeSniffer integration
+
+**Quick Start - Shopware 5:**
+```yaml
+name: 🛒 Shopware 5 Plugin Build
+
+on: [push]
+
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/shopware5-build.yml@main
+    with:
+      plugin-system: 'auto'  # Auto-detect legacy or modern
+      php-version: '7.4'
+
+      # Testing & Quality
+      run-tests: true
+      run-phpstan: true
+
+      # Store Integration
+      validate-plugin: true
+      upload-to-store: true
+
+      # Release Management
+      create-github-release: true
+      auto-tag-version: true
+    secrets:
+      SHOPWARE_ACCOUNT_EMAIL: ${{ secrets.SHOPWARE_ACCOUNT_EMAIL }}
+      SHOPWARE_ACCOUNT_PASSWORD: ${{ secrets.SHOPWARE_ACCOUNT_PASSWORD }}
+```
+
+**Plugin System Detection:**
+- **Legacy (v5.0-5.1)**: `plugin.xml`, `Bootstrap.php` in `src/Backend/PluginName` or `src/Frontend/PluginName`
+- **Modern (v5.2+)**: `composer.json`, PSR-4 autoloading in `src/PluginName`
+
 ### 🏗️ Additional Build Systems
 
 | System | Status | Description | Usage |
@@ -299,6 +356,7 @@ jobs:
 | **🟢 PHP Build** | Available | PHP and Composer automation | `uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main` |
 | **🟢 Makefile Build** | Available | Makefile-based build automation | `uses: bauer-group/automation-templates/.github/workflows/makefile-build.yml@main` |
 | **🟢 Zephyr RTOS** | Available | Real-time OS build automation with hardware testing | `uses: bauer-group/automation-templates/.github/workflows/zephyr-build.yml@main` |
+| **🟢 Shopware 5** | Available | Shopware 5 plugin build and store automation | `uses: bauer-group/automation-templates/.github/workflows/shopware5-build.yml@main` |
 | **🟡 Go Build** | Planned | Go module and build automation | - |
 | **🟡 Rust Build** | Planned | Cargo and Rust build automation | - |
 
@@ -399,12 +457,15 @@ module.exports = {
    # For Docker projects
    cp .github/workflows/examples/docker/web-application-build.yml .github/workflows/
    
-   # For Python projects  
-   cp .github/workflows/examples/python-semantic-release-example.yml .github/workflows/python-release.yml
+   # For Python projects
+   cp github/workflows/examples/python-build/python-semantic-release.yml .github/workflows/python-release.yml
    
    # For Zephyr RTOS projects
    cp .github/workflows/examples/zephyr-build/basic-zephyr-app.yml .github/workflows/
    
+   # For Shopware 5 plugins
+   cp github/workflows/examples/shopware5-build/simple-modern-plugin.yml .github/workflows/shopware.yml
+
    # For general CI/CD
    cp .github/workflows/examples/ci-cd/comprehensive-ci-cd.yml .github/workflows/
    ```
@@ -426,6 +487,10 @@ module.exports = {
    
    # Security scanning
    gh secret set GITGUARDIAN_API_KEY --body "your-gitguardian-key"
+
+   # Shopware 5 plugins
+   gh secret set SHOPWARE_ACCOUNT_EMAIL --body "your-shopware-email"
+   gh secret set SHOPWARE_ACCOUNT_PASSWORD --body "your-shopware-password"
    ```
 
 4. **Customize configuration:**
@@ -722,6 +787,7 @@ gh auth status --show-token
 - [🖥️ **.NET Desktop Build System**](docs/workflows/dotnet-desktop-build.md) - Desktop application automation
 - [📦 **Node.js Build System**](docs/workflows/nodejs-build.md) - Node.js and npm/yarn automation
 - [🐘 **PHP Build System**](docs/workflows/php-build.md) - PHP and Composer automation
+- [🛒 **Shopware 5 Plugin Build System**](docs/workflows/shopware5-build.md) - Shopware 5 plugin automation with store integration
 - [🔧 **Makefile Build System**](docs/workflows/makefile-build.md) - Makefile-based build automation
 - [🔔 **Teams Notifications**](docs/workflows/teams-notifications.md) - Microsoft Teams integration
 
@@ -748,6 +814,7 @@ gh auth status --show-token
 
 - [🐳 **Docker Configurations**](.github/config/docker-build/) - Docker build configuration templates
 - [⚡ **Zephyr Configurations**](.github/config/zephyr-build/) - Zephyr RTOS build configuration templates
+- [🛒 **Shopware 5 Configurations**](.github/config/shopware5-build/) - Shopware 5 plugin build configuration templates
 - [⚙️ **Workflow Configuration**](.github/config/README.md) - General workflow configuration guide
 - [🔒 **Secrets Naming Convention**](docs/SECRETS-NAMING-CONVENTION.md) - Standardized secret naming
 
@@ -760,11 +827,12 @@ gh auth status --show-token
 ### 📖 Examples and Templates
 
 - [🐳 **Docker Examples**](github/workflows/examples/docker/) - Complete Docker workflow examples
-- [🐍 **Python Examples**](examples/) - Python semantic release examples and templates
+- [🐍 **Python Examples**](github/workflows/examples/python-build/) - Python semantic release examples and templates
 - [⚡ **Zephyr Examples**](github/workflows/examples/zephyr-build/) - Zephyr RTOS project examples
 - [🔨 **.NET Examples**](github/workflows/examples/dotnet-build/) - .NET project examples
 - [📦 **Node.js Examples**](github/workflows/examples/nodejs-build/) - Node.js project examples
 - [🐘 **PHP Examples**](github/workflows/examples/php-build/) - PHP project examples
+- [🛒 **Shopware 5 Examples**](github/workflows/examples/shopware5-build/) - Shopware 5 plugin workflow examples
 - [🔧 **Makefile Examples**](github/workflows/examples/makefile-build/) - Makefile project examples
 - [🔄 **CI/CD Examples**](github/workflows/examples/ci-cd/) - General CI/CD pipeline examples
 - [📝 **Documentation Examples**](github/workflows/examples/documentation/) - Documentation automation examples
@@ -804,5 +872,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-09-01 21:30:32 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-10-16 18:38:52 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
