@@ -1,0 +1,164 @@
+# Multi-Environment Shopware 5 Plugin Build Example
+#
+# This example demonstrates a CI/CD setup with different behaviors
+# for different branches and environments.
+#
+# Branch Strategy:
+# - develop: Build and test, no store upload
+# - staging: Build, test, and deploy to staging shop
+# - main: Build, test, deploy to staging, and upload to store
+# - tags: Create GitHub release
+#
+# Usage:
+# 1. Copy this file to .github/workflows/build.yml in your plugin repository
+# 2. Configure secrets for each environment
+# 3. Adjust branch names and shop URLs to match your setup
+
+name: 🛒 Multi-Environment Build
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+      - develop
+  pull_request:
+    branches:
+      - main
+      - staging
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  # Development Build (develop branch)
+  build-develop:
+    name: Build Development
+    if: github.ref == 'refs/heads/develop'
+    uses: bauer-group/automation-templates/.github/workflows/shopware5-build.yml@main
+    with:
+      plugin-system: 'auto'
+      php-version: '7.4'
+      node-build: true
+
+      # Testing
+      run-tests: true
+      run-phpcs: true
+      run-phpstan: true
+
+      # No store integration for development
+      validate-plugin: false
+      upload-to-store: false
+      update-store-page: false
+
+      # No GitHub releases for development
+      create-github-release: false
+      auto-tag-version: false
+
+      # Short artifact retention
+      artifact-retention-days: 7
+
+    secrets:
+      COMPOSER_AUTH_JSON: ${{ secrets.COMPOSER_AUTH_JSON }}
+
+  # Staging Build (staging branch)
+  build-staging:
+    name: Build Staging
+    if: github.ref == 'refs/heads/staging'
+    uses: bauer-group/automation-templates/.github/workflows/shopware5-build.yml@main
+    with:
+      plugin-system: 'auto'
+      php-version: '7.4'
+      node-build: true
+      build-command: 'npm run build:staging'
+
+      # Comprehensive testing
+      run-tests: true
+      run-phpcs: true
+      run-phpstan: true
+      run-security-check: true
+
+      # Validate but don't upload to store
+      validate-plugin: true
+      upload-to-store: false
+      update-store-page: false
+
+      # Deploy to staging shop
+      deploy-to-shop: true
+      shop-url: 'https://staging-shop.example.com'
+
+      # No releases for staging
+      create-github-release: false
+      auto-tag-version: false
+
+      # Medium artifact retention
+      artifact-retention-days: 30
+
+    secrets:
+      COMPOSER_AUTH_JSON: ${{ secrets.COMPOSER_AUTH_JSON }}
+      SHOP_DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+
+  # Production Build (main branch)
+  build-production:
+    name: Build Production
+    if: github.ref == 'refs/heads/main'
+    uses: bauer-group/automation-templates/.github/workflows/shopware5-build.yml@main
+    with:
+      plugin-system: 'auto'
+      php-version: '7.4'
+      node-build: true
+      build-command: 'npm run build:production'
+
+      # Full testing suite
+      run-tests: true
+      run-phpcs: true
+      phpcs-standard: 'PSR12'
+      run-phpstan: true
+      phpstan-level: '8'
+      run-security-check: true
+
+      # Store integration
+      validate-plugin: true
+      upload-to-store: true
+      update-store-page: true
+
+      # GitHub releases
+      create-github-release: true
+      auto-tag-version: true
+      generate-changelog: true
+
+      # Long artifact retention
+      artifact-retention-days: 365
+
+    secrets:
+      SHOPWARE_ACCOUNT_EMAIL: ${{ secrets.SHOPWARE_ACCOUNT_EMAIL }}
+      SHOPWARE_ACCOUNT_PASSWORD: ${{ secrets.SHOPWARE_ACCOUNT_PASSWORD }}
+      COMPOSER_AUTH_JSON: ${{ secrets.COMPOSER_AUTH_JSON }}
+
+  # Pull Request Build
+  build-pr:
+    name: Build Pull Request
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/shopware5-build.yml@main
+    with:
+      plugin-system: 'auto'
+      php-version: '7.4'
+      node-build: true
+
+      # Testing only
+      run-tests: true
+      run-phpcs: true
+      run-phpstan: true
+
+      # No store or release operations
+      validate-plugin: false
+      upload-to-store: false
+      update-store-page: false
+      create-github-release: false
+      auto-tag-version: false
+
+      # Short artifact retention
+      artifact-retention-days: 7
+
+    secrets:
+      COMPOSER_AUTH_JSON: ${{ secrets.COMPOSER_AUTH_JSON }}

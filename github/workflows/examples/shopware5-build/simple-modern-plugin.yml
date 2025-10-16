@@ -1,0 +1,63 @@
+# Simple Modern Shopware 5 Plugin Build Example (v5.2+)
+#
+# This example demonstrates a basic CI/CD setup for a modern Shopware 5 plugin
+# using the new plugin system with Composer support.
+#
+# Usage:
+# 1. Copy this file to .github/workflows/build.yml in your plugin repository
+# 2. Configure secrets (optional):
+#    - SHOPWARE_ACCOUNT_EMAIL
+#    - SHOPWARE_ACCOUNT_PASSWORD
+# 3. Push to trigger the workflow
+
+name: 🛒 Build Modern Plugin
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Release
+    uses: bauer-group/automation-templates/.github/workflows/shopware5-build.yml@main
+    with:
+      # Force modern plugin system
+      plugin-system: 'modern'
+
+      # PHP version
+      php-version: '7.4'
+
+      # Validation and testing
+      validate-plugin: true
+      run-tests: true
+
+      # Code quality
+      run-phpcs: true
+      phpcs-standard: 'PSR12'
+      run-phpstan: true
+      phpstan-level: '5'
+
+      # Security
+      run-security-check: true
+
+      # Frontend build (if needed)
+      node-build: false
+
+      # Store integration
+      upload-to-store: true
+      update-store-page: true
+
+      # GitHub release
+      create-github-release: true
+      auto-tag-version: true
+      generate-changelog: true
+
+    secrets:
+      SHOPWARE_ACCOUNT_EMAIL: ${{ secrets.SHOPWARE_ACCOUNT_EMAIL }}
+      SHOPWARE_ACCOUNT_PASSWORD: ${{ secrets.SHOPWARE_ACCOUNT_PASSWORD }}

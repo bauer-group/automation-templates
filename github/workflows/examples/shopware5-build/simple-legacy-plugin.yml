@@ -1,0 +1,59 @@
+# Simple Legacy Shopware 5 Plugin Build Example (v5.0 - v5.1)
+#
+# This example demonstrates a basic CI/CD setup for a legacy Shopware 5 plugin
+# using the old plugin system (Bootstrap.php, plugin.xml).
+#
+# Usage:
+# 1. Copy this file to .github/workflows/build.yml in your plugin repository
+# 2. Configure secrets (optional):
+#    - SHOPWARE_ACCOUNT_EMAIL
+#    - SHOPWARE_ACCOUNT_PASSWORD
+# 3. Push to trigger the workflow
+
+name: 🛒 Build Legacy Plugin
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Release
+    uses: bauer-group/automation-templates/.github/workflows/shopware5-build.yml@main
+    with:
+      # Force legacy plugin system
+      plugin-system: 'legacy'
+
+      # PHP version for legacy plugins
+      php-version: '7.2'
+
+      # Basic validation
+      validate-plugin: true
+
+      # Disable modern tooling
+      node-build: false
+      run-tests: false
+      run-phpcs: false
+      run-phpstan: false
+
+      # Enable security check
+      run-security-check: true
+
+      # Store integration (optional)
+      upload-to-store: true
+      update-store-page: true
+
+      # GitHub release
+      create-github-release: true
+      auto-tag-version: true
+      generate-changelog: true
+
+    secrets:
+      SHOPWARE_ACCOUNT_EMAIL: ${{ secrets.SHOPWARE_ACCOUNT_EMAIL }}
+      SHOPWARE_ACCOUNT_PASSWORD: ${{ secrets.SHOPWARE_ACCOUNT_PASSWORD }}

@@ -1,0 +1,113 @@
+# Store-Ready Shopware 5 Plugin Build Example
+#
+# This example demonstrates a production-ready CI/CD setup for plugins
+# intended for the Shopware Store with comprehensive quality assurance.
+#
+# Features:
+# - Automatic version tagging from plugin.json/plugin.xml
+# - Comprehensive testing and code quality checks
+# - Automatic Shopware store upload on new versions
+# - GitHub release creation with changelog
+# - Store page updates
+#
+# Usage:
+# 1. Copy this file to .github/workflows/build.yml in your plugin repository
+# 2. Configure REQUIRED secrets in your GitHub repository:
+#    - SHOPWARE_ACCOUNT_EMAIL (your Shopware account email)
+#    - SHOPWARE_ACCOUNT_PASSWORD (your Shopware account password)
+# 3. Optional secrets:
+#    - COMPOSER_AUTH_JSON (for private Composer packages)
+# 4. Ensure your plugin has:
+#    - composer.json (for modern plugins) or plugin.xml (for legacy)
+#    - Valid version number in composer.json/plugin.json/plugin.xml
+#    - PHPUnit tests (recommended)
+# 5. Push to main branch or create a commit with [store update] to update store page
+
+name: 🛒 Store Plugin Build & Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      force-upload:
+        description: 'Force upload to store (even if version exists)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build-and-release:
+    name: Build, Test & Release to Store
+    uses: bauer-group/automation-templates/.github/workflows/shopware5-build.yml@main
+    with:
+      # Auto-detect plugin system (legacy or modern)
+      plugin-system: 'auto'
+
+      # PHP Configuration (7.4 recommended for best compatibility)
+      php-version: '7.4'
+
+      # Shopware CLI (always use latest for best store integration)
+      shopware-cli-version: 'latest'
+
+      # Frontend Build Configuration
+      node-build: true
+      node-version: '18.x'
+      build-command: 'npm run build'
+
+      # Comprehensive Testing
+      run-tests: true
+      test-command: 'vendor/bin/phpunit --coverage-text'
+
+      # Strict Code Quality Standards for Store Plugins
+      run-phpcs: true
+      phpcs-standard: 'PSR12'
+      run-phpstan: true
+      phpstan-level: '8'  # Highest level for store plugins
+
+      # Security Checks (mandatory for store plugins)
+      run-security-check: true
+
+      # Store Integration
+      validate-plugin: true  # Validate before upload
+      update-store-page: true  # Update on [store update] commit message
+      upload-to-store: true  # Upload on new version tags
+
+      # GitHub Release Configuration
+      create-github-release: true
+      auto-tag-version: true
+      generate-changelog: true
+
+      # Long artifact retention for store versions
+      artifact-retention-days: 365
+
+      # Standard runner
+      runs-on: 'ubuntu-latest'
+      timeout-minutes: 30
+
+    secrets:
+      SHOPWARE_ACCOUNT_EMAIL: ${{ secrets.SHOPWARE_ACCOUNT_EMAIL }}
+      SHOPWARE_ACCOUNT_PASSWORD: ${{ secrets.SHOPWARE_ACCOUNT_PASSWORD }}
+      COMPOSER_AUTH_JSON: ${{ secrets.COMPOSER_AUTH_JSON }}
+
+  # Notification on success/failure
+  notify:
+    name: Notify Build Status
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    if: always()
+
+    steps:
+      - name: 📊 Build Summary
+        run: |
+          if [ "${{ needs.build-and-release.result }}" == "success" ]; then
+            echo "✅ Plugin build and release successful!"
+            echo "Version: ${{ needs.build-and-release.outputs.plugin-version }}"
+            echo "Zip: ${{ needs.build-and-release.outputs.zip-filename }}"
+            echo "Store Upload: ${{ needs.build-and-release.outputs.store-uploaded }}"
+            echo "Release: ${{ needs.build-and-release.outputs.release-created }}"
+          else
+            echo "❌ Plugin build failed!"
+            exit 1
+          fi
