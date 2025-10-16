@@ -230,11 +230,11 @@ jobs:
 
           echo "🔍 Searching for plugin files..."
 
-          # Recursive search for plugin files (max depth 3)
-          PLUGIN_XML=$(find . -maxdepth 3 -name "plugin.xml" -type f | head -1)
-          PLUGIN_JSON=$(find . -maxdepth 3 -name "plugin.json" -type f | head -1)
-          COMPOSER_JSON=$(find . -maxdepth 3 -name "composer.json" -type f | head -1)
-          BOOTSTRAP_PHP=$(find . -maxdepth 4 -name "Bootstrap.php" -type f | head -1)
+          # Recursive search for plugin files (max depth 5 to handle nested structures)
+          PLUGIN_XML=$(find . -maxdepth 5 -name "plugin.xml" -type f | head -1)
+          PLUGIN_JSON=$(find . -maxdepth 5 -name "plugin.json" -type f | head -1)
+          COMPOSER_JSON=$(find . -maxdepth 5 -name "composer.json" -type f | head -1)
+          BOOTSTRAP_PHP=$(find . -maxdepth 5 -name "Bootstrap.php" -type f | head -1)
 
           # Determine plugin root directory
           if [ -n "$PLUGIN_XML" ]; then
@@ -480,7 +480,7 @@ jobs:
           # Priority 5: Try to detect from directory structure
           if [ -z "$PLUGIN_NAME" ]; then
             # Look for main plugin PHP class in src/ directory
-            MAIN_CLASS=$(find "$PLUGIN_ROOT" -maxdepth 3 -name "*.php" -type f -exec grep -l "class.*extends.*Plugin" {} \; | head -1)
+            MAIN_CLASS=$(find "$PLUGIN_ROOT" -maxdepth 5 -name "*.php" -type f -exec grep -l "class.*extends.*Plugin" {} \; | head -1)
             if [ -n "$MAIN_CLASS" ]; then
               PLUGIN_NAME=$(basename "$MAIN_CLASS" .php)
               echo "Detected plugin name from main class: $PLUGIN_NAME"
@@ -556,7 +556,7 @@ jobs:
             fi
 
             # Find main plugin class
-            PLUGIN_CLASS=$(find . -maxdepth 3 -name "${PLUGIN_NAME}.php" -type f | head -1)
+            PLUGIN_CLASS=$(find . -maxdepth 5 -name "${PLUGIN_NAME}.php" -type f | head -1)
             if [ -n "$PLUGIN_CLASS" ]; then
               echo "✅ Main plugin class found: $PLUGIN_CLASS"
             else
@@ -564,7 +564,7 @@ jobs:
             fi
 
             # Check for Resources directory
-            RESOURCES_DIR=$(find . -maxdepth 2 -type d -name "Resources" | head -1)
+            RESOURCES_DIR=$(find . -maxdepth 5 -type d -name "Resources" | head -1)
             if [ -n "$RESOURCES_DIR" ]; then
               echo "✅ Resources directory found: $RESOURCES_DIR"
             else
