@@ -1,3 +1,16 @@
+## [1.9.0](https://github.com/bauer-group/automation-templates/compare/v1.8.1...v1.9.0) (2025-10-16)
+
+### 🚀 Features
+
+* füge Konfigurationsdateien für das Python-Paket und den Semantic Release-Workflow hinzu ([29dc08e](https://github.com/bauer-group/automation-templates/commit/29dc08eaf55149f351e6c01a4a5f556f6b02b037))
+* Shopware 5 Build System added ([b0d5962](https://github.com/bauer-group/automation-templates/commit/b0d59627b95ad172d3965e6c3d6407771855b2a5))
+
+### 🐛 Bug Fixes
+
+* behebe die Einrückung in der Workflow-Konfiguration für die AI-Zusammenfassung ([71f3e4a](https://github.com/bauer-group/automation-templates/commit/71f3e4ab52244d84d544779cba614e9c5fbeff06))
+* füge Synchronisation mit dem Remote-Branch hinzu, um Push-Konflikte zu vermeiden ([46876f3](https://github.com/bauer-group/automation-templates/commit/46876f3bdc19b1811a7648a01980d80a1fcc637e))
+* verbessere die Handhabung von Eingaben und Ausgaben im AI-Zusammenfassungsworkflow ([ae4afa3](https://github.com/bauer-group/automation-templates/commit/ae4afa3af7cda0795349e271d79a6fa6bc714e98))
+
 ## [1.8.1](https://github.com/bauer-group/automation-templates/compare/v1.8.0...v1.8.1) (2025-09-01)
 
 ### 🐛 Bug Fixes
