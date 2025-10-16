@@ -1,0 +1,117 @@
+# Shopware 5 Plugin Build Configuration - Modern Plugin System (v5.2+)
+#
+# This configuration is optimized for modern Shopware 5 plugins using the
+# new plugin system with Composer support and PSR-4 autoloading.
+#
+# Directory Structure:
+# - src/PluginName/           - Plugin source code
+# - src/Resources/            - Resources (views, snippets, etc.)
+# - composer.json             - Composer configuration
+# - plugin.json (optional)    - Plugin metadata
+
+# Plugin Configuration
+plugin:
+  # Force modern plugin system
+  system: modern
+
+  # Plugin name (extracted from composer.json if not specified)
+  name: ''
+
+  # Modern plugin directory structure (PSR-4)
+  source_directory: 'src'
+
+# PHP Configuration (Modern plugins can use newer PHP features)
+php:
+  version: '7.4'
+  extensions:
+    - mbstring
+    - xml
+    - curl
+    - zip
+    - intl
+    - gd
+    - mysql
+    - redis
+
+  ini_values:
+    error_reporting: E_ALL
+    display_errors: 'On'
+    memory_limit: '512M'
+    opcache.enable: '1'
+
+# Shopware CLI
+shopware_cli:
+  version: 'latest'
+
+# Build Configuration
+build:
+  # Custom build command for complex builds
+  command: ''
+
+  # Frontend assets with modern tooling (Webpack, etc.)
+  node_build: true
+  node_version: '18.x'
+
+  # Composer with optimization
+  composer_install: true
+  composer_options: '--no-dev --prefer-dist --no-interaction --optimize-autoloader --classmap-authoritative'
+
+# Testing (Modern plugins should have comprehensive tests)
+testing:
+  run_tests: true
+  test_command: 'vendor/bin/phpunit --colors=always'
+
+# Code Quality (Strict for modern plugins)
+quality:
+  phpcs:
+    enabled: true
+    standard: 'PSR12'
+
+  phpstan:
+    enabled: true
+    level: '7'
+
+  security_check:
+    enabled: true
+
+# Shopware Store Integration
+store:
+  # Full validation for modern plugins
+  validate: true
+
+  # Update store page with plugin information
+  update_page: true
+
+  # Upload to Shopware store
+  upload: true
+
+# Release Management
+release:
+  create_github_release: true
+  auto_tag: true
+  generate_changelog: true
+
+# Artifacts
+artifacts:
+  retention_days: 90
+
+# Deployment
+deployment:
+  enabled: false
+  shop_url: ''
+
+# Modern Plugin Specific Settings
+modern:
+  # Check for required files
+  required_files:
+    - 'composer.json'
+
+  # PSR-4 autoloading check
+  check_autoloading: true
+
+  # Composer validation strict mode
+  composer_validate_strict: true
+
+  # Node.js build artifacts
+  node_artifacts:
+    - 'src/Resources/public/'

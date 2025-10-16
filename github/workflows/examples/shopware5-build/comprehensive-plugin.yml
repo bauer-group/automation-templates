@@ -1,0 +1,134 @@
+# Comprehensive Shopware 5 Plugin Build Example
+#
+# This example demonstrates a complete CI/CD setup with all available features
+# including testing, code quality checks, frontend build, and deployment.
+#
+# Usage:
+# 1. Copy this file to .github/workflows/build.yml in your plugin repository
+# 2. Configure required secrets:
+#    - SHOPWARE_ACCOUNT_EMAIL (required for store upload)
+#    - SHOPWARE_ACCOUNT_PASSWORD (required for store upload)
+#    - COMPOSER_AUTH_JSON (optional, for private Composer packages)
+#    - SHOP_DEPLOY_TOKEN (optional, for automatic deployment)
+# 3. Customize inputs as needed
+# 4. Push to trigger the workflow
+
+name: 🛒 Comprehensive Plugin Build
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'hotfix/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      deploy-to-shop:
+        description: 'Deploy to test shop'
+        required: false
+        type: boolean
+        default: false
+      upload-to-store:
+        description: 'Upload to Shopware store'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    name: Build & Test
+    uses: bauer-group/automation-templates/.github/workflows/shopware5-build.yml@main
+    with:
+      # Plugin system auto-detection
+      plugin-system: 'auto'
+
+      # PHP Configuration
+      php-version: '7.4'
+
+      # Shopware CLI
+      shopware-cli-version: 'latest'
+
+      # Frontend Build
+      node-build: true
+      node-version: '18.x'
+      build-command: 'npm run build:production'
+
+      # Testing
+      run-tests: true
+      test-command: 'vendor/bin/phpunit --coverage-text --colors=always'
+
+      # Code Quality Checks
+      run-phpcs: true
+      phpcs-standard: 'PSR12'
+      run-phpstan: true
+      phpstan-level: '7'
+
+      # Security
+      run-security-check: true
+
+      # Store Validation
+      validate-plugin: true
+
+      # Store Page Update (only on [store update] commit message)
+      update-store-page: true
+
+      # Upload to Store (only on new version tags)
+      upload-to-store: ${{ github.ref_type == 'tag' || inputs.upload-to-store }}
+
+      # GitHub Release
+      create-github-release: true
+      auto-tag-version: true
+      generate-changelog: true
+
+      # Deployment (optional)
+      deploy-to-shop: ${{ inputs.deploy-to-shop || false }}
+      shop-url: 'https://test-shop.example.com'
+
+      # Artifact retention
+      artifact-retention-days: 90
+
+      # Runner configuration
+      runs-on: 'ubuntu-latest'
+      timeout-minutes: 30
+
+    secrets:
+      SHOPWARE_ACCOUNT_EMAIL: ${{ secrets.SHOPWARE_ACCOUNT_EMAIL }}
+      SHOPWARE_ACCOUNT_PASSWORD: ${{ secrets.SHOPWARE_ACCOUNT_PASSWORD }}
+      COMPOSER_AUTH_JSON: ${{ secrets.COMPOSER_AUTH_JSON }}
+      SHOP_DEPLOY_TOKEN: ${{ secrets.SHOP_DEPLOY_TOKEN }}
+
+  # Optional: Parallel job for multi-PHP version testing
+  test-matrix:
+    name: Test PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.2', '7.4', '8.0']
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, xml, curl, zip, intl, gd, mysql
+
+      - name: 📚 Install Dependencies
+        if: hashFiles('composer.json') != ''
+        run: composer install --prefer-dist --no-interaction
+
+      - name: 🧪 Run Tests
+        if: hashFiles('phpunit.xml', 'phpunit.xml.dist') != ''
+        run: vendor/bin/phpunit --colors=always

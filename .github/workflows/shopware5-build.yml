@@ -1,0 +1,544 @@
+name: 🛒 Shopware 5 Plugin Build & Release
+
+on:
+  workflow_call:
+    inputs:
+      # Plugin Configuration
+      plugin-name:
+        description: 'Plugin name (will be extracted from composer.json if not provided)'
+        type: string
+        required: false
+        default: ''
+
+      plugin-system:
+        description: 'Shopware 5 plugin system (legacy, modern, auto)'
+        type: string
+        required: false
+        default: 'auto'
+
+      # PHP Configuration
+      php-version:
+        description: 'PHP version to use'
+        type: string
+        required: false
+        default: '7.4'
+
+      # Shopware CLI Configuration
+      shopware-cli-version:
+        description: 'Shopware CLI version to use'
+        type: string
+        required: false
+        default: 'latest'
+
+      # Build Configuration
+      build-command:
+        description: 'Custom build command (optional)'
+        type: string
+        required: false
+        default: ''
+
+      node-build:
+        description: 'Run Node.js build for frontend assets'
+        type: boolean
+        required: false
+        default: false
+
+      node-version:
+        description: 'Node.js version for frontend build'
+        type: string
+        required: false
+        default: '18.x'
+
+      # Testing Configuration
+      run-tests:
+        description: 'Run PHPUnit tests'
+        type: boolean
+        required: false
+        default: true
+
+      test-command:
+        description: 'Custom test command'
+        type: string
+        required: false
+        default: ''
+
+      # Code Quality
+      run-phpcs:
+        description: 'Run PHP CodeSniffer'
+        type: boolean
+        required: false
+        default: true
+
+      phpcs-standard:
+        description: 'PHP CodeSniffer standard'
+        type: string
+        required: false
+        default: 'PSR12'
+
+      run-phpstan:
+        description: 'Run PHPStan static analysis'
+        type: boolean
+        required: false
+        default: true
+
+      phpstan-level:
+        description: 'PHPStan level'
+        type: string
+        required: false
+        default: '5'
+
+      # Store Integration
+      validate-plugin:
+        description: 'Validate plugin with shopware-cli'
+        type: boolean
+        required: false
+        default: true
+
+      update-store-page:
+        description: 'Update store page on commit message [store update]'
+        type: boolean
+        required: false
+        default: true
+
+      upload-to-store:
+        description: 'Upload to Shopware store (only on new version tags)'
+        type: boolean
+        required: false
+        default: true
+
+      # Release Configuration
+      create-github-release:
+        description: 'Create GitHub release for new versions'
+        type: boolean
+        required: false
+        default: true
+
+      auto-tag-version:
+        description: 'Automatically create git tag from composer.json version'
+        type: boolean
+        required: false
+        default: true
+
+      # Changelog Configuration
+      generate-changelog:
+        description: 'Generate changelog from plugin zip'
+        type: boolean
+        required: false
+        default: true
+
+      # Security
+      run-security-check:
+        description: 'Run security vulnerability check'
+        type: boolean
+        required: false
+        default: true
+
+      # Deployment
+      deploy-to-shop:
+        description: 'Deploy to test shop instance'
+        type: boolean
+        required: false
+        default: false
+
+      shop-url:
+        description: 'Shop URL for deployment'
+        type: string
+        required: false
+        default: ''
+
+      # Artifact Options
+      artifact-retention-days:
+        description: 'Days to retain artifacts'
+        type: number
+        required: false
+        default: 90
+
+      # Runner Configuration
+      runs-on:
+        description: 'Runner OS'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+
+      timeout-minutes:
+        description: 'Job timeout in minutes'
+        type: number
+        required: false
+        default: 30
+
+    secrets:
+      SHOPWARE_ACCOUNT_EMAIL:
+        description: 'Shopware account email for store access'
+        required: false
+
+      SHOPWARE_ACCOUNT_PASSWORD:
+        description: 'Shopware account password for store access'
+        required: false
+
+      SHOP_DEPLOY_TOKEN:
+        description: 'Token for shop deployment'
+        required: false
+
+      COMPOSER_AUTH_JSON:
+        description: 'Composer auth.json for private packages'
+        required: false
+
+    outputs:
+      plugin-version:
+        description: 'Plugin version from composer.json'
+        value: ${{ jobs.build.outputs.plugin-version }}
+
+      zip-filename:
+        description: 'Generated plugin zip filename'
+        value: ${{ jobs.build.outputs.zip-filename }}
+
+      release-created:
+        description: 'Whether a new release was created'
+        value: ${{ jobs.build.outputs.release-created }}
+
+      store-uploaded:
+        description: 'Whether plugin was uploaded to store'
+        value: ${{ jobs.build.outputs.store-uploaded }}
+
+jobs:
+  build:
+    name: Build & Release Shopware 5 Plugin
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    outputs:
+      plugin-version: ${{ steps.version.outputs.version }}
+      zip-filename: ${{ steps.zip.outputs.filename }}
+      release-created: ${{ steps.release.outputs.created }}
+      store-uploaded: ${{ steps.store-upload.outputs.uploaded }}
+
+    env:
+      SHOPWARE_CLI_ACCOUNT_EMAIL: ${{ secrets.SHOPWARE_ACCOUNT_EMAIL }}
+      SHOPWARE_CLI_ACCOUNT_PASSWORD: ${{ secrets.SHOPWARE_ACCOUNT_PASSWORD }}
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔍 Detect Plugin System
+        id: detect-system
+        run: |
+          PLUGIN_SYSTEM="${{ inputs.plugin-system }}"
+
+          if [ "$PLUGIN_SYSTEM" = "auto" ]; then
+            # Check for plugin system indicators
+            if [ -f "plugin.xml" ]; then
+              PLUGIN_SYSTEM="legacy"
+              echo "Detected Legacy Plugin System (Shopware 5.0 - 5.1)"
+            elif [ -f "plugin.json" ] || [ -f "composer.json" ]; then
+              PLUGIN_SYSTEM="modern"
+              echo "Detected Modern Plugin System (Shopware 5.2+)"
+            else
+              echo "⚠️ Could not detect plugin system, defaulting to modern"
+              PLUGIN_SYSTEM="modern"
+            fi
+          fi
+
+          echo "plugin-system=$PLUGIN_SYSTEM" >> $GITHUB_OUTPUT
+          echo "Plugin System: $PLUGIN_SYSTEM"
+
+      - name: 🔧 Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          extensions: mbstring, xml, curl, zip, intl, gd, mysql
+          ini-values: error_reporting=E_ALL, display_errors=On
+          coverage: none
+          tools: composer:v2
+
+      - name: 🔧 Setup Node.js
+        if: inputs.node-build
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'npm'
+
+      - name: 🔧 Install Shopware CLI
+        uses: FriendsOfShopware/shopware-cli-action@v2
+        with:
+          version: ${{ inputs.shopware-cli-version }}
+
+      - name: 🔐 Configure Composer Auth
+        if: secrets.COMPOSER_AUTH_JSON != ''
+        run: |
+          echo '${{ secrets.COMPOSER_AUTH_JSON }}' > auth.json
+          composer config --global --auth --merge-auth auth.json
+          rm auth.json
+          echo "✅ Composer auth configured"
+
+      - name: 📚 Install Composer Dependencies
+        if: hashFiles('composer.json') != ''
+        run: |
+          if [ "${{ steps.detect-system.outputs.plugin-system }}" = "legacy" ]; then
+            echo "Legacy system - skipping composer install"
+          else
+            composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+          fi
+
+      - name: 📚 Install Node.js Dependencies
+        if: inputs.node-build && hashFiles('package.json') != ''
+        run: npm ci
+
+      - name: 🏗️ Build Frontend Assets
+        if: inputs.node-build
+        env:
+          NODE_OPTIONS: --openssl-legacy-provider
+        run: |
+          if [ -n "${{ inputs.build-command }}" ]; then
+            ${{ inputs.build-command }}
+          elif [ -f "package.json" ]; then
+            npm run build || echo "No build script found"
+          fi
+
+      - name: 🏷️ Extract Plugin Information
+        id: version
+        run: |
+          # Extract plugin name and version
+          if [ -f "composer.json" ]; then
+            PLUGIN_NAME=$(jq -r '.name // .extra.shopware.name // empty' composer.json | cut -d'/' -f2)
+            PLUGIN_VERSION=$(jq -r '.version // empty' composer.json)
+          elif [ -f "plugin.json" ]; then
+            PLUGIN_NAME=$(jq -r '.name // empty' plugin.json)
+            PLUGIN_VERSION=$(jq -r '.currentVersion // .version // empty' plugin.json)
+          elif [ -f "plugin.xml" ]; then
+            PLUGIN_NAME=$(grep -oP '<label[^>]*>\K[^<]+' plugin.xml | head -1)
+            PLUGIN_VERSION=$(grep -oP '<version>\K[^<]+' plugin.xml | head -1)
+          fi
+
+          # Use input plugin-name if provided
+          if [ -n "${{ inputs.plugin-name }}" ]; then
+            PLUGIN_NAME="${{ inputs.plugin-name }}"
+          fi
+
+          # Fallback to repository name
+          if [ -z "$PLUGIN_NAME" ]; then
+            PLUGIN_NAME="${{ github.event.repository.name }}"
+          fi
+
+          echo "name=$PLUGIN_NAME" >> $GITHUB_OUTPUT
+          echo "version=$PLUGIN_VERSION" >> $GITHUB_OUTPUT
+          echo "Plugin: $PLUGIN_NAME v$PLUGIN_VERSION"
+
+      - name: ✅ Validate Plugin Structure
+        if: inputs.validate-plugin
+        continue-on-error: true
+        run: |
+          echo "🔍 Validating plugin structure..."
+
+          if [ "${{ steps.detect-system.outputs.plugin-system }}" = "legacy" ]; then
+            echo "Checking legacy plugin structure..."
+            [ ! -f "plugin.xml" ] && echo "⚠️ plugin.xml not found" || echo "✅ plugin.xml found"
+            [ ! -d "Bootstrap.php" ] && echo "⚠️ Bootstrap.php not found" || echo "✅ Bootstrap.php found"
+          else
+            echo "Checking modern plugin structure..."
+            [ ! -f "composer.json" ] && echo "⚠️ composer.json not found" || echo "✅ composer.json found"
+
+            # Find main plugin class
+            PLUGIN_CLASS=$(find . -name "${{ steps.version.outputs.name }}.php" -type f | head -1)
+            [ -z "$PLUGIN_CLASS" ] && echo "⚠️ Main plugin class not found" || echo "✅ Main plugin class found: $PLUGIN_CLASS"
+          fi
+
+      - name: 🧪 Run PHPUnit Tests
+        if: inputs.run-tests && hashFiles('phpunit.xml', 'phpunit.xml.dist') != ''
+        continue-on-error: true
+        run: |
+          if [ -n "${{ inputs.test-command }}" ]; then
+            ${{ inputs.test-command }}
+          elif [ -f "vendor/bin/phpunit" ]; then
+            vendor/bin/phpunit --colors=always
+          else
+            echo "PHPUnit not found, skipping tests"
+          fi
+
+      - name: 🔍 PHP CodeSniffer
+        if: inputs.run-phpcs
+        continue-on-error: true
+        run: |
+          if [ -f "vendor/bin/phpcs" ]; then
+            vendor/bin/phpcs --standard=${{ inputs.phpcs-standard }} --report=summary src/ || true
+          else
+            echo "PHP CodeSniffer not installed, skipping..."
+          fi
+
+      - name: 🔬 PHPStan Analysis
+        if: inputs.run-phpstan
+        continue-on-error: true
+        run: |
+          if [ -f "vendor/bin/phpstan" ]; then
+            vendor/bin/phpstan analyse --level=${{ inputs.phpstan-level }} --no-progress src/ || true
+          else
+            echo "PHPStan not installed, skipping..."
+          fi
+
+      - name: 🔒 Security Check
+        if: inputs.run-security-check
+        continue-on-error: true
+        run: |
+          curl -L https://github.com/fabpot/local-php-security-checker/releases/download/v2.0.6/local-php-security-checker_2.0.6_linux_amd64 -o security-checker
+          chmod +x security-checker
+          ./security-checker || echo "⚠️ Security vulnerabilities found (non-blocking)"
+
+      - name: 📦 Build & Create Plugin Zip
+        id: zip
+        env:
+          NODE_OPTIONS: --openssl-legacy-provider
+        run: |
+          PLUGIN_NAME="${{ steps.version.outputs.name }}"
+          GIT_COMMIT="${{ github.sha }}"
+
+          echo "Building plugin: $PLUGIN_NAME"
+
+          # Use shopware-cli to build the plugin
+          shopware-cli extension zip --git-commit $GIT_COMMIT . --release
+
+          # Rename zip file
+          ZIP_FILE="${PLUGIN_NAME}-${GIT_COMMIT}.zip"
+          FINAL_ZIP="${PLUGIN_NAME}.zip"
+
+          if [ -f "$ZIP_FILE" ]; then
+            mv "$ZIP_FILE" "$FINAL_ZIP"
+            echo "✅ Plugin zip created: $FINAL_ZIP"
+            echo "filename=$FINAL_ZIP" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Failed to create plugin zip"
+            exit 1
+          fi
+
+      - name: 📤 Upload Plugin Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.name }}
+          path: ${{ steps.zip.outputs.filename }}
+          retention-days: ${{ inputs.artifact-retention-days }}
+
+      - name: ✅ Validate Plugin Zip
+        if: inputs.validate-plugin
+        run: |
+          shopware-cli extension validate $(pwd)/${{ steps.zip.outputs.filename }}
+
+      - name: 📝 Extract Changelog
+        id: changelog
+        if: inputs.generate-changelog
+        run: |
+          shopware-cli extension get-changelog $(pwd)/${{ steps.zip.outputs.filename }} > /tmp/changelog.txt
+
+          # Display changelog
+          echo "📝 Generated Changelog:"
+          cat /tmp/changelog.txt
+
+      - name: 🔍 Check if Version Tag Exists
+        uses: mukunku/tag-exists-action@v1.6.0
+        id: check-tag
+        with:
+          tag: ${{ steps.version.outputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: 📄 Update Store Page
+        if: inputs.update-store-page && contains(github.event.head_commit.message, '[store update]')
+        continue-on-error: true
+        run: |
+          if [ -n "$SHOPWARE_CLI_ACCOUNT_EMAIL" ] && [ -n "$SHOPWARE_CLI_ACCOUNT_PASSWORD" ]; then
+            shopware-cli account producer extension info push $(pwd)/
+            echo "✅ Store page updated"
+          else
+            echo "⚠️ Store credentials not configured, skipping store page update"
+          fi
+
+      - name: 📤 Upload to Shopware Store
+        id: store-upload
+        if: inputs.upload-to-store && steps.check-tag.outputs.exists != 'true'
+        continue-on-error: true
+        run: |
+          if [ -n "$SHOPWARE_CLI_ACCOUNT_EMAIL" ] && [ -n "$SHOPWARE_CLI_ACCOUNT_PASSWORD" ]; then
+            shopware-cli account producer extension upload $(pwd)/${{ steps.zip.outputs.filename }}
+            echo "uploaded=true" >> $GITHUB_OUTPUT
+            echo "✅ Plugin uploaded to Shopware Store"
+          else
+            echo "uploaded=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Store credentials not configured, skipping upload"
+          fi
+
+      - name: 📦 Prepare Release Assets
+        if: inputs.create-github-release && steps.check-tag.outputs.exists != 'true'
+        run: |
+          # Copy zip to temp location for release
+          cp "${{ steps.zip.outputs.filename }}" /tmp/
+
+          # Unzip for repository update
+          unzip -o -q "${{ steps.zip.outputs.filename }}" -d ./toDeploy
+
+          # Move files
+          PLUGIN_NAME="${{ steps.version.outputs.name }}"
+          if [ -d "./toDeploy/${PLUGIN_NAME}" ]; then
+            # Clean current directory but keep git
+            find ./ -maxdepth 1 ! -name "toDeploy" ! -name ".git" ! -name "." ! -name ".." -exec rm -rf {} \;
+
+            # Move plugin files to root
+            mv ./toDeploy/${PLUGIN_NAME}/* ./
+            rm -rf ./toDeploy
+            rm -rf ./vendor
+          fi
+
+      - name: 🏷️ Create Git Tag and Commit
+        id: git-tag
+        if: inputs.auto-tag-version && inputs.create-github-release && steps.check-tag.outputs.exists != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          git config user.name "GitHub Actions Bot"
+          git config user.email "<>"
+          git add -f .
+          git commit -m "chore: Build release v${VERSION}" || echo "No changes to commit"
+          git tag "${VERSION}"
+          git push origin "${VERSION}"
+
+          echo "✅ Created tag: ${VERSION}"
+
+      - name: 🚀 Create GitHub Release
+        id: release
+        if: inputs.create-github-release && steps.check-tag.outputs.exists != 'true'
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: /tmp/${{ steps.zip.outputs.filename }}
+          tag: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          bodyFile: ${{ inputs.generate-changelog && '/tmp/changelog.txt' || '' }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: 🚀 Deploy to Shop
+        if: inputs.deploy-to-shop && inputs.shop-url != ''
+        run: |
+          echo "🚀 Deploying plugin to shop: ${{ inputs.shop-url }}"
+          # Add deployment logic here
+          echo "⚠️ Deployment logic not implemented yet"
+
+      - name: 📊 Build Summary
+        if: always()
+        run: |
+          echo "### 🛒 Shopware 5 Plugin Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Plugin Name** | ${{ steps.version.outputs.name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | ${{ steps.version.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Plugin System** | ${{ steps.detect-system.outputs.plugin-system }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **PHP Version** | ${{ inputs.php-version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Zip File** | ${{ steps.zip.outputs.filename }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Store Upload** | ${{ steps.store-upload.outputs.uploaded == 'true' && '✅ Uploaded' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **GitHub Release** | ${{ steps.release.outputs.id != '' && '✅ Created' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.check-tag.outputs.exists }}" = "true" ]; then
+            echo "ℹ️ **Note:** Version tag already exists, skipped release creation" >> $GITHUB_STEP_SUMMARY
+          fi

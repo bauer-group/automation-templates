@@ -1,0 +1,113 @@
+# Shopware 5 Plugin Build Configuration - Legacy Plugin System (v5.0 - v5.1)
+#
+# This configuration is optimized for legacy Shopware 5 plugins using the
+# old plugin system (Bootstrap.php, plugin.xml).
+#
+# Directory Structure:
+# - src/Backend/PluginName/  - Backend plugins
+# - src/Frontend/PluginName/ - Frontend plugins
+# - plugin.xml               - Plugin configuration
+# - Bootstrap.php            - Plugin bootstrap class
+
+# Plugin Configuration
+plugin:
+  # Force legacy plugin system
+  system: legacy
+
+  # Plugin name (extracted from plugin.xml if not specified)
+  name: ''
+
+  # Legacy plugin directory structure
+  source_directory: 'src'
+
+# PHP Configuration (Legacy plugins typically run on older PHP versions)
+php:
+  version: '7.2'
+  extensions:
+    - mbstring
+    - xml
+    - curl
+    - zip
+    - intl
+    - gd
+    - mysql
+
+  ini_values:
+    error_reporting: E_ALL
+    display_errors: 'On'
+    memory_limit: '256M'
+
+# Shopware CLI
+shopware_cli:
+  version: 'latest'
+
+# Build Configuration
+build:
+  # Legacy plugins typically don't use Composer
+  command: ''
+
+  # Frontend assets (LESS, Smarty templates)
+  node_build: false
+  node_version: '14.x'
+
+  # Composer (not typically used in legacy plugins)
+  composer_install: false
+  composer_options: ''
+
+# Testing (Legacy plugins may not have modern testing setup)
+testing:
+  run_tests: false
+  test_command: ''
+
+# Code Quality (Relaxed for legacy plugins)
+quality:
+  phpcs:
+    enabled: false
+    standard: 'PSR2'
+
+  phpstan:
+    enabled: false
+    level: '3'
+
+  security_check:
+    enabled: true
+
+# Shopware Store Integration
+store:
+  # Basic validation for legacy plugins
+  validate: true
+
+  # Update store page
+  update_page: true
+
+  # Upload to store
+  upload: true
+
+# Release Management
+release:
+  create_github_release: true
+  auto_tag: true
+  generate_changelog: true
+
+# Artifacts
+artifacts:
+  retention_days: 90
+
+# Deployment
+deployment:
+  enabled: false
+  shop_url: ''
+
+# Legacy Plugin Specific Settings
+legacy:
+  # Check for required files
+  required_files:
+    - 'plugin.xml'
+    - 'Bootstrap.php'
+
+  # Expected directory patterns
+  directory_patterns:
+    - 'src/Backend/*'
+    - 'src/Frontend/*'
+    - 'Views/'
+    - 'Snippets/'

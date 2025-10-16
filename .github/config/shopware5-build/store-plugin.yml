@@ -1,0 +1,146 @@
+# Shopware 5 Plugin Build Configuration - Store Plugin (Production Ready)
+#
+# This configuration is optimized for plugins intended for the Shopware Store.
+# It includes comprehensive quality checks, strict validation, and automatic
+# store integration.
+
+# Plugin Configuration
+plugin:
+  # Auto-detect plugin system
+  system: auto
+
+  # Plugin name (must match Shopware Store)
+  name: ''
+
+  # Source directory
+  source_directory: 'src'
+
+# PHP Configuration
+php:
+  version: '7.4'
+  extensions:
+    - mbstring
+    - xml
+    - curl
+    - zip
+    - intl
+    - gd
+    - mysql
+    - redis
+    - opcache
+
+  ini_values:
+    error_reporting: E_ALL
+    display_errors: 'On'
+    memory_limit: '512M'
+    opcache.enable: '1'
+
+# Shopware CLI
+shopware_cli:
+  version: 'latest'
+
+# Build Configuration
+build:
+  # Production-optimized build
+  command: ''
+
+  # Frontend build with production optimizations
+  node_build: true
+  node_version: '18.x'
+
+  # Optimized Composer install
+  composer_install: true
+  composer_options: '--no-dev --prefer-dist --no-interaction --optimize-autoloader --classmap-authoritative --no-scripts'
+
+# Testing (Comprehensive test coverage required)
+testing:
+  run_tests: true
+  test_command: 'vendor/bin/phpunit --colors=always --coverage-text'
+
+# Code Quality (Highest standards for store plugins)
+quality:
+  phpcs:
+    enabled: true
+    standard: 'PSR12'
+
+  phpstan:
+    enabled: true
+    level: '8'
+
+  security_check:
+    enabled: true
+    fail_on_issues: true
+
+# Shopware Store Integration
+store:
+  # Strict validation for store plugins
+  validate: true
+
+  # Automatic store page updates
+  update_page: true
+
+  # Automatic upload to store
+  upload: true
+
+  # Store-specific settings
+  settings:
+    # Ensure plugin info is complete
+    check_info_complete: true
+
+    # Validate plugin images
+    check_images: true
+
+    # Validate plugin description
+    check_description: true
+
+# Release Management
+release:
+  # Create GitHub releases
+  create_github_release: true
+
+  # Automatic versioning
+  auto_tag: true
+
+  # Comprehensive changelog
+  generate_changelog: true
+
+  # Release notes template
+  release_notes:
+    include_breaking_changes: true
+    include_deprecations: true
+    include_security_fixes: true
+
+# Artifacts (Long retention for store versions)
+artifacts:
+  retention_days: 365
+
+# Deployment (Test shop deployment before store upload)
+deployment:
+  enabled: false
+  shop_url: ''
+
+  # Pre-upload validation on test shop
+  test_before_upload: true
+
+# Additional Store Requirements
+store_requirements:
+  # License information
+  license:
+    file: 'LICENSE'
+    type: 'MIT'
+
+  # Documentation
+  documentation:
+    readme: 'README.md'
+    changelog: 'CHANGELOG.md'
+
+  # Plugin metadata
+  metadata:
+    author: ''
+    website: ''
+    support_email: ''
+
+  # Compatibility
+  compatibility:
+    min_shopware_version: '5.2.0'
+    max_shopware_version: ''

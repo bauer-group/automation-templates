@@ -1,0 +1,101 @@
+# Shopware 5 Plugin Build Configuration - Default
+#
+# This is the default configuration for Shopware 5 plugin builds.
+# It provides a basic setup suitable for most Shopware 5 plugins with automatic
+# plugin system detection and standard quality checks.
+
+# Plugin Configuration
+plugin:
+  # Auto-detect plugin system (legacy for v5.0-5.1, modern for v5.2+)
+  system: auto
+
+  # Plugin name (auto-detected from composer.json or plugin.json)
+  name: ''
+
+  # Plugin directory structure
+  # Legacy (v5.0-5.1): src/Backend/PluginName or src/Frontend/PluginName
+  # Modern (v5.2+): src/PluginName
+  source_directory: 'src'
+
+# PHP Configuration
+php:
+  version: '7.4'
+  extensions:
+    - mbstring
+    - xml
+    - curl
+    - zip
+    - intl
+    - gd
+    - mysql
+
+  ini_values:
+    error_reporting: E_ALL
+    display_errors: 'On'
+    memory_limit: '256M'
+
+# Shopware CLI
+shopware_cli:
+  version: 'latest'
+
+# Build Configuration
+build:
+  # Custom build command (leave empty for default)
+  command: ''
+
+  # Frontend asset build with Node.js
+  node_build: false
+  node_version: '18.x'
+
+  # Composer
+  composer_install: true
+  composer_options: '--no-dev --prefer-dist --no-interaction --optimize-autoloader'
+
+# Testing
+testing:
+  run_tests: true
+  test_command: ''
+
+# Code Quality
+quality:
+  phpcs:
+    enabled: true
+    standard: 'PSR12'
+
+  phpstan:
+    enabled: true
+    level: '5'
+
+  security_check:
+    enabled: true
+
+# Shopware Store Integration
+store:
+  # Validate plugin with shopware-cli
+  validate: true
+
+  # Update store page on [store update] commit message
+  update_page: true
+
+  # Upload to store on new version
+  upload: true
+
+# Release Management
+release:
+  # Create GitHub release for new versions
+  create_github_release: true
+
+  # Auto-create git tag from version
+  auto_tag: true
+
+  # Generate changelog from plugin
+  generate_changelog: true
+
+# Artifacts
+artifacts:
+  retention_days: 90
+
+# Deployment
+deployment:
+  enabled: false
+  shop_url: ''
