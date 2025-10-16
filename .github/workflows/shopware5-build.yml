@@ -673,6 +673,14 @@ jobs:
           echo "   System: $PLUGIN_SYSTEM"
           echo "   Root: $PLUGIN_ROOT"
 
+          # Create clean filename for ZIP (remove spaces, special chars, add version)
+          # Replace spaces with dots, remove special characters, append version
+          CLEAN_NAME=$(echo "$PLUGIN_NAME" | sed 's/ /./g' | sed 's/[^a-zA-Z0-9._-]//g')
+          ZIP_FILENAME="${CLEAN_NAME}_${PLUGIN_VERSION}.zip"
+
+          echo "   Original name: $PLUGIN_NAME"
+          echo "   ZIP filename: $ZIP_FILENAME"
+
           # Strategy: If /src exists in plugin root, zip its content
           # Otherwise zip the plugin root content
           cd "$PLUGIN_ROOT"
@@ -686,9 +694,9 @@ jobs:
           fi
 
           # Create ZIP file
-          ZIP_FILE="${WORK_DIR}/${PLUGIN_NAME}.zip"
+          ZIP_FILE="${WORK_DIR}/${ZIP_FILENAME}"
 
-          echo "🔨 Creating ZIP: ${PLUGIN_NAME}.zip"
+          echo "🔨 Creating ZIP: ${ZIP_FILENAME}"
           echo "   From directory: $ZIP_SOURCE"
           echo "   Files will be in ZIP root (no parent directory)"
 
@@ -713,8 +721,8 @@ jobs:
           cd "$WORK_DIR"
 
           if [ -f "$ZIP_FILE" ]; then
-            echo "✅ Plugin zip created: ${PLUGIN_NAME}.zip"
-            echo "filename=${PLUGIN_NAME}.zip" >> $GITHUB_OUTPUT
+            echo "✅ Plugin zip created: ${ZIP_FILENAME}"
+            echo "filename=${ZIP_FILENAME}" >> $GITHUB_OUTPUT
 
             # Verify ZIP structure
             echo ""
