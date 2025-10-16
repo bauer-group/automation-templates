@@ -382,13 +382,23 @@ jobs:
           if [ -n "$PLUGIN_JSON" ] && [ -f "$PLUGIN_JSON" ]; then
             echo "📄 Reading from plugin.json: $PLUGIN_JSON"
 
-            # Extract name
-            PLUGIN_NAME_TMP=$(jq -r '.name // .label.en // .label.de // empty' "$PLUGIN_JSON" 2>/dev/null)
+            # Extract plugin name from directory structure
+            # Plugin name is the directory containing plugin.json
+            # Could be: /src/PluginName/plugin.json OR /src/Core/PluginName/plugin.json
+            PLUGIN_JSON_DIR=$(dirname "$PLUGIN_JSON")
+            PLUGIN_NAME_TMP=$(basename "$PLUGIN_JSON_DIR")
+
+            # If the directory is Core/Frontend/Backend, the plugin name is the parent directory
+            if [[ "$PLUGIN_NAME_TMP" == "Core" ]] || [[ "$PLUGIN_NAME_TMP" == "Frontend" ]] || [[ "$PLUGIN_NAME_TMP" == "Backend" ]]; then
+              # Go up one level - the parent is the actual plugin name
+              PLUGIN_NAME_TMP=$(basename "$(dirname "$PLUGIN_JSON_DIR")")
+            fi
+
             if [ -n "$PLUGIN_NAME_TMP" ]; then
               PLUGIN_NAME="$PLUGIN_NAME_TMP"
-              echo "   ✅ Name extracted: $PLUGIN_NAME"
+              echo "   ✅ Name extracted from directory: $PLUGIN_NAME"
             else
-              echo "   ⚠️ No name found in plugin.json"
+              echo "   ⚠️ Could not extract name from directory structure"
             fi
 
             # Extract version - try currentVersion first (Shopware 5 standard)
@@ -673,12 +683,10 @@ jobs:
           echo "   System: $PLUGIN_SYSTEM"
           echo "   Root: $PLUGIN_ROOT"
 
-          # Create clean filename for ZIP (remove spaces, special chars, add version)
-          # Replace spaces with dots, remove special characters, append version
-          CLEAN_NAME=$(echo "$PLUGIN_NAME" | sed 's/ /./g' | sed 's/[^a-zA-Z0-9._-]//g')
-          ZIP_FILENAME="${CLEAN_NAME}_${PLUGIN_VERSION}.zip"
+          # Create ZIP filename with version
+          # Plugin name is already clean (from directory name)
+          ZIP_FILENAME="${PLUGIN_NAME}_${PLUGIN_VERSION}.zip"
 
-          echo "   Original name: $PLUGIN_NAME"
           echo "   ZIP filename: $ZIP_FILENAME"
 
           # Strategy: If /src exists in plugin root, zip its content
