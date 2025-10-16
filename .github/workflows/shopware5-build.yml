@@ -222,27 +222,62 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 🔍 Detect Plugin System
+      - name: 🔍 Detect Plugin System & Structure
         id: detect-system
         run: |
           PLUGIN_SYSTEM="${{ inputs.plugin-system }}"
+          PLUGIN_ROOT_DIR="."
+
+          echo "🔍 Searching for plugin files..."
+
+          # Recursive search for plugin files (max depth 3)
+          PLUGIN_XML=$(find . -maxdepth 3 -name "plugin.xml" -type f | head -1)
+          PLUGIN_JSON=$(find . -maxdepth 3 -name "plugin.json" -type f | head -1)
+          COMPOSER_JSON=$(find . -maxdepth 3 -name "composer.json" -type f | head -1)
+          BOOTSTRAP_PHP=$(find . -maxdepth 4 -name "Bootstrap.php" -type f | head -1)
+
+          # Determine plugin root directory
+          if [ -n "$PLUGIN_XML" ]; then
+            PLUGIN_ROOT_DIR=$(dirname "$PLUGIN_XML")
+            echo "Found plugin.xml at: $PLUGIN_XML"
+          elif [ -n "$PLUGIN_JSON" ]; then
+            PLUGIN_ROOT_DIR=$(dirname "$PLUGIN_JSON")
+            echo "Found plugin.json at: $PLUGIN_JSON"
+          elif [ -n "$COMPOSER_JSON" ]; then
+            PLUGIN_ROOT_DIR=$(dirname "$COMPOSER_JSON")
+            echo "Found composer.json at: $COMPOSER_JSON"
+          fi
 
           if [ "$PLUGIN_SYSTEM" = "auto" ]; then
-            # Check for plugin system indicators
-            if [ -f "plugin.xml" ]; then
+            # Auto-detect plugin system based on found files
+            if [ -n "$PLUGIN_XML" ] && [ -n "$BOOTSTRAP_PHP" ]; then
               PLUGIN_SYSTEM="legacy"
-              echo "Detected Legacy Plugin System (Shopware 5.0 - 5.1)"
-            elif [ -f "plugin.json" ] || [ -f "composer.json" ]; then
+              echo "✅ Detected Legacy Plugin System (Shopware 5.0 - 5.1)"
+              echo "   - plugin.xml: $PLUGIN_XML"
+              echo "   - Bootstrap.php: $BOOTSTRAP_PHP"
+            elif [ -n "$COMPOSER_JSON" ] || [ -n "$PLUGIN_JSON" ]; then
               PLUGIN_SYSTEM="modern"
-              echo "Detected Modern Plugin System (Shopware 5.2+)"
+              echo "✅ Detected Modern Plugin System (Shopware 5.2+)"
+              [ -n "$COMPOSER_JSON" ] && echo "   - composer.json: $COMPOSER_JSON"
+              [ -n "$PLUGIN_JSON" ] && echo "   - plugin.json: $PLUGIN_JSON"
             else
               echo "⚠️ Could not detect plugin system, defaulting to modern"
               PLUGIN_SYSTEM="modern"
             fi
           fi
 
+          # Export variables
           echo "plugin-system=$PLUGIN_SYSTEM" >> $GITHUB_OUTPUT
-          echo "Plugin System: $PLUGIN_SYSTEM"
+          echo "plugin-root=$PLUGIN_ROOT_DIR" >> $GITHUB_OUTPUT
+          echo "plugin-xml=$PLUGIN_XML" >> $GITHUB_OUTPUT
+          echo "plugin-json=$PLUGIN_JSON" >> $GITHUB_OUTPUT
+          echo "composer-json=$COMPOSER_JSON" >> $GITHUB_OUTPUT
+          echo "bootstrap-php=$BOOTSTRAP_PHP" >> $GITHUB_OUTPUT
+
+          echo ""
+          echo "📋 Detection Summary:"
+          echo "   Plugin System: $PLUGIN_SYSTEM"
+          echo "   Plugin Root: $PLUGIN_ROOT_DIR"
 
       - name: 🔧 Setup PHP
         uses: shivammathur/setup-php@v2
@@ -276,57 +311,138 @@ jobs:
           echo "✅ Composer auth configured"
 
       - name: 📚 Install Composer Dependencies
-        if: hashFiles('composer.json') != ''
         run: |
-          if [ "${{ steps.detect-system.outputs.plugin-system }}" = "legacy" ]; then
-            echo "Legacy system - skipping composer install"
+          COMPOSER_JSON="${{ steps.detect-system.outputs.composer-json }}"
+          PLUGIN_ROOT="${{ steps.detect-system.outputs.plugin-root }}"
+
+          if [ -n "$COMPOSER_JSON" ] && [ -f "$COMPOSER_JSON" ]; then
+            if [ "${{ steps.detect-system.outputs.plugin-system }}" = "legacy" ]; then
+              echo "ℹ️ Legacy system detected - Composer is optional"
+              cd "$PLUGIN_ROOT"
+              composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader || echo "No composer dependencies to install"
+            else
+              echo "📦 Installing Composer dependencies in: $PLUGIN_ROOT"
+              cd "$PLUGIN_ROOT"
+              composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+            fi
           else
-            composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+            echo "ℹ️ No composer.json found, skipping dependency installation"
           fi
 
       - name: 📚 Install Node.js Dependencies
-        if: inputs.node-build && hashFiles('package.json') != ''
-        run: npm ci
+        if: inputs.node-build
+        run: |
+          PLUGIN_ROOT="${{ steps.detect-system.outputs.plugin-root }}"
+          cd "$PLUGIN_ROOT"
+
+          if [ -f "package.json" ]; then
+            echo "📦 Installing Node.js dependencies in: $PLUGIN_ROOT"
+            npm ci || npm install
+          else
+            echo "ℹ️ No package.json found in plugin root"
+          fi
 
       - name: 🏗️ Build Frontend Assets
         if: inputs.node-build
         env:
           NODE_OPTIONS: --openssl-legacy-provider
         run: |
+          PLUGIN_ROOT="${{ steps.detect-system.outputs.plugin-root }}"
+          cd "$PLUGIN_ROOT"
+
           if [ -n "${{ inputs.build-command }}" ]; then
+            echo "🔨 Running custom build command: ${{ inputs.build-command }}"
             ${{ inputs.build-command }}
           elif [ -f "package.json" ]; then
-            npm run build || echo "No build script found"
+            echo "🔨 Running npm build script"
+            npm run build || npm run prod || echo "⚠️ No build script found in package.json"
+          else
+            echo "⚠️ No package.json found, skipping frontend build"
           fi
 
       - name: 🏷️ Extract Plugin Information
         id: version
         run: |
-          # Extract plugin name and version
-          if [ -f "composer.json" ]; then
-            PLUGIN_NAME=$(jq -r '.name // .extra.shopware.name // empty' composer.json | cut -d'/' -f2)
-            PLUGIN_VERSION=$(jq -r '.version // empty' composer.json)
-          elif [ -f "plugin.json" ]; then
-            PLUGIN_NAME=$(jq -r '.name // empty' plugin.json)
-            PLUGIN_VERSION=$(jq -r '.currentVersion // .version // empty' plugin.json)
-          elif [ -f "plugin.xml" ]; then
-            PLUGIN_NAME=$(grep -oP '<label[^>]*>\K[^<]+' plugin.xml | head -1)
-            PLUGIN_VERSION=$(grep -oP '<version>\K[^<]+' plugin.xml | head -1)
+          PLUGIN_NAME=""
+          PLUGIN_VERSION=""
+          PLUGIN_ROOT="${{ steps.detect-system.outputs.plugin-root }}"
+
+          echo "📦 Extracting plugin information from: $PLUGIN_ROOT"
+
+          # Try to extract from found files using saved paths
+          COMPOSER_JSON="${{ steps.detect-system.outputs.composer-json }}"
+          PLUGIN_JSON="${{ steps.detect-system.outputs.plugin-json }}"
+          PLUGIN_XML="${{ steps.detect-system.outputs.plugin-xml }}"
+
+          # Priority 1: composer.json (modern plugins)
+          if [ -n "$COMPOSER_JSON" ] && [ -f "$COMPOSER_JSON" ]; then
+            echo "Reading from: $COMPOSER_JSON"
+            # Try to extract plugin name from composer.json
+            PLUGIN_NAME=$(jq -r '.name // empty' "$COMPOSER_JSON" 2>/dev/null | cut -d'/' -f2)
+
+            # If no name in root, try extra.shopware-plugin-class or extra.label
+            if [ -z "$PLUGIN_NAME" ]; then
+              PLUGIN_NAME=$(jq -r '.extra."shopware-plugin-class" // .extra.label // empty' "$COMPOSER_JSON" 2>/dev/null | sed 's/.*\\/\([^\\]*\)$/\1/')
+            fi
+
+            # Try version
+            PLUGIN_VERSION=$(jq -r '.version // empty' "$COMPOSER_JSON" 2>/dev/null)
           fi
 
-          # Use input plugin-name if provided
+          # Priority 2: plugin.json (modern plugins alternative)
+          if [ -z "$PLUGIN_NAME" ] || [ -z "$PLUGIN_VERSION" ]; then
+            if [ -n "$PLUGIN_JSON" ] && [ -f "$PLUGIN_JSON" ]; then
+              echo "Reading from: $PLUGIN_JSON"
+              [ -z "$PLUGIN_NAME" ] && PLUGIN_NAME=$(jq -r '.name // .label.en // .label.de // empty' "$PLUGIN_JSON" 2>/dev/null)
+              [ -z "$PLUGIN_VERSION" ] && PLUGIN_VERSION=$(jq -r '.currentVersion // .version // empty' "$PLUGIN_JSON" 2>/dev/null)
+            fi
+          fi
+
+          # Priority 3: plugin.xml (legacy plugins)
+          if [ -z "$PLUGIN_NAME" ] || [ -z "$PLUGIN_VERSION" ]; then
+            if [ -n "$PLUGIN_XML" ] && [ -f "$PLUGIN_XML" ]; then
+              echo "Reading from: $PLUGIN_XML"
+              [ -z "$PLUGIN_NAME" ] && PLUGIN_NAME=$(grep -oP '<label[^>]*>\K[^<]+' "$PLUGIN_XML" 2>/dev/null | head -1)
+              [ -z "$PLUGIN_VERSION" ] && PLUGIN_VERSION=$(grep -oP '<version>\K[^<]+' "$PLUGIN_XML" 2>/dev/null | head -1)
+            fi
+          fi
+
+          # Priority 4: Use input plugin-name if provided
           if [ -n "${{ inputs.plugin-name }}" ]; then
             PLUGIN_NAME="${{ inputs.plugin-name }}"
+            echo "Using plugin name from input: $PLUGIN_NAME"
           fi
 
-          # Fallback to repository name
+          # Priority 5: Try to detect from directory structure
+          if [ -z "$PLUGIN_NAME" ]; then
+            # Look for main plugin PHP class in src/ directory
+            MAIN_CLASS=$(find "$PLUGIN_ROOT" -maxdepth 3 -name "*.php" -type f -exec grep -l "class.*extends.*Plugin" {} \; | head -1)
+            if [ -n "$MAIN_CLASS" ]; then
+              PLUGIN_NAME=$(basename "$MAIN_CLASS" .php)
+              echo "Detected plugin name from main class: $PLUGIN_NAME"
+            fi
+          fi
+
+          # Fallback: Use repository name
           if [ -z "$PLUGIN_NAME" ]; then
             PLUGIN_NAME="${{ github.event.repository.name }}"
+            echo "⚠️ Using repository name as fallback: $PLUGIN_NAME"
+          fi
+
+          # Fallback version
+          if [ -z "$PLUGIN_VERSION" ]; then
+            PLUGIN_VERSION="0.0.0"
+            echo "⚠️ No version found, using fallback: $PLUGIN_VERSION"
           fi
 
           echo "name=$PLUGIN_NAME" >> $GITHUB_OUTPUT
           echo "version=$PLUGIN_VERSION" >> $GITHUB_OUTPUT
-          echo "Plugin: $PLUGIN_NAME v$PLUGIN_VERSION"
+
+          echo ""
+          echo "✅ Plugin Information:"
+          echo "   Name: $PLUGIN_NAME"
+          echo "   Version: $PLUGIN_VERSION"
+          echo "   Root: $PLUGIN_ROOT"
 
       - name: ✅ Validate Plugin Structure
         if: inputs.validate-plugin
@@ -334,58 +450,149 @@ jobs:
         run: |
           echo "🔍 Validating plugin structure..."
 
-          if [ "${{ steps.detect-system.outputs.plugin-system }}" = "legacy" ]; then
+          PLUGIN_ROOT="${{ steps.detect-system.outputs.plugin-root }}"
+          PLUGIN_SYSTEM="${{ steps.detect-system.outputs.plugin-system }}"
+          PLUGIN_NAME="${{ steps.version.outputs.name }}"
+
+          cd "$PLUGIN_ROOT"
+
+          if [ "$PLUGIN_SYSTEM" = "legacy" ]; then
             echo "Checking legacy plugin structure..."
-            [ ! -f "plugin.xml" ] && echo "⚠️ plugin.xml not found" || echo "✅ plugin.xml found"
-            [ ! -d "Bootstrap.php" ] && echo "⚠️ Bootstrap.php not found" || echo "✅ Bootstrap.php found"
+
+            # Check for required legacy files
+            PLUGIN_XML="${{ steps.detect-system.outputs.plugin-xml }}"
+            BOOTSTRAP_PHP="${{ steps.detect-system.outputs.bootstrap-php }}"
+
+            if [ -n "$PLUGIN_XML" ] && [ -f "$PLUGIN_XML" ]; then
+              echo "✅ plugin.xml found: $PLUGIN_XML"
+            else
+              echo "❌ plugin.xml not found (required for legacy plugins)"
+            fi
+
+            if [ -n "$BOOTSTRAP_PHP" ] && [ -f "$BOOTSTRAP_PHP" ]; then
+              echo "✅ Bootstrap.php found: $BOOTSTRAP_PHP"
+            else
+              echo "❌ Bootstrap.php not found (required for legacy plugins)"
+            fi
+
+            # Check for typical legacy directories
+            [ -d "Views" ] && echo "✅ Views directory found" || echo "ℹ️ Views directory not found"
+            [ -d "Snippets" ] && echo "✅ Snippets directory found" || echo "ℹ️ Snippets directory not found"
+
           else
             echo "Checking modern plugin structure..."
-            [ ! -f "composer.json" ] && echo "⚠️ composer.json not found" || echo "✅ composer.json found"
+
+            # Check for required modern files
+            COMPOSER_JSON="${{ steps.detect-system.outputs.composer-json }}"
+
+            if [ -n "$COMPOSER_JSON" ] && [ -f "$COMPOSER_JSON" ]; then
+              echo "✅ composer.json found: $COMPOSER_JSON"
+            else
+              echo "⚠️ composer.json not found (recommended for modern plugins)"
+            fi
 
             # Find main plugin class
-            PLUGIN_CLASS=$(find . -name "${{ steps.version.outputs.name }}.php" -type f | head -1)
-            [ -z "$PLUGIN_CLASS" ] && echo "⚠️ Main plugin class not found" || echo "✅ Main plugin class found: $PLUGIN_CLASS"
+            PLUGIN_CLASS=$(find . -maxdepth 3 -name "${PLUGIN_NAME}.php" -type f | head -1)
+            if [ -n "$PLUGIN_CLASS" ]; then
+              echo "✅ Main plugin class found: $PLUGIN_CLASS"
+            else
+              echo "⚠️ Main plugin class ${PLUGIN_NAME}.php not found"
+            fi
+
+            # Check for Resources directory
+            RESOURCES_DIR=$(find . -maxdepth 2 -type d -name "Resources" | head -1)
+            if [ -n "$RESOURCES_DIR" ]; then
+              echo "✅ Resources directory found: $RESOURCES_DIR"
+            else
+              echo "ℹ️ Resources directory not found"
+            fi
           fi
 
       - name: 🧪 Run PHPUnit Tests
-        if: inputs.run-tests && hashFiles('phpunit.xml', 'phpunit.xml.dist') != ''
+        if: inputs.run-tests
         continue-on-error: true
         run: |
+          PLUGIN_ROOT="${{ steps.detect-system.outputs.plugin-root }}"
+          cd "$PLUGIN_ROOT"
+
+          # Check if phpunit config exists
+          if [ ! -f "phpunit.xml" ] && [ ! -f "phpunit.xml.dist" ]; then
+            echo "ℹ️ No PHPUnit configuration found, skipping tests"
+            exit 0
+          fi
+
           if [ -n "${{ inputs.test-command }}" ]; then
+            echo "🧪 Running custom test command: ${{ inputs.test-command }}"
             ${{ inputs.test-command }}
           elif [ -f "vendor/bin/phpunit" ]; then
+            echo "🧪 Running PHPUnit tests"
             vendor/bin/phpunit --colors=always
           else
-            echo "PHPUnit not found, skipping tests"
+            echo "⚠️ PHPUnit not found in vendor/bin, skipping tests"
           fi
 
       - name: 🔍 PHP CodeSniffer
         if: inputs.run-phpcs
         continue-on-error: true
         run: |
+          PLUGIN_ROOT="${{ steps.detect-system.outputs.plugin-root }}"
+          cd "$PLUGIN_ROOT"
+
           if [ -f "vendor/bin/phpcs" ]; then
-            vendor/bin/phpcs --standard=${{ inputs.phpcs-standard }} --report=summary src/ || true
+            echo "🔍 Running PHP CodeSniffer (Standard: ${{ inputs.phpcs-standard }})"
+
+            # Find source directories
+            if [ -d "src" ]; then
+              vendor/bin/phpcs --standard=${{ inputs.phpcs-standard }} --report=summary src/ || true
+            elif [ -d "." ]; then
+              # Scan current directory but exclude vendor
+              vendor/bin/phpcs --standard=${{ inputs.phpcs-standard }} --report=summary --ignore=vendor . || true
+            fi
           else
-            echo "PHP CodeSniffer not installed, skipping..."
+            echo "ℹ️ PHP CodeSniffer not installed, skipping..."
           fi
 
       - name: 🔬 PHPStan Analysis
         if: inputs.run-phpstan
         continue-on-error: true
         run: |
+          PLUGIN_ROOT="${{ steps.detect-system.outputs.plugin-root }}"
+          cd "$PLUGIN_ROOT"
+
           if [ -f "vendor/bin/phpstan" ]; then
-            vendor/bin/phpstan analyse --level=${{ inputs.phpstan-level }} --no-progress src/ || true
+            echo "🔬 Running PHPStan (Level: ${{ inputs.phpstan-level }})"
+
+            # Find source directories
+            if [ -d "src" ]; then
+              vendor/bin/phpstan analyse --level=${{ inputs.phpstan-level }} --no-progress src/ || true
+            elif [ -f "phpstan.neon" ] || [ -f "phpstan.neon.dist" ]; then
+              # Use config file if available
+              vendor/bin/phpstan analyse --level=${{ inputs.phpstan-level }} --no-progress || true
+            else
+              echo "ℹ️ No src/ directory or phpstan config found"
+            fi
           else
-            echo "PHPStan not installed, skipping..."
+            echo "ℹ️ PHPStan not installed, skipping..."
           fi
 
       - name: 🔒 Security Check
         if: inputs.run-security-check
         continue-on-error: true
         run: |
+          PLUGIN_ROOT="${{ steps.detect-system.outputs.plugin-root }}"
+          COMPOSER_LOCK="$PLUGIN_ROOT/composer.lock"
+
+          if [ ! -f "$COMPOSER_LOCK" ]; then
+            echo "ℹ️ No composer.lock found, skipping security check"
+            exit 0
+          fi
+
+          echo "🔒 Running security vulnerability check"
           curl -L https://github.com/fabpot/local-php-security-checker/releases/download/v2.0.6/local-php-security-checker_2.0.6_linux_amd64 -o security-checker
           chmod +x security-checker
-          ./security-checker || echo "⚠️ Security vulnerabilities found (non-blocking)"
+
+          cd "$PLUGIN_ROOT"
+          ../security-checker || echo "⚠️ Security vulnerabilities found (non-blocking)"
 
       - name: 📦 Build & Create Plugin Zip
         id: zip
@@ -393,21 +600,116 @@ jobs:
           NODE_OPTIONS: --openssl-legacy-provider
         run: |
           PLUGIN_NAME="${{ steps.version.outputs.name }}"
-          GIT_COMMIT="${{ github.sha }}"
+          PLUGIN_VERSION="${{ steps.version.outputs.version }}"
+          PLUGIN_ROOT="${{ steps.detect-system.outputs.plugin-root }}"
+          PLUGIN_SYSTEM="${{ steps.detect-system.outputs.plugin-system }}"
+          WORK_DIR=$(pwd)
 
-          echo "Building plugin: $PLUGIN_NAME"
+          echo "📦 Building plugin: $PLUGIN_NAME v$PLUGIN_VERSION"
+          echo "   System: $PLUGIN_SYSTEM"
+          echo "   Root: $PLUGIN_ROOT"
 
-          # Use shopware-cli to build the plugin
-          shopware-cli extension zip --git-commit $GIT_COMMIT . --release
+          # Determine the source directory for zipping
+          cd "$PLUGIN_ROOT"
 
-          # Rename zip file
-          ZIP_FILE="${PLUGIN_NAME}-${GIT_COMMIT}.zip"
-          FINAL_ZIP="${PLUGIN_NAME}.zip"
+          # For modern plugins with src/ subdirectory: use src/ content as root
+          # For legacy plugins or modern without src/: use plugin root
+          if [ "$PLUGIN_SYSTEM" = "modern" ] && [ -d "src" ]; then
+            ZIP_SOURCE="src"
+            echo "   ZIP source: src/ directory (modern plugin)"
+          else
+            ZIP_SOURCE="."
+            echo "   ZIP source: plugin root"
+          fi
+
+          # Create ZIP file with correct structure (files in root, no subdirectory)
+          ZIP_FILE="${WORK_DIR}/${PLUGIN_NAME}.zip"
+
+          echo "🔨 Creating ZIP: ${PLUGIN_NAME}.zip"
+          echo "   From: $ZIP_SOURCE"
+
+          cd "$ZIP_SOURCE"
+
+          # Create ZIP excluding development files
+          zip -r "$ZIP_FILE" . \
+            -x "*.git*" \
+            -x "*node_modules*" \
+            -x "*tests*" \
+            -x "*.idea*" \
+            -x "*.vscode*" \
+            -x "*.DS_Store" \
+            -x "*phpunit.xml*" \
+            -x "*.editorconfig" \
+            -x "*.gitignore" \
+            -x "*.gitattributes" \
+            -x "*composer.lock" \
+            -x "*.md" \
+            -q
+
+          cd "$WORK_DIR"
 
           if [ -f "$ZIP_FILE" ]; then
-            mv "$ZIP_FILE" "$FINAL_ZIP"
-            echo "✅ Plugin zip created: $FINAL_ZIP"
-            echo "filename=$FINAL_ZIP" >> $GITHUB_OUTPUT
+            echo "✅ Plugin zip created: ${PLUGIN_NAME}.zip"
+            echo "filename=${PLUGIN_NAME}.zip" >> $GITHUB_OUTPUT
+
+            # Verify ZIP structure
+            echo ""
+            echo "📋 ZIP Contents (first 30 entries):"
+            unzip -l "$ZIP_FILE" | head -35
+
+            # Count files in ZIP
+            FILE_COUNT=$(unzip -l "$ZIP_FILE" | grep -c "^  [0-9]" || echo "0")
+            ZIP_SIZE=$(ls -lh "$ZIP_FILE" | awk '{print $5}')
+
+            echo ""
+            echo "📊 ZIP Statistics:"
+            echo "   Total files: $FILE_COUNT"
+            echo "   File size: $ZIP_SIZE"
+
+            # Verify essential files exist (should be in root, not in subdirectory)
+            echo ""
+            echo "🔍 Verifying essential files in ZIP root:"
+
+            if [ "$PLUGIN_SYSTEM" = "legacy" ]; then
+              if unzip -l "$ZIP_FILE" | grep -q "^[^/]*plugin\.xml$"; then
+                echo "   ✅ plugin.xml found in root"
+              else
+                echo "   ❌ plugin.xml NOT found in root"
+              fi
+
+              if unzip -l "$ZIP_FILE" | grep -q "^[^/]*Bootstrap\.php$"; then
+                echo "   ✅ Bootstrap.php found in root"
+              else
+                echo "   ❌ Bootstrap.php NOT found in root"
+              fi
+            else
+              if unzip -l "$ZIP_FILE" | grep -q "composer\.json$"; then
+                echo "   ✅ composer.json found"
+              else
+                echo "   ⚠️ composer.json NOT found"
+              fi
+
+              if unzip -l "$ZIP_FILE" | grep -q "${PLUGIN_NAME}\.php$"; then
+                echo "   ✅ ${PLUGIN_NAME}.php found"
+              else
+                echo "   ℹ️ ${PLUGIN_NAME}.php not found (might be in subdirectory)"
+              fi
+            fi
+
+            # Verify NO parent directory wrapping
+            if unzip -l "$ZIP_FILE" | head -10 | grep -q "^[^/]*/"; then
+              FIRST_DIR=$(unzip -l "$ZIP_FILE" | grep "^  [0-9]" | head -1 | awk '{print $4}' | cut -d'/' -f1)
+              if [ -n "$FIRST_DIR" ] && [ "$FIRST_DIR" != "." ]; then
+                echo ""
+                echo "⚠️ WARNING: ZIP might have wrong structure!"
+                echo "   Found directory: $FIRST_DIR/"
+                echo "   Expected: Files directly in ZIP root"
+              fi
+            else
+              echo ""
+              echo "✅ ZIP structure correct: Files are in root (no parent directory)"
+            fi
+
           else
             echo "❌ Failed to create plugin zip"
             exit 1
