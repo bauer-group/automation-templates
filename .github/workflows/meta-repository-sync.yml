@@ -421,33 +421,13 @@ jobs:
             cp "$TEMPLATE_FILE" README.md
           else
             echo "📝 Creating README from configuration..."
-            cat > README.md <<'MDEOF'
-# {{TITLE}}
+            TITLE="${{ steps.load-config.outputs.title }}"
+            DESCRIPTION="${{ steps.load-config.outputs.description }}"
+            DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
 
-{{DESCRIPTION}}
-
-**Organization:** `{{ORGANIZATION}}`
-**Last Updated:** {{DATE}}
-
----
-
-{{GROUPS}}
-
----
-
-*This repository is automatically maintained. Changes are synchronized periodically.*
-MDEOF
+            printf "# %s\n\n%s\n\n**Organization:** \`%s\`\n**Last Updated:** %s\n\n---\n\n__GROUPS_PLACEHOLDER__\n\n---\n\n*This repository is automatically maintained. Changes are synchronized periodically.*\n" \
+              "${TITLE}" "${DESCRIPTION}" "${ORG}" "${DATE}" > README.md
           fi
-
-          # Replace variables
-          TITLE="${{ steps.load-config.outputs.title }}"
-          DESCRIPTION="${{ steps.load-config.outputs.description }}"
-          DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
-
-          sed -i "s|{{TITLE}}|${TITLE}|g" README.md
-          sed -i "s|{{DESCRIPTION}}|${DESCRIPTION}|g" README.md
-          sed -i "s|{{ORGANIZATION}}|${ORG}|g" README.md
-          sed -i "s|{{DATE}}|${DATE}|g" README.md
 
           # Generate groups section
           GROUPS_CONTENT=""
@@ -481,9 +461,9 @@ MDEOF
           done
 
           # Replace groups placeholder
-          if grep -q "{{GROUPS}}" README.md; then
-            # Use awk to replace {{GROUPS}} with file content
-            awk '/{{GROUPS}}/ {system("cat /tmp/groups.md"); next} 1' README.md > README.md.tmp
+          if grep -q "__GROUPS_PLACEHOLDER__" README.md; then
+            # Use awk to replace __GROUPS_PLACEHOLDER__ with file content
+            awk '/__GROUPS_PLACEHOLDER__/ {system("cat /tmp/groups.md"); next} 1' README.md > README.md.tmp
             mv README.md.tmp README.md
           else
             # Append if placeholder not found
