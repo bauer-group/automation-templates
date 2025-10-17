@@ -1,3 +1,23 @@
+## [1.10.0](https://github.com/bauer-group/automation-templates/compare/v1.9.0...v1.10.0) (2025-10-17)
+
+### 🚀 Features
+
+* add meta repository sync workflow documentation and examples ([dc3fc40](https://github.com/bauer-group/automation-templates/commit/dc3fc40944ad78caae5aac340c751ecbef3dafe0))
+
+### 🐛 Bug Fixes
+
+* behebe Version-Extraktion aus plugin.json und plugin.xml ([4d0a0b3](https://github.com/bauer-group/automation-templates/commit/4d0a0b34cb3e53b5067a0bad2975be09df8f5789))
+* erhöhe maxdepth für find-Befehle von 3 auf 5 für tief verschachtelte Plugin-Strukturen ([3889a0b](https://github.com/bauer-group/automation-templates/commit/3889a0bdd02b737ae51f1f3f212c0587bd0a37c2))
+* erweitere die Erkennung der Plugin-Struktur für Legacy-Plugins und füge Unterstützung für Core-Plugins hinzu ([1e4a7b8](https://github.com/bauer-group/automation-templates/commit/1e4a7b8c2a87f9fb1cf6209b76c13cf3d8744d55))
+* erweitere die Erkennung und Validierung von Plugin-Systemen im Build-Prozess ([6a17d52](https://github.com/bauer-group/automation-templates/commit/6a17d52acee56b1d988be1d28a97b453c84fe5fb))
+* extrahiere Plugin-Namen aus Verzeichnisstruktur statt aus label ([749e8b0](https://github.com/bauer-group/automation-templates/commit/749e8b0a015cfb6f1df0614f1b0397212ba895fc))
+* generiere sauberen ZIP-Dateinamen mit Version ([9177355](https://github.com/bauer-group/automation-templates/commit/9177355c64ccbd3f3e07d321a9964d1e10a189e8))
+* verbessere die Bestimmung des Plugin-Stammverzeichnisses und passe die ZIP-Dateinamensgenerierung an das Repository an ([4958c3d](https://github.com/bauer-group/automation-templates/commit/4958c3db1cc709fa49f5185d6743741cf05601bd))
+* verbessere die Erkennung von BAUERGROUP-Plugins und optimiere die ZIP-Struktur für verschiedene Plugin-Typen ([0230acc](https://github.com/bauer-group/automation-templates/commit/0230accefe3dcea1f21248dc6e471015276e31ba))
+* verbessere die Handhabung der Composer-Abhängigkeiten und optimiere die ZIP-Struktur für Plugins ([72d6097](https://github.com/bauer-group/automation-templates/commit/72d6097f4d0c522cd2ca8efe434fb20fdb60815c))
+* verbessere die Handhabung der Composer-Authentifizierung im Build-Prozess ([54dd8af](https://github.com/bauer-group/automation-templates/commit/54dd8afc21da9fefc2a5e8aea3125aa6e9ee162a))
+* verbessere die Plugin-Namens- und Versionsextraktion aus plugin.json, plugin.xml und composer.json ([c4bbae7](https://github.com/bauer-group/automation-templates/commit/c4bbae7aebd21f6dd83a2b701c1b5f22336b4442))
+
 ## [1.9.0](https://github.com/bauer-group/automation-templates/compare/v1.8.1...v1.9.0) (2025-10-16)
 
 ### 🚀 Features
