@@ -429,17 +429,43 @@ jobs:
             echo "📖 Using template: $TEMPLATE_FILE"
             cp "$TEMPLATE_FILE" README.md
 
-            # Replace template variables using jq for safe string handling
-            # This avoids issues with special characters like backticks, quotes, etc.
-            jq -Rs --arg title "$TITLE" \
-                   --arg desc "$DESCRIPTION" \
-                   --arg org "$ORG" \
-                   --arg date "$DATE" \
-                   'gsub("\\{\\{TITLE\\}\\}"; $title) |
-                    gsub("\\{\\{DESCRIPTION\\}\\}"; $desc) |
-                    gsub("\\{\\{ORGANIZATION\\}\\}"; $org) |
-                    gsub("\\{\\{DATE\\}\\}"; $date)' README.md > README.md.tmp
-            mv README.md.tmp README.md
+            # Save variables to temp files to avoid shell interpretation
+            echo "$TITLE" > /tmp/var_title.txt
+            echo "$DESCRIPTION" > /tmp/var_desc.txt
+            echo "$ORG" > /tmp/var_org.txt
+            echo "$DATE" > /tmp/var_date.txt
+
+            # Replace template variables using Python for safe handling
+            python3 <<'PYSCRIPT'
+          import re
+
+          # Read the template
+          with open('README.md', 'r', encoding='utf-8') as f:
+              content = f.read()
+
+          # Read variables from temp files
+          with open('/tmp/var_title.txt', 'r', encoding='utf-8') as f:
+              title = f.read().strip()
+          with open('/tmp/var_desc.txt', 'r', encoding='utf-8') as f:
+              desc = f.read().strip()
+          with open('/tmp/var_org.txt', 'r', encoding='utf-8') as f:
+              org = f.read().strip()
+          with open('/tmp/var_date.txt', 'r', encoding='utf-8') as f:
+              date = f.read().strip()
+
+          # Replace placeholders
+          content = content.replace('{{TITLE}}', title)
+          content = content.replace('{{DESCRIPTION}}', desc)
+          content = content.replace('{{ORGANIZATION}}', org)
+          content = content.replace('{{DATE}}', date)
+
+          # Write back
+          with open('README.md', 'w', encoding='utf-8') as f:
+              f.write(content)
+          PYSCRIPT
+
+            # Clean up temp files
+            rm -f /tmp/var_*.txt
           else
             echo "📝 Creating README from configuration..."
             # Use jq to safely generate README with special characters
@@ -460,7 +486,7 @@ jobs:
             PREFIX_REGEX=$(echo "$group" | jq -r '.remove_prefix // ""')
 
             # Start group section
-            echo "## 📦 ${NAME}" >> /tmp/groups.md
+            echo "## ${NAME}" >> /tmp/groups.md
             echo "" >> /tmp/groups.md
             echo "${DESC}" >> /tmp/groups.md
             echo "" >> /tmp/groups.md
