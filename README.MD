@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-10-17 23:00:47 UTC -->
+<!-- Generated on 2025-10-17 23:03:16 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -346,6 +346,71 @@ jobs:
 - **Legacy (v5.0-5.1)**: `plugin.xml`, `Bootstrap.php` in `src/Backend/PluginName` or `src/Frontend/PluginName`
 - **Modern (v5.2+)**: `composer.json`, PSR-4 autoloading in `src/PluginName`
 
+### 🔄 Meta Repository Sync System
+
+Automated repository collection and organization using GitHub topics and git submodules.
+
+| Component | Purpose | Usage |
+|-----------|---------|-------|
+| **🔧 meta-repository-sync workflow** | Automated submodule sync by topics | `uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main` |
+| **📋 Configuration Templates** | Topic-based organization | `.github/config/meta-repository/default.json` |
+
+**Features:**
+
+- ✅ **Topic-Based Organization** - Automatically discover and organize repositories by GitHub topics
+- ✅ **Submodule Automation** - Add, update, and remove submodules based on topic configuration
+- ✅ **README Generation** - Auto-generate repository overview with grouped project listings
+- ✅ **Multi-Format Output** - Generate JSON and TXT files for each topic group
+- ✅ **Prefix Removal** - Clean repository names with configurable prefix patterns
+- ✅ **Scheduled Sync** - Automatic periodic synchronization with organization repositories
+
+**Quick Start - Meta Repository:**
+```yaml
+name: 🔄 Meta Repository Sync
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM
+  workflow_dispatch:
+
+jobs:
+  sync:
+    uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
+    with:
+      config-file: '.github/config/meta-repository/topics.json'
+      generate-readme: true
+      generate-json: true
+      generate-txt: true
+      auto-commit: true
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**Configuration Example (.github/config/meta-repository/topics.json):**
+
+```json
+{
+  "title": "Project Portfolio",
+  "description": "Organized collection of repositories by technology",
+  "groups": [
+    {
+      "topic": "python-library",
+      "folder": "Python-Libraries",
+      "name": "Python Libraries",
+      "description": "Reusable Python packages and libraries",
+      "remove_prefix": "python-"
+    },
+    {
+      "topic": "docker-app",
+      "folder": "Docker-Applications",
+      "name": "Docker Applications",
+      "description": "Containerized applications and services",
+      "remove_prefix": "docker-"
+    }
+  ]
+}
+```
+
 ### 🏗️ Additional Build Systems
 
 | System | Status | Description | Usage |
@@ -364,6 +429,7 @@ jobs:
 
 | System | Status | Description | Usage |
 |--------|--------|-------------|-------|
+| **🟢 Meta Repository Sync** | Available | Automated submodule sync by topics | `uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main` |
 | **🟢 Teams Notifications** | Available | Microsoft Teams integration | `uses: bauer-group/automation-templates/.github/workflows/teams-notifications.yml@main` |
 | **🟢 Repository Cleanup** | Available | Automated repository maintenance | `uses: bauer-group/automation-templates/.github/workflows/repository-cleanup.yml@main` |
 | **🟢 AI Issue Summary** | Available | AI-powered issue summarization | `uses: bauer-group/automation-templates/.github/workflows/ai-issue-summary.yml@main` |
@@ -872,5 +938,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-10-17 23:00:47 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-10-17 23:03:16 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
