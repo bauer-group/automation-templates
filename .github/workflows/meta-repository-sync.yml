@@ -88,11 +88,6 @@ on:
         required: false
         default: 30
 
-    secrets:
-      GITHUB_TOKEN:
-        description: 'GitHub token for API access'
-        required: false
-
     outputs:
       sync-summary:
         description: 'Summary of sync operation'
@@ -113,14 +108,14 @@ jobs:
       repos-count: ${{ steps.count.outputs.total }}
 
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN || github.token }}
+      GH_TOKEN: ${{ github.token }}
       ORGANIZATION: ${{ inputs.organization || github.repository_owner }}
 
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN || github.token }}
+          token: ${{ github.token }}
           submodules: recursive
           fetch-depth: 0
 

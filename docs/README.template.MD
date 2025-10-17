@@ -379,8 +379,6 @@ jobs:
       generate-json: true
       generate-txt: true
       auto-commit: true
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 **Configuration Example (.github/config/meta-repository/topics.json):**
