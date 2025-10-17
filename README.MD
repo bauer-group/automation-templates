@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-10-17 23:03:16 UTC -->
+<!-- Generated on 2025-10-17 23:08:01 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -382,8 +382,6 @@ jobs:
       generate-json: true
       generate-txt: true
       auto-commit: true
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 **Configuration Example (.github/config/meta-repository/topics.json):**
@@ -938,5 +936,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-10-17 23:03:16 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-10-17 23:08:01 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
