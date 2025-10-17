@@ -246,7 +246,11 @@ jobs:
           echo ""
 
           # Determine repository type filter
-          if [ "${{ inputs.include-private }}" = "true" ]; then
+          # Handle both boolean and string values
+          INCLUDE_PRIVATE="${{ inputs.include-private }}"
+          echo "🔐 Include private repositories: $INCLUDE_PRIVATE"
+
+          if [ "$INCLUDE_PRIVATE" = "true" ] || [ "$INCLUDE_PRIVATE" = "True" ] || [ "$INCLUDE_PRIVATE" = "TRUE" ]; then
             REPO_TYPE="all"
             echo "📥 Fetching ALL repositories (public + private) from organization..."
           else
@@ -255,9 +259,16 @@ jobs:
           fi
 
           # Fetch all repos ONCE and cache them
+          echo "📡 API Call: gh api \"orgs/$ORG/repos?type=${REPO_TYPE}&per_page=100\" --paginate"
           gh api "orgs/$ORG/repos?type=${REPO_TYPE}&per_page=100" --paginate > "${OUTPUT_DIR}/_all_repos.json"
+
+          # Verify and analyze fetched data
           TOTAL_ORG_REPOS=$(jq '. | length' "${OUTPUT_DIR}/_all_repos.json")
+          PUBLIC_COUNT=$(jq '[.[] | select(.private == false)] | length' "${OUTPUT_DIR}/_all_repos.json")
+          PRIVATE_COUNT=$(jq '[.[] | select(.private == true)] | length' "${OUTPUT_DIR}/_all_repos.json")
+
           echo "✅ Fetched ${TOTAL_ORG_REPOS} repositories (type: ${REPO_TYPE})"
+          echo "   📊 Breakdown: ${PUBLIC_COUNT} public, ${PRIVATE_COUNT} private"
           echo ""
 
           TOTAL_REPOS=0
