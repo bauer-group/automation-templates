@@ -38,6 +38,9 @@ jobs:
       # Configuration
       config-file: '.github/config/meta-repository/topics.json'
 
+      # Repository visibility - IMPORTANT for private plugins!
+      include-private: true  # Include both public and private Shopware plugins
+
       # README generation
       generate-readme: true
       readme-template: '.github/config/meta-repository/README.template.md'

@@ -356,6 +356,61 @@ jobs:
       - run: gh api repos/org/meta-repo/dispatches -f event_type=trigger-from-repository
 ```
 
+## Workflow Parameters
+
+### Repository Visibility
+
+Control which repositories are included in the sync:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `include-private` | boolean | `false` | Include private repositories in addition to public ones |
+
+**Examples:**
+
+```yaml
+# Only public repositories (default)
+with:
+  include-private: false
+```
+
+```yaml
+# Include both public and private repositories
+with:
+  include-private: true
+```
+
+**Important:**
+- For **public repos**: Standard `github.token` permissions are sufficient
+- For **private repos**: Ensure the workflow has access to private repositories
+  - The `github.token` automatically has the required permissions when running in the organization
+
+### Output Files
+
+The workflow generates multiple output files per topic group:
+
+| File Pattern | Description | Example |
+|--------------|-------------|---------|
+| `{topic}.json` | Full repository metadata | `shopware5-plugins.json` |
+| `{topic}.txt` | Repository names with prefix | `shopware5-plugins.txt` |
+| `{topic}.noprefix.txt` | Cleaned repository names | `shopware5-plugins.noprefix.txt` |
+
+**Example:**
+
+For topic `shopware5-plugins` with `remove_prefix: "^SWP[-_]"`:
+
+```txt
+# shopware5-plugins.txt (original names)
+SWP-AmazonToolkit
+SWP-ArticleWeight
+SWP-BootstrapIntegration
+
+# shopware5-plugins.noprefix.txt (cleaned names)
+AmazonToolkit
+ArticleWeight
+BootstrapIntegration
+```
+
 ## Secrets Required
 
 | Secret | Required | Purpose |
