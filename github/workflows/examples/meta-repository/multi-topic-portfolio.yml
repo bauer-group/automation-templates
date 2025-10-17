@@ -1,0 +1,147 @@
+# Multi-Topic Technology Portfolio
+#
+# This configuration manages a comprehensive portfolio of projects
+# across multiple technology stacks and categories.
+#
+# Features:
+# - Multiple topic groups (dotnet, python, nodejs, docker, etc.)
+# - Per-topic prefix removal patterns
+# - Auto branch detection
+# - Custom organization structure
+# - Comprehensive documentation
+# - Multiple sync triggers
+#
+# Usage:
+# 1. Copy to .github/workflows/sync.yml
+# 2. Create topics.json with multiple groups (see example below)
+# 3. Apply appropriate topics to your repositories
+
+name: 🏢 Sync Technology Portfolio
+
+on:
+  workflow_dispatch:
+    inputs:
+      organization:
+        description: 'Override organization name'
+        type: string
+        required: false
+
+  repository_dispatch:
+    types:
+      - trigger-from-repository
+      - force-sync
+
+  schedule:
+    # Multiple schedules for different purposes
+    - cron: "0 2 * * 1"   # Weekly full sync (Monday 2 AM)
+    - cron: "0 14 * * *"  # Daily quick sync (2 PM)
+
+  push:
+    paths:
+      # Trigger when configuration changes
+      - '.github/config/meta-repository/**'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  validate-config:
+    name: Validate Configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate JSON
+        run: |
+          if ! jq empty .github/config/meta-repository/topics.json; then
+            echo "❌ Invalid JSON configuration"
+            exit 1
+          fi
+          echo "✅ Configuration is valid"
+
+  sync-portfolio:
+    name: Sync All Projects
+    needs: validate-config
+    uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
+    with:
+      # Configuration
+      config-file: '.github/config/meta-repository/topics.json'
+      organization: ${{ inputs.organization || github.repository_owner }}
+
+      # Documentation
+      generate-readme: true
+      readme-template: '.github/config/meta-repository/README.template.md'
+
+      # Output formats
+      generate-json: true
+      generate-txt: true
+      output-directory: 'metadata'
+
+      # Submodule settings
+      submodule-depth: 1
+
+      # Git settings
+      auto-commit: true
+      commit-message: '🔄 Auto-sync: Technology portfolio update'
+      # base-branch: ''  # Auto-detect default branch
+
+      # Performance
+      timeout-minutes: 45
+
+  notify-completion:
+    name: Send Notification
+    needs: sync-portfolio
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report Results
+        run: |
+          echo "Sync completed"
+          echo "Repositories synced: ${{ needs.sync-portfolio.outputs.repositories-synced }}"
+          echo "Summary: ${{ needs.sync-portfolio.outputs.sync-summary }}"
+
+# Example topics.json structure for this workflow:
+#
+# {
+#   "title": "Technology Portfolio",
+#   "description": "Comprehensive collection of all organizational projects",
+#   "groups": [
+#     {
+#       "topic": "dotnet",
+#       "folder": "DotNet",
+#       "name": ".NET Projects",
+#       "description": ".NET applications and libraries",
+#       "remove_prefix": ""
+#     },
+#     {
+#       "topic": "python",
+#       "folder": "Python",
+#       "name": "Python Projects",
+#       "description": "Python packages and scripts",
+#       "remove_prefix": "^(py|python)[-_]"
+#     },
+#     {
+#       "topic": "nodejs",
+#       "folder": "NodeJS",
+#       "name": "Node.js Projects",
+#       "description": "JavaScript/TypeScript applications",
+#       "remove_prefix": "^(js|node)[-_]"
+#     },
+#     {
+#       "topic": "docker",
+#       "folder": "Docker",
+#       "name": "Container Images",
+#       "description": "Docker images and compositions",
+#       "remove_prefix": "^docker[-_]"
+#     },
+#     {
+#       "topic": "embedded",
+#       "folder": "Embedded",
+#       "name": "Embedded Systems",
+#       "description": "IoT and embedded projects",
+#       "remove_prefix": ""
+#     }
+#   ]
+# }

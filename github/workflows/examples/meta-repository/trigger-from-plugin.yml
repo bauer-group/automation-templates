@@ -1,0 +1,81 @@
+# Trigger Meta Repository Sync from Individual Plugin
+#
+# Place this workflow in individual plugin/project repositories to automatically
+# trigger the meta repository sync when changes are pushed.
+#
+# This creates a "push-based" sync system where the meta repository updates
+# immediately when any project changes.
+#
+# Setup:
+# 1. Copy this file to .github/workflows/notify-meta.yml in your plugin repo
+# 2. Create a Personal Access Token (PAT) with repo scope
+# 3. Add PAT as secret META_REPO_TOKEN in your plugin repository
+# 4. Update META_REPO variable below with your meta repository name
+
+name: 🔔 Notify Meta Repository
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+
+  release:
+    types: [published]
+
+  workflow_dispatch:
+
+jobs:
+  trigger-meta-sync:
+    name: Trigger Meta Repository Sync
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send Repository Dispatch
+        run: |
+          # Update this with your meta repository name
+          META_REPO="bauer-group/shopware5-meta"
+
+          echo "🔔 Triggering sync in ${META_REPO}..."
+
+          gh api repos/${META_REPO}/dispatches \
+            -f event_type='trigger-from-repository' \
+            -f client_payload="{\"source\":\"${{ github.repository }}\",\"ref\":\"${{ github.ref }}\",\"sha\":\"${{ github.sha }}\"}"
+
+          echo "✅ Meta repository sync triggered"
+        env:
+          GH_TOKEN: ${{ secrets.META_REPO_TOKEN }}
+
+      - name: Report
+        if: always()
+        run: |
+          echo "### 🔔 Meta Repository Notification" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Sent trigger to meta repository for synchronization." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Source Repository | ${{ github.repository }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Ref | ${{ github.ref }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Event | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+
+# Alternative: Using workflow_run instead of repository_dispatch
+# This version doesn't require a PAT, but needs workflow permissions
+#
+# jobs:
+#   trigger-via-api:
+#     name: Trigger via API
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Trigger Workflow
+#         uses: actions/github-script@v7
+#         with:
+#           github-token: ${{ secrets.META_REPO_TOKEN }}
+#           script: |
+#             await github.rest.actions.createWorkflowDispatch({
+#               owner: 'bauer-group',
+#               repo: 'shopware5-meta',
+#               workflow_id: 'sync.yml',
+#               ref: 'main'
+#             });

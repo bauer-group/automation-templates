@@ -1,0 +1,43 @@
+# Simple Meta Repository Sync
+#
+# This is the simplest configuration for a meta repository that syncs
+# repositories based on a single topic.
+#
+# Usage:
+# 1. Copy this file to .github/workflows/sync.yml in your meta repository
+# 2. Create .github/config/meta-repository/topics.json with your configuration
+# 3. Commit and push - the workflow will run on schedule or manual trigger
+
+name: 🔄 Sync Repositories
+
+on:
+  # Run on manual trigger
+  workflow_dispatch:
+
+  # Run weekly on Saturday night
+  schedule:
+    - cron: "45 23 * * 6"
+
+  # Allow triggering from individual repositories
+  repository_dispatch:
+    types: [trigger-from-repository]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  sync:
+    name: Synchronize Submodules
+    uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
+    with:
+      # Use default configuration file location
+      config-file: '.github/config/meta-repository/topics.json'
+
+      # Auto-commit changes
+      auto-commit: true
+
+      # Generate all output formats
+      generate-readme: true
+      generate-json: true
+      generate-txt: true
