@@ -34,6 +34,9 @@ jobs:
       # Use default configuration file location
       config-file: '.github/config/meta-repository/topics.json'
 
+      # Include private repositories (default: false)
+      include-private: false
+
       # Auto-commit changes
       auto-commit: true
 
