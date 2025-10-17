@@ -31,10 +31,13 @@ This repository is automatically maintained by GitHub Actions:
   - Scheduled runs (cron)
   - Manual workflow dispatch
   - Repository dispatch events from individual projects
-- **Updates**:
-  - Submodules are updated to latest commits
-  - README.md is regenerated with current project lists
-  - JSON/TXT files are updated with repository metadata
+- **Features**:
+  - ✅ Auto-detects default branch (main/master)
+  - ✅ Per-topic prefix removal for clean names
+  - ✅ Automatic cleanup of removed repositories
+  - ✅ Submodules updated to latest commits
+  - ✅ README.md regenerated with current project lists
+  - ✅ JSON/TXT files updated with repository metadata
 
 ## 📁 Repository Structure
 
@@ -101,13 +104,38 @@ Each topic group has a corresponding `.json` file containing:
 ### TXT Format
 Simple newline-separated list of repository names for easy scripting.
 
+## ⚙️ Configuration
+
+The meta repository is configured via `.github/config/meta-repository/topics.json`:
+
+```json
+{
+  "title": "Repository Title",
+  "description": "Repository description",
+  "groups": [
+    {
+      "topic": "github-topic-name",
+      "folder": "FolderName",
+      "name": "Display Name",
+      "description": "Group description",
+      "remove_prefix": "^PREFIX[-_]"
+    }
+  ]
+}
+```
+
+**Key features:**
+- **Per-topic prefix removal**: Each topic can have its own `remove_prefix` pattern
+- **Flexible organization**: Group repositories by any GitHub topic
+- **Auto-cleanup**: Removed repositories are automatically deleted from submodules
+
 ## 🤝 Contributing
 
 This is an automated repository. To contribute:
 
 1. **Make changes in individual projects** - Commit to the actual project repositories
 2. **Trigger sync** - The meta repository will update automatically, or trigger manually via workflow dispatch
-3. **Update configuration** - Modify `.github/config/meta-repository/topics.json` to change grouping
+3. **Update configuration** - Modify `.github/config/meta-repository/topics.json` to change grouping or prefix patterns
 
 ## 📞 Support
 

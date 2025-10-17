@@ -56,7 +56,8 @@ Create `.github/config/meta-repository/topics.json`:
       "topic": "my-topic",
       "folder": "Projects",
       "name": "My Projects",
-      "description": "Collection of my projects"
+      "description": "Collection of my projects",
+      "remove_prefix": ""
     }
   ]
 }
@@ -95,10 +96,12 @@ gh workflow run sync.yml
 **Perfect for:** Shopware 5 plugin collections
 
 **Features:**
-- Removes `SWP-` or `SWP_` prefix from names
+- Per-topic prefix removal (configured in JSON)
+- Auto-detects default branch
 - Optimized for Shopware plugin naming conventions
 - Comprehensive README generation
 - JSON and TXT output formats
+- Automatic cleanup of removed plugins
 
 **Use when:**
 - Managing Shopware 5 plugins
@@ -116,11 +119,13 @@ Submodule:  Plugins/PaymentGateway/
 **Perfect for:** Large organizations with diverse technology stacks
 
 **Features:**
-- Multiple topic groups
+- Multiple topic groups with per-topic prefix removal
+- Auto-detects default branch
 - Configuration validation
 - Multiple sync schedules
 - Extended timeout
 - Metadata directory organization
+- Automatic cleanup of removed repositories
 
 **Use when:**
 - Managing projects across multiple technologies
@@ -191,7 +196,8 @@ Submodule:  Plugins/PaymentGateway/
       "topic": "shopware5-plugins",
       "folder": "Plugins",
       "name": "Shopware 5 Plugins",
-      "description": "Enthaltene Plugins"
+      "description": "Enthaltene Plugins",
+      "remove_prefix": "^SWP[-_]"
     }
   ]
 }
@@ -210,13 +216,15 @@ Submodule:  Plugins/PaymentGateway/
       "topic": "dotnet",
       "folder": "DotNet",
       "name": ".NET Projects",
-      "description": ".NET applications and libraries"
+      "description": ".NET applications and libraries",
+      "remove_prefix": ""
     },
     {
       "topic": "python",
       "folder": "Python",
       "name": "Python Projects",
-      "description": "Python packages and tools"
+      "description": "Python packages and tools",
+      "remove_prefix": "^(py|python)[-_]"
     }
   ]
 }
@@ -235,19 +243,22 @@ Submodule:  Plugins/PaymentGateway/
       "topic": "microservices",
       "folder": "Microservices",
       "name": "Microservices",
-      "description": "Backend microservices"
+      "description": "Backend microservices",
+      "remove_prefix": ""
     },
     {
       "topic": "libraries",
       "folder": "Libraries",
       "name": "Shared Libraries",
-      "description": "Reusable libraries and packages"
+      "description": "Reusable libraries and packages",
+      "remove_prefix": "^lib[-_]"
     },
     {
       "topic": "tools",
       "folder": "Tools",
       "name": "Development Tools",
-      "description": "CLI tools and utilities"
+      "description": "CLI tools and utilities",
+      "remove_prefix": "^tool[-_]"
     }
   ]
 }
@@ -270,7 +281,13 @@ with:
 // Config
 {
   "groups": [
-    {"topic": "shopware5-plugins", "folder": "Plugins", ...}
+    {
+      "topic": "shopware5-plugins",
+      "folder": "Plugins",
+      "name": "Plugins",
+      "description": "Plugin collection",
+      "remove_prefix": "^SWP[-_]"
+    }
   ]
 }
 ```
@@ -282,25 +299,38 @@ Organize by multiple categories.
 ```json
 {
   "groups": [
-    {"topic": "frontend", "folder": "Frontend", ...},
-    {"topic": "backend", "folder": "Backend", ...},
-    {"topic": "shared", "folder": "Shared", ...}
+    {"topic": "frontend", "folder": "Frontend", "remove_prefix": "^fe[-_]", ...},
+    {"topic": "backend", "folder": "Backend", "remove_prefix": "^be[-_]", ...},
+    {"topic": "shared", "folder": "Shared", "remove_prefix": "", ...}
   ]
 }
 ```
 
-### Pattern 3: With Prefix Removal
+### Pattern 3: Per-Topic Prefix Removal
 
-Clean repository names.
+Clean repository names with topic-specific patterns.
 
-```yaml
-with:
-  remove-prefix: '^(SWP|BAUER)[-_]'
+```json
+{
+  "groups": [
+    {
+      "topic": "shopware5-plugins",
+      "folder": "Plugins",
+      "remove_prefix": "^SWP[-_]"
+    },
+    {
+      "topic": "shopware5-themes",
+      "folder": "Themes",
+      "remove_prefix": "^SWT[-_]"
+    }
+  ]
+}
 ```
 
+**Result:**
 ```
-Input:  SWP-PaymentGateway
-Output: Plugins/PaymentGateway/
+Input:  SWP-PaymentGateway  → Output: Plugins/PaymentGateway/
+Input:  SWT-CustomTheme     → Output: Themes/CustomTheme/
 ```
 
 ### Pattern 4: Event-Driven
@@ -330,9 +360,11 @@ jobs:
 
 | Secret | Required | Purpose |
 |--------|----------|---------|
-| `GITHUB_TOKEN` | Always | Repository access and commits |
+| `GITHUB_TOKEN` | Auto-available | Repository access and commits (automatically provided) |
 | `META_REPO_TOKEN` | For triggers | Cross-repo dispatch (PAT with repo scope) |
 | `TEAMS_WEBHOOK_URL` | For notifications | Microsoft Teams integration |
+
+**Note:** `GITHUB_TOKEN` is automatically available in GitHub Actions and doesn't need to be explicitly configured.
 
 ## Best Practices
 
@@ -355,7 +387,23 @@ Group by:
 - Purpose (microservices, libraries, tools)
 - Platform (shopware, wordpress, magento)
 
-### 3. Keep README Updated
+### 3. Use Per-Topic Prefix Removal
+
+Configure prefix removal for each topic individually:
+
+```json
+{
+  "groups": [
+    {"topic": "shopware5-plugins", "remove_prefix": "^SWP[-_]"},
+    {"topic": "shopware5-themes", "remove_prefix": "^SWT[-_]"},
+    {"topic": "tools", "remove_prefix": ""}
+  ]
+}
+```
+
+This allows different naming conventions per category.
+
+### 4. Keep README Updated
 
 Use custom template for organization-specific content:
 
@@ -371,14 +419,14 @@ Add team-specific content here.
 {{GROUPS}}
 ```
 
-### 4. Schedule Wisely
+### 5. Schedule Wisely
 
 ```yaml
 schedule:
   - cron: "45 23 * * 6"  # Low-traffic time
 ```
 
-### 5. Monitor Sync Status
+### 6. Monitor Sync Status
 
 Use notifications or check workflow runs regularly.
 
