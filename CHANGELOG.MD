@@ -1,3 +1,9 @@
+## [1.10.1](https://github.com/bauer-group/automation-templates/compare/v1.10.0...v1.10.1) (2025-10-17)
+
+### 🐛 Bug Fixes
+
+* erweitere die README-Dokumentation um Konfigurationsoptionen und verbessere die Beschreibung der automatischen Synchronisierungsfunktionen ([0e62788](https://github.com/bauer-group/automation-templates/commit/0e6278829a0647f0dbb97dda478a932e0a2cb7ca))
+
 ## [1.10.0](https://github.com/bauer-group/automation-templates/compare/v1.9.0...v1.10.0) (2025-10-17)
 
 ### 🚀 Features
