@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2025-10-17 23:08:01 UTC -->
+<!-- Generated on 2025-10-17 23:49:14 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -358,6 +358,7 @@ Automated repository collection and organization using GitHub topics and git sub
 **Features:**
 
 - ✅ **Topic-Based Organization** - Automatically discover and organize repositories by GitHub topics
+- ✅ **Public & Private Repos** - Support for both public and private repositories
 - ✅ **Submodule Automation** - Add, update, and remove submodules based on topic configuration
 - ✅ **README Generation** - Auto-generate repository overview with grouped project listings
 - ✅ **Multi-Format Output** - Generate JSON and TXT files for each topic group
@@ -378,6 +379,7 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
     with:
       config-file: '.github/config/meta-repository/topics.json'
+      include-private: false  # Set to true to include private repos
       generate-readme: true
       generate-json: true
       generate-txt: true
@@ -936,5 +938,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2025-10-17 23:08:01 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2025-10-17 23:49:14 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
