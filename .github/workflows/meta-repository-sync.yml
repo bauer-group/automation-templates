@@ -420,8 +420,8 @@ jobs:
           ORG="${ORGANIZATION}"
 
           # Get variables for template replacement
-          TITLE="${{ steps.load-config.outputs.title }}"
-          DESCRIPTION="${{ steps.load-config.outputs.description }}"
+          TITLE=$(jq -r '.title // "Meta Repository"' "$CONFIG_FILE")
+          DESCRIPTION=$(jq -r '.description // "Automated Repository Collection"' "$CONFIG_FILE")
           DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
 
           # Check if template exists
@@ -429,15 +429,25 @@ jobs:
             echo "📖 Using template: $TEMPLATE_FILE"
             cp "$TEMPLATE_FILE" README.md
 
-            # Replace template variables
-            sed -i "s|{{TITLE}}|${TITLE}|g" README.md
-            sed -i "s|{{DESCRIPTION}}|${DESCRIPTION}|g" README.md
-            sed -i "s|{{ORGANIZATION}}|${ORG}|g" README.md
-            sed -i "s|{{DATE}}|${DATE}|g" README.md
+            # Replace template variables using jq for safe string handling
+            # This avoids issues with special characters like backticks, quotes, etc.
+            jq -Rs --arg title "$TITLE" \
+                   --arg desc "$DESCRIPTION" \
+                   --arg org "$ORG" \
+                   --arg date "$DATE" \
+                   'gsub("\\{\\{TITLE\\}\\}"; $title) |
+                    gsub("\\{\\{DESCRIPTION\\}\\}"; $desc) |
+                    gsub("\\{\\{ORGANIZATION\\}\\}"; $org) |
+                    gsub("\\{\\{DATE\\}\\}"; $date)' README.md > README.md.tmp
+            mv README.md.tmp README.md
           else
             echo "📝 Creating README from configuration..."
-            printf "# %s\n\n%s\n\n**Organization:** \`%s\`\n**Last Updated:** %s\n\n---\n\n__GROUPS_PLACEHOLDER__\n\n---\n\n*This repository is automatically maintained. Changes are synchronized periodically.*\n" \
-              "${TITLE}" "${DESCRIPTION}" "${ORG}" "${DATE}" > README.md
+            # Use jq to safely generate README with special characters
+            jq -n --arg title "$TITLE" \
+                  --arg desc "$DESCRIPTION" \
+                  --arg org "$ORG" \
+                  --arg date "$DATE" \
+                  '"# " + $title + "\n\n" + $desc + "\n\n**Organization:** `" + $org + "`\n**Last Updated:** " + $date + "\n\n---\n\n__GROUPS_PLACEHOLDER__\n\n---\n\n*This repository is automatically maintained. Changes are synchronized periodically.*"' -r > README.md
           fi
 
           # Generate groups section
