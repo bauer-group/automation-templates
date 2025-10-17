@@ -16,6 +16,12 @@ on:
         required: false
         default: ''
 
+      include-private:
+        description: 'Include private repositories in addition to public ones'
+        type: boolean
+        required: false
+        default: false
+
       # Repository Settings
       base-branch:
         description: 'Main branch name to use (auto-detects default branch if empty)'
@@ -239,11 +245,19 @@ jobs:
           echo "🔍 Fetching repositories from organization: $ORG"
           echo ""
 
+          # Determine repository type filter
+          if [ "${{ inputs.include-private }}" = "true" ]; then
+            REPO_TYPE="all"
+            echo "📥 Fetching ALL repositories (public + private) from organization..."
+          else
+            REPO_TYPE="public"
+            echo "📥 Fetching PUBLIC repositories from organization..."
+          fi
+
           # Fetch all repos ONCE and cache them
-          echo "📥 Fetching all organization repositories (cached for all topic groups)..."
-          gh api "orgs/$ORG/repos" --paginate > "${OUTPUT_DIR}/_all_repos.json"
+          gh api "orgs/$ORG/repos?type=${REPO_TYPE}&per_page=100" --paginate > "${OUTPUT_DIR}/_all_repos.json"
           TOTAL_ORG_REPOS=$(jq '. | length' "${OUTPUT_DIR}/_all_repos.json")
-          echo "✅ Fetched ${TOTAL_ORG_REPOS} repositories from organization"
+          echo "✅ Fetched ${TOTAL_ORG_REPOS} repositories (type: ${REPO_TYPE})"
           echo ""
 
           TOTAL_REPOS=0

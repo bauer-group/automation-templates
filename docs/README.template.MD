@@ -355,6 +355,7 @@ Automated repository collection and organization using GitHub topics and git sub
 **Features:**
 
 - ✅ **Topic-Based Organization** - Automatically discover and organize repositories by GitHub topics
+- ✅ **Public & Private Repos** - Support for both public and private repositories
 - ✅ **Submodule Automation** - Add, update, and remove submodules based on topic configuration
 - ✅ **README Generation** - Auto-generate repository overview with grouped project listings
 - ✅ **Multi-Format Output** - Generate JSON and TXT files for each topic group
@@ -375,6 +376,7 @@ jobs:
     uses: {{REPO_FULL_NAME}}/.github/workflows/meta-repository-sync.yml@main
     with:
       config-file: '.github/config/meta-repository/topics.json'
+      include-private: false  # Set to true to include private repos
       generate-readme: true
       generate-json: true
       generate-txt: true
