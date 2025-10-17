@@ -250,21 +250,21 @@ jobs:
 
             echo "📂 Processing group: $NAME (topic: $TOPIC)"
 
-            # Fetch repos with this topic
-            gh api "orgs/$ORG/repos" --paginate --jq \
-              --arg topic "$TOPIC" \
-              '[.[]
-                | select(.topics[]? == $topic)
-                | {
-                    name: .name,
-                    default_branch: .default_branch,
-                    html_url: .html_url,
-                    git_url: .git_url,
-                    description: .description,
-                    topics: .topics,
-                    updated_at: .updated_at
-                  }
-              ]' > "${OUTPUT_DIR}/${TOPIC}.json"
+            # Fetch all repos and filter by topic
+            gh api "orgs/$ORG/repos" --paginate | \
+              jq --arg topic "$TOPIC" \
+                '[.[]
+                  | select(.topics[]? == $topic)
+                  | {
+                      name: .name,
+                      default_branch: .default_branch,
+                      html_url: .html_url,
+                      git_url: .git_url,
+                      description: .description,
+                      topics: .topics,
+                      updated_at: .updated_at
+                    }
+                ]' > "${OUTPUT_DIR}/${TOPIC}.json"
 
             # Sort and format JSON
             jq 'sort_by(.name)' "${OUTPUT_DIR}/${TOPIC}.json" > "${OUTPUT_DIR}/${TOPIC}.json.tmp"
