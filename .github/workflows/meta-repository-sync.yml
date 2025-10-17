@@ -239,9 +239,16 @@ jobs:
           echo "🔍 Fetching repositories from organization: $ORG"
           echo ""
 
+          # Fetch all repos ONCE and cache them
+          echo "📥 Fetching all organization repositories (cached for all topic groups)..."
+          gh api "orgs/$ORG/repos" --paginate > "${OUTPUT_DIR}/_all_repos.json"
+          TOTAL_ORG_REPOS=$(jq '. | length' "${OUTPUT_DIR}/_all_repos.json")
+          echo "✅ Fetched ${TOTAL_ORG_REPOS} repositories from organization"
+          echo ""
+
           TOTAL_REPOS=0
 
-          # Process each topic group
+          # Process each topic group using cached data
           jq -c '.groups[]' "$CONFIG_FILE" | while read -r group; do
             TOPIC=$(echo "$group" | jq -r '.topic')
             FOLDER=$(echo "$group" | jq -r '.folder')
@@ -250,21 +257,20 @@ jobs:
 
             echo "📂 Processing group: $NAME (topic: $TOPIC)"
 
-            # Fetch all repos and filter by topic
-            gh api "orgs/$ORG/repos" --paginate | \
-              jq --arg topic "$TOPIC" \
-                '[.[]
-                  | select(.topics[]? == $topic)
-                  | {
-                      name: .name,
-                      default_branch: .default_branch,
-                      html_url: .html_url,
-                      git_url: .git_url,
-                      description: .description,
-                      topics: .topics,
-                      updated_at: .updated_at
-                    }
-                ]' > "${OUTPUT_DIR}/${TOPIC}.json"
+            # Filter cached repos by topic
+            jq --arg topic "$TOPIC" \
+              '[.[]
+                | select(.topics[]? == $topic)
+                | {
+                    name: .name,
+                    default_branch: .default_branch,
+                    html_url: .html_url,
+                    git_url: .git_url,
+                    description: .description,
+                    topics: .topics,
+                    updated_at: .updated_at
+                  }
+              ]' "${OUTPUT_DIR}/_all_repos.json" > "${OUTPUT_DIR}/${TOPIC}.json"
 
             # Sort and format JSON
             jq 'sort_by(.name)' "${OUTPUT_DIR}/${TOPIC}.json" > "${OUTPUT_DIR}/${TOPIC}.json.tmp"
@@ -288,6 +294,9 @@ jobs:
           echo "total-repos=$TOTAL_REPOS" >> $GITHUB_OUTPUT
           echo ""
           echo "✅ Total repositories found: $TOTAL_REPOS"
+
+          # Clean up cache file
+          rm -f "${OUTPUT_DIR}/_all_repos.json"
 
       - name: 🔄 Sync Submodules
         id: sync-submodules
