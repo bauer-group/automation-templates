@@ -1,3 +1,22 @@
+## [1.11.0](https://github.com/bauer-group/automation-templates/compare/v1.10.1...v1.11.0) (2025-10-17)
+
+### 🚀 Features
+
+* füge automatisiertes Meta-Repository-Synchronisierungssystem hinzu ([068562a](https://github.com/bauer-group/automation-templates/commit/068562a84f5a7e02bbe588ee5cdf4af372f21006))
+* füge Unterstützung für private Repositories hinzu und aktualisiere README-Vorlage ([ed8e513](https://github.com/bauer-group/automation-templates/commit/ed8e5135baadeb2d73a054e7c50ffb1836d5d8d1))
+* füge Unterstützung für private Repositories in Workflow-Konfigurationen hinzu ([83b2e26](https://github.com/bauer-group/automation-templates/commit/83b2e2613eb2bc6c4fde15e44a1ac0466dec894c))
+
+### ♻️ Code Refactoring
+
+* benenne Ausgabedateien um, um Präfixe zu entfernen und die Konsistenz zu verbessern ([9029c58](https://github.com/bauer-group/automation-templates/commit/9029c58e4956c0975acc28b6b34772269e985931))
+* entferne geheime Token-Referenzen aus Workflow- und README-Vorlage ([5cb9adb](https://github.com/bauer-group/automation-templates/commit/5cb9adb842833bff73b4ce04bbc31983bd56bd71))
+* verbessere Fetch-Logik durch Caching aller Repositories für effizientere Verarbeitung ([ef24564](https://github.com/bauer-group/automation-templates/commit/ef24564ccd3e504d3664bc65dc568aa7926be589))
+* verbessere Fetch-Logik für Repositories nach Themen ([c949e17](https://github.com/bauer-group/automation-templates/commit/c949e17a3c8ee383810d8f9b84153477718653a0))
+* verbessere README-Generierung durch Hinzufügen von Template-Variablen und Platzhalter-Unterstützung ([57b2736](https://github.com/bauer-group/automation-templates/commit/57b27368e06075df2805452d46ab70ebfd931259))
+* verbessere README-Generierung durch Verwendung von jq für sichere Template-Variablenersetzung ([ca8e537](https://github.com/bauer-group/automation-templates/commit/ca8e537118957b3dd39cd4e18cf03e9265ea1987))
+* verbessere README-Generierung durch Verwendung von Python für sichere Platzhalterersetzung ([cc66bd1](https://github.com/bauer-group/automation-templates/commit/cc66bd17a71469b527aa88b7b5c3402262b42864))
+* verbessere README.md Generierung durch Verwendung von printf und Platzhaltern ([a1f7603](https://github.com/bauer-group/automation-templates/commit/a1f76034065e744e6412fc6704580091af3121d2))
+
 ## [1.10.1](https://github.com/bauer-group/automation-templates/compare/v1.10.0...v1.10.1) (2025-10-17)
 
 ### 🐛 Bug Fixes
