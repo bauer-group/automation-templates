@@ -1,0 +1,540 @@
+name: 🔄 Meta Repository Submodule Sync
+
+on:
+  workflow_call:
+    inputs:
+      # Configuration
+      config-file:
+        description: 'Configuration file path (JSON) defining topic groups'
+        type: string
+        required: false
+        default: '.github/config/meta-repository/topics.json'
+
+      organization:
+        description: 'GitHub organization name (defaults to repository owner)'
+        type: string
+        required: false
+        default: ''
+
+      # Repository Settings
+      base-branch:
+        description: 'Main branch name to use (auto-detects default branch if empty)'
+        type: string
+        required: false
+        default: ''
+
+      # README Configuration
+      readme-template:
+        description: 'Path to README template file'
+        type: string
+        required: false
+        default: '.github/config/meta-repository/README.template.md'
+
+      generate-readme:
+        description: 'Generate README.md from template and configuration'
+        type: boolean
+        required: false
+        default: true
+
+      # Output Formats
+      generate-json:
+        description: 'Generate JSON files for each topic group'
+        type: boolean
+        required: false
+        default: true
+
+      generate-txt:
+        description: 'Generate TXT files for each topic group'
+        type: boolean
+        required: false
+        default: true
+
+      output-directory:
+        description: 'Directory for output files (JSON/TXT)'
+        type: string
+        required: false
+        default: '.'
+
+      # Submodule Options
+      submodule-depth:
+        description: 'Git clone depth for submodules (0 = full history)'
+        type: number
+        required: false
+        default: 1
+
+      # Schedule Options
+      auto-commit:
+        description: 'Automatically commit and push changes'
+        type: boolean
+        required: false
+        default: true
+
+      commit-message:
+        description: 'Commit message template'
+        type: string
+        required: false
+        default: '🔄 Auto-sync: Update submodules and metadata'
+
+      # Runner Configuration
+      runs-on:
+        description: 'Runner OS'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+
+      timeout-minutes:
+        description: 'Job timeout in minutes'
+        type: number
+        required: false
+        default: 30
+
+    secrets:
+      GITHUB_TOKEN:
+        description: 'GitHub token for API access'
+        required: false
+
+    outputs:
+      sync-summary:
+        description: 'Summary of sync operation'
+        value: ${{ jobs.sync.outputs.summary }}
+
+      repositories-synced:
+        description: 'Number of repositories synced'
+        value: ${{ jobs.sync.outputs.repos-count }}
+
+jobs:
+  sync:
+    name: Sync Submodules & Generate Metadata
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    outputs:
+      summary: ${{ steps.summary.outputs.result }}
+      repos-count: ${{ steps.count.outputs.total }}
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN || github.token }}
+      ORGANIZATION: ${{ inputs.organization || github.repository_owner }}
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN || github.token }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: 🔧 Setup Environment
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y jq gh
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+
+      - name: 🔍 Detect Default Branch
+        id: detect-branch
+        run: |
+          BASE_BRANCH="${{ inputs.base-branch }}"
+
+          # Auto-detect default branch if not provided
+          if [ -z "$BASE_BRANCH" ]; then
+            echo "🔍 Auto-detecting default branch..."
+
+            # Try to get default branch from repository
+            DEFAULT_BRANCH=$(gh api repos/${{ github.repository }} --jq '.default_branch' 2>/dev/null || echo "")
+
+            if [ -n "$DEFAULT_BRANCH" ]; then
+              BASE_BRANCH="$DEFAULT_BRANCH"
+              echo "✅ Detected default branch: $BASE_BRANCH"
+            else
+              # Fallback detection from git
+              BASE_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+              echo "✅ Using branch from git: $BASE_BRANCH"
+            fi
+          else
+            echo "✅ Using provided base branch: $BASE_BRANCH"
+          fi
+
+          # Verify branch exists
+          if git rev-parse --verify "origin/$BASE_BRANCH" >/dev/null 2>&1; then
+            echo "✅ Branch '$BASE_BRANCH' exists"
+          else
+            echo "⚠️ Branch '$BASE_BRANCH' not found, trying 'main'..."
+            if git rev-parse --verify "origin/main" >/dev/null 2>&1; then
+              BASE_BRANCH="main"
+              echo "✅ Using 'main' branch"
+            elif git rev-parse --verify "origin/master" >/dev/null 2>&1; then
+              BASE_BRANCH="master"
+              echo "✅ Using 'master' branch"
+            else
+              echo "❌ Could not find a valid branch"
+              exit 1
+            fi
+          fi
+
+          echo "branch=$BASE_BRANCH" >> $GITHUB_OUTPUT
+          echo ""
+          echo "📋 Using branch: $BASE_BRANCH"
+
+      - name: 📋 Load Configuration
+        id: load-config
+        run: |
+          CONFIG_FILE="${{ inputs.config-file }}"
+
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "❌ Configuration file not found: $CONFIG_FILE"
+            echo "📝 Creating default configuration..."
+
+            # Create default config
+            mkdir -p "$(dirname "$CONFIG_FILE")"
+            cat > "$CONFIG_FILE" <<'EOF'
+          {
+            "title": "Meta Repository",
+            "description": "This repository bundles projects by topics",
+            "groups": [
+              {
+                "topic": "example-topic",
+                "folder": "Projects",
+                "name": "Example Projects",
+                "description": "Example project collection",
+                "remove_prefix": ""
+              }
+            ]
+          }
+          EOF
+            echo "✅ Created default configuration at: $CONFIG_FILE"
+          fi
+
+          echo "📖 Reading configuration from: $CONFIG_FILE"
+
+          # Validate JSON
+          if ! jq empty "$CONFIG_FILE" 2>/dev/null; then
+            echo "❌ Invalid JSON in configuration file"
+            exit 1
+          fi
+
+          # Extract and validate configuration
+          TITLE=$(jq -r '.title // "Meta Repository"' "$CONFIG_FILE")
+          DESCRIPTION=$(jq -r '.description // "Automated repository collection"' "$CONFIG_FILE")
+          GROUP_COUNT=$(jq '.groups | length' "$CONFIG_FILE")
+
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+          echo "description=$DESCRIPTION" >> $GITHUB_OUTPUT
+          echo "group-count=$GROUP_COUNT" >> $GITHUB_OUTPUT
+
+          echo "✅ Configuration loaded:"
+          echo "   Title: $TITLE"
+          echo "   Description: $DESCRIPTION"
+          echo "   Groups: $GROUP_COUNT"
+
+          # Display groups
+          echo ""
+          echo "📦 Configured Topic Groups:"
+          jq -r '.groups[] | "   - Topic: \(.topic) → Folder: \(.folder) (\(.name))"' "$CONFIG_FILE"
+
+      - name: 🔍 Fetch Repositories by Topics
+        id: fetch-repos
+        run: |
+          CONFIG_FILE="${{ inputs.config-file }}"
+          ORG="${ORGANIZATION}"
+          OUTPUT_DIR="${{ inputs.output-directory }}"
+
+          mkdir -p "$OUTPUT_DIR"
+
+          echo "🔍 Fetching repositories from organization: $ORG"
+          echo ""
+
+          TOTAL_REPOS=0
+
+          # Process each topic group
+          jq -c '.groups[]' "$CONFIG_FILE" | while read -r group; do
+            TOPIC=$(echo "$group" | jq -r '.topic')
+            FOLDER=$(echo "$group" | jq -r '.folder')
+            NAME=$(echo "$group" | jq -r '.name')
+            DESC=$(echo "$group" | jq -r '.description')
+
+            echo "📂 Processing group: $NAME (topic: $TOPIC)"
+
+            # Fetch repos with this topic
+            gh api "orgs/$ORG/repos" --paginate --jq \
+              --arg topic "$TOPIC" \
+              '[.[]
+                | select(.topics[]? == $topic)
+                | {
+                    name: .name,
+                    default_branch: .default_branch,
+                    html_url: .html_url,
+                    git_url: .git_url,
+                    description: .description,
+                    topics: .topics,
+                    updated_at: .updated_at
+                  }
+              ]' > "${OUTPUT_DIR}/${TOPIC}.json"
+
+            # Sort and format JSON
+            jq 'sort_by(.name)' "${OUTPUT_DIR}/${TOPIC}.json" > "${OUTPUT_DIR}/${TOPIC}.json.tmp"
+            mv "${OUTPUT_DIR}/${TOPIC}.json.tmp" "${OUTPUT_DIR}/${TOPIC}.json"
+
+            REPO_COUNT=$(jq 'length' "${OUTPUT_DIR}/${TOPIC}.json")
+            TOTAL_REPOS=$((TOTAL_REPOS + REPO_COUNT))
+
+            echo "   Found $REPO_COUNT repositories"
+            jq -r '.[].name' "${OUTPUT_DIR}/${TOPIC}.json" | sed 's/^/      - /'
+
+            # Generate TXT file if requested
+            if [ "${{ inputs.generate-txt }}" = "true" ]; then
+              jq -r '.[].name' "${OUTPUT_DIR}/${TOPIC}.json" > "${OUTPUT_DIR}/${TOPIC}.txt"
+              echo "   📝 Created ${TOPIC}.txt"
+            fi
+
+            echo ""
+          done
+
+          echo "total-repos=$TOTAL_REPOS" >> $GITHUB_OUTPUT
+          echo ""
+          echo "✅ Total repositories found: $TOTAL_REPOS"
+
+      - name: 🔄 Sync Submodules
+        id: sync-submodules
+        run: |
+          CONFIG_FILE="${{ inputs.config-file }}"
+          OUTPUT_DIR="${{ inputs.output-directory }}"
+
+          echo "🔄 Syncing submodules..."
+          echo ""
+
+          ADDED=0
+          UPDATED=0
+          REMOVED=0
+
+          # Process each topic group
+          jq -c '.groups[]' "$CONFIG_FILE" | while read -r group; do
+            TOPIC=$(echo "$group" | jq -r '.topic')
+            FOLDER=$(echo "$group" | jq -r '.folder')
+
+            # Get remove_prefix from group config (topic-specific)
+            PREFIX_REGEX=$(echo "$group" | jq -r '.remove_prefix // ""')
+
+            echo "📂 Syncing folder: $FOLDER (topic: $TOPIC)"
+            if [ -n "$PREFIX_REGEX" ]; then
+              echo "   Prefix pattern: $PREFIX_REGEX"
+            fi
+
+            mkdir -p "$FOLDER"
+
+            # Get list of valid repository names (cleaned)
+            if [ -n "$PREFIX_REGEX" ]; then
+              jq -r '.[].name' "${OUTPUT_DIR}/${TOPIC}.json" | \
+                sed -E "s/${PREFIX_REGEX}//g" > "${OUTPUT_DIR}/${TOPIC}_clean.txt"
+            else
+              jq -r '.[].name' "${OUTPUT_DIR}/${TOPIC}.json" > "${OUTPUT_DIR}/${TOPIC}_clean.txt"
+            fi
+
+            # Remove obsolete submodules
+            echo "   🧹 Checking for obsolete submodules..."
+            if [ -d "$FOLDER" ]; then
+              find "$FOLDER" -mindepth 1 -maxdepth 1 -type d | while read -r dir; do
+                submodule_name=$(basename "$dir")
+
+                if ! grep -qx "$submodule_name" "${OUTPUT_DIR}/${TOPIC}_clean.txt"; then
+                  echo "      ❌ Removing obsolete: $submodule_name"
+                  git submodule deinit -f "$dir" 2>/dev/null || true
+                  git rm -f "$dir" 2>/dev/null || true
+                  rm -rf ".git/modules/$dir" 2>/dev/null || true
+                  rm -rf "$dir"
+                  REMOVED=$((REMOVED + 1))
+                fi
+              done
+            fi
+
+            # Add or update submodules
+            echo "   ✨ Adding/updating submodules..."
+            jq -c '.[]' "${OUTPUT_DIR}/${TOPIC}.json" | while read -r repo; do
+              name=$(echo "$repo" | jq -r '.name')
+              branch=$(echo "$repo" | jq -r '.default_branch // "main"')
+              url=$(echo "$repo" | jq -r '.html_url')
+
+              # Fallback for empty branch name
+              if [ -z "$branch" ] || [ "$branch" = "null" ]; then
+                branch="main"
+                echo "      ⚠️ No default branch specified for $name, using 'main'"
+              fi
+
+              # Clean name if prefix removal is configured
+              if [ -n "$PREFIX_REGEX" ]; then
+                clean_name=$(echo "$name" | sed -E "s/${PREFIX_REGEX}//g")
+              else
+                clean_name="$name"
+              fi
+
+              path="$FOLDER/$clean_name"
+
+              if [ ! -d "$path" ]; then
+                echo "      ✅ Adding: $clean_name (branch: $branch)"
+                git submodule add -b "$branch" "$url" "$path" 2>/dev/null || {
+                  echo "         ⚠️ Failed to add $clean_name, might already exist"
+                }
+                ADDED=$((ADDED + 1))
+              else
+                echo "      🔄 Updating: $clean_name"
+                (
+                  cd "$path"
+                  git fetch origin "$branch" --depth ${{ inputs.submodule-depth }} 2>/dev/null || true
+                  git checkout "$branch" 2>/dev/null || git checkout -B "$branch" "origin/$branch" 2>/dev/null || true
+                  git pull origin "$branch" 2>/dev/null || true
+                )
+                UPDATED=$((UPDATED + 1))
+              fi
+
+              # Update submodule to latest commit
+              if [ -d "$path" ]; then
+                latest_commit=$(cd "$path" && git rev-parse HEAD)
+                git add "$path"
+              fi
+            done
+
+            echo ""
+          done
+
+          # Save statistics
+          echo "added=$ADDED" >> $GITHUB_OUTPUT
+          echo "updated=$UPDATED" >> $GITHUB_OUTPUT
+          echo "removed=$REMOVED" >> $GITHUB_OUTPUT
+
+          echo "✅ Submodule sync complete:"
+          echo "   Added: $ADDED"
+          echo "   Updated: $UPDATED"
+          echo "   Removed: $REMOVED"
+
+      - name: 📝 Generate README
+        id: generate-readme
+        if: inputs.generate-readme
+        run: |
+          CONFIG_FILE="${{ inputs.config-file }}"
+          TEMPLATE_FILE="${{ inputs.readme-template }}"
+          OUTPUT_DIR="${{ inputs.output-directory }}"
+          ORG="${ORGANIZATION}"
+
+          # Check if template exists
+          if [ -f "$TEMPLATE_FILE" ]; then
+            echo "📖 Using template: $TEMPLATE_FILE"
+            cp "$TEMPLATE_FILE" README.md
+          else
+            echo "📝 Creating README from configuration..."
+            cat > README.md <<'MDEOF'
+# {{TITLE}}
+
+{{DESCRIPTION}}
+
+**Organization:** `{{ORGANIZATION}}`
+**Last Updated:** {{DATE}}
+
+---
+
+{{GROUPS}}
+
+---
+
+*This repository is automatically maintained. Changes are synchronized periodically.*
+MDEOF
+          fi
+
+          # Replace variables
+          TITLE="${{ steps.load-config.outputs.title }}"
+          DESCRIPTION="${{ steps.load-config.outputs.description }}"
+          DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
+
+          sed -i "s|{{TITLE}}|${TITLE}|g" README.md
+          sed -i "s|{{DESCRIPTION}}|${DESCRIPTION}|g" README.md
+          sed -i "s|{{ORGANIZATION}}|${ORG}|g" README.md
+          sed -i "s|{{DATE}}|${DATE}|g" README.md
+
+          # Generate groups section
+          GROUPS_CONTENT=""
+          jq -c '.groups[]' "$CONFIG_FILE" | while read -r group; do
+            TOPIC=$(echo "$group" | jq -r '.topic')
+            FOLDER=$(echo "$group" | jq -r '.folder')
+            NAME=$(echo "$group" | jq -r '.name')
+            DESC=$(echo "$group" | jq -r '.description')
+            PREFIX_REGEX=$(echo "$group" | jq -r '.remove_prefix // ""')
+
+            # Start group section
+            echo "## 📦 ${NAME}" >> /tmp/groups.md
+            echo "" >> /tmp/groups.md
+            echo "${DESC}" >> /tmp/groups.md
+            echo "" >> /tmp/groups.md
+            echo "| Repository | Description | Link |" >> /tmp/groups.md
+            echo "|------------|-------------|------|" >> /tmp/groups.md
+
+            # Add repositories (use topic-specific prefix)
+            if [ -n "$PREFIX_REGEX" ]; then
+              jq -r --arg prefix "$PREFIX_REGEX" \
+                '.[] | "| **\(.name | sub($prefix; ""))** | \(.description // "_No description_") | [View](\(.html_url)) |"' \
+                "${OUTPUT_DIR}/${TOPIC}.json" >> /tmp/groups.md
+            else
+              jq -r '.[] | "| **\(.name)** | \(.description // "_No description_") | [View](\(.html_url)) |"' \
+                "${OUTPUT_DIR}/${TOPIC}.json" >> /tmp/groups.md
+            fi
+
+            echo "" >> /tmp/groups.md
+            echo "" >> /tmp/groups.md
+          done
+
+          # Replace groups placeholder
+          if grep -q "{{GROUPS}}" README.md; then
+            # Use awk to replace {{GROUPS}} with file content
+            awk '/{{GROUPS}}/ {system("cat /tmp/groups.md"); next} 1' README.md > README.md.tmp
+            mv README.md.tmp README.md
+          else
+            # Append if placeholder not found
+            cat /tmp/groups.md >> README.md
+          fi
+
+          echo "✅ README.md generated"
+
+      - name: 📊 Generate Summary
+        id: summary
+        run: |
+          TOTAL_REPOS="${{ steps.fetch-repos.outputs.total-repos }}"
+          ADDED="${{ steps.sync-submodules.outputs.added }}"
+          UPDATED="${{ steps.sync-submodules.outputs.updated }}"
+          REMOVED="${{ steps.sync-submodules.outputs.removed }}"
+
+          SUMMARY="Synced ${TOTAL_REPOS} repositories: ${ADDED} added, ${UPDATED} updated, ${REMOVED} removed"
+          echo "result=${SUMMARY}" >> $GITHUB_OUTPUT
+
+          echo "### 🔄 Meta Repository Sync Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Total Repositories** | ${TOTAL_REPOS} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Submodules Added** | ${ADDED} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Submodules Updated** | ${UPDATED} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Submodules Removed** | ${REMOVED} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Topic Groups** | ${{ steps.load-config.outputs.group-count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # List groups
+          echo "#### 📋 Topic Groups" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          jq -r '.groups[] | "- **\(.name)** (`\(.topic)`) - \(.description)"' "${{ inputs.config-file }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: 💾 Commit and Push Changes
+        if: inputs.auto-commit
+        run: |
+          BASE_BRANCH="${{ steps.detect-branch.outputs.branch }}"
+
+          git add .
+
+          if ! git diff --cached --quiet; then
+            git commit -m "${{ inputs.commit-message }}"
+            git push origin "$BASE_BRANCH"
+            echo "✅ Changes committed and pushed to $BASE_BRANCH"
+          else
+            echo "ℹ️ No changes to commit"
+          fi
+
+      - name: 📊 Set Output Count
+        id: count
+        run: |
+          echo "total=${{ steps.fetch-repos.outputs.total-repos }}" >> $GITHUB_OUTPUT

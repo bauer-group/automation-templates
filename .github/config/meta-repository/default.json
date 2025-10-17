@@ -1,0 +1,13 @@
+{
+  "title": "Meta Repository",
+  "description": "This repository automatically bundles and organizes projects from the organization by their GitHub topics.",
+  "groups": [
+    {
+      "topic": "example-topic",
+      "folder": "Projects",
+      "remove_prefix": "",
+      "name": "Example Projects",
+      "description": "Collection of example projects for demonstration purposes"
+    }
+  ]
+}

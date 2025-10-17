@@ -1,0 +1,71 @@
+# Shopware 5 Plugins Meta Repository
+#
+# This configuration is specifically designed for collecting Shopware 5 plugins
+# that follow a naming convention (e.g., SWP-PluginName).
+#
+# Features:
+# - Per-topic prefix removal (configured in JSON)
+# - Generates comprehensive README
+# - Creates JSON and TXT lists
+# - Auto-detects default branch
+# - Syncs on schedule and on-demand
+#
+# Usage:
+# 1. Copy to .github/workflows/sync.yml
+# 2. Create topics.json with "remove_prefix": "^SWP[-_]" per topic
+# 3. Tag your plugin repositories with the topic on GitHub
+
+name: 🛒 Sync Shopware 5 Plugins
+
+on:
+  workflow_dispatch:
+
+  repository_dispatch:
+    types: [trigger-from-repository]
+
+  schedule:
+    - cron: "45 23 * * 6"  # Weekly Saturday 23:45 UTC
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  sync-plugins:
+    name: Sync Plugin Submodules
+    uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
+    with:
+      # Configuration
+      config-file: '.github/config/meta-repository/topics.json'
+
+      # README generation
+      generate-readme: true
+      readme-template: '.github/config/meta-repository/README.template.md'
+
+      # Output formats
+      generate-json: true
+      generate-txt: true
+      output-directory: '.'
+
+      # Submodule settings
+      submodule-depth: 1  # Shallow clone for faster sync
+
+      # Git settings
+      auto-commit: true
+      commit-message: '🔄 Weekly auto-sync: Shopware 5 plugins'
+      # base-branch: ''  # Auto-detect (default)
+
+# Required topics.json structure:
+# {
+#   "title": "🛒 Shopware 5 Plugins",
+#   "description": "Collection of all Shopware 5 plugins",
+#   "groups": [
+#     {
+#       "topic": "shopware5-plugins",
+#       "folder": "Plugins",
+#       "remove_prefix": "^SWP[-_]",
+#       "name": "Shopware 5 Plugins",
+#       "description": "Enthaltene Plugins",
+#     }
+#   ]
+# }

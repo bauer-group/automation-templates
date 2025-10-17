@@ -1,0 +1,48 @@
+{
+  "title": "Technology Portfolio",
+  "description": "Comprehensive collection of projects organized by technology stack and purpose.",
+  "groups": [
+    {
+      "topic": "dotnet",
+      "folder": "DotNet",
+      "name": ".NET Projects",
+      "description": "Applications and libraries built with .NET Framework and .NET Core",
+      "remove_prefix": ""
+    },
+    {
+      "topic": "python",
+      "folder": "Python",
+      "name": "Python Projects",
+      "description": "Python applications, scripts, and packages",
+      "remove_prefix": "^(py|python)[-_]"
+    },
+    {
+      "topic": "nodejs",
+      "folder": "NodeJS",
+      "name": "Node.js Projects",
+      "description": "JavaScript/TypeScript applications and npm packages",
+      "remove_prefix": "^(js|node)[-_]"
+    },
+    {
+      "topic": "docker",
+      "folder": "Docker",
+      "name": "Docker Images",
+      "description": "Container images and Docker-based deployments",
+      "remove_prefix": "^docker[-_]"
+    },
+    {
+      "topic": "embedded",
+      "folder": "Embedded",
+      "name": "Embedded Systems",
+      "description": "Embedded systems and IoT projects (Zephyr, Arduino, etc.)",
+      "remove_prefix": ""
+    },
+    {
+      "topic": "automation",
+      "folder": "Automation",
+      "name": "Automation & CI/CD",
+      "description": "Build automation, CI/CD pipelines, and workflow templates",
+      "remove_prefix": ""
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "title": "🛒 Shopware 5 Projects",
+  "description": "This repository automatically bundles all Shopware 5 related projects from the BAUER GROUP organization, organized by their purpose and type.",
+  "groups": [
+    {
+      "topic": "shopware5-plugins",
+      "folder": "Plugins",
+      "remove_prefix": "^SWP[-_]",
+      "name": "Shopware 5 Plugins",
+      "description": "Enthaltene Plugins - Custom extensions and modules for Shopware 5 e-commerce platform"      
+    },
+    {
+      "topic": "shopware5-themes",
+      "folder": "Themes",
+      "remove_prefix": "^SWP[-_]",
+      "name": "Shopware 5 Themes",
+      "description": "Custom themes and frontend templates for Shopware 5 shops"
+    },
+    {
+      "topic": "shopware5-tools",
+      "folder": "Tools",
+      "remove_prefix": "^SWP[-_]",
+      "name": "Development Tools",
+      "description": "Development and deployment tools for Shopware 5 projects"
+    }
+  ]
+}
