@@ -410,16 +410,23 @@ jobs:
           OUTPUT_DIR="${{ inputs.output-directory }}"
           ORG="${ORGANIZATION}"
 
+          # Get variables for template replacement
+          TITLE="${{ steps.load-config.outputs.title }}"
+          DESCRIPTION="${{ steps.load-config.outputs.description }}"
+          DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
+
           # Check if template exists
           if [ -f "$TEMPLATE_FILE" ]; then
             echo "📖 Using template: $TEMPLATE_FILE"
             cp "$TEMPLATE_FILE" README.md
+
+            # Replace template variables
+            sed -i "s|{{TITLE}}|${TITLE}|g" README.md
+            sed -i "s|{{DESCRIPTION}}|${DESCRIPTION}|g" README.md
+            sed -i "s|{{ORGANIZATION}}|${ORG}|g" README.md
+            sed -i "s|{{DATE}}|${DATE}|g" README.md
           else
             echo "📝 Creating README from configuration..."
-            TITLE="${{ steps.load-config.outputs.title }}"
-            DESCRIPTION="${{ steps.load-config.outputs.description }}"
-            DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
-
             printf "# %s\n\n%s\n\n**Organization:** \`%s\`\n**Last Updated:** %s\n\n---\n\n__GROUPS_PLACEHOLDER__\n\n---\n\n*This repository is automatically maintained. Changes are synchronized periodically.*\n" \
               "${TITLE}" "${DESCRIPTION}" "${ORG}" "${DATE}" > README.md
           fi
@@ -455,8 +462,12 @@ jobs:
             echo "" >> /tmp/groups.md
           done
 
-          # Replace groups placeholder
-          if grep -q "__GROUPS_PLACEHOLDER__" README.md; then
+          # Replace groups placeholder (supports both {{GROUPS}} and __GROUPS_PLACEHOLDER__)
+          if grep -q "{{GROUPS}}" README.md; then
+            # Use awk to replace {{GROUPS}} with file content
+            awk '/\{\{GROUPS\}\}/ {system("cat /tmp/groups.md"); next} 1' README.md > README.md.tmp
+            mv README.md.tmp README.md
+          elif grep -q "__GROUPS_PLACEHOLDER__" README.md; then
             # Use awk to replace __GROUPS_PLACEHOLDER__ with file content
             awk '/__GROUPS_PLACEHOLDER__/ {system("cat /tmp/groups.md"); next} 1' README.md > README.md.tmp
             mv README.md.tmp README.md
