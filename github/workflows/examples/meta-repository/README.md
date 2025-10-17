@@ -358,32 +358,32 @@ jobs:
 
 ## Workflow Parameters
 
-### Repository Visibility
+### Quick Reference
 
-Control which repositories are included in the sync:
+For a complete list of all parameters, see **[PARAMETERS.md](PARAMETERS.md)**.
+
+**Most commonly used parameters:**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `include-private` | boolean | `false` | Include private repositories in addition to public ones |
+| `config-file` | string | `.github/config/meta-repository/topics.json` | Configuration file path |
+| `include-private` | boolean | `false` | Include private repositories |
+| `organization` | string | (auto) | GitHub organization name |
+| `generate-readme` | boolean | `true` | Generate README.md |
+| `auto-commit` | boolean | `true` | Auto-commit changes |
+| `submodule-depth` | number | `1` | Git clone depth for submodules |
 
-**Examples:**
+**Example:**
 
 ```yaml
-# Only public repositories (default)
 with:
-  include-private: false
-```
-
-```yaml
-# Include both public and private repositories
-with:
+  config-file: '.github/config/meta-repository/topics.json'
   include-private: true
+  generate-readme: true
+  auto-commit: true
 ```
 
-**Important:**
-- For **public repos**: Standard `github.token` permissions are sufficient
-- For **private repos**: Ensure the workflow has access to private repositories
-  - The `github.token` automatically has the required permissions when running in the organization
+👉 **See [PARAMETERS.md](PARAMETERS.md) for complete parameter reference with examples.**
 
 ### Output Files
 
