@@ -329,9 +329,9 @@ jobs:
             # Get list of valid repository names (cleaned)
             if [ -n "$PREFIX_REGEX" ]; then
               jq -r '.[].name' "${OUTPUT_DIR}/${TOPIC}.json" | \
-                sed -E "s/${PREFIX_REGEX}//g" > "${OUTPUT_DIR}/${TOPIC}_clean.txt"
+                sed -E "s/${PREFIX_REGEX}//g" > "${OUTPUT_DIR}/${TOPIC}.noprefix.txt"
             else
-              jq -r '.[].name' "${OUTPUT_DIR}/${TOPIC}.json" > "${OUTPUT_DIR}/${TOPIC}_clean.txt"
+              jq -r '.[].name' "${OUTPUT_DIR}/${TOPIC}.json" > "${OUTPUT_DIR}/${TOPIC}.noprefix.txt"
             fi
 
             # Remove obsolete submodules
@@ -340,7 +340,7 @@ jobs:
               find "$FOLDER" -mindepth 1 -maxdepth 1 -type d | while read -r dir; do
                 submodule_name=$(basename "$dir")
 
-                if ! grep -qx "$submodule_name" "${OUTPUT_DIR}/${TOPIC}_clean.txt"; then
+                if ! grep -qx "$submodule_name" "${OUTPUT_DIR}/${TOPIC}.noprefix.txt"; then
                   echo "      ❌ Removing obsolete: $submodule_name"
                   git submodule deinit -f "$dir" 2>/dev/null || true
                   git rm -f "$dir" 2>/dev/null || true
