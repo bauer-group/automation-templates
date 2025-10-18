@@ -416,7 +416,7 @@ BootstrapIntegration
 | Secret | Required | Purpose |
 |--------|----------|---------|
 | `GITHUB_TOKEN` | Auto-available | Repository access and commits (automatically provided) |
-| `GITHUB_PAT` | **For private repos** | Personal Access Token with `repo` scope for accessing private repositories |
+| `PAT_READONLY_ORGANISATION` | **For private repos** | Personal Access Token with `repo` scope for accessing private repositories (recommended name) |
 | `META_REPO_TOKEN` | For triggers | Cross-repo dispatch (PAT with repo scope) |
 | `TEAMS_WEBHOOK_URL` | For notifications | Microsoft Teams integration |
 
@@ -426,7 +426,7 @@ To include private repositories in your meta repository sync, you **must** provi
 
 **Setup:**
 1. Create a PAT at https://github.com/settings/tokens with `repo` scope
-2. Add the PAT as a repository or organization secret (recommended name: `GITHUB_PAT_READONLY_ORGANISATION`)
+2. Add the PAT as a repository or organization secret (recommended name: `PAT_READONLY_ORGANISATION`)
 3. Pass it via `secrets` in your workflow:
 
 ```yaml
@@ -434,14 +434,14 @@ jobs:
   sync:
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
     secrets:
-      GITHUB_PAT: ${{ secrets.GITHUB_PAT_READONLY_ORGANISATION }}  # Required for private repos
+      GITHUB_PAT: ${{ secrets.PAT_READONLY_ORGANISATION }}  # Required for private repos
     with:
       include-private: true
 ```
 
 **Recommended Secret Names:**
-- ✅ `GITHUB_PAT_READONLY_ORGANISATION` - Self-documenting, clearly indicates read-only org access (best practice)
-- ✅ `GITHUB_PAT` - Simple and works
+- ✅ `PAT_READONLY_ORGANISATION` - Self-documenting, clearly indicates read-only org access (best practice)
+- ✅ `GITHUB_PAT` - Alternative, works too
 - ❌ `GH_TOKEN` - Too generic, avoid confusion
 
 **🔒 Security Best Practice:**
