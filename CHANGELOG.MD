@@ -1,3 +1,29 @@
+## [2.0.0](https://github.com/bauer-group/automation-templates/compare/v1.11.0...v2.0.0) (2025-10-18)
+
+### ⚠ BREAKING CHANGES
+
+* To access private repositories, users must now provide a GH_PAT secret with 'repo' scope.
+
+Changes:
+- Add optional GH_PAT secret parameter to workflow_call
+- Implement fallback logic: GH_PAT || github.token
+- Add debug output showing which token is being used
+- Update all example workflows with secrets.GH_PAT parameter
+- Extend PARAMETERS.md with detailed GH_PAT setup instructions
+- Add "Private Repository Access" section to README.md
+
+Why this change:
+The default github.token has limited permissions and may not access all private repositories
+in an organization. A Personal Access Token with 'repo' scope ensures full access to both
+public and private repositories.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+### 🚀 Features
+
+* add GH_PAT secret support for private repository access in meta-repository-sync ([6753a6e](https://github.com/bauer-group/automation-templates/commit/6753a6eb6a312a480363b03991eac6401efdf884))
+* verbessere Unterstützung für private Repositories durch erweiterte Eingabeverarbeitung und detaillierte Protokollierung ([5faebaa](https://github.com/bauer-group/automation-templates/commit/5faebaa063c80600804a5f37e2e8a5e79cf417b7))
+
 ## [1.11.0](https://github.com/bauer-group/automation-templates/compare/v1.10.1...v1.11.0) (2025-10-17)
 
 ### 🚀 Features
