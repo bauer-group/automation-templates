@@ -2,6 +2,11 @@ name: 🔄 Meta Repository Submodule Sync
 
 on:
   workflow_call:
+    secrets:
+      GH_PAT:
+        description: 'GitHub Personal Access Token with repo scope (required for private repos)'
+        required: false
+
     inputs:
       # Configuration
       config-file:
@@ -114,7 +119,7 @@ jobs:
       repos-count: ${{ steps.count.outputs.total }}
 
     env:
-      GH_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
       ORGANIZATION: ${{ inputs.organization || github.repository_owner }}
 
     steps:
@@ -244,6 +249,14 @@ jobs:
 
           echo "🔍 Fetching repositories from organization: $ORG"
           echo ""
+
+          # Check authentication
+          if [ -n "${{ secrets.GH_PAT }}" ]; then
+            echo "🔑 Using provided GH_PAT token (supports private repos)"
+          else
+            echo "🔑 Using default github.token (may have limited access to private repos)"
+            echo "   💡 To access private repos, provide a GH_PAT secret with 'repo' scope"
+          fi
 
           # Determine repository type filter
           # Handle both boolean and string values
