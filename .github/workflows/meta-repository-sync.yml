@@ -352,6 +352,14 @@ jobs:
           echo "🔄 Syncing submodules..."
           echo ""
 
+          # Configure git to use the correct token for submodule operations
+          # This is needed because git submodule add uses the git config credentials
+          if [ "${{ inputs.include-private }}" = "true" ] && [ -n "${{ secrets.GITHUB_PAT }}" ]; then
+            echo "🔑 Configuring git to use GITHUB_PAT for submodule operations..."
+            # Update the extraheader to use the PAT token
+            git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $(echo -n x-access-token:${{ secrets.GITHUB_PAT }} | base64)"
+          fi
+
           ADDED=0
           UPDATED=0
           REMOVED=0
