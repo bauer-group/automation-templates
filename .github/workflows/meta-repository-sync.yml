@@ -3,7 +3,7 @@ name: 🔄 Meta Repository Submodule Sync
 on:
   workflow_call:
     secrets:
-      GH_PAT:
+      GITHUB_PAT:
         description: 'GitHub Personal Access Token with repo scope (required for private repos)'
         required: false
 
@@ -119,13 +119,14 @@ jobs:
       repos-count: ${{ steps.count.outputs.total }}
 
     env:
-      GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
       ORGANIZATION: ${{ inputs.organization || github.repository_owner }}
 
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
         with:
+          # SECURITY: Always use github.token for write operations (checkout, commit, push)
+          # GITHUB_PAT is only used for reading private repos from organization
           token: ${{ github.token }}
           submodules: recursive
           fetch-depth: 0
@@ -250,25 +251,33 @@ jobs:
           echo "🔍 Fetching repositories from organization: $ORG"
           echo ""
 
-          # Check authentication
-          if [ -n "${{ secrets.GH_PAT }}" ]; then
-            echo "🔑 Using provided GH_PAT token (supports private repos)"
-          else
-            echo "🔑 Using default github.token (may have limited access to private repos)"
-            echo "   💡 To access private repos, provide a GH_PAT secret with 'repo' scope"
-          fi
-
           # Determine repository type filter
           # Handle both boolean and string values
           INCLUDE_PRIVATE="${{ inputs.include-private }}"
           echo "🔐 Include private repositories: $INCLUDE_PRIVATE"
 
+          # Check if GITHUB_PAT is needed and available
+          USE_PAT=false
           if [ "$INCLUDE_PRIVATE" = "true" ] || [ "$INCLUDE_PRIVATE" = "True" ] || [ "$INCLUDE_PRIVATE" = "TRUE" ]; then
             REPO_TYPE="all"
             echo "📥 Fetching ALL repositories (public + private) from organization..."
+
+            # Check if GITHUB_PAT is provided
+            if [ -n "${{ secrets.GITHUB_PAT }}" ]; then
+              echo "🔑 Using provided GITHUB_PAT token (supports private repos)"
+              USE_PAT=true
+              export GH_TOKEN="${{ secrets.GITHUB_PAT }}"
+            else
+              echo "⚠️ WARNING: include-private=true but GITHUB_PAT secret not provided!"
+              echo "   The default github.token may not have access to all private repositories."
+              echo "   💡 To ensure access to private repos, provide a GITHUB_PAT secret with 'repo' scope"
+              export GH_TOKEN="${{ github.token }}"
+            fi
           else
             REPO_TYPE="public"
             echo "📥 Fetching PUBLIC repositories from organization..."
+            echo "🔑 Using default github.token"
+            export GH_TOKEN="${{ github.token }}"
           fi
 
           # Fetch all repos ONCE and cache them

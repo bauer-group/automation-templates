@@ -83,25 +83,35 @@ with:
 
 **⚠️ Important for Private Repositories:**
 
-To access private repositories, you need to provide a Personal Access Token (PAT) with `repo` scope:
+To access private repositories, you **must** provide a Personal Access Token (PAT) with `repo` scope:
 
 ```yaml
 jobs:
   sync:
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
     secrets:
-      GH_PAT: ${{ secrets.GH_PAT }}  # Required for private repos
+      GITHUB_PAT: ${{ secrets.GITHUB_PAT }}  # Required for private repos
     with:
       include-private: true
 ```
 
 **Setup:**
 1. Create a PAT at https://github.com/settings/tokens with `repo` scope
-2. Add the PAT as a repository/organization secret named `GH_PAT`
+2. Add the PAT as a repository/organization secret named `GITHUB_PAT`
 3. Pass it via `secrets` parameter as shown above
 
-**Fallback:**
-If `GH_PAT` is not provided, the workflow uses `github.token` which may have limited access to private repositories depending on your GitHub plan and organization settings.
+**🔒 Security Note:**
+The `GITHUB_PAT` is **only used for reading** private repositories from your organization. All write operations (checkout, commit, push) use the default `github.token` for security. This follows the principle of least privilege.
+
+**Recommended Token Scopes:**
+- ✅ `repo` (or `public_repo` if you only need public repos)
+- ❌ Do NOT grant additional scopes like `workflow`, `admin:org`, etc.
+
+**Behavior:**
+- When `include-private: true` **AND** `GITHUB_PAT` is provided → Uses GITHUB_PAT for reading org repos (read-only)
+- When `include-private: true` **BUT** `GITHUB_PAT` is NOT provided → Shows warning, uses github.token (limited access)
+- When `include-private: false` → Uses github.token (public repos only)
+- **All git operations** (checkout, commit, push) → Always uses github.token
 
 ## Repository Settings
 
@@ -371,7 +381,7 @@ jobs:
     name: Synchronize Repository Collection
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
     secrets:
-      GH_PAT: ${{ secrets.GH_PAT }}  # Required for private repositories
+      GITHUB_PAT: ${{ secrets.GITHUB_PAT }}  # Required for private repositories
     with:
       # Configuration
       config-file: '.github/config/meta-repository/topics.json'
@@ -419,7 +429,7 @@ jobs:
   sync:
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
     secrets:
-      GH_PAT: ${{ secrets.GH_PAT }}
+      GITHUB_PAT: ${{ secrets.GITHUB_PAT }}
     with:
       # ... parameters ...
 

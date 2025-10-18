@@ -416,7 +416,7 @@ BootstrapIntegration
 | Secret | Required | Purpose |
 |--------|----------|---------|
 | `GITHUB_TOKEN` | Auto-available | Repository access and commits (automatically provided) |
-| `GH_PAT` | **For private repos** | Personal Access Token with `repo` scope for accessing private repositories |
+| `GITHUB_PAT` | **For private repos** | Personal Access Token with `repo` scope for accessing private repositories |
 | `META_REPO_TOKEN` | For triggers | Cross-repo dispatch (PAT with repo scope) |
 | `TEAMS_WEBHOOK_URL` | For notifications | Microsoft Teams integration |
 
@@ -426,7 +426,7 @@ To include private repositories in your meta repository sync, you **must** provi
 
 **Setup:**
 1. Create a PAT at https://github.com/settings/tokens with `repo` scope
-2. Add the PAT as a repository or organization secret named `GH_PAT`
+2. Add the PAT as a repository or organization secret named `GITHUB_PAT`
 3. Pass it via `secrets` in your workflow:
 
 ```yaml
@@ -434,13 +434,26 @@ jobs:
   sync:
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
     secrets:
-      GH_PAT: ${{ secrets.GH_PAT }}  # Required for private repos
+      GITHUB_PAT: ${{ secrets.GITHUB_PAT }}  # Required for private repos
     with:
       include-private: true
 ```
 
+**🔒 Security Best Practice:**
+The `GITHUB_PAT` is **only used for reading** private repositories from your organization. All write operations (checkout, commit, push to the meta repository) use the default `github.token`. This follows the **principle of least privilege** - the PAT cannot accidentally modify your meta repository.
+
+**Recommended Token Scopes:**
+- ✅ `repo` - Read access to private repositories
+- ❌ Do NOT grant additional scopes like `workflow`, `admin:org`, `delete_repo`, etc.
+
+**Behavior:**
+- When `include-private: true` **AND** `GITHUB_PAT` is provided → Uses GITHUB_PAT for reading org repos (read-only)
+- When `include-private: true` **BUT** `GITHUB_PAT` is NOT provided → Shows warning, uses default github.token (limited access)
+- When `include-private: false` → Uses default github.token (public repos only)
+- **All git operations** (checkout, commit, push) → Always uses github.token
+
 **Why is this needed?**
-The default `GITHUB_TOKEN` provided by GitHub Actions has limited permissions and may not have access to all private repositories in your organization. A PAT with `repo` scope ensures full access to both public and private repositories.
+The default `GITHUB_TOKEN` provided by GitHub Actions has limited permissions and may not have access to all private repositories in your organization. A dedicated PAT with `repo` scope ensures full read access to both public and private repositories.
 
 ## Best Practices
 
