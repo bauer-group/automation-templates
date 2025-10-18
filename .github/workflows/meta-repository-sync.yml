@@ -429,10 +429,23 @@ jobs:
 
               if [ ! -d "$path" ]; then
                 echo "      ✅ Adding: $clean_name (branch: $branch)"
-                git submodule add -b "$branch" "$url" "$path" 2>/dev/null || {
-                  echo "         ⚠️ Failed to add $clean_name, might already exist"
-                }
-                ADDED=$((ADDED + 1))
+                echo "         📍 URL: $url"
+                echo "         📁 Path: $path"
+
+                # Try to add submodule and capture actual error
+                if git submodule add -b "$branch" "$url" "$path" 2>&1; then
+                  echo "         ✅ Successfully added $clean_name"
+                  ADDED=$((ADDED + 1))
+                else
+                  ERROR_CODE=$?
+                  echo "         ❌ Failed to add $clean_name (exit code: $ERROR_CODE)"
+                  echo "         💡 This repo might already be in .gitmodules or the directory exists"
+
+                  # Check if it's in .gitmodules
+                  if grep -q "path = $path" .gitmodules 2>/dev/null; then
+                    echo "         📋 Found in .gitmodules - treating as existing submodule"
+                  fi
+                fi
               else
                 echo "      🔄 Updating: $clean_name"
                 (
