@@ -120,6 +120,9 @@ jobs:
 
     env:
       ORGANIZATION: ${{ inputs.organization || github.repository_owner }}
+      # Set GH_TOKEN early for all gh commands (including branch detection)
+      # Use PAT_READONLY_ORGANISATION if include-private=true, otherwise use github.token
+      GH_TOKEN: ${{ inputs.include-private && secrets.GITHUB_PAT || github.token }}
 
     steps:
       - name: 📥 Checkout Repository
@@ -256,31 +259,26 @@ jobs:
           INCLUDE_PRIVATE="${{ inputs.include-private }}"
           echo "🔐 Include private repositories: $INCLUDE_PRIVATE"
 
-          # Check if GITHUB_PAT is needed and available
-          USE_PAT=false
+          # Check which token is being used (GH_TOKEN is already set in env)
           if [ "$INCLUDE_PRIVATE" = "true" ] || [ "$INCLUDE_PRIVATE" = "True" ] || [ "$INCLUDE_PRIVATE" = "TRUE" ]; then
             REPO_TYPE="all"
             echo "📥 Fetching ALL repositories (public + private) from organization..."
 
-            # Check if GITHUB_PAT is provided
+            # Check if GITHUB_PAT was provided
             if [ -n "${{ secrets.GITHUB_PAT }}" ]; then
               echo "🔑 Using provided GITHUB_PAT token (supports private repos)"
-              USE_PAT=true
-              export GH_TOKEN="${{ secrets.GITHUB_PAT }}"
             else
               echo "⚠️ WARNING: include-private=true but GITHUB_PAT secret not provided!"
               echo "   The default github.token may not have access to all private repositories."
               echo "   💡 To ensure access to private repos, provide a GITHUB_PAT secret with 'repo' scope"
-              export GH_TOKEN="${{ github.token }}"
             fi
           else
             REPO_TYPE="public"
             echo "📥 Fetching PUBLIC repositories from organization..."
             echo "🔑 Using default github.token"
-            export GH_TOKEN="${{ github.token }}"
           fi
 
-          # Fetch all repos ONCE and cache them
+          # Fetch all repos ONCE and cache them (GH_TOKEN is already set)
           echo "📡 API Call: gh api \"orgs/$ORG/repos?type=${REPO_TYPE}&per_page=100\" --paginate"
           gh api "orgs/$ORG/repos?type=${REPO_TYPE}&per_page=100" --paginate > "${OUTPUT_DIR}/_all_repos.json"
 
