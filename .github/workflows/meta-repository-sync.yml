@@ -353,20 +353,21 @@ jobs:
           echo ""
 
           # Configure git to use the correct token for submodule operations
-          # This is needed because git submodule add uses the git config credentials
-          # Use --local to override the checkout step's credentials
+          # IMPORTANT: Submodules need GLOBAL config, not local!
           if [ "${{ inputs.include-private }}" = "true" ] && [ -n "${{ secrets.GITHUB_PAT }}" ]; then
             echo "🔑 Configuring git to use GITHUB_PAT for submodule operations..."
 
-            # Unset the existing extraheader first
+            # Unset the existing extraheader first (both local and global)
             git config --local --unset-all http.https://github.com/.extraheader || true
+            git config --global --unset-all http.https://github.com/.extraheader || true
 
-            # Set new extraheader with PAT token
+            # Set new extraheader with PAT token in GLOBAL config
+            # This is needed because git submodule add creates new git repos that inherit global config
             # Format: "AUTHORIZATION: basic BASE64(x-access-token:TOKEN)"
             AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GITHUB_PAT }}" | base64 -w 0)"
-            git config --local http.https://github.com/.extraheader "$AUTH_HEADER"
+            git config --global http.https://github.com/.extraheader "$AUTH_HEADER"
 
-            echo "         ✅ Git credentials configured for private repo access"
+            echo "         ✅ Git credentials configured globally for private repo access"
           fi
 
           # Prevent git from prompting for credentials
@@ -493,14 +494,15 @@ jobs:
           if [ "${{ inputs.include-private }}" = "true" ] && [ -n "${{ secrets.GITHUB_PAT }}" ]; then
             echo "🔄 Resetting git credentials to github.token for push operations..."
 
-            # Unset PAT credentials
-            git config --local --unset-all http.https://github.com/.extraheader || true
+            # Unset PAT credentials from global config
+            git config --global --unset-all http.https://github.com/.extraheader || true
 
-            # Set github.token for push
+            # Set github.token in local config for push to meta repo
+            # Local takes priority over global, so this overrides for the main repo
             AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${{ github.token }}" | base64 -w 0)"
             git config --local http.https://github.com/.extraheader "$AUTH_HEADER"
 
-            echo "         ✅ Git credentials reset to github.token"
+            echo "         ✅ Git credentials reset to github.token (local)"
           fi
 
       - name: 📝 Generate README
