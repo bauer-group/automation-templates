@@ -90,19 +90,19 @@ jobs:
   sync:
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
     secrets:
-      GITHUB_PAT: ${{ secrets.GITHUB_PAT_READONLY_ORGANISATION }}  # Required for private repos
+      GITHUB_PAT: ${{ secrets.PAT_READONLY_ORGANISATION }}  # Required for private repos
     with:
       include-private: true
 ```
 
 **Setup:**
 1. Create a PAT at https://github.com/settings/tokens with `repo` scope
-2. Add the PAT as a repository/organization secret (recommended name: `GITHUB_PAT_READONLY_ORGANISATION`)
+2. Add the PAT as a repository/organization secret (recommended name: `PAT_READONLY_ORGANISATION`)
 3. Pass it via `secrets` parameter as shown above
 
 **Recommended Secret Names:**
-- ✅ `GITHUB_PAT_READONLY_ORGANISATION` - Clearly indicates read-only org access (recommended)
-- ✅ `GITHUB_PAT` - Simple, works too
+- ✅ `PAT_READONLY_ORGANISATION` - Clearly indicates read-only org access (recommended)
+- ✅ `GITHUB_PAT` - Alternative, works too
 - ❌ `GH_TOKEN` - Avoid, too generic
 
 **🔒 Security Note:**
@@ -386,7 +386,7 @@ jobs:
     name: Synchronize Repository Collection
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
     secrets:
-      GITHUB_PAT: ${{ secrets.GITHUB_PAT_READONLY_ORGANISATION }}  # Required for private repositories
+      GITHUB_PAT: ${{ secrets.PAT_READONLY_ORGANISATION }}  # Required for private repositories
     with:
       # Configuration
       config-file: '.github/config/meta-repository/topics.json'
@@ -434,7 +434,7 @@ jobs:
   sync:
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
     secrets:
-      GITHUB_PAT: ${{ secrets.GITHUB_PAT_READONLY_ORGANISATION }}
+      GITHUB_PAT: ${{ secrets.PAT_READONLY_ORGANISATION }}
     with:
       # ... parameters ...
 

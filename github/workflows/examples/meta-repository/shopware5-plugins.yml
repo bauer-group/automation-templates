@@ -35,7 +35,7 @@ jobs:
     name: Sync Plugin Submodules
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
     secrets:
-      GITHUB_PAT: ${{ secrets.GITHUB_PAT_READONLY_ORGANISATION }}  # Required for private repositories
+      GITHUB_PAT: ${{ secrets.PAT_READONLY_ORGANISATION }}  # Required for private repositories
     with:
       # Configuration
       config-file: '.github/config/meta-repository/topics.json'
