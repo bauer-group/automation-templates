@@ -354,10 +354,11 @@ jobs:
 
           # Configure git to use the correct token for submodule operations
           # This is needed because git submodule add uses the git config credentials
+          # Use --local to override the checkout step's credentials
           if [ "${{ inputs.include-private }}" = "true" ] && [ -n "${{ secrets.GITHUB_PAT }}" ]; then
             echo "🔑 Configuring git to use GITHUB_PAT for submodule operations..."
-            # Update the extraheader to use the PAT token
-            git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $(echo -n x-access-token:${{ secrets.GITHUB_PAT }} | base64)"
+            # Update the extraheader to use the PAT token (local config overrides checkout)
+            git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(echo -n x-access-token:${{ secrets.GITHUB_PAT }} | base64)"
           fi
 
           ADDED=0
