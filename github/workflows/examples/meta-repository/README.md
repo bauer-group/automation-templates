@@ -416,10 +416,31 @@ BootstrapIntegration
 | Secret | Required | Purpose |
 |--------|----------|---------|
 | `GITHUB_TOKEN` | Auto-available | Repository access and commits (automatically provided) |
+| `GH_PAT` | **For private repos** | Personal Access Token with `repo` scope for accessing private repositories |
 | `META_REPO_TOKEN` | For triggers | Cross-repo dispatch (PAT with repo scope) |
 | `TEAMS_WEBHOOK_URL` | For notifications | Microsoft Teams integration |
 
-**Note:** `GITHUB_TOKEN` is automatically available in GitHub Actions and doesn't need to be explicitly configured.
+### ⚠️ Important: Private Repository Access
+
+To include private repositories in your meta repository sync, you **must** provide a Personal Access Token (PAT):
+
+**Setup:**
+1. Create a PAT at https://github.com/settings/tokens with `repo` scope
+2. Add the PAT as a repository or organization secret named `GH_PAT`
+3. Pass it via `secrets` in your workflow:
+
+```yaml
+jobs:
+  sync:
+    uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
+    secrets:
+      GH_PAT: ${{ secrets.GH_PAT }}  # Required for private repos
+    with:
+      include-private: true
+```
+
+**Why is this needed?**
+The default `GITHUB_TOKEN` provided by GitHub Actions has limited permissions and may not have access to all private repositories in your organization. A PAT with `repo` scope ensures full access to both public and private repositories.
 
 ## Best Practices
 

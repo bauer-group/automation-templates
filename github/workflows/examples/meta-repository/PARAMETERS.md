@@ -81,9 +81,27 @@ with:
 - `false` - Only public repositories (faster)
 - `true` - All repositories (public + private)
 
-**Permissions:**
-- Public repos: Standard `github.token` sufficient
-- Private repos: `github.token` automatically has access within organization
+**⚠️ Important for Private Repositories:**
+
+To access private repositories, you need to provide a Personal Access Token (PAT) with `repo` scope:
+
+```yaml
+jobs:
+  sync:
+    uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
+    secrets:
+      GH_PAT: ${{ secrets.GH_PAT }}  # Required for private repos
+    with:
+      include-private: true
+```
+
+**Setup:**
+1. Create a PAT at https://github.com/settings/tokens with `repo` scope
+2. Add the PAT as a repository/organization secret named `GH_PAT`
+3. Pass it via `secrets` parameter as shown above
+
+**Fallback:**
+If `GH_PAT` is not provided, the workflow uses `github.token` which may have limited access to private repositories depending on your GitHub plan and organization settings.
 
 ## Repository Settings
 
@@ -352,6 +370,8 @@ jobs:
   sync:
     name: Synchronize Repository Collection
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
+    secrets:
+      GH_PAT: ${{ secrets.GH_PAT }}  # Required for private repositories
     with:
       # Configuration
       config-file: '.github/config/meta-repository/topics.json'
@@ -398,6 +418,8 @@ The workflow provides the following outputs:
 jobs:
   sync:
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
+    secrets:
+      GH_PAT: ${{ secrets.GH_PAT }}
     with:
       # ... parameters ...
 
