@@ -426,7 +426,7 @@ To include private repositories in your meta repository sync, you **must** provi
 
 **Setup:**
 1. Create a PAT at https://github.com/settings/tokens with `repo` scope
-2. Add the PAT as a repository or organization secret named `GITHUB_PAT`
+2. Add the PAT as a repository or organization secret (recommended name: `GITHUB_PAT_READONLY_ORGANISATION`)
 3. Pass it via `secrets` in your workflow:
 
 ```yaml
@@ -434,10 +434,15 @@ jobs:
   sync:
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
     secrets:
-      GITHUB_PAT: ${{ secrets.GITHUB_PAT }}  # Required for private repos
+      GITHUB_PAT: ${{ secrets.GITHUB_PAT_READONLY_ORGANISATION }}  # Required for private repos
     with:
       include-private: true
 ```
+
+**Recommended Secret Names:**
+- ✅ `GITHUB_PAT_READONLY_ORGANISATION` - Self-documenting, clearly indicates read-only org access (best practice)
+- ✅ `GITHUB_PAT` - Simple and works
+- ❌ `GH_TOKEN` - Too generic, avoid confusion
 
 **🔒 Security Best Practice:**
 The `GITHUB_PAT` is **only used for reading** private repositories from your organization. All write operations (checkout, commit, push to the meta repository) use the default `github.token`. This follows the **principle of least privilege** - the PAT cannot accidentally modify your meta repository.
