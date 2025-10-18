@@ -1,3 +1,35 @@
+## [3.0.0](https://github.com/bauer-group/automation-templates/compare/v2.0.0...v3.0.0) (2025-10-18)
+
+### ⚠ BREAKING CHANGES
+
+* Secret name changed from GH_PAT to GITHUB_PAT
+
+Security improvements:
+- GITHUB_PAT is now only used for reading private repos from organization
+- All write operations (checkout, commit, push) use default github.token
+- Implements principle of least privilege
+- Added warning when include-private=true but GITHUB_PAT not provided
+
+Changes:
+- Rename secret from GH_PAT to GITHUB_PAT
+- GITHUB_PAT only set in GH_TOKEN env var when include-private=true
+- Add security comment in checkout step
+- Update all example workflows (shopware5-plugins.yml, multi-topic-portfolio.yml)
+- Extend documentation with security best practices
+- Add recommended token scopes (repo only, no workflow/admin/delete)
+- Document read-only behavior of GITHUB_PAT
+
+Why this matters:
+- Reduces attack surface: PAT cannot modify meta repository
+- Clear separation: github.token for writes, GITHUB_PAT for reads
+- Better security posture for organizations
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+### ♻️ Code Refactoring
+
+* rename GH_PAT to GITHUB_PAT and implement read-only security model ([d49c5d2](https://github.com/bauer-group/automation-templates/commit/d49c5d2f2c7d336e254caa1aa5a570aaf5a4ca0b))
+
 ## [2.0.0](https://github.com/bauer-group/automation-templates/compare/v1.11.0...v2.0.0) (2025-10-18)
 
 ### ⚠ BREAKING CHANGES
