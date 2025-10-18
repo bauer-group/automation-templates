@@ -464,6 +464,13 @@ jobs:
           echo "   Updated: $UPDATED"
           echo "   Removed: $REMOVED"
 
+          # IMPORTANT: Reset git credentials back to github.token for push operations
+          # The GITHUB_PAT is read-only and should NOT be used for pushing to meta repo
+          if [ "${{ inputs.include-private }}" = "true" ] && [ -n "${{ secrets.GITHUB_PAT }}" ]; then
+            echo "🔄 Resetting git credentials to github.token for push operations..."
+            git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(echo -n x-access-token:${{ github.token }} | base64)"
+          fi
+
       - name: 📝 Generate README
         id: generate-readme
         if: inputs.generate-readme
