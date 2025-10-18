@@ -66,7 +66,7 @@ jobs:
     needs: validate-config
     uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main
     secrets:
-      GH_PAT: ${{ secrets.GH_PAT }}  # Required for private repositories
+      GITHUB_PAT: ${{ secrets.GITHUB_PAT }}  # Required for private repositories
     with:
       # Configuration
       config-file: '.github/config/meta-repository/topics.json'
