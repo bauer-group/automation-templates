@@ -357,9 +357,20 @@ jobs:
           # Use --local to override the checkout step's credentials
           if [ "${{ inputs.include-private }}" = "true" ] && [ -n "${{ secrets.GITHUB_PAT }}" ]; then
             echo "🔑 Configuring git to use GITHUB_PAT for submodule operations..."
-            # Update the extraheader to use the PAT token (local config overrides checkout)
-            git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(echo -n x-access-token:${{ secrets.GITHUB_PAT }} | base64)"
+
+            # Unset the existing extraheader first
+            git config --local --unset-all http.https://github.com/.extraheader || true
+
+            # Set new extraheader with PAT token
+            # Format: "AUTHORIZATION: basic BASE64(x-access-token:TOKEN)"
+            AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GITHUB_PAT }}" | base64 -w 0)"
+            git config --local http.https://github.com/.extraheader "$AUTH_HEADER"
+
+            echo "         ✅ Git credentials configured for private repo access"
           fi
+
+          # Prevent git from prompting for credentials
+          export GIT_TERMINAL_PROMPT=0
 
           ADDED=0
           UPDATED=0
@@ -481,7 +492,15 @@ jobs:
           # The GITHUB_PAT is read-only and should NOT be used for pushing to meta repo
           if [ "${{ inputs.include-private }}" = "true" ] && [ -n "${{ secrets.GITHUB_PAT }}" ]; then
             echo "🔄 Resetting git credentials to github.token for push operations..."
-            git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $(echo -n x-access-token:${{ github.token }} | base64)"
+
+            # Unset PAT credentials
+            git config --local --unset-all http.https://github.com/.extraheader || true
+
+            # Set github.token for push
+            AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${{ github.token }}" | base64 -w 0)"
+            git config --local http.https://github.com/.extraheader "$AUTH_HEADER"
+
+            echo "         ✅ Git credentials reset to github.token"
           fi
 
       - name: 📝 Generate README
