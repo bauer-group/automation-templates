@@ -131,7 +131,9 @@ jobs:
           # SECURITY: Always use github.token for write operations (checkout, commit, push)
           # GITHUB_PAT is only used for reading private repos from organization
           token: ${{ github.token }}
-          submodules: recursive
+          # IMPORTANT: Don't load submodules here! They'll be synced later after credential setup
+          # This prevents failures when .gitmodules contains private repos that github.token can't access
+          submodules: false
           fetch-depth: 0
 
       - name: 🔧 Setup Environment
@@ -372,6 +374,29 @@ jobs:
 
           # Prevent git from prompting for credentials
           export GIT_TERMINAL_PROMPT=0
+
+          # Initialize and update existing submodules from .gitmodules (if any)
+          # This is needed because we disabled automatic submodule checkout
+          if [ -f .gitmodules ]; then
+            echo "📦 Initializing existing submodules from .gitmodules..."
+
+            # Initialize submodules without checkout (just setup .git/config)
+            git submodule init
+
+            # Now update (clone/fetch) all submodules with proper credentials
+            # This will use the GITHUB_PAT credentials we just configured globally
+            if git submodule update --init --recursive --depth ${{ inputs.submodule-depth }} 2>&1; then
+              SUBMODULE_COUNT=$(git submodule status | wc -l)
+              echo "✅ Successfully initialized/updated $SUBMODULE_COUNT existing submodules"
+            else
+              echo "⚠️ Some submodules failed to update (might be newly added or have access issues)"
+              echo "   This is expected if .gitmodules references repos we don't have access to yet"
+            fi
+            echo ""
+          else
+            echo "📦 No existing .gitmodules file found - starting fresh"
+            echo ""
+          fi
 
           ADDED=0
           UPDATED=0
