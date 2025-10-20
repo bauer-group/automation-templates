@@ -316,6 +316,51 @@ with:
 - Include emojis for better visual scanning
 - Follow conventional commits format
 
+### skip-ci
+
+**Type:** `boolean`
+**Default:** `false`
+**Required:** No
+
+Add `[skip ci]` to commit message to prevent triggering CI workflows.
+
+**Example:**
+```yaml
+with:
+  skip-ci: true  # Prevents triggering CI/CD pipelines
+```
+
+**Values:**
+- `false` - Normal commit (triggers all workflows)
+- `true` - Adds `[skip ci]` to commit message
+
+**💰 Cost Savings:**
+
+When enabled, prevents the meta-repository sync commit from triggering other CI/CD workflows like:
+- Test suites
+- Build pipelines
+- Deploy workflows
+- Linting/formatting checks
+
+**Use Cases:**
+- ✅ **Scheduled syncs** - Routine updates don't need CI
+- ✅ **Submodule-only changes** - No code changes to test
+- ✅ **High-frequency updates** - Save costs on frequent syncs
+- ❌ **Manual syncs** - You might want to verify everything works
+
+**Estimated Savings:**
+- **Small orgs:** 5-10 minutes per sync × frequency = significant cost reduction
+- **Large orgs:** 10-20 minutes per sync × frequency = major cost reduction
+
+**Standard `[skip ci]` variants** (GitHub recognizes all these):
+- `[skip ci]`
+- `[ci skip]`
+- `[no ci]`
+- `[skip actions]`
+- `[actions skip]`
+
+**Note:** This workflow uses `[skip ci]` which is the most widely recognized format across CI/CD platforms (GitHub Actions, GitLab CI, CircleCI, Travis CI, etc.).
+
 ## Runner Configuration
 
 ### runs-on
@@ -411,6 +456,7 @@ jobs:
       # Git Settings
       auto-commit: true
       commit-message: '🔄 Auto-sync: Update repositories'
+      skip-ci: true  # Prevent triggering CI workflows (saves costs)
 
       # Runner Configuration
       runs-on: 'ubuntu-latest'
@@ -484,6 +530,7 @@ with:
   generate-json: true
   generate-txt: true
   auto-commit: true
+  skip-ci: true  # Save costs on routine syncs
   submodule-depth: 1
   timeout-minutes: 30
 ```
@@ -510,6 +557,7 @@ with:
   generate-json: true
   generate-txt: true
   auto-commit: true
+  skip-ci: true  # Critical for cost control with many repos
   submodule-depth: 1
   timeout-minutes: 60    # Increased timeout
   output-directory: 'metadata'  # Organized structure
