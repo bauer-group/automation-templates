@@ -459,8 +459,8 @@ jobs:
               done < <(find "$FOLDER" -mindepth 1 -maxdepth 1 -type d)
             fi
 
-            # Add or update submodules
-            echo "   ✨ Adding/updating submodules..."
+            # Add new submodules (existing ones were already updated by git submodule update --remote)
+            echo "   ✨ Processing submodules..."
             while read -r repo; do
               name=$(echo "$repo" | jq -r '.name')
               branch=$(echo "$repo" | jq -r '.default_branch // "main"')
@@ -481,8 +481,9 @@ jobs:
 
               path="$FOLDER/$clean_name"
 
+              # Only add if submodule doesn't exist yet
               if [ ! -d "$path" ]; then
-                echo "      ✅ Adding: $clean_name (branch: $branch)"
+                echo "      ➕ Adding new submodule: $clean_name (branch: $branch)"
                 echo "         📍 URL: $url"
                 echo "         📁 Path: $path"
 
@@ -490,6 +491,8 @@ jobs:
                 if git submodule add -b "$branch" "$url" "$path" 2>&1; then
                   echo "         ✅ Successfully added $clean_name"
                   ADDED=$((ADDED + 1))
+                  # Stage the new submodule
+                  git add "$path" .gitmodules
                 else
                   ERROR_CODE=$?
                   echo "         ❌ Failed to add $clean_name (exit code: $ERROR_CODE)"
@@ -501,20 +504,13 @@ jobs:
                   fi
                 fi
               else
-                echo "      🔄 Updating: $clean_name"
-                (
-                  cd "$path"
-                  git fetch origin "$branch" --depth ${{ inputs.submodule-depth }} 2>/dev/null || true
-                  git checkout "$branch" 2>/dev/null || git checkout -B "$branch" "origin/$branch" 2>/dev/null || true
-                  git pull origin "$branch" 2>/dev/null || true
-                )
+                # Submodule already exists - it was updated by "git submodule update --remote"
+                # Just verify it's properly tracked
+                echo "      ✓ Submodule exists: $clean_name"
                 UPDATED=$((UPDATED + 1))
-              fi
 
-              # Update submodule to latest commit
-              if [ -d "$path" ]; then
-                latest_commit=$(cd "$path" && git rev-parse HEAD)
-                git add "$path"
+                # Stage the submodule reference (commit pointer) if it changed
+                git add "$path" 2>/dev/null || true
               fi
             done < <(jq -c '.[]' "${OUTPUT_DIR}/${TOPIC}.json")
 
