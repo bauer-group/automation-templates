@@ -393,9 +393,17 @@ jobs:
             # Now update (clone/fetch) all submodules with proper credentials
             # This will use the GITHUB_PAT credentials we just configured globally
             # --single-branch: Only fetch the tracked branch (saves bandwidth for repos with many branches)
-            if git submodule update --init --recursive --single-branch --depth ${{ inputs.submodule-depth }} 2>&1; then
+            # --remote: Update to latest commit on remote branch (not the recorded commit)
+            if git submodule update --init --recursive --remote --single-branch --depth ${{ inputs.submodule-depth }} 2>&1; then
               SUBMODULE_COUNT=$(git submodule status | wc -l)
               echo "✅ Successfully initialized/updated $SUBMODULE_COUNT existing submodules"
+
+              # Stage all submodule reference updates
+              echo "📌 Staging submodule reference updates..."
+              git add .gitmodules
+              git submodule foreach --recursive 'git add -A || true' 2>/dev/null || true
+              # Stage the submodule commits in the parent repo
+              git add -u
             else
               echo "⚠️ Some submodules failed to update (might be newly added or have access issues)"
               echo "   This is expected if .gitmodules references repos we don't have access to yet"
