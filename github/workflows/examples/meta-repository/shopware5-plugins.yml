@@ -58,6 +58,7 @@ jobs:
       # Git settings
       auto-commit: true
       commit-message: '🔄 Weekly auto-sync: Shopware 5 plugins'
+      skip-ci: true  # Prevent triggering CI workflows for routine syncs (saves costs)
       # base-branch: ''  # Auto-detect (default)
 
 # Required topics.json structure:
