@@ -86,6 +86,12 @@ on:
         required: false
         default: '🔄 Auto-sync: Update submodules and metadata'
 
+      skip-ci:
+        description: 'Add [skip ci] to commit message to prevent triggering CI workflows'
+        type: boolean
+        required: false
+        default: false
+
       # Runner Configuration
       runs-on:
         description: 'Runner OS'
@@ -679,7 +685,16 @@ jobs:
           git add .
 
           if ! git diff --cached --quiet; then
-            git commit -m "${{ inputs.commit-message }}"
+            # Build commit message with optional [skip ci] suffix
+            COMMIT_MSG="${{ inputs.commit-message }}"
+
+            if [ "${{ inputs.skip-ci }}" = "true" ]; then
+              # Add [skip ci] to prevent triggering CI workflows
+              COMMIT_MSG="${COMMIT_MSG} [skip ci]"
+              echo "🚫 Adding [skip ci] to commit message to prevent CI triggers"
+            fi
+
+            git commit -m "$COMMIT_MSG"
             git push origin "$BASE_BRANCH"
             echo "✅ Changes committed and pushed to $BASE_BRANCH"
           else
