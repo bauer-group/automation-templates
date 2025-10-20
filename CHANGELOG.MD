@@ -1,3 +1,21 @@
+## [3.1.0](https://github.com/bauer-group/automation-templates/compare/v3.0.0...v3.1.0) (2025-10-20)
+
+### 🚀 Features
+
+* add skip-ci option to commit message for CI workflow control ([7d8749a](https://github.com/bauer-group/automation-templates/commit/7d8749af020a34894e2d67b20772e54b292bc3c2))
+
+### 🐛 Bug Fixes
+
+* add skip-ci option to prevent CI workflows during routine syncs ([e663c64](https://github.com/bauer-group/automation-templates/commit/e663c643709b8d837f38b2ef5a9c72bb5204d4f3))
+* configure git credentials for submodule operations with private repos ([b81b285](https://github.com/bauer-group/automation-templates/commit/b81b28512c8b524d49dc4bfedf7338d551875c1d))
+* optimize submodule update command to fetch only the tracked branch ([9215d37](https://github.com/bauer-group/automation-templates/commit/9215d3799cb6803f6cc9eee48004fb1e10cd29a1))
+* prevent submodule loading during initial checkout to avoid access issues ([ef5d9ee](https://github.com/bauer-group/automation-templates/commit/ef5d9ee2300be7ca5b3d19b0abfd15bcfb2c9408))
+* properly configure git credentials for submodule operations ([58e8461](https://github.com/bauer-group/automation-templates/commit/58e84617822b0e8563376e09ef29b00bca3452e0))
+* reset git credentials to github.token after submodule sync for push operations ([23323df](https://github.com/bauer-group/automation-templates/commit/23323df1d663c1b6bba8c8cd43c579dbe1006208))
+* set GH_TOKEN at job level to fix branch detection and repository access ([41655e9](https://github.com/bauer-group/automation-templates/commit/41655e90cc648f17750027f5468c54550d4c7867))
+* use --local instead of --global for git credentials in submodule sync ([68df0d1](https://github.com/bauer-group/automation-templates/commit/68df0d1541c5782607c9abb81c0c0856370a4597))
+* use global git config for submodule credentials, local for push ([cf2be92](https://github.com/bauer-group/automation-templates/commit/cf2be92e435c55c0220eecfbee2b9078544eb913))
+
 ## [3.0.0](https://github.com/bauer-group/automation-templates/compare/v2.0.0...v3.0.0) (2025-10-18)
 
 ### ⚠ BREAKING CHANGES
