@@ -302,7 +302,8 @@ jobs:
           TOTAL_REPOS=0
 
           # Process each topic group using cached data
-          jq -c '.groups[]' "$CONFIG_FILE" | while read -r group; do
+          # Use process substitution to avoid subshell variable scope issues
+          while read -r group; do
             TOPIC=$(echo "$group" | jq -r '.topic')
             FOLDER=$(echo "$group" | jq -r '.folder')
             NAME=$(echo "$group" | jq -r '.name')
@@ -342,7 +343,7 @@ jobs:
             fi
 
             echo ""
-          done
+          done < <(jq -c '.groups[]' "$CONFIG_FILE")
 
           echo "total-repos=$TOTAL_REPOS" >> $GITHUB_OUTPUT
           echo ""
@@ -410,7 +411,8 @@ jobs:
           REMOVED=0
 
           # Process each topic group
-          jq -c '.groups[]' "$CONFIG_FILE" | while read -r group; do
+          # Use process substitution to avoid subshell variable scope issues
+          while read -r group; do
             TOPIC=$(echo "$group" | jq -r '.topic')
             FOLDER=$(echo "$group" | jq -r '.folder')
 
@@ -435,7 +437,7 @@ jobs:
             # Remove obsolete submodules
             echo "   🧹 Checking for obsolete submodules..."
             if [ -d "$FOLDER" ]; then
-              find "$FOLDER" -mindepth 1 -maxdepth 1 -type d | while read -r dir; do
+              while read -r dir; do
                 submodule_name=$(basename "$dir")
 
                 if ! grep -qx "$submodule_name" "${OUTPUT_DIR}/${TOPIC}.noprefix.txt"; then
@@ -446,12 +448,12 @@ jobs:
                   rm -rf "$dir"
                   REMOVED=$((REMOVED + 1))
                 fi
-              done
+              done < <(find "$FOLDER" -mindepth 1 -maxdepth 1 -type d)
             fi
 
             # Add or update submodules
             echo "   ✨ Adding/updating submodules..."
-            jq -c '.[]' "${OUTPUT_DIR}/${TOPIC}.json" | while read -r repo; do
+            while read -r repo; do
               name=$(echo "$repo" | jq -r '.name')
               branch=$(echo "$repo" | jq -r '.default_branch // "main"')
               url=$(echo "$repo" | jq -r '.html_url')
@@ -506,10 +508,10 @@ jobs:
                 latest_commit=$(cd "$path" && git rev-parse HEAD)
                 git add "$path"
               fi
-            done
+            done < <(jq -c '.[]' "${OUTPUT_DIR}/${TOPIC}.json")
 
             echo ""
-          done
+          done < <(jq -c '.groups[]' "$CONFIG_FILE")
 
           # Save statistics
           echo "added=$ADDED" >> $GITHUB_OUTPUT
