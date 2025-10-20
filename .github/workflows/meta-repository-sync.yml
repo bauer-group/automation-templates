@@ -385,7 +385,8 @@ jobs:
 
             # Now update (clone/fetch) all submodules with proper credentials
             # This will use the GITHUB_PAT credentials we just configured globally
-            if git submodule update --init --recursive --depth ${{ inputs.submodule-depth }} 2>&1; then
+            # --single-branch: Only fetch the tracked branch (saves bandwidth for repos with many branches)
+            if git submodule update --init --recursive --single-branch --depth ${{ inputs.submodule-depth }} 2>&1; then
               SUBMODULE_COUNT=$(git submodule status | wc -l)
               echo "✅ Successfully initialized/updated $SUBMODULE_COUNT existing submodules"
             else
