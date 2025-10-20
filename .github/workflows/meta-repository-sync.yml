@@ -449,12 +449,33 @@ jobs:
                 submodule_name=$(basename "$dir")
 
                 if ! grep -qx "$submodule_name" "${OUTPUT_DIR}/${TOPIC}.noprefix.txt"; then
-                  echo "      ❌ Removing obsolete: $submodule_name"
-                  git submodule deinit -f "$dir" 2>/dev/null || true
-                  git rm -f "$dir" 2>/dev/null || true
+                  echo "      ❌ Removing obsolete submodule: $submodule_name"
+
+                  # Step 1: Deinitialize the submodule (remove from working tree)
+                  if git submodule deinit -f "$dir" 2>&1; then
+                    echo "         ✓ Deinitialized submodule"
+                  else
+                    echo "         ⚠️ Deinit failed (might not be registered)"
+                  fi
+
+                  # Step 2: Remove from git index and .gitmodules (this stages the removal)
+                  if git rm -f "$dir" 2>&1; then
+                    echo "         ✓ Removed from git index"
+                    REMOVED=$((REMOVED + 1))
+                  else
+                    echo "         ⚠️ Git rm failed (might already be removed)"
+                  fi
+
+                  # Step 3: Clean up git's internal submodule cache
                   rm -rf ".git/modules/$dir" 2>/dev/null || true
-                  rm -rf "$dir"
-                  REMOVED=$((REMOVED + 1))
+
+                  # Step 4: Ensure directory is removed from filesystem
+                  rm -rf "$dir" 2>/dev/null || true
+
+                  # Step 5: Explicitly stage .gitmodules changes
+                  git add .gitmodules 2>/dev/null || true
+
+                  echo "         ✅ Submodule removal complete"
                 fi
               done < <(find "$FOLDER" -mindepth 1 -maxdepth 1 -type d)
             fi
