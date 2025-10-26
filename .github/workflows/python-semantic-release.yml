@@ -421,7 +421,7 @@ jobs:
 
       - name: 📤 Upload Build Artifacts
         if: steps.release.outputs.released == 'true' && steps.release.outputs.wheel-built == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: python-wheel-${{ github.run_number }}
           path: dist/
