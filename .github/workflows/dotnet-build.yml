@@ -363,7 +363,7 @@ jobs:
           lfs: true
       
       - name: 🔧 Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ inputs.enable-matrix && matrix.dotnet || inputs.dotnet-version }}
           dotnet-version-file: ${{ inputs.dotnet-version-file }}
@@ -371,7 +371,7 @@ jobs:
       
       - name: 🔧 Setup Additional .NET Versions
         if: contains(inputs.dotnet-version, ',')
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: |
             ${{ inputs.dotnet-version }}
