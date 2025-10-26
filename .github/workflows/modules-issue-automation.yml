@@ -49,17 +49,27 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.token || secrets.GITHUB_TOKEN }}
         run: |
           echo "🔍 Getting issue/PR details..."
-          
+
           # Determine if this is an issue or PR
           if [ -n "${{ github.event.issue }}" ]; then
             echo "type=issue" >> $GITHUB_OUTPUT
             echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-            echo "labels=${{ toJson(github.event.issue.labels.*.name) }}" >> $GITHUB_OUTPUT
+            # Use heredoc for multiline JSON to avoid format errors
+            {
+              echo 'labels<<EOF'
+              echo '${{ toJson(github.event.issue.labels.*.name) }}'
+              echo 'EOF'
+            } >> $GITHUB_OUTPUT
             echo "title=${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
           elif [ -n "${{ github.event.pull_request }}" ]; then
             echo "type=pull_request" >> $GITHUB_OUTPUT
             echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-            echo "labels=${{ toJson(github.event.pull_request.labels.*.name) }}" >> $GITHUB_OUTPUT
+            # Use heredoc for multiline JSON to avoid format errors
+            {
+              echo 'labels<<EOF'
+              echo '${{ toJson(github.event.pull_request.labels.*.name) }}'
+              echo 'EOF'
+            } >> $GITHUB_OUTPUT
             echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
           fi
       

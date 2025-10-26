@@ -239,7 +239,7 @@ runs:
         
         # Dependencies
         if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(deps|dependencies|dependabot)" > /dev/null; then
-          TYPE_LABELS="$TYPE_LABELS,dependencies"
+          TYPE_LABELS="$TYPE_LABELS,type/dependencies"
         fi
         
         # Apply type labels
