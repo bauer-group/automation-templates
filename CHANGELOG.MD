@@ -1,3 +1,28 @@
+## [3.2.0](https://github.com/bauer-group/automation-templates/compare/v3.1.0...v3.2.0) (2025-10-26)
+
+### 🚀 Features
+
+* add initial Dependabot configuration for GitHub Actions updates ([4af7ffd](https://github.com/bauer-group/automation-templates/commit/4af7ffddb1a903bdba61f038a96bba11c79660c6))
+
+### 🐛 Bug Fixes
+
+* enhance submodule removal process with detailed logging and error handling ([452d50f](https://github.com/bauer-group/automation-templates/commit/452d50f8bed47171afb53d1175eca3b65909e4d1))
+* improve submodule processing logic to add new submodules and verify existing ones ([a5395df](https://github.com/bauer-group/automation-templates/commit/a5395dfa8e7d7dea9bc76faacc648daaa5dad3de))
+* resolve GitHub Actions workflow failures caused by DSA addition ([5631b17](https://github.com/bauer-group/automation-templates/commit/5631b17b7958437ffe7546a16751396315ef1845))
+* update submodule sync command to fetch latest commits and stage updates ([839232a](https://github.com/bauer-group/automation-templates/commit/839232ad169c22857b15642c84d3dd258a680b24))
+
+### ♻️ Code Refactoring
+
+* use process substitution to avoid subshell variable scope issues in repository sync workflow ([c09ec74](https://github.com/bauer-group/automation-templates/commit/c09ec74362f49512da67887828b93540b9f33f18))
+
+### 🔧 Maintenance
+
+* **deps:** bump actions/setup-dotnet from 4 to 5 ([f608620](https://github.com/bauer-group/automation-templates/commit/f6086208e66b61c66af4ec31bb477ef4b5b08ee2))
+* **deps:** bump actions/setup-python from 5 to 6 ([6adc7b2](https://github.com/bauer-group/automation-templates/commit/6adc7b20d11f940b67a9e15768648aa15b3ed746))
+* **deps:** bump actions/upload-artifact from 4 to 5 ([e2d80f8](https://github.com/bauer-group/automation-templates/commit/e2d80f8b51c8edbfbc5bfc984bd90005a43d72e6))
+* **deps:** bump dorny/test-reporter from 1 to 2 ([38124cd](https://github.com/bauer-group/automation-templates/commit/38124cdd54f6cc1079ff2a0428139499d223b7c5))
+* **deps:** bump peter-evans/dockerhub-description from 4 to 5 ([255a96f](https://github.com/bauer-group/automation-templates/commit/255a96f95e7031b1aaab62699e5a1fa4b3107370))
+
 ## [3.1.0](https://github.com/bauer-group/automation-templates/compare/v3.0.0...v3.1.0) (2025-10-20)
 
 ### 🚀 Features
