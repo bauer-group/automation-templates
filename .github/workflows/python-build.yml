@@ -852,7 +852,7 @@ jobs:
 
       - name: 📊 Test Report
         if: always() && inputs.run-tests && steps.check-reports.outputs.reports-exist == 'true'
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v2
         with:
           name: 'Python Tests - ${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}'
           path: '${{ runner.temp }}/test-results/*.xml'
