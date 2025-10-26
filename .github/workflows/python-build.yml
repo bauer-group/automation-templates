@@ -861,7 +861,7 @@ jobs:
       
       - name: 📤 Upload Test Artifacts
         if: always() && inputs.upload-artifacts && inputs.run-tests
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: test-results-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}-${{ inputs.enable-matrix && matrix.python-version || inputs.python-version }}
           path: |
@@ -872,7 +872,7 @@ jobs:
       
       - name: 📤 Upload Package Artifacts
         if: inputs.upload-artifacts && inputs.build-package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: python-packages-${{ steps.version.outputs.version }}
           path: ${{ runner.temp }}/packages/
@@ -880,7 +880,7 @@ jobs:
       
       - name: 📤 Upload Custom Artifacts
         if: inputs.upload-artifacts && inputs.artifact-paths != '[]'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ inputs.artifact-name }}-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}
           path: |

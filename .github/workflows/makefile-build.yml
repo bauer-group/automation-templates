@@ -188,7 +188,7 @@ jobs:
       - name: 📤 Upload Build Artifacts
         id: upload
         if: inputs.upload-artifacts && steps.build.outputs.artifacts-path != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: makefile-build-artifacts-${{ github.run_number }}
           path: ${{ steps.build.outputs.artifacts-path }}
