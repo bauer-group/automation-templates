@@ -13,7 +13,7 @@
 # 3. Customize inputs as needed
 # 4. Push to trigger the workflow
 
-name: 🛒 Comprehensive Plugin Build
+name: 🛒 Comprehensive Plugin Build (Shopware 5)
 
 on:
   push:

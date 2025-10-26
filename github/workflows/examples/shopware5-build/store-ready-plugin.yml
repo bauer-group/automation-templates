@@ -23,7 +23,7 @@
 #    - PHPUnit tests (recommended)
 # 5. Push to main branch or create a commit with [store update] to update store page
 
-name: 🛒 Store Plugin Build & Release
+name: 🛒 Store Plugin Build & Release (Shopware 5)
 
 on:
   push:

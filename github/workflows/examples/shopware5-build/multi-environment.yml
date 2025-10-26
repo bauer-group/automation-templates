@@ -14,7 +14,7 @@
 # 2. Configure secrets for each environment
 # 3. Adjust branch names and shop URLs to match your setup
 
-name: 🛒 Multi-Environment Build
+name: 🛒 Multi-Environment Build (Shopware 5)
 
 on:
   push:

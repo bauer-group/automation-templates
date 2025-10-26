@@ -10,7 +10,7 @@
 #    - SHOPWARE_ACCOUNT_PASSWORD
 # 3. Push to trigger the workflow
 
-name: 🛒 Build Legacy Plugin
+name: 🛒 Build Legacy Plugin (Shopware 5)
 
 on:
   push:
