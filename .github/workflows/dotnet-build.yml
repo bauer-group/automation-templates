@@ -564,7 +564,7 @@ jobs:
       
       - name: 📊 Test Report
         if: always() && inputs.run-tests
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v2
         with:
           name: 'Test Results - ${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}'
           path: '${{ steps.test.outputs.results-path }}/*.trx'
