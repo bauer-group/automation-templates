@@ -132,7 +132,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # SECURITY: Always use github.token for write operations (checkout, commit, push)
           # GITHUB_PAT is only used for reading private repos from organization
