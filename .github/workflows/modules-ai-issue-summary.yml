@@ -82,23 +82,42 @@ jobs:
             echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
             echo "title=${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
             
-            # Escape the body for JSON
-            BODY=$(echo '${{ github.event.issue.body }}' | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
-            echo "body=$BODY" >> $GITHUB_OUTPUT
-            
+            # Use heredoc for body to handle special characters
+            {
+              echo 'body<<EOF'
+              echo '${{ github.event.issue.body }}'
+              echo 'EOF'
+            } >> $GITHUB_OUTPUT
+
             echo "author=${{ github.event.issue.user.login }}" >> $GITHUB_OUTPUT
-            echo "labels=${{ toJson(github.event.issue.labels.*.name) }}" >> $GITHUB_OUTPUT
+
+            # Use heredoc for labels JSON
+            {
+              echo 'labels<<EOF'
+              echo '${{ toJson(github.event.issue.labels.*.name) }}'
+              echo 'EOF'
+            } >> $GITHUB_OUTPUT
             
           elif [ -n "${{ github.event.pull_request }}" ]; then
             echo "type=pull_request" >> $GITHUB_OUTPUT
             echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
             echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
-            
-            BODY=$(echo '${{ github.event.pull_request.body }}' | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
-            echo "body=$BODY" >> $GITHUB_OUTPUT
-            
+
+            # Use heredoc for body to handle special characters
+            {
+              echo 'body<<EOF'
+              echo '${{ github.event.pull_request.body }}'
+              echo 'EOF'
+            } >> $GITHUB_OUTPUT
+
             echo "author=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
-            echo "labels=${{ toJson(github.event.pull_request.labels.*.name) }}" >> $GITHUB_OUTPUT
+
+            # Use heredoc for labels JSON
+            {
+              echo 'labels<<EOF'
+              echo '${{ toJson(github.event.pull_request.labels.*.name) }}'
+              echo 'EOF'
+            } >> $GITHUB_OUTPUT
           fi
       
       - name: 🎯 Prepare Prompt
