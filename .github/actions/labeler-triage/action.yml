@@ -126,8 +126,12 @@ runs:
           done
         fi
         
-        # Add new size label
-        gh pr edit ${PR_NUMBER} --add-label "$SIZE_LABEL"
+        # Add new size label (create if it doesn't exist)
+        if ! gh label list | grep -q "^${SIZE_LABEL}"; then
+          echo "⚠️ Label '$SIZE_LABEL' does not exist, skipping..."
+        else
+          gh pr edit ${PR_NUMBER} --add-label "$SIZE_LABEL" 2>/dev/null || echo "⚠️ Failed to add label '$SIZE_LABEL'"
+        fi
         echo "size=$SIZE_LABEL" >> $GITHUB_OUTPUT
 
     - name: 🎯 Apply Priority Labels
@@ -176,8 +180,12 @@ runs:
           done
         fi
         
-        # Add priority label
-        gh pr edit ${PR_NUMBER} --add-label "$PRIORITY"
+        # Add priority label (check if it exists first)
+        if ! gh label list | grep -q "^${PRIORITY}"; then
+          echo "⚠️ Label '$PRIORITY' does not exist, skipping..."
+        else
+          gh pr edit ${PR_NUMBER} --add-label "$PRIORITY" 2>/dev/null || echo "⚠️ Failed to add label '$PRIORITY'"
+        fi
         echo "priority=$PRIORITY" >> $GITHUB_OUTPUT
 
     - name: 🔖 Apply Type Labels
@@ -250,7 +258,12 @@ runs:
           IFS=',' read -ra LABELS <<< "$TYPE_LABELS"
           for label in "${LABELS[@]}"; do
             echo "🏷️ Adding type label: $label"
-            gh pr edit ${PR_NUMBER} --add-label "$label"
+            # Check if label exists before adding
+            if ! gh label list | grep -q "^${label}	"; then
+              echo "⚠️ Label '$label' does not exist, skipping..."
+            else
+              gh pr edit ${PR_NUMBER} --add-label "$label" 2>/dev/null || echo "⚠️ Failed to add label '$label'"
+            fi
           done
         fi
         
