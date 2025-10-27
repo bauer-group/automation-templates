@@ -217,7 +217,7 @@ jobs:
         id: inference-github
         if: ${{ !inputs.custom-prompt || !contains(inputs.model, 'gpt') }}
         continue-on-error: true
-        uses: actions/ai-inference@v1
+        uses: actions/ai-inference@v2
         with:
           prompt-file: ${{ steps.prompt.outputs.prompt-file }}
           model: ${{ inputs.model }}
