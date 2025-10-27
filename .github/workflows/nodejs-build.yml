@@ -674,7 +674,7 @@ jobs:
       
       - name: 📊 Upload Coverage
         if: inputs.test-coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
           working-directory: ${{ inputs.working-directory }}

@@ -453,7 +453,7 @@ jobs:
       
       - name: 📤 Upload Coverage to Codecov
         if: inputs.run-tests && inputs.coverage != 'none'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
           file: ${{ inputs.working-directory }}/coverage.xml

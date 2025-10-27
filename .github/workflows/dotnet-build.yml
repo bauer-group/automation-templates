@@ -468,7 +468,7 @@ jobs:
       
       - name: 📊 Upload Coverage to Codecov
         if: inputs.collect-coverage && steps.coverage.outputs.report-path != ''
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
           file: ${{ steps.coverage.outputs.report-path }}
