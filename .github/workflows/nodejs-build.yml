@@ -441,7 +441,7 @@ jobs:
           echo "lockfile=$LOCKFILE" >> $GITHUB_OUTPUT
       
       - name: 🔧 Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.enable-matrix && matrix.node || inputs.node-version }}
           node-version-file: ${{ inputs.node-version-file }}
