@@ -245,15 +245,9 @@ runs:
           TYPE_LABELS="$TYPE_LABELS,type/ci"
         fi
         
-        # Dependencies - use existing 'dependencies' label if available
+        # Dependencies
         if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(deps|dependencies|dependabot)" > /dev/null; then
-          if gh label list | grep -q "^dependencies	"; then
-            TYPE_LABELS="$TYPE_LABELS,dependencies"
-          elif gh label list | grep -q "^type/dependencies	"; then
-            TYPE_LABELS="$TYPE_LABELS,type/dependencies"
-          else
-            echo "⚠️ Neither 'dependencies' nor 'type/dependencies' label exists, skipping..."
-          fi
+          TYPE_LABELS="$TYPE_LABELS,dependencies"
         fi
         
         # Apply type labels
