@@ -155,9 +155,17 @@ runs:
           exit 0
         fi
         
-        PR_TITLE="${{ github.event.pull_request.title }}"
-        PR_BODY="${{ github.event.pull_request.body }}"
-        
+        # Use heredoc to safely capture PR title and body with special characters
+        PR_TITLE=$(cat <<'EOF_TITLE'
+        ${{ github.event.pull_request.title }}
+        EOF_TITLE
+        )
+
+        PR_BODY=$(cat <<'EOF_BODY'
+        ${{ github.event.pull_request.body }}
+        EOF_BODY
+        )
+
         # Check for priority keywords
         PRIORITY=""
         if echo "$PR_TITLE $PR_BODY" | grep -iE "(critical|urgent|emergency|blocker|hotfix)" > /dev/null; then
@@ -209,42 +217,50 @@ runs:
           exit 0
         fi
         
-        BRANCH_NAME="${{ github.head_ref }}"
-        PR_TITLE="${{ github.event.pull_request.title }}"
-        
+        # Use heredoc to safely capture branch name and PR title with special characters
+        BRANCH_NAME=$(cat <<'EOF_BRANCH'
+        ${{ github.head_ref }}
+        EOF_BRANCH
+        )
+
+        PR_TITLE=$(cat <<'EOF_TITLE'
+        ${{ github.event.pull_request.title }}
+        EOF_TITLE
+        )
+
         # Detect type from branch name or PR title
         TYPE_LABELS=""
-        
+
         # Feature
         if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(feat|feature)" > /dev/null; then
           TYPE_LABELS="$TYPE_LABELS,type/feature"
         fi
-        
+
         # Bug fix
         if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(fix|bug|patch)" > /dev/null; then
           TYPE_LABELS="$TYPE_LABELS,type/bug"
         fi
-        
+
         # Documentation
         if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(doc|docs|documentation)" > /dev/null; then
           TYPE_LABELS="$TYPE_LABELS,type/docs"
         fi
-        
+
         # Testing
         if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(test|tests|testing)" > /dev/null; then
           TYPE_LABELS="$TYPE_LABELS,type/test"
         fi
-        
+
         # Refactoring
         if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(refactor|refactoring)" > /dev/null; then
           TYPE_LABELS="$TYPE_LABELS,type/refactor"
         fi
-        
+
         # CI/CD
         if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(ci|cd|pipeline|workflow)" > /dev/null; then
           TYPE_LABELS="$TYPE_LABELS,type/ci"
         fi
-        
+
         # Dependencies
         if echo "$BRANCH_NAME $PR_TITLE" | grep -iE "(deps|dependencies|dependabot)" > /dev/null; then
           TYPE_LABELS="$TYPE_LABELS,dependencies"

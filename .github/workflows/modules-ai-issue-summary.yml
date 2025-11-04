@@ -336,29 +336,40 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.token || secrets.GITHUB_TOKEN }}
         run: |
           echo "💬 Posting summary comment..."
-          
-          # Prepare comment using template
-          COMMENT_TEMPLATE='${{ inputs.comment-template }}'
-          SUMMARY='${{ steps.process.outputs.summary }}'
-          
-          # Replace {summary} placeholder
-          COMMENT="${COMMENT_TEMPLATE//\{summary\}/$SUMMARY}"
-          
+
+          # Safely capture template and summary using heredoc
+          COMMENT_TEMPLATE=$(cat <<'EOF_TEMPLATE'
+          ${{ inputs.comment-template }}
+          EOF_TEMPLATE
+          )
+
+          SUMMARY=$(cat <<'EOF_SUMMARY'
+          ${{ steps.process.outputs.summary }}
+          EOF_SUMMARY
+          )
+
+          # Replace {summary} placeholder using temporary files to avoid bash expansion issues
+          echo "$COMMENT_TEMPLATE" > /tmp/template.txt
+          echo "$SUMMARY" > /tmp/summary.txt
+
+          # Use sed for safer replacement
+          sed 's/{summary}/SUMMARY_PLACEHOLDER/g' /tmp/template.txt > /tmp/comment.txt
+          SUMMARY_ESCAPED=$(cat /tmp/summary.txt | sed 's/[&/\]/\\&/g')
+          sed "s|SUMMARY_PLACEHOLDER|$SUMMARY_ESCAPED|g" /tmp/comment.txt > /tmp/final_comment.txt
+
           # Add label suggestions if any
           if [ -n "${{ steps.process.outputs.suggested-labels }}" ]; then
-            COMMENT="$COMMENT
-
-          **Suggested Labels:** ${{ steps.process.outputs.suggested-labels }}"
+            echo "" >> /tmp/final_comment.txt
+            echo "**Suggested Labels:** ${{ steps.process.outputs.suggested-labels }}" >> /tmp/final_comment.txt
           fi
-          
+
           # Add priority suggestion if any
           if [ -n "${{ steps.process.outputs.suggested-priority }}" ]; then
-            COMMENT="$COMMENT
-          **Suggested Priority:** ${{ steps.process.outputs.suggested-priority }}"
+            echo "**Suggested Priority:** ${{ steps.process.outputs.suggested-priority }}" >> /tmp/final_comment.txt
           fi
-          
-          # Post the comment
-          gh issue comment ${{ steps.details.outputs.number }} --body "$COMMENT"
+
+          # Post the comment using file input for safety
+          gh issue comment ${{ steps.details.outputs.number }} --body-file /tmp/final_comment.txt
       
       - name: 🏷️ Apply Suggested Labels
         if: ${{ inputs.add-labels == true && steps.process.outputs.suggested-labels != '' }}
