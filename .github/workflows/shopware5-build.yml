@@ -295,7 +295,7 @@ jobs:
           cache: 'npm'
 
       - name: 🔧 Install Shopware CLI
-        uses: FriendsOfShopware/shopware-cli-action@v2
+        uses: FriendsOfShopware/shopware-cli-action@v3
         with:
           version: ${{ inputs.shopware-cli-version }}
 
