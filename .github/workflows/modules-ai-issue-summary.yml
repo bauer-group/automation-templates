@@ -73,19 +73,29 @@ jobs:
         id: details
         env:
           GITHUB_TOKEN: ${{ secrets.token || secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           echo "🔍 Extracting issue/PR details..."
-          
+
           # Determine if this is an issue or PR
           if [ -n "${{ github.event.issue }}" ]; then
             echo "type=issue" >> $GITHUB_OUTPUT
             echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-            echo "title=${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
-            
+
+            # Use environment variables to safely handle special characters
+            {
+              echo 'title<<EOF'
+              printf '%s\n' "$ISSUE_TITLE"
+              echo 'EOF'
+            } >> $GITHUB_OUTPUT
+
             # Use heredoc for body to handle special characters
             {
               echo 'body<<EOF'
-              echo '${{ github.event.issue.body }}'
+              printf '%s\n' "$ISSUE_BODY"
               echo 'EOF'
             } >> $GITHUB_OUTPUT
 
@@ -97,16 +107,22 @@ jobs:
               echo '${{ toJson(github.event.issue.labels.*.name) }}'
               echo 'EOF'
             } >> $GITHUB_OUTPUT
-            
+
           elif [ -n "${{ github.event.pull_request }}" ]; then
             echo "type=pull_request" >> $GITHUB_OUTPUT
             echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-            echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
+
+            # Use environment variables to safely handle special characters
+            {
+              echo 'title<<EOF'
+              printf '%s\n' "$PR_TITLE"
+              echo 'EOF'
+            } >> $GITHUB_OUTPUT
 
             # Use heredoc for body to handle special characters
             {
               echo 'body<<EOF'
-              echo '${{ github.event.pull_request.body }}'
+              printf '%s\n' "$PR_BODY"
               echo 'EOF'
             } >> $GITHUB_OUTPUT
 
@@ -279,17 +295,21 @@ jobs:
       - name: 🧠 Fallback Summary (No AI)
         id: fallback
         if: ${{ steps.inference-github.outcome != 'success' && steps.inference-openai.outcome != 'success' }}
+        env:
+          ITEM_TITLE: ${{ steps.details.outputs.title }}
         run: |
           echo "⚠️ AI inference failed, generating basic summary..."
-          
-          # Generate a basic summary without AI
-          SUMMARY="**Type:** ${{ steps.details.outputs.type }}
-          **Title:** ${{ steps.details.outputs.title }}
-          **Author:** @${{ steps.details.outputs.author }}
-          
-          This ${{ steps.details.outputs.type }} requires review. Please check the full description for details."
-          
-          echo "response=$SUMMARY" >> $GITHUB_OUTPUT
+
+          # Generate a basic summary without AI using heredoc
+          {
+            echo 'response<<EOF'
+            echo "**Type:** ${{ steps.details.outputs.type }}"
+            printf '**Title:** %s\n' "$ITEM_TITLE"
+            echo "**Author:** @${{ steps.details.outputs.author }}"
+            echo ""
+            echo "This ${{ steps.details.outputs.type }} requires review. Please check the full description for details."
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
       
       - name: 📝 Process AI Response
         id: process
@@ -401,6 +421,8 @@ jobs:
       
       - name: 📊 Summary Report
         if: always()
+        env:
+          ITEM_TITLE: ${{ steps.details.outputs.title }}
         run: |
           echo "### 🤖 AI Issue Summary Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -408,19 +430,19 @@ jobs:
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| **Type** | ${{ steps.details.outputs.type }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Number** | #${{ steps.details.outputs.number }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Title** | ${{ steps.details.outputs.title }} |" >> $GITHUB_STEP_SUMMARY
+          printf '| **Title** | %s |\n' "$ITEM_TITLE" >> $GITHUB_STEP_SUMMARY
           echo "| **Author** | @${{ steps.details.outputs.author }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Summary Type** | ${{ inputs.summary-type }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Model** | ${{ inputs.model }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **AI Service** | ${{ steps.inference-github.outcome == 'success' && 'GitHub Models' || steps.inference-openai.outcome == 'success' && 'OpenAI' || 'Fallback (No AI)' }} |" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ -n "${{ steps.process.outputs.suggested-labels }}" ]; then
             echo "| **Suggested Labels** | ${{ steps.process.outputs.suggested-labels }} |" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           if [ -n "${{ steps.process.outputs.suggested-priority }}" ]; then
             echo "| **Suggested Priority** | ${{ steps.process.outputs.suggested-priority }} |" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Summary posted successfully**" >> $GITHUB_STEP_SUMMARY
