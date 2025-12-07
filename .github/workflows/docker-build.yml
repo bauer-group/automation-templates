@@ -83,7 +83,19 @@ on:
         type: boolean
         required: false
         default: true
-      
+
+      version-from-dockerfile:
+        description: 'Extract version from Dockerfile LABEL org.opencontainers.image.version and use as image tag'
+        type: boolean
+        required: false
+        default: false
+
+      update-dockerfile-version:
+        description: 'Update Dockerfile LABEL org.opencontainers.image.version with version from Git tag (strips v prefix)'
+        type: boolean
+        required: false
+        default: false
+
       # Push Configuration
       push:
         description: 'Push image to registry'
@@ -354,6 +366,8 @@ jobs:
           image-tags: ${{ inputs.image-tags }}${{ inputs.enable-matrix && matrix.tag-suffix && format('-{0}', matrix.tag-suffix) || '' }}
           auto-tags: ${{ inputs.auto-tags }}
           latest-tag: ${{ inputs.latest-tag }}
+          version-from-dockerfile: ${{ inputs.version-from-dockerfile }}
+          update-dockerfile-version: ${{ inputs.update-dockerfile-version }}
           push: ${{ inputs.push }}
           push-on-pr: ${{ inputs.push-on-pr }}
           cache-enabled: ${{ inputs.cache-enabled }}
