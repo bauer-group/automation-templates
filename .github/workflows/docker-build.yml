@@ -49,16 +49,10 @@ on:
       
       # Registry Configuration
       registry:
-        description: 'Docker registry URL'
+        description: 'Docker registry URL (used when publish-to is ghcr)'
         type: string
         required: false
         default: 'ghcr.io'
-
-      registry-username:
-        description: 'Registry username (defaults to github.actor)'
-        type: string
-        required: false
-        default: ''
 
       # Secondary Registry (for multi-registry push - build once, push to both)
       secondary-registry:
@@ -108,6 +102,13 @@ on:
         type: boolean
         required: false
         default: false
+
+      # Publish Target Configuration
+      publish-to:
+        description: 'Where to publish the image: ghcr, dockerhub, or both'
+        type: string
+        required: false
+        default: 'ghcr'
 
       # Push Configuration
       push:
@@ -264,20 +265,12 @@ on:
         default: ''
     
     secrets:
-      REGISTRY_USERNAME:
-        description: 'Registry username (use this instead of registry-username input for sensitive values)'
+      DOCKER_USERNAME:
+        description: 'Docker Hub username'
         required: false
 
-      REGISTRY_PASSWORD:
-        description: 'Registry password/token (defaults to GITHUB_TOKEN)'
-        required: false
-
-      SECONDARY_REGISTRY_USERNAME:
-        description: 'Secondary registry username (e.g., Docker Hub username)'
-        required: false
-
-      SECONDARY_REGISTRY_PASSWORD:
-        description: 'Secondary registry password/token (e.g., Docker Hub token)'
+      DOCKER_PASSWORD:
+        description: 'Docker Hub password/token'
         required: false
 
       COSIGN_PRIVATE_KEY:
@@ -384,12 +377,14 @@ jobs:
           target: ${{ inputs.build-target }}
           platforms: ${{ inputs.enable-matrix && matrix.platform || inputs.platforms }}
           multi-platform: ${{ inputs.enable-matrix && 'false' || inputs.multi-platform }}
-          registry: ${{ inputs.registry }}
-          registry-username: ${{ secrets.REGISTRY_USERNAME || inputs.registry-username }}
-          registry-password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
-          secondary-registry: ${{ inputs.secondary-registry }}
-          secondary-registry-username: ${{ secrets.SECONDARY_REGISTRY_USERNAME }}
-          secondary-registry-password: ${{ secrets.SECONDARY_REGISTRY_PASSWORD }}
+          # Primary registry: GHCR (if publish-to is 'ghcr' or 'both') or Docker Hub (if publish-to is 'dockerhub')
+          registry: ${{ inputs.publish-to == 'dockerhub' && 'docker.io' || inputs.registry }}
+          registry-username: ${{ inputs.publish-to == 'dockerhub' && secrets.DOCKER_USERNAME || github.actor }}
+          registry-password: ${{ inputs.publish-to == 'dockerhub' && secrets.DOCKER_PASSWORD || secrets.GITHUB_TOKEN }}
+          # Secondary registry: Docker Hub (if publish-to is 'both')
+          secondary-registry: ${{ inputs.publish-to == 'both' && 'docker.io' || inputs.secondary-registry }}
+          secondary-registry-username: ${{ secrets.DOCKER_USERNAME }}
+          secondary-registry-password: ${{ secrets.DOCKER_PASSWORD }}
           secondary-image-name: ${{ inputs.secondary-image-name }}
           image-name: ${{ inputs.image-name }}
           image-tags: ${{ inputs.image-tags }}${{ inputs.enable-matrix && matrix.tag-suffix && format('-{0}', matrix.tag-suffix) || '' }}
@@ -447,7 +442,7 @@ jobs:
   dockerhub-readme:
     name: Sync Docker Hub README
     needs: build
-    if: inputs.sync-dockerhub-readme && inputs.registry == 'docker.io' && needs.build.result == 'success' && inputs.push
+    if: inputs.sync-dockerhub-readme && (inputs.publish-to == 'dockerhub' || inputs.publish-to == 'both') && needs.build.result == 'success' && inputs.push
     runs-on: ubuntu-latest
     timeout-minutes: 5
     
