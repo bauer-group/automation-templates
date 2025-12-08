@@ -251,10 +251,14 @@ on:
         default: ''
     
     secrets:
+      REGISTRY_USERNAME:
+        description: 'Registry username (use this instead of registry-username input for sensitive values)'
+        required: false
+
       REGISTRY_PASSWORD:
         description: 'Registry password/token (defaults to GITHUB_TOKEN)'
         required: false
-      
+
       COSIGN_PRIVATE_KEY:
         description: 'Cosign private key for image signing'
         required: false
@@ -360,7 +364,7 @@ jobs:
           platforms: ${{ inputs.enable-matrix && matrix.platform || inputs.platforms }}
           multi-platform: ${{ inputs.enable-matrix && 'false' || inputs.multi-platform }}
           registry: ${{ inputs.registry }}
-          registry-username: ${{ inputs.registry-username }}
+          registry-username: ${{ secrets.REGISTRY_USERNAME || inputs.registry-username }}
           registry-password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
           image-name: ${{ inputs.image-name }}
           image-tags: ${{ inputs.image-tags }}${{ inputs.enable-matrix && matrix.tag-suffix && format('-{0}', matrix.tag-suffix) || '' }}
