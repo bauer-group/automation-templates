@@ -202,23 +202,40 @@ The Docker build action provides:
 
 ## Automatic Tag Generation
 
-When `auto-tags: true`, the workflow generates tags based on Git context:
+When `auto-tags: true`, the workflow generates tags based on Git context and registry:
 
-### On Tag Push (e.g., `v1.2.3`)
+### GHCR (Primary Registry)
+
+**On Tag Push (e.g., `v1.2.3`):**
 
 - `1.2.3` - Full semantic version
 - `1.2` - Major.minor version
-- `1` - Major version
+- `1` - Major version (disabled for v0.x.x)
 - `latest` - If `latest-tag: true`
 
-### On Branch Push
+**On Branch Push:**
 
 - `main` or `develop` - Branch name
 - `main-a1b2c3d` - Branch + commit SHA prefix
 
-### On Pull Request
+**On Pull Request:**
 
 - `pr-123` - Pull request number
+
+### Docker Hub (Secondary Registry)
+
+Docker Hub only receives **release tags** (no branch/SHA tags):
+
+**On Tag Push (e.g., `v1.2.3`):**
+
+- `1.2.3` - Full semantic version
+- `1.2` - Major.minor version
+- `1` - Major version (disabled for v0.x.x)
+- `latest` - If `latest-tag: true`
+
+**On Branch Push:** No tags (image not pushed to Docker Hub)
+
+This ensures Docker Hub only contains stable, versioned releases.
 
 ## Version Management
 
