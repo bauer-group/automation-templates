@@ -256,8 +256,17 @@ When `update-dockerfile-version: true` and a Git tag is pushed (e.g., `v1.2.3`):
 1. The workflow extracts the version from the tag (stripping `v` prefix)
 2. Updates the Dockerfile LABEL `org.opencontainers.image.version`
 3. Uses the updated version for tagging
+4. **Commits the updated Dockerfile back to the default branch**
 
-This is useful for keeping Dockerfile metadata in sync with release tags.
+This ensures the Dockerfile version stays in sync with release tags.
+
+**Note:** The workflow requires `contents: write` permission to commit the Dockerfile update:
+
+```yaml
+permissions:
+  contents: write
+  packages: write
+```
 
 ## Security Features
 
