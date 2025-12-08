@@ -291,19 +291,18 @@ runs:
         username: ${{ inputs.secondary-registry-username }}
         password: ${{ inputs.secondary-registry-password }}
 
-    - name: 🏷️ Extract Metadata
-      id: meta
+    - name: 🏷️ Extract Metadata for Primary Registry (GHCR)
+      id: meta-primary
       uses: docker/metadata-action@v5
       with:
         images: |
           ${{ inputs.registry }}/${{ inputs.image-name || github.repository }}
-          ${{ inputs.secondary-registry != '' && format('{0}/{1}', inputs.secondary-registry, inputs.secondary-image-name || inputs.image-name || github.repository) || '' }}
         tags: |
           ${{ inputs.auto-tags == 'true' && 'type=ref,event=branch' || '' }}
           ${{ inputs.auto-tags == 'true' && 'type=ref,event=pr' || '' }}
           ${{ inputs.auto-tags == 'true' && 'type=semver,pattern={{version}}' || '' }}
           ${{ inputs.auto-tags == 'true' && 'type=semver,pattern={{major}}.{{minor}}' || '' }}
-          ${{ inputs.auto-tags == 'true' && 'type=semver,pattern={{major}}' || '' }}
+          ${{ inputs.auto-tags == 'true' && 'type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}' || '' }}
           ${{ inputs.auto-tags == 'true' && inputs.latest-tag == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=raw,value=latest' || '' }}
           ${{ inputs.auto-tags == 'true' && !startsWith(github.ref, 'refs/tags/') && 'type=sha,prefix={{branch}}-' || '' }}
           ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-tag || '' }}
@@ -313,6 +312,53 @@ runs:
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.revision={0}', github.sha) || '' }}
           ${{ inputs.add-git-labels == 'true' && 'org.opencontainers.image.created={{date "2006-01-02T15:04:05Z07:00"}}' || '' }}
           ${{ inputs.custom-labels }}
+
+    - name: 🏷️ Extract Metadata for Secondary Registry (Docker Hub)
+      id: meta-secondary
+      if: inputs.secondary-registry != ''
+      uses: docker/metadata-action@v5
+      with:
+        images: |
+          ${{ inputs.secondary-registry }}/${{ inputs.secondary-image-name || inputs.image-name || github.repository }}
+        # Docker Hub only gets semver tags and latest (no branch/sha tags)
+        tags: |
+          ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=semver,pattern={{version}}' || '' }}
+          ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=semver,pattern={{major}}.{{minor}}' || '' }}
+          ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}' || '' }}
+          ${{ inputs.auto-tags == 'true' && inputs.latest-tag == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=raw,value=latest' || '' }}
+          ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-tag || '' }}
+        labels: |
+          ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.source={0}/{1}', github.server_url, github.repository) || '' }}
+          ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.revision={0}', github.sha) || '' }}
+          ${{ inputs.add-git-labels == 'true' && 'org.opencontainers.image.created={{date "2006-01-02T15:04:05Z07:00"}}' || '' }}
+          ${{ inputs.custom-labels }}
+
+    - name: 🏷️ Combine Tags for Multi-Registry Push
+      id: meta
+      shell: bash
+      run: |
+        # Combine tags from both registries
+        PRIMARY_TAGS="${{ steps.meta-primary.outputs.tags }}"
+        SECONDARY_TAGS="${{ steps.meta-secondary.outputs.tags }}"
+
+        if [ -n "$SECONDARY_TAGS" ]; then
+          # Combine both sets of tags
+          COMBINED_TAGS=$(printf "%s\n%s" "$PRIMARY_TAGS" "$SECONDARY_TAGS")
+        else
+          COMBINED_TAGS="$PRIMARY_TAGS"
+        fi
+
+        echo "tags<<EOF" >> $GITHUB_OUTPUT
+        echo "$COMBINED_TAGS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+        # Use primary labels
+        echo "labels<<EOF" >> $GITHUB_OUTPUT
+        echo "${{ steps.meta-primary.outputs.labels }}" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+        echo "📋 Combined tags:"
+        echo "$COMBINED_TAGS"
 
     - name: 🐳 Build and Push Docker Image
       id: build
