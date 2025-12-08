@@ -491,28 +491,36 @@ jobs:
         id: docker-repo
         shell: bash
         run: |
-          # Extract repository name for Docker Hub
-          IMAGE_NAME="${{ inputs.image-name }}"
-          if [ -z "$IMAGE_NAME" ]; then
-            # Use GitHub repository name as fallback
-            IMAGE_NAME="${{ github.repository }}"
-            IMAGE_NAME="${IMAGE_NAME##*/}"  # Remove owner, keep repo name
+          # Determine Docker Hub image name based on publish-to setting
+          # - publish-to: 'dockerhub' -> use image-name (Docker Hub is primary)
+          # - publish-to: 'both' -> use secondary-image-name (Docker Hub is secondary)
+
+          PUBLISH_TO="${{ inputs.publish-to }}"
+
+          if [ "$PUBLISH_TO" = "both" ]; then
+            # Docker Hub is secondary registry, use secondary-image-name
+            DOCKER_REPO="${{ inputs.secondary-image-name }}"
+            if [ -z "$DOCKER_REPO" ]; then
+              # Fallback to image-name if secondary-image-name not set
+              DOCKER_REPO="${{ inputs.image-name }}"
+            fi
+          else
+            # Docker Hub is primary registry (publish-to: 'dockerhub')
+            DOCKER_REPO="${{ inputs.image-name }}"
           fi
-          
-          # Use global DOCKER_USERNAME secret
-          DOCKERHUB_USER="${{ secrets.DOCKER_USERNAME }}"
-          if [ -z "$DOCKERHUB_USER" ]; then
-            echo "❌ DOCKER_USERNAME secret is required for README sync"
-            exit 1
+
+          # Fallback to github repository name if still empty
+          if [ -z "$DOCKER_REPO" ]; then
+            DOCKER_REPO="${{ github.repository }}"
           fi
-          
-          DOCKER_REPO="$DOCKERHUB_USER/$IMAGE_NAME"
+
           echo "🐋 Docker Hub repository: $DOCKER_REPO"
           echo "repository=$DOCKER_REPO" >> $GITHUB_OUTPUT
-          
-          # Validate repository name format
+
+          # Validate repository name format (should be username/imagename)
           if [[ ! "$DOCKER_REPO" =~ ^[a-z0-9]+([._-][a-z0-9]+)*\/[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
             echo "⚠️ Warning: Repository name '$DOCKER_REPO' may not follow Docker Hub naming conventions"
+            echo "   Expected format: username/imagename (e.g., 'myuser/myapp')"
           fi
       
       - name: 🔄 Sync README to Docker Hub
