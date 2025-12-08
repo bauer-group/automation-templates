@@ -1,85 +1,77 @@
 name: Docker Multi-Platform Build Example
 # Example: Multi-platform Docker build for ARM64 and AMD64 architectures
-# This example demonstrates cross-platform builds for cloud and edge deployment
+#
+# Publishes to: GitHub Container Registry (ghcr.io)
+# Authentication: Automatic via GITHUB_TOKEN
+#
+# This example demonstrates:
+# - Cross-platform builds for cloud and edge deployment
+# - linux/amd64, linux/arm64, linux/arm/v7 support
+# - Efficient caching for multi-platform builds
 
 on:
   push:
-    branches: [ main, develop ]
-    tags: [ 'v*' ]
-    paths:
-      - 'Dockerfile'
-      - 'src/**'
-      - '.dockerignore'
+    branches: [main, develop]
+    tags: ['v*.*.*']
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'Dockerfile'
       - 'src/**'
       - '.dockerignore'
-
-env:
-  APP_NAME: 'multi-platform-app'
-  REGISTRY: 'ghcr.io'
 
 jobs:
   docker-build:
     name: Multi-Platform Docker Build
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
-      # Default configuration with multi-platform enabled
-      config-file: 'default'
-      
-      # Multi-platform image configuration
-      image-name: ${{ env.APP_NAME }}
-      image-tag: ${{ github.ref_type == 'tag' && github.ref_name || format('{0}-{1}', github.ref_name, github.sha) }}
-      registry: ${{ env.REGISTRY }}
-      
+      # Publish to GHCR (default)
+      publish-to: 'ghcr'
+
+      # Image configuration
+      image-name: 'multi-platform-app'
+
       # Multi-platform build configuration
-      dockerfile: './Dockerfile'
-      context: '.'
+      dockerfile-path: './Dockerfile'
+      docker-context: '.'
       platforms: 'linux/amd64,linux/arm64,linux/arm/v7'
       multi-platform: true
-      
-      # Cross-compilation build arguments
-      build-args: |
-        TARGETPLATFORM
-        TARGETOS
-        TARGETARCH
-        TARGETVARIANT
-        BUILDPLATFORM
-        VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
-        BUILDTIME=${{ github.event.head_commit.timestamp }}
-      
-      # Security scanning for all platforms
+
+      # Tagging
+      auto-tags: true
+      latest-tag: true
+
+      # Push configuration
+      push: ${{ github.event_name != 'pull_request' }}
+
+      # Security scanning
       security-scan: true
-      fail-on-severity: 'CRITICAL'
+      security-fail-on: 'CRITICAL'
       generate-sbom: true
-      
-      # Testing across platforms
-      run-tests: true
-      test-command: 'docker run --rm --platform=$PLATFORM $IMAGE_TAG test'
-      
+
       # Performance optimization for multi-platform
       cache-enabled: true
       cache-mode: 'max'
-      parallel-builds: true
       build-timeout: 45
-      
-      # Deploy only on tags
-      deploy: ${{ github.ref_type == 'tag' }}
-      deployment-environment: 'production'
-      
-    secrets:
-      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-  # Manifest creation for multi-arch images
-  create-manifest:
-    name: Create Multi-Arch Manifest
+
+    secrets: inherit
+
+  # Manifest verification (optional)
+  verify-manifest:
+    name: Verify Multi-Arch Manifest
     needs: docker-build
     runs-on: ubuntu-latest
-    if: github.ref_type == 'tag'
+    if: github.event_name != 'pull_request'
     steps:
-      - name: Create and Push Manifest
+      - name: Verify Manifest
         run: |
-          echo "Multi-arch manifest created for tag: ${{ github.ref_name }}"
-          # Additional manifest operations if needed
+          echo "## Multi-Platform Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Platforms Built" >> $GITHUB_STEP_SUMMARY
+          echo "- linux/amd64" >> $GITHUB_STEP_SUMMARY
+          echo "- linux/arm64" >> $GITHUB_STEP_SUMMARY
+          echo "- linux/arm/v7" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Image" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** \`${{ needs.docker-build.outputs.image-url }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Digest:** \`${{ needs.docker-build.outputs.image-digest }}\`" >> $GITHUB_STEP_SUMMARY

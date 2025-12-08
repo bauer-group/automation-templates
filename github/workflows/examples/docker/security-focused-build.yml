@@ -1,18 +1,21 @@
 name: Docker Security-Focused Build Example
 # Example: Security-first Docker build with comprehensive vulnerability scanning
-# This example demonstrates advanced security scanning and image hardening
+#
+# Publishes to: GitHub Container Registry (ghcr.io)
+# Authentication: Automatic via GITHUB_TOKEN
+#
+# This example demonstrates:
+# - Strict security scanning (LOW severity threshold)
+# - Image signing with Cosign
+# - SBOM generation
+# - Pre-build security analysis
 
 on:
   push:
-    branches: [ main, security/* ]
-    paths:
-      - 'Dockerfile'
-      - 'Dockerfile.security'
-      - 'src/**'
-      - 'security/**'
-      - '.dockerignore'
+    branches: [main, security/*]
+    tags: ['v*.*.*']
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'Dockerfile'
       - 'Dockerfile.security'
@@ -23,10 +26,6 @@ on:
     # Daily security scan
     - cron: '0 6 * * *'
 
-env:
-  APP_NAME: 'secure-app'
-  SECURITY_SCANNER: 'trivy'
-
 jobs:
   security-scan-pre-build:
     name: Pre-Build Security Analysis
@@ -34,71 +33,58 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        
+
       - name: Dockerfile Security Scan
         run: |
-          echo "Scanning Dockerfile for security issues"
-          # dockerfile-json or hadolint scanning
-          
+          echo "Scanning Dockerfile for security issues..."
+          # Add hadolint or dockerfile-lint here
+
       - name: Source Code Security Scan
         run: |
-          echo "Scanning source code for vulnerabilities"
-          # semgrep, bandit, or other SAST tools
+          echo "Scanning source code for vulnerabilities..."
+          # Add semgrep, bandit, or other SAST tools here
 
   docker-build:
     name: Secure Docker Build
     needs: security-scan-pre-build
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
-      # Security-focused configuration
-      config-file: 'web-application'  # Using web-app config as base
-      
+      # Publish to GHCR
+      publish-to: 'ghcr'
+
       # Secure image configuration
-      image-name: ${{ env.APP_NAME }}
-      image-tag: 'secure-${{ github.sha }}'
-      registry: 'ghcr.io'
-      
+      image-name: 'secure-app'
+
       # Security-hardened build
-      dockerfile: './Dockerfile.security'
-      context: '.'
-      target: 'production-secure'
-      
-      # Security-focused build arguments
-      build-args: |
-        SECURITY_MODE=strict
-        NONROOT_USER=appuser
-        REMOVE_PACKAGE_MANAGERS=true
-        DISABLE_SHELL=true
-        VERSION=${{ github.sha }}
-        BUILDTIME=${{ github.event.head_commit.timestamp }}
-      
-      # Comprehensive security scanning
+      dockerfile-path: './Dockerfile'
+      docker-context: '.'
+      build-target: 'production-secure'
+
+      # Tagging
+      auto-tags: true
+      latest-tag: true
+
+      # Push configuration
+      push: ${{ github.event_name != 'pull_request' }}
+
+      # Strict security configuration
       security-scan: true
-      scanner: ${{ env.SECURITY_SCANNER }}
-      fail-on-severity: 'LOW'  # Very strict security
-      ignore-unfixed: false
+      security-scanner: 'trivy'
+      security-fail-on: 'LOW'  # Very strict
+      security-ignore-unfixed: false
+      sign-image: true
       generate-sbom: true
       sbom-format: 'cyclonedx'
-      sign-image: true
-      
-      # Additional security validations
-      secret-scanning: true
-      license-scanning: true
-      malware-scanning: true
-      
-      # Security testing
+
+      # Testing
       run-tests: true
-      test-command: 'docker run --rm --read-only --tmpfs /tmp $IMAGE_TAG security-test'
-      security-tests: true
-      
-      # No deployment for security builds
-      deploy: false
-      
-    secrets:
-      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
-      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
-      
+      test-command: 'docker run --rm --read-only --tmpfs /tmp $IMAGE_TAG --version'
+
+    # Required secrets:
+    # - COSIGN_PRIVATE_KEY: For image signing
+    # - COSIGN_PASSWORD: Cosign key password
+    secrets: inherit
+
   security-report:
     name: Security Assessment Report
     needs: docker-build
@@ -107,30 +93,20 @@ jobs:
     steps:
       - name: Generate Security Report
         run: |
-          echo "=== SECURITY SCAN RESULTS ==="
-          echo "Build Status: ${{ needs.docker-build.result }}"
-          echo "Timestamp: $(date)"
-          echo "Commit: ${{ github.sha }}"
-          echo "Branch: ${{ github.ref_name }}"
-          
-      - name: Archive Security Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-scan-results
-          path: |
-            security-report.json
-            vulnerability-report.sarif
-            sbom.json
-          retention-days: 90
-          
-      - name: Create Security Issue
-        if: failure()
-        run: |
-          echo "Security vulnerabilities found - creating issue"
-          # Create GitHub issue for security team
-          
+          echo "## Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Status: ${{ needs.docker-build.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Security Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Fail Threshold:** LOW (strict)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image Signed:** Yes" >> $GITHUB_STEP_SUMMARY
+          echo "- **SBOM Generated:** Yes (CycloneDX)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Image Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Digest:** \`${{ needs.docker-build.outputs.image-digest }}\`" >> $GITHUB_STEP_SUMMARY
+
       - name: Notify Security Team
         if: failure()
         run: |
-          echo "Critical security issues detected"
-          # Send notification to security team via webhook/email
+          echo "Security vulnerabilities found - notifying security team"
+          # Add notification logic here

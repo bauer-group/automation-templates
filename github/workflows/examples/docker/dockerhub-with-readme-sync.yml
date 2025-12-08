@@ -1,94 +1,70 @@
-# 🐳 Docker Hub Build with README Sync Example
-# Complete Docker workflow that builds, pushes to Docker Hub, and syncs README
-# Author: BAUER GROUP
+name: Docker Hub Build with README Sync
+# Example: Complete Docker workflow that builds, pushes to Docker Hub, and syncs README
+#
+# Publishes to: Docker Hub (docker.io)
+# Authentication: DOCKER_USERNAME + DOCKER_PASSWORD secrets
 #
 # This example demonstrates:
-# - Building and pushing Docker images to Docker Hub
-# - Automatic README synchronization with peter-evans/dockerhub-description
-# - Fallback from DOCKER_README.MD to README.MD
-# - Custom Docker Hub repository configuration
-
-name: Docker Hub Build with README Sync
+# - Building and pushing Docker images to Docker Hub only
+# - Automatic README synchronization
+# - Multi-platform builds
 
 on:
   push:
     branches: [main, develop]
-    tags: ["v*.*.*"]
+    tags: ['v*.*.*']
   pull_request:
     branches: [main]
   workflow_dispatch:
     inputs:
       force-push:
-        description: "Force push even on PR"
+        description: 'Force push even on PR'
         type: boolean
         default: false
-      sync-readme:
-        description: "Sync README to Docker Hub"
-        type: boolean
-        default: true
-
-env:
-  # Docker Hub configuration
-  DOCKER_REGISTRY: docker.io
-  IMAGE_NAME: my-awesome-app # Change this to your image name
 
 jobs:
-  # Build and push Docker image with README sync
   docker-build:
+    name: Build & Push to Docker Hub
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
-      # Registry Configuration
-      registry: docker.io # Use Docker Hub (not GitHub Container Registry)
-      registry-username: ${{ secrets.DOCKER_USERNAME }}
-      image-name: ${{ env.IMAGE_NAME }}
+      # Publish to Docker Hub only
+      publish-to: 'dockerhub'
 
-      # Docker Hub README Sync Configuration
-      sync-dockerhub-readme: true
-      readme-file: "" # Auto-detect: DOCKER_README.MD -> README.MD -> README.md
+      # Image name on Docker Hub (username/image-name)
+      image-name: 'myuser/my-awesome-app'
 
       # Build Configuration
-      dockerfile-path: "./Dockerfile"
-      docker-context: "."
-      platforms: "linux/amd64,linux/arm64"
+      dockerfile-path: './Dockerfile'
+      docker-context: '.'
+      platforms: 'linux/amd64,linux/arm64'
       multi-platform: true
 
       # Tagging Strategy
       auto-tags: true
-      latest-tag: ${{ github.ref == 'refs/heads/main' }}
-      image-tags: |
-        type=ref,event=branch
-        type=ref,event=pr
-        type=semver,pattern={{version}}
-        type=semver,pattern={{major}}.{{minor}}
-        type=sha,prefix={{branch}}-
+      latest-tag: true
 
       # Push Configuration
       push: ${{ github.event_name != 'pull_request' || github.event.inputs.force-push == 'true' }}
-      push-on-pr: ${{ github.event.inputs.force-push == 'true' }}
+
+      # Docker Hub README Sync
+      sync-dockerhub-readme: true
+      readme-file: '' # Auto-detect: DOCKER_README.MD -> README.MD -> README.md
 
       # Security & Quality
       security-scan: true
-      security-scanner: "trivy"
-      security-fail-on: "HIGH"
-      sign-image: false # Enable if you have cosign setup
+      security-scanner: 'trivy'
+      security-fail-on: 'HIGH'
       generate-sbom: true
 
       # Performance
       cache-enabled: true
-      cache-mode: "max"
-      builder-driver: "docker-container"
+      cache-mode: 'max'
       build-timeout: 30
 
-      # Testing
-      run-tests: false # Enable if you have containerized tests
-
-    secrets:
-      # Docker Hub authentication (uses global secrets)
-      REGISTRY_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-
-      # Optional: Image signing
-      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
-      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+    # Required secrets:
+    # - DOCKER_USERNAME: Docker Hub username
+    # - DOCKER_PASSWORD: Docker Hub password/token
+    secrets: inherit
 
   # Post-build notification (optional)
   notify:
@@ -97,31 +73,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📊 Build Results Summary
+      - name: Build Results Summary
         run: |
-          echo "## 🐳 Docker Hub Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Hub Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📦 Image Information" >> $GITHUB_STEP_SUMMARY
+          echo "### Image Information" >> $GITHUB_STEP_SUMMARY
           echo "- **Registry:** Docker Hub (docker.io)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Repository:** [${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}](https://hub.docker.com/r/${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }})" >> $GITHUB_STEP_SUMMARY
           echo "- **Image URL:** \`${{ needs.docker-build.outputs.image-url }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Digest:** \`${{ needs.docker-build.outputs.image-digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Size:** ${{ needs.docker-build.outputs.image-size }} bytes" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📄 README Sync" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status:** ${{ needs.docker-build.result == 'success' && '✅ README synchronized to Docker Hub' || '❌ Build failed - README not synced' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Docker Hub Page:** https://hub.docker.com/r/${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.docker-build.result }}" = "success" ]; then
-            echo "🎉 **Build completed successfully!**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 🚀 Next Steps" >> $GITHUB_STEP_SUMMARY
-            echo "1. Check the [Docker Hub repository](https://hub.docker.com/r/${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}) for the updated README" >> $GITHUB_STEP_SUMMARY
-            echo "2. Pull the image: \`docker pull ${{ needs.docker-build.outputs.image-url }}\`" >> $GITHUB_STEP_SUMMARY
-            echo "3. Verify the image works as expected" >> $GITHUB_STEP_SUMMARY
+            echo "Build completed successfully!" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ **Build failed!**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Please check the build logs and try again." >> $GITHUB_STEP_SUMMARY
+            echo "Build failed! Please check the logs." >> $GITHUB_STEP_SUMMARY
           fi

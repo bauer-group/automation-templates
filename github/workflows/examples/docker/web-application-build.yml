@@ -1,19 +1,21 @@
 name: Docker Web Application Build Example
 # Example: Complete web application Docker build with testing and deployment
-# This example demonstrates web-specific optimizations and configurations
+#
+# Publishes to: GitHub Container Registry (ghcr.io)
+# Authentication: Automatic via GITHUB_TOKEN
+#
+# This example demonstrates:
+# - Web-specific build optimizations
+# - Node.js/React/Vue/Angular applications
+# - Multi-platform support
+# - Kubernetes deployment
 
 on:
   push:
-    branches: [ main, develop, release/* ]
-    paths:
-      - 'Dockerfile'
-      - 'src/**'
-      - 'public/**'
-      - 'package*.json'
-      - 'yarn.lock'
-      - '.dockerignore'
+    branches: [main, develop, release/*]
+    tags: ['v*.*.*']
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'Dockerfile'
       - 'src/**'
@@ -21,59 +23,55 @@ on:
       - 'package*.json'
       - 'yarn.lock'
       - '.dockerignore'
-
-env:
-  APP_NAME: 'my-web-app'
-  REGISTRY: 'ghcr.io'
 
 jobs:
   docker-build:
     name: Build & Deploy Web Application
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
-      # Web application specific configuration
-      config-file: 'web-application'
-      
+      # Publish to GHCR
+      publish-to: 'ghcr'
+
       # Image configuration
-      image-name: ${{ env.APP_NAME }}
-      image-tag: ${{ github.ref_name }}-${{ github.sha }}
-      registry: ${{ env.REGISTRY }}
-      
+      image-name: 'my-web-app'
+
       # Build configuration
-      dockerfile: './Dockerfile'
-      context: '.'
-      target: 'production'
+      dockerfile-path: './Dockerfile'
+      docker-context: '.'
+      build-target: 'production'
       platforms: 'linux/amd64,linux/arm64'
-      
+      multi-platform: true
+
       # Build arguments for web apps
       build-args: |
-        NODE_ENV=production
-        APP_VERSION=${{ github.ref_name }}
-        BUILD_DATE=${{ github.event.head_commit.timestamp }}
-        COMMIT_SHA=${{ github.sha }}
-        APP_PORT=3000
-      
-      # Enhanced security for web applications
+        {
+          "NODE_ENV": "production",
+          "APP_VERSION": "${{ github.ref_name }}",
+          "COMMIT_SHA": "${{ github.sha }}"
+        }
+
+      # Tagging
+      auto-tags: true
+      latest-tag: true
+
+      # Push configuration
+      push: ${{ github.event_name != 'pull_request' }}
+
+      # Security for web applications
       security-scan: true
-      fail-on-severity: 'HIGH'
+      security-fail-on: 'HIGH'
       generate-sbom: true
       sign-image: true
-      
+
       # Web application testing
       run-tests: true
       test-command: 'docker run --rm $IMAGE_TAG npm test'
-      
-      # Health checks
-      health-check: true
-      health-endpoint: '/health'
-      
+
       # Conditional deployment
-      deploy: ${{ github.ref == 'refs/heads/main' }}
-      deployment-environment: 'staging'
-      deployment-command: 'kubectl set image deployment/webapp container=$IMAGE_URL'
-      
-    secrets:
-      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      KUBECONFIG: ${{ secrets.KUBECONFIG }}
-      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
-      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+      deploy-enabled: ${{ github.ref == 'refs/heads/main' }}
+      deploy-environment: 'staging'
+
+    # Required secrets:
+    # - COSIGN_PRIVATE_KEY: For image signing
+    # - COSIGN_PASSWORD: Cosign key password
+    secrets: inherit

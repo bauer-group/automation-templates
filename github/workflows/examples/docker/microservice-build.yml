@@ -1,20 +1,21 @@
 name: Docker Microservice Build Example
-# Example: Microservice Docker build with service mesh and comprehensive testing
-# This example demonstrates microservice-specific patterns and Kubernetes deployment
+# Example: Microservice Docker build with comprehensive testing and Kubernetes deployment
+#
+# Publishes to: GitHub Container Registry (ghcr.io)
+# Authentication: Automatic via GITHUB_TOKEN
+#
+# This example demonstrates:
+# - Microservice-specific patterns
+# - Go/Rust/Python service builds
+# - Helm-based Kubernetes deployment
+# - Multi-environment support
 
 on:
   push:
-    branches: [ main, develop, feature/* ]
-    paths:
-      - 'Dockerfile'
-      - 'src/**'
-      - 'api/**'
-      - 'go.mod'
-      - 'go.sum'
-      - 'helm/**'
-      - '.dockerignore'
+    branches: [main, develop, feature/*]
+    tags: ['v*.*.*']
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
     paths:
       - 'Dockerfile'
       - 'src/**'
@@ -27,71 +28,63 @@ on:
 env:
   SERVICE_NAME: 'user-service'
   NAMESPACE: 'microservices'
-  REGISTRY: 'ghcr.io'
 
 jobs:
   docker-build:
     name: Build & Deploy Microservice
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
-      # Microservice specific configuration
-      config-file: 'microservice'
-      
+      # Publish to GHCR
+      publish-to: 'ghcr'
+
       # Service configuration
-      image-name: ${{ env.SERVICE_NAME }}
-      image-tag: ${{ github.ref_name }}-${{ github.run_number }}
-      registry: ${{ env.REGISTRY }}
-      
+      image-name: 'user-service'
+
       # Build configuration for microservices
-      dockerfile: './Dockerfile'
-      context: '.'
-      target: 'runtime'
+      dockerfile-path: './Dockerfile'
+      docker-context: '.'
+      build-target: 'runtime'
       platforms: 'linux/amd64,linux/arm64'
-      
+      multi-platform: true
+
       # Microservice build arguments
       build-args: |
-        SERVICE_NAME=${{ env.SERVICE_NAME }}
-        SERVICE_VERSION=${{ github.ref_name }}
-        BUILDTIME=${{ github.event.head_commit.timestamp }}
-        VERSION=${{ github.sha }}
-        ENVIRONMENT=production
-        LOG_LEVEL=info
-      
-      # Critical security for microservices
+        {
+          "SERVICE_NAME": "user-service",
+          "SERVICE_VERSION": "${{ github.ref_name }}",
+          "VERSION": "${{ github.sha }}",
+          "ENVIRONMENT": "production",
+          "LOG_LEVEL": "info"
+        }
+
+      # Tagging
+      auto-tags: true
+      latest-tag: true
+
+      # Push configuration
+      push: ${{ github.event_name != 'pull_request' }}
+
+      # Security for microservices
       security-scan: true
-      fail-on-severity: 'CRITICAL'
+      security-fail-on: 'CRITICAL'
       generate-sbom: true
       sbom-format: 'cyclonedx'
       sign-image: true
-      
-      # Comprehensive microservice testing
+
+      # Microservice testing
       run-tests: true
       test-command: 'docker run --rm $IMAGE_TAG test'
-      integration-tests: true
-      contract-tests: true
-      
+
       # Performance optimization
       cache-enabled: true
-      parallel-builds: true
+      cache-mode: 'max'
       build-timeout: 30
-      
-      # Microservice deployment with Helm
-      deploy: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') }}
-      deployment-environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
-      deployment-command: 'helm upgrade --install ${{ env.SERVICE_NAME }} ./helm --namespace ${{ env.NAMESPACE }} --set image.tag=$IMAGE_TAG --set environment=${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}'
-      
-      # Service mesh configuration
-      service-mesh: true
-      mesh-type: 'istio'
-      
-      # Monitoring and observability
-      monitoring-enabled: true
-      metrics-port: 9090
-      health-port: 8080
-      tracing-enabled: true
-      
-    secrets:
-      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      KUBECONFIG: ${{ secrets.KUBECONFIG }}
-      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
-      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+
+      # Microservice deployment
+      deploy-enabled: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') }}
+      deploy-environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+
+    # Required secrets:
+    # - COSIGN_PRIVATE_KEY: For image signing
+    # - COSIGN_PASSWORD: Cosign key password
+    secrets: inherit

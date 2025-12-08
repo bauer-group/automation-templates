@@ -1,18 +1,22 @@
 name: Docker Enterprise Build Example
 # Example: Enterprise-grade Docker build with maximum security and compliance
-# This example demonstrates enterprise security, compliance, and governance requirements
+#
+# Publishes to: Both GHCR and Docker Hub
+# Authentication: GITHUB_TOKEN (automatic) + DOCKER_USERNAME/DOCKER_PASSWORD
+#
+# This example demonstrates:
+# - Multi-registry publishing (build once, push to both)
+# - Maximum security configuration
+# - Image signing with Cosign
+# - SBOM generation
+# - Compliance validation
 
 on:
   push:
-    branches: [ main, release/* ]
-    paths:
-      - 'Dockerfile'
-      - 'src/**'
-      - 'k8s/**'
-      - 'helm/**'
-      - '.dockerignore'
+    branches: [main, release/*]
+    tags: ['v*.*.*']
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'Dockerfile'
       - 'src/**'
@@ -25,8 +29,6 @@ on:
 
 env:
   APP_NAME: 'enterprise-app'
-  ENTERPRISE_REGISTRY: 'enterprise-registry.company.com'
-  COMPLIANCE_REQUIRED: 'true'
 
 jobs:
   compliance-check:
@@ -37,111 +39,85 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        
+
       - name: Compliance Check
         id: compliance
         run: |
           # Validate compliance requirements
           echo "approved=true" >> $GITHUB_OUTPUT
-          
+
   docker-build:
     name: Enterprise Docker Build
     needs: compliance-check
     if: needs.compliance-check.outputs.approved == 'true'
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
-      # Enterprise configuration with maximum security
-      config-file: 'enterprise'
-      
-      # Enterprise image configuration
-      image-name: ${{ env.APP_NAME }}
-      image-tag: ${{ github.ref_name }}-${{ github.run_number }}-${{ github.sha }}
-      registry: ${{ env.ENTERPRISE_REGISTRY }}
-      
-      # Enterprise build configuration
-      dockerfile: './Dockerfile'
-      context: '.'
-      target: 'production'
+      # Publish to both registries (build once, push to both)
+      publish-to: 'both'
+
+      # Image names
+      image-name: 'my-org/enterprise-app'           # GHCR image
+      secondary-image-name: 'myuser/enterprise-app' # Docker Hub image
+
+      # Build configuration
+      dockerfile-path: './Dockerfile'
+      docker-context: '.'
+      build-target: 'production'
       platforms: 'linux/amd64,linux/arm64'
-      
-      # Enterprise build arguments
+      multi-platform: true
+
+      # Build arguments
       build-args: |
-        BUILDTIME=${{ github.event.head_commit.timestamp }}
-        VERSION=${{ github.sha }}
-        ENVIRONMENT=production
-        COMPLIANCE_MODE=enabled
-        AUDIT_LOGGING=enabled
-        ENCRYPTION=enabled
-      
+        {
+          "BUILDTIME": "${{ github.event.head_commit.timestamp }}",
+          "VERSION": "${{ github.sha }}",
+          "ENVIRONMENT": "production"
+        }
+
+      # Version management
+      update-dockerfile-version: true
+      version-from-dockerfile: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+
+      # Tagging
+      auto-tags: true
+      latest-tag: true
+
+      # Push configuration
+      push: ${{ github.event_name != 'pull_request' }}
+
       # Maximum security configuration
       security-scan: true
-      scanner: 'trivy'
-      fail-on-severity: 'MEDIUM'
-      ignore-unfixed: false
+      security-scanner: 'trivy'
+      security-fail-on: 'MEDIUM'
+      security-ignore-unfixed: false
+      sign-image: true
       generate-sbom: true
       sbom-format: 'spdx'
-      sign-image: true
-      vulnerability-database: 'enterprise'
-      compliance-scanning: true
-      secret-scanning: true
-      license-scanning: true
-      
-      # Comprehensive enterprise testing
+
+      # Testing
       run-tests: true
-      test-command: 'docker run --rm $IMAGE_TAG test --enterprise'
-      integration-tests: true
-      contract-tests: true
-      security-tests: true
-      performance-tests: true
-      compliance-tests: true
-      
-      # Enterprise performance requirements
-      builder-driver: 'kubernetes'
+      test-command: 'docker run --rm $IMAGE_TAG --version'
+
+      # Performance
+      cache-enabled: true
+      cache-mode: 'max'
+      builder-driver: 'docker-container'
       build-timeout: 60
-      parallel-builds: true
-      build-attestation: true
-      
-      # Enterprise deployment with approval
-      deploy: ${{ github.ref == 'refs/heads/main' }}
-      deployment-environment: 'production'
-      deployment-command: 'kubectl apply -f k8s/enterprise/ --dry-run=server'
-      approval-required: true
-      
-      # Governance and compliance
-      policy-enforcement: true
-      admission-controller: 'OPA'
-      network-policies: true
-      pod-security-standards: 'restricted'
-      
-      # Enterprise monitoring
-      monitoring-enabled: true
-      full-observability: true
-      apm-enabled: true
-      log-aggregation: 'splunk'
-      metrics-system: 'prometheus'
-      alerting: 'pagerduty'
-      sla-monitoring: true
-      
-      # Backup and disaster recovery
-      backup-enabled: true
-      backup-schedule: '0 2 * * *'
-      backup-retention: '90d'
-      cross-region-backup: true
-      
-      # Audit and compliance
-      audit-enabled: true
-      audit-log-level: 'detailed'
-      audit-retention: '7y'
-      compliance-reports: true
-      
-    secrets:
-      REGISTRY_TOKEN: ${{ secrets.ENTERPRISE_REGISTRY_TOKEN }}
-      KUBECONFIG: ${{ secrets.ENTERPRISE_KUBECONFIG }}
-      COSIGN_PRIVATE_KEY: ${{ secrets.ENTERPRISE_COSIGN_KEY }}
-      COSIGN_PASSWORD: ${{ secrets.ENTERPRISE_COSIGN_PASSWORD }}
-      ENTERPRISE_LICENSE: ${{ secrets.ENTERPRISE_LICENSE }}
-      COMPLIANCE_TOKEN: ${{ secrets.COMPLIANCE_TOKEN }}
-      
+
+      # Docker Hub README sync
+      sync-dockerhub-readme: true
+
+      # Deployment (only on main branch)
+      deploy-enabled: ${{ github.ref == 'refs/heads/main' }}
+      deploy-environment: 'production'
+
+    # Required secrets:
+    # - DOCKER_USERNAME: Docker Hub username
+    # - DOCKER_PASSWORD: Docker Hub password/token
+    # - COSIGN_PRIVATE_KEY: For image signing
+    # - COSIGN_PASSWORD: Cosign key password
+    secrets: inherit
+
   security-report:
     name: Security Report
     needs: docker-build
@@ -150,11 +126,17 @@ jobs:
     steps:
       - name: Generate Security Report
         run: |
-          echo "Enterprise security scan completed"
-          # Generate compliance report
-          
+          echo "## Enterprise Security Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Status: ${{ needs.docker-build.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Image Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image URL:** \`${{ needs.docker-build.outputs.image-url }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Digest:** \`${{ needs.docker-build.outputs.image-digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Security Report:** ${{ needs.docker-build.outputs.security-report }}" >> $GITHUB_STEP_SUMMARY
+
       - name: Notify Security Team
         if: failure()
         run: |
           echo "Security scan failed - notifying security team"
-          # Send notification to security team
+          # Add notification logic here (Slack, email, etc.)

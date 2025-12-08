@@ -1,16 +1,16 @@
 name: Docker Simple Build Example
 # Example: Basic Docker build workflow using the automation-templates system
 # This example demonstrates a simple Docker build with minimal configuration
+#
+# Publishes to: GitHub Container Registry (ghcr.io)
+# Authentication: Automatic via GITHUB_TOKEN
 
 on:
   push:
-    branches: [ main, develop ]
-    paths:
-      - 'Dockerfile'
-      - 'src/**'
-      - '.dockerignore'
+    branches: [main, develop]
+    tags: ['v*.*.*']
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'Dockerfile'
       - 'src/**'
@@ -21,23 +21,27 @@ jobs:
     name: Build Docker Image
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
-      # Basic configuration using default settings
-      config-file: 'default'
-      
+      # Publish to GitHub Container Registry (default)
+      # Options: 'ghcr' (default), 'dockerhub', 'both'
+      publish-to: 'ghcr'
+
       # Image configuration
       image-name: 'my-simple-app'
-      image-tag: ${{ github.sha }}
-      
+
       # Build settings
-      dockerfile: './Dockerfile'
-      context: '.'
-      
+      dockerfile-path: './Dockerfile'
+      docker-context: '.'
+
+      # Auto-generate tags based on Git refs
+      auto-tags: true
+      latest-tag: true
+
+      # Push to registry (skip on PRs)
+      push: ${{ github.event_name != 'pull_request' }}
+
       # Basic security scanning
       security-scan: true
-      fail-on-severity: 'CRITICAL'
-      
-      # No deployment for this example
-      deploy: false
-    
-    secrets:
-      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      security-fail-on: 'CRITICAL'
+
+    # Uses automatic GITHUB_TOKEN for GHCR authentication
+    secrets: inherit
