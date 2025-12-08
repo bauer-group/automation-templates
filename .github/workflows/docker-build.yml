@@ -61,14 +61,14 @@ on:
         required: false
         default: ''
 
-      secondary-image-name:
-        description: 'Image name for secondary registry (defaults to primary image-name)'
+      docker-image-name:
+        description: 'Docker Hub image name (e.g., username/app-name)'
         type: string
         required: false
         default: ''
 
-      image-name:
-        description: 'Docker image name (without registry, defaults to repository name)'
+      ghcr-image-name:
+        description: 'GitHub Container Registry image name (e.g., org/app-name, defaults to repository name)'
         type: string
         required: false
         default: ''
@@ -385,8 +385,8 @@ jobs:
           secondary-registry: ${{ inputs.publish-to == 'both' && 'docker.io' || inputs.secondary-registry }}
           secondary-registry-username: ${{ secrets.DOCKER_USERNAME }}
           secondary-registry-password: ${{ secrets.DOCKER_PASSWORD }}
-          secondary-image-name: ${{ inputs.secondary-image-name }}
-          image-name: ${{ inputs.image-name }}
+          secondary-image-name: ${{ inputs.docker-image-name }}
+          image-name: ${{ inputs.ghcr-image-name }}
           image-tags: ${{ inputs.image-tags }}${{ inputs.enable-matrix && matrix.tag-suffix && format('-{0}', matrix.tag-suffix) || '' }}
           auto-tags: ${{ inputs.auto-tags }}
           latest-tag: ${{ inputs.latest-tag }}
@@ -498,15 +498,15 @@ jobs:
           PUBLISH_TO="${{ inputs.publish-to }}"
 
           if [ "$PUBLISH_TO" = "both" ]; then
-            # Docker Hub is secondary registry, use secondary-image-name
-            DOCKER_REPO="${{ inputs.secondary-image-name }}"
+            # Docker Hub is secondary registry, use docker-image-name
+            DOCKER_REPO="${{ inputs.docker-image-name }}"
             if [ -z "$DOCKER_REPO" ]; then
-              # Fallback to image-name if secondary-image-name not set
-              DOCKER_REPO="${{ inputs.image-name }}"
+              # Fallback to ghcr-image-name if docker-image-name not set
+              DOCKER_REPO="${{ inputs.ghcr-image-name }}"
             fi
           else
             # Docker Hub is primary registry (publish-to: 'dockerhub')
-            DOCKER_REPO="${{ inputs.image-name }}"
+            DOCKER_REPO="${{ inputs.docker-image-name || inputs.ghcr-image-name }}"
           fi
 
           # Fallback to github repository name if still empty
