@@ -50,6 +50,23 @@ inputs:
     description: 'Registry password/token'
     required: false
     default: ''
+  # Secondary Registry (for multi-registry push)
+  secondary-registry:
+    description: 'Secondary Docker registry URL (e.g., docker.io for Docker Hub)'
+    required: false
+    default: ''
+  secondary-registry-username:
+    description: 'Secondary registry username'
+    required: false
+    default: ''
+  secondary-registry-password:
+    description: 'Secondary registry password/token'
+    required: false
+    default: ''
+  secondary-image-name:
+    description: 'Image name for secondary registry (without registry prefix)'
+    required: false
+    default: ''
   # Image Configuration
   image-name:
     description: 'Docker image name (without registry)'
@@ -258,7 +275,7 @@ runs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "version-tag=type=raw,value=$VERSION" >> $GITHUB_OUTPUT
 
-    - name: 🔐 Log in to Registry
+    - name: 🔐 Log in to Primary Registry
       if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true')
       uses: docker/login-action@v3
       with:
@@ -266,11 +283,21 @@ runs:
         username: ${{ inputs.registry-username || github.actor }}
         password: ${{ inputs.registry-password }}
 
+    - name: 🔐 Log in to Secondary Registry
+      if: inputs.push == 'true' && inputs.secondary-registry != '' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true')
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ inputs.secondary-registry }}
+        username: ${{ inputs.secondary-registry-username }}
+        password: ${{ inputs.secondary-registry-password }}
+
     - name: 🏷️ Extract Metadata
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ${{ inputs.registry }}/${{ inputs.image-name || github.repository }}
+        images: |
+          ${{ inputs.registry }}/${{ inputs.image-name || github.repository }}
+          ${{ inputs.secondary-registry != '' && format('{0}/{1}', inputs.secondary-registry, inputs.secondary-image-name || inputs.image-name || github.repository) || '' }}
         tags: |
           ${{ inputs.auto-tags == 'true' && 'type=ref,event=branch' || '' }}
           ${{ inputs.auto-tags == 'true' && 'type=ref,event=pr' || '' }}

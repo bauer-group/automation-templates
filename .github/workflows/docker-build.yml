@@ -53,13 +53,26 @@ on:
         type: string
         required: false
         default: 'ghcr.io'
-      
+
       registry-username:
         description: 'Registry username (defaults to github.actor)'
         type: string
         required: false
         default: ''
-      
+
+      # Secondary Registry (for multi-registry push - build once, push to both)
+      secondary-registry:
+        description: 'Secondary Docker registry URL (e.g., docker.io for Docker Hub)'
+        type: string
+        required: false
+        default: ''
+
+      secondary-image-name:
+        description: 'Image name for secondary registry (defaults to primary image-name)'
+        type: string
+        required: false
+        default: ''
+
       image-name:
         description: 'Docker image name (without registry, defaults to repository name)'
         type: string
@@ -259,6 +272,14 @@ on:
         description: 'Registry password/token (defaults to GITHUB_TOKEN)'
         required: false
 
+      SECONDARY_REGISTRY_USERNAME:
+        description: 'Secondary registry username (e.g., Docker Hub username)'
+        required: false
+
+      SECONDARY_REGISTRY_PASSWORD:
+        description: 'Secondary registry password/token (e.g., Docker Hub token)'
+        required: false
+
       COSIGN_PRIVATE_KEY:
         description: 'Cosign private key for image signing'
         required: false
@@ -366,6 +387,10 @@ jobs:
           registry: ${{ inputs.registry }}
           registry-username: ${{ secrets.REGISTRY_USERNAME || inputs.registry-username }}
           registry-password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+          secondary-registry: ${{ inputs.secondary-registry }}
+          secondary-registry-username: ${{ secrets.SECONDARY_REGISTRY_USERNAME }}
+          secondary-registry-password: ${{ secrets.SECONDARY_REGISTRY_PASSWORD }}
+          secondary-image-name: ${{ inputs.secondary-image-name }}
           image-name: ${{ inputs.image-name }}
           image-tags: ${{ inputs.image-tags }}${{ inputs.enable-matrix && matrix.tag-suffix && format('-{0}', matrix.tag-suffix) || '' }}
           auto-tags: ${{ inputs.auto-tags }}
