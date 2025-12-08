@@ -86,7 +86,7 @@ jobs:
     name: 🔄 Workflow Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 📊 Get Workflow Logs
         id: get-logs
@@ -166,7 +166,7 @@ jobs:
     name: 🐛 Issue Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🔔 Send Issue Opened Notification
         if: github.event.action == 'opened' && env.NOTIFICATION_LEVEL == 'all'
@@ -213,7 +213,7 @@ jobs:
     name: 🔀 Pull Request Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🔔 Send PR Opened Notification
         if: github.event.action == 'opened' && env.NOTIFICATION_LEVEL == 'all'
@@ -303,7 +303,7 @@ jobs:
     name: 🚀 Push Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🔔 Send Push Notification
         if: env.NOTIFICATION_LEVEL == 'all'
@@ -333,7 +333,7 @@ jobs:
     name: 🏷️ Release Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🔔 Send Release Notification
         if: github.event.action == 'published' && env.NOTIFICATION_LEVEL == 'all'
@@ -363,7 +363,7 @@ jobs:
     name: 🧪 Test Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🔔 Send Test Notification
         uses: bauer-group/automation-templates/.github/actions/teams-notification@main
