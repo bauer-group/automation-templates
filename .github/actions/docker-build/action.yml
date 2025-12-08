@@ -282,8 +282,8 @@ runs:
           ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-tag || '' }}
           ${{ inputs.image-tags }}
         labels: |
-          ${{ inputs.add-git-labels == 'true' && 'org.opencontainers.image.source={{context}}' || '' }}
-          ${{ inputs.add-git-labels == 'true' && 'org.opencontainers.image.revision={{sha}}' || '' }}
+          ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.source={0}/{1}', github.server_url, github.repository) || '' }}
+          ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.revision={0}', github.sha) || '' }}
           ${{ inputs.add-git-labels == 'true' && 'org.opencontainers.image.created={{date "2006-01-02T15:04:05Z07:00"}}' || '' }}
           ${{ inputs.custom-labels }}
 
