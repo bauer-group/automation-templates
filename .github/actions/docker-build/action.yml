@@ -88,6 +88,10 @@ inputs:
     description: 'Extract version from Dockerfile LABEL org.opencontainers.image.version and use as image tag'
     required: false
     default: 'false'
+  semver-from-dockerfile:
+    description: 'Generate additional semver tags (major.minor, major) from Dockerfile version on branch commits'
+    required: false
+    default: 'true'
   update-dockerfile-version:
     description: 'Update Dockerfile LABEL org.opencontainers.image.version with version from Git tag (strips v prefix)'
     required: false
@@ -268,12 +272,40 @@ runs:
         if [ -z "$VERSION" ]; then
           echo "⚠️ No version found in Dockerfile LABEL, falling back to 'latest'"
           VERSION="latest"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version-tag=type=raw,value=$VERSION" >> $GITHUB_OUTPUT
+          echo "version-major-minor-tag=" >> $GITHUB_OUTPUT
+          echo "version-major-tag=" >> $GITHUB_OUTPUT
         else
           echo "✅ Found version in Dockerfile: $VERSION"
-        fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version-tag=type=raw,value=$VERSION" >> $GITHUB_OUTPUT
 
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "version-tag=type=raw,value=$VERSION" >> $GITHUB_OUTPUT
+          # Generate semver variants if enabled and not a tag push (semver patterns work on tag pushes)
+          if [ "${{ inputs.semver-from-dockerfile }}" = "true" ] && ! [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            # Parse major.minor.patch from version (handles versions like 0.2.1, 1.0.0-beta, etc.)
+            MAJOR=$(echo "$VERSION" | cut -d. -f1)
+            MINOR=$(echo "$VERSION" | cut -d. -f2)
+            MAJOR_MINOR="${MAJOR}.${MINOR}"
+
+            echo "📌 Generating semver variants:"
+            echo "   • Major.Minor: $MAJOR_MINOR"
+            echo "   • Major: $MAJOR"
+
+            echo "version-major-minor-tag=type=raw,value=$MAJOR_MINOR" >> $GITHUB_OUTPUT
+
+            # Only add major version tag if not v0.x.x (following semver convention)
+            if [ "$MAJOR" != "0" ]; then
+              echo "version-major-tag=type=raw,value=$MAJOR" >> $GITHUB_OUTPUT
+            else
+              echo "version-major-tag=" >> $GITHUB_OUTPUT
+              echo "   ℹ️ Skipping major version tag (v0.x.x)"
+            fi
+          else
+            echo "version-major-minor-tag=" >> $GITHUB_OUTPUT
+            echo "version-major-tag=" >> $GITHUB_OUTPUT
+          fi
+        fi
 
     - name: 🔐 Log in to Primary Registry
       if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true')
@@ -306,6 +338,8 @@ runs:
           ${{ inputs.auto-tags == 'true' && inputs.latest-tag == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=raw,value=latest' || '' }}
           ${{ inputs.auto-tags == 'true' && !startsWith(github.ref, 'refs/tags/') && 'type=sha,prefix={{branch}}-' || '' }}
           ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-tag || '' }}
+          ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-major-minor-tag || '' }}
+          ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-major-tag || '' }}
           ${{ inputs.image-tags }}
         labels: |
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.source={0}/{1}', github.server_url, github.repository) || '' }}
@@ -327,6 +361,8 @@ runs:
           ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && !startsWith(github.ref, 'refs/tags/v0.') && 'type=semver,pattern={{major}}' || '' }}
           ${{ inputs.auto-tags == 'true' && inputs.latest-tag == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=raw,value=latest' || '' }}
           ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-tag || '' }}
+          ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-major-minor-tag || '' }}
+          ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-major-tag || '' }}
         labels: |
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.source={0}/{1}', github.server_url, github.repository) || '' }}
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.revision={0}', github.sha) || '' }}

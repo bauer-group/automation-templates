@@ -144,6 +144,7 @@ The Docker build action provides:
 | `latest-tag` | Tag image as `latest` on tag push | `true` |
 | `image-tags` | Additional custom image tags | `''` |
 | `version-from-dockerfile` | Extract version from Dockerfile LABEL | `false` |
+| `semver-from-dockerfile` | Generate additional semver tags (major.minor, major) from Dockerfile version on branch commits | `true` |
 | `update-dockerfile-version` | Update Dockerfile LABEL from Git tag | `false` |
 
 ### Build Configuration
@@ -248,6 +249,22 @@ LABEL org.opencontainers.image.version="1.2.3"
 ```
 
 This version is used as an additional image tag.
+
+### Semver Tags from Dockerfile Version
+
+When `semver-from-dockerfile: true` (default) and `version-from-dockerfile: true`, the workflow generates additional semantic version tags from the extracted Dockerfile version on **branch commits**:
+
+**Example:** Dockerfile contains `org.opencontainers.image.version="0.2.1"`
+
+On branch push (e.g., `main`):
+
+- `0.2.1` - Full version
+- `0.2` - Major.minor version
+- `0` - Major version (only if major > 0, following semver convention)
+
+This is useful when you want consistent semver tagging without requiring Git tag pushes.
+
+**Note:** On Git tag pushes, the standard `type=semver` patterns are used instead, as they work natively with the metadata-action.
 
 ### Update Dockerfile Version from Git Tag
 

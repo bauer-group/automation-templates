@@ -97,6 +97,12 @@ on:
         required: false
         default: false
 
+      semver-from-dockerfile:
+        description: 'Generate additional semver tags (major.minor, major) from Dockerfile version on branch commits'
+        type: boolean
+        required: false
+        default: true
+
       update-dockerfile-version:
         description: 'Update Dockerfile LABEL org.opencontainers.image.version with version from Git tag (strips v prefix)'
         type: boolean
@@ -391,6 +397,7 @@ jobs:
           auto-tags: ${{ inputs.auto-tags }}
           latest-tag: ${{ inputs.latest-tag }}
           version-from-dockerfile: ${{ inputs.version-from-dockerfile }}
+          semver-from-dockerfile: ${{ inputs.semver-from-dockerfile }}
           update-dockerfile-version: ${{ inputs.update-dockerfile-version }}
           push: ${{ inputs.push }}
           push-on-pr: ${{ inputs.push-on-pr }}
