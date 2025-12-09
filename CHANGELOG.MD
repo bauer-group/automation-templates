@@ -1,3 +1,10 @@
+## [4.2.1](https://github.com/bauer-group/automation-templates/compare/v4.2.0...v4.2.1) (2025-12-09)
+
+### 🐛 Bug Fixes
+
+* simplify auto-tagging logic in docker-build action ([5875c1d](https://github.com/bauer-group/automation-templates/commit/5875c1d48784f8347915d93681e68909c59595f9))
+* update CodeQL SARIF upload action to v4 in multiple workflows ([7c36060](https://github.com/bauer-group/automation-templates/commit/7c3606074fc02728803f5c1a0a9e95a361c2dd33))
+
 ## [4.2.0](https://github.com/bauer-group/automation-templates/compare/v4.1.0...v4.2.0) (2025-12-09)
 
 ### 🚀 Features
