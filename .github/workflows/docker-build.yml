@@ -317,6 +317,13 @@ on:
         description: 'Build duration in seconds'
         value: ${{ jobs.build.outputs.build-duration }}
 
+# Permissions required for this reusable workflow
+permissions:
+  contents: write        # For committing Dockerfile version updates
+  packages: write        # For pushing to GHCR
+  security-events: write # For uploading SARIF reports to GitHub Security
+  actions: read          # For workflow status checks
+
 jobs:
   build:
     name: Docker Build
