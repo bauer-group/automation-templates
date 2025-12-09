@@ -302,7 +302,7 @@ runs:
           ${{ inputs.auto-tags == 'true' && 'type=ref,event=pr' || '' }}
           ${{ inputs.auto-tags == 'true' && 'type=semver,pattern={{version}}' || '' }}
           ${{ inputs.auto-tags == 'true' && 'type=semver,pattern={{major}}.{{minor}}' || '' }}
-          ${{ inputs.auto-tags == 'true' && 'type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}' || '' }}
+          ${{ inputs.auto-tags == 'true' && !startsWith(github.ref, 'refs/tags/v0.') && 'type=semver,pattern={{major}}' || '' }}
           ${{ inputs.auto-tags == 'true' && inputs.latest-tag == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=raw,value=latest' || '' }}
           ${{ inputs.auto-tags == 'true' && !startsWith(github.ref, 'refs/tags/') && 'type=sha,prefix={{branch}}-' || '' }}
           ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-tag || '' }}
@@ -324,7 +324,7 @@ runs:
         tags: |
           ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=semver,pattern={{version}}' || '' }}
           ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=semver,pattern={{major}}.{{minor}}' || '' }}
-          ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}' || '' }}
+          ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && !startsWith(github.ref, 'refs/tags/v0.') && 'type=semver,pattern={{major}}' || '' }}
           ${{ inputs.auto-tags == 'true' && inputs.latest-tag == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=raw,value=latest' || '' }}
           ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-tag || '' }}
         labels: |
