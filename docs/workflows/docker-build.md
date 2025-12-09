@@ -28,7 +28,7 @@ jobs:
   docker-build:
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
-      image-name: 'my-app'
+      ghcr-image-name: 'my-app'
       auto-tags: true
     secrets: inherit
 ```
@@ -47,7 +47,7 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
       publish-to: 'dockerhub'
-      image-name: 'myuser/my-app'
+      docker-image-name: 'myuser/my-app'
       auto-tags: true
     secrets: inherit
 ```
@@ -66,8 +66,8 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
       publish-to: 'both'
-      image-name: 'my-org/my-app'              # GHCR image name
-      secondary-image-name: 'myuser/my-app'    # Docker Hub image name
+      ghcr-image-name: 'my-org/my-app'
+      docker-image-name: 'myuser/my-app'
       auto-tags: true
       sync-dockerhub-readme: true
     secrets: inherit
@@ -131,10 +131,10 @@ The Docker build action provides:
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `publish-to` | Where to publish: `'ghcr'`, `'dockerhub'`, or `'both'` | `'ghcr'` |
+| `ghcr-image-name` | GitHub Container Registry image name (e.g., `org/app-name`) | Repository name |
+| `docker-image-name` | Docker Hub image name (e.g., `username/app-name`) | `''` |
 | `registry` | Custom registry URL (when `publish-to: 'ghcr'`) | `'ghcr.io'` |
 | `secondary-registry` | Secondary registry URL (for custom multi-registry setups) | `''` |
-| `image-name` | Docker image name (without registry) | Repository name |
-| `secondary-image-name` | Image name for secondary registry | Same as `image-name` |
 
 ### Version & Tagging
 
@@ -405,8 +405,8 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
       publish-to: 'both'
-      image-name: 'my-org/my-app'
-      secondary-image-name: 'myuser/my-app'
+      ghcr-image-name: 'my-org/my-app'
+      docker-image-name: 'myuser/my-app'
     secrets: inherit
 ```
 

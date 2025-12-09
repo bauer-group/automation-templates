@@ -56,8 +56,8 @@ jobs:
       publish-to: 'both'
 
       # Image names
-      image-name: 'my-org/enterprise-app'           # GHCR image
-      secondary-image-name: 'myuser/enterprise-app' # Docker Hub image
+      ghcr-image-name: 'my-org/enterprise-app'
+      docker-image-name: 'myuser/enterprise-app'
 
       # Build configuration
       dockerfile-path: './Dockerfile'

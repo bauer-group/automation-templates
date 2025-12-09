@@ -26,7 +26,7 @@ jobs:
       publish-to: 'ghcr'
 
       # Image configuration
-      image-name: 'my-simple-app'
+      ghcr-image-name: 'my-simple-app'
 
       # Build settings
       dockerfile-path: './Dockerfile'

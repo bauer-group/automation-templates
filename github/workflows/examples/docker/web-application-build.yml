@@ -33,7 +33,7 @@ jobs:
       publish-to: 'ghcr'
 
       # Image configuration
-      image-name: 'my-web-app'
+      ghcr-image-name: 'my-web-app'
 
       # Build configuration
       dockerfile-path: './Dockerfile'

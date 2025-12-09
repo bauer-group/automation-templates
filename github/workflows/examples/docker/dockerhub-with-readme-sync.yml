@@ -31,7 +31,7 @@ jobs:
       publish-to: 'dockerhub'
 
       # Image name on Docker Hub (username/image-name)
-      image-name: 'myuser/my-awesome-app'
+      docker-image-name: 'myuser/my-awesome-app'
 
       # Build Configuration
       dockerfile-path: './Dockerfile'

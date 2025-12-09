@@ -53,7 +53,7 @@ jobs:
       publish-to: 'ghcr'
 
       # Secure image configuration
-      image-name: 'secure-app'
+      ghcr-image-name: 'secure-app'
 
       # Security-hardened build
       dockerfile-path: './Dockerfile'

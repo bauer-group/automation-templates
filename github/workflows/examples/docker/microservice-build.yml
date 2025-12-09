@@ -38,7 +38,7 @@ jobs:
       publish-to: 'ghcr'
 
       # Service configuration
-      image-name: 'user-service'
+      ghcr-image-name: 'user-service'
 
       # Build configuration for microservices
       dockerfile-path: './Dockerfile'
