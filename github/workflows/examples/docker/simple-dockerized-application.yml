@@ -1,0 +1,80 @@
+name: Docker Build & Push
+# Example workflow for IP-Ghost.BunnyCDN.Connector repository
+# Builds Docker image ONCE and pushes to both GitHub Container Registry and Docker Hub
+#
+# Version Strategy:
+# - On tag push (v*.*.*): Updates Dockerfile LABEL with version from tag (strips 'v' prefix),
+#   commits the update back to main, and uses semver tagging for the image
+# - On branch push: Uses existing version from Dockerfile LABEL org.opencontainers.image.version
+#
+# Required Secrets:
+# - DOCKER_USERNAME: Docker Hub username
+# - DOCKER_PASSWORD: Docker Hub password/token
+#
+# Required Permissions:
+# - contents: write (to commit Dockerfile version update)
+# - packages: write (to push to GHCR)
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'package*.json'
+      - 'tsconfig.json'
+      - '.dockerignore'
+  workflow_dispatch:
+
+jobs:
+  # Build once, push to both registries
+  docker-build:
+    name: Build & Push Docker Image
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      # Publish to both GHCR and Docker Hub
+      # Options: 'ghcr' (default), 'dockerhub', 'both'
+      publish-to: 'both'
+
+      # Image names per registry
+      ghcr-image-name: 'bauer-group/simple-dockerized-application'
+      docker-image-name: 'bauer-group/simple-dockerized-application'
+
+      # Version tagging strategy
+      # - On tag push: update-dockerfile-version extracts version from tag and updates Dockerfile
+      # - On branch push: version-from-dockerfile extracts version from Dockerfile LABEL
+      # - semver-from-dockerfile: generates additional semver tags (0.2, 0) from Dockerfile version
+      update-dockerfile-version: true
+      version-from-dockerfile: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+      semver-from-dockerfile: true  # Generate 0.2 and 0 tags from Dockerfile version on branch commits
+
+      # Auto-generate tags (semver, branch, sha)
+      auto-tags: true
+      latest-tag: true
+
+      # Build settings
+      dockerfile-path: './Dockerfile'
+      docker-context: '.'
+      platforms: 'linux/amd64'
+
+      # Push to registry (skip on PRs)
+      push: ${{ github.event_name != 'pull_request' }}
+
+      # Security scanning
+      security-scan: true
+      security-fail-on: 'CRITICAL'
+      generate-sbom: ${{ github.event_name != 'pull_request' }}
+
+      # Sync README to Docker Hub
+      sync-dockerhub-readme: true
+
+    # Secrets: Uses 'inherit' to pass all secrets from the calling repository
+    # Required secrets in your repository:
+    # - DOCKER_USERNAME: Docker Hub username
+    # - DOCKER_PASSWORD: Docker Hub password/token
+    # Note: GITHUB_TOKEN is automatically available and used for GHCR
+    secrets: inherit
