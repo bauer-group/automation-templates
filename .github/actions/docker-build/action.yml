@@ -355,14 +355,15 @@ runs:
         images: |
           ${{ inputs.secondary-registry }}/${{ inputs.secondary-image-name || inputs.image-name || github.repository }}
         # Docker Hub only gets semver tags and latest (no branch/sha tags)
+        # IMPORTANT: All tags require refs/tags/ check to prevent branch pushes to Docker Hub
         tags: |
           ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=semver,pattern={{version}}' || '' }}
           ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=semver,pattern={{major}}.{{minor}}' || '' }}
           ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && !startsWith(github.ref, 'refs/tags/v0.') && 'type=semver,pattern={{major}}' || '' }}
           ${{ inputs.auto-tags == 'true' && inputs.latest-tag == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=raw,value=latest' || '' }}
-          ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-tag || '' }}
-          ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-major-minor-tag || '' }}
-          ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-major-tag || '' }}
+          ${{ inputs.version-from-dockerfile == 'true' && startsWith(github.ref, 'refs/tags/') && steps.dockerfile-version.outputs.version-tag || '' }}
+          ${{ inputs.version-from-dockerfile == 'true' && startsWith(github.ref, 'refs/tags/') && steps.dockerfile-version.outputs.version-major-minor-tag || '' }}
+          ${{ inputs.version-from-dockerfile == 'true' && startsWith(github.ref, 'refs/tags/') && steps.dockerfile-version.outputs.version-major-tag || '' }}
         labels: |
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.source={0}/{1}', github.server_url, github.repository) || '' }}
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.revision={0}', github.sha) || '' }}
@@ -377,12 +378,19 @@ runs:
         PRIMARY_TAGS="${{ steps.meta-primary.outputs.tags }}"
         SECONDARY_TAGS="${{ steps.meta-secondary.outputs.tags }}"
 
-        if [ -n "$SECONDARY_TAGS" ]; then
+        # Filter out empty lines from secondary tags (may occur on branch pushes)
+        SECONDARY_TAGS_FILTERED=$(echo "$SECONDARY_TAGS" | grep -v '^[[:space:]]*$' || true)
+
+        if [ -n "$SECONDARY_TAGS_FILTERED" ]; then
           # Combine both sets of tags
-          COMBINED_TAGS=$(printf "%s\n%s" "$PRIMARY_TAGS" "$SECONDARY_TAGS")
+          COMBINED_TAGS=$(printf "%s\n%s" "$PRIMARY_TAGS" "$SECONDARY_TAGS_FILTERED")
         else
           COMBINED_TAGS="$PRIMARY_TAGS"
+          echo "ℹ️ No secondary registry tags (branch push or no matching conditions)"
         fi
+
+        # Remove any remaining empty lines
+        COMBINED_TAGS=$(echo "$COMBINED_TAGS" | grep -v '^[[:space:]]*$' || echo "$COMBINED_TAGS")
 
         echo "tags<<EOF" >> $GITHUB_OUTPUT
         echo "$COMBINED_TAGS" >> $GITHUB_OUTPUT
