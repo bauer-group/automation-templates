@@ -462,7 +462,7 @@ jobs:
   dockerhub-readme:
     name: Sync Docker Hub README
     needs: build
-    if: inputs.sync-dockerhub-readme && (inputs.publish-to == 'dockerhub' || inputs.publish-to == 'both') && needs.build.result == 'success' && inputs.push
+    if: inputs.sync-dockerhub-readme == true && (inputs.publish-to == 'dockerhub' || inputs.publish-to == 'both') && needs.build.result == 'success' && inputs.push == true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     
