@@ -1,3 +1,12 @@
+## [4.2.0](https://github.com/bauer-group/automation-templates/compare/v4.1.0...v4.2.0) (2025-12-09)
+
+### 🚀 Features
+
+* add functionality to commit Dockerfile version updates automatically on tag push ([978c1e8](https://github.com/bauer-group/automation-templates/commit/978c1e88dd739932e4dae7d27882ae04f74a0027))
+* add support for extracting metadata from secondary Docker registry and combining tags for multi-registry push ([574d2a9](https://github.com/bauer-group/automation-templates/commit/574d2a9a8df484ffa66e4784d6fa6ab3c726516d))
+* improve Docker Hub image name determination based on publish target settings ([9a819b4](https://github.com/bauer-group/automation-templates/commit/9a819b49225735502b72e8981df2f84587913031))
+* update image name inputs for Docker Hub and GitHub Container Registry in workflow ([6ca71f8](https://github.com/bauer-group/automation-templates/commit/6ca71f847001fb1cb196de8daba744e50f089713))
+
 ## [4.1.0](https://github.com/bauer-group/automation-templates/compare/v4.0.0...v4.1.0) (2025-12-08)
 
 ### 🚀 Features
