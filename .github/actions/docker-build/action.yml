@@ -234,8 +234,9 @@ runs:
 
     - name: 🔄 Update Dockerfile Version
       id: update-dockerfile-version
-      # Run if update-dockerfile-version is true AND (release-version is set OR it's a tag push)
-      if: inputs.update-dockerfile-version == 'true' && (inputs.release-version != '' || startsWith(github.ref, 'refs/tags/v'))
+      # Run if update-dockerfile-version is true AND NOT version-from-dockerfile (can't be both source and target)
+      # AND (release-version is set OR it's a tag push)
+      if: inputs.update-dockerfile-version == 'true' && inputs.version-from-dockerfile != 'true' && (inputs.release-version != '' || startsWith(github.ref, 'refs/tags/v'))
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
@@ -679,8 +680,9 @@ runs:
         fi
 
     - name: 📝 Commit Dockerfile Version Update
-      # Run if update-dockerfile-version is true AND version was updated AND (release-version is set OR it's a tag push)
-      if: inputs.update-dockerfile-version == 'true' && steps.update-dockerfile-version.outputs.version != '' && (inputs.release-version != '' || startsWith(github.ref, 'refs/tags/v'))
+      # Run if update-dockerfile-version is true AND NOT version-from-dockerfile AND version was updated
+      # AND (release-version is set OR it's a tag push)
+      if: inputs.update-dockerfile-version == 'true' && inputs.version-from-dockerfile != 'true' && steps.update-dockerfile-version.outputs.version != '' && (inputs.release-version != '' || startsWith(github.ref, 'refs/tags/v'))
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
