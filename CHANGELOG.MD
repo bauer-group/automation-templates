@@ -1,3 +1,15 @@
+## [4.4.0](https://github.com/bauer-group/automation-templates/compare/v4.3.0...v4.4.0) (2025-12-09)
+
+### 🚀 Features
+
+* add release version input and tagging logic to Docker build workflows ([4e06054](https://github.com/bauer-group/automation-templates/commit/4e0605468367896c4774fba5d05db8accac9e40e))
+
+### 🐛 Bug Fixes
+
+* add permissions section for reusable Docker build workflow ([57ee672](https://github.com/bauer-group/automation-templates/commit/57ee6726f3e67f04b0f79186bf60a0482f82d338))
+* ensure secondary tags are filtered and handle empty lines in Docker build workflow ([0c650cd](https://github.com/bauer-group/automation-templates/commit/0c650cd9999a0c5b8e1f47af9caca5009ec06fb0))
+* remove unnecessary permissions for actions in Docker build workflow ([5cc233c](https://github.com/bauer-group/automation-templates/commit/5cc233c981fd7457879b2749b3f53ecb519d89b1))
+
 ## [4.3.0](https://github.com/bauer-group/automation-templates/compare/v4.2.1...v4.3.0) (2025-12-09)
 
 ### 🚀 Features
