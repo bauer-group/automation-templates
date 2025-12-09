@@ -1,3 +1,26 @@
+## [4.1.0](https://github.com/bauer-group/automation-templates/compare/v4.0.0...v4.1.0) (2025-12-08)
+
+### 🚀 Features
+
+* add support for secondary Docker registry configuration in build workflow ([361b29f](https://github.com/bauer-group/automation-templates/commit/361b29f0844a6a6ba10472ab4fd2939998c8df61))
+* add version extraction and update options for Dockerfile in build workflow ([d90a3e6](https://github.com/bauer-group/automation-templates/commit/d90a3e6bdcd84a46a5f7dc1d523e4f0c5d5134a8))
+* enhance Docker registry configuration to support publish target options ([e445211](https://github.com/bauer-group/automation-templates/commit/e4452115a21ae6b0377ef899c39a251ddd09ae1b))
+
+### 🐛 Bug Fixes
+
+* improve handling of issue and PR details in AI summary workflow ([481e25e](https://github.com/bauer-group/automation-templates/commit/481e25e1fa7153b3de5131ac59345dd0783e912d))
+* Refactor Docker workflows for improved security, multi-platform support, and README synchronization ([a7b5ffe](https://github.com/bauer-group/automation-templates/commit/a7b5ffeaa0e4b2e5fa6f8fac7b11a76eef66b749))
+* update label formatting for Docker image metadata to include repository URL and SHA ([b344c83](https://github.com/bauer-group/automation-templates/commit/b344c83de159a38829ebc2360d17074d93092b99))
+* update registry username handling to use secrets for sensitive values ([5a0bbc4](https://github.com/bauer-group/automation-templates/commit/5a0bbc462253aaacfe3ea13f6b2eef744ddb5d25))
+* update tag handling logic for Docker image based on branch type ([4b00b4b](https://github.com/bauer-group/automation-templates/commit/4b00b4bbc2718fb5d3bd859a6dc7bfed3cd0f160))
+* use heredoc for safer variable handling in PR title, body, and comment template ([e813343](https://github.com/bauer-group/automation-templates/commit/e81334366676008cbc3091296c4d9c9322c64374))
+
+### 🔧 Maintenance
+
+* **deps:** bump actions/download-artifact from 4 to 6 ([1edd3b7](https://github.com/bauer-group/automation-templates/commit/1edd3b76a8a669d9a8f94d331e321621c773a304))
+* **deps:** bump actions/github-script from 7 to 8 ([8a65680](https://github.com/bauer-group/automation-templates/commit/8a656805be6f301e5397a3561a7a40c80aacf5f7))
+* **deps:** bump FriendsOfShopware/shopware-cli-action from 2 to 3 ([e76fedb](https://github.com/bauer-group/automation-templates/commit/e76fedb138d0c7717c802a11b738a2b8358929d6))
+
 ## [4.0.0](https://github.com/bauer-group/automation-templates/compare/v3.2.0...v4.0.0) (2025-10-30)
 
 ### ⚠ BREAKING CHANGES
