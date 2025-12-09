@@ -109,6 +109,12 @@ on:
         required: false
         default: false
 
+      release-version:
+        description: 'Release version to use for tagging (e.g., 0.5.0). When set, generates semver tags without requiring tag context. Use this when calling from a release workflow.'
+        type: string
+        required: false
+        default: ''
+
       # Publish Target Configuration
       publish-to:
         description: 'Where to publish the image: ghcr, dockerhub, or both'
@@ -405,6 +411,7 @@ jobs:
           version-from-dockerfile: ${{ inputs.version-from-dockerfile }}
           semver-from-dockerfile: ${{ inputs.semver-from-dockerfile }}
           update-dockerfile-version: ${{ inputs.update-dockerfile-version }}
+          release-version: ${{ inputs.release-version }}
           push: ${{ inputs.push }}
           push-on-pr: ${{ inputs.push-on-pr }}
           cache-enabled: ${{ inputs.cache-enabled }}

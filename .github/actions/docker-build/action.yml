@@ -96,6 +96,10 @@ inputs:
     description: 'Update Dockerfile LABEL org.opencontainers.image.version with version from Git tag (strips v prefix)'
     required: false
     default: 'false'
+  release-version:
+    description: 'Release version for tagging (e.g., 0.5.0). When set, generates semver tags without requiring tag context.'
+    required: false
+    default: ''
   # Push Configuration
   push:
     description: 'Push image to registry'
@@ -307,6 +311,42 @@ runs:
           fi
         fi
 
+    - name: 🏷️ Generate Release Version Tags
+      id: release-tags
+      if: inputs.release-version != ''
+      shell: bash
+      run: |
+        VERSION="${{ inputs.release-version }}"
+        echo "📦 Generating tags for release version: $VERSION"
+
+        # Parse semver components
+        MAJOR=$(echo "$VERSION" | cut -d. -f1)
+        MINOR=$(echo "$VERSION" | cut -d. -f2)
+        MAJOR_MINOR="${MAJOR}.${MINOR}"
+
+        # Full version tag
+        echo "version-tag=type=raw,value=$VERSION" >> $GITHUB_OUTPUT
+
+        # Major.Minor tag
+        echo "major-minor-tag=type=raw,value=$MAJOR_MINOR" >> $GITHUB_OUTPUT
+
+        # Major tag (only if not v0.x.x)
+        if [ "$MAJOR" != "0" ]; then
+          echo "major-tag=type=raw,value=$MAJOR" >> $GITHUB_OUTPUT
+        else
+          echo "major-tag=" >> $GITHUB_OUTPUT
+          echo "ℹ️ Skipping major version tag (v0.x.x)"
+        fi
+
+        # Latest tag
+        echo "latest-tag=type=raw,value=latest" >> $GITHUB_OUTPUT
+
+        echo "✅ Release tags prepared:"
+        echo "   • Version: $VERSION"
+        echo "   • Major.Minor: $MAJOR_MINOR"
+        echo "   • Major: $MAJOR ($([ "$MAJOR" = "0" ] && echo "skipped" || echo "included"))"
+        echo "   • Latest: included"
+
     - name: 🔐 Log in to Primary Registry
       if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true')
       uses: docker/login-action@v3
@@ -329,14 +369,19 @@ runs:
       with:
         images: |
           ${{ inputs.registry }}/${{ inputs.image-name || github.repository }}
+        # When release-version is set, use release tags; otherwise use auto-tags
         tags: |
-          ${{ inputs.auto-tags == 'true' && 'type=ref,event=branch' || '' }}
-          ${{ inputs.auto-tags == 'true' && 'type=ref,event=pr' || '' }}
-          ${{ inputs.auto-tags == 'true' && 'type=semver,pattern={{version}}' || '' }}
-          ${{ inputs.auto-tags == 'true' && 'type=semver,pattern={{major}}.{{minor}}' || '' }}
-          ${{ inputs.auto-tags == 'true' && !startsWith(github.ref, 'refs/tags/v0.') && 'type=semver,pattern={{major}}' || '' }}
-          ${{ inputs.auto-tags == 'true' && inputs.latest-tag == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=raw,value=latest' || '' }}
-          ${{ inputs.auto-tags == 'true' && !startsWith(github.ref, 'refs/tags/') && 'type=sha,prefix={{branch}}-' || '' }}
+          ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && 'type=ref,event=branch' || '' }}
+          ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && 'type=ref,event=pr' || '' }}
+          ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && 'type=semver,pattern={{version}}' || '' }}
+          ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && 'type=semver,pattern={{major}}.{{minor}}' || '' }}
+          ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && !startsWith(github.ref, 'refs/tags/v0.') && 'type=semver,pattern={{major}}' || '' }}
+          ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && inputs.latest-tag == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=raw,value=latest' || '' }}
+          ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && !startsWith(github.ref, 'refs/tags/') && 'type=sha,prefix={{branch}}-' || '' }}
+          ${{ inputs.release-version != '' && steps.release-tags.outputs.version-tag || '' }}
+          ${{ inputs.release-version != '' && steps.release-tags.outputs.major-minor-tag || '' }}
+          ${{ inputs.release-version != '' && steps.release-tags.outputs.major-tag || '' }}
+          ${{ inputs.release-version != '' && inputs.latest-tag == 'true' && steps.release-tags.outputs.latest-tag || '' }}
           ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-tag || '' }}
           ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-major-minor-tag || '' }}
           ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-major-tag || '' }}
@@ -349,18 +394,24 @@ runs:
 
     - name: 🏷️ Extract Metadata for Secondary Registry (Docker Hub)
       id: meta-secondary
-      if: inputs.secondary-registry != ''
+      # Only run if secondary registry is set AND (release-version is set OR it's a tag push)
+      # This prevents Docker Hub from receiving branch tags
+      if: inputs.secondary-registry != '' && (inputs.release-version != '' || startsWith(github.ref, 'refs/tags/'))
       uses: docker/metadata-action@v5
       with:
         images: |
           ${{ inputs.secondary-registry }}/${{ inputs.secondary-image-name || inputs.image-name || github.repository }}
         # Docker Hub only gets semver tags and latest (no branch/sha tags)
-        # IMPORTANT: All tags require refs/tags/ check to prevent branch pushes to Docker Hub
+        # When release-version is set, use release tags; otherwise use semver from tag
         tags: |
-          ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=semver,pattern={{version}}' || '' }}
-          ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=semver,pattern={{major}}.{{minor}}' || '' }}
-          ${{ inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/tags/') && !startsWith(github.ref, 'refs/tags/v0.') && 'type=semver,pattern={{major}}' || '' }}
-          ${{ inputs.auto-tags == 'true' && inputs.latest-tag == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=raw,value=latest' || '' }}
+          ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && 'type=semver,pattern={{version}}' || '' }}
+          ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && 'type=semver,pattern={{major}}.{{minor}}' || '' }}
+          ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && !startsWith(github.ref, 'refs/tags/v0.') && 'type=semver,pattern={{major}}' || '' }}
+          ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && inputs.latest-tag == 'true' && 'type=raw,value=latest' || '' }}
+          ${{ inputs.release-version != '' && steps.release-tags.outputs.version-tag || '' }}
+          ${{ inputs.release-version != '' && steps.release-tags.outputs.major-minor-tag || '' }}
+          ${{ inputs.release-version != '' && steps.release-tags.outputs.major-tag || '' }}
+          ${{ inputs.release-version != '' && inputs.latest-tag == 'true' && steps.release-tags.outputs.latest-tag || '' }}
           ${{ inputs.version-from-dockerfile == 'true' && startsWith(github.ref, 'refs/tags/') && steps.dockerfile-version.outputs.version-tag || '' }}
           ${{ inputs.version-from-dockerfile == 'true' && startsWith(github.ref, 'refs/tags/') && steps.dockerfile-version.outputs.version-major-minor-tag || '' }}
           ${{ inputs.version-from-dockerfile == 'true' && startsWith(github.ref, 'refs/tags/') && steps.dockerfile-version.outputs.version-major-tag || '' }}

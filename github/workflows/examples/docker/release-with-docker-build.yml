@@ -1,0 +1,131 @@
+name: 🚀 Release & Docker Build
+
+# Combined workflow: Creates a semantic release and then builds + publishes Docker images
+# This solves the problem where GitHub Actions workflows created by GITHUB_TOKEN
+# don't trigger other workflows (e.g., a release creating a tag won't trigger a tag-based Docker build)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/**'
+      - '*.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'package*.json'
+      - 'tsconfig.json'
+      - '.dockerignore'
+  workflow_dispatch:
+    inputs:
+      force-release:
+        description: 'Force create release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  packages: write
+  security-events: write
+
+jobs:
+  # Step 1: Create semantic release (only on main branch push, not PRs)
+  release:
+    name: Create Semantic Release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      target-branch: 'main'
+      dry-run: false
+      force-release: ${{ inputs.force-release || false }}
+    secrets: inherit
+
+  # Step 2: Build & Push Docker Image after successful release
+  # Uses release-version to generate proper semver tags without tag context
+  docker-build-release:
+    name: Build & Push Docker Image (Release)
+    needs: release
+    if: needs.release.outputs.release-created == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      # Publish to both GHCR and Docker Hub
+      publish-to: 'both'
+      ghcr-image-name: 'your-org/your-app'
+      docker-image-name: 'your-dockerhub-user/your-app'
+
+      # KEY: Pass the release version to generate proper semver tags
+      # This allows generating tags like 0.5.0, 0.5, latest without tag context
+      release-version: ${{ needs.release.outputs.version }}
+
+      # Update Dockerfile version label with the release version
+      update-dockerfile-version: true
+
+      # Disable auto-tags since release-version handles tagging
+      auto-tags: true
+      latest-tag: true
+
+      # Build configuration
+      dockerfile-path: './Dockerfile'
+      docker-context: '.'
+      platforms: 'linux/amd64'
+
+      # Always push on release
+      push: true
+
+      # Security scanning
+      security-scan: true
+      security-fail-on: 'CRITICAL'
+      generate-sbom: true
+
+      # Sync README to Docker Hub
+      sync-dockerhub-readme: true
+    secrets: inherit
+
+  # Step 3: PR validation - build only, don't push
+  docker-build-pr:
+    name: Validate Docker Build (PR)
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      publish-to: 'ghcr'
+      ghcr-image-name: 'your-org/your-app'
+
+      auto-tags: true
+      dockerfile-path: './Dockerfile'
+      docker-context: '.'
+      platforms: 'linux/amd64'
+
+      # Don't push on PRs - just validate the build
+      push: false
+
+      security-scan: true
+      security-fail-on: 'CRITICAL'
+    secrets: inherit
+
+  # Optional: Summary
+  summary:
+    name: Pipeline Summary
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: [release, docker-build-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "### 🚀 Release & Docker Build Pipeline" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.release.outputs.release-created }}" = "true" ]; then
+            echo "✅ **Release ${{ needs.release.outputs.version }} created successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Registry | Tags |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|------|" >> $GITHUB_STEP_SUMMARY
+            echo "| GHCR | \`${{ needs.release.outputs.version }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Docker Hub | \`${{ needs.release.outputs.version }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ **No release created** (no releasable changes)" >> $GITHUB_STEP_SUMMARY
+          fi
