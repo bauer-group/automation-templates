@@ -1,5 +1,5 @@
 name: Docker Build & Push
-# Example workflow for IP-Ghost.BunnyCDN.Connector repository
+# Example workflow for simple-dockerized-application repository
 # Builds Docker image ONCE and pushes to both GitHub Container Registry and Docker Hub
 #
 # Version Strategy:
