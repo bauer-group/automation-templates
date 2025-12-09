@@ -1,3 +1,10 @@
+## [4.3.0](https://github.com/bauer-group/automation-templates/compare/v4.2.1...v4.3.0) (2025-12-09)
+
+### 🚀 Features
+
+* add Docker Build & Push workflow for GitHub Container Registry and Docker Hub ([3360d95](https://github.com/bauer-group/automation-templates/commit/3360d95f0da82b2c896753f693ea482109a71e4b))
+* add semver tag generation from Dockerfile version in docker-build action and workflow ([3334cba](https://github.com/bauer-group/automation-templates/commit/3334cbaf194984278467834e2b616fb02003365c))
+
 ## [4.2.1](https://github.com/bauer-group/automation-templates/compare/v4.2.0...v4.2.1) (2025-12-09)
 
 ### 🐛 Bug Fixes
