@@ -698,11 +698,11 @@ runs:
           TAG_NAME="${GITHUB_REF#refs/tags/}"
         fi
 
-        # Check if there are actual changes
-        if git diff --quiet "$DOCKERFILE"; then
-          echo "ℹ️ No changes to commit - Dockerfile already up to date"
-          exit 0
-        fi
+        # IMPORTANT: Save the modified Dockerfile content BEFORE any git operations
+        # This is crucial because after git checkout, the local changes would be lost
+        echo "💾 Saving modified Dockerfile content..."
+        TEMP_DOCKERFILE=$(mktemp)
+        cp "$DOCKERFILE" "$TEMP_DOCKERFILE"
 
         # Configure git
         git config user.name "github-actions[bot]"
@@ -712,12 +712,26 @@ runs:
         DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
         echo "📌 Default branch: $DEFAULT_BRANCH"
 
-        # Fetch and checkout default branch
+        # Fetch latest changes and checkout default branch
         git fetch origin "$DEFAULT_BRANCH"
         git checkout "$DEFAULT_BRANCH"
 
-        # Apply the Dockerfile change to the default branch
-        git checkout "${GITHUB_SHA}" -- "$DOCKERFILE"
+        # Pull latest changes (handles case where release created a new commit)
+        git pull origin "$DEFAULT_BRANCH" --ff-only || {
+          echo "⚠️ Fast-forward pull failed, trying rebase..."
+          git pull origin "$DEFAULT_BRANCH" --rebase
+        }
+
+        # Restore the modified Dockerfile from temp file
+        echo "📄 Restoring modified Dockerfile..."
+        cp "$TEMP_DOCKERFILE" "$DOCKERFILE"
+        rm -f "$TEMP_DOCKERFILE"
+
+        # Check if there are actual changes compared to the current branch state
+        if git diff --quiet "$DOCKERFILE"; then
+          echo "ℹ️ No changes to commit - Dockerfile already up to date"
+          exit 0
+        fi
 
         # Stage and commit
         git add "$DOCKERFILE"
