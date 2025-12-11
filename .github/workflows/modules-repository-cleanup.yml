@@ -181,7 +181,7 @@ jobs:
     
     steps:
       - name: 🔄 Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: 🔍 Validate Configuration
         id: validation
@@ -342,7 +342,7 @@ jobs:
     
     steps:
       - name: 🔄 Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: 🧹 Execute Repository Cleanup
         id: cleanup-action
