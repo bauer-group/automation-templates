@@ -66,11 +66,21 @@ jobs:
 ```yaml
 jobs:
   release:
-    uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     with:
-      release-type: simple
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      target-branch: 'main'
+    secrets: inherit
+```
+
+**Release Management mit Extra-Plugins (z.B. npm):**
+```yaml
+jobs:
+  release:
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      target-branch: 'main'
+      extra-plugins: '@semantic-release/npm'
+    secrets: inherit
 ```
 
 **Python Development (Modern):**

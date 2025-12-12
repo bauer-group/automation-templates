@@ -160,6 +160,9 @@ frontend:
 ```
 
 ### Semantic Release Configuration
+
+**Standard-Konfiguration:**
+
 ```json
 // .github/config/release/semantic-release.json
 {
@@ -169,9 +172,50 @@ frontend:
     "@semantic-release/release-notes-generator",
     ["@semantic-release/changelog", {
       "changelogFile": "CHANGELOG.MD"
-    }]
+    }],
+    ["@semantic-release/git", {
+      "assets": ["CHANGELOG.MD"],
+      "message": "chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"
+    }],
+    "@semantic-release/github"
   ]
 }
+```
+
+**Mit @semantic-release/npm (package.json Version aktualisieren ohne npm publish):**
+
+```json
+// .github/config/release/semantic-release.json
+{
+  "branches": ["main"],
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    ["@semantic-release/changelog", {
+      "changelogFile": "CHANGELOG.MD"
+    }],
+    ["@semantic-release/npm", {
+      "npmPublish": false
+    }],
+    ["@semantic-release/git", {
+      "assets": ["CHANGELOG.MD", "package.json", "package-lock.json"],
+      "message": "chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"
+    }],
+    "@semantic-release/github"
+  ]
+}
+```
+
+**Workflow-Aufruf mit extra-plugins:**
+
+```yaml
+jobs:
+  release:
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      target-branch: 'main'
+      extra-plugins: '@semantic-release/npm'
+    secrets: inherit
 ```
 
 ### Documentation Auto-Update on Release
