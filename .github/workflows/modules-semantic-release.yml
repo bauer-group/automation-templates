@@ -23,6 +23,11 @@ on:
         required: false
         type: boolean
         default: false
+      extra-plugins:
+        description: 'Additional semantic-release plugins to install (space-separated)'
+        required: false
+        type: string
+        default: ''
     outputs:
       release-created:
         description: 'Whether a release was created'
@@ -73,6 +78,7 @@ jobs:
           branches: ${{ inputs.target-branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
           force-release: ${{ inputs.force-release }}
+          extra-plugins: ${{ inputs.extra-plugins }}
           
       - name: 📊 Process Results
         id: release
