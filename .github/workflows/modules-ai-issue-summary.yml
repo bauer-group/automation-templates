@@ -313,43 +313,56 @@ jobs:
       
       - name: 📝 Process AI Response
         id: process
+        env:
+          RESPONSE_GITHUB: ${{ steps.inference-github.outputs.response }}
+          RESPONSE_OPENAI: ${{ steps.inference-openai.outputs.response }}
+          RESPONSE_FALLBACK: ${{ steps.fallback.outputs.response }}
+          GITHUB_OUTCOME: ${{ steps.inference-github.outcome }}
+          OPENAI_OUTCOME: ${{ steps.inference-openai.outcome }}
+          ADD_LABELS: ${{ inputs.add-labels }}
+          ADD_PRIORITY: ${{ inputs.add-priority }}
         run: |
           echo "🔄 Processing AI response..."
-          
-          # Get the response from whichever inference succeeded
-          if [ "${{ steps.inference-github.outcome }}" = "success" ]; then
-            RESPONSE="${{ steps.inference-github.outputs.response }}"
-          elif [ "${{ steps.inference-openai.outcome }}" = "success" ]; then
-            RESPONSE="${{ steps.inference-openai.outputs.response }}"
+
+          # Get the response from whichever inference succeeded (using env vars to avoid backtick issues)
+          if [ "$GITHUB_OUTCOME" = "success" ]; then
+            RESPONSE="$RESPONSE_GITHUB"
+          elif [ "$OPENAI_OUTCOME" = "success" ]; then
+            RESPONSE="$RESPONSE_OPENAI"
           else
-            RESPONSE="${{ steps.fallback.outputs.response }}"
+            RESPONSE="$RESPONSE_FALLBACK"
           fi
-          
+
+          # Save response to temp file to safely process content with special characters
+          printf '%s' "$RESPONSE" > /tmp/ai_response.txt
+
           # Extract labels if suggested
-          if [ "${{ inputs.add-labels }}" = "true" ]; then
+          if [ "$ADD_LABELS" = "true" ]; then
             # Try to extract labels from the response
-            SUGGESTED_LABELS=$(echo "$RESPONSE" | grep -oE "(bug|enhancement|documentation|question|help-wanted|good-first-issue|breaking-change|performance|security|test)" | tr '\n' ' ' | xargs)
+            SUGGESTED_LABELS=$(grep -oE "(bug|enhancement|documentation|question|help-wanted|good-first-issue|breaking-change|performance|security|test)" /tmp/ai_response.txt | tr '\n' ' ' | xargs || true)
             echo "suggested-labels=$SUGGESTED_LABELS" >> $GITHUB_OUTPUT
           fi
-          
+
           # Extract priority if suggested
-          if [ "${{ inputs.add-priority }}" = "true" ]; then
+          if [ "$ADD_PRIORITY" = "true" ]; then
             # Try to extract priority from the response
-            SUGGESTED_PRIORITY=$(echo "$RESPONSE" | grep -oE "(priority:?\s*(low|medium|high|critical))" | grep -oE "(low|medium|high|critical)" | head -1)
+            SUGGESTED_PRIORITY=$(grep -oE "(priority:?\s*(low|medium|high|critical))" /tmp/ai_response.txt | grep -oE "(low|medium|high|critical)" | head -1 || true)
             echo "suggested-priority=$SUGGESTED_PRIORITY" >> $GITHUB_OUTPUT
           fi
-          
+
           # Clean up the summary (remove label/priority suggestions if they were requested separately)
-          CLEAN_SUMMARY="$RESPONSE"
-          if [ "${{ inputs.add-labels }}" = "true" ] || [ "${{ inputs.add-priority }}" = "true" ]; then
+          cp /tmp/ai_response.txt /tmp/clean_summary.txt
+          if [ "$ADD_LABELS" = "true" ] || [ "$ADD_PRIORITY" = "true" ]; then
             # Remove lines that look like label or priority suggestions
-            CLEAN_SUMMARY=$(echo "$RESPONSE" | sed '/^Labels:/d' | sed '/^Priority:/d' | sed '/^Suggested labels:/d' | sed '/^Suggested priority:/d')
+            sed -i '/^Labels:/d; /^Priority:/d; /^\*\*Suggested labels:\*\*/d; /^\*\*Priority level:\*\*/d; /^Suggested labels:/d; /^Suggested priority:/d' /tmp/clean_summary.txt
           fi
-          
-          # Save clean summary
-          echo "summary<<EOF" >> $GITHUB_OUTPUT
-          echo "$CLEAN_SUMMARY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+
+          # Save clean summary using heredoc with file
+          {
+            echo 'summary<<EOF'
+            cat /tmp/clean_summary.txt
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
       
       - name: 💬 Post Summary Comment
         env:
