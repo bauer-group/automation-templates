@@ -468,7 +468,7 @@ jobs:
       
       - name: 📦 Cache Build Output
         if: inputs.cache-build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ${{ inputs.working-directory }}/dist
@@ -829,7 +829,7 @@ jobs:
       
       - name: 📤 Upload Artifacts
         if: inputs.upload-artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ inputs.artifact-name }}-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}-${{ steps.version.outputs.version }}
           path: ${{ steps.artifacts.outputs.path }}

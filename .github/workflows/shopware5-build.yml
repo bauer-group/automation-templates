@@ -782,7 +782,7 @@ jobs:
           fi
 
       - name: 📤 Upload Plugin Artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.version.outputs.name }}
           path: ${{ steps.zip.outputs.filename }}
@@ -804,7 +804,7 @@ jobs:
           cat /tmp/changelog.txt
 
       - name: 🔍 Check if Version Tag Exists
-        uses: mukunku/tag-exists-action@v1.6.0
+        uses: mukunku/tag-exists-action@v1.7.0
         id: check-tag
         with:
           tag: ${{ steps.version.outputs.version }}

@@ -335,7 +335,7 @@ jobs:
       
       - name: 📦 Cache Composer Dependencies
         if: inputs.cache-dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ steps.composer-cache-dir.outputs.dir }}
           key: ${{ runner.os }}-composer-${{ matrix.php-version }}-${{ hashFiles(format('{0}/composer.lock', inputs.working-directory)) }}
@@ -611,7 +611,7 @@ jobs:
       
       - name: 📤 Upload Artifacts
         if: inputs.upload-artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ inputs.artifact-name }}-php${{ matrix.php-version }}
           path: ${{ steps.artifacts.outputs.path }}

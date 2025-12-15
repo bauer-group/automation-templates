@@ -215,7 +215,7 @@ jobs:
       - name: 📤 Upload Build Artifacts
         id: upload
         if: inputs.upload-artifacts && steps.zephyr-build.outputs.binary-path != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: zephyr-build-${{ matrix.os }}-${{ matrix.board }}-${{ matrix.build-type }}
           path: ${{ inputs.application-path }}/${{ steps.zephyr-build.outputs.binary-path }}
@@ -224,7 +224,7 @@ jobs:
 
       - name: 📤 Upload Coverage Reports
         if: inputs.enable-coverage && steps.zephyr-build.outputs.coverage-report != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-report-${{ matrix.board }}-${{ matrix.build-type }}
           path: ${{ inputs.application-path }}/${{ steps.zephyr-build.outputs.coverage-report }}
@@ -257,7 +257,7 @@ jobs:
     
     steps:
       - name: 📥 Download Artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: zephyr-build-ubuntu-latest-${{ matrix.board }}-debug
           path: ./artifacts
