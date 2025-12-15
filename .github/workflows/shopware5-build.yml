@@ -782,7 +782,7 @@ jobs:
           fi
 
       - name: 📤 Upload Plugin Artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.version.outputs.name }}
           path: ${{ steps.zip.outputs.filename }}
