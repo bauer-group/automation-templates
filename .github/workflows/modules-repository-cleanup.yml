@@ -446,7 +446,7 @@ jobs:
           cp cleanup_report.md "reports/cleanup-report-$(date +%Y%m%d-%H%M%S).md"
       
       - name: 📤 Upload Cleanup Report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: repository-cleanup-report-${{ github.run_id }}
           path: reports/
