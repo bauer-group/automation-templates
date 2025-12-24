@@ -230,10 +230,11 @@ jobs:
           fi
           echo "::endgroup::"
 
-          # Check for warnings in output
+          # Check for warnings in output (look for actual warning patterns from docker compose)
+          # Docker compose warnings look like: "WARN[0000]" or "warning:" or "Warning:"
           WARNINGS=""
-          if grep -qi "warning" /tmp/compose-output.txt; then
-            WARNINGS=$(grep -i "warning" /tmp/compose-output.txt | head -10)
+          if grep -qiE "(WARN\[|warning:)" /tmp/compose-output.txt 2>/dev/null; then
+            WARNINGS=$(grep -iE "(WARN\[|warning:)" /tmp/compose-output.txt | head -10)
             echo "⚠️ Warnings detected:"
             echo "$WARNINGS"
 
