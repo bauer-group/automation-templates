@@ -1,3 +1,30 @@
+## [4.5.0](https://github.com/bauer-group/automation-templates/compare/v4.4.0...v4.5.0) (2025-12-24)
+
+### 🚀 Features
+
+* Add Docker Compose and Shell Script validation modules with examples ([3708514](https://github.com/bauer-group/automation-templates/commit/370851478a38ac54df04bf67c835954d7bca9560))
+* add support for additional semantic-release plugins in workflow ([4648c8c](https://github.com/bauer-group/automation-templates/commit/4648c8c0f60f1df531c7fba64303ac46b53e7ada))
+* enhance Dockerfile version update logic to support release version input ([0050a98](https://github.com/bauer-group/automation-templates/commit/0050a98cb765da1af6e0588efd1f182247a79de2))
+* refine Dockerfile version update conditions to prevent conflicts with version-from-dockerfile ([805ca9f](https://github.com/bauer-group/automation-templates/commit/805ca9fe3a60c47ce25374e0a9093f0fac026ddc))
+
+### 🐛 Bug Fixes
+
+* ensure boolean checks for Docker Hub README sync conditions ([10ef042](https://github.com/bauer-group/automation-templates/commit/10ef0420537e25e0f068be4f0fc73587f6f4f314))
+* ensure Dockerfile content is saved before git operations to prevent data loss ([7afdb83](https://github.com/bauer-group/automation-templates/commit/7afdb831874c31b27d0047de607778872830d71d))
+
+### ♻️ Code Refactoring
+
+* improve AI response processing and cleanup logic ([9befbce](https://github.com/bauer-group/automation-templates/commit/9befbce951d4141895a080ee730f459a361a2a67))
+* streamline AI response processing and improve variable handling ([df4bdf7](https://github.com/bauer-group/automation-templates/commit/df4bdf7dfeaa987a76604f0789363beef5ae1604))
+
+### 🔧 Maintenance
+
+* **deps:** bump actions/cache from 4 to 5 ([ecb52b5](https://github.com/bauer-group/automation-templates/commit/ecb52b545708c57b99a69af4cc0f7917fba6a731))
+* **deps:** bump actions/checkout from 4 to 6 ([77fc57e](https://github.com/bauer-group/automation-templates/commit/77fc57e925c777142719ab82d0965c25d0b3b2a2))
+* **deps:** bump actions/download-artifact from 6 to 7 ([c1ab329](https://github.com/bauer-group/automation-templates/commit/c1ab32941870e4128af569b487c587eb658b4d9b))
+* **deps:** bump actions/upload-artifact from 5 to 6 ([3cafdfd](https://github.com/bauer-group/automation-templates/commit/3cafdfdd1f396e9ae3314003c99b1bc51ff3a172))
+* **deps:** bump mukunku/tag-exists-action from 1.6.0 to 1.7.0 ([c83545d](https://github.com/bauer-group/automation-templates/commit/c83545db48ac20a88d2e2c13e0ff62d1e4727820))
+
 ## [4.4.0](https://github.com/bauer-group/automation-templates/compare/v4.3.0...v4.4.0) (2025-12-09)
 
 ### 🚀 Features
