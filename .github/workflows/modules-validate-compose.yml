@@ -231,6 +231,7 @@ jobs:
           echo "::endgroup::"
 
           # Check for warnings in output
+          WARNINGS=""
           if grep -qi "warning" /tmp/compose-output.txt; then
             WARNINGS=$(grep -i "warning" /tmp/compose-output.txt | head -10)
             echo "⚠️ Warnings detected:"
@@ -271,12 +272,16 @@ jobs:
           echo "services=$ALL_SERVICES" >> $GITHUB_OUTPUT
           echo "service-count=$SERVICE_COUNT" >> $GITHUB_OUTPUT
 
-          # Handle multiline warnings
-          {
-            echo 'warnings<<EOF'
-            echo "$WARNINGS"
-            echo 'EOF'
-          } >> $GITHUB_OUTPUT
+          # Handle warnings output (only if not empty)
+          if [ -n "$WARNINGS" ]; then
+            {
+              echo 'warnings<<EOF'
+              echo "$WARNINGS"
+              echo 'EOF'
+            } >> $GITHUB_OUTPUT
+          else
+            echo "warnings=" >> $GITHUB_OUTPUT
+          fi
 
           # Final status
           if [ "$VALID" = "false" ]; then
@@ -362,10 +367,11 @@ jobs:
           echo "| **Service Names** | ${{ steps.validate.outputs.services }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Working Directory** | \`${{ inputs.working-directory }}\` |" >> $GITHUB_STEP_SUMMARY
 
-          if [ -n "${{ steps.validate.outputs.warnings }}" ]; then
+          WARNINGS_OUTPUT="${{ steps.validate.outputs.warnings }}"
+          if [ -n "$WARNINGS_OUTPUT" ] && [ "$WARNINGS_OUTPUT" != "" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "#### ⚠️ Warnings" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "${{ steps.validate.outputs.warnings }}" >> $GITHUB_STEP_SUMMARY
+            echo "$WARNINGS_OUTPUT" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           fi
