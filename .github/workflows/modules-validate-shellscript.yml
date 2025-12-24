@@ -133,67 +133,63 @@ jobs:
 
           echo "📂 Scan paths: $SCAN_PATHS"
 
-          # Prepare exclude patterns
-          EXCLUDE_ARGS=""
+          # Prepare exclude patterns for find command
+          EXCLUDE_FIND=""
           if [ -n '${{ inputs.exclude-patterns }}' ] && [ '${{ inputs.exclude-patterns }}' != '' ]; then
-            EXCLUDE_ARGS=$(echo '${{ inputs.exclude-patterns }}' | python3 -c "
+            while IFS= read -r pattern; do
+              EXCLUDE_FIND="$EXCLUDE_FIND -not -path '*${pattern}*'"
+            done < <(echo '${{ inputs.exclude-patterns }}' | python3 -c "
           import sys, json
-          patterns = json.load(sys.stdin)
-          print(' '.join([f'-not -path \"*{p}*\"' for p in patterns]))
+          for p in json.load(sys.stdin):
+              print(p)
           ")
           fi
 
-          # Find shell scripts by extension
+          # Always exclude common non-shell directories
+          EXCLUDE_FIND="$EXCLUDE_FIND -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*'"
+
+          # Find shell scripts - ONLY .sh files by default
           SCRIPT_FILES=""
 
           for path in $SCAN_PATHS; do
             if [ -d "$path" ]; then
-              # Find .sh files
-              while IFS= read -r -d '' file; do
-                SCRIPT_FILES="$SCRIPT_FILES $file"
-              done < <(find "$path" -type f -name "*.sh" $EXCLUDE_ARGS -print0 2>/dev/null)
-
-              # Find files with shell shebang
-              while IFS= read -r -d '' file; do
-                if head -1 "$file" 2>/dev/null | grep -qE '^#!\s*(/usr)?(/local)?/bin/(env\s+)?(ba)?sh'; then
-                  if ! echo "$SCRIPT_FILES" | grep -q "$file"; then
-                    SCRIPT_FILES="$SCRIPT_FILES $file"
-                  fi
-                fi
-              done < <(find "$path" -type f $EXCLUDE_ARGS -print0 2>/dev/null)
+              # Find .sh files only
+              while IFS= read -r file; do
+                [ -n "$file" ] && SCRIPT_FILES="$SCRIPT_FILES $file"
+              done < <(eval "find \"$path\" -type f -name '*.sh' $EXCLUDE_FIND 2>/dev/null")
             elif [ -f "$path" ]; then
               SCRIPT_FILES="$SCRIPT_FILES $path"
             fi
           done
 
-          # Add additional file patterns
+          # Add additional file patterns if specified
           if [ -n '${{ inputs.additional-files }}' ] && [ '${{ inputs.additional-files }}' != '' ]; then
-            ADDITIONAL_PATTERNS=$(echo '${{ inputs.additional-files }}' | python3 -c "
-          import sys, json
-          patterns = json.load(sys.stdin)
-          print(' '.join(patterns))
-          ")
-
-            for pattern in $ADDITIONAL_PATTERNS; do
+            while IFS= read -r pattern; do
               for path in $SCAN_PATHS; do
                 if [ -d "$path" ]; then
-                  while IFS= read -r -d '' file; do
-                    SCRIPT_FILES="$SCRIPT_FILES $file"
-                  done < <(find "$path" -type f -name "$pattern" $EXCLUDE_ARGS -print0 2>/dev/null)
+                  while IFS= read -r file; do
+                    [ -n "$file" ] && SCRIPT_FILES="$SCRIPT_FILES $file"
+                  done < <(eval "find \"$path\" -type f -name '$pattern' $EXCLUDE_FIND 2>/dev/null")
                 fi
               done
-            done
+            done < <(echo '${{ inputs.additional-files }}' | python3 -c "
+          import sys, json
+          for p in json.load(sys.stdin):
+              print(p)
+          ")
           fi
 
           # Remove duplicates and count
           SCRIPT_FILES=$(echo "$SCRIPT_FILES" | tr ' ' '\n' | sort -u | grep -v '^$' | tr '\n' ' ')
-          FILE_COUNT=$(echo "$SCRIPT_FILES" | wc -w)
+          FILE_COUNT=$(echo "$SCRIPT_FILES" | wc -w | tr -d ' ')
 
-          echo "📄 Found $FILE_COUNT shell script(s)"
-          echo "$SCRIPT_FILES" | tr ' ' '\n' | head -20
+          echo "📄 Found $FILE_COUNT shell script(s):"
+          echo "$SCRIPT_FILES" | tr ' ' '\n' | grep -v '^$' | head -30 | while read -r f; do
+            echo "   - $f"
+          done
 
-          if [ "$FILE_COUNT" -gt 20 ]; then
-            echo "   ... and $((FILE_COUNT - 20)) more"
+          if [ "$FILE_COUNT" -gt 30 ]; then
+            echo "   ... and $((FILE_COUNT - 30)) more"
           fi
 
           # Save to file for next step
@@ -215,11 +211,8 @@ jobs:
         run: |
           echo "🔍 Running ShellCheck analysis..."
 
-          # Build shellcheck arguments
-          SHELLCHECK_ARGS=""
-
-          # Severity
-          SHELLCHECK_ARGS="$SHELLCHECK_ARGS --severity=${{ inputs.severity }}"
+          # Build shellcheck arguments (without format - we'll add it per-use)
+          SHELLCHECK_ARGS="--severity=${{ inputs.severity }}"
 
           # Shell dialect
           if [ "${{ inputs.shell-dialect }}" != "auto" ]; then
@@ -230,9 +223,6 @@ jobs:
           if [ "${{ inputs.external-sources }}" = "true" ]; then
             SHELLCHECK_ARGS="$SHELLCHECK_ARGS --external-sources"
           fi
-
-          # Format
-          SHELLCHECK_ARGS="$SHELLCHECK_ARGS --format=${{ inputs.format }}"
 
           # Exclude codes
           if [ -n '${{ inputs.exclude-codes }}' ] && [ '${{ inputs.exclude-codes }}' != '' ]; then
@@ -255,66 +245,57 @@ jobs:
           fi
 
           echo "📋 ShellCheck arguments: $SHELLCHECK_ARGS"
+          echo ""
 
           # Read script files
-          SCRIPT_FILES=$(cat /tmp/script-files.txt)
+          SCRIPT_FILES=$(cat /tmp/script-files.txt | tr '\n' ' ')
+          FILE_COUNT=${{ steps.find-scripts.outputs.file-count }}
 
-          # Run shellcheck and capture output
-          ISSUES_FOUND=0
-          ERROR_COUNT=0
-          WARNING_COUNT=0
-          PASSED="true"
+          # Run shellcheck once with JSON format for counting
+          # shellcheck disable=SC2086
+          JSON_OUTPUT=$(shellcheck --format=json $SHELLCHECK_ARGS $SCRIPT_FILES 2>/dev/null || true)
 
-          echo "::group::ShellCheck Output"
-
-          # Run shellcheck with JSON format for counting, then with requested format for display
-          for file in $SCRIPT_FILES; do
-            if [ -f "$file" ]; then
-              # Get JSON output for counting
-              JSON_OUTPUT=$(shellcheck --format=json1 $SHELLCHECK_ARGS "$file" 2>/dev/null || true)
-
-              if [ -n "$JSON_OUTPUT" ] && [ "$JSON_OUTPUT" != "[]" ]; then
-                FILE_ISSUES=$(echo "$JSON_OUTPUT" | python3 -c "
+          # Parse JSON to count issues
+          COUNTS=$(echo "$JSON_OUTPUT" | python3 -c "
           import sys, json
           try:
               data = json.load(sys.stdin)
-              comments = data.get('comments', [])
-              errors = sum(1 for c in comments if c.get('level') == 'error')
-              warnings = sum(1 for c in comments if c.get('level') == 'warning')
-              print(f'{len(comments)} {errors} {warnings}')
+              if not data:
+                  print('0 0 0')
+              else:
+                  errors = sum(1 for c in data if c.get('level') == 'error')
+                  warnings = sum(1 for c in data if c.get('level') == 'warning')
+                  print(f'{len(data)} {errors} {warnings}')
           except:
               print('0 0 0')
           " 2>/dev/null || echo "0 0 0")
 
-                read -r TOTAL ERRORS WARNINGS <<< "$FILE_ISSUES"
-                ISSUES_FOUND=$((ISSUES_FOUND + TOTAL))
-                ERROR_COUNT=$((ERROR_COUNT + ERRORS))
-                WARNING_COUNT=$((WARNING_COUNT + WARNINGS))
+          read -r ISSUES_FOUND ERROR_COUNT WARNING_COUNT <<< "$COUNTS"
 
-                if [ "$TOTAL" -gt 0 ]; then
-                  PASSED="false"
-                fi
-              fi
-            fi
-          done
+          # Determine pass/fail
+          if [ "$ISSUES_FOUND" -gt 0 ]; then
+            PASSED="false"
+          else
+            PASSED="true"
+          fi
 
-          # Now run with requested format for display
+          # Now run with TTY format for human-readable display
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           # shellcheck disable=SC2086
-          shellcheck $SHELLCHECK_ARGS $SCRIPT_FILES 2>&1 || true
-
-          echo "::endgroup::"
+          shellcheck --format=${{ inputs.format }} $SHELLCHECK_ARGS $SCRIPT_FILES 2>&1 || true
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
           # Summary
           echo ""
           echo "📊 ShellCheck Results:"
-          echo "   Files checked: ${{ steps.find-scripts.outputs.file-count }}"
+          echo "   Files checked: $FILE_COUNT"
           echo "   Issues found:  $ISSUES_FOUND"
           echo "   Errors:        $ERROR_COUNT"
           echo "   Warnings:      $WARNING_COUNT"
 
           # Set outputs
           echo "passed=$PASSED" >> $GITHUB_OUTPUT
-          echo "files-checked=${{ steps.find-scripts.outputs.file-count }}" >> $GITHUB_OUTPUT
+          echo "files-checked=$FILE_COUNT" >> $GITHUB_OUTPUT
           echo "issues-found=$ISSUES_FOUND" >> $GITHUB_OUTPUT
           echo "error-count=$ERROR_COUNT" >> $GITHUB_OUTPUT
           echo "warning-count=$WARNING_COUNT" >> $GITHUB_OUTPUT
@@ -322,7 +303,7 @@ jobs:
           # Determine exit status
           if [ "$PASSED" = "false" ] && [ "${{ inputs.fail-on-findings }}" = "true" ]; then
             echo ""
-            echo "❌ ShellCheck found issues"
+            echo "❌ ShellCheck found issues - see above for details"
             exit 1
           elif [ "$PASSED" = "false" ]; then
             echo ""
