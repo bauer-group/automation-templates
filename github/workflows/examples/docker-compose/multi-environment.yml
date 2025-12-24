@@ -1,0 +1,104 @@
+# =============================================================================
+# Multi-Environment Docker Compose Release
+# =============================================================================
+# Workflow for projects with multiple docker-compose files for different
+# environments (development, staging, production).
+#
+# Validates all compose files and their overrides before releasing.
+# =============================================================================
+
+name: 🚀 Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/**'
+      - '*.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      force-release:
+        description: 'Force create release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Validate Base Docker Compose
+  # ---------------------------------------------------------------------------
+  validate-base:
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-compose.yml@main
+    with:
+      compose-file: 'docker-compose.yml'
+      env-template: |
+        {
+          "APP_ENV": "local",
+          "DB_PASSWORD": "test",
+          "REDIS_PASSWORD": "test"
+        }
+
+  # ---------------------------------------------------------------------------
+  # Validate Development Override
+  # ---------------------------------------------------------------------------
+  validate-dev:
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-compose.yml@main
+    with:
+      compose-files: '["docker-compose.yml", "docker-compose.dev.yml"]'
+      env-template: |
+        {
+          "APP_ENV": "development",
+          "APP_DEBUG": "true",
+          "DB_PASSWORD": "devpass",
+          "REDIS_PASSWORD": "devpass"
+        }
+
+  # ---------------------------------------------------------------------------
+  # Validate Production Override
+  # ---------------------------------------------------------------------------
+  validate-prod:
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-compose.yml@main
+    with:
+      compose-files: '["docker-compose.yml", "docker-compose.prod.yml"]'
+      validate-services: '["app", "db", "redis", "nginx"]'
+      fail-on-warning: true
+      env-template: |
+        {
+          "APP_ENV": "production",
+          "APP_DEBUG": "false",
+          "DB_PASSWORD": "prodpass",
+          "REDIS_PASSWORD": "prodpass",
+          "SSL_CERTIFICATE": "/etc/ssl/cert.pem",
+          "SSL_KEY": "/etc/ssl/key.pem"
+        }
+
+  # ---------------------------------------------------------------------------
+  # Validate Shell Scripts
+  # ---------------------------------------------------------------------------
+  validate-scripts:
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-shellscript.yml@main
+    with:
+      scan-paths: '["scripts/", "bin/", "docker/"]'
+      severity: 'warning'
+      exclude-codes: '["SC1091", "SC2034"]'
+
+  # ---------------------------------------------------------------------------
+  # Create Semantic Release
+  # ---------------------------------------------------------------------------
+  release:
+    needs: [validate-base, validate-dev, validate-prod, validate-scripts]
+    if: |
+      needs.validate-base.outputs.valid == 'true' &&
+      needs.validate-dev.outputs.valid == 'true' &&
+      needs.validate-prod.outputs.valid == 'true' &&
+      needs.validate-scripts.outputs.passed == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      target-branch: 'main'
+      force-release: ${{ inputs.force-release || false }}
+    secrets: inherit

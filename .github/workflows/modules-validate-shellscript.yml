@@ -1,0 +1,382 @@
+name: 🐚 Module | Validate Shell Scripts
+
+on:
+  workflow_call:
+    inputs:
+      scan-directory:
+        description: 'Directory to scan for shell scripts'
+        required: false
+        type: string
+        default: '.'
+
+      scan-paths:
+        description: 'Specific paths to scan (JSON array, e.g., ["scripts/", "bin/"])'
+        required: false
+        type: string
+        default: ''
+
+      severity:
+        description: 'Minimum severity level (error, warning, info, style)'
+        required: false
+        type: string
+        default: 'warning'
+
+      shell-dialect:
+        description: 'Shell dialect to check (sh, bash, dash, ksh, auto)'
+        required: false
+        type: string
+        default: 'auto'
+
+      exclude-patterns:
+        description: 'Patterns to exclude (JSON array, e.g., ["*.bak", "vendor/*"])'
+        required: false
+        type: string
+        default: ''
+
+      exclude-codes:
+        description: 'ShellCheck codes to exclude (JSON array, e.g., ["SC1091", "SC2034"])'
+        required: false
+        type: string
+        default: ''
+
+      enable-optional:
+        description: 'Enable optional checks (JSON array, e.g., ["require-variable-braces", "check-unassigned-uppercase"])'
+        required: false
+        type: string
+        default: ''
+
+      external-sources:
+        description: 'Allow shellcheck to follow source statements'
+        required: false
+        type: boolean
+        default: true
+
+      format:
+        description: 'Output format (tty, checkstyle, diff, json1, json, gcc, quiet)'
+        required: false
+        type: string
+        default: 'tty'
+
+      fail-on-findings:
+        description: 'Fail the workflow if issues are found'
+        required: false
+        type: boolean
+        default: true
+
+      additional-files:
+        description: 'Additional file patterns to check (JSON array, e.g., ["*.sh.tpl", "Dockerfile.tmpl"])'
+        required: false
+        type: string
+        default: ''
+
+      runs-on:
+        description: 'Runner OS'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+
+    outputs:
+      passed:
+        description: 'Whether all scripts passed validation'
+        value: ${{ jobs.shellcheck.outputs.passed }}
+
+      files-checked:
+        description: 'Number of files checked'
+        value: ${{ jobs.shellcheck.outputs.files-checked }}
+
+      issues-found:
+        description: 'Number of issues found'
+        value: ${{ jobs.shellcheck.outputs.issues-found }}
+
+      error-count:
+        description: 'Number of errors found'
+        value: ${{ jobs.shellcheck.outputs.error-count }}
+
+      warning-count:
+        description: 'Number of warnings found'
+        value: ${{ jobs.shellcheck.outputs.warning-count }}
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: 🐚 ShellCheck
+    runs-on: ${{ inputs.runs-on }}
+
+    outputs:
+      passed: ${{ steps.shellcheck.outputs.passed }}
+      files-checked: ${{ steps.shellcheck.outputs.files-checked }}
+      issues-found: ${{ steps.shellcheck.outputs.issues-found }}
+      error-count: ${{ steps.shellcheck.outputs.error-count }}
+      warning-count: ${{ steps.shellcheck.outputs.warning-count }}
+
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: 📋 Find Shell Scripts
+        id: find-scripts
+        shell: bash
+        run: |
+          echo "🔍 Searching for shell scripts..."
+
+          # Prepare scan paths
+          SCAN_PATHS="${{ inputs.scan-directory }}"
+          if [ -n '${{ inputs.scan-paths }}' ] && [ '${{ inputs.scan-paths }}' != '' ]; then
+            SCAN_PATHS=$(echo '${{ inputs.scan-paths }}' | python3 -c "
+          import sys, json
+          paths = json.load(sys.stdin)
+          print(' '.join(paths))
+          ")
+          fi
+
+          echo "📂 Scan paths: $SCAN_PATHS"
+
+          # Prepare exclude patterns
+          EXCLUDE_ARGS=""
+          if [ -n '${{ inputs.exclude-patterns }}' ] && [ '${{ inputs.exclude-patterns }}' != '' ]; then
+            EXCLUDE_ARGS=$(echo '${{ inputs.exclude-patterns }}' | python3 -c "
+          import sys, json
+          patterns = json.load(sys.stdin)
+          print(' '.join([f'-not -path \"*{p}*\"' for p in patterns]))
+          ")
+          fi
+
+          # Find shell scripts by extension
+          SCRIPT_FILES=""
+
+          for path in $SCAN_PATHS; do
+            if [ -d "$path" ]; then
+              # Find .sh files
+              while IFS= read -r -d '' file; do
+                SCRIPT_FILES="$SCRIPT_FILES $file"
+              done < <(find "$path" -type f -name "*.sh" $EXCLUDE_ARGS -print0 2>/dev/null)
+
+              # Find files with shell shebang
+              while IFS= read -r -d '' file; do
+                if head -1 "$file" 2>/dev/null | grep -qE '^#!\s*(/usr)?(/local)?/bin/(env\s+)?(ba)?sh'; then
+                  if ! echo "$SCRIPT_FILES" | grep -q "$file"; then
+                    SCRIPT_FILES="$SCRIPT_FILES $file"
+                  fi
+                fi
+              done < <(find "$path" -type f $EXCLUDE_ARGS -print0 2>/dev/null)
+            elif [ -f "$path" ]; then
+              SCRIPT_FILES="$SCRIPT_FILES $path"
+            fi
+          done
+
+          # Add additional file patterns
+          if [ -n '${{ inputs.additional-files }}' ] && [ '${{ inputs.additional-files }}' != '' ]; then
+            ADDITIONAL_PATTERNS=$(echo '${{ inputs.additional-files }}' | python3 -c "
+          import sys, json
+          patterns = json.load(sys.stdin)
+          print(' '.join(patterns))
+          ")
+
+            for pattern in $ADDITIONAL_PATTERNS; do
+              for path in $SCAN_PATHS; do
+                if [ -d "$path" ]; then
+                  while IFS= read -r -d '' file; do
+                    SCRIPT_FILES="$SCRIPT_FILES $file"
+                  done < <(find "$path" -type f -name "$pattern" $EXCLUDE_ARGS -print0 2>/dev/null)
+                fi
+              done
+            done
+          fi
+
+          # Remove duplicates and count
+          SCRIPT_FILES=$(echo "$SCRIPT_FILES" | tr ' ' '\n' | sort -u | grep -v '^$' | tr '\n' ' ')
+          FILE_COUNT=$(echo "$SCRIPT_FILES" | wc -w)
+
+          echo "📄 Found $FILE_COUNT shell script(s)"
+          echo "$SCRIPT_FILES" | tr ' ' '\n' | head -20
+
+          if [ "$FILE_COUNT" -gt 20 ]; then
+            echo "   ... and $((FILE_COUNT - 20)) more"
+          fi
+
+          # Save to file for next step
+          echo "$SCRIPT_FILES" > /tmp/script-files.txt
+          echo "file-count=$FILE_COUNT" >> $GITHUB_OUTPUT
+
+          # Handle no files found
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "ℹ️ No shell scripts found in specified paths"
+            echo "no-files=true" >> $GITHUB_OUTPUT
+          else
+            echo "no-files=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🐚 Run ShellCheck
+        id: shellcheck
+        if: steps.find-scripts.outputs.no-files != 'true'
+        shell: bash
+        run: |
+          echo "🔍 Running ShellCheck analysis..."
+
+          # Build shellcheck arguments
+          SHELLCHECK_ARGS=""
+
+          # Severity
+          SHELLCHECK_ARGS="$SHELLCHECK_ARGS --severity=${{ inputs.severity }}"
+
+          # Shell dialect
+          if [ "${{ inputs.shell-dialect }}" != "auto" ]; then
+            SHELLCHECK_ARGS="$SHELLCHECK_ARGS --shell=${{ inputs.shell-dialect }}"
+          fi
+
+          # External sources
+          if [ "${{ inputs.external-sources }}" = "true" ]; then
+            SHELLCHECK_ARGS="$SHELLCHECK_ARGS --external-sources"
+          fi
+
+          # Format
+          SHELLCHECK_ARGS="$SHELLCHECK_ARGS --format=${{ inputs.format }}"
+
+          # Exclude codes
+          if [ -n '${{ inputs.exclude-codes }}' ] && [ '${{ inputs.exclude-codes }}' != '' ]; then
+            EXCLUDE_CODES=$(echo '${{ inputs.exclude-codes }}' | python3 -c "
+          import sys, json
+          codes = json.load(sys.stdin)
+          print(','.join(codes))
+          ")
+            SHELLCHECK_ARGS="$SHELLCHECK_ARGS --exclude=$EXCLUDE_CODES"
+          fi
+
+          # Enable optional checks
+          if [ -n '${{ inputs.enable-optional }}' ] && [ '${{ inputs.enable-optional }}' != '' ]; then
+            ENABLE_OPTS=$(echo '${{ inputs.enable-optional }}' | python3 -c "
+          import sys, json
+          opts = json.load(sys.stdin)
+          print(','.join(opts))
+          ")
+            SHELLCHECK_ARGS="$SHELLCHECK_ARGS --enable=$ENABLE_OPTS"
+          fi
+
+          echo "📋 ShellCheck arguments: $SHELLCHECK_ARGS"
+
+          # Read script files
+          SCRIPT_FILES=$(cat /tmp/script-files.txt)
+
+          # Run shellcheck and capture output
+          ISSUES_FOUND=0
+          ERROR_COUNT=0
+          WARNING_COUNT=0
+          PASSED="true"
+
+          echo "::group::ShellCheck Output"
+
+          # Run shellcheck with JSON format for counting, then with requested format for display
+          for file in $SCRIPT_FILES; do
+            if [ -f "$file" ]; then
+              # Get JSON output for counting
+              JSON_OUTPUT=$(shellcheck --format=json1 $SHELLCHECK_ARGS "$file" 2>/dev/null || true)
+
+              if [ -n "$JSON_OUTPUT" ] && [ "$JSON_OUTPUT" != "[]" ]; then
+                FILE_ISSUES=$(echo "$JSON_OUTPUT" | python3 -c "
+          import sys, json
+          try:
+              data = json.load(sys.stdin)
+              comments = data.get('comments', [])
+              errors = sum(1 for c in comments if c.get('level') == 'error')
+              warnings = sum(1 for c in comments if c.get('level') == 'warning')
+              print(f'{len(comments)} {errors} {warnings}')
+          except:
+              print('0 0 0')
+          " 2>/dev/null || echo "0 0 0")
+
+                read -r TOTAL ERRORS WARNINGS <<< "$FILE_ISSUES"
+                ISSUES_FOUND=$((ISSUES_FOUND + TOTAL))
+                ERROR_COUNT=$((ERROR_COUNT + ERRORS))
+                WARNING_COUNT=$((WARNING_COUNT + WARNINGS))
+
+                if [ "$TOTAL" -gt 0 ]; then
+                  PASSED="false"
+                fi
+              fi
+            fi
+          done
+
+          # Now run with requested format for display
+          # shellcheck disable=SC2086
+          shellcheck $SHELLCHECK_ARGS $SCRIPT_FILES 2>&1 || true
+
+          echo "::endgroup::"
+
+          # Summary
+          echo ""
+          echo "📊 ShellCheck Results:"
+          echo "   Files checked: ${{ steps.find-scripts.outputs.file-count }}"
+          echo "   Issues found:  $ISSUES_FOUND"
+          echo "   Errors:        $ERROR_COUNT"
+          echo "   Warnings:      $WARNING_COUNT"
+
+          # Set outputs
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+          echo "files-checked=${{ steps.find-scripts.outputs.file-count }}" >> $GITHUB_OUTPUT
+          echo "issues-found=$ISSUES_FOUND" >> $GITHUB_OUTPUT
+          echo "error-count=$ERROR_COUNT" >> $GITHUB_OUTPUT
+          echo "warning-count=$WARNING_COUNT" >> $GITHUB_OUTPUT
+
+          # Determine exit status
+          if [ "$PASSED" = "false" ] && [ "${{ inputs.fail-on-findings }}" = "true" ]; then
+            echo ""
+            echo "❌ ShellCheck found issues"
+            exit 1
+          elif [ "$PASSED" = "false" ]; then
+            echo ""
+            echo "⚠️ ShellCheck found issues (fail-on-findings: false)"
+          else
+            echo ""
+            echo "✅ All shell scripts passed ShellCheck validation"
+          fi
+
+      - name: 📊 Handle No Files
+        if: steps.find-scripts.outputs.no-files == 'true'
+        id: no-files
+        shell: bash
+        run: |
+          echo "passed=true" >> $GITHUB_OUTPUT
+          echo "files-checked=0" >> $GITHUB_OUTPUT
+          echo "issues-found=0" >> $GITHUB_OUTPUT
+          echo "error-count=0" >> $GITHUB_OUTPUT
+          echo "warning-count=0" >> $GITHUB_OUTPUT
+          echo "ℹ️ No shell scripts found - validation passed"
+
+      - name: 📊 Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "### 🐚 ShellCheck Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          PASSED="${{ steps.shellcheck.outputs.passed || steps.no-files.outputs.passed || 'true' }}"
+          FILES="${{ steps.shellcheck.outputs.files-checked || steps.no-files.outputs.files-checked || '0' }}"
+          ISSUES="${{ steps.shellcheck.outputs.issues-found || steps.no-files.outputs.issues-found || '0' }}"
+          ERRORS="${{ steps.shellcheck.outputs.error-count || steps.no-files.outputs.error-count || '0' }}"
+          WARNINGS="${{ steps.shellcheck.outputs.warning-count || steps.no-files.outputs.warning-count || '0' }}"
+
+          if [ "$PASSED" = "true" ]; then
+            echo "✅ **Validation Passed**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Validation Failed**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Files Checked** | $FILES |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Total Issues** | $ISSUES |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Errors** | $ERRORS |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Warnings** | $WARNINGS |" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### ⚙️ Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Severity** | \`${{ inputs.severity }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Shell Dialect** | \`${{ inputs.shell-dialect }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Scan Directory** | \`${{ inputs.scan-directory }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Fail on Findings** | \`${{ inputs.fail-on-findings }}\` |" >> $GITHUB_STEP_SUMMARY

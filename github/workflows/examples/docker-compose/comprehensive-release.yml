@@ -1,0 +1,142 @@
+# =============================================================================
+# Comprehensive Docker Compose Release
+# =============================================================================
+# Full-featured workflow for Docker Compose projects with all validation options.
+# Includes service verification, strict shell checking, and configurable release.
+#
+# Features:
+# - Docker Compose syntax validation
+# - Required service verification
+# - ShellCheck with custom exclusions
+# - Semantic versioning with conventional commits
+# - Manual trigger with force release option
+# =============================================================================
+
+name: 🚀 Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/**'
+      - '*.md'
+      - 'docs/**'
+      - 'LICENSE'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docker-compose*.yml'
+      - '*.sh'
+      - 'scripts/**'
+  workflow_dispatch:
+    inputs:
+      force-release:
+        description: 'Force create release even without conventional commits'
+        type: boolean
+        default: false
+      dry-run:
+        description: 'Perform dry run without creating release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Validate Docker Compose Configuration
+  # ---------------------------------------------------------------------------
+  validate-compose:
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-compose.yml@main
+    with:
+      compose-file: 'docker-compose.yml'
+      # Ensure critical services are defined
+      validate-services: '["app", "db", "redis"]'
+      # Fail on warnings for strict validation
+      fail-on-warning: false
+      # Provide dummy environment variables
+      env-template: |
+        {
+          "APP_ID": "test",
+          "APP_KEY": "base64:test",
+          "APP_ENV": "testing",
+          "APP_DEBUG": "true",
+          "DB_CONNECTION": "mysql",
+          "DB_HOST": "db",
+          "DB_PORT": "3306",
+          "DB_DATABASE": "testdb",
+          "DB_USERNAME": "testuser",
+          "DB_PASSWORD": "testpass",
+          "REDIS_HOST": "redis",
+          "REDIS_PASSWORD": "testpass",
+          "REDIS_PORT": "6379",
+          "PUSHER_APP_ID": "test",
+          "PUSHER_APP_KEY": "test",
+          "PUSHER_APP_SECRET": "test",
+          "ROOT_USERNAME": "admin",
+          "ROOT_USER_EMAIL": "test@test.com",
+          "ROOT_USER_PASSWORD": "test"
+        }
+
+  # ---------------------------------------------------------------------------
+  # Validate Shell Scripts
+  # ---------------------------------------------------------------------------
+  validate-scripts:
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-shellscript.yml@main
+    with:
+      scan-directory: '.'
+      severity: 'warning'
+      shell-dialect: 'bash'
+      # Exclude common false positives
+      exclude-codes: '["SC1091"]'
+      # Skip vendor/third-party scripts
+      exclude-patterns: '["vendor/*", "node_modules/*"]'
+
+  # ---------------------------------------------------------------------------
+  # Create Semantic Release (only on main branch push or manual trigger)
+  # ---------------------------------------------------------------------------
+  release:
+    needs: [validate-compose, validate-scripts]
+    if: |
+      github.event_name != 'pull_request' &&
+      needs.validate-compose.outputs.valid == 'true' &&
+      needs.validate-scripts.outputs.passed == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      target-branch: 'main'
+      dry-run: ${{ inputs.dry-run || false }}
+      force-release: ${{ inputs.force-release || false }}
+    secrets: inherit
+
+  # ---------------------------------------------------------------------------
+  # Summary Report
+  # ---------------------------------------------------------------------------
+  summary:
+    needs: [validate-compose, validate-scripts, release]
+    if: always() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📊 Generate Summary
+        run: |
+          echo "## 🚀 Release Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Compose | ${{ needs.validate-compose.outputs.valid == 'true' && '✅ Valid' || '❌ Invalid' }} | ${{ needs.validate-compose.outputs.service-count }} services |" >> $GITHUB_STEP_SUMMARY
+          echo "| Shell Scripts | ${{ needs.validate-scripts.outputs.passed == 'true' && '✅ Passed' || '❌ Failed' }} | ${{ needs.validate-scripts.outputs.files-checked }} files, ${{ needs.validate-scripts.outputs.issues-found }} issues |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.release.result }}" = "success" ]; then
+            echo "### Release" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Release created successfully" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.release.result }}" = "skipped" ]; then
+            echo "### Release" >> $GITHUB_STEP_SUMMARY
+            echo "⏭️ Release skipped (validation failed or no releasable changes)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Release" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Release failed" >> $GITHUB_STEP_SUMMARY
+          fi

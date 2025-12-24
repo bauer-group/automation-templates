@@ -1,0 +1,83 @@
+# =============================================================================
+# Simple Docker Compose Release
+# =============================================================================
+# Basic workflow for Docker Compose projects without custom image builds.
+# Validates compose configuration, checks shell scripts, and creates releases.
+#
+# Requirements:
+# - docker-compose.yml in repository root
+# - Conventional commits for semantic versioning
+#
+# Optional:
+# - .releaserc.json for custom release configuration
+# - Shell scripts (will be validated with ShellCheck)
+# =============================================================================
+
+name: 🚀 Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/**'
+      - '*.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      force-release:
+        description: 'Force create release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Validate Docker Compose Configuration
+  # ---------------------------------------------------------------------------
+  validate-compose:
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-compose.yml@main
+    with:
+      compose-file: 'docker-compose.yml'
+      # Provide dummy values for environment variables required by compose file
+      env-template: |
+        {
+          "APP_ID": "test",
+          "APP_KEY": "base64:test",
+          "DB_PASSWORD": "test",
+          "REDIS_PASSWORD": "test",
+          "PUSHER_APP_ID": "test",
+          "PUSHER_APP_KEY": "test",
+          "PUSHER_APP_SECRET": "test",
+          "ROOT_USERNAME": "admin",
+          "ROOT_USER_EMAIL": "test@test.com",
+          "ROOT_USER_PASSWORD": "test"
+        }
+
+  # ---------------------------------------------------------------------------
+  # Validate Shell Scripts
+  # ---------------------------------------------------------------------------
+  validate-scripts:
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-shellscript.yml@main
+    with:
+      scan-directory: '.'
+      severity: 'warning'
+
+  # ---------------------------------------------------------------------------
+  # Create Semantic Release
+  # ---------------------------------------------------------------------------
+  release:
+    needs: [validate-compose, validate-scripts]
+    if: |
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.validate-compose.outputs.valid == 'true' &&
+      needs.validate-scripts.outputs.passed == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      target-branch: 'main'
+      dry-run: false
+      force-release: ${{ inputs.force-release || false }}
+    secrets: inherit

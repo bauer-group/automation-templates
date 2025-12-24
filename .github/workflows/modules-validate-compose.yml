@@ -1,0 +1,371 @@
+name: 🐳 Module | Validate Docker Compose
+
+on:
+  workflow_call:
+    inputs:
+      compose-file:
+        description: 'Path to Docker Compose file'
+        required: false
+        type: string
+        default: 'docker-compose.yml'
+
+      compose-files:
+        description: 'Multiple compose files (JSON array, e.g., ["docker-compose.yml", "docker-compose.prod.yml"])'
+        required: false
+        type: string
+        default: ''
+
+      working-directory:
+        description: 'Working directory for validation'
+        required: false
+        type: string
+        default: '.'
+
+      env-file:
+        description: 'Path to .env file for validation (optional)'
+        required: false
+        type: string
+        default: ''
+
+      env-template:
+        description: 'Environment variables template as JSON object for dummy .env generation'
+        required: false
+        type: string
+        default: ''
+
+      create-dummy-env:
+        description: 'Auto-create dummy .env with placeholder values for required variables'
+        required: false
+        type: boolean
+        default: true
+
+      fail-on-warning:
+        description: 'Fail validation on warnings (not just errors)'
+        required: false
+        type: boolean
+        default: false
+
+      validate-services:
+        description: 'Validate that specific services exist (JSON array, e.g., ["app", "db"])'
+        required: false
+        type: string
+        default: ''
+
+      check-image-references:
+        description: 'Verify that referenced images exist in registries'
+        required: false
+        type: boolean
+        default: false
+
+      runs-on:
+        description: 'Runner OS'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+
+    outputs:
+      valid:
+        description: 'Whether the compose file(s) are valid'
+        value: ${{ jobs.validate.outputs.valid }}
+
+      services:
+        description: 'List of services found in compose file(s)'
+        value: ${{ jobs.validate.outputs.services }}
+
+      service-count:
+        description: 'Number of services defined'
+        value: ${{ jobs.validate.outputs.service-count }}
+
+      warnings:
+        description: 'Validation warnings (if any)'
+        value: ${{ jobs.validate.outputs.warnings }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: 🐳 Validate Compose
+    runs-on: ${{ inputs.runs-on }}
+
+    outputs:
+      valid: ${{ steps.validate.outputs.valid }}
+      services: ${{ steps.validate.outputs.services }}
+      service-count: ${{ steps.validate.outputs.service-count }}
+      warnings: ${{ steps.validate.outputs.warnings }}
+
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: 📋 Prepare Environment File
+        id: env-prep
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          echo "🔧 Preparing environment for validation..."
+
+          # Check if custom env file provided
+          if [ -n "${{ inputs.env-file }}" ] && [ -f "${{ inputs.env-file }}" ]; then
+            echo "📄 Using provided .env file: ${{ inputs.env-file }}"
+            cp "${{ inputs.env-file }}" .env.validation
+            echo "env-file=.env.validation" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check if .env already exists
+          if [ -f ".env" ]; then
+            echo "📄 Using existing .env file"
+            echo "env-file=.env" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Create dummy .env if enabled
+          if [ "${{ inputs.create-dummy-env }}" = "true" ]; then
+            echo "📝 Creating dummy .env for validation..."
+
+            # Use template if provided
+            if [ -n '${{ inputs.env-template }}' ] && [ '${{ inputs.env-template }}' != '' ]; then
+              echo "📋 Using provided env-template"
+              ENV_TEMPLATE='${{ inputs.env-template }}'
+
+              # Parse JSON and create .env
+              echo "$ENV_TEMPLATE" | python3 -c "
+          import sys, json
+          try:
+              data = json.load(sys.stdin)
+              for key, value in data.items():
+                  print(f'{key}={value}')
+          except json.JSONDecodeError as e:
+              print(f'Error parsing env-template JSON: {e}', file=sys.stderr)
+              sys.exit(1)
+          " > .env.validation
+            else
+              # Extract required variables from compose file(s) and create placeholders
+              echo "🔍 Extracting environment variables from compose file(s)..."
+
+              COMPOSE_FILE="${{ inputs.compose-file }}"
+              if [ -n '${{ inputs.compose-files }}' ] && [ '${{ inputs.compose-files }}' != '' ]; then
+                # Multiple files - merge for analysis
+                COMPOSE_FILES='${{ inputs.compose-files }}'
+              fi
+
+              # Create minimal placeholder .env
+              cat > .env.validation << 'EOF'
+          # Auto-generated dummy .env for validation
+          # Generated by modules-validate-compose.yml
+          PLACEHOLDER_VAR=placeholder
+          EOF
+
+              # Try to extract variable names from compose file
+              if [ -f "$COMPOSE_FILE" ]; then
+                grep -oE '\$\{[A-Z_][A-Z0-9_]*\}' "$COMPOSE_FILE" 2>/dev/null | \
+                  sed 's/\${//g; s/}//g' | \
+                  sort -u | \
+                  while read -r var; do
+                    if [ -n "$var" ]; then
+                      echo "${var}=dummy_value_for_${var}" >> .env.validation
+                    fi
+                  done || true
+
+                # Also check for ${VAR:-default} patterns
+                grep -oE '\$\{[A-Z_][A-Z0-9_]*:-[^}]*\}' "$COMPOSE_FILE" 2>/dev/null | \
+                  sed 's/\${//g; s/:-.*}//g' | \
+                  sort -u | \
+                  while read -r var; do
+                    if [ -n "$var" ] && ! grep -q "^${var}=" .env.validation; then
+                      echo "${var}=dummy_value_for_${var}" >> .env.validation
+                    fi
+                  done || true
+              fi
+            fi
+
+            echo "📄 Created .env.validation with $(wc -l < .env.validation) entries"
+            echo "env-file=.env.validation" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ No .env file available and create-dummy-env is disabled"
+            echo "env-file=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🐳 Validate Docker Compose
+        id: validate
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          echo "🔍 Validating Docker Compose configuration..."
+
+          VALID="true"
+          WARNINGS=""
+          ALL_SERVICES=""
+
+          # Prepare env file option
+          ENV_FILE="${{ steps.env-prep.outputs.env-file }}"
+          ENV_OPT=""
+          if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
+            ENV_OPT="--env-file $ENV_FILE"
+          fi
+
+          # Determine compose files to validate
+          if [ -n '${{ inputs.compose-files }}' ] && [ '${{ inputs.compose-files }}' != '' ]; then
+            # Multiple files from JSON array
+            COMPOSE_FILES=$(echo '${{ inputs.compose-files }}' | python3 -c "
+          import sys, json
+          files = json.load(sys.stdin)
+          print(' '.join([f'-f {f}' for f in files]))
+          ")
+          else
+            # Single file
+            COMPOSE_FILES="-f ${{ inputs.compose-file }}"
+          fi
+
+          echo "📋 Compose files: $COMPOSE_FILES"
+
+          # Run validation
+          echo "::group::Docker Compose Config Output"
+          if docker compose $COMPOSE_FILES $ENV_OPT config 2>&1 | tee /tmp/compose-output.txt; then
+            echo "✅ Docker Compose configuration is valid"
+          else
+            echo "❌ Docker Compose configuration is invalid"
+            VALID="false"
+          fi
+          echo "::endgroup::"
+
+          # Check for warnings in output
+          if grep -qi "warning" /tmp/compose-output.txt; then
+            WARNINGS=$(grep -i "warning" /tmp/compose-output.txt | head -10)
+            echo "⚠️ Warnings detected:"
+            echo "$WARNINGS"
+
+            if [ "${{ inputs.fail-on-warning }}" = "true" ]; then
+              echo "❌ Failing due to warnings (fail-on-warning: true)"
+              VALID="false"
+            fi
+          fi
+
+          # Extract services
+          if [ "$VALID" = "true" ]; then
+            ALL_SERVICES=$(docker compose $COMPOSE_FILES $ENV_OPT config --services 2>/dev/null | sort | tr '\n' ',' | sed 's/,$//')
+            SERVICE_COUNT=$(docker compose $COMPOSE_FILES $ENV_OPT config --services 2>/dev/null | wc -l)
+            echo "📦 Found $SERVICE_COUNT service(s): $ALL_SERVICES"
+          else
+            SERVICE_COUNT=0
+          fi
+
+          # Validate required services if specified
+          if [ -n '${{ inputs.validate-services }}' ] && [ '${{ inputs.validate-services }}' != '' ] && [ "$VALID" = "true" ]; then
+            echo "🔍 Validating required services..."
+            REQUIRED_SERVICES='${{ inputs.validate-services }}'
+
+            for service in $(echo "$REQUIRED_SERVICES" | python3 -c "import sys, json; print(' '.join(json.load(sys.stdin)))"); do
+              if echo "$ALL_SERVICES" | grep -q "$service"; then
+                echo "  ✅ Service '$service' found"
+              else
+                echo "  ❌ Required service '$service' not found"
+                VALID="false"
+              fi
+            done
+          fi
+
+          # Set outputs
+          echo "valid=$VALID" >> $GITHUB_OUTPUT
+          echo "services=$ALL_SERVICES" >> $GITHUB_OUTPUT
+          echo "service-count=$SERVICE_COUNT" >> $GITHUB_OUTPUT
+
+          # Handle multiline warnings
+          {
+            echo 'warnings<<EOF'
+            echo "$WARNINGS"
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+          # Final status
+          if [ "$VALID" = "false" ]; then
+            exit 1
+          fi
+
+      - name: 🔍 Check Image References
+        if: inputs.check-image-references && steps.validate.outputs.valid == 'true'
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          echo "🔍 Checking image references..."
+
+          # Prepare env file option
+          ENV_FILE="${{ steps.env-prep.outputs.env-file }}"
+          ENV_OPT=""
+          if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
+            ENV_OPT="--env-file $ENV_FILE"
+          fi
+
+          # Determine compose files
+          if [ -n '${{ inputs.compose-files }}' ] && [ '${{ inputs.compose-files }}' != '' ]; then
+            COMPOSE_FILES=$(echo '${{ inputs.compose-files }}' | python3 -c "
+          import sys, json
+          files = json.load(sys.stdin)
+          print(' '.join([f'-f {f}' for f in files]))
+          ")
+          else
+            COMPOSE_FILES="-f ${{ inputs.compose-file }}"
+          fi
+
+          # Extract images from config
+          IMAGES=$(docker compose $COMPOSE_FILES $ENV_OPT config 2>/dev/null | grep -E "^\s+image:" | awk '{print $2}' | sort -u)
+
+          FAILED=false
+          for image in $IMAGES; do
+            # Skip images with variable substitution that wasn't resolved
+            if echo "$image" | grep -q '\$'; then
+              echo "⏭️ Skipping unresolved image reference: $image"
+              continue
+            fi
+
+            echo -n "  Checking $image... "
+            if docker manifest inspect "$image" > /dev/null 2>&1; then
+              echo "✅"
+            else
+              echo "❌ (not found or not accessible)"
+              FAILED=true
+            fi
+          done
+
+          if [ "$FAILED" = "true" ]; then
+            echo "⚠️ Some image references could not be verified"
+            echo "   This may be expected for private registries or build-time images"
+          fi
+
+      - name: 🧹 Cleanup
+        if: always()
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # Remove temporary validation files
+          rm -f .env.validation /tmp/compose-output.txt 2>/dev/null || true
+
+      - name: 📊 Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "### 🐳 Docker Compose Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.validate.outputs.valid }}" = "true" ]; then
+            echo "✅ **Validation Passed**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Validation Failed**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Compose File** | \`${{ inputs.compose-file }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Services Found** | ${{ steps.validate.outputs.service-count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Service Names** | ${{ steps.validate.outputs.services }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Working Directory** | \`${{ inputs.working-directory }}\` |" >> $GITHUB_STEP_SUMMARY
+
+          if [ -n "${{ steps.validate.outputs.warnings }}" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "#### ⚠️ Warnings" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "${{ steps.validate.outputs.warnings }}" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
