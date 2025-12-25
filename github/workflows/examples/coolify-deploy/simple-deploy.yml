@@ -1,0 +1,34 @@
+# ============================================================================
+# Simple Coolify Deployment
+# ============================================================================
+# This example demonstrates the minimal configuration for deploying
+# an application to Coolify. The deployment is triggered on every push
+# to the main branch using a "fire and forget" approach.
+#
+# Features:
+# - Minimal configuration
+# - Triggers on push to main
+# - No wait for completion (fastest)
+#
+# Prerequisites:
+# - COOLIFY_API_TOKEN secret configured
+# - Application already set up in Coolify
+# ============================================================================
+
+name: Deploy to Coolify
+
+on:
+  push:
+    branches: [main]
+
+  # Allow manual deployment
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy
+    uses: bauer-group/automation-templates/.github/workflows/coolify-deploy.yml@main
+    with:
+      coolify-url: 'https://coolify.example.com'
+      app-uuid: 'your-app-uuid-here'
+    secrets: inherit

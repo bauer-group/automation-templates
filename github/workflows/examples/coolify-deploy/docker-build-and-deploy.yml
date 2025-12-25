@@ -1,0 +1,136 @@
+# ============================================================================
+# Docker Build + Coolify Deployment
+# ============================================================================
+# This example demonstrates a complete CI/CD pipeline that:
+# 1. Builds a Docker image and pushes to GHCR
+# 2. Deploys the new image to Coolify
+#
+# This is the recommended approach for containerized applications
+# hosted on Coolify that pull from GitHub Container Registry.
+#
+# Features:
+# - Full CI/CD pipeline
+# - Docker image build with security scanning
+# - Automatic deployment after successful build
+# - Version tagging with semantic versioning
+#
+# Prerequisites:
+# - COOLIFY_API_TOKEN secret configured
+# - Application in Coolify configured to pull from GHCR
+# - Dockerfile in repository root
+# ============================================================================
+
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+    inputs:
+      force-rebuild:
+        description: 'Force Coolify rebuild'
+        type: boolean
+        default: false
+
+# Ensure only one deployment runs at a time
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================
+  # Build Docker Image
+  # ============================================
+  build:
+    name: Build Docker Image
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      publish-to: 'ghcr'
+      ghcr-image-name: ${{ github.repository }}
+      auto-tags: true
+      latest-tag: true
+      security-scan: true
+      security-fail-on: 'HIGH'
+      push: ${{ github.event_name != 'pull_request' }}
+    secrets: inherit
+
+  # ============================================
+  # Deploy to Coolify (main branch only)
+  # ============================================
+  deploy:
+    name: Deploy to Coolify
+    needs: build
+    # Only deploy on main branch pushes, not PRs
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/coolify-deploy.yml@main
+    with:
+      coolify-url: 'https://coolify.example.com'
+      app-uuid: 'your-app-uuid-here'
+      force: ${{ inputs.force-rebuild || false }}
+      wait-for-completion: true
+      wait-timeout: 600
+    secrets: inherit
+
+  # ============================================
+  # Deploy Tagged Releases
+  # ============================================
+  deploy-release:
+    name: Deploy Release
+    needs: build
+    # Only deploy on version tags
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: bauer-group/automation-templates/.github/workflows/coolify-deploy.yml@main
+    with:
+      coolify-url: 'https://coolify.example.com'
+      app-uuid: 'your-app-uuid-here'
+      # Deploy the specific version tag
+      tag: ${{ github.ref_name }}
+      wait-for-completion: true
+      wait-timeout: 900
+    secrets: inherit
+
+  # ============================================
+  # Summary
+  # ============================================
+  summary:
+    name: Pipeline Summary
+    needs: [build, deploy, deploy-release]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "## Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Build" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | \`${{ needs.build.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | \`${{ needs.build.outputs.image-url }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security | \`${{ needs.build.outputs.security-scan-passed == 'true' && 'Passed' || 'Failed' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ needs.deploy.result }}" != "skipped" ]]; then
+            echo "### Deployment (main)" >> $GITHUB_STEP_SUMMARY
+            echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Status | \`${{ needs.deploy.outputs.deployment-status }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Deployment ID | \`${{ needs.deploy.outputs.deployment-id }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ "${{ needs.deploy-release.result }}" != "skipped" ]]; then
+            echo "### Deployment (Release)" >> $GITHUB_STEP_SUMMARY
+            echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Version | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Status | \`${{ needs.deploy-release.outputs.deployment-status }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi

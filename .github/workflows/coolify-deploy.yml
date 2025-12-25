@@ -1,0 +1,498 @@
+# ============================================================================
+# 🚀 Coolify Deployment Workflow
+# ============================================================================
+# Reusable workflow for deploying applications to Coolify
+#
+# Features:
+# - Trigger deployments via Coolify API
+# - Optional wait for deployment completion
+# - Force rebuild support
+# - Specific image tag deployment
+# - Comprehensive error handling
+# - Detailed deployment summary
+#
+# Usage:
+#   jobs:
+#     deploy:
+#       uses: bauer-group/automation-templates/.github/workflows/coolify-deploy.yml@main
+#       with:
+#         coolify-url: 'https://coolify.example.com'
+#         app-uuid: 'your-app-uuid'
+#       secrets: inherit
+#
+# Required Secrets:
+#   - COOLIFY_API_TOKEN: API token for Coolify authentication
+#
+# ============================================================================
+
+name: 🚀 Coolify Deployment
+
+on:
+  workflow_call:
+    inputs:
+      coolify-url:
+        description: 'Coolify instance URL (without trailing slash)'
+        required: true
+        type: string
+
+      app-uuid:
+        description: 'Coolify application UUID'
+        required: true
+        type: string
+
+      force:
+        description: 'Force rebuild'
+        required: false
+        type: boolean
+        default: false
+
+      tag:
+        description: 'Specific image tag to deploy'
+        required: false
+        type: string
+        default: ''
+
+      wait-for-completion:
+        description: 'Wait for deployment to complete'
+        required: false
+        type: boolean
+        default: false
+
+      wait-timeout:
+        description: 'Timeout in seconds when waiting for completion'
+        required: false
+        type: number
+        default: 300
+
+      fail-on-error:
+        description: 'Fail workflow on deployment error'
+        required: false
+        type: boolean
+        default: true
+
+    outputs:
+      deployment-id:
+        description: 'Deployment UUID'
+        value: ${{ jobs.deploy.outputs.deployment-id }}
+
+      deployment-status:
+        description: 'Final deployment status (started, success, failed, timeout)'
+        value: ${{ jobs.deploy.outputs.deployment-status }}
+
+      deployment-url:
+        description: 'URL to deployment in Coolify'
+        value: ${{ jobs.deploy.outputs.deployment-url }}
+
+    secrets:
+      COOLIFY_API_TOKEN:
+        description: 'API token for Coolify authentication'
+        required: true
+
+jobs:
+  deploy:
+    name: 🚀 Deploy to Coolify
+    runs-on: ubuntu-latest
+
+    outputs:
+      deployment-id: ${{ steps.trigger.outputs.deployment-id }}
+      deployment-status: ${{ steps.status.outputs.status }}
+      deployment-url: ${{ steps.trigger.outputs.deployment-url }}
+
+    steps:
+      - name: 🔍 Validate Inputs
+        id: validate
+        shell: bash
+        run: |
+          echo "🔍 Validating inputs..."
+
+          ERRORS=0
+
+          # Check required inputs
+          if [[ -z "${{ inputs.coolify-url }}" ]]; then
+            echo "::error::coolify-url is required"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          if [[ -z "${{ inputs.app-uuid }}" ]]; then
+            echo "::error::app-uuid is required"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # Validate URL format
+          COOLIFY_URL="${{ inputs.coolify-url }}"
+          if [[ ! "$COOLIFY_URL" =~ ^https?:// ]]; then
+            echo "::error::coolify-url must start with http:// or https://"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # Remove trailing slash if present
+          COOLIFY_URL="${COOLIFY_URL%/}"
+          echo "coolify-url=$COOLIFY_URL" >> $GITHUB_OUTPUT
+
+          # Validate UUID format (basic check)
+          APP_UUID="${{ inputs.app-uuid }}"
+          if [[ ! "$APP_UUID" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            echo "::error::app-uuid contains invalid characters"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # Validate timeout
+          if [[ "${{ inputs.wait-timeout }}" -lt 10 ]]; then
+            echo "::warning::wait-timeout is very low (${{ inputs.wait-timeout }}s), minimum recommended is 60s"
+          fi
+
+          if [[ "${{ inputs.wait-timeout }}" -gt 3600 ]]; then
+            echo "::warning::wait-timeout is very high (${{ inputs.wait-timeout }}s), maximum recommended is 3600s"
+          fi
+
+          if [[ $ERRORS -gt 0 ]]; then
+            echo "::error::Input validation failed with $ERRORS error(s)"
+            exit 1
+          fi
+
+          echo "✅ Inputs validated successfully"
+          echo ""
+          echo "📋 Configuration:"
+          echo "   URL: $COOLIFY_URL"
+          echo "   App UUID: ${{ inputs.app-uuid }}"
+          echo "   Force: ${{ inputs.force }}"
+          echo "   Tag: ${{ inputs.tag || '(latest)' }}"
+          echo "   Wait: ${{ inputs.wait-for-completion }}"
+          echo "   Timeout: ${{ inputs.wait-timeout }}s"
+
+      - name: 🔐 Validate API Token
+        shell: bash
+        env:
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+        run: |
+          if [[ -z "$COOLIFY_API_TOKEN" ]]; then
+            echo "::error::COOLIFY_API_TOKEN secret is not set"
+            exit 1
+          fi
+
+          # Check token length (basic validation)
+          TOKEN_LENGTH=${#COOLIFY_API_TOKEN}
+          if [[ $TOKEN_LENGTH -lt 10 ]]; then
+            echo "::error::COOLIFY_API_TOKEN appears to be invalid (too short)"
+            exit 1
+          fi
+
+          echo "✅ API token validated"
+
+      - name: 🚀 Trigger Deployment
+        id: trigger
+        shell: bash
+        env:
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+        run: |
+          echo "🚀 Triggering deployment..."
+
+          COOLIFY_URL="${{ steps.validate.outputs.coolify-url }}"
+          APP_UUID="${{ inputs.app-uuid }}"
+          FORCE="${{ inputs.force }}"
+          TAG="${{ inputs.tag }}"
+
+          # Build query parameters
+          QUERY="uuid=${APP_UUID}&force=${FORCE}"
+          if [[ -n "$TAG" ]]; then
+            QUERY="${QUERY}&tag=${TAG}"
+          fi
+
+          echo "📡 API Request:"
+          echo "   Endpoint: ${COOLIFY_URL}/api/v1/deploy"
+          echo "   Parameters: uuid=${APP_UUID}, force=${FORCE}$( [[ -n "$TAG" ]] && echo ", tag=${TAG}" )"
+          echo ""
+
+          # Trigger deployment with error handling
+          HTTP_RESPONSE=$(mktemp)
+          HTTP_CODE=$(curl -sSw "%{http_code}" \
+            -o "$HTTP_RESPONSE" \
+            -X GET \
+            -H "Authorization: Bearer $COOLIFY_API_TOKEN" \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            "${COOLIFY_URL}/api/v1/deploy?${QUERY}" 2>&1) || {
+            echo "::error::Failed to connect to Coolify API"
+            cat "$HTTP_RESPONSE" 2>/dev/null || true
+            rm -f "$HTTP_RESPONSE"
+            exit 1
+          }
+
+          RESPONSE=$(cat "$HTTP_RESPONSE")
+          rm -f "$HTTP_RESPONSE"
+
+          echo "📨 Response (HTTP $HTTP_CODE):"
+          echo "$RESPONSE" | jq . 2>/dev/null || echo "$RESPONSE"
+          echo ""
+
+          # Handle HTTP status codes
+          case "$HTTP_CODE" in
+            200|201|202)
+              echo "✅ Deployment triggered successfully"
+              ;;
+            401)
+              echo "::error::Authentication failed - check COOLIFY_API_TOKEN"
+              exit 1
+              ;;
+            403)
+              echo "::error::Access forbidden - API token lacks required permissions"
+              exit 1
+              ;;
+            404)
+              echo "::error::Application not found - check app-uuid: ${APP_UUID}"
+              exit 1
+              ;;
+            422)
+              echo "::error::Validation error - check request parameters"
+              echo "Response: $RESPONSE"
+              exit 1
+              ;;
+            429)
+              echo "::error::Rate limit exceeded - try again later"
+              exit 1
+              ;;
+            500|502|503|504)
+              echo "::error::Coolify server error (HTTP $HTTP_CODE) - the server may be unavailable"
+              exit 1
+              ;;
+            *)
+              echo "::error::Unexpected HTTP status code: $HTTP_CODE"
+              echo "Response: $RESPONSE"
+              exit 1
+              ;;
+          esac
+
+          # Extract deployment ID if available
+          DEPLOYMENT_ID=$(echo "$RESPONSE" | jq -r '.deployment_uuid // .uuid // .id // empty' 2>/dev/null)
+          MESSAGE=$(echo "$RESPONSE" | jq -r '.message // empty' 2>/dev/null)
+
+          if [[ -n "$DEPLOYMENT_ID" && "$DEPLOYMENT_ID" != "null" ]]; then
+            echo "deployment-id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+            echo "deployment-url=${COOLIFY_URL}/project/*/application/${APP_UUID}/deployment/${DEPLOYMENT_ID}" >> $GITHUB_OUTPUT
+            echo ""
+            echo "📋 Deployment Details:"
+            echo "   Deployment ID: $DEPLOYMENT_ID"
+            echo "   Message: ${MESSAGE:-Deployment started}"
+          else
+            echo "deployment-id=" >> $GITHUB_OUTPUT
+            echo "deployment-url=${COOLIFY_URL}/project/*/application/${APP_UUID}" >> $GITHUB_OUTPUT
+            echo ""
+            echo "📋 Deployment triggered (no deployment ID returned)"
+            echo "   Message: ${MESSAGE:-Deployment started}"
+          fi
+
+      - name: ⏳ Wait for Completion
+        id: wait
+        if: inputs.wait-for-completion && steps.trigger.outputs.deployment-id != ''
+        shell: bash
+        env:
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+        run: |
+          echo "⏳ Waiting for deployment to complete..."
+          echo ""
+
+          COOLIFY_URL="${{ steps.validate.outputs.coolify-url }}"
+          DEPLOYMENT_ID="${{ steps.trigger.outputs.deployment-id }}"
+          TIMEOUT=${{ inputs.wait-timeout }}
+          ELAPSED=0
+          INTERVAL=10
+          LAST_STATUS=""
+
+          echo "📋 Wait Configuration:"
+          echo "   Deployment ID: $DEPLOYMENT_ID"
+          echo "   Timeout: ${TIMEOUT}s"
+          echo "   Poll Interval: ${INTERVAL}s"
+          echo ""
+
+          while [[ $ELAPSED -lt $TIMEOUT ]]; do
+            # Fetch deployment status
+            HTTP_RESPONSE=$(mktemp)
+            HTTP_CODE=$(curl -sSw "%{http_code}" \
+              -o "$HTTP_RESPONSE" \
+              -X GET \
+              -H "Authorization: Bearer $COOLIFY_API_TOKEN" \
+              -H "Accept: application/json" \
+              "${COOLIFY_URL}/api/v1/deployments/${DEPLOYMENT_ID}" 2>/dev/null) || {
+              echo "::warning::Failed to fetch deployment status (will retry)"
+              sleep $INTERVAL
+              ELAPSED=$((ELAPSED + INTERVAL))
+              rm -f "$HTTP_RESPONSE"
+              continue
+            }
+
+            RESPONSE=$(cat "$HTTP_RESPONSE")
+            rm -f "$HTTP_RESPONSE"
+
+            # Handle non-200 responses
+            if [[ "$HTTP_CODE" != "200" ]]; then
+              echo "::warning::Unexpected HTTP $HTTP_CODE when fetching status (will retry)"
+              sleep $INTERVAL
+              ELAPSED=$((ELAPSED + INTERVAL))
+              continue
+            fi
+
+            STATUS=$(echo "$RESPONSE" | jq -r '.status // "unknown"' 2>/dev/null)
+
+            # Only log if status changed
+            if [[ "$STATUS" != "$LAST_STATUS" ]]; then
+              echo "📊 Status: $STATUS (${ELAPSED}s / ${TIMEOUT}s)"
+              LAST_STATUS="$STATUS"
+            else
+              echo "   ⏳ Still $STATUS... (${ELAPSED}s / ${TIMEOUT}s)"
+            fi
+
+            case "$STATUS" in
+              "success"|"finished"|"deployed")
+                echo ""
+                echo "✅ Deployment completed successfully!"
+
+                # Extract additional info if available
+                FINISHED_AT=$(echo "$RESPONSE" | jq -r '.finished_at // empty' 2>/dev/null)
+                if [[ -n "$FINISHED_AT" && "$FINISHED_AT" != "null" ]]; then
+                  echo "   Finished at: $FINISHED_AT"
+                fi
+
+                echo "status=success" >> $GITHUB_OUTPUT
+                exit 0
+                ;;
+              "failed"|"error"|"cancelled")
+                echo ""
+                echo "::error::Deployment failed with status: $STATUS"
+
+                # Try to extract error details
+                ERROR_MSG=$(echo "$RESPONSE" | jq -r '.message // .error // .logs // empty' 2>/dev/null)
+                if [[ -n "$ERROR_MSG" && "$ERROR_MSG" != "null" ]]; then
+                  echo "   Error: $ERROR_MSG"
+                fi
+
+                echo "status=failed" >> $GITHUB_OUTPUT
+
+                if [[ "${{ inputs.fail-on-error }}" == "true" ]]; then
+                  exit 1
+                fi
+                exit 0
+                ;;
+              "running"|"pending"|"queued"|"building"|"starting")
+                sleep $INTERVAL
+                ELAPSED=$((ELAPSED + INTERVAL))
+                ;;
+              "unknown")
+                echo "::warning::Could not determine deployment status"
+                sleep $INTERVAL
+                ELAPSED=$((ELAPSED + INTERVAL))
+                ;;
+              *)
+                echo "::warning::Unrecognized status: $STATUS"
+                sleep $INTERVAL
+                ELAPSED=$((ELAPSED + INTERVAL))
+                ;;
+            esac
+          done
+
+          echo ""
+          echo "::error::Deployment timed out after ${TIMEOUT}s"
+          echo "   Last known status: ${LAST_STATUS:-unknown}"
+          echo "status=timeout" >> $GITHUB_OUTPUT
+
+          if [[ "${{ inputs.fail-on-error }}" == "true" ]]; then
+            exit 1
+          fi
+
+      - name: ⏭️ Skip Wait (No Deployment ID)
+        if: inputs.wait-for-completion && steps.trigger.outputs.deployment-id == ''
+        shell: bash
+        run: |
+          echo "::warning::Cannot wait for completion - no deployment ID was returned by Coolify API"
+          echo "The deployment was triggered but status tracking is not available."
+
+      - name: 📊 Set Final Status
+        id: status
+        if: always()
+        shell: bash
+        run: |
+          # Determine final status
+          if [[ -n "${{ steps.wait.outputs.status }}" ]]; then
+            FINAL_STATUS="${{ steps.wait.outputs.status }}"
+          elif [[ "${{ steps.trigger.outcome }}" == "success" ]]; then
+            FINAL_STATUS="started"
+          else
+            FINAL_STATUS="failed"
+          fi
+
+          echo "status=$FINAL_STATUS" >> $GITHUB_OUTPUT
+          echo ""
+          echo "📊 Final Status: $FINAL_STATUS"
+
+      - name: 📋 Generate Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## 🚀 Coolify Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Status badge
+          STATUS="${{ steps.status.outputs.status }}"
+          case "$STATUS" in
+            "success")
+              echo "> ✅ **Deployment completed successfully**" >> $GITHUB_STEP_SUMMARY
+              ;;
+            "started")
+              echo "> 🚀 **Deployment triggered successfully**" >> $GITHUB_STEP_SUMMARY
+              ;;
+            "failed")
+              echo "> ❌ **Deployment failed**" >> $GITHUB_STEP_SUMMARY
+              ;;
+            "timeout")
+              echo "> ⏱️ **Deployment timed out**" >> $GITHUB_STEP_SUMMARY
+              ;;
+            *)
+              echo "> ⚠️ **Deployment status: $STATUS**" >> $GITHUB_STEP_SUMMARY
+              ;;
+          esac
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Configuration table
+          echo "### ⚙️ Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Coolify URL | \`${{ steps.validate.outputs.coolify-url }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| App UUID | \`${{ inputs.app-uuid }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Force Rebuild | \`${{ inputs.force }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag | \`${{ inputs.tag || 'latest' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Wait for Completion | \`${{ inputs.wait-for-completion }}\` |" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ inputs.wait-for-completion }}" == "true" ]]; then
+            echo "| Wait Timeout | \`${{ inputs.wait-timeout }}s\` |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Deployment details
+          echo "### 📋 Deployment Details" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+
+          DEPLOYMENT_ID="${{ steps.trigger.outputs.deployment-id }}"
+          if [[ -n "$DEPLOYMENT_ID" ]]; then
+            echo "| Deployment ID | \`$DEPLOYMENT_ID\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Deployment ID | N/A |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "| Status | \`$STATUS\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered At | \`$(date -u +"%Y-%m-%dT%H:%M:%SZ")\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Link to Coolify
+          DEPLOYMENT_URL="${{ steps.trigger.outputs.deployment-url }}"
+          if [[ -n "$DEPLOYMENT_URL" ]]; then
+            echo "### 🔗 Links" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- [View in Coolify]($DEPLOYMENT_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Workflow info
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "*Triggered by: ${{ github.actor }} • Workflow: ${{ github.workflow }} • Run: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,94 @@
+# ============================================================================
+# Coolify Deployment with Wait for Completion
+# ============================================================================
+# This example demonstrates a deployment that waits for completion and
+# provides status feedback. Use this approach when you need to know
+# if the deployment succeeded before proceeding.
+#
+# Features:
+# - Waits for deployment to complete
+# - Configurable timeout
+# - Status feedback in workflow
+# - Notification step based on result
+#
+# Prerequisites:
+# - COOLIFY_API_TOKEN secret configured
+# - Application already set up in Coolify
+# ============================================================================
+
+name: Deploy with Status Check
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force rebuild'
+        type: boolean
+        default: false
+      tag:
+        description: 'Specific tag to deploy (leave empty for latest)'
+        type: string
+        default: ''
+
+jobs:
+  deploy:
+    name: Deploy to Coolify
+    uses: bauer-group/automation-templates/.github/workflows/coolify-deploy.yml@main
+    with:
+      coolify-url: 'https://coolify.example.com'
+      app-uuid: 'your-app-uuid-here'
+      force: ${{ inputs.force || false }}
+      tag: ${{ inputs.tag || '' }}
+      wait-for-completion: true
+      wait-timeout: 600  # 10 minutes
+      fail-on-error: true
+    secrets: inherit
+
+  notify:
+    name: Send Notification
+    needs: deploy
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deployment Succeeded
+        if: needs.deploy.outputs.deployment-status == 'success'
+        run: |
+          echo "::notice title=Deployment Successful::Application deployed successfully!"
+          echo ""
+          echo "Deployment ID: ${{ needs.deploy.outputs.deployment-id }}"
+          echo "View in Coolify: ${{ needs.deploy.outputs.deployment-url }}"
+
+      - name: Deployment Failed
+        if: needs.deploy.outputs.deployment-status == 'failed'
+        run: |
+          echo "::error title=Deployment Failed::The deployment failed. Check Coolify logs for details."
+          echo ""
+          echo "Deployment ID: ${{ needs.deploy.outputs.deployment-id }}"
+          echo "View in Coolify: ${{ needs.deploy.outputs.deployment-url }}"
+
+      - name: Deployment Timed Out
+        if: needs.deploy.outputs.deployment-status == 'timeout'
+        run: |
+          echo "::warning title=Deployment Timeout::The deployment timed out. It may still complete."
+          echo ""
+          echo "Deployment ID: ${{ needs.deploy.outputs.deployment-id }}"
+          echo "View in Coolify: ${{ needs.deploy.outputs.deployment-url }}"
+
+      - name: Generate Summary
+        if: always()
+        run: |
+          echo "## Deployment Result" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | \`${{ needs.deploy.outputs.deployment-status }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deployment ID | \`${{ needs.deploy.outputs.deployment-id }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ -n "${{ needs.deploy.outputs.deployment-url }}" ]]; then
+            echo "[View in Coolify](${{ needs.deploy.outputs.deployment-url }})" >> $GITHUB_STEP_SUMMARY
+          fi

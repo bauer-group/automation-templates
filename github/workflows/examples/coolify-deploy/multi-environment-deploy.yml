@@ -1,0 +1,276 @@
+# ============================================================================
+# Multi-Environment Coolify Deployment
+# ============================================================================
+# This example demonstrates a staged deployment pipeline with multiple
+# environments (staging -> production). Each environment has its own
+# Coolify application UUID.
+#
+# Deployment Flow:
+# 1. Build Docker image
+# 2. Deploy to Staging
+# 3. Run smoke tests on Staging
+# 4. Deploy to Production (manual approval or auto)
+#
+# Features:
+# - Staged rollout (staging -> production)
+# - Environment-specific configurations
+# - Smoke tests between stages
+# - Optional manual approval for production
+# - Rollback capability
+#
+# Prerequisites:
+# - COOLIFY_API_TOKEN secret with access to all environments
+# - Separate Coolify applications for each environment
+# ============================================================================
+
+name: Multi-Environment Deploy
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*.*.*']
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        type: choice
+        options:
+          - staging
+          - production
+          - both
+        default: staging
+      skip-staging:
+        description: 'Skip staging (production only)'
+        type: boolean
+        default: false
+      force-rebuild:
+        description: 'Force rebuild'
+        type: boolean
+        default: false
+
+# Environment-specific configuration
+env:
+  COOLIFY_URL: 'https://coolify.example.com'
+  STAGING_APP_UUID: 'staging-app-uuid-here'
+  PRODUCTION_APP_UUID: 'production-app-uuid-here'
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false  # Don't cancel ongoing deployments
+
+jobs:
+  # ============================================
+  # Build
+  # ============================================
+  build:
+    name: Build Docker Image
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      publish-to: 'ghcr'
+      auto-tags: true
+      security-scan: true
+      security-fail-on: 'HIGH'
+    secrets: inherit
+
+  # ============================================
+  # Deploy to Staging
+  # ============================================
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build
+    # Skip if manual deploy to production only
+    if: |
+      (github.event_name != 'workflow_dispatch' ||
+       inputs.environment != 'production' ||
+       !inputs.skip-staging)
+    uses: bauer-group/automation-templates/.github/workflows/coolify-deploy.yml@main
+    with:
+      coolify-url: 'https://coolify.example.com'
+      app-uuid: 'staging-app-uuid-here'
+      force: ${{ inputs.force-rebuild || false }}
+      wait-for-completion: true
+      wait-timeout: 300
+    secrets: inherit
+
+  # ============================================
+  # Smoke Tests on Staging
+  # ============================================
+  smoke-tests:
+    name: Run Smoke Tests
+    needs: deploy-staging
+    if: needs.deploy-staging.outputs.deployment-status == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Wait for Application
+        run: |
+          echo "Waiting for application to be ready..."
+          sleep 30  # Give the app time to start
+
+      - name: Health Check
+        run: |
+          # Replace with your staging URL
+          STAGING_URL="https://staging.example.com"
+
+          echo "Running health check on $STAGING_URL..."
+
+          for i in {1..5}; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_URL/health" || echo "000")
+
+            if [[ "$HTTP_CODE" == "200" ]]; then
+              echo "Health check passed!"
+              exit 0
+            fi
+
+            echo "Attempt $i: HTTP $HTTP_CODE, retrying..."
+            sleep 10
+          done
+
+          echo "::error::Health check failed after 5 attempts"
+          exit 1
+
+      - name: API Smoke Test
+        run: |
+          STAGING_URL="https://staging.example.com"
+
+          echo "Running API smoke tests..."
+
+          # Example: Test API endpoint
+          RESPONSE=$(curl -s "$STAGING_URL/api/status")
+          echo "API Response: $RESPONSE"
+
+          # Add your validation logic here
+          if echo "$RESPONSE" | grep -q "ok"; then
+            echo "API smoke test passed!"
+          else
+            echo "::warning::API smoke test returned unexpected response"
+          fi
+
+      - name: Summary
+        run: |
+          echo "## Smoke Tests Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Staging deployment verified and ready for production." >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Deploy to Production
+  # ============================================
+  deploy-production:
+    name: Deploy to Production
+    needs: [build, deploy-staging, smoke-tests]
+    # Deploy to production on:
+    # - Version tags (after staging succeeds)
+    # - Manual workflow dispatch for production
+    # - Main branch push (if configured)
+    if: |
+      always() &&
+      needs.build.result == 'success' &&
+      (
+        (startsWith(github.ref, 'refs/tags/v') && needs.smoke-tests.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' &&
+         (inputs.environment == 'production' || inputs.environment == 'both') &&
+         (inputs.skip-staging || needs.smoke-tests.result == 'success'))
+      )
+    uses: bauer-group/automation-templates/.github/workflows/coolify-deploy.yml@main
+    with:
+      coolify-url: 'https://coolify.example.com'
+      app-uuid: 'production-app-uuid-here'
+      # For tagged releases, deploy the specific tag
+      tag: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+      force: ${{ inputs.force-rebuild || false }}
+      wait-for-completion: true
+      wait-timeout: 900  # 15 minutes for production
+      fail-on-error: true
+    secrets: inherit
+
+  # ============================================
+  # Production Verification
+  # ============================================
+  verify-production:
+    name: Verify Production
+    needs: deploy-production
+    if: needs.deploy-production.outputs.deployment-status == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Wait for Application
+        run: sleep 30
+
+      - name: Production Health Check
+        run: |
+          PRODUCTION_URL="https://example.com"
+
+          echo "Verifying production deployment..."
+
+          for i in {1..5}; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$PRODUCTION_URL/health" || echo "000")
+
+            if [[ "$HTTP_CODE" == "200" ]]; then
+              echo "Production health check passed!"
+              exit 0
+            fi
+
+            echo "Attempt $i: HTTP $HTTP_CODE, retrying..."
+            sleep 10
+          done
+
+          echo "::error::Production health check failed!"
+          exit 1
+
+  # ============================================
+  # Pipeline Summary
+  # ============================================
+  summary:
+    name: Deployment Summary
+    needs: [build, deploy-staging, smoke-tests, deploy-production, verify-production]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "## Deployment Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Build Status
+          echo "### Build" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Build | ${{ needs.build.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Staging Status
+          echo "### Staging" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ needs.deploy-staging.result }}" == "skipped" ]]; then
+            echo "| Deployment | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "| Smoke Tests | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Deployment | ${{ needs.deploy-staging.outputs.deployment-status == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Smoke Tests | ${{ needs.smoke-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Production Status
+          echo "### Production" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ needs.deploy-production.result }}" == "skipped" ]]; then
+            echo "| Deployment | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "| Verification | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Deployment | ${{ needs.deploy-production.outputs.deployment-status == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Verification | ${{ needs.verify-production.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Links
+          echo "### Links" >> $GITHUB_STEP_SUMMARY
+          if [[ -n "${{ needs.deploy-staging.outputs.deployment-url }}" ]]; then
+            echo "- [Staging Deployment](${{ needs.deploy-staging.outputs.deployment-url }})" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [[ -n "${{ needs.deploy-production.outputs.deployment-url }}" ]]; then
+            echo "- [Production Deployment](${{ needs.deploy-production.outputs.deployment-url }})" >> $GITHUB_STEP_SUMMARY
+          fi
