@@ -1,3 +1,17 @@
+## [4.5.1](https://github.com/bauer-group/automation-templates/compare/v4.5.0...v4.5.1) (2025-12-25)
+
+### 🐛 Bug Fixes
+
+* enhance Docker image build process with improved security scanning and output handling ([05d798c](https://github.com/bauer-group/automation-templates/commit/05d798c480b8b547252ca2a3d7e067d026230701))
+* enhance Docker workflows with improved security scanning and output handling ([9338714](https://github.com/bauer-group/automation-templates/commit/93387140417364279333cbfeca41ab5e64a8cdb1))
+* improve handling of warnings in Docker Compose validation output ([ab5e08a](https://github.com/bauer-group/automation-templates/commit/ab5e08a4841b5b78dcc6309c53a01007da425cc1))
+* improve shell script detection and output handling in validation workflow ([3bfa9f5](https://github.com/bauer-group/automation-templates/commit/3bfa9f5c57785a9c4fc4bde155b92cf45fe4ed10))
+* improve warning detection in Docker Compose validation output ([ff184e0](https://github.com/bauer-group/automation-templates/commit/ff184e02795d23c723832e18c24864d2cd577244))
+
+### ♻️ Code Refactoring
+
+* optimize shell script validation logic and improve output formatting ([c1eae8b](https://github.com/bauer-group/automation-templates/commit/c1eae8bc0ae4b4e0ec688e9164d08dfd00328bb4))
+
 ## [4.5.0](https://github.com/bauer-group/automation-templates/compare/v4.4.0...v4.5.0) (2025-12-24)
 
 ### 🚀 Features
