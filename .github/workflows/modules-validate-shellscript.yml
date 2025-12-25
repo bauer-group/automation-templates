@@ -179,17 +179,20 @@ jobs:
           ")
           fi
 
-          # Remove duplicates and count
-          SCRIPT_FILES=$(echo "$SCRIPT_FILES" | tr ' ' '\n' | sort -u | grep -v '^$' | tr '\n' ' ')
+          # Remove duplicates and count (use || true to prevent grep exit code 1 on empty input)
+          SCRIPT_FILES=$(echo "$SCRIPT_FILES" | tr ' ' '\n' | sort -u | grep -v '^$' || true)
+          SCRIPT_FILES=$(echo "$SCRIPT_FILES" | tr '\n' ' ')
           FILE_COUNT=$(echo "$SCRIPT_FILES" | wc -w | tr -d ' ')
 
-          echo "📄 Found $FILE_COUNT shell script(s):"
-          echo "$SCRIPT_FILES" | tr ' ' '\n' | grep -v '^$' | head -30 | while read -r f; do
-            echo "   - $f"
-          done
+          if [ "$FILE_COUNT" -gt 0 ]; then
+            echo "📄 Found $FILE_COUNT shell script(s):"
+            echo "$SCRIPT_FILES" | tr ' ' '\n' | grep -v '^$' | head -30 | while read -r f; do
+              echo "   - $f"
+            done
 
-          if [ "$FILE_COUNT" -gt 30 ]; then
-            echo "   ... and $((FILE_COUNT - 30)) more"
+            if [ "$FILE_COUNT" -gt 30 ]; then
+              echo "   ... and $((FILE_COUNT - 30)) more"
+            fi
           fi
 
           # Save to file for next step
@@ -198,7 +201,7 @@ jobs:
 
           # Handle no files found
           if [ "$FILE_COUNT" -eq 0 ]; then
-            echo "ℹ️ No shell scripts found in specified paths"
+            echo "ℹ️ No shell scripts found - skipping validation"
             echo "no-files=true" >> $GITHUB_OUTPUT
           else
             echo "no-files=false" >> $GITHUB_OUTPUT
