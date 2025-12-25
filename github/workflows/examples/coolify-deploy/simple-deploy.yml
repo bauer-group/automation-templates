@@ -1,9 +1,13 @@
 # ============================================================================
-# Simple Coolify Deployment
+# Simple Coolify Deployment (REST API)
 # ============================================================================
 # This example demonstrates the minimal configuration for deploying
-# an application to Coolify. The deployment is triggered on every push
-# to the main branch using a "fire and forget" approach.
+# an application to Coolify via the REST API. The deployment is triggered
+# on every push to the main branch using a "fire and forget" approach.
+#
+# NOTE: This uses the Coolify REST API, not the GitHub App webhooks.
+# If you have the Coolify GitHub App with Auto Deploy enabled, you don't
+# need this workflow - deployments happen automatically on push.
 #
 # Features:
 # - Minimal configuration
@@ -11,7 +15,9 @@
 # - No wait for completion (fastest)
 #
 # Prerequisites:
-# - COOLIFY_API_TOKEN secret configured
+# - REST API enabled in Coolify (Settings)
+# - API Token created in Coolify (Security > API Tokens)
+# - COOLIFY_API_TOKEN secret configured in GitHub
 # - Application already set up in Coolify
 # ============================================================================
 

@@ -1,15 +1,19 @@
 # ============================================================================
-# Multi-Environment Coolify Deployment
+# Multi-Environment Coolify Deployment (REST API)
 # ============================================================================
 # This example demonstrates a staged deployment pipeline with multiple
-# environments (staging -> production). Each environment has its own
-# Coolify application UUID.
+# environments (staging -> production) using the Coolify REST API.
+# Each environment has its own Coolify application UUID.
+#
+# NOTE: This is where the REST API really shines over the GitHub App.
+# With the GitHub App, every push deploys everywhere. With the REST API,
+# you control exactly which environment gets deployed and when.
 #
 # Deployment Flow:
 # 1. Build Docker image
-# 2. Deploy to Staging
+# 2. Deploy to Staging via REST API
 # 3. Run smoke tests on Staging
-# 4. Deploy to Production (manual approval or auto)
+# 4. Deploy to Production via REST API (after staging succeeds)
 #
 # Features:
 # - Staged rollout (staging -> production)
@@ -19,7 +23,9 @@
 # - Rollback capability
 #
 # Prerequisites:
-# - COOLIFY_API_TOKEN secret with access to all environments
+# - REST API enabled in Coolify (Settings)
+# - API Token created in Coolify (Security > API Tokens)
+# - COOLIFY_API_TOKEN secret configured in GitHub
 # - Separate Coolify applications for each environment
 # ============================================================================
 

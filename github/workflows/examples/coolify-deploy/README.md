@@ -1,6 +1,17 @@
 # Coolify Deployment Examples
 
-This folder contains example workflows for deploying applications to Coolify using the reusable `coolify-deploy.yml` workflow.
+This folder contains example workflows for deploying applications to Coolify using the reusable `coolify-deploy.yml` workflow via the Coolify REST API.
+
+## REST API vs. GitHub App
+
+These examples use the **Coolify REST API** for programmatic deployments. This is different from the **Coolify GitHub App** which automatically deploys on every push via webhooks.
+
+| Method                        | When to Use                                              |
+|-------------------------------|----------------------------------------------------------|
+| **GitHub App**                | Automatic deployments on every push (simple setup)       |
+| **REST API** (these examples) | CI/CD pipelines, multi-environment, conditional deploys  |
+
+> **Note:** If you use the GitHub App with Auto Deploy enabled, you don't need these workflows.
 
 ## Examples
 
@@ -13,23 +24,37 @@ This folder contains example workflows for deploying applications to Coolify usi
 
 ## Quick Start
 
-### 1. Configure Secrets
+### 1. Enable the REST API in Coolify
 
-Add the following secret to your repository or organization:
+1. Open your Coolify dashboard
+2. Go to **Settings**
+3. Enable the REST API if not already enabled
 
-- `COOLIFY_API_TOKEN`: Your Coolify API token
+### 2. Create an API Token
 
-### 2. Get Your App UUID
+1. Go to **Security** > **API Tokens**
+2. Click **Create New Token**
+3. Enter a name (e.g., `GitHub Actions`)
+4. **Copy the token immediately** - it's only shown once!
+
+### 3. Configure GitHub Secret
+
+Add the token as a secret in your repository or organization:
+
+- **Name:** `COOLIFY_API_TOKEN`
+- **Value:** Your copied token
+
+### 4. Get Your App UUID
 
 1. Open your Coolify dashboard
 2. Navigate to your application
 3. Copy the UUID from the URL: `/project/xxx/application/YOUR-UUID`
 
-### 3. Copy an Example
+### 5. Copy an Example
 
 Choose an example that fits your needs and copy it to your repository's `.github/workflows/` folder.
 
-### 4. Update Configuration
+### 6. Update Configuration
 
 Replace the placeholder values:
 

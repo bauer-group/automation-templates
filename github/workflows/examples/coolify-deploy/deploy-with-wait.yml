@@ -1,9 +1,13 @@
 # ============================================================================
-# Coolify Deployment with Wait for Completion
+# Coolify Deployment with Wait for Completion (REST API)
 # ============================================================================
-# This example demonstrates a deployment that waits for completion and
-# provides status feedback. Use this approach when you need to know
-# if the deployment succeeded before proceeding.
+# This example demonstrates a deployment via REST API that waits for
+# completion and provides status feedback. Use this approach when you
+# need to know if the deployment succeeded before proceeding.
+#
+# NOTE: This uses the Coolify REST API, not the GitHub App webhooks.
+# If you have the Coolify GitHub App with Auto Deploy enabled, you don't
+# need this workflow - deployments happen automatically on push.
 #
 # Features:
 # - Waits for deployment to complete
@@ -12,7 +16,9 @@
 # - Notification step based on result
 #
 # Prerequisites:
-# - COOLIFY_API_TOKEN secret configured
+# - REST API enabled in Coolify (Settings)
+# - API Token created in Coolify (Security > API Tokens)
+# - COOLIFY_API_TOKEN secret configured in GitHub
 # - Application already set up in Coolify
 # ============================================================================
 

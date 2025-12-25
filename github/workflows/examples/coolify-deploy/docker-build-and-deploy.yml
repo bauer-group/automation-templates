@@ -1,21 +1,28 @@
 # ============================================================================
-# Docker Build + Coolify Deployment
+# Docker Build + Coolify Deployment (REST API)
 # ============================================================================
 # This example demonstrates a complete CI/CD pipeline that:
 # 1. Builds a Docker image and pushes to GHCR
-# 2. Deploys the new image to Coolify
+# 2. Deploys the new image to Coolify via REST API
 #
 # This is the recommended approach for containerized applications
 # hosted on Coolify that pull from GitHub Container Registry.
 #
+# NOTE: This uses the Coolify REST API for deployment, which gives you
+# control over WHEN deployments happen (after tests pass, specific branches).
+# If you use the Coolify GitHub App with Auto Deploy, Coolify would deploy
+# on every push automatically - but you lose control over the timing.
+#
 # Features:
 # - Full CI/CD pipeline
 # - Docker image build with security scanning
-# - Automatic deployment after successful build
+# - Controlled deployment after successful build
 # - Version tagging with semantic versioning
 #
 # Prerequisites:
-# - COOLIFY_API_TOKEN secret configured
+# - REST API enabled in Coolify (Settings)
+# - API Token created in Coolify (Security > API Tokens)
+# - COOLIFY_API_TOKEN secret configured in GitHub
 # - Application in Coolify configured to pull from GHCR
 # - Dockerfile in repository root
 # ============================================================================

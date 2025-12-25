@@ -1,17 +1,43 @@
 # Coolify Deployment Workflow
 
-This document describes the Coolify deployment workflow provided by the automation-templates repository. The workflow enables standardized, automated deployments to Coolify-hosted applications via the Coolify API.
+This document describes the Coolify deployment workflow provided by the automation-templates repository. The workflow enables standardized, automated deployments to Coolify-hosted applications via the Coolify REST API.
 
 ## Overview
 
 The Coolify deployment workflow provides:
 
-- **API Integration**: Direct integration with Coolify's deployment API
+- **REST API Integration**: Direct integration with Coolify's REST API for programmatic deployments
 - **Wait for Completion**: Optional polling for deployment status
 - **Force Rebuild**: Trigger complete rebuilds when needed
 - **Tag-based Deployment**: Deploy specific image versions
 - **Error Handling**: Comprehensive error handling with detailed messages
 - **Status Tracking**: Real-time deployment status with GitHub job summaries
+
+## REST API vs. GitHub App
+
+Coolify offers two deployment methods:
+
+| Method                       | Trigger                              | Use Case                             |
+|------------------------------|--------------------------------------|--------------------------------------|
+| **GitHub App** (Webhooks)    | Automatic on every push              | Simple projects, auto-deploy         |
+| **REST API** (this workflow) | Manual/controlled via GitHub Actions | CI/CD pipelines, multi-environment   |
+
+**Use this REST API workflow when:**
+
+- You build Docker images externally (in GitHub Actions) before deploying
+- You need deployments only after tests/scans pass
+- You have multiple environments (staging → production)
+- You want deployment status feedback in GitHub Actions
+- You need manual approval gates
+
+**Use the GitHub App when:**
+
+- You want automatic deployments on every push
+- Coolify builds your Docker image
+- You have a simple single-environment setup
+
+> **Note:** If you use the GitHub App with Auto Deploy enabled, you don't need this workflow.
+> Webhooks are handled automatically by the GitHub App integration.
 
 ## Quick Start
 
@@ -268,11 +294,14 @@ jobs:
 ### Creating a Coolify API Token
 
 1. Open your Coolify dashboard
-2. Navigate to: **Settings** > **API Tokens**
-3. Click "Create Token"
-4. Description: `GitHub Actions - YOUR-REPO`
-5. Copy the generated token
-6. Store as GitHub secret
+2. Navigate to: **Security** > **API Tokens**
+3. Click "Create New Token"
+4. Enter a descriptive name: `GitHub Actions - YOUR-REPO`
+5. **Copy the token immediately** - it is only shown once!
+6. Store as GitHub secret: `COOLIFY_API_TOKEN`
+
+> **Important:** The REST API must be enabled in Coolify. If you see "API not enabled",
+> go to **Settings** and enable the REST API.
 
 ## Error Handling
 
@@ -311,40 +340,64 @@ jobs:
 
 ## API Reference
 
+The workflow uses the Coolify REST API. The API base URL is `https://your-coolify-instance.com/api/v1`.
+
 ### Deploy Endpoint
 
-```
+Triggers a deployment for one or more applications.
+
+```http
 GET /api/v1/deploy
 ```
 
 **Query Parameters:**
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `uuid` | string | Yes | Application UUID |
-| `force` | boolean | No | Force rebuild (default: false) |
-| `tag` | string | No | Specific image tag |
+
+| Parameter | Type    | Required | Description                                    |
+|-----------|---------|----------|------------------------------------------------|
+| `uuid`    | string  | Yes      | Application UUID (comma-separated for multiple)|
+| `force`   | boolean | No       | Force rebuild without cache (default: false)   |
+| `tag`     | string  | No       | Specific image tag to deploy                   |
 
 **Headers:**
-```
+
+```http
 Authorization: Bearer <COOLIFY_API_TOKEN>
 Accept: application/json
 ```
 
-**Response:**
+**Response (200 OK):**
+
 ```json
 {
-  "message": "Deployment started",
-  "deployment_uuid": "dep-xyz-789"
+  "deployments": [
+    {
+      "message": "Deployment started",
+      "resource_uuid": "abc123",
+      "deployment_uuid": "dep-xyz-789"
+    }
+  ]
 }
+```
+
+### Alternative: Application Start Endpoint
+
+You can also trigger a deployment for a specific application:
+
+```http
+GET /api/v1/applications/{uuid}/start
+POST /api/v1/applications/{uuid}/start
 ```
 
 ### Deployment Status Endpoint
 
-```
+Check the status of a running deployment:
+
+```http
 GET /api/v1/deployments/{deployment_uuid}
 ```
 
 **Response:**
+
 ```json
 {
   "status": "running",
@@ -353,6 +406,10 @@ GET /api/v1/deployments/{deployment_uuid}
   "logs": "..."
 }
 ```
+
+### API Documentation
+
+For the complete API reference, see the [Coolify API Documentation](https://coolify.io/docs/api-reference/api/).
 
 ## Best Practices
 
@@ -485,4 +542,4 @@ curl -X GET \
 
 - **Documentation**: See examples in `github/workflows/examples/coolify-deploy/`
 - **Issues**: Report issues in the automation-templates repository
-- **Coolify Docs**: https://coolify.io/docs
+- **Coolify Docs**: [https://coolify.io/docs](https://coolify.io/docs)

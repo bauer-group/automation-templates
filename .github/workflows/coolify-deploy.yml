@@ -1,10 +1,23 @@
 # ============================================================================
 # 🚀 Coolify Deployment Workflow
 # ============================================================================
-# Reusable workflow for deploying applications to Coolify
+# Reusable workflow for deploying applications to Coolify via REST API.
+#
+# This workflow uses the Coolify REST API to trigger deployments programmatically.
+# It is ideal for CI/CD pipelines where you need control over when deployments
+# happen, such as after Docker builds, tests, or manual approval.
+#
+# NOTE: This is different from the Coolify GitHub App integration, which
+# automatically deploys on every push via webhooks. Use this workflow when:
+# - You want to control deployment timing (e.g., only after tests pass)
+# - You build Docker images externally (GitHub Actions) before deploying
+# - You need multi-environment deployments (staging -> production)
+# - You want deployment status feedback in GitHub Actions
+#
+# For automatic deployments on every push, use the Coolify GitHub App instead.
 #
 # Features:
-# - Trigger deployments via Coolify API
+# - Trigger deployments via Coolify REST API
 # - Optional wait for deployment completion
 # - Force rebuild support
 # - Specific image tag deployment
@@ -21,7 +34,13 @@
 #       secrets: inherit
 #
 # Required Secrets:
-#   - COOLIFY_API_TOKEN: API token for Coolify authentication
+#   - COOLIFY_API_TOKEN: API token from Coolify (Security > API Tokens)
+#
+# API Token Setup:
+#   1. Open Coolify Dashboard
+#   2. Go to: Security > API Tokens
+#   3. Create a new token with appropriate permissions
+#   4. Store as GitHub secret: COOLIFY_API_TOKEN
 #
 # ============================================================================
 
