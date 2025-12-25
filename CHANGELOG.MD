@@ -1,3 +1,14 @@
+## [4.6.0](https://github.com/bauer-group/automation-templates/compare/v4.5.1...v4.6.0) (2025-12-25)
+
+### 🚀 Features
+
+* Coolify deployment workflow documentation and examples ([1a7d35d](https://github.com/bauer-group/automation-templates/commit/1a7d35df23f3ee9ee00ef7537bf6d3033b3848f3))
+
+### 🐛 Bug Fixes
+
+* enhance security analysis and deployment steps in Docker workflow ([459b4f0](https://github.com/bauer-group/automation-templates/commit/459b4f02092f5c19b68685719cee6b611ddc18d0))
+* simplify image size retrieval in Docker build action ([b67aa98](https://github.com/bauer-group/automation-templates/commit/b67aa98b3ce33142f1789d4a28b9c05562bf6a49))
+
 ## [4.5.1](https://github.com/bauer-group/automation-templates/compare/v4.5.0...v4.5.1) (2025-12-25)
 
 ### 🐛 Bug Fixes
