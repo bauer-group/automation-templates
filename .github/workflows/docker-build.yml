@@ -576,73 +576,106 @@ jobs:
           echo ""
           echo "🔗 View on Docker Hub: https://hub.docker.com/r/${{ steps.docker-repo.outputs.repository }}"
 
-  # Image vulnerability analysis (separate job for better performance)
+  # Image vulnerability analysis (separate job for comprehensive scanning)
   security-analysis:
-    name: Security Analysis
+    name: 🛡️ Advanced Security Analysis
     needs: build
-    if: inputs.security-scan && needs.build.result == 'success'
+    if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    
+
     steps:
+      - name: ⏭️ Security Scan Disabled
+        if: inputs.security-scan != true
+        run: |
+          echo "::notice title=Security Scan Disabled::Advanced security scanning is disabled via inputs.security-scan=false"
+          echo "## ⏭️ Advanced Security Scan - Disabled" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Advanced security scanning is **disabled** in workflow configuration." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To enable, set \`security-scan: true\` in your workflow inputs." >> $GITHUB_STEP_SUMMARY
+
       - name: 📥 Checkout Repository
+        if: inputs.security-scan == true
         uses: actions/checkout@v6
-      
-      - name: 🛡️ Advanced Security Analysis
+
+      - name: 🛡️ Run Advanced Security Analysis
+        if: inputs.security-scan == true
         shell: bash
         run: |
           echo "🛡️ Running advanced security analysis..."
-          
+
           IMAGE_URL="${{ needs.build.outputs.image-url }}"
-          
+
           # Multiple scanner approach for comprehensive coverage
           echo "Image: $IMAGE_URL"
-          
+
           # Install additional security tools
           curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-          
+
           # Comprehensive Trivy scan
           trivy image \
             --format table \
             --severity HIGH,CRITICAL \
             "$IMAGE_URL"
-          
+
           # Check for secrets in image
           trivy image \
             --scanners secret \
             --format table \
             "$IMAGE_URL"
-          
+
           # Configuration scanning
           trivy image \
             --scanners config \
             --format table \
             "$IMAGE_URL"
-          
+
           echo "✅ Advanced security analysis completed"
+
+          # Add to summary
+          echo "## 🛡️ Advanced Security Analysis - Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Vulnerability Scan | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secret Detection | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Config Analysis | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
 
   # Deployment job (if enabled)
   deploy:
-    name: Deploy Image
+    name: 🚀 Deploy Image
     needs: [build, security-analysis]
-    if: inputs.deploy-enabled && needs.build.result == 'success' && (needs.security-analysis.result == 'success' || needs.security-analysis.result == 'skipped')
+    if: always() && needs.build.result == 'success' && needs.security-analysis.result == 'success'
     runs-on: ubuntu-latest
     environment:
       name: ${{ inputs.deploy-environment }}
       url: ${{ steps.deploy.outputs.url }}
-    
+
     steps:
+      - name: ⏭️ Deployment Disabled
+        if: inputs.deploy-enabled != true
+        run: |
+          echo "::notice title=Deployment Disabled::Deployment is disabled via inputs.deploy-enabled=false"
+          echo "## ⏭️ Deployment - Disabled" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Deployment is **disabled** in workflow configuration." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To enable, set \`deploy-enabled: true\` in your workflow inputs." >> $GITHUB_STEP_SUMMARY
+
       - name: 📥 Checkout Repository
+        if: inputs.deploy-enabled == true
         uses: actions/checkout@v6
-      
+
       - name: 🚀 Deploy Docker Image
+        if: inputs.deploy-enabled == true
         id: deploy
         shell: bash
         run: |
           echo "🚀 Deploying Docker image..."
-          
+
           IMAGE_URL="${{ needs.build.outputs.image-url }}"
-          
+
           if [ -n "${{ inputs.deploy-command }}" ]; then
             # Custom deployment command
             DEPLOY_CMD="${{ inputs.deploy-command }}"
@@ -652,15 +685,23 @@ jobs:
             # Default deployment examples (customize as needed)
             echo "Deploying image: $IMAGE_URL"
             echo "Environment: ${{ inputs.deploy-environment }}"
-            
+
             # Example deployment commands (uncomment and customize as needed):
             # kubectl set image deployment/myapp container=$IMAGE_URL
             # docker service update --image $IMAGE_URL myservice
             # helm upgrade myapp ./chart --set image.tag=${IMAGE_URL##*:}
-            
+
             echo "✅ Deployment completed"
           fi
-          
+
+          # Add to summary
+          echo "## 🚀 Deployment - Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`${{ inputs.deploy-environment }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | \`$IMAGE_URL\` |" >> $GITHUB_STEP_SUMMARY
+
           # Set deployment URL (customize as needed)
           case "${{ inputs.deploy-environment }}" in
             "staging")
@@ -676,37 +717,51 @@ jobs:
 
   # Summary job
   summary:
-    name: Build Summary
+    name: 📊 Pipeline Summary
     needs: [build, dockerhub-readme, security-analysis, deploy]
     if: always()
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: 📊 Generate Build Summary
         shell: bash
         run: |
           echo "## 🐳 Docker Build & Deploy Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Build Status
-          echo "### 🏗️ Build Status" >> $GITHUB_STEP_SUMMARY
-          echo "| Stage | Status | Duration | Details |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|----------|---------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Build** | ${{ needs.build.result == 'success' && '✅ Success' || '❌ Failed' }} | ${{ needs.build.outputs.build-duration }}s | Image: \`${{ needs.build.outputs.image-url }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **README Sync** | ${{ needs.dockerhub-readme.result == 'success' && '✅ Synced' || needs.dockerhub-readme.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | - | Docker Hub README |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Security** | ${{ needs.security-analysis.result == 'success' && '✅ Passed' || needs.security-analysis.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | ${{ needs.security-analysis.outputs.scan-duration || '0' }}s | ${{ inputs.security-scanner }} scan |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Deploy** | ${{ needs.deploy.result == 'success' && '✅ Deployed' || needs.deploy.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | ${{ needs.deploy.outputs.deploy-duration || '0' }}s | Environment: ${{ inputs.deploy-environment }} |" >> $GITHUB_STEP_SUMMARY
+
+          # Feature Configuration Overview
+          echo "### ⚙️ Feature Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "| Feature | Enabled | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Push to Registry** | ${{ inputs.push == true && '✅ Yes' || '⚪ No' }} | ${{ needs.build.outputs.image-pushed == 'true' && '✅ Pushed' || inputs.push != true && '⚪ Disabled' || '❌ Blocked' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Security Scan** | ${{ inputs.security-scan == true && '✅ Yes' || '⚪ No' }} | ${{ inputs.security-scan != true && '⚪ Disabled' || needs.build.outputs.security-scan-passed == 'true' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **README Sync** | ${{ inputs.sync-dockerhub-readme == true && '✅ Yes' || '⚪ No' }} | ${{ inputs.sync-dockerhub-readme != true && '⚪ Disabled' || needs.dockerhub-readme.result == 'success' && '✅ Synced' || needs.dockerhub-readme.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Deployment** | ${{ inputs.deploy-enabled == true && '✅ Yes' || '⚪ No' }} | ${{ inputs.deploy-enabled != true && '⚪ Disabled' || needs.deploy.result == 'success' && '✅ Deployed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Image Signing** | ${{ inputs.sign-image == true && '✅ Yes' || '⚪ No' }} | ${{ inputs.sign-image != true && '⚪ Disabled' || needs.build.outputs.image-pushed == 'true' && '✅ Signed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **SBOM Generation** | ${{ inputs.generate-sbom == true && '✅ Yes' || '⚪ No' }} | ${{ inputs.generate-sbom != true && '⚪ Disabled' || '✅ Generated' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
+          # Pipeline Status
+          echo "### 🏗️ Pipeline Status" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Result | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build** | ${{ needs.build.result == 'success' && '✅ Success' || '❌ Failed' }} | Duration: ${{ needs.build.outputs.build-duration }}s |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Advanced Security** | ${{ needs.security-analysis.result == 'success' && '✅ Completed' || '⚪ Skipped' }} | ${{ inputs.security-scanner }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **README Sync** | ${{ needs.dockerhub-readme.result == 'success' && '✅ Synced' || needs.dockerhub-readme.result == 'skipped' && '⚪ Skipped' || '❌ Failed' }} | Docker Hub |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Deployment** | ${{ needs.deploy.result == 'success' && '✅ Deployed' || needs.deploy.result == 'skipped' && '⚪ Skipped' || '❌ Failed' }} | ${{ inputs.deploy-environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
           # Image Information
           if [ "${{ needs.build.result }}" = "success" ]; then
             echo "### 📦 Image Information" >> $GITHUB_STEP_SUMMARY
-            echo "- **Registry:** \`${{ inputs.registry }}\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **Image:** \`${{ needs.build.outputs.image-url }}\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **Digest:** \`${{ needs.build.outputs.image-digest }}\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **Size:** ${{ needs.build.outputs.image-size }} bytes" >> $GITHUB_STEP_SUMMARY
-            echo "- **Platforms:** \`${{ inputs.multi-platform && inputs.platforms || 'linux/amd64' }}\`" >> $GITHUB_STEP_SUMMARY
-            echo "- **Pushed to Registry:** ${{ needs.build.outputs.image-pushed == 'true' && '✅ Yes' || '❌ No' }}" >> $GITHUB_STEP_SUMMARY
+            echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| **Registry** | \`${{ inputs.publish-to }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Image** | \`${{ needs.build.outputs.image-url }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Digest** | \`${{ needs.build.outputs.image-digest }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Size** | ${{ needs.build.outputs.image-size }} bytes |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Platforms** | \`${{ inputs.multi-platform && inputs.platforms || 'linux/amd64' }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Pushed** | ${{ needs.build.outputs.image-pushed == 'true' && '✅ Yes' || '❌ No' }} |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
 
             echo "### 🏷️ Tags" >> $GITHUB_STEP_SUMMARY
@@ -716,32 +771,18 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
-          # Security Information
-          if [ "${{ inputs.security-scan }}" = "true" ]; then
-            echo "### 🛡️ Security" >> $GITHUB_STEP_SUMMARY
-            echo "- **Scanner:** ${{ inputs.security-scanner }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **Fail Level:** ${{ inputs.security-fail-on }}" >> $GITHUB_STEP_SUMMARY
-            if [ "${{ needs.build.outputs.security-scan-passed }}" = "true" ]; then
-              echo "- **Scan Result:** ✅ Passed" >> $GITHUB_STEP_SUMMARY
-            elif [ "${{ needs.build.outputs.security-scan-passed }}" = "false" ]; then
-              echo "- **Scan Result:** ❌ Failed - Vulnerabilities found above threshold" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "- **Scan Result:** ⏭️ Skipped" >> $GITHUB_STEP_SUMMARY
-            fi
-            echo "- **Image Signed:** ${{ inputs.sign-image && '✅ Yes' || '❌ No' }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **SBOM Generated:** ${{ inputs.generate-sbom && '✅ Yes' || '❌ No' }}" >> $GITHUB_STEP_SUMMARY
+          # Security Alert if scan failed
+          if [ "${{ needs.build.outputs.security-scan-passed }}" = "false" ]; then
+            echo "> ⚠️ **Security scan blocked the push.** The image was built but NOT pushed to the registry due to vulnerabilities above the \`${{ inputs.security-fail-on }}\` threshold. Review the security report in the workflow artifacts." >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-
-            if [ "${{ needs.build.outputs.security-scan-passed }}" = "false" ]; then
-              echo "> ⚠️ **Security scan blocked the push.** The image was built but NOT pushed to the registry due to vulnerabilities above the \`${{ inputs.security-fail-on }}\` threshold. Review the security report in the workflow artifacts." >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-            fi
           fi
-          
-          # Configuration Summary
-          echo "### ⚙️ Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "- **Dockerfile:** \`${{ inputs.dockerfile-path }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Context:** \`${{ inputs.docker-context }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Builder:** ${{ inputs.builder-driver }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Cache:** ${{ inputs.cache-enabled && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Multi-Platform:** ${{ inputs.multi-platform && '✅ Enabled' || '❌ Disabled' }}" >> $GITHUB_STEP_SUMMARY
+
+          # Build Configuration
+          echo "### 🔧 Build Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Dockerfile** | \`${{ inputs.dockerfile-path }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Context** | \`${{ inputs.docker-context }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Builder** | ${{ inputs.builder-driver }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Cache** | ${{ inputs.cache-enabled && '✅ Enabled' || '❌ Disabled' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Multi-Platform** | ${{ inputs.multi-platform && '✅ Enabled' || '❌ Disabled' }} |" >> $GITHUB_STEP_SUMMARY
