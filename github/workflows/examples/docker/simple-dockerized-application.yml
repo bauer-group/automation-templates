@@ -7,6 +7,11 @@ name: Docker Build & Push
 #   commits the update back to main, and uses semver tagging for the image
 # - On branch push: Uses existing version from Dockerfile LABEL org.opencontainers.image.version
 #
+# Security Note:
+# The docker-build action runs security scans BEFORE pushing to the registry.
+# If vulnerabilities above the threshold are found, the push is blocked.
+# This prevents vulnerable images from being published.
+#
 # Required Secrets:
 # - DOCKER_USERNAME: Docker Hub username
 # - DOCKER_PASSWORD: Docker Hub password/token
@@ -14,6 +19,7 @@ name: Docker Build & Push
 # Required Permissions:
 # - contents: write (to commit Dockerfile version update)
 # - packages: write (to push to GHCR)
+# - security-events: write (for security scan results)
 
 on:
   push:
@@ -29,6 +35,11 @@ on:
       - 'tsconfig.json'
       - '.dockerignore'
   workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+  security-events: write
 
 jobs:
   # Build once, push to both registries
@@ -64,7 +75,9 @@ jobs:
       # Push to registry (skip on PRs)
       push: ${{ github.event_name != 'pull_request' }}
 
-      # Security scanning
+      # Security scanning - runs BEFORE push
+      # If CRITICAL vulnerabilities are found, the push is blocked
+      # The image is built locally, scanned, and only pushed if the scan passes
       security-scan: true
       security-fail-on: 'CRITICAL'
       generate-sbom: ${{ github.event_name != 'pull_request' }}
@@ -78,3 +91,32 @@ jobs:
     # - DOCKER_PASSWORD: Docker Hub password/token
     # Note: GITHUB_TOKEN is automatically available and used for GHCR
     secrets: inherit
+
+  # Optional: Post-build summary with security status
+  summary:
+    name: Build Summary
+    needs: docker-build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "## 🐳 Docker Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.docker-build.outputs.image-pushed }}" = "true" ]; then
+            echo "✅ **Image pushed successfully**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Image | \`${{ needs.docker-build.outputs.image-url }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Digest | \`${{ needs.docker-build.outputs.image-digest }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Security Scan | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.docker-build.outputs.security-scan-passed }}" = "false" ]; then
+            echo "❌ **Image NOT pushed - Security scan failed**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Vulnerabilities above the threshold were found." >> $GITHUB_STEP_SUMMARY
+            echo "Check the security report in workflow artifacts." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ **Build completed** (push skipped - likely a PR)" >> $GITHUB_STEP_SUMMARY
+          fi

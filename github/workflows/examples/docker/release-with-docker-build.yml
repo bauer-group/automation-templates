@@ -3,6 +3,11 @@ name: 🚀 Release & Docker Build
 # Combined workflow: Creates a semantic release and then builds + publishes Docker images
 # This solves the problem where GitHub Actions workflows created by GITHUB_TOKEN
 # don't trigger other workflows (e.g., a release creating a tag won't trigger a tag-based Docker build)
+#
+# Security Note:
+# The docker-build action runs security scans BEFORE pushing to the registry.
+# If vulnerabilities above the threshold are found, the push is blocked.
+# This prevents vulnerable images from being published.
 
 on:
   push:
@@ -34,10 +39,40 @@ permissions:
   security-events: write
 
 jobs:
-  # Step 1: Create semantic release (only on main branch push, not PRs)
+  # ============================================
+  # Validation Jobs
+  # ============================================
+
+  validate-compose:
+    name: 🔍 Validate Docker Compose
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-compose.yml@main
+    with:
+      compose-file: 'docker-compose.yml'
+      # Optional: Provide environment variables for validation
+      # env-template: |
+      #   {
+      #     "STACK_NAME": "my_app",
+      #     "TIME_ZONE": "Etc/UTC"
+      #   }
+
+  validate-scripts:
+    name: 🔍 Validate Shell Scripts
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-shellscript.yml@main
+    with:
+      scan-directory: '.'
+      severity: 'warning'
+
+  # ============================================
+  # Release Job (only on main branch push)
+  # ============================================
+
   release:
-    name: Create Semantic Release
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    name: 📦 Create Semantic Release
+    needs: [validate-compose, validate-scripts]
+    if: |
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.validate-compose.result == 'success' &&
+      needs.validate-scripts.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     with:
       target-branch: 'main'
@@ -45,10 +80,13 @@ jobs:
       force-release: ${{ inputs.force-release || false }}
     secrets: inherit
 
-  # Step 2: Build & Push Docker Image after successful release
-  # Uses release-version to generate proper semver tags without tag context
+  # ============================================
+  # Docker Build Jobs
+  # ============================================
+
+  # Build & Push on successful release
   docker-build-release:
-    name: Build & Push Docker Image (Release)
+    name: 🐳 Build & Push Docker Image
     needs: release
     if: needs.release.outputs.release-created == 'true'
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
@@ -65,7 +103,7 @@ jobs:
       # Update Dockerfile version label with the release version
       update-dockerfile-version: true
 
-      # Disable auto-tags since release-version handles tagging
+      # Tag configuration
       auto-tags: true
       latest-tag: true
 
@@ -77,7 +115,8 @@ jobs:
       # Always push on release
       push: true
 
-      # Security scanning
+      # Security scanning - runs BEFORE push
+      # If CRITICAL vulnerabilities are found, the push is blocked
       security-scan: true
       security-fail-on: 'CRITICAL'
       generate-sbom: true
@@ -86,10 +125,14 @@ jobs:
       sync-dockerhub-readme: true
     secrets: inherit
 
-  # Step 3: PR validation - build only, don't push
+  # Validate build on PRs (no push)
   docker-build-pr:
-    name: Validate Docker Build (PR)
-    if: github.event_name == 'pull_request'
+    name: 🔨 Validate Docker Build (PR)
+    needs: [validate-compose, validate-scripts]
+    if: |
+      github.event_name == 'pull_request' &&
+      needs.validate-compose.result == 'success' &&
+      needs.validate-scripts.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
       publish-to: 'ghcr'
@@ -103,13 +146,17 @@ jobs:
       # Don't push on PRs - just validate the build
       push: false
 
+      # Security scan still runs to catch issues early
       security-scan: true
       security-fail-on: 'CRITICAL'
     secrets: inherit
 
-  # Optional: Summary
+  # ============================================
+  # Pipeline Summary
+  # ============================================
+
   summary:
-    name: Pipeline Summary
+    name: 📊 Pipeline Summary
     if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [release, docker-build-release]
     runs-on: ubuntu-latest
@@ -122,10 +169,18 @@ jobs:
           if [ "${{ needs.release.outputs.release-created }}" = "true" ]; then
             echo "✅ **Release ${{ needs.release.outputs.version }} created successfully!**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Registry | Tags |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|------|" >> $GITHUB_STEP_SUMMARY
-            echo "| GHCR | \`${{ needs.release.outputs.version }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| Docker Hub | \`${{ needs.release.outputs.version }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
+
+            # Check if image was pushed
+            if [ "${{ needs.docker-build-release.outputs.image-pushed }}" = "true" ]; then
+              echo "| Registry | Tags |" >> $GITHUB_STEP_SUMMARY
+              echo "|----------|------|" >> $GITHUB_STEP_SUMMARY
+              echo "| GHCR | \`${{ needs.release.outputs.version }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
+              echo "| Docker Hub | \`${{ needs.release.outputs.version }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ **Image was NOT pushed** (security scan may have failed)" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "Check the security scan results in the workflow artifacts." >> $GITHUB_STEP_SUMMARY
+            fi
           else
             echo "ℹ️ **No release created** (no releasable changes)" >> $GITHUB_STEP_SUMMARY
           fi

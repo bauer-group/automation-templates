@@ -1,6 +1,11 @@
 name: Docker Hub Build with README Sync
 # Example: Complete Docker workflow that builds, pushes to Docker Hub, and syncs README
 #
+# Security Note:
+# The docker-build action runs security scans BEFORE pushing to the registry.
+# If vulnerabilities above the threshold are found, the push is blocked.
+# This prevents vulnerable images from being published.
+#
 # Publishes to: Docker Hub (docker.io)
 # Authentication: DOCKER_USERNAME + DOCKER_PASSWORD secrets
 #
@@ -8,6 +13,7 @@ name: Docker Hub Build with README Sync
 # - Building and pushing Docker images to Docker Hub only
 # - Automatic README synchronization
 # - Multi-platform builds
+# - Security scanning with configurable thresholds
 
 on:
   push:
@@ -21,6 +27,9 @@ on:
         description: 'Force push even on PR'
         type: boolean
         default: false
+
+permissions:
+  security-events: write
 
 jobs:
   docker-build:
@@ -50,7 +59,8 @@ jobs:
       sync-dockerhub-readme: true
       readme-file: '' # Auto-detect: DOCKER_README.MD -> README.MD -> README.md
 
-      # Security & Quality
+      # Security & Quality - scans run BEFORE push
+      # If vulnerabilities are found above the threshold, push is blocked
       security-scan: true
       security-scanner: 'trivy'
       security-fail-on: 'HIGH'
@@ -66,7 +76,7 @@ jobs:
     # - DOCKER_PASSWORD: Docker Hub password/token
     secrets: inherit
 
-  # Post-build notification (optional)
+  # Post-build notification with security status
   notify:
     needs: docker-build
     if: always()
@@ -83,8 +93,23 @@ jobs:
           echo "- **Digest:** \`${{ needs.docker-build.outputs.image-digest }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ needs.docker-build.result }}" = "success" ]; then
-            echo "Build completed successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "### Security Status" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.docker-build.outputs.security-scan-passed }}" = "true" ]; then
+            echo "✅ Security scan passed" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.docker-build.outputs.security-scan-passed }}" = "false" ]; then
+            echo "❌ Security scan failed - vulnerabilities found" >> $GITHUB_STEP_SUMMARY
           else
-            echo "Build failed! Please check the logs." >> $GITHUB_STEP_SUMMARY
+            echo "⏭️ Security scan skipped" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Build Result" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.docker-build.outputs.image-pushed }}" = "true" ]; then
+            echo "✅ Image pushed successfully!" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.docker-build.outputs.security-scan-passed }}" = "false" ]; then
+            echo "❌ Image NOT pushed due to security vulnerabilities" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.docker-build.result }}" = "success" ]; then
+            echo "ℹ️ Build completed (push skipped)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Build failed! Please check the logs." >> $GITHUB_STEP_SUMMARY
           fi

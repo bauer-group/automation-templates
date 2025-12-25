@@ -302,23 +302,31 @@ on:
       image-digest:
         description: 'Built image digest'
         value: ${{ jobs.build.outputs.image-digest }}
-      
+
       image-tags:
         description: 'Generated image tags'
         value: ${{ jobs.build.outputs.image-tags }}
-      
+
       image-url:
         description: 'Full image URL with tag'
         value: ${{ jobs.build.outputs.image-url }}
-      
+
       image-size:
         description: 'Image size in bytes'
         value: ${{ jobs.build.outputs.image-size }}
-      
+
+      image-pushed:
+        description: 'Whether the image was pushed to registry (false if security scan failed)'
+        value: ${{ jobs.build.outputs.image-pushed }}
+
+      security-scan-passed:
+        description: 'Whether the security scan passed'
+        value: ${{ jobs.build.outputs.security-scan-passed }}
+
       security-report:
-        description: 'Security scan report status'
+        description: 'Security scan report path'
         value: ${{ jobs.build.outputs.security-report }}
-      
+
       build-duration:
         description: 'Build duration in seconds'
         value: ${{ jobs.build.outputs.build-duration }}
@@ -346,6 +354,8 @@ jobs:
       image-tags: ${{ steps.docker-build.outputs.image-tags }}
       image-url: ${{ steps.docker-build.outputs.image-url }}
       image-size: ${{ steps.docker-build.outputs.image-size }}
+      image-pushed: ${{ steps.docker-build.outputs.image-pushed }}
+      security-scan-passed: ${{ steps.docker-build.outputs.security-scan-passed }}
       security-report: ${{ steps.docker-build.outputs.security-report }}
       build-duration: ${{ steps.docker-build.outputs.build-duration }}
     
@@ -462,7 +472,8 @@ jobs:
   dockerhub-readme:
     name: Sync Docker Hub README
     needs: build
-    if: inputs.sync-dockerhub-readme == true && (inputs.publish-to == 'dockerhub' || inputs.publish-to == 'both') && needs.build.result == 'success' && inputs.push == true
+    # Only sync README if image was actually pushed (security scan passed)
+    if: inputs.sync-dockerhub-readme == true && (inputs.publish-to == 'dockerhub' || inputs.publish-to == 'both') && needs.build.result == 'success' && needs.build.outputs.image-pushed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     
@@ -695,23 +706,36 @@ jobs:
             echo "- **Digest:** \`${{ needs.build.outputs.image-digest }}\`" >> $GITHUB_STEP_SUMMARY
             echo "- **Size:** ${{ needs.build.outputs.image-size }} bytes" >> $GITHUB_STEP_SUMMARY
             echo "- **Platforms:** \`${{ inputs.multi-platform && inputs.platforms || 'linux/amd64' }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Pushed to Registry:** ${{ needs.build.outputs.image-pushed == 'true' && '✅ Yes' || '❌ No' }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            
+
             echo "### 🏷️ Tags" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
             echo "${{ needs.build.outputs.image-tags }}" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           # Security Information
           if [ "${{ inputs.security-scan }}" = "true" ]; then
             echo "### 🛡️ Security" >> $GITHUB_STEP_SUMMARY
             echo "- **Scanner:** ${{ inputs.security-scanner }}" >> $GITHUB_STEP_SUMMARY
             echo "- **Fail Level:** ${{ inputs.security-fail-on }}" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ needs.build.outputs.security-scan-passed }}" = "true" ]; then
+              echo "- **Scan Result:** ✅ Passed" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.build.outputs.security-scan-passed }}" = "false" ]; then
+              echo "- **Scan Result:** ❌ Failed - Vulnerabilities found above threshold" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- **Scan Result:** ⏭️ Skipped" >> $GITHUB_STEP_SUMMARY
+            fi
             echo "- **Image Signed:** ${{ inputs.sign-image && '✅ Yes' || '❌ No' }}" >> $GITHUB_STEP_SUMMARY
             echo "- **SBOM Generated:** ${{ inputs.generate-sbom && '✅ Yes' || '❌ No' }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
+
+            if [ "${{ needs.build.outputs.security-scan-passed }}" = "false" ]; then
+              echo "> ⚠️ **Security scan blocked the push.** The image was built but NOT pushed to the registry due to vulnerabilities above the \`${{ inputs.security-fail-on }}\` threshold. Review the security report in the workflow artifacts." >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
           fi
           
           # Configuration Summary

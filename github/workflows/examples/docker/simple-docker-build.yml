@@ -2,6 +2,11 @@ name: Docker Simple Build Example
 # Example: Basic Docker build workflow using the automation-templates system
 # This example demonstrates a simple Docker build with minimal configuration
 #
+# Security Note:
+# The docker-build action runs security scans BEFORE pushing to the registry.
+# If vulnerabilities above the threshold are found, the push is blocked.
+# This prevents vulnerable images from being published.
+#
 # Publishes to: GitHub Container Registry (ghcr.io)
 # Authentication: Automatic via GITHUB_TOKEN
 
@@ -15,6 +20,10 @@ on:
       - 'Dockerfile'
       - 'src/**'
       - '.dockerignore'
+
+permissions:
+  packages: write
+  security-events: write
 
 jobs:
   docker-build:
@@ -39,7 +48,8 @@ jobs:
       # Push to registry (skip on PRs)
       push: ${{ github.event_name != 'pull_request' }}
 
-      # Basic security scanning
+      # Security scanning - runs BEFORE push
+      # If CRITICAL vulnerabilities are found, the push is blocked
       security-scan: true
       security-fail-on: 'CRITICAL'
 
