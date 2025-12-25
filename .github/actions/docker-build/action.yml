@@ -633,16 +633,9 @@ runs:
         # Check if image was pushed
         IMAGE_PUSHED="${{ inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true') }}"
 
-        # Try to get image size
-        IMAGE_SIZE="unknown"
-        if [ "$IMAGE_PUSHED" = "true" ]; then
-          if command -v skopeo >/dev/null 2>&1; then
-            IMAGE_SIZE=$(skopeo inspect docker://"$PRIMARY_TAG" 2>/dev/null | jq -r '.Size // "unknown"' || echo "unknown")
-          fi
-        else
-          # Get size from local Docker
-          IMAGE_SIZE=$(docker image inspect "$PRIMARY_TAG" --format='{{.Size}}' 2>/dev/null || echo "unknown")
-        fi
+        # Try to get image size from local Docker daemon
+        # The image is loaded locally via build-local step (load: true), so we can always inspect it
+        IMAGE_SIZE=$(docker image inspect "$PRIMARY_TAG" --format='{{.Size}}' 2>/dev/null || echo "unknown")
 
         echo "image-url=$PRIMARY_TAG" >> $GITHUB_OUTPUT
         echo "image-size=$IMAGE_SIZE" >> $GITHUB_OUTPUT
