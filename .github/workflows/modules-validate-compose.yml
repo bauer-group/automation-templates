@@ -144,12 +144,6 @@ jobs:
               # Extract required variables from compose file(s) and create placeholders
               echo "🔍 Extracting environment variables from compose file(s)..."
 
-              COMPOSE_FILE="${{ inputs.compose-file }}"
-              if [ -n '${{ inputs.compose-files }}' ] && [ '${{ inputs.compose-files }}' != '' ]; then
-                # Multiple files - merge for analysis
-                COMPOSE_FILES='${{ inputs.compose-files }}'
-              fi
-
               # Create minimal placeholder .env
               cat > .env.validation << 'EOF'
           # Auto-generated dummy .env for validation
@@ -157,27 +151,50 @@ jobs:
           PLACEHOLDER_VAR=placeholder
           EOF
 
-              # Try to extract variable names from compose file
-              if [ -f "$COMPOSE_FILE" ]; then
-                grep -oE '\$\{[A-Z_][A-Z0-9_]*\}' "$COMPOSE_FILE" 2>/dev/null | \
-                  sed 's/\${//g; s/}//g' | \
-                  sort -u | \
-                  while read -r var; do
-                    if [ -n "$var" ]; then
-                      echo "${var}=dummy_value_for_${var}" >> .env.validation
-                    fi
-                  done || true
-
-                # Also check for ${VAR:-default} patterns
-                grep -oE '\$\{[A-Z_][A-Z0-9_]*:-[^}]*\}' "$COMPOSE_FILE" 2>/dev/null | \
-                  sed 's/\${//g; s/:-.*}//g' | \
-                  sort -u | \
-                  while read -r var; do
-                    if [ -n "$var" ] && ! grep -q "^${var}=" .env.validation; then
-                      echo "${var}=dummy_value_for_${var}" >> .env.validation
-                    fi
-                  done || true
+              # Determine which files to analyze
+              FILES_TO_ANALYZE=""
+              if [ -n '${{ inputs.compose-files }}' ] && [ '${{ inputs.compose-files }}' != '' ]; then
+                # Multiple files from JSON array
+                FILES_TO_ANALYZE=$(echo '${{ inputs.compose-files }}' | python3 -c "
+          import sys, json
+          files = json.load(sys.stdin)
+          print(' '.join(files))
+          ")
+              else
+                # Single file
+                FILES_TO_ANALYZE="${{ inputs.compose-file }}"
               fi
+
+              echo "📄 Analyzing files: $FILES_TO_ANALYZE"
+
+              # Extract variables from all compose files
+              for compose_file in $FILES_TO_ANALYZE; do
+                if [ -f "$compose_file" ]; then
+                  echo "  📋 Extracting from: $compose_file"
+
+                  # Extract ${VAR} patterns
+                  grep -oE '\$\{[A-Z_][A-Z0-9_]*\}' "$compose_file" 2>/dev/null | \
+                    sed 's/\${//g; s/}//g' | \
+                    sort -u | \
+                    while read -r var; do
+                      if [ -n "$var" ] && ! grep -q "^${var}=" .env.validation; then
+                        echo "${var}=dummy_value_for_${var}" >> .env.validation
+                      fi
+                    done || true
+
+                  # Also check for ${VAR:-default} patterns
+                  grep -oE '\$\{[A-Z_][A-Z0-9_]*:-[^}]*\}' "$compose_file" 2>/dev/null | \
+                    sed 's/\${//g; s/:-.*}//g' | \
+                    sort -u | \
+                    while read -r var; do
+                      if [ -n "$var" ] && ! grep -q "^${var}=" .env.validation; then
+                        echo "${var}=dummy_value_for_${var}" >> .env.validation
+                      fi
+                    done || true
+                else
+                  echo "  ⚠️ File not found: $compose_file"
+                fi
+              done
             fi
 
             echo "📄 Created .env.validation with $(wc -l < .env.validation) entries"
@@ -363,7 +380,21 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Compose File** | \`${{ inputs.compose-file }}\` |" >> $GITHUB_STEP_SUMMARY
+
+          # Show compose files (multiple or single)
+          COMPOSE_FILES_INPUT='${{ inputs.compose-files }}'
+          if [ -n "$COMPOSE_FILES_INPUT" ] && [ "$COMPOSE_FILES_INPUT" != "" ]; then
+            # Multiple files - format as list
+            FILES_LIST=$(echo "$COMPOSE_FILES_INPUT" | python3 -c "
+          import sys, json
+          files = json.load(sys.stdin)
+          print(', '.join([f'\`{f}\`' for f in files]))
+          " 2>/dev/null || echo "$COMPOSE_FILES_INPUT")
+            echo "| **Compose Files** | $FILES_LIST |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Compose File** | \`${{ inputs.compose-file }}\` |" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "| **Services Found** | ${{ steps.validate.outputs.service-count }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Service Names** | ${{ steps.validate.outputs.services }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Working Directory** | \`${{ inputs.working-directory }}\` |" >> $GITHUB_STEP_SUMMARY
