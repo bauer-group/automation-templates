@@ -553,11 +553,11 @@ jobs:
           if [ "${{ inputs.include-private }}" = "true" ] && [ -n "${{ secrets.GITHUB_PAT }}" ]; then
             echo "🔄 Resetting git credentials to github.token for push operations..."
 
-            # Unset PAT credentials from global config
-            git config --global --unset-all http.https://github.com/.extraheader || true
+            # Clear ALL extraheader configs to prevent duplicate headers
+            git config --global --unset-all http.https://github.com/.extraheader 2>/dev/null || true
+            git config --local --unset-all http.https://github.com/.extraheader 2>/dev/null || true
 
             # Set github.token in local config for push to meta repo
-            # Local takes priority over global, so this overrides for the main repo
             AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${{ github.token }}" | base64 -w 0)"
             git config --local http.https://github.com/.extraheader "$AUTH_HEADER"
 
