@@ -194,6 +194,9 @@ outputs:
   image-size:
     description: 'Image size in bytes'
     value: ${{ steps.build-info.outputs.image-size }}
+  image-size-display:
+    description: 'Image size in human-readable format (e.g., 341.23 MB (357917766 bytes))'
+    value: ${{ steps.build-info.outputs.image-size-display }}
   image-pushed:
     description: 'Whether the image was pushed to registry'
     value: ${{ steps.build-info.outputs.pushed }}
@@ -635,17 +638,27 @@ runs:
 
         # Try to get image size from local Docker daemon
         # The image is loaded locally via build-local step (load: true), so we can always inspect it
-        IMAGE_SIZE=$(docker image inspect "$PRIMARY_TAG" --format='{{.Size}}' 2>/dev/null || echo "unknown")
+        IMAGE_SIZE_BYTES=$(docker image inspect "$PRIMARY_TAG" --format='{{.Size}}' 2>/dev/null || echo "0")
+
+        # Convert bytes to human-readable format (MB)
+        if [[ "$IMAGE_SIZE_BYTES" =~ ^[0-9]+$ ]] && [[ "$IMAGE_SIZE_BYTES" -gt 0 ]]; then
+          IMAGE_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $IMAGE_SIZE_BYTES / 1024 / 1024}")
+          IMAGE_SIZE_DISPLAY="${IMAGE_SIZE_MB} MB (${IMAGE_SIZE_BYTES} bytes)"
+        else
+          IMAGE_SIZE_BYTES="unknown"
+          IMAGE_SIZE_DISPLAY="unknown"
+        fi
 
         echo "image-url=$PRIMARY_TAG" >> $GITHUB_OUTPUT
-        echo "image-size=$IMAGE_SIZE" >> $GITHUB_OUTPUT
+        echo "image-size=$IMAGE_SIZE_BYTES" >> $GITHUB_OUTPUT
+        echo "image-size-display=$IMAGE_SIZE_DISPLAY" >> $GITHUB_OUTPUT
         echo "duration=$BUILD_DURATION" >> $GITHUB_OUTPUT
         echo "pushed=$IMAGE_PUSHED" >> $GITHUB_OUTPUT
 
         echo "📊 Build Information:"
         echo "  • Duration: ${BUILD_DURATION}s"
         echo "  • Primary Tag: $PRIMARY_TAG"
-        echo "  • Image Size: $IMAGE_SIZE bytes"
+        echo "  • Image Size: $IMAGE_SIZE_DISPLAY"
         echo "  • Pushed: $IMAGE_PUSHED"
 
     - name: 🔐 Sign Image with Cosign
@@ -733,7 +746,7 @@ runs:
         echo "| **Platforms** | \`${{ inputs.multi-platform == 'true' && inputs.platforms || 'linux/amd64' }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| **Registry** | \`${{ inputs.registry }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| **Duration** | ${{ steps.build-info.outputs.duration }}s |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Image Size** | ${{ steps.build-info.outputs.image-size }} bytes |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Image Size** | ${{ steps.build-info.outputs.image-size-display }} |" >> $GITHUB_STEP_SUMMARY
         echo "| **Pushed to Registry** | $( [ \"$IMAGE_PUSHED\" = \"true\" ] && echo '✅ Yes' || echo '❌ No' ) |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
