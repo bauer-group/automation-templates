@@ -315,6 +315,10 @@ on:
         description: 'Image size in bytes'
         value: ${{ jobs.build.outputs.image-size }}
 
+      image-size-display:
+        description: 'Image size in human-readable format (e.g., 341.23 MB (357917766 bytes))'
+        value: ${{ jobs.build.outputs.image-size-display }}
+
       image-pushed:
         description: 'Whether the image was pushed to registry (false if security scan failed)'
         value: ${{ jobs.build.outputs.image-pushed }}
@@ -354,6 +358,7 @@ jobs:
       image-tags: ${{ steps.docker-build.outputs.image-tags }}
       image-url: ${{ steps.docker-build.outputs.image-url }}
       image-size: ${{ steps.docker-build.outputs.image-size }}
+      image-size-display: ${{ steps.docker-build.outputs.image-size-display }}
       image-pushed: ${{ steps.docker-build.outputs.image-pushed }}
       security-scan-passed: ${{ steps.docker-build.outputs.security-scan-passed }}
       security-report: ${{ steps.docker-build.outputs.security-report }}
@@ -759,7 +764,7 @@ jobs:
             echo "| **Registry** | \`${{ inputs.publish-to }}\` |" >> $GITHUB_STEP_SUMMARY
             echo "| **Image** | \`${{ needs.build.outputs.image-url }}\` |" >> $GITHUB_STEP_SUMMARY
             echo "| **Digest** | \`${{ needs.build.outputs.image-digest }}\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Size** | ${{ needs.build.outputs.image-size }} bytes |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Size** | ${{ needs.build.outputs.image-size-display }} |" >> $GITHUB_STEP_SUMMARY
             echo "| **Platforms** | \`${{ inputs.multi-platform && inputs.platforms || 'linux/amd64' }}\` |" >> $GITHUB_STEP_SUMMARY
             echo "| **Pushed** | ${{ needs.build.outputs.image-pushed == 'true' && '✅ Yes' || '❌ No' }} |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
