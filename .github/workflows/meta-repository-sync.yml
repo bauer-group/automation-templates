@@ -553,26 +553,30 @@ jobs:
           if [ "${{ inputs.include-private }}" = "true" ] && [ -n "${{ secrets.GITHUB_PAT }}" ]; then
             echo "🔄 Resetting git credentials to github.token for push operations..."
 
-            # Clear ALL extraheader configs to prevent duplicate headers
-            # actions/checkout@v6 uses includeIf with external config files, so we must clear those too
+            # actions/checkout@v6 uses includeIf.gitdir with external credential files
+            # We need to update the credential in that file, not add a new extraheader
+            # This prevents "Duplicate header: Authorization" errors
+
+            # First, remove any global extraheader we set for submodule access
             git config --global --unset-all http.https://github.com/.extraheader 2>/dev/null || true
-            git config --local --unset-all http.https://github.com/.extraheader 2>/dev/null || true
 
-            # Remove includeIf entries that point to external credential files (actions/checkout@v6 style)
-            # These entries include additional extraheader configs that cause "Duplicate header" errors
-            git config --local --get-regexp '^includeIf\.gitdir:' 2>/dev/null | while read key value; do
-              git config --local --unset "$key" 2>/dev/null || true
-            done
+            # Find and update the credentials file used by actions/checkout
+            # The file is located in RUNNER_TEMP and named git-credentials-*.config
+            CREDS_FILE=$(find "${RUNNER_TEMP:-/home/runner/work/_temp}" -maxdepth 1 -name 'git-credentials-*.config' 2>/dev/null | head -1)
 
-            # Also check and clear any extraheader from included config files
-            for cfg in /home/runner/work/_temp/git-credentials-*.config; do
-              if [ -f "$cfg" ]; then
-                rm -f "$cfg" 2>/dev/null || true
-                echo "         🗑️ Removed external credential file: $cfg"
-              fi
-            done
-
-            echo "         ✅ Git credentials cleared (will use default github.token from checkout)"
+            if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
+              echo "         📝 Updating credentials file: $CREDS_FILE"
+              # Overwrite the extraheader in the credentials file with github.token
+              AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${{ github.token }}" | base64 -w 0)"
+              echo "[http \"https://github.com/\"]" > "$CREDS_FILE"
+              echo "	extraheader = $AUTH_HEADER" >> "$CREDS_FILE"
+              echo "         ✅ Credentials file updated with github.token"
+            else
+              echo "         ⚠️ No credentials file found, setting extraheader directly"
+              # Fallback: set extraheader directly (shouldn't be needed with checkout v6)
+              AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${{ github.token }}" | base64 -w 0)"
+              git config --local http.https://github.com/.extraheader "$AUTH_HEADER"
+            fi
           fi
 
       - name: 📝 Generate README
