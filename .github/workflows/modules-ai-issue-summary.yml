@@ -174,111 +174,96 @@ jobs:
       
       - name: 🎯 Prepare Prompt
         id: prompt
+        env:
+          DETAILS_BODY: ${{ steps.details.outputs.body }}
+          DETAILS_TITLE: ${{ steps.details.outputs.title }}
+          DETAILS_TYPE: ${{ steps.details.outputs.type }}
+          DETAILS_AUTHOR: ${{ steps.details.outputs.author }}
+          SUMMARY_TYPE: ${{ inputs.summary-type }}
+          CUSTOM_PROMPT: ${{ inputs.custom-prompt }}
+          TRANSLATE_TO: ${{ inputs.translate }}
+          ADD_LABELS: ${{ inputs.add-labels }}
+          ADD_PRIORITY: ${{ inputs.add-priority }}
         run: |
           echo "📝 Preparing AI prompt..."
 
-          # Store body content safely in a variable
-          ISSUE_BODY=$(cat <<'EOF_BODY'
-          ${{ steps.details.outputs.body }}
-          EOF_BODY
-          )
+          # Use environment variables directly - no heredocs needed for reading
+          ISSUE_BODY="$DETAILS_BODY"
+          ISSUE_TITLE="$DETAILS_TITLE"
 
-          ISSUE_TITLE=$(cat <<'EOF_TITLE'
-          ${{ steps.details.outputs.title }}
-          EOF_TITLE
-          )
-
+          # Build prompt using printf to file - completely safe, no heredocs
           # Check if custom prompt is provided
-          if [ -n "${{ inputs.custom-prompt }}" ]; then
-            cat > /tmp/prompt.txt <<EOF_PROMPT
-          ${{ inputs.custom-prompt }}
-          EOF_PROMPT
+          if [ -n "$CUSTOM_PROMPT" ]; then
+            printf '%s\n' "$CUSTOM_PROMPT" > /tmp/prompt.txt
           else
-            # Build prompt based on summary type
-            case "${{ inputs.summary-type }}" in
+            # Build prompt based on summary type using printf (safe for all characters)
+            case "$SUMMARY_TYPE" in
               "detailed")
-                cat > /tmp/prompt.txt <<EOF_PROMPT
-          Provide a detailed analysis of the following GitHub ${{ steps.details.outputs.type }}:
-
-          Title: ${ISSUE_TITLE}
-          Author: ${{ steps.details.outputs.author }}
-          Body: ${ISSUE_BODY}
-
-          Please include:
-          1. A comprehensive summary of the issue/request
-          2. Key points and requirements
-          3. Potential impact and scope
-          4. Suggested next steps
-          5. Any missing information needed
-          EOF_PROMPT
+                {
+                  printf 'Provide a detailed analysis of the following GitHub %s:\n\n' "$DETAILS_TYPE"
+                  printf 'Title: %s\n' "$ISSUE_TITLE"
+                  printf 'Author: %s\n' "$DETAILS_AUTHOR"
+                  printf 'Body: %s\n\n' "$ISSUE_BODY"
+                  printf 'Please include:\n'
+                  printf '1. A comprehensive summary of the issue/request\n'
+                  printf '2. Key points and requirements\n'
+                  printf '3. Potential impact and scope\n'
+                  printf '4. Suggested next steps\n'
+                  printf '5. Any missing information needed\n'
+                } > /tmp/prompt.txt
                 ;;
 
               "technical")
-                cat > /tmp/prompt.txt <<EOF_PROMPT
-          Provide a technical summary of the following GitHub ${{ steps.details.outputs.type }}:
-
-          Title: ${ISSUE_TITLE}
-          Body: ${ISSUE_BODY}
-
-          Focus on:
-          - Technical requirements and constraints
-          - Implementation considerations
-          - Potential challenges
-          - Architecture/design implications
-          - Performance considerations
-          EOF_PROMPT
+                {
+                  printf 'Provide a technical summary of the following GitHub %s:\n\n' "$DETAILS_TYPE"
+                  printf 'Title: %s\n' "$ISSUE_TITLE"
+                  printf 'Body: %s\n\n' "$ISSUE_BODY"
+                  printf 'Focus on:\n'
+                  printf '- Technical requirements and constraints\n'
+                  printf '- Implementation considerations\n'
+                  printf '- Potential challenges\n'
+                  printf '- Architecture/design implications\n'
+                  printf '- Performance considerations\n'
+                } > /tmp/prompt.txt
                 ;;
 
               "user-friendly")
-                cat > /tmp/prompt.txt <<EOF_PROMPT
-          Provide a simple, non-technical summary of the following GitHub ${{ steps.details.outputs.type }}:
-
-          Title: ${ISSUE_TITLE}
-          Body: ${ISSUE_BODY}
-
-          Explain in plain language:
-          - What the user is asking for
-          - Why it might be important
-          - What the expected outcome is
-          Use simple terms and avoid technical jargon.
-          EOF_PROMPT
+                {
+                  printf 'Provide a simple, non-technical summary of the following GitHub %s:\n\n' "$DETAILS_TYPE"
+                  printf 'Title: %s\n' "$ISSUE_TITLE"
+                  printf 'Body: %s\n\n' "$ISSUE_BODY"
+                  printf 'Explain in plain language:\n'
+                  printf '- What the user is asking for\n'
+                  printf '- Why it might be important\n'
+                  printf '- What the expected outcome is\n'
+                  printf 'Use simple terms and avoid technical jargon.\n'
+                } > /tmp/prompt.txt
                 ;;
 
               *)  # brief (default)
-                cat > /tmp/prompt.txt <<EOF_PROMPT
-          Summarize the following GitHub ${{ steps.details.outputs.type }} in 2-3 concise sentences:
-
-          Title: ${ISSUE_TITLE}
-          Body: ${ISSUE_BODY}
-
-          Be clear and to the point.
-          EOF_PROMPT
+                {
+                  printf 'Summarize the following GitHub %s in 2-3 concise sentences:\n\n' "$DETAILS_TYPE"
+                  printf 'Title: %s\n' "$ISSUE_TITLE"
+                  printf 'Body: %s\n\n' "$ISSUE_BODY"
+                  printf 'Be clear and to the point.\n'
+                } > /tmp/prompt.txt
                 ;;
             esac
           fi
 
           # Add translation request if needed
-          if [ -n "${{ inputs.translate }}" ]; then
-            cat >> /tmp/prompt.txt <<EOF_TRANSLATE
-
-          Please provide the summary in ${{ inputs.translate }} language.
-          EOF_TRANSLATE
+          if [ -n "$TRANSLATE_TO" ]; then
+            printf '\nPlease provide the summary in %s language.\n' "$TRANSLATE_TO" >> /tmp/prompt.txt
           fi
 
           # Add labeling request if needed
-          if [ "${{ inputs.add-labels }}" = "true" ]; then
-            cat >> /tmp/prompt.txt <<'EOF_LABELS'
-
-          Additionally, suggest appropriate labels from this list: bug, enhancement, documentation, question, help-wanted, good-first-issue, breaking-change, performance, security, test
-          EOF_LABELS
+          if [ "$ADD_LABELS" = "true" ]; then
+            printf '\nAdditionally, suggest appropriate labels from this list: bug, enhancement, documentation, question, help-wanted, good-first-issue, breaking-change, performance, security, test\n' >> /tmp/prompt.txt
           fi
 
           # Add priority request if needed
-          if [ "${{ inputs.add-priority }}" = "true" ]; then
-            cat >> /tmp/prompt.txt <<'EOF_PRIORITY'
-
-          Also, suggest a priority level: low, medium, high, critical
-          EOF_PRIORITY
+          if [ "$ADD_PRIORITY" = "true" ]; then
+            printf '\nAlso, suggest a priority level: low, medium, high, critical\n' >> /tmp/prompt.txt
           fi
 
           # Set output
@@ -299,6 +284,8 @@ jobs:
         continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.ai-api-key }}
+          AI_MODEL: ${{ inputs.model }}
+          PROMPT_FILE: ${{ steps.prompt.outputs.prompt-file }}
         run: |
           if [ -z "$OPENAI_API_KEY" ]; then
             echo "⚠️ OpenAI API key not configured, skipping..."
@@ -308,14 +295,17 @@ jobs:
           echo "🤖 Using OpenAI API..."
 
           # Read prompt and escape it properly for JSON
-          PROMPT=$(cat ${{ steps.prompt.outputs.prompt-file }} | jq -Rs .)
+          PROMPT=$(cat "$PROMPT_FILE" | jq -Rs .)
+
+          # Escape model name for JSON safety
+          MODEL_JSON=$(printf '%s' "$AI_MODEL" | jq -Rs .)
 
           # Make API call to OpenAI with properly escaped content
           RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
             -d "{
-              \"model\": \"${{ inputs.model }}\",
+              \"model\": $MODEL_JSON,
               \"messages\": [{\"role\": \"user\", \"content\": $PROMPT}],
               \"temperature\": 0.7,
               \"max_tokens\": 500
@@ -326,22 +316,8 @@ jobs:
             exit 1
           fi
 
-          echo "response=$RESPONSE" >> $GITHUB_OUTPUT
-      
-      - name: 🧠 Fallback Summary (No AI)
-        id: fallback
-        if: ${{ steps.inference-github.outcome != 'success' && steps.inference-openai.outcome != 'success' }}
-        env:
-          ITEM_TITLE: ${{ steps.details.outputs.title }}
-        run: |
-          echo "⚠️ AI inference failed, generating basic summary..."
-
-          # Generate content first to check for delimiter collision
-          CONTENT="**Type:** ${{ steps.details.outputs.type }}
-          **Title:** ${ITEM_TITLE}
-          **Author:** @${{ steps.details.outputs.author }}
-
-          This ${{ steps.details.outputs.type }} requires review. Please check the full description for details."
+          # Write response to file first (safe for any content)
+          printf '%s' "$RESPONSE" > /tmp/openai_response.txt
 
           # Generate safe delimiter using UUID with fallbacks
           generate_uuid() {
@@ -354,20 +330,60 @@ jobs:
             fi
           }
 
+          # Keep generating until we find a delimiter that doesn't exist in the content
           while true; do
-            DELIMITER="GHEOF_FALLBACK_$(generate_uuid)"
-            if ! echo "$CONTENT" | grep -qxF "$DELIMITER"; then
+            DELIMITER="GHEOF_OPENAI_$(generate_uuid)"
+            if ! grep -qxF "$DELIMITER" /tmp/openai_response.txt; then
               break
             fi
           done
 
           {
             echo "response<<${DELIMITER}"
-            echo "**Type:** ${{ steps.details.outputs.type }}"
+            cat /tmp/openai_response.txt
+            echo "${DELIMITER}"
+          } >> $GITHUB_OUTPUT
+      
+      - name: 🧠 Fallback Summary (No AI)
+        id: fallback
+        if: ${{ steps.inference-github.outcome != 'success' && steps.inference-openai.outcome != 'success' }}
+        env:
+          ITEM_TITLE: ${{ steps.details.outputs.title }}
+          ITEM_TYPE: ${{ steps.details.outputs.type }}
+          ITEM_AUTHOR: ${{ steps.details.outputs.author }}
+        run: |
+          echo "⚠️ AI inference failed, generating basic summary..."
+
+          # Write content to file first (completely safe)
+          {
+            printf '**Type:** %s\n' "$ITEM_TYPE"
             printf '**Title:** %s\n' "$ITEM_TITLE"
-            echo "**Author:** @${{ steps.details.outputs.author }}"
-            echo ""
-            echo "This ${{ steps.details.outputs.type }} requires review. Please check the full description for details."
+            printf '**Author:** @%s\n\n' "$ITEM_AUTHOR"
+            printf 'This %s requires review. Please check the full description for details.\n' "$ITEM_TYPE"
+          } > /tmp/fallback_response.txt
+
+          # Generate safe delimiter using UUID with fallbacks
+          generate_uuid() {
+            if command -v uuidgen >/dev/null 2>&1; then
+              uuidgen
+            elif [ -f /proc/sys/kernel/random/uuid ]; then
+              cat /proc/sys/kernel/random/uuid
+            else
+              head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'
+            fi
+          }
+
+          # Keep generating until we find a delimiter that doesn't exist in the content
+          while true; do
+            DELIMITER="GHEOF_FALLBACK_$(generate_uuid)"
+            if ! grep -qxF "$DELIMITER" /tmp/fallback_response.txt; then
+              break
+            fi
+          done
+
+          {
+            echo "response<<${DELIMITER}"
+            cat /tmp/fallback_response.txt
             echo "${DELIMITER}"
           } >> $GITHUB_OUTPUT
       
@@ -442,95 +458,106 @@ jobs:
       - name: 💬 Post Summary Comment
         env:
           GITHUB_TOKEN: ${{ secrets.token || secrets.GITHUB_TOKEN }}
+          COMMENT_TEMPLATE: ${{ inputs.comment-template }}
+          SUMMARY_CONTENT: ${{ steps.process.outputs.summary }}
+          SUGGESTED_LABELS: ${{ steps.process.outputs.suggested-labels }}
+          SUGGESTED_PRIORITY: ${{ steps.process.outputs.suggested-priority }}
+          ISSUE_NUMBER: ${{ steps.details.outputs.number }}
         run: |
           echo "💬 Posting summary comment..."
 
-          # Safely capture template and summary using heredoc
-          COMMENT_TEMPLATE=$(cat <<'EOF_TEMPLATE'
-          ${{ inputs.comment-template }}
-          EOF_TEMPLATE
-          )
+          # Write template and summary to files using printf (safe for all characters)
+          printf '%s' "$COMMENT_TEMPLATE" > /tmp/template.txt
+          printf '%s' "$SUMMARY_CONTENT" > /tmp/summary.txt
 
-          SUMMARY=$(cat <<'EOF_SUMMARY'
-          ${{ steps.process.outputs.summary }}
-          EOF_SUMMARY
-          )
-
-          # Replace {summary} placeholder using temporary files to avoid bash expansion issues
-          echo "$COMMENT_TEMPLATE" > /tmp/template.txt
-          echo "$SUMMARY" > /tmp/summary.txt
-
-          # Use sed for safer replacement
-          sed 's/{summary}/SUMMARY_PLACEHOLDER/g' /tmp/template.txt > /tmp/comment.txt
-          SUMMARY_ESCAPED=$(cat /tmp/summary.txt | sed 's/[&/\]/\\&/g')
-          sed "s|SUMMARY_PLACEHOLDER|$SUMMARY_ESCAPED|g" /tmp/comment.txt > /tmp/final_comment.txt
+          # Replace {summary} placeholder using awk (safer than sed for arbitrary content)
+          awk -v summary="$(cat /tmp/summary.txt)" '{gsub(/{summary}/, summary); print}' /tmp/template.txt > /tmp/final_comment.txt
 
           # Add label suggestions if any
-          if [ -n "${{ steps.process.outputs.suggested-labels }}" ]; then
-            echo "" >> /tmp/final_comment.txt
-            echo "**Suggested Labels:** ${{ steps.process.outputs.suggested-labels }}" >> /tmp/final_comment.txt
+          if [ -n "$SUGGESTED_LABELS" ]; then
+            printf '\n**Suggested Labels:** %s\n' "$SUGGESTED_LABELS" >> /tmp/final_comment.txt
           fi
 
           # Add priority suggestion if any
-          if [ -n "${{ steps.process.outputs.suggested-priority }}" ]; then
-            echo "**Suggested Priority:** ${{ steps.process.outputs.suggested-priority }}" >> /tmp/final_comment.txt
+          if [ -n "$SUGGESTED_PRIORITY" ]; then
+            printf '**Suggested Priority:** %s\n' "$SUGGESTED_PRIORITY" >> /tmp/final_comment.txt
           fi
 
           # Post the comment using file input for safety
-          gh issue comment ${{ steps.details.outputs.number }} --body-file /tmp/final_comment.txt
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/final_comment.txt
       
       - name: 🏷️ Apply Suggested Labels
         if: ${{ inputs.add-labels == true && steps.process.outputs.suggested-labels != '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.token || secrets.GITHUB_TOKEN }}
+          LABELS: ${{ steps.process.outputs.suggested-labels }}
+          ISSUE_NUMBER: ${{ steps.details.outputs.number }}
         run: |
           echo "🏷️ Applying suggested labels..."
-          
-          LABELS="${{ steps.process.outputs.suggested-labels }}"
-          
+
           for LABEL in $LABELS; do
             echo "Adding label: $LABEL"
-            gh issue edit ${{ steps.details.outputs.number }} --add-label "$LABEL" || echo "Failed to add label: $LABEL"
+            gh issue edit "$ISSUE_NUMBER" --add-label "$LABEL" || echo "Failed to add label: $LABEL"
           done
-      
+
       - name: 🎯 Apply Priority Label
         if: ${{ inputs.add-priority == true && steps.process.outputs.suggested-priority != '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.token || secrets.GITHUB_TOKEN }}
+          PRIORITY: ${{ steps.process.outputs.suggested-priority }}
+          ISSUE_NUMBER: ${{ steps.details.outputs.number }}
         run: |
           echo "🎯 Applying priority label..."
-          
-          PRIORITY="${{ steps.process.outputs.suggested-priority }}"
-          
+
           if [ -n "$PRIORITY" ]; then
-            gh issue edit ${{ steps.details.outputs.number }} --add-label "priority-$PRIORITY"
+            gh issue edit "$ISSUE_NUMBER" --add-label "priority-$PRIORITY"
             echo "Added priority label: priority-$PRIORITY"
           fi
-      
+
       - name: 📊 Summary Report
         if: always()
         env:
           ITEM_TITLE: ${{ steps.details.outputs.title }}
+          ITEM_TYPE: ${{ steps.details.outputs.type }}
+          ITEM_NUMBER: ${{ steps.details.outputs.number }}
+          ITEM_AUTHOR: ${{ steps.details.outputs.author }}
+          SUMMARY_TYPE: ${{ inputs.summary-type }}
+          MODEL: ${{ inputs.model }}
+          GITHUB_OUTCOME: ${{ steps.inference-github.outcome }}
+          OPENAI_OUTCOME: ${{ steps.inference-openai.outcome }}
+          SUGGESTED_LABELS: ${{ steps.process.outputs.suggested-labels }}
+          SUGGESTED_PRIORITY: ${{ steps.process.outputs.suggested-priority }}
         run: |
-          echo "### 🤖 AI Issue Summary Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Type** | ${{ steps.details.outputs.type }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Number** | #${{ steps.details.outputs.number }} |" >> $GITHUB_STEP_SUMMARY
-          printf '| **Title** | %s |\n' "$ITEM_TITLE" >> $GITHUB_STEP_SUMMARY
-          echo "| **Author** | @${{ steps.details.outputs.author }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Summary Type** | ${{ inputs.summary-type }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Model** | ${{ inputs.model }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **AI Service** | ${{ steps.inference-github.outcome == 'success' && 'GitHub Models' || steps.inference-openai.outcome == 'success' && 'OpenAI' || 'Fallback (No AI)' }} |" >> $GITHUB_STEP_SUMMARY
-
-          if [ -n "${{ steps.process.outputs.suggested-labels }}" ]; then
-            echo "| **Suggested Labels** | ${{ steps.process.outputs.suggested-labels }} |" >> $GITHUB_STEP_SUMMARY
+          # Determine AI service used
+          if [ "$GITHUB_OUTCOME" = "success" ]; then
+            AI_SERVICE="GitHub Models"
+          elif [ "$OPENAI_OUTCOME" = "success" ]; then
+            AI_SERVICE="OpenAI"
+          else
+            AI_SERVICE="Fallback (No AI)"
           fi
 
-          if [ -n "${{ steps.process.outputs.suggested-priority }}" ]; then
-            echo "| **Suggested Priority** | ${{ steps.process.outputs.suggested-priority }} |" >> $GITHUB_STEP_SUMMARY
-          fi
+          {
+            echo "### 🤖 AI Issue Summary Report"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            printf '| **Type** | %s |\n' "$ITEM_TYPE"
+            printf '| **Number** | #%s |\n' "$ITEM_NUMBER"
+            printf '| **Title** | %s |\n' "$ITEM_TITLE"
+            printf '| **Author** | @%s |\n' "$ITEM_AUTHOR"
+            printf '| **Summary Type** | %s |\n' "$SUMMARY_TYPE"
+            printf '| **Model** | %s |\n' "$MODEL"
+            printf '| **AI Service** | %s |\n' "$AI_SERVICE"
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Summary posted successfully**" >> $GITHUB_STEP_SUMMARY
+            if [ -n "$SUGGESTED_LABELS" ]; then
+              printf '| **Suggested Labels** | %s |\n' "$SUGGESTED_LABELS"
+            fi
+
+            if [ -n "$SUGGESTED_PRIORITY" ]; then
+              printf '| **Suggested Priority** | %s |\n' "$SUGGESTED_PRIORITY"
+            fi
+
+            echo ""
+            echo "✅ **Summary posted successfully**"
+          } >> $GITHUB_STEP_SUMMARY
