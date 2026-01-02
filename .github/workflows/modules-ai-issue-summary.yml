@@ -80,15 +80,41 @@ jobs:
         run: |
           echo "🔍 Extracting issue/PR details..."
 
-          # Generate unique delimiters to avoid conflicts with user content containing 'EOF'
-          DELIM_TITLE="GHDELIM_TITLE_$(date +%s%N)"
-          DELIM_BODY="GHDELIM_BODY_$(date +%s%N)"
-          DELIM_LABELS="GHDELIM_LABELS_$(date +%s%N)"
+          # Function to generate a cryptographically secure delimiter that doesn't exist in content
+          generate_safe_delimiter() {
+            local content="$1"
+            local prefix="$2"
+            local delimiter
+            local uuid
+            while true; do
+              # Generate UUID using multiple fallback methods for compatibility
+              if command -v uuidgen >/dev/null 2>&1; then
+                uuid=$(uuidgen)
+              elif [ -f /proc/sys/kernel/random/uuid ]; then
+                uuid=$(cat /proc/sys/kernel/random/uuid)
+              else
+                # Fallback: use /dev/urandom to generate UUID-like string
+                uuid=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n' | sed 's/\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)/\1\2\3\4-\5\6-\7\8-/')
+                uuid="${uuid}$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+              fi
+              delimiter="${prefix}_${uuid}"
+              # Check if delimiter exists in content (as a standalone line)
+              if ! echo "$content" | grep -qxF "$delimiter"; then
+                echo "$delimiter"
+                return
+              fi
+            done
+          }
 
           # Determine if this is an issue or PR
           if [ -n "${{ github.event.issue }}" ]; then
             echo "type=issue" >> $GITHUB_OUTPUT
             echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+
+            # Generate safe delimiters for each field
+            DELIM_TITLE=$(generate_safe_delimiter "$ISSUE_TITLE" "GHEOF_TITLE")
+            DELIM_BODY=$(generate_safe_delimiter "$ISSUE_BODY" "GHEOF_BODY")
+            DELIM_LABELS=$(generate_safe_delimiter '${{ toJson(github.event.issue.labels.*.name) }}' "GHEOF_LABELS")
 
             # Use environment variables to safely handle special characters
             {
@@ -116,6 +142,11 @@ jobs:
           elif [ -n "${{ github.event.pull_request }}" ]; then
             echo "type=pull_request" >> $GITHUB_OUTPUT
             echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+
+            # Generate safe delimiters for each field
+            DELIM_TITLE=$(generate_safe_delimiter "$PR_TITLE" "GHEOF_TITLE")
+            DELIM_BODY=$(generate_safe_delimiter "$PR_BODY" "GHEOF_BODY")
+            DELIM_LABELS=$(generate_safe_delimiter '${{ toJson(github.event.pull_request.labels.*.name) }}' "GHEOF_LABELS")
 
             # Use environment variables to safely handle special characters
             {
@@ -305,8 +336,31 @@ jobs:
         run: |
           echo "⚠️ AI inference failed, generating basic summary..."
 
-          # Generate a basic summary without AI using unique delimiter
-          DELIMITER="GHDELIM_FALLBACK_$(date +%s%N)"
+          # Generate content first to check for delimiter collision
+          CONTENT="**Type:** ${{ steps.details.outputs.type }}
+          **Title:** ${ITEM_TITLE}
+          **Author:** @${{ steps.details.outputs.author }}
+
+          This ${{ steps.details.outputs.type }} requires review. Please check the full description for details."
+
+          # Generate safe delimiter using UUID with fallbacks
+          generate_uuid() {
+            if command -v uuidgen >/dev/null 2>&1; then
+              uuidgen
+            elif [ -f /proc/sys/kernel/random/uuid ]; then
+              cat /proc/sys/kernel/random/uuid
+            else
+              head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'
+            fi
+          }
+
+          while true; do
+            DELIMITER="GHEOF_FALLBACK_$(generate_uuid)"
+            if ! echo "$CONTENT" | grep -qxF "$DELIMITER"; then
+              break
+            fi
+          done
+
           {
             echo "response<<${DELIMITER}"
             echo "**Type:** ${{ steps.details.outputs.type }}"
@@ -360,8 +414,25 @@ jobs:
           fi
 
           # Save clean summary to output (file-based, no variable expansion)
-          # Use a unique delimiter to avoid conflicts with AI response content
-          DELIMITER="GITHUB_OUTPUT_DELIMITER_$(date +%s%N)"
+          # Use a cryptographically secure delimiter that is guaranteed not to exist in the content
+          generate_uuid() {
+            if command -v uuidgen >/dev/null 2>&1; then
+              uuidgen
+            elif [ -f /proc/sys/kernel/random/uuid ]; then
+              cat /proc/sys/kernel/random/uuid
+            else
+              head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'
+            fi
+          }
+
+          # Keep generating until we find a delimiter that doesn't exist in the content
+          while true; do
+            DELIMITER="GHEOF_SUMMARY_$(generate_uuid)"
+            if ! grep -qxF "$DELIMITER" /tmp/clean_summary.txt; then
+              break
+            fi
+          done
+
           {
             echo "summary<<${DELIMITER}"
             cat /tmp/clean_summary.txt
