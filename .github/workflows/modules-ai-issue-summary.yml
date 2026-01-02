@@ -80,6 +80,11 @@ jobs:
         run: |
           echo "🔍 Extracting issue/PR details..."
 
+          # Generate unique delimiters to avoid conflicts with user content containing 'EOF'
+          DELIM_TITLE="GHDELIM_TITLE_$(date +%s%N)"
+          DELIM_BODY="GHDELIM_BODY_$(date +%s%N)"
+          DELIM_LABELS="GHDELIM_LABELS_$(date +%s%N)"
+
           # Determine if this is an issue or PR
           if [ -n "${{ github.event.issue }}" ]; then
             echo "type=issue" >> $GITHUB_OUTPUT
@@ -87,25 +92,25 @@ jobs:
 
             # Use environment variables to safely handle special characters
             {
-              echo 'title<<EOF'
+              echo "title<<${DELIM_TITLE}"
               printf '%s\n' "$ISSUE_TITLE"
-              echo 'EOF'
+              echo "${DELIM_TITLE}"
             } >> $GITHUB_OUTPUT
 
             # Use heredoc for body to handle special characters
             {
-              echo 'body<<EOF'
+              echo "body<<${DELIM_BODY}"
               printf '%s\n' "$ISSUE_BODY"
-              echo 'EOF'
+              echo "${DELIM_BODY}"
             } >> $GITHUB_OUTPUT
 
             echo "author=${{ github.event.issue.user.login }}" >> $GITHUB_OUTPUT
 
             # Use heredoc for labels JSON
             {
-              echo 'labels<<EOF'
+              echo "labels<<${DELIM_LABELS}"
               echo '${{ toJson(github.event.issue.labels.*.name) }}'
-              echo 'EOF'
+              echo "${DELIM_LABELS}"
             } >> $GITHUB_OUTPUT
 
           elif [ -n "${{ github.event.pull_request }}" ]; then
@@ -114,25 +119,25 @@ jobs:
 
             # Use environment variables to safely handle special characters
             {
-              echo 'title<<EOF'
+              echo "title<<${DELIM_TITLE}"
               printf '%s\n' "$PR_TITLE"
-              echo 'EOF'
+              echo "${DELIM_TITLE}"
             } >> $GITHUB_OUTPUT
 
             # Use heredoc for body to handle special characters
             {
-              echo 'body<<EOF'
+              echo "body<<${DELIM_BODY}"
               printf '%s\n' "$PR_BODY"
-              echo 'EOF'
+              echo "${DELIM_BODY}"
             } >> $GITHUB_OUTPUT
 
             echo "author=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
 
             # Use heredoc for labels JSON
             {
-              echo 'labels<<EOF'
+              echo "labels<<${DELIM_LABELS}"
               echo '${{ toJson(github.event.pull_request.labels.*.name) }}'
-              echo 'EOF'
+              echo "${DELIM_LABELS}"
             } >> $GITHUB_OUTPUT
           fi
       
@@ -300,15 +305,16 @@ jobs:
         run: |
           echo "⚠️ AI inference failed, generating basic summary..."
 
-          # Generate a basic summary without AI using heredoc
+          # Generate a basic summary without AI using unique delimiter
+          DELIMITER="GHDELIM_FALLBACK_$(date +%s%N)"
           {
-            echo 'response<<EOF'
+            echo "response<<${DELIMITER}"
             echo "**Type:** ${{ steps.details.outputs.type }}"
             printf '**Title:** %s\n' "$ITEM_TITLE"
             echo "**Author:** @${{ steps.details.outputs.author }}"
             echo ""
             echo "This ${{ steps.details.outputs.type }} requires review. Please check the full description for details."
-            echo 'EOF'
+            echo "${DELIMITER}"
           } >> $GITHUB_OUTPUT
       
       - name: 📝 Process AI Response
@@ -354,10 +360,12 @@ jobs:
           fi
 
           # Save clean summary to output (file-based, no variable expansion)
+          # Use a unique delimiter to avoid conflicts with AI response content
+          DELIMITER="GITHUB_OUTPUT_DELIMITER_$(date +%s%N)"
           {
-            echo 'summary<<EOF'
+            echo "summary<<${DELIMITER}"
             cat /tmp/clean_summary.txt
-            echo 'EOF'
+            echo "${DELIMITER}"
           } >> $GITHUB_OUTPUT
       
       - name: 💬 Post Summary Comment
