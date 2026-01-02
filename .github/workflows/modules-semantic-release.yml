@@ -65,6 +65,7 @@ jobs:
           echo "🔄 Fetching latest changes to ensure branch is up-to-date"
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Actions"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           git fetch origin
           git reset --hard origin/${{ inputs.target-branch }}
           git clean -fd
