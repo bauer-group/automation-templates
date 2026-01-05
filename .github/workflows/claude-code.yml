@@ -160,9 +160,6 @@ on:
       ANTHROPIC_API_KEY:
         description: 'Anthropic API key (alternative)'
         required: false
-      GITHUB_TOKEN:
-        description: 'GitHub token'
-        required: false
 
     outputs:
       response:
