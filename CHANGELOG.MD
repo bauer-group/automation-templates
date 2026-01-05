@@ -1,3 +1,22 @@
+## [4.7.0](https://github.com/bauer-group/automation-templates/compare/v4.6.0...v4.7.0) (2026-01-05)
+
+### 🚀 Features
+
+* add Claude Code Assistant workflow and examples ([de53b5c](https://github.com/bauer-group/automation-templates/commit/de53b5cca045552be416018c13fdf8130efd7609))
+* add human-readable image size output to Docker build action ([fb527a1](https://github.com/bauer-group/automation-templates/commit/fb527a103c3a53df4146eb01405dd3af58ea9e20))
+* add human-readable image size output to pipeline summary ([adef136](https://github.com/bauer-group/automation-templates/commit/adef136e481e92222ac7b659fb5bbe77dfaedc93))
+* improve Docker Compose validation by supporting multiple files and enhancing variable extraction ([b37967d](https://github.com/bauer-group/automation-templates/commit/b37967d3c8d1968da591cf759f57a00ce1de7fdf))
+
+### 🐛 Bug Fixes
+
+* clear additional extraheader configs to prevent duplicate header errors in git credentials ([8979574](https://github.com/bauer-group/automation-templates/commit/89795748ede8ecf0df035d19735256fa030a7588))
+* clear all extraheader configs to prevent duplicate headers in git credentials ([6787220](https://github.com/bauer-group/automation-templates/commit/6787220223902c62f793650e6c5d9e391db25061))
+* implement secure delimiter generation to handle special characters in issue/PR details ([bb780f6](https://github.com/bauer-group/automation-templates/commit/bb780f623b0c635a2b715a74627456570015768c))
+* optimize AI prompt preparation and response handling for improved safety and efficiency ([3d80bba](https://github.com/bauer-group/automation-templates/commit/3d80bba108b94d8a5dd89d34fc1018c7e318b2b5))
+* update git credentials handling to prevent duplicate header errors in actions/checkout ([fa58449](https://github.com/bauer-group/automation-templates/commit/fa5844958222610c2d9924ff031599d3cbcc50a6))
+* update git remote URL to use GitHub token for authentication during fetch ([8abed01](https://github.com/bauer-group/automation-templates/commit/8abed01011fa8bf878aaa07abad7889eee087661))
+* use unique delimiters to handle special characters in issue/PR details and fallback summary ([1c7818d](https://github.com/bauer-group/automation-templates/commit/1c7818df1c81f83502192bdcff48acb975053938))
+
 ## [4.6.0](https://github.com/bauer-group/automation-templates/compare/v4.5.1...v4.6.0) (2025-12-25)
 
 ### 🚀 Features
