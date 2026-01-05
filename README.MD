@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-01-05 16:20:26 UTC -->
+<!-- Generated on 2026-01-05 18:25:37 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -102,96 +102,117 @@ jobs:
 ```text
 ├── .github/
 │   ├── actions/               # 🔧 Reusable Composite Actions
-│   │   ├── docker-build/      # Docker build with security scanning
-│   │   ├── zephyr-build/      # Zephyr RTOS build automation
-│   │   ├── security-scan/     # Multi-engine security scanning
-│   │   ├── license-compliance/ # SPDX license compliance
-│   │   ├── artifact-generator/ # Multi-format artifact generation
-│   │   └── readme-generate/   # Professional README generation
-│   ├── config/               # 📋 Configuration Templates
-│   │   ├── docker-build/      # Docker build configurations
-│   │   │   ├── default.yml         # Basic Docker configuration
-│   │   │   ├── web-application.yml # Web app optimized
-│   │   │   ├── microservice.yml    # Microservice configuration
-│   │   │   └── enterprise.yml      # Enterprise-grade security
-│   │   │   ├── default.yml         # Standard Python setup
-│   │   │   ├── library.yml         # Python library
-│   │   │   ├── application.yml     # Python application
-│   │   │   └── data-science.yml    # Data science projects
-│   │   ├── zephyr-build/      # Zephyr RTOS build configurations
-│   │   │   ├── default.yml         # Basic Zephyr application
-│   │   │   ├── iot-device.yml      # IoT devices with connectivity
-│   │   │   ├── embedded-system.yml # Industrial/automotive systems
-│   │   │   └── sample-application.yml # Demo and learning projects
-│   │   └── commitlint.config.js # Commit linting rules
-│   └── workflows/            # 🚀 Reusable Workflows
-│       ├── docker-build.yml       # Docker build & deploy workflow
-│       ├── python-build.yml       # Python application builds & testing
-│       ├── python-semantic-release.yml # Python package semantic releases
-│       ├── zephyr-build.yml       # Zephyr RTOS build & test workflow
-│       ├── dotnet-build.yml       # .NET build & test workflow
-│       ├── dotnet-desktop-build.yml # .NET desktop application builds
-│       ├── nodejs-build.yml       # Node.js build & test workflow
-│       ├── php-build.yml          # PHP build & test workflow
-│       ├── shopware5-build.yml    # Shopware 5 plugin build & store workflow
-│       ├── makefile-build.yml     # Makefile-based build workflow
-│       ├── automatic-release.yml  # Automated release management
-│       ├── documentation.yml      # Documentation automation
-│       ├── security-management.yml # Security policy management
-│       ├── teams-notifications.yml # Microsoft Teams notifications
-│       ├── repository-cleanup.yml # Repository maintenance
-│       ├── ai-issue-summary.yml   # AI-powered issue summarization
-│       ├── issue-automation.yml   # Automated issue management
-│       ├── pr-labeler.yml         # Pull request labeling
-│       └── modules-*.yml          # Module-specific workflows
-│   └── examples/             # 📋 Usage Examples
-│       ├── docker/            # Docker build examples
-│       │   ├── simple-docker-build.yml
-│       │   ├── web-application-build.yml
-│       │   ├── microservice-build.yml
-│       │   ├── enterprise-build.yml
-│       │   ├── multi-platform-build.yml
-│       │   └── security-focused-build.yml
-│       │   ├── simple-library.yml
-│       │   ├── web-application.yml
-│       │   ├── data-science-project.yml
-│       │   └── comprehensive-python.yml
-│       ├── zephyr-build/      # Zephyr RTOS project examples
-│       │   ├── basic-zephyr-app.yml
-│       │   ├── multi-board-matrix.yml
-│       │   └── iot-device-ci.yml
-│       ├── dotnet-build/      # .NET project examples
-│       ├── nodejs-build/      # Node.js project examples
-│       ├── php-build/         # PHP project examples
-│       ├── shopware5-build/   # Shopware 5 plugin examples
-│       │   ├── simple-legacy-plugin.yml
-│       │   ├── simple-modern-plugin.yml
-│       │   ├── comprehensive-plugin.yml
-│       │   ├── store-ready-plugin.yml
-│       │   └── multi-environment.yml
-│       ├── makefile-build/    # Makefile project examples
-│       ├── ci-cd/            # General CI/CD examples
-│       │   ├── comprehensive-ci-cd.yml
-│       │   └── security-focused.yml
-│       ├── documentation/     # Documentation examples
-│       ├── teams-notification/ # Teams notification examples
-│       └── repository-cleanup/ # Repository maintenance examples
-├── github/                   # 🛠️ Repository Management Tools
-│   ├── branch-protect/       # Branch protection automation
-│   ├── cleanup/             # Repository cleanup utilities
-│   ├── runner/              # Self-hosted runner management
-│   └── workflows/           # Legacy workflow examples
-├── docs/                    # 📚 Comprehensive Documentation
-│   ├── workflows/           # Workflow documentation
-│   │   ├── docker-build.md       # Docker system documentation
-│   │   ├── zephyr-build.md       # Zephyr RTOS build documentation
-│   │   ├── dotnet-build.md       # .NET build documentation
-│   │   ├── nodejs-build.md       # Node.js build documentation
-│   │   ├── php-build.md          # PHP build documentation
-│   │   └── shopware5-build.md    # Shopware 5 plugin build documentation
-│   ├── README.template.MD    # This template file
+│   │   ├── action-resolver/      # Dynamic action resolution
+│   │   ├── artifact-generator/   # Multi-format artifact generation
+│   │   ├── auto-merge/           # Automated PR merging
+│   │   ├── claude-code/          # AI-powered code assistant
+│   │   ├── docker-build/         # Docker build with security scanning
+│   │   ├── generate-changelog/   # Changelog generation
+│   │   ├── gitguardian-scan/     # GitGuardian security scanning
+│   │   ├── gitleaks-scan/        # Gitleaks secret detection
+│   │   ├── labeler-triage/       # Issue/PR labeling and triage
+│   │   ├── license-compliance/   # SPDX license compliance
+│   │   ├── makefile-build/       # Makefile build automation
+│   │   ├── readme-generate/      # Professional README generation
+│   │   ├── repository-cleanup/   # Repository maintenance automation
+│   │   ├── security-generate/    # Security policy generation
+│   │   ├── security-scan/        # Multi-engine security scanning
+│   │   ├── security-scan-meta/   # Security scan metadata
+│   │   ├── semantic-release/     # Automated semantic releases
+│   │   ├── teams-notification/   # Microsoft Teams integration
+│   │   └── zephyr-build/         # Zephyr RTOS build automation
+│   ├── config/                # 📋 Configuration Templates
+│   │   ├── claude-code/          # Claude Code Assistant configurations
+│   │   ├── docker-build/         # Docker build configurations
+│   │   ├── dotnet-build/         # .NET build configurations
+│   │   ├── dotnet-desktop-build/ # .NET desktop build configurations
+│   │   ├── issues/               # Issue template configurations
+│   │   ├── makefile-build/       # Makefile build configurations
+│   │   ├── meta-repository/      # Meta repository sync configurations
+│   │   ├── nodejs-build/         # Node.js build configurations
+│   │   ├── php-build/            # PHP build configurations
+│   │   ├── pr-labeler/           # PR labeler configurations
+│   │   ├── python-build/         # Python build configurations
+│   │   ├── release/              # Release configurations
+│   │   ├── repository-cleanup/   # Repository cleanup configurations
+│   │   ├── security-policy/      # Security policy configurations
+│   │   ├── shopware5-build/      # Shopware 5 plugin configurations
+│   │   ├── teams-notification/   # Teams notification configurations
+│   │   ├── zephyr-build/         # Zephyr RTOS configurations
+│   │   └── commitlint.config.js  # Commit linting rules
+│   └── workflows/             # 🚀 Reusable Workflows
+│       ├── ai-issue-summary.yml       # AI-powered issue summarization
+│       ├── automatic-release.yml      # Automated release management
+│       ├── claude-code.yml            # Claude Code AI assistant
+│       ├── coolify-deploy.yml         # Coolify deployment automation
+│       ├── docker-build.yml           # Docker build & deploy
+│       ├── documentation.yml          # Documentation automation
+│       ├── dotnet-build.yml           # .NET build & test
+│       ├── dotnet-desktop-build.yml   # .NET desktop builds
+│       ├── issue-automation.yml       # Automated issue management
+│       ├── makefile-build.yml         # Makefile-based builds
+│       ├── manual-release.yml         # Manual release workflow
+│       ├── meta-repository-sync.yml   # Meta repository synchronization
+│       ├── nodejs-build.yml           # Node.js build & test
+│       ├── php-build.yml              # PHP build & test
+│       ├── pr-labeler.yml             # Pull request labeling
+│       ├── python-build.yml           # Python builds & testing
+│       ├── python-semantic-release.yml # Python semantic releases
+│       ├── repository-cleanup.yml     # Repository maintenance
+│       ├── security-management.yml    # Security policy management
+│       ├── shopware5-build.yml        # Shopware 5 plugin builds
+│       ├── teams-notifications.yml    # Microsoft Teams notifications
+│       ├── zephyr-build.yml           # Zephyr RTOS builds
+│       └── modules-*.yml              # Module-specific workflows
+├── github/                    # 🛠️ Repository Management Tools
+│   ├── branch-protect/           # Branch protection automation
+│   ├── claude-code/              # Claude Code documentation & tools
+│   ├── cleanup/                  # Repository cleanup utilities
+│   ├── runner/                   # Self-hosted runner management
+│   └── workflows/                # Workflow examples & documentation
+│       └── examples/             # 📋 Usage Examples
+│           ├── ci-cd/                # General CI/CD examples
+│           ├── claude-code/          # Claude Code assistant examples
+│           ├── coolify-deploy/       # Coolify deployment examples
+│           ├── docker/               # Docker build examples
+│           ├── docker-compose/       # Docker Compose examples
+│           ├── documentation/        # Documentation examples
+│           ├── dotnet-build/         # .NET project examples
+│           ├── dotnet-desktop-build/ # .NET desktop examples
+│           ├── makefile-build/       # Makefile project examples
+│           ├── meta-repository/      # Meta repository examples
+│           ├── nodejs-build/         # Node.js project examples
+│           ├── php-build/            # PHP project examples
+│           ├── project-templates/    # Project template examples
+│           ├── python-build/         # Python project examples
+│           ├── python-release/       # Python release examples
+│           ├── release/              # Release workflow examples
+│           ├── repository-cleanup/   # Repository cleanup examples
+│           ├── security/             # Security workflow examples
+│           ├── shopware5-build/      # Shopware 5 plugin examples
+│           ├── teams-notification/   # Teams notification examples
+│           └── zephyr-build/         # Zephyr RTOS examples
+├── docs/                      # 📚 Comprehensive Documentation
+│   ├── workflows/                # Workflow documentation
+│   │   ├── claude-code.md            # Claude Code AI assistant
+│   │   ├── coolify-deploy.md         # Coolify deployment
+│   │   ├── docker-build.md           # Docker build system
+│   │   ├── dotnet-build.md           # .NET build system
+│   │   ├── dotnet-desktop-build.md   # .NET desktop builds
+│   │   ├── makefile-build.md         # Makefile build system
+│   │   ├── meta-repository-sync.md   # Meta repository sync
+│   │   ├── modules-validate-compose.md # Compose validation
+│   │   ├── modules-validate-shellscript.md # Shell validation
+│   │   ├── nodejs-build.md           # Node.js build system
+│   │   ├── php-build.md              # PHP build system
+│   │   ├── python-build.md           # Python build system
+│   │   ├── python-semantic-release.md # Python releases
+│   │   ├── shopware5-build.md        # Shopware 5 plugin builds
+│   │   ├── teams-notifications.md    # Teams notifications
+│   │   └── zephyr-build.md           # Zephyr RTOS builds
+│   ├── README.template.MD        # This template file
 │   └── SECRETS-NAMING-CONVENTION.md # Secret naming standards
-└── scripts/                 # 🔨 Utility Scripts
+└── scripts/                   # 🔨 Utility Scripts
 ```
 
 ## 🧩 Automation Systems Overview
@@ -425,13 +446,53 @@ jobs:
 | **🟡 Go Build** | Planned | Go module and build automation | - |
 | **🟡 Rust Build** | Planned | Cargo and Rust build automation | - |
 
+### 🤖 Claude Code AI Assistant
+
+AI-powered code assistant that responds to @claude mentions in issues, PRs, and comments with intelligent code analysis and suggestions.
+
+| Component | Purpose | Usage |
+|-----------|---------|-------|
+| **🔧 claude-code action** | AI code analysis composite action | Integrates Claude AI with configurable models |
+| **🚀 claude-code workflow** | Complete AI assistant CI/CD | `uses: bauer-group/automation-templates/.github/workflows/claude-code.yml@main` |
+| **📋 Configuration Templates** | Pre-configured AI profiles | `default`, `code-review`, `security-review`, `minimal` |
+
+**Features:**
+- ✅ **Intelligent Code Reviews** - Thorough analysis of pull requests
+- ✅ **Issue Assistance** - Help with bug reports and feature requests
+- ✅ **Security Analysis** - Security-focused code scanning
+- ✅ **General Q&A** - Answer questions about your codebase
+
+**Quick Start - Claude Code:**
+
+```yaml
+name: 🤖 Claude Code Assistant
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  claude:
+    if: contains(github.event.comment.body, '@claude')
+    uses: bauer-group/automation-templates/.github/workflows/claude-code.yml@main
+    with:
+      model: 'opus'
+      config-file: 'default'
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+```
+
 ### 🔧 Utility & Management Systems
 
 | System | Status | Description | Usage |
 |--------|--------|-------------|-------|
+| **🟢 Claude Code** | Available | AI-powered code assistant | `uses: bauer-group/automation-templates/.github/workflows/claude-code.yml@main` |
 | **🟢 Meta Repository Sync** | Available | Automated submodule sync by topics | `uses: bauer-group/automation-templates/.github/workflows/meta-repository-sync.yml@main` |
 | **🟢 Teams Notifications** | Available | Microsoft Teams integration | `uses: bauer-group/automation-templates/.github/workflows/teams-notifications.yml@main` |
 | **🟢 Repository Cleanup** | Available | Automated repository maintenance | `uses: bauer-group/automation-templates/.github/workflows/repository-cleanup.yml@main` |
+| **🟢 Coolify Deploy** | Available | Coolify deployment automation | `uses: bauer-group/automation-templates/.github/workflows/coolify-deploy.yml@main` |
 | **🟢 AI Issue Summary** | Available | AI-powered issue summarization | `uses: bauer-group/automation-templates/.github/workflows/ai-issue-summary.yml@main` |
 | **🟢 Issue Automation** | Available | Automated issue management | `uses: bauer-group/automation-templates/.github/workflows/issue-automation.yml@main` |
 | **🟢 PR Labeler** | Available | Automated pull request labeling | `uses: bauer-group/automation-templates/.github/workflows/pr-labeler.yml@main` |
@@ -847,6 +908,7 @@ gh auth status --show-token
 ### 🚀 Workflow Systems Documentation
 
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
+- [🐍 **Python Build System**](docs/workflows/python-build.md) - Python application builds and testing
 - [🐍 **Python Semantic Release System**](docs/workflows/python-semantic-release.md) - Modern Python CI/CD with semantic versioning
 - [⚡ **Zephyr RTOS Build System**](docs/workflows/zephyr-build.md) - Real-time OS automation with hardware testing
 - [🔨 **.NET Build System**](docs/workflows/dotnet-build.md) - .NET Core/Framework automation
@@ -855,55 +917,81 @@ gh auth status --show-token
 - [🐘 **PHP Build System**](docs/workflows/php-build.md) - PHP and Composer automation
 - [🛒 **Shopware 5 Plugin Build System**](docs/workflows/shopware5-build.md) - Shopware 5 plugin automation with store integration
 - [🔧 **Makefile Build System**](docs/workflows/makefile-build.md) - Makefile-based build automation
+- [🤖 **Claude Code AI Assistant**](docs/workflows/claude-code.md) - AI-powered code assistant
+- [🚀 **Coolify Deploy**](docs/workflows/coolify-deploy.md) - Coolify deployment automation
+- [🔄 **Meta Repository Sync**](docs/workflows/meta-repository-sync.md) - Automated submodule synchronization
 - [🔔 **Teams Notifications**](docs/workflows/teams-notifications.md) - Microsoft Teams integration
 
-### 🔧 Actions Documentation  
+### 🔧 Actions Documentation
 
-#### Docker Actions
+#### Build Actions
+
 - [🐳 **docker-build**](.github/actions/docker-build/README.md) - Multi-platform Docker builds with security
-
-
-#### Zephyr RTOS Actions
 - [⚡ **zephyr-build**](.github/actions/zephyr-build/README.md) - Complete Zephyr RTOS build automation with SDK management
+- [🔧 **makefile-build**](.github/actions/makefile-build/README.md) - Makefile-based build automation
 
 #### Security & Compliance Actions
+
 - [🛡️ **security-scan**](.github/actions/security-scan/README.md) - Multi-engine security scanning
+- [🔒 **gitleaks-scan**](.github/actions/gitleaks-scan/README.md) - Gitleaks secret detection
+- [🛡️ **gitguardian-scan**](.github/actions/gitguardian-scan/README.md) - GitGuardian security scanning
 - [📋 **license-compliance**](.github/actions/license-compliance/README.md) - SPDX license compliance
+
+#### AI & Automation Actions
+
+- [🤖 **claude-code**](.github/actions/claude-code/README.md) - AI-powered code assistant
 - [🔨 **artifact-generator**](.github/actions/artifact-generator/README.md) - Multi-format artifact generation
+- [🏷️ **labeler-triage**](.github/actions/labeler-triage/README.md) - Issue/PR labeling and triage
+- [🔀 **auto-merge**](.github/actions/auto-merge/README.md) - Automated PR merging
 
 #### Utility Actions
-- [📝 **readme-generate**](.github/actions/readme-generate/README.md) - Professional README generation (inline processing)
-- [🛡️ **security-generate**](.github/actions/security-generate/README.md) - Security policy generation (inline processing)
+
+- [📝 **readme-generate**](.github/actions/readme-generate/README.md) - Professional README generation
+- [🛡️ **security-generate**](.github/actions/security-generate/README.md) - Security policy generation
 - [🚀 **semantic-release**](.github/actions/semantic-release/README.md) - Automated release management
+- [📋 **generate-changelog**](.github/actions/generate-changelog/README.md) - Changelog generation
+- [🔔 **teams-notification**](.github/actions/teams-notification/README.md) - Microsoft Teams integration
+- [🧹 **repository-cleanup**](.github/actions/repository-cleanup/README.md) - Repository maintenance automation
 
 ### 📋 Configuration References
 
 - [🐳 **Docker Configurations**](.github/config/docker-build/) - Docker build configuration templates
 - [⚡ **Zephyr Configurations**](.github/config/zephyr-build/) - Zephyr RTOS build configuration templates
+- [🤖 **Claude Code Configurations**](.github/config/claude-code/) - Claude Code AI assistant configurations
 - [🛒 **Shopware 5 Configurations**](.github/config/shopware5-build/) - Shopware 5 plugin build configuration templates
+- [🔄 **Meta Repository Configurations**](.github/config/meta-repository/) - Meta repository sync configurations
 - [⚙️ **Workflow Configuration**](.github/config/README.md) - General workflow configuration guide
 - [🔒 **Secrets Naming Convention**](docs/SECRETS-NAMING-CONVENTION.md) - Standardized secret naming
 
 ### 🛠️ Repository Management Tools
 
 - [🔐 **Branch Protection Tools**](github/branch-protect/README.md) - Automated branch protection
-- [🧹 **Repository Cleanup Tools**](github/cleanup/README.md) - Repository maintenance utilities  
+- [🤖 **Claude Code Documentation**](github/claude-code/README.md) - AI-powered code assistant documentation
+- [🧹 **Repository Cleanup Tools**](github/cleanup/README.md) - Repository maintenance utilities
 - [🏃 **Self-Hosted Runner Setup**](github/runner/README.md) - Runner deployment and management
 
 ### 📖 Examples and Templates
 
 - [🐳 **Docker Examples**](github/workflows/examples/docker/) - Complete Docker workflow examples
-- [🐍 **Python Examples**](github/workflows/examples/python-build/) - Python semantic release examples and templates
+- [🐳 **Docker Compose Examples**](github/workflows/examples/docker-compose/) - Docker Compose workflow examples
+- [🐍 **Python Examples**](github/workflows/examples/python-build/) - Python build and test examples
+- [🐍 **Python Release Examples**](github/workflows/examples/python-release/) - Python semantic release examples
 - [⚡ **Zephyr Examples**](github/workflows/examples/zephyr-build/) - Zephyr RTOS project examples
 - [🔨 **.NET Examples**](github/workflows/examples/dotnet-build/) - .NET project examples
+- [🖥️ **.NET Desktop Examples**](github/workflows/examples/dotnet-desktop-build/) - .NET desktop application examples
 - [📦 **Node.js Examples**](github/workflows/examples/nodejs-build/) - Node.js project examples
 - [🐘 **PHP Examples**](github/workflows/examples/php-build/) - PHP project examples
 - [🛒 **Shopware 5 Examples**](github/workflows/examples/shopware5-build/) - Shopware 5 plugin workflow examples
 - [🔧 **Makefile Examples**](github/workflows/examples/makefile-build/) - Makefile project examples
+- [🤖 **Claude Code Examples**](github/workflows/examples/claude-code/) - Claude Code AI assistant examples
+- [🚀 **Coolify Deploy Examples**](github/workflows/examples/coolify-deploy/) - Coolify deployment examples
+- [🔄 **Meta Repository Examples**](github/workflows/examples/meta-repository/) - Meta repository sync examples
 - [🔄 **CI/CD Examples**](github/workflows/examples/ci-cd/) - General CI/CD pipeline examples
 - [📝 **Documentation Examples**](github/workflows/examples/documentation/) - Documentation automation examples
 - [🔔 **Teams Examples**](github/workflows/examples/teams-notification/) - Teams notification examples
 - [🧹 **Cleanup Examples**](github/workflows/examples/repository-cleanup/) - Repository maintenance examples
+- [🔒 **Security Examples**](github/workflows/examples/security/) - Security workflow examples
+- [🚀 **Release Examples**](github/workflows/examples/release/) - Release workflow examples
 
 ## 📞 Support & Community
 
@@ -938,5 +1026,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-01-05 16:20:26 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-01-05 18:25:37 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
