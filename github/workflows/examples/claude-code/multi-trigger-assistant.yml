@@ -1,0 +1,62 @@
+# Multi-Trigger Claude Code Assistant
+# Different Claude behaviors based on trigger phrase
+# Copy this file to .github/workflows/claude-code.yml in your repository
+
+name: Claude Code Assistant (Multi-Trigger)
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  # General assistance with @claude
+  general:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && !contains(github.event.comment.body, '@claude review') && !contains(github.event.comment.body, '@claude security')) ||
+      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude'))
+
+    uses: bauer-group/automation-templates/.github/workflows/claude-code.yml@main
+    with:
+      model: 'opus'
+      trigger-phrase: '@claude'
+      config-file: 'default'
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+  # Code review with @claude review
+  review:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude review')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude review')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude review'))
+
+    uses: bauer-group/automation-templates/.github/workflows/claude-code.yml@main
+    with:
+      model: 'opus'
+      trigger-phrase: '@claude review'
+      config-file: 'code-review'
+      analyze-diff: true
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+  # Security review with @claude security
+  security:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude security')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude security')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude security'))
+
+    uses: bauer-group/automation-templates/.github/workflows/claude-code.yml@main
+    with:
+      model: 'opus'
+      trigger-phrase: '@claude security'
+      config-file: 'security-review'
+      timeout-minutes: 60
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

@@ -1,0 +1,84 @@
+# Claude Code Assistant - Code Review Configuration
+# Optimized for thorough code reviews on pull requests
+# Author: BAUER GROUP
+# Version: 1.0.0
+
+# Model Configuration
+model:
+  name: 'opus'                    # Using opus for best analysis
+  max_tokens: 32768               # More tokens for detailed reviews
+  timeout_minutes: 45             # Extended timeout for complex PRs
+
+# Trigger Configuration
+trigger:
+  phrase: '@claude review'        # Specific trigger for reviews
+  case_sensitive: false
+
+# Permissions
+permissions:
+  allowed_users: []               # All users can request reviews
+  allowed_teams: []
+  allowed_labels:                 # Only respond to labeled PRs
+    - 'needs-review'
+    - 'ready-for-review'
+
+# Response Configuration
+response:
+  mode: 'review'                  # Use review mode for structured feedback
+  reaction: 'eyes'
+  mention_user: true
+  include_disclaimer: true
+
+# Code Analysis - Enhanced for Reviews
+analysis:
+  enabled: true
+  analyze_diff: true
+  max_files: 50                   # More files for comprehensive reviews
+  max_diff_size: 200000           # Larger diffs allowed
+  include_file_tree: true
+
+# Context - Full context for reviews
+context:
+  include_issue_body: true
+  include_comments: true
+  max_comments: 20                # More context for review history
+  include_labels: true
+
+# Safety
+safety:
+  rate_limit_per_issue: 5         # Limited reviews per PR
+  rate_limit_per_user: 10
+  block_sensitive_files:
+    - '*.env'
+    - '*secret*'
+    - '*credential*'
+    - '*password*'
+    - '*.pem'
+    - '*.key'
+
+# System Prompt - Code Review Focus
+prompts:
+  system: |
+    You are an expert code reviewer. When reviewing pull requests:
+
+    1. **Code Quality**: Check for clean code principles, naming conventions, and readability
+    2. **Security**: Identify potential security vulnerabilities (injection, XSS, etc.)
+    3. **Performance**: Look for performance issues, N+1 queries, memory leaks
+    4. **Best Practices**: Ensure adherence to language/framework best practices
+    5. **Testing**: Verify test coverage and suggest missing tests
+    6. **Documentation**: Check if changes require documentation updates
+
+    Format your review with clear sections:
+    - Summary
+    - What's Good
+    - Issues Found (with severity: Critical/High/Medium/Low)
+    - Suggestions for Improvement
+    - Questions for the Author
+
+  append: |
+    Always be constructive and helpful. Explain the "why" behind your suggestions.
+    Reference specific lines of code when possible.
+
+logging:
+  verbose: false
+  log_context: false

@@ -1,0 +1,137 @@
+# Claude Code Assistant - Security Review Configuration
+# Specialized for security-focused code reviews
+# Author: BAUER GROUP
+# Version: 1.0.0
+
+# Model Configuration
+model:
+  name: 'opus'                    # Opus for thorough security analysis
+  max_tokens: 32768               # Large context for security reviews
+  timeout_minutes: 60             # Extended timeout for deep analysis
+
+# Trigger Configuration
+trigger:
+  phrase: '@claude security'      # Specific security trigger
+  case_sensitive: false
+
+# Permissions - Restricted to security team
+permissions:
+  allowed_users: []               # Configure with security team members
+  allowed_teams:
+    - 'security'
+    - 'devops'
+  allowed_labels:
+    - 'security'
+    - 'security-review'
+    - 'vulnerability'
+
+# Response Configuration
+response:
+  mode: 'review'
+  reaction: 'eyes'
+  mention_user: true
+  include_disclaimer: true
+
+# Code Analysis - Enhanced for Security
+analysis:
+  enabled: true
+  analyze_diff: true
+  max_files: 100                  # Scan many files for security issues
+  max_diff_size: 500000           # Large diffs for security reviews
+  include_file_tree: true
+
+# Context
+context:
+  include_issue_body: true
+  include_comments: true
+  max_comments: 25
+  include_labels: true
+
+# Safety - Strict for security reviews
+safety:
+  rate_limit_per_issue: 3         # Limited to prevent abuse
+  rate_limit_per_user: 5
+  block_sensitive_files:          # Strictly block sensitive files
+    - '*.env'
+    - '*.env.*'
+    - '*secret*'
+    - '*credential*'
+    - '*password*'
+    - '*.pem'
+    - '*.key'
+    - '*.p12'
+    - '*.pfx'
+    - '*.jks'
+    - '*token*'
+    - '.git-credentials'
+    - '.netrc'
+    - 'id_rsa*'
+    - 'id_dsa*'
+    - 'id_ecdsa*'
+    - 'id_ed25519*'
+
+# System Prompt - Security Focus
+prompts:
+  system: |
+    You are a security-focused code reviewer. Your primary objectives:
+
+    ## Security Analysis Checklist
+
+    ### 1. Input Validation & Injection
+    - SQL Injection vulnerabilities
+    - NoSQL Injection
+    - Command Injection
+    - LDAP Injection
+    - XML External Entity (XXE)
+    - Server-Side Request Forgery (SSRF)
+
+    ### 2. Authentication & Authorization
+    - Broken authentication patterns
+    - Missing authorization checks
+    - Insecure session management
+    - Hardcoded credentials
+    - Weak password policies
+
+    ### 3. Cross-Site Scripting (XSS)
+    - Reflected XSS
+    - Stored XSS
+    - DOM-based XSS
+    - Missing output encoding
+
+    ### 4. Sensitive Data Exposure
+    - Hardcoded secrets/API keys
+    - Unencrypted sensitive data
+    - Insufficient logging/monitoring
+    - Information disclosure in errors
+
+    ### 5. Security Misconfigurations
+    - Default credentials
+    - Unnecessary features enabled
+    - Missing security headers
+    - Overly permissive CORS
+
+    ### 6. Cryptography
+    - Weak algorithms (MD5, SHA1, DES)
+    - Insufficient key lengths
+    - Improper random number generation
+    - Missing certificate validation
+
+    ## Response Format
+
+    For each finding:
+    1. **Severity**: Critical / High / Medium / Low / Informational
+    2. **Category**: OWASP category
+    3. **Location**: File and line number
+    4. **Description**: What the vulnerability is
+    5. **Impact**: What could happen if exploited
+    6. **Remediation**: How to fix it
+    7. **References**: Links to relevant resources
+
+  append: |
+    IMPORTANT: Never expose actual secrets or credentials in your response.
+    Always suggest secure alternatives and best practices.
+    Reference OWASP guidelines where applicable.
+
+logging:
+  verbose: false
+  log_context: false              # Critical: never log context in security reviews

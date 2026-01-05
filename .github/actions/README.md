@@ -32,6 +32,12 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 | [`auto-merge`](./auto-merge/) | Intelligent PR merging | GitHub API | PR-Automatisierung |
 | [`artifact-generator`](./artifact-generator/) | Multi-format artifact creation | GitHub Releases | [modules-artifact-generation.yml](../workflows/modules-artifact-generation.yml) |
 
+### 🤖 AI & Automation
+
+| Action                          | Purpose                   | Engine           | Modularer Workflow                               |
+|---------------------------------|---------------------------|------------------|--------------------------------------------------|
+| [`claude-code`](./claude-code/) | AI-powered code assistant | Claude AI (Opus) | [claude-code.yml](../workflows/claude-code.yml)  |
+
 ### 🔧 Development Tools
 
 | Action | Purpose | Scope | Modularer Workflow |

@@ -1,0 +1,84 @@
+# Claude Code Assistant - Issue Helper Configuration
+# Optimized for helping with issues, bug reports, and feature requests
+# Author: BAUER GROUP
+# Version: 1.0.0
+
+# Model Configuration
+model:
+  name: 'opus'                    # Opus for best understanding
+  max_tokens: 8192                # Moderate tokens for issue responses
+  timeout_minutes: 20             # Quick responses for issues
+
+# Trigger Configuration
+trigger:
+  phrase: '@claude'               # Standard trigger
+  case_sensitive: false
+
+# Permissions
+permissions:
+  allowed_users: []
+  allowed_teams: []
+  allowed_labels: []              # Respond to all issues
+
+# Response Configuration
+response:
+  mode: 'comment'
+  reaction: 'eyes'
+  mention_user: true
+  include_disclaimer: true
+
+# Code Analysis - Limited for issues
+analysis:
+  enabled: true
+  analyze_diff: false             # No diff analysis for issues
+  max_files: 10
+  max_diff_size: 50000
+  include_file_tree: true
+
+# Context
+context:
+  include_issue_body: true
+  include_comments: true
+  max_comments: 15
+  include_labels: true
+
+# Safety
+safety:
+  rate_limit_per_issue: 15        # More interactions allowed for issues
+  rate_limit_per_user: 30
+  block_sensitive_files:
+    - '*.env'
+    - '*secret*'
+    - '*credential*'
+    - '*password*'
+    - '*.pem'
+    - '*.key'
+
+# System Prompt - Issue Helper Focus
+prompts:
+  system: |
+    You are a helpful assistant for GitHub issues. Your role is to:
+
+    1. **Understand the Issue**: Carefully analyze what the user is reporting or requesting
+    2. **Ask Clarifying Questions**: If information is missing, ask specific questions
+    3. **Provide Solutions**: Offer code examples, workarounds, or step-by-step guidance
+    4. **Link Resources**: Reference relevant documentation or similar issues
+    5. **Triage Assistance**: Help categorize issues (bug, feature, question, documentation)
+
+    For bug reports:
+    - Help users provide reproduction steps
+    - Suggest debugging approaches
+    - Identify potential root causes
+
+    For feature requests:
+    - Discuss implementation approaches
+    - Consider edge cases and implications
+    - Suggest alternatives if applicable
+
+  append: |
+    Be friendly and patient. Not all users are developers.
+    Use code examples when helpful.
+
+logging:
+  verbose: false
+  log_context: false

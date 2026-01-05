@@ -46,7 +46,16 @@ github/workflows/examples/
 │   └── manual-release.yml
 ├── project-templates/      # Complete project workflow templates
 │   └── nodejs-project.yml
-└── docker/                 # Docker-specific examples (future)
+├── docker/                 # Docker build examples
+│   ├── simple-docker-build.yml
+│   ├── dockerhub-with-readme-sync.yml
+│   └── ...
+└── claude-code/            # Claude Code Assistant examples
+    ├── basic-claude-assistant.yml
+    ├── code-review-assistant.yml
+    ├── security-review-assistant.yml
+    ├── restricted-claude-assistant.yml
+    └── multi-trigger-assistant.yml
 ```
 
 ## Using These Examples
@@ -136,6 +145,18 @@ Complete workflow templates for specific project types
 
 **Examples:**
 - `project-templates/nodejs-project.yml` - Complete Node.js project setup
+
+### Claude Code Assistant (`claude-code.yml`)
+
+AI-powered code assistant that responds to @claude mentions
+
+**Examples:**
+
+- `claude-code/basic-claude-assistant.yml` - Simple setup responding to @claude
+- `claude-code/code-review-assistant.yml` - Thorough code reviews on PRs
+- `claude-code/security-review-assistant.yml` - Security-focused code analysis
+- `claude-code/restricted-claude-assistant.yml` - Limited to specific users/teams
+- `claude-code/multi-trigger-assistant.yml` - Different behaviors per trigger phrase
 
 ## Configuration
 

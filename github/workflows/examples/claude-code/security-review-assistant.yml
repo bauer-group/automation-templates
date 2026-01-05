@@ -1,0 +1,33 @@
+# Claude Security Review Assistant
+# Performs security-focused code reviews when @claude security is mentioned
+# Copy this file to .github/workflows/claude-security-review.yml in your repository
+
+name: Claude Security Review
+
+on:
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issue_comment:
+    types: [created]
+
+jobs:
+  security-review:
+    # Only run when @claude security is mentioned
+    if: |
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude security')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude security')) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude security'))
+
+    uses: bauer-group/automation-templates/.github/workflows/claude-code.yml@main
+    with:
+      model: 'opus'
+      trigger-phrase: '@claude security'
+      config-file: 'security-review'    # Use security review configuration
+      analyze-code: true
+      analyze-diff: true
+      max-files-to-analyze: 100         # Analyze more files for security
+      timeout-minutes: 60               # Extended timeout for thorough analysis
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

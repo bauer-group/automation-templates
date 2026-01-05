@@ -62,6 +62,8 @@ This document defines the naming convention for GitHub Secrets used in our workf
 | Secret Name | Description | Scope | Used In |
 |------------|-------------|-------|---------|
 | `OPENAI_API_KEY` | OpenAI API key for AI-powered features | Global | modules-ai-issue-summary.yml |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code OAuth token for AI code assistant | Global | claude-code.yml |
+| `ANTHROPIC_API_KEY` | Anthropic API key (alternative to OAuth token) | Global | claude-code.yml |
 
 ## Scope Definitions
 

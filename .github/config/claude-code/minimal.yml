@@ -1,0 +1,62 @@
+# Claude Code Assistant - Minimal Configuration
+# Lightweight configuration for quick responses
+# Author: BAUER GROUP
+# Version: 1.0.0
+
+# Model Configuration
+model:
+  name: 'sonnet'                  # Faster model for quick responses
+  max_tokens: 4096                # Limited tokens for brief responses
+  timeout_minutes: 10             # Short timeout
+
+# Trigger Configuration
+trigger:
+  phrase: '@claude'
+  case_sensitive: false
+
+# Permissions
+permissions:
+  allowed_users: []
+  allowed_teams: []
+  allowed_labels: []
+
+# Response Configuration
+response:
+  mode: 'comment'
+  reaction: 'rocket'              # Quick rocket reaction
+  mention_user: false             # No mention for faster responses
+  include_disclaimer: false       # Skip disclaimer
+
+# Code Analysis - Minimal
+analysis:
+  enabled: false                  # Disable code analysis
+  analyze_diff: false
+  max_files: 5
+  max_diff_size: 10000
+  include_file_tree: false
+
+# Context - Minimal
+context:
+  include_issue_body: true
+  include_comments: false         # No comment history
+  max_comments: 0
+  include_labels: false
+
+# Safety
+safety:
+  rate_limit_per_issue: 20        # Higher limit for quick responses
+  rate_limit_per_user: 50
+  block_sensitive_files:
+    - '*.env'
+    - '*secret*'
+
+# Prompts
+prompts:
+  system: |
+    Be concise and direct. Provide brief, actionable answers.
+    Skip lengthy explanations unless specifically asked.
+  append: ''
+
+logging:
+  verbose: false
+  log_context: false

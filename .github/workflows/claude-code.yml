@@ -1,0 +1,390 @@
+name: 🤖 Claude Code Assistant
+
+# Comprehensive AI-powered code assistant workflow
+# Responds to @claude mentions in issues, PRs, comments, and reviews
+# Provides intelligent code analysis, suggestions, and automated responses
+
+on:
+  workflow_call:
+    inputs:
+      # Model Configuration
+      model:
+        description: 'Claude model (opus, sonnet, haiku)'
+        type: string
+        required: false
+        default: 'opus'
+      max-tokens:
+        description: 'Maximum tokens for response'
+        type: string
+        required: false
+        default: '16384'
+      timeout-minutes:
+        description: 'Timeout in minutes'
+        type: number
+        required: false
+        default: 30
+
+      # Trigger Configuration
+      trigger-phrase:
+        description: 'Phrase to trigger Claude'
+        type: string
+        required: false
+        default: '@claude'
+      allowed-users:
+        description: 'Comma-separated allowed users'
+        type: string
+        required: false
+        default: ''
+      allowed-teams:
+        description: 'Comma-separated allowed teams'
+        type: string
+        required: false
+        default: ''
+      allowed-labels:
+        description: 'Only respond to issues/PRs with these labels'
+        type: string
+        required: false
+        default: ''
+
+      # Response Configuration
+      response-mode:
+        description: 'Response mode (comment, suggestion, review)'
+        type: string
+        required: false
+        default: 'comment'
+      add-reaction:
+        description: 'Reaction to add (eyes, rocket, etc.)'
+        type: string
+        required: false
+        default: 'eyes'
+      mention-user:
+        description: 'Mention triggering user in response'
+        type: boolean
+        required: false
+        default: true
+
+      # Code Analysis
+      analyze-code:
+        description: 'Enable code analysis for PRs'
+        type: boolean
+        required: false
+        default: true
+      analyze-diff:
+        description: 'Analyze PR diff'
+        type: boolean
+        required: false
+        default: true
+      max-files-to-analyze:
+        description: 'Max files to analyze'
+        type: number
+        required: false
+        default: 20
+      max-diff-size:
+        description: 'Max diff size in characters'
+        type: number
+        required: false
+        default: 100000
+
+      # Context Configuration
+      include-issue-body:
+        description: 'Include issue/PR body in context'
+        type: boolean
+        required: false
+        default: true
+      include-comments:
+        description: 'Include previous comments'
+        type: boolean
+        required: false
+        default: true
+      max-comments:
+        description: 'Max previous comments to include'
+        type: number
+        required: false
+        default: 10
+
+      # System Prompt
+      system-prompt:
+        description: 'Custom system prompt'
+        type: string
+        required: false
+        default: ''
+      system-prompt-file:
+        description: 'Path to system prompt file'
+        type: string
+        required: false
+        default: ''
+      append-system-prompt:
+        description: 'Additional instructions to append'
+        type: string
+        required: false
+        default: ''
+
+      # Safety
+      rate-limit-per-issue:
+        description: 'Max invocations per issue/hour'
+        type: number
+        required: false
+        default: 10
+      rate-limit-per-user:
+        description: 'Max invocations per user/hour'
+        type: number
+        required: false
+        default: 20
+      block-sensitive-files:
+        description: 'Blocked file patterns'
+        type: string
+        required: false
+        default: '*.env,*secret*,*credential*,*password*,*.pem,*.key'
+      dry-run:
+        description: 'Dry run mode'
+        type: boolean
+        required: false
+        default: false
+
+      # Configuration
+      config-file:
+        description: 'Config file from .github/config/claude-code/'
+        type: string
+        required: false
+        default: 'default'
+      fetch-depth:
+        description: 'Git fetch depth for checkout'
+        type: number
+        required: false
+        default: 1
+
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        description: 'Claude Code OAuth token'
+        required: false
+      ANTHROPIC_API_KEY:
+        description: 'Anthropic API key (alternative)'
+        required: false
+      GITHUB_TOKEN:
+        description: 'GitHub token'
+        required: false
+
+    outputs:
+      response:
+        description: 'Claude response text'
+        value: ${{ jobs.claude.outputs.response }}
+      response-url:
+        description: 'URL to posted comment'
+        value: ${{ jobs.claude.outputs.response-url }}
+      tokens-used:
+        description: 'Tokens used'
+        value: ${{ jobs.claude.outputs.tokens-used }}
+      model-used:
+        description: 'Model used'
+        value: ${{ jobs.claude.outputs.model-used }}
+      trigger-type:
+        description: 'Trigger type'
+        value: ${{ jobs.claude.outputs.trigger-type }}
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  # Validation job - check if Claude should respond
+  validate:
+    name: 🔍 Validate Trigger
+    runs-on: ubuntu-latest
+    outputs:
+      should-respond: ${{ steps.check.outputs.should-respond }}
+      trigger-type: ${{ steps.check.outputs.trigger-type }}
+      trigger-user: ${{ steps.check.outputs.trigger-user }}
+      trigger-body: ${{ steps.check.outputs.trigger-body }}
+    steps:
+      - name: 🔍 Check Trigger Conditions
+        id: check
+        env:
+          TRIGGER_PHRASE: ${{ inputs.trigger-phrase }}
+          ALLOWED_USERS: ${{ inputs.allowed-users }}
+          ALLOWED_LABELS: ${{ inputs.allowed-labels }}
+        run: |
+          SHOULD_RESPOND="false"
+          TRIGGER_TYPE=""
+          TRIGGER_USER=""
+          TRIGGER_BODY=""
+
+          echo "📍 Checking trigger conditions..."
+          echo "Event: ${{ github.event_name }}"
+          echo "Action: ${{ github.event.action }}"
+
+          # Determine trigger type and extract body
+          case "${{ github.event_name }}" in
+            "issue_comment")
+              TRIGGER_TYPE="issue_comment"
+              TRIGGER_BODY='${{ github.event.comment.body }}'
+              TRIGGER_USER='${{ github.event.comment.user.login }}'
+              # Check if this is a PR comment
+              if [[ '${{ github.event.issue.pull_request }}' != '' ]]; then
+                TRIGGER_TYPE="pr_comment"
+              fi
+              ;;
+            "pull_request_review_comment")
+              TRIGGER_TYPE="pr_review_comment"
+              TRIGGER_BODY='${{ github.event.comment.body }}'
+              TRIGGER_USER='${{ github.event.comment.user.login }}'
+              ;;
+            "pull_request_review")
+              TRIGGER_TYPE="pr_review"
+              TRIGGER_BODY='${{ github.event.review.body }}'
+              TRIGGER_USER='${{ github.event.review.user.login }}'
+              ;;
+            "issues")
+              TRIGGER_TYPE="issue"
+              TRIGGER_BODY='${{ github.event.issue.body }}'
+              TRIGGER_USER='${{ github.event.issue.user.login }}'
+              # Also check title for @claude
+              ISSUE_TITLE='${{ github.event.issue.title }}'
+              TRIGGER_BODY="$ISSUE_TITLE $TRIGGER_BODY"
+              ;;
+          esac
+
+          echo "trigger-type=$TRIGGER_TYPE" >> $GITHUB_OUTPUT
+          echo "trigger-user=$TRIGGER_USER" >> $GITHUB_OUTPUT
+
+          # Check if trigger phrase is present
+          if echo "$TRIGGER_BODY" | grep -qi "$TRIGGER_PHRASE"; then
+            echo "✅ Trigger phrase '$TRIGGER_PHRASE' found"
+            SHOULD_RESPOND="true"
+          else
+            echo "⏭️ Trigger phrase '$TRIGGER_PHRASE' not found"
+          fi
+
+          # Check allowed users (if specified)
+          if [[ "$SHOULD_RESPOND" == "true" ]] && [[ -n "$ALLOWED_USERS" ]]; then
+            if echo ",$ALLOWED_USERS," | grep -qi ",$TRIGGER_USER,"; then
+              echo "✅ User '$TRIGGER_USER' is allowed"
+            else
+              echo "⏭️ User '$TRIGGER_USER' is not in allowed list"
+              SHOULD_RESPOND="false"
+            fi
+          fi
+
+          # Check allowed labels (if specified)
+          if [[ "$SHOULD_RESPOND" == "true" ]] && [[ -n "$ALLOWED_LABELS" ]]; then
+            ISSUE_LABELS='${{ join(github.event.issue.labels.*.name, ',') }}${{ join(github.event.pull_request.labels.*.name, ',') }}'
+            LABEL_FOUND="false"
+            IFS=',' read -ra LABELS <<< "$ALLOWED_LABELS"
+            for label in "${LABELS[@]}"; do
+              if echo ",$ISSUE_LABELS," | grep -qi ",$label,"; then
+                LABEL_FOUND="true"
+                break
+              fi
+            done
+            if [[ "$LABEL_FOUND" == "false" ]]; then
+              echo "⏭️ Required label not found"
+              SHOULD_RESPOND="false"
+            fi
+          fi
+
+          echo "should-respond=$SHOULD_RESPOND" >> $GITHUB_OUTPUT
+
+          # Store trigger body (escape for multiline)
+          {
+            echo "trigger-body<<EOF"
+            echo "$TRIGGER_BODY"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+          echo "📊 Should respond: $SHOULD_RESPOND"
+
+  # Main Claude job
+  claude:
+    name: 🤖 Claude Code
+    needs: validate
+    if: needs.validate.outputs.should-respond == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      response: ${{ steps.claude.outputs.response }}
+      response-url: ${{ steps.claude.outputs.response-url }}
+      tokens-used: ${{ steps.claude.outputs.tokens-used }}
+      model-used: ${{ steps.claude.outputs.model-used }}
+      trigger-type: ${{ needs.validate.outputs.trigger-type }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ inputs.fetch-depth }}
+
+      - name: 👀 Add Reaction
+        if: inputs.add-reaction != '' && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN || github.token }}
+        run: |
+          REACTION="${{ inputs.add-reaction }}"
+          TRIGGER_TYPE="${{ needs.validate.outputs.trigger-type }}"
+
+          if [[ "$TRIGGER_TYPE" == "issue_comment" ]] || [[ "$TRIGGER_TYPE" == "pr_comment" ]]; then
+            echo "👀 Adding reaction to comment"
+            gh api \
+              --method POST \
+              "/repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+              -f content="$REACTION" || true
+          elif [[ "$TRIGGER_TYPE" == "pr_review_comment" ]]; then
+            echo "👀 Adding reaction to review comment"
+            gh api \
+              --method POST \
+              "/repos/${{ github.repository }}/pulls/comments/${{ github.event.comment.id }}/reactions" \
+              -f content="$REACTION" || true
+          fi
+
+      - name: 📋 Load Configuration
+        id: config
+        run: |
+          CONFIG_FILE=".github/config/claude-code/${{ inputs.config-file }}.yml"
+
+          if [[ -f "$CONFIG_FILE" ]]; then
+            echo "✅ Configuration file found: $CONFIG_FILE"
+            echo "config-exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "ℹ️ Using default configuration"
+            echo "config-exists=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Determine final model
+          MODEL="${{ inputs.model }}"
+          echo "model=$MODEL" >> $GITHUB_OUTPUT
+
+      - name: 🤖 Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: '--model ${{ steps.config.outputs.model }}'
+          timeout_minutes: ${{ inputs.timeout-minutes }}
+
+      - name: 📊 Output Summary
+        if: always()
+        run: |
+          {
+            echo "## 🤖 Claude Code Assistant"
+            echo ""
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            echo "| Trigger Type | ${{ needs.validate.outputs.trigger-type }} |"
+            echo "| Trigger User | ${{ needs.validate.outputs.trigger-user }} |"
+            echo "| Model | ${{ steps.config.outputs.model }} |"
+            echo "| Config File | ${{ inputs.config-file }} |"
+            echo "| Dry Run | ${{ inputs.dry-run }} |"
+          } >> $GITHUB_STEP_SUMMARY
+
+  # Notification job (optional)
+  notify:
+    name: 📢 Notify
+    needs: [validate, claude]
+    if: always() && needs.validate.outputs.should-respond == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📊 Log Result
+        run: |
+          echo "🤖 Claude Code completed"
+          echo "Trigger: ${{ needs.validate.outputs.trigger-type }}"
+          echo "User: ${{ needs.validate.outputs.trigger-user }}"
+          echo "Status: ${{ needs.claude.result }}"

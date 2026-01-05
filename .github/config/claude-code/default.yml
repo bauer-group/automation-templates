@@ -1,0 +1,68 @@
+# Claude Code Assistant - Default Configuration
+# Standard configuration for AI-powered code assistance
+# Author: BAUER GROUP
+# Version: 1.0.0
+
+# Model Configuration
+model:
+  name: 'opus'                    # Claude model: opus, sonnet, haiku
+  max_tokens: 16384               # Maximum response tokens
+  timeout_minutes: 30             # Response timeout
+
+# Trigger Configuration
+trigger:
+  phrase: '@claude'               # Phrase to trigger Claude
+  case_sensitive: false           # Case sensitivity for trigger phrase
+
+# Permissions
+permissions:
+  allowed_users: []               # Empty = all users allowed
+  allowed_teams: []               # Empty = all teams allowed
+  allowed_labels: []              # Empty = all issues/PRs
+  blocked_users: []               # Users blocked from triggering
+
+# Response Configuration
+response:
+  mode: 'comment'                 # comment, suggestion, review
+  reaction: 'eyes'                # Reaction to add: eyes, rocket, +1, heart
+  mention_user: true              # Mention triggering user in response
+  include_disclaimer: true        # Add AI disclaimer to response
+
+# Code Analysis
+analysis:
+  enabled: true                   # Enable code analysis
+  analyze_diff: true              # Analyze PR diffs
+  max_files: 20                   # Maximum files to analyze
+  max_diff_size: 100000           # Maximum diff size (chars)
+  include_file_tree: true         # Include file structure
+
+# Context Configuration
+context:
+  include_issue_body: true        # Include issue/PR description
+  include_comments: true          # Include previous comments
+  max_comments: 10                # Maximum comments to include
+  include_labels: true            # Include labels in context
+
+# Safety & Rate Limiting
+safety:
+  rate_limit_per_issue: 10        # Max invocations per issue/hour
+  rate_limit_per_user: 20         # Max invocations per user/hour
+  block_sensitive_files:          # Block these file patterns
+    - '*.env'
+    - '*secret*'
+    - '*credential*'
+    - '*password*'
+    - '*.pem'
+    - '*.key'
+    - '*.p12'
+    - '*.pfx'
+
+# System Prompts
+prompts:
+  system: ''                      # Custom system prompt (empty = default)
+  append: ''                      # Additional instructions to append
+
+# Logging & Debugging
+logging:
+  verbose: false                  # Enable verbose logging
+  log_context: false              # Log full context (careful with secrets)

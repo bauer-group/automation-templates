@@ -19,6 +19,12 @@ Organized configuration files for GitHub Actions workflows and modules.
 │   └── gitguardian.yml
 ├── 📁 license/          # License compliance configurations (future)
 │   └── allowed-licenses.yml
+├── 📁 claude-code/      # Claude Code Assistant configurations
+│   ├── default.yml
+│   ├── code-review.yml
+│   ├── issue-helper.yml
+│   ├── security-review.yml
+│   └── minimal.yml
 └── commitlint.config.js # Commit message linting configuration
 ```
 
@@ -70,6 +76,30 @@ Organized configuration files for GitHub Actions workflows and modules.
 **Module:** `modules-license-compliance.yml`
 
 - **`allowed-licenses.yml`** - License whitelist/blacklist configuration
+
+### 🤖 Claude Code Assistant (`claude-code/`)
+
+**Module:** `claude-code.yml`
+
+- **`default.yml`** - Standard configuration for general assistance
+  - Claude Opus model with balanced settings
+  - All users allowed, standard rate limits
+
+- **`code-review.yml`** - Optimized for thorough code reviews
+  - Extended tokens and timeout for detailed analysis
+  - Structured review format with severity levels
+
+- **`issue-helper.yml`** - Helping with issues and feature requests
+  - Quick responses for issue triage
+  - Bug analysis and feature evaluation
+
+- **`security-review.yml`** - Security-focused code analysis
+  - OWASP-based vulnerability scanning
+  - Restricted to security team (configurable)
+
+- **`minimal.yml`** - Quick, concise responses
+  - Uses Sonnet for faster responses
+  - Minimal context for brief answers
 
 ## 📝 Naming Convention
 

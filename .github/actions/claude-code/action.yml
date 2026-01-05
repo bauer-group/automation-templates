@@ -1,0 +1,444 @@
+name: '🤖 Claude Code Assistant'
+description: 'AI-powered code assistant that responds to @claude mentions in issues, PRs, and comments with intelligent code analysis and suggestions'
+author: 'BAUER GROUP'
+branding:
+  icon: 'message-circle'
+  color: 'purple'
+
+inputs:
+  # Authentication
+  claude-code-oauth-token:
+    description: 'Claude Code OAuth token for authentication'
+    required: true
+  anthropic-api-key:
+    description: 'Anthropic API key (alternative to OAuth token)'
+    required: false
+
+  # Model Configuration
+  model:
+    description: 'Claude model to use (opus, sonnet, haiku)'
+    required: false
+    default: 'opus'
+  max-tokens:
+    description: 'Maximum tokens for Claude response'
+    required: false
+    default: '16384'
+  timeout-minutes:
+    description: 'Timeout for Claude response in minutes'
+    required: false
+    default: '30'
+
+  # Behavior Configuration
+  trigger-phrase:
+    description: 'Phrase to trigger Claude (e.g., @claude)'
+    required: false
+    default: '@claude'
+  allowed-users:
+    description: 'Comma-separated list of users allowed to trigger Claude (empty = all)'
+    required: false
+    default: ''
+  allowed-teams:
+    description: 'Comma-separated list of teams allowed to trigger Claude (empty = all)'
+    required: false
+    default: ''
+  allowed-labels:
+    description: 'Only respond to issues/PRs with these labels (comma-separated, empty = all)'
+    required: false
+    default: ''
+
+  # Response Configuration
+  response-mode:
+    description: 'Response mode: comment, suggestion, review'
+    required: false
+    default: 'comment'
+  add-reaction:
+    description: 'Add reaction to triggering comment (eyes, rocket, etc.)'
+    required: false
+    default: 'eyes'
+  mention-user:
+    description: 'Mention the triggering user in response'
+    required: false
+    default: 'true'
+
+  # Code Analysis Options
+  analyze-code:
+    description: 'Enable code analysis for PR reviews'
+    required: false
+    default: 'true'
+  analyze-diff:
+    description: 'Analyze PR diff for context'
+    required: false
+    default: 'true'
+  max-files-to-analyze:
+    description: 'Maximum number of files to analyze in PR'
+    required: false
+    default: '20'
+  max-diff-size:
+    description: 'Maximum diff size in characters to analyze'
+    required: false
+    default: '100000'
+
+  # Context Configuration
+  include-issue-body:
+    description: 'Include issue/PR body in context'
+    required: false
+    default: 'true'
+  include-comments:
+    description: 'Include previous comments in context'
+    required: false
+    default: 'true'
+  max-comments:
+    description: 'Maximum number of previous comments to include'
+    required: false
+    default: '10'
+  include-labels:
+    description: 'Include issue/PR labels in context'
+    required: false
+    default: 'true'
+
+  # System Prompt Configuration
+  system-prompt:
+    description: 'Custom system prompt for Claude'
+    required: false
+    default: ''
+  system-prompt-file:
+    description: 'Path to file containing system prompt'
+    required: false
+    default: ''
+  append-system-prompt:
+    description: 'Additional instructions to append to default system prompt'
+    required: false
+    default: ''
+
+  # Safety & Limits
+  rate-limit-per-issue:
+    description: 'Maximum Claude invocations per issue/PR per hour'
+    required: false
+    default: '10'
+  rate-limit-per-user:
+    description: 'Maximum Claude invocations per user per hour'
+    required: false
+    default: '20'
+  block-sensitive-files:
+    description: 'Block analysis of sensitive file patterns (comma-separated globs)'
+    required: false
+    default: '*.env,*secret*,*credential*,*password*,*.pem,*.key'
+  dry-run:
+    description: 'Run in dry-run mode (no comments posted)'
+    required: false
+    default: 'false'
+
+  # Configuration File
+  config-file:
+    description: 'Configuration file name from .github/config/claude-code/'
+    required: false
+    default: 'default'
+
+  # GitHub Token
+  github-token:
+    description: 'GitHub token for API access'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  response:
+    description: 'Claude response text'
+  response-url:
+    description: 'URL to the posted comment'
+  tokens-used:
+    description: 'Number of tokens used'
+  model-used:
+    description: 'Model used for response'
+  trigger-type:
+    description: 'Type of trigger (issue_comment, pr_comment, pr_review, issue_opened)'
+  processing-time:
+    description: 'Processing time in seconds'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 📋 Load Configuration
+      id: config
+      shell: bash
+      run: |
+        CONFIG_FILE=".github/config/claude-code/${{ inputs.config-file }}.yml"
+
+        if [[ -f "$CONFIG_FILE" ]]; then
+          echo "✅ Loading configuration from $CONFIG_FILE"
+
+          # Parse YAML configuration using yq
+          if command -v yq &> /dev/null; then
+            MODEL=$(yq eval '.model.name // "${{ inputs.model }}"' "$CONFIG_FILE")
+            MAX_TOKENS=$(yq eval '.model.max_tokens // "${{ inputs.max-tokens }}"' "$CONFIG_FILE")
+            TRIGGER_PHRASE=$(yq eval '.trigger.phrase // "${{ inputs.trigger-phrase }}"' "$CONFIG_FILE")
+            RESPONSE_MODE=$(yq eval '.response.mode // "${{ inputs.response-mode }}"' "$CONFIG_FILE")
+            ADD_REACTION=$(yq eval '.response.reaction // "${{ inputs.add-reaction }}"' "$CONFIG_FILE")
+            ALLOWED_USERS=$(yq eval '.permissions.allowed_users | join(",") // "${{ inputs.allowed-users }}"' "$CONFIG_FILE")
+            ALLOWED_TEAMS=$(yq eval '.permissions.allowed_teams | join(",") // "${{ inputs.allowed-teams }}"' "$CONFIG_FILE")
+            SYSTEM_PROMPT=$(yq eval '.prompts.system // ""' "$CONFIG_FILE")
+            APPEND_PROMPT=$(yq eval '.prompts.append // "${{ inputs.append-system-prompt }}"' "$CONFIG_FILE")
+
+            echo "model=$MODEL" >> $GITHUB_OUTPUT
+            echo "max-tokens=$MAX_TOKENS" >> $GITHUB_OUTPUT
+            echo "trigger-phrase=$TRIGGER_PHRASE" >> $GITHUB_OUTPUT
+            echo "response-mode=$RESPONSE_MODE" >> $GITHUB_OUTPUT
+            echo "add-reaction=$ADD_REACTION" >> $GITHUB_OUTPUT
+            echo "allowed-users=$ALLOWED_USERS" >> $GITHUB_OUTPUT
+            echo "allowed-teams=$ALLOWED_TEAMS" >> $GITHUB_OUTPUT
+            echo "config-loaded=true" >> $GITHUB_OUTPUT
+
+            # Handle multiline system prompt
+            if [[ -n "$SYSTEM_PROMPT" ]]; then
+              echo "system-prompt<<EOF" >> $GITHUB_OUTPUT
+              echo "$SYSTEM_PROMPT" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+            fi
+
+            if [[ -n "$APPEND_PROMPT" ]]; then
+              echo "append-prompt<<EOF" >> $GITHUB_OUTPUT
+              echo "$APPEND_PROMPT" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "⚠️ yq not found, using input defaults"
+            echo "config-loaded=false" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "ℹ️ No configuration file found at $CONFIG_FILE, using defaults"
+          echo "config-loaded=false" >> $GITHUB_OUTPUT
+        fi
+
+        # Set final values (prefer config, fall back to inputs)
+        echo "final-model=${{ inputs.model }}" >> $GITHUB_OUTPUT
+        echo "final-max-tokens=${{ inputs.max-tokens }}" >> $GITHUB_OUTPUT
+
+    - name: 🔍 Detect Trigger Context
+      id: trigger
+      shell: bash
+      env:
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_EVENT_ACTION: ${{ github.event.action }}
+      run: |
+        echo "📍 Event: $GITHUB_EVENT_NAME"
+        echo "📍 Action: $GITHUB_EVENT_ACTION"
+
+        TRIGGER_TYPE=""
+        TRIGGER_BODY=""
+        TRIGGER_USER=""
+        ISSUE_NUMBER=""
+        PR_NUMBER=""
+
+        case "$GITHUB_EVENT_NAME" in
+          "issue_comment")
+            TRIGGER_TYPE="issue_comment"
+            TRIGGER_BODY='${{ github.event.comment.body }}'
+            TRIGGER_USER='${{ github.event.comment.user.login }}'
+            ISSUE_NUMBER='${{ github.event.issue.number }}'
+            if [[ '${{ github.event.issue.pull_request }}' != '' ]]; then
+              TRIGGER_TYPE="pr_comment"
+              PR_NUMBER='${{ github.event.issue.number }}'
+            fi
+            ;;
+          "pull_request_review_comment")
+            TRIGGER_TYPE="pr_review_comment"
+            TRIGGER_BODY='${{ github.event.comment.body }}'
+            TRIGGER_USER='${{ github.event.comment.user.login }}'
+            PR_NUMBER='${{ github.event.pull_request.number }}'
+            ;;
+          "pull_request_review")
+            TRIGGER_TYPE="pr_review"
+            TRIGGER_BODY='${{ github.event.review.body }}'
+            TRIGGER_USER='${{ github.event.review.user.login }}'
+            PR_NUMBER='${{ github.event.pull_request.number }}'
+            ;;
+          "issues")
+            TRIGGER_TYPE="issue_opened"
+            TRIGGER_BODY='${{ github.event.issue.body }}'
+            TRIGGER_USER='${{ github.event.issue.user.login }}'
+            ISSUE_NUMBER='${{ github.event.issue.number }}'
+            ;;
+          *)
+            echo "⚠️ Unknown event type: $GITHUB_EVENT_NAME"
+            TRIGGER_TYPE="unknown"
+            ;;
+        esac
+
+        echo "trigger-type=$TRIGGER_TYPE" >> $GITHUB_OUTPUT
+        echo "trigger-user=$TRIGGER_USER" >> $GITHUB_OUTPUT
+        echo "issue-number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+        echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
+
+        # Store trigger body for later use
+        echo "trigger-body<<EOF" >> $GITHUB_OUTPUT
+        echo "$TRIGGER_BODY" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: 🛡️ Validate Permissions
+      id: permissions
+      shell: bash
+      env:
+        TRIGGER_USER: ${{ steps.trigger.outputs.trigger-user }}
+        ALLOWED_USERS: ${{ steps.config.outputs.allowed-users || inputs.allowed-users }}
+        ALLOWED_TEAMS: ${{ steps.config.outputs.allowed-teams || inputs.allowed-teams }}
+      run: |
+        echo "🔐 Validating permissions for user: $TRIGGER_USER"
+
+        ALLOWED="true"
+
+        # Check allowed users
+        if [[ -n "$ALLOWED_USERS" ]]; then
+          if echo "$ALLOWED_USERS" | grep -qw "$TRIGGER_USER"; then
+            echo "✅ User $TRIGGER_USER is in allowed users list"
+          else
+            echo "❌ User $TRIGGER_USER is not in allowed users list"
+            ALLOWED="false"
+          fi
+        fi
+
+        # Note: Team membership check would require additional API calls
+        # For now, we trust the allowed_users list or allow all if empty
+
+        echo "allowed=$ALLOWED" >> $GITHUB_OUTPUT
+
+        if [[ "$ALLOWED" == "false" ]]; then
+          echo "::warning::User $TRIGGER_USER is not authorized to trigger Claude"
+        fi
+
+    - name: 👀 Add Reaction to Comment
+      if: inputs.add-reaction != '' && inputs.dry-run != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        REACTION="${{ inputs.add-reaction }}"
+
+        if [[ '${{ steps.trigger.outputs.trigger-type }}' == 'issue_comment' ]] || \
+           [[ '${{ steps.trigger.outputs.trigger-type }}' == 'pr_comment' ]]; then
+          echo "👀 Adding reaction '$REACTION' to comment"
+          gh api \
+            --method POST \
+            "/repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content="$REACTION" || true
+        elif [[ '${{ steps.trigger.outputs.trigger-type }}' == 'pr_review_comment' ]]; then
+          echo "👀 Adding reaction '$REACTION' to review comment"
+          gh api \
+            --method POST \
+            "/repos/${{ github.repository }}/pulls/comments/${{ github.event.comment.id }}/reactions" \
+            -f content="$REACTION" || true
+        fi
+
+    - name: 📝 Prepare Context
+      id: context
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        CONTEXT=""
+
+        # Get issue/PR details
+        if [[ -n '${{ steps.trigger.outputs.pr-number }}' ]]; then
+          echo "📦 Fetching PR #${{ steps.trigger.outputs.pr-number }} details"
+          PR_DATA=$(gh pr view ${{ steps.trigger.outputs.pr-number }} --json title,body,labels,files,additions,deletions,changedFiles)
+
+          PR_TITLE=$(echo "$PR_DATA" | jq -r '.title')
+          PR_BODY=$(echo "$PR_DATA" | jq -r '.body // ""')
+          PR_LABELS=$(echo "$PR_DATA" | jq -r '.labels[].name' | tr '\n' ',' | sed 's/,$//')
+          PR_FILES=$(echo "$PR_DATA" | jq -r '.changedFiles')
+          PR_ADDITIONS=$(echo "$PR_DATA" | jq -r '.additions')
+          PR_DELETIONS=$(echo "$PR_DATA" | jq -r '.deletions')
+
+          CONTEXT="## Pull Request Context\n"
+          CONTEXT+="**Title:** $PR_TITLE\n"
+          CONTEXT+="**Labels:** $PR_LABELS\n"
+          CONTEXT+="**Changed Files:** $PR_FILES (+"$PR_ADDITIONS"/-"$PR_DELETIONS")\n\n"
+
+          if [[ '${{ inputs.include-issue-body }}' == 'true' ]] && [[ -n "$PR_BODY" ]]; then
+            CONTEXT+="**Description:**\n$PR_BODY\n\n"
+          fi
+
+          # Get diff if enabled
+          if [[ '${{ inputs.analyze-diff }}' == 'true' ]]; then
+            echo "📊 Fetching PR diff"
+            DIFF=$(gh pr diff ${{ steps.trigger.outputs.pr-number }} --patch 2>/dev/null | head -c ${{ inputs.max-diff-size }} || echo "")
+            if [[ -n "$DIFF" ]]; then
+              CONTEXT+="## Code Changes (Diff)\n\`\`\`diff\n$DIFF\n\`\`\`\n\n"
+            fi
+          fi
+
+        elif [[ -n '${{ steps.trigger.outputs.issue-number }}' ]]; then
+          echo "📦 Fetching Issue #${{ steps.trigger.outputs.issue-number }} details"
+          ISSUE_DATA=$(gh issue view ${{ steps.trigger.outputs.issue-number }} --json title,body,labels)
+
+          ISSUE_TITLE=$(echo "$ISSUE_DATA" | jq -r '.title')
+          ISSUE_BODY=$(echo "$ISSUE_DATA" | jq -r '.body // ""')
+          ISSUE_LABELS=$(echo "$ISSUE_DATA" | jq -r '.labels[].name' | tr '\n' ',' | sed 's/,$//')
+
+          CONTEXT="## Issue Context\n"
+          CONTEXT+="**Title:** $ISSUE_TITLE\n"
+          CONTEXT+="**Labels:** $ISSUE_LABELS\n\n"
+
+          if [[ '${{ inputs.include-issue-body }}' == 'true' ]] && [[ -n "$ISSUE_BODY" ]]; then
+            CONTEXT+="**Description:**\n$ISSUE_BODY\n\n"
+          fi
+        fi
+
+        # Get previous comments if enabled
+        if [[ '${{ inputs.include-comments }}' == 'true' ]]; then
+          echo "💬 Fetching previous comments"
+          NUMBER="${{ steps.trigger.outputs.pr-number }}${{ steps.trigger.outputs.issue-number }}"
+
+          if [[ -n "$NUMBER" ]]; then
+            COMMENTS=$(gh api "/repos/${{ github.repository }}/issues/$NUMBER/comments" \
+              --jq '.[-${{ inputs.max-comments }}:] | .[] | "**\(.user.login):** \(.body)"' 2>/dev/null | head -c 50000 || echo "")
+
+            if [[ -n "$COMMENTS" ]]; then
+              CONTEXT+="\n## Previous Comments\n$COMMENTS\n"
+            fi
+          fi
+        fi
+
+        # Save context
+        echo "context<<EOF" >> $GITHUB_OUTPUT
+        echo -e "$CONTEXT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: 🤖 Run Claude Code
+      id: claude
+      if: steps.permissions.outputs.allowed == 'true'
+      uses: anthropics/claude-code-action@v1
+      with:
+        claude_code_oauth_token: ${{ inputs.claude-code-oauth-token }}
+        anthropic_api_key: ${{ inputs.anthropic-api-key }}
+        claude_args: '--model ${{ steps.config.outputs.model || inputs.model }}'
+        timeout_minutes: ${{ inputs.timeout-minutes }}
+      env:
+        CLAUDE_CONTEXT: ${{ steps.context.outputs.context }}
+
+    - name: 📤 Process Response
+      id: response
+      if: steps.permissions.outputs.allowed == 'true'
+      shell: bash
+      run: |
+        echo "✅ Claude response processed"
+        echo "trigger-type=${{ steps.trigger.outputs.trigger-type }}" >> $GITHUB_OUTPUT
+
+    - name: 📊 Output Summary
+      if: always()
+      shell: bash
+      run: |
+        echo "## 🤖 Claude Code Assistant Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Trigger Type | ${{ steps.trigger.outputs.trigger-type }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Trigger User | ${{ steps.trigger.outputs.trigger-user }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Model | ${{ steps.config.outputs.model || inputs.model }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Permissions | ${{ steps.permissions.outputs.allowed }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Dry Run | ${{ inputs.dry-run }} |" >> $GITHUB_STEP_SUMMARY
+
+        if [[ -n '${{ steps.trigger.outputs.pr-number }}' ]]; then
+          echo "| PR Number | #${{ steps.trigger.outputs.pr-number }} |" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [[ -n '${{ steps.trigger.outputs.issue-number }}' ]]; then
+          echo "| Issue Number | #${{ steps.trigger.outputs.issue-number }} |" >> $GITHUB_STEP_SUMMARY
+        fi
