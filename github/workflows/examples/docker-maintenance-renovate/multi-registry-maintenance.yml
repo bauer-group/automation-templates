@@ -1,0 +1,80 @@
+name: Docker Maintenance Multi-Registry Example
+# Example: Docker maintenance with multi-registry publishing
+# Automatically updates base images and pushes to both GHCR and Docker Hub
+#
+# This example shows:
+# - Renovate auto-merge for base image updates
+# - Docker build with multi-registry support
+# - Security scanning before any push
+# - README sync to Docker Hub
+#
+# Prerequisites:
+# - Install Renovate GitHub App: https://github.com/apps/renovate
+# - Enable "Allow auto-merge" in repository settings
+# - Set secrets: DOCKER_USERNAME, DOCKER_PASSWORD
+# - Add renovate.json (see below)
+#
+# Required renovate.json:
+# {
+#   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+#   "extends": [
+#     "github>bauer-group/automation-templates//.github/config/docker-maintenance-renovate/docker-maintenance"
+#   ]
+# }
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+  security-events: write
+
+jobs:
+  # ============================================
+  # Docker Build - GHCR + Docker Hub
+  # ============================================
+  docker-build:
+    name: Build & Push Docker Image
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      # Publish to both registries
+      publish-to: 'both'
+      ghcr-image-name: 'my-org/my-app'
+      docker-image-name: 'myuser/my-app'
+
+      # Build configuration
+      dockerfile-path: './Dockerfile'
+      auto-tags: true
+      latest-tag: true
+
+      # Only push on main/tags, not PRs
+      push: ${{ github.event_name != 'pull_request' }}
+
+      # Security - must pass before any push
+      security-scan: true
+      security-fail-on: 'HIGH'
+
+      # Sync README to Docker Hub on successful push
+      sync-dockerhub-readme: true
+
+    secrets: inherit
+
+  # ============================================
+  # Docker Maintenance after build passes
+  # ============================================
+  maintenance:
+    name: Docker Maintenance
+    needs: docker-build
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-renovate.yml@main
+    with:
+      merge-method: 'squash'
+      auto-approve: true
+    secrets: inherit

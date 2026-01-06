@@ -1,0 +1,80 @@
+name: Docker Maintenance Comprehensive Example
+# Example: Full Docker pipeline with automatic base image maintenance
+# This example combines Docker build + Renovate auto-merge for complete automation
+#
+# Flow:
+# ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+# │  Renovate Bot   │────▶│   Creates PR    │────▶│  Docker Build   │
+# │  Finds Update   │     │  node:20→20.1   │     │  + Security     │
+# └─────────────────┘     └─────────────────┘     └────────┬────────┘
+#                                                          │
+#                                                          ▼
+# ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+# │  New Image      │◀────│  Auto-Merge     │◀────│  All Checks     │
+# │  in Registry    │     │  (Squash)       │     │  Pass ✅        │
+# └─────────────────┘     └─────────────────┘     └─────────────────┘
+#
+# Prerequisites:
+# - Install Renovate GitHub App: https://github.com/apps/renovate
+# - Enable "Allow auto-merge" in repository settings
+# - Add renovate.json to your repository root
+#
+# Required renovate.json:
+# {
+#   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+#   "extends": [
+#     "github>bauer-group/automation-templates//.github/config/docker-maintenance-renovate/docker-maintenance"
+#   ]
+# }
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+  security-events: write
+
+jobs:
+  # ============================================
+  # Docker Build - runs on all PRs and pushes
+  # ============================================
+  docker-build:
+    name: Build Docker Image
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      publish-to: 'ghcr'
+      ghcr-image-name: 'my-maintained-app'
+
+      # Build configuration
+      dockerfile-path: './Dockerfile'
+      auto-tags: true
+      latest-tag: true
+
+      # Only push on main branch, not PRs
+      push: ${{ github.event_name != 'pull_request' }}
+
+      # Security scanning - blocks push if vulnerabilities found
+      security-scan: true
+      security-fail-on: 'HIGH'
+
+    secrets: inherit
+
+  # ============================================
+  # Docker Maintenance - only for Renovate PRs
+  # ============================================
+  maintenance:
+    name: Docker Maintenance
+    needs: docker-build
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-renovate.yml@main
+    with:
+      merge-method: 'squash'
+      auto-approve: true
+    secrets: inherit

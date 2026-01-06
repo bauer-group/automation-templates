@@ -1,0 +1,51 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "docker:enableMajor",
+    ":dependencyDashboard"
+  ],
+  "labels": ["dependencies", "automated"],
+  "timezone": "Etc/UTC",
+  "schedule": ["after 6:30am on sunday"],
+  "platformAutomerge": true,
+  "commitMessagePrefix": "fix(docker):",
+  "commitMessageAction": "update",
+  "commitMessageTopic": "{{depName}}",
+  "packageRules": [
+    {
+      "description": "Auto-merge Docker base image updates (patch & minor)",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "automerge": true,
+      "automergeType": "pr",
+      "automergeStrategy": "squash"
+    },
+    {
+      "description": "Docker major updates require manual review",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "automated", "breaking-change"]
+    },
+    {
+      "description": "Group all Docker updates together",
+      "matchDatasources": ["docker"],
+      "groupName": "docker-base-images",
+      "groupSlug": "docker"
+    }
+  ],
+  "docker": {
+    "fileMatch": [
+      "(^|/)Dockerfile[^/]*$",
+      "(^|/)dockerfile[^/]*$",
+      "(^|/)\\.?[Dd]ockerfile(\\.[^/]+)?$"
+    ]
+  },
+  "docker-compose": {
+    "fileMatch": [
+      "(^|/)docker-compose[^/]*\\.ya?ml$",
+      "(^|/)compose[^/]*\\.ya?ml$"
+    ]
+  }
+}

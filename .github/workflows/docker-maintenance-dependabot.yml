@@ -1,0 +1,115 @@
+# =============================================================================
+# Docker Maintenance with Dependabot
+# =============================================================================
+# Automatically merges Dependabot PRs when all checks pass.
+# This enables fully automated Docker base image updates using GitHub's
+# native Dependabot - no external app installation required.
+#
+# Usage in your repository:
+#   name: Docker Maintenance
+#   on:
+#     pull_request:
+#       types: [opened, synchronize, reopened, ready_for_review]
+#
+#   jobs:
+#     maintenance:
+#       uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
+#       secrets: inherit
+#
+# Requirements:
+# - Dependabot must be enabled in repository settings
+# - .github/dependabot.yml must include docker ecosystem
+# - Repository setting "Allow auto-merge" must be enabled
+# =============================================================================
+
+name: 🐳 Docker Maintenance (Dependabot)
+
+on:
+  workflow_call:
+    inputs:
+      merge-method:
+        description: 'Merge method: squash, merge, or rebase'
+        type: string
+        required: false
+        default: 'squash'
+
+      auto-approve:
+        description: 'Automatically approve Dependabot PRs'
+        type: boolean
+        required: false
+        default: true
+
+      wait-interval:
+        description: 'Seconds to wait between check status polls'
+        type: number
+        required: false
+        default: 30
+
+      runs-on:
+        description: 'Runner to use'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  maintenance:
+    name: Docker Maintenance
+    runs-on: ${{ inputs.runs-on }}
+    if: github.actor == 'dependabot[bot]'
+
+    steps:
+      - name: 🔍 Check Actor
+        id: check-actor
+        shell: bash
+        run: |
+          echo "🤖 PR opened by: ${{ github.actor }}"
+          echo "✅ Actor is dependabot[bot]"
+
+      - name: 📦 Fetch Dependabot Metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ⏳ Wait for checks to complete
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: ${{ inputs.wait-interval }}
+          running-workflow-name: "Docker Maintenance"
+          allowed-conclusions: success,skipped
+
+      - name: ✅ Auto-approve Dependabot PR
+        if: inputs.auto-approve
+        uses: hmarr/auto-approve-action@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔀 Enable auto-merge
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          pull-request-number: ${{ github.event.pull_request.number }}
+          merge-method: ${{ inputs.merge-method }}
+
+      - name: 📊 Summary
+        shell: bash
+        run: |
+          echo "## 🐳 Docker Maintenance (Dependabot)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **PR** | #${{ github.event.pull_request.number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Dependency** | \`${{ steps.metadata.outputs.dependency-names }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Update Type** | ${{ steps.metadata.outputs.update-type }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **From** | \`${{ steps.metadata.outputs.previous-version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **To** | \`${{ steps.metadata.outputs.new-version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Merge Method** | ${{ inputs.merge-method }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Auto-Approve** | ${{ inputs.auto-approve && '✅ Yes' || '❌ No' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ PR will be automatically merged once all checks pass." >> $GITHUB_STEP_SUMMARY

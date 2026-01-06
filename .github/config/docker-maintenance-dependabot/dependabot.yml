@@ -1,0 +1,41 @@
+# =============================================================================
+# Dependabot Configuration for Docker Maintenance
+# =============================================================================
+# Copy this file to .github/dependabot.yml in your repository.
+#
+# This configuration enables automatic Docker base image updates using
+# GitHub's native Dependabot - no external app installation required.
+#
+# Combine with the docker-maintenance-dependabot workflow for auto-merge:
+#   uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
+# =============================================================================
+
+version: 2
+updates:
+  # Docker base image updates
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "06:30"
+      timezone: "Etc/UTC"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "automated"
+    commit-message:
+      prefix: "fix(docker)"
+    open-pull-requests-limit: 5
+
+    # Group all Docker updates into a single PR (optional)
+    # groups:
+    #   docker-base-images:
+    #     patterns:
+    #       - "*"
+
+  # Docker Compose updates (optional)
+  # - package-ecosystem: "docker"
+  #   directory: "/docker/"
+  #   schedule:
+  #     interval: "weekly"

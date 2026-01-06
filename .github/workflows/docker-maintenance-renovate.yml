@@ -1,0 +1,111 @@
+# =============================================================================
+# Docker Maintenance with Renovate
+# =============================================================================
+# Automatically merges Renovate PRs when all checks pass.
+# This enables fully automated Docker base image updates.
+#
+# Usage in your repository:
+#   name: Docker Maintenance
+#   on:
+#     pull_request:
+#       types: [opened, synchronize, reopened, ready_for_review]
+#
+#   jobs:
+#     maintenance:
+#       uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-renovate.yml@main
+#       secrets: inherit
+#
+# Requirements:
+# - Renovate GitHub App must be installed on the repository
+# - Branch protection rules should allow auto-merge
+# - Repository setting "Allow auto-merge" must be enabled
+# =============================================================================
+
+name: 🐳 Docker Maintenance (Renovate)
+
+on:
+  workflow_call:
+    inputs:
+      merge-method:
+        description: 'Merge method: squash, merge, or rebase'
+        type: string
+        required: false
+        default: 'squash'
+
+      auto-approve:
+        description: 'Automatically approve Renovate PRs'
+        type: boolean
+        required: false
+        default: true
+
+      wait-interval:
+        description: 'Seconds to wait between check status polls'
+        type: number
+        required: false
+        default: 30
+
+      allowed-actors:
+        description: 'Comma-separated list of allowed bot actors'
+        type: string
+        required: false
+        default: 'renovate[bot],renovate'
+
+      runs-on:
+        description: 'Runner to use'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    name: Auto-merge Renovate PRs
+    runs-on: ${{ inputs.runs-on }}
+    if: contains(inputs.allowed-actors, github.actor)
+
+    steps:
+      - name: 🔍 Check Actor
+        id: check-actor
+        shell: bash
+        run: |
+          echo "🤖 PR opened by: ${{ github.actor }}"
+          echo "✅ Actor is in allowed list: ${{ inputs.allowed-actors }}"
+
+      - name: ⏳ Wait for checks to complete
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: ${{ inputs.wait-interval }}
+          running-workflow-name: "Auto-merge Renovate PRs"
+          allowed-conclusions: success,skipped
+
+      - name: 🔀 Enable auto-merge
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          pull-request-number: ${{ github.event.pull_request.number }}
+          merge-method: ${{ inputs.merge-method }}
+
+      - name: ✅ Auto-approve Renovate PR
+        if: inputs.auto-approve
+        uses: hmarr/auto-approve-action@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📊 Summary
+        shell: bash
+        run: |
+          echo "## 🤖 Renovate Auto-Merge" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **PR** | #${{ github.event.pull_request.number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Actor** | \`${{ github.actor }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Merge Method** | ${{ inputs.merge-method }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Auto-Approve** | ${{ inputs.auto-approve && '✅ Yes' || '❌ No' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ PR will be automatically merged once all checks pass." >> $GITHUB_STEP_SUMMARY

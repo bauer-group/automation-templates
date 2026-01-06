@@ -1,0 +1,65 @@
+# =============================================================================
+# Docker Maintenance with Dependabot - Example
+# =============================================================================
+# Simple Docker base image maintenance using GitHub's native Dependabot.
+#
+# Advantages:
+# - No external app installation required
+# - Native GitHub integration
+# - Simpler configuration
+#
+# How it works:
+# 1. Dependabot scans Dockerfiles for base image updates (Sundays 06:30 UTC)
+# 2. Creates a PR with commit prefix "fix(docker):" for semantic release
+# 3. CI runs your Docker build workflow on the PR
+# 4. If all checks pass, PR is automatically merged
+# 5. Semantic release creates a PATCH version (e.g., 1.0.0 → 1.0.1)
+# 6. Docker image is rebuilt and pushed
+#
+# Prerequisites:
+# 1. Enable Dependabot in repository settings
+# 2. Add .github/dependabot.yml (see below)
+# 3. Enable "Allow auto-merge" in repository settings
+#
+# Required .github/dependabot.yml in your repo:
+# -----------------------------------------------------------------------------
+# version: 2
+# updates:
+#   - package-ecosystem: "docker"
+#     directory: "/"                    # or "/src" if Dockerfile is there
+#     schedule:
+#       interval: "weekly"
+#       day: "sunday"
+#       time: "06:30"
+#       timezone: "Etc/UTC"
+#     labels:
+#       - "dependencies"
+#       - "docker"
+#       - "automated"
+#     commit-message:
+#       prefix: "fix(docker)"           # IMPORTANT: triggers PATCH release
+#     open-pull-requests-limit: 5
+# -----------------------------------------------------------------------------
+# =============================================================================
+
+name: Docker Maintenance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'Dockerfile'
+      - 'src/Dockerfile'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  maintenance:
+    name: Auto-merge Dependabot PRs
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
+    with:
+      merge-method: 'squash'
+      auto-approve: true
+    secrets: inherit

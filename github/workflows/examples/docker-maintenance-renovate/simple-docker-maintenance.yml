@@ -1,0 +1,60 @@
+# =============================================================================
+# Docker Maintenance with Renovate - Example
+# =============================================================================
+# Advanced Docker base image maintenance using Renovate Bot.
+#
+# Advantages over Dependabot:
+# - PR grouping (all Docker updates in one PR)
+# - Dependency Dashboard issue
+# - Flexible scheduling
+# - Advanced package rules
+#
+# How it works:
+# 1. Renovate scans Dockerfiles for base image updates (Sundays 06:30 UTC)
+# 2. Creates a PR with commit prefix "fix(docker):" for semantic release
+# 3. CI runs your Docker build workflow on the PR
+# 4. If all checks pass, PR is automatically merged
+# 5. Semantic release creates a PATCH version (e.g., 1.0.0 → 1.0.1)
+# 6. Docker image is rebuilt and pushed
+#
+# Prerequisites:
+# 1. Install Renovate GitHub App: https://github.com/apps/renovate
+# 2. Enable "Allow auto-merge" in repository settings
+# 3. Add renovate.json to your repository root (see below)
+#
+# Required renovate.json in your repo:
+# -----------------------------------------------------------------------------
+# {
+#   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+#   "extends": [
+#     "github>bauer-group/automation-templates//.github/config/docker-maintenance-renovate/docker-maintenance"
+#   ]
+# }
+# -----------------------------------------------------------------------------
+# The preset includes:
+# - commitMessagePrefix: "fix(docker):" for semantic release PATCH
+# - schedule: Sundays 06:30 UTC
+# - Auto-merge for patch/minor, manual review for major
+# =============================================================================
+
+name: Docker Maintenance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'Dockerfile'
+      - 'src/Dockerfile'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  maintenance:
+    name: Auto-merge Renovate PRs
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-renovate.yml@main
+    with:
+      merge-method: 'squash'
+      auto-approve: true
+    secrets: inherit

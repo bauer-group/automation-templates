@@ -1,0 +1,74 @@
+# =============================================================================
+# Docker Maintenance with Custom Schedule - Example
+# =============================================================================
+# Docker maintenance with customized Renovate settings.
+#
+# Use this when you need:
+# - Different schedule (daily, weekly, monthly)
+# - Different auto-merge behavior
+# - Specific package rules
+# - Different merge method
+#
+# Prerequisites:
+# 1. Install Renovate GitHub App: https://github.com/apps/renovate
+# 2. Enable "Allow auto-merge" in repository settings
+# 3. Add custom renovate.json (see bottom of file)
+# =============================================================================
+
+name: Docker Maintenance (Custom Schedule)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'Dockerfile'
+      - 'src/Dockerfile'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  maintenance:
+    name: Auto-merge Renovate PRs
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-renovate.yml@main
+    with:
+      # Use rebase instead of squash
+      merge-method: 'rebase'
+
+      # Disable auto-approve (require manual review)
+      auto-approve: false
+
+      # Faster polling for CI checks
+      wait-interval: 15
+    secrets: inherit
+
+# =============================================================================
+# Custom renovate.json for this use case:
+# =============================================================================
+# {
+#   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+#   "extends": [
+#     "github>bauer-group/automation-templates//.github/config/docker-maintenance-renovate/docker-maintenance"
+#   ],
+#
+#   // Override schedule: run daily instead of weekly
+#   "schedule": ["before 6am every weekday"],
+#
+#   // Override timezone (use Etc/UTC format)
+#   "timezone": "Etc/UTC",
+#
+#   // Disable grouping - get separate PRs for each update
+#   "packageRules": [
+#     {
+#       "matchDatasources": ["docker"],
+#       "groupName": null
+#     }
+#   ],
+#
+#   // Pin to digests for reproducibility
+#   "docker": {
+#     "pinDigests": true
+#   }
+# }
+# =============================================================================
