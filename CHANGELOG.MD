@@ -1,3 +1,13 @@
+## [4.8.0](https://github.com/bauer-group/automation-templates/compare/v4.7.0...v4.8.0) (2026-01-06)
+
+### 🚀 Features
+
+* implement automated Docker maintenance workflows with Dependabot and Renovate ([c86ef76](https://github.com/bauer-group/automation-templates/commit/c86ef760485e157720bc3ec09741ea67544a836e))
+
+### 🐛 Bug Fixes
+
+* remove GITHUB_TOKEN input from Claude workflow ([37cb6be](https://github.com/bauer-group/automation-templates/commit/37cb6be6f24ab5e13b11eaf13e99de22f7e65ad5))
+
 ## [4.7.0](https://github.com/bauer-group/automation-templates/compare/v4.6.0...v4.7.0) (2026-01-05)
 
 ### 🚀 Features
