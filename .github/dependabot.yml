@@ -11,6 +11,9 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "chore(ci)"
+    labels:
+      - "dependencies"
+      - "dependabot"
 
   # - package-ecosystem: "gitsubmodule"
   #   directory: "/"
