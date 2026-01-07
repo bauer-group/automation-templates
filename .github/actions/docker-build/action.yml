@@ -397,7 +397,7 @@ runs:
           ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && 'type=semver,pattern={{major}}.{{minor}}' || '' }}
           ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && !startsWith(github.ref, 'refs/tags/v0.') && 'type=semver,pattern={{major}}' || '' }}
           ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && inputs.latest-tag == 'true' && startsWith(github.ref, 'refs/tags/') && 'type=raw,value=latest' || '' }}
-          ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && !startsWith(github.ref, 'refs/tags/') && 'type=sha,prefix={{branch}}-' || '' }}
+          ${{ inputs.release-version == '' && inputs.auto-tags == 'true' && startsWith(github.ref, 'refs/heads/') && 'type=sha,prefix={{branch}}-' || '' }}
           ${{ inputs.release-version != '' && steps.release-tags.outputs.version-tag || '' }}
           ${{ inputs.release-version != '' && steps.release-tags.outputs.major-minor-tag || '' }}
           ${{ inputs.release-version != '' && steps.release-tags.outputs.major-tag || '' }}
