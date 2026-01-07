@@ -200,52 +200,52 @@ jobs:
             case "$SUMMARY_TYPE" in
               "detailed")
                 {
-                  printf 'Provide a detailed analysis of the following GitHub %s:\n\n' "$DETAILS_TYPE"
-                  printf 'Title: %s\n' "$ISSUE_TITLE"
-                  printf 'Author: %s\n' "$DETAILS_AUTHOR"
-                  printf 'Body: %s\n\n' "$ISSUE_BODY"
-                  printf 'Please include:\n'
-                  printf '1. A comprehensive summary of the issue/request\n'
-                  printf '2. Key points and requirements\n'
-                  printf '3. Potential impact and scope\n'
-                  printf '4. Suggested next steps\n'
-                  printf '5. Any missing information needed\n'
+                  printf '%s\n\n' "Provide a detailed analysis of the following GitHub $DETAILS_TYPE:"
+                  printf '%s\n' "Title: $ISSUE_TITLE"
+                  printf '%s\n' "Author: $DETAILS_AUTHOR"
+                  printf '%s\n\n' "Body: $ISSUE_BODY"
+                  printf '%s\n' "Please include:"
+                  printf '%s\n' "1. A comprehensive summary of the issue/request"
+                  printf '%s\n' "2. Key points and requirements"
+                  printf '%s\n' "3. Potential impact and scope"
+                  printf '%s\n' "4. Suggested next steps"
+                  printf '%s\n' "5. Any missing information needed"
                 } > /tmp/prompt.txt
                 ;;
 
               "technical")
                 {
-                  printf 'Provide a technical summary of the following GitHub %s:\n\n' "$DETAILS_TYPE"
-                  printf 'Title: %s\n' "$ISSUE_TITLE"
-                  printf 'Body: %s\n\n' "$ISSUE_BODY"
-                  printf 'Focus on:\n'
-                  printf '- Technical requirements and constraints\n'
-                  printf '- Implementation considerations\n'
-                  printf '- Potential challenges\n'
-                  printf '- Architecture/design implications\n'
-                  printf '- Performance considerations\n'
+                  printf '%s\n\n' "Provide a technical summary of the following GitHub $DETAILS_TYPE:"
+                  printf '%s\n' "Title: $ISSUE_TITLE"
+                  printf '%s\n\n' "Body: $ISSUE_BODY"
+                  printf '%s\n' "Focus on:"
+                  printf '%s\n' "- Technical requirements and constraints"
+                  printf '%s\n' "- Implementation considerations"
+                  printf '%s\n' "- Potential challenges"
+                  printf '%s\n' "- Architecture/design implications"
+                  printf '%s\n' "- Performance considerations"
                 } > /tmp/prompt.txt
                 ;;
 
               "user-friendly")
                 {
-                  printf 'Provide a simple, non-technical summary of the following GitHub %s:\n\n' "$DETAILS_TYPE"
-                  printf 'Title: %s\n' "$ISSUE_TITLE"
-                  printf 'Body: %s\n\n' "$ISSUE_BODY"
-                  printf 'Explain in plain language:\n'
-                  printf '- What the user is asking for\n'
-                  printf '- Why it might be important\n'
-                  printf '- What the expected outcome is\n'
-                  printf 'Use simple terms and avoid technical jargon.\n'
+                  printf '%s\n\n' "Provide a simple, non-technical summary of the following GitHub $DETAILS_TYPE:"
+                  printf '%s\n' "Title: $ISSUE_TITLE"
+                  printf '%s\n\n' "Body: $ISSUE_BODY"
+                  printf '%s\n' "Explain in plain language:"
+                  printf '%s\n' "- What the user is asking for"
+                  printf '%s\n' "- Why it might be important"
+                  printf '%s\n' "- What the expected outcome is"
+                  printf '%s\n' "Use simple terms and avoid technical jargon."
                 } > /tmp/prompt.txt
                 ;;
 
               *)  # brief (default)
                 {
-                  printf 'Summarize the following GitHub %s in 2-3 concise sentences:\n\n' "$DETAILS_TYPE"
-                  printf 'Title: %s\n' "$ISSUE_TITLE"
-                  printf 'Body: %s\n\n' "$ISSUE_BODY"
-                  printf 'Be clear and to the point.\n'
+                  printf '%s\n\n' "Summarize the following GitHub $DETAILS_TYPE in 2-3 concise sentences:"
+                  printf '%s\n' "Title: $ISSUE_TITLE"
+                  printf '%s\n\n' "Body: $ISSUE_BODY"
+                  printf '%s\n' "Be clear and to the point."
                 } > /tmp/prompt.txt
                 ;;
             esac
@@ -253,17 +253,17 @@ jobs:
 
           # Add translation request if needed
           if [ -n "$TRANSLATE_TO" ]; then
-            printf '\nPlease provide the summary in %s language.\n' "$TRANSLATE_TO" >> /tmp/prompt.txt
+            printf '\n%s\n' "Please provide the summary in $TRANSLATE_TO language." >> /tmp/prompt.txt
           fi
 
           # Add labeling request if needed
           if [ "$ADD_LABELS" = "true" ]; then
-            printf '\nAdditionally, suggest appropriate labels from this list: bug, enhancement, documentation, question, help-wanted, good-first-issue, breaking-change, performance, security, test\n' >> /tmp/prompt.txt
+            printf '\n%s\n' "Additionally, suggest appropriate labels from this list: bug, enhancement, documentation, question, help-wanted, good-first-issue, breaking-change, performance, security, test" >> /tmp/prompt.txt
           fi
 
           # Add priority request if needed
           if [ "$ADD_PRIORITY" = "true" ]; then
-            printf '\nAlso, suggest a priority level: low, medium, high, critical\n' >> /tmp/prompt.txt
+            printf '\n%s\n' "Also, suggest a priority level: low, medium, high, critical" >> /tmp/prompt.txt
           fi
 
           # Set output
