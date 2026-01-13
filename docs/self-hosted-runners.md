@@ -139,6 +139,61 @@ All reusable workflows support the `runs-on` parameter:
 | `coolify-deploy.yml` | `ubuntu-latest` | Coolify deployment |
 | `claude-code.yml` | `ubuntu-latest` | AI assistant |
 
+## Runner Deployment Options
+
+### Option 1: Docker-in-Docker (Recommended)
+
+For production environments, use our dedicated containerized runner solution with true Docker-in-Docker isolation:
+
+**Repository:** [bauer-group/GitHubRunner](https://github.com/bauer-group/GitHubRunner)
+
+**Key Features:**
+- True Docker-in-Docker isolation (workflows can't affect host)
+- Ephemeral runners (auto-destroy after each job)
+- High performance (configurable: 16 CPU, 32GB RAM default)
+- Auto-scaling with `docker compose --scale`
+- GitHub App support for secure authentication
+
+**Quick Start:**
+
+```bash
+# Clone the dedicated runner repository
+git clone https://github.com/bauer-group/GitHubRunner.git
+cd GitHubRunner
+
+# Run interactive setup
+./scripts/deploy.sh --init
+
+# Start runners
+./scripts/start.sh 4  # Start 4 runners
+```
+
+**Architecture:**
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                        Host System                          │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              Docker Engine (Host)                    │   │
+│  │  ┌────────────────────────────────────────────────┐ │   │
+│  │  │           Isolated Runner Network              │ │   │
+│  │  │  ┌──────────────┐    ┌───────────────────┐   │ │   │
+│  │  │  │   DinD       │    │  GitHub Runner    │   │ │   │
+│  │  │  │  Container   │◄───│    Container      │   │ │   │
+│  │  │  │  (Docker     │    │  (myoung34/       │   │ │   │
+│  │  │  │   Daemon)    │    │   github-runner)  │   │ │   │
+│  │  │  └──────────────┘    └───────────────────┘   │ │   │
+│  │  └────────────────────────────────────────────────┘ │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Option 2: Bare-Metal / VM
+
+For environments where Docker is not available, see the [Runner Management Guide](../github/runner/README.md).
+
+---
+
 ## Self-Hosted Runner Requirements
 
 ### Linux Runner
@@ -326,6 +381,8 @@ jobs:
 
 ## Support
 
+- [Docker-in-Docker Runner Solution](https://github.com/bauer-group/GitHubRunner) - Recommended for production
+- [Runner Management Guide](../github/runner/README.md) - Bare-metal and VM deployment
 - [GitHub Self-Hosted Runners Documentation](https://docs.github.com/en/actions/hosting-your-own-runners)
 - [Issues](https://github.com/bauer-group/automation-templates/issues)
 - [Discussions](https://github.com/bauer-group/automation-templates/discussions)

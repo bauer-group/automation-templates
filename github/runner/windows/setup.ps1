@@ -1,15 +1,50 @@
 <#
-Bootstrap for a Windows self-hosted GitHub Actions runner with Visual Studio Build Tools (MSBuild).
+.SYNOPSIS
+  Bootstrap for a Windows self-hosted GitHub Actions runner with Visual Studio Build Tools.
 
-Usage examples:
+.DESCRIPTION
+  Sets up a self-hosted GitHub Actions runner on Windows with:
+  - Visual Studio Build Tools 2022 (MSBuild)
+  - Optional .NET SDK installation
+  - Ephemeral runner configuration (auto-destroys after each job)
+  - Custom labels and runner group support
+
+.PARAMETER Url
+  GitHub organization or repository URL (e.g., "https://github.com/bauer-group")
+
+.PARAMETER Token
+  GitHub registration token (get from Settings > Actions > Runners > New self-hosted runner)
+
+.PARAMETER Labels
+  Comma-separated runner labels (default: "self-hosted,Windows,X64")
+
+.PARAMETER RunnerGroup
+  Runner group name (default: "Default")
+
+.PARAMETER RunnerName
+  Runner name (default: hostname)
+
+.EXAMPLE
   .\setup.ps1 -Url "https://github.com/bauer-group" -Token "<REG_TOKEN>"
-  .\setup.ps1 -Url "https://github.com/bauer-group" -Token "<REG_TOKEN>" -InstallDotNet -DotNetVersions Microsoft.DotNet.SDK.8
+
+.EXAMPLE
+  .\setup.ps1 -Url "https://github.com/bauer-group" -Token "<REG_TOKEN>" -Labels "self-hosted,Windows,vs2022,dotnet"
+
+.EXAMPLE
+  .\setup.ps1 -Url "https://github.com/bauer-group" -Token "<REG_TOKEN>" -InstallDotNet -DotNetVersions "Microsoft.DotNet.SDK.8","Microsoft.DotNet.SDK.9"
+
+.NOTES
+  For production environments with full Docker isolation, consider the Docker-in-Docker
+  solution: https://github.com/bauer-group/GitHubRunner
 #>
 
 [CmdletBinding()]
 param(
   [Parameter(Mandatory=$true)][string]$Url,
   [Parameter(Mandatory=$true)][string]$Token,
+  [string]$Labels = "self-hosted,Windows,X64",
+  [string]$RunnerGroup = "Default",
+  [string]$RunnerName = $env:COMPUTERNAME,
   [string]$InstallPath = "C:\BuildTools",
   [string]$RunnerRoot  = "C:\Actions-Runner",
   [string]$ServiceName = "Actions.Runner",
@@ -76,7 +111,21 @@ try {
   Expand-Archive -Path $runnerZip -DestinationPath $RunnerRoot -Force
 
   Write-Host "==> Configuring self-hosted runner (ephemeral)..." -ForegroundColor Cyan
-  $proc = Start-Process -FilePath ".\config.cmd" -ArgumentList @("--url",$Url,"--token",$Token,"--ephemeral") -NoNewWindow -PassThru -Wait
+  Write-Host "    URL: $Url" -ForegroundColor Gray
+  Write-Host "    Name: $RunnerName" -ForegroundColor Gray
+  Write-Host "    Labels: $Labels" -ForegroundColor Gray
+  Write-Host "    Group: $RunnerGroup" -ForegroundColor Gray
+
+  $configArgs = @(
+    "--url", $Url,
+    "--token", $Token,
+    "--name", $RunnerName,
+    "--labels", $Labels,
+    "--runnergroup", $RunnerGroup,
+    "--ephemeral",
+    "--unattended"
+  )
+  $proc = Start-Process -FilePath ".\config.cmd" -ArgumentList $configArgs -NoNewWindow -PassThru -Wait
   if ($proc.ExitCode -ne 0) { throw "Runner config failed with exit code $($proc.ExitCode)" }
 
   Write-Host "==> Installing Windows service and starting..." -ForegroundColor Cyan

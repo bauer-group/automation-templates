@@ -1,19 +1,41 @@
 #cloud-config
+# =============================================================================
+# GitHub Self-Hosted Runner - Cloud-Init Configuration
+# =============================================================================
+# Deploy self-hosted GitHub Actions runners on cloud VMs (AWS, Azure, GCP, etc.)
+#
+# Note: For production environments with full Docker isolation, consider the
+# Docker-in-Docker solution: https://github.com/bauer-group/GitHubRunner
+# =============================================================================
+
 package_update: true
 package_upgrade: true
-packages: [ca-certificates, curl, gnupg, jq, git]
+packages: [ca-certificates, curl, gnupg, jq, git, rsync]
 
 write_files:
   - path: /etc/gha/host.env
     permissions: '0600'
     content: |
+      # Timezone
       TZ=Europe/Berlin
+
+      # Runner scope: org | repo | enterprise
       RUNNER_SCOPE=org
       ORG_NAME=bauer-group
       REPO_URL=
       ENTERPRISE_NAME=
+
+      # Runner configuration
+      RUNNER_NAME_PREFIX=cloud
+      RUNNER_LABELS=self-hosted,linux,docker
+      RUNNER_GROUP=Default
       RUNNER_COUNT=8
-      # Auth – entweder PAT (ACCESS_TOKEN) ODER GitHub App (empfohlen)
+
+      # Resource limits (per runner)
+      RUNNER_CPU_LIMIT=2.0
+      RUNNER_MEMORY_LIMIT=8g
+
+      # Authentication - use EITHER PAT OR GitHub App (recommended)
       GITHUB_PAT=
       APP_ID=
       APP_PRIVATE_KEY_BASE64=
@@ -21,7 +43,7 @@ write_files:
 
 runcmd:
   - [ bash, -c, "set -euo pipefail;
-      export $(grep -v '^#' /etc/gha/host.env | xargs -d '\n' -I{} echo {});
+      export $(grep -v '^#' /etc/gha/host.env | xargs -d '\\n' -I{} echo {});
       BASE_DIR=/opt/gha; REPO_DIR=$BASE_DIR/runner;
       mkdir -p $BASE_DIR;
       git clone https://github.com/bauer-group/automation-templates.git $BASE_DIR/automation-templates || true;
@@ -29,18 +51,23 @@ runcmd:
       rsync -a $BASE_DIR/automation-templates/github/runner/ $REPO_DIR/;
       cd $REPO_DIR;
       cp -n .env.example .env;
-      sed -i "s|^TZ=.*|TZ=$TZ|" .env;
-      sed -i "s|^RUNNER_SCOPE=.*|RUNNER_SCOPE=$RUNNER_SCOPE|" .env;
-      sed -i "s|^ORG_NAME=.*|ORG_NAME=$ORG_NAME|" .env;
-      sed -i "s|^REPO_URL=.*|REPO_URL=$REPO_URL|" .env;
-      sed -i "s|^ENTERPRISE_NAME=.*|ENTERPRISE_NAME=$ENTERPRISE_NAME|" .env;
-      sed -i "s|^RUNNER_COUNT=.*|RUNNER_COUNT=$RUNNER_COUNT|" .env;
-      sed -i "s|^GITHUB_PAT=.*|GITHUB_PAT=$GITHUB_PAT|" .env;
-      sed -i "s|^APP_ID=.*|APP_ID=$APP_ID|" .env;
-      sed -i "s|^APP_LOGIN=.*|APP_LOGIN=$APP_LOGIN|" .env;
-      if [ -n "$APP_PRIVATE_KEY_BASE64" ]; then
-        CLEANED=$(echo "$APP_PRIVATE_KEY_BASE64" | base64 -d | sed ':a;N;$!ba;s/\n/\\n/g');
-        sed -i "s|^APP_PRIVATE_KEY=.*|APP_PRIVATE_KEY=$CLEANED|" .env;
-        sed -i "s|^GITHUB_PAT=.*|GITHUB_PAT=|" .env;
+      sed -i \"s|^TZ=.*|TZ=$TZ|\" .env;
+      sed -i \"s|^RUNNER_SCOPE=.*|RUNNER_SCOPE=$RUNNER_SCOPE|\" .env;
+      sed -i \"s|^ORG_NAME=.*|ORG_NAME=$ORG_NAME|\" .env;
+      sed -i \"s|^REPO_URL=.*|REPO_URL=$REPO_URL|\" .env;
+      sed -i \"s|^ENTERPRISE_NAME=.*|ENTERPRISE_NAME=$ENTERPRISE_NAME|\" .env;
+      sed -i \"s|^RUNNER_NAME_PREFIX=.*|RUNNER_NAME_PREFIX=$RUNNER_NAME_PREFIX|\" .env;
+      sed -i \"s|^RUNNER_LABELS=.*|RUNNER_LABELS=$RUNNER_LABELS|\" .env;
+      sed -i \"s|^RUNNER_GROUP=.*|RUNNER_GROUP=$RUNNER_GROUP|\" .env;
+      sed -i \"s|^RUNNER_COUNT=.*|RUNNER_COUNT=$RUNNER_COUNT|\" .env;
+      sed -i \"s|^RUNNER_CPU_LIMIT=.*|RUNNER_CPU_LIMIT=$RUNNER_CPU_LIMIT|\" .env;
+      sed -i \"s|^RUNNER_MEMORY_LIMIT=.*|RUNNER_MEMORY_LIMIT=$RUNNER_MEMORY_LIMIT|\" .env;
+      sed -i \"s|^GITHUB_PAT=.*|GITHUB_PAT=$GITHUB_PAT|\" .env;
+      sed -i \"s|^APP_ID=.*|APP_ID=$APP_ID|\" .env;
+      sed -i \"s|^APP_LOGIN=.*|APP_LOGIN=$APP_LOGIN|\" .env;
+      if [ -n \"$APP_PRIVATE_KEY_BASE64\" ]; then
+        CLEANED=$(echo \"$APP_PRIVATE_KEY_BASE64\" | base64 -d | sed ':a;N;$!ba;s/\\n/\\\\n/g');
+        sed -i \"s|^APP_PRIVATE_KEY=.*|APP_PRIVATE_KEY=$CLEANED|\" .env;
+        sed -i \"s|^GITHUB_PAT=.*|GITHUB_PAT=|\" .env;
       fi;
       bash scripts/install.sh" ]

@@ -2,285 +2,309 @@
 
 **Self-hosted GitHub Actions runners with enterprise-grade security and scalability**
 
-## 🏗️ Overview
+## Overview
 
-This directory provides production-ready solutions for deploying and managing self-hosted GitHub Actions runners in enterprise environments. All configurations follow security best practices and support high-availability deployments.
+This directory provides solutions for deploying and managing self-hosted GitHub Actions runners. Two deployment approaches are available:
 
-## 📦 Components
+| Approach | Best For | Repository |
+|----------|----------|------------|
+| **Docker-in-Docker (Recommended)** | Production, Full Docker support | [bauer-group/GitHubRunner](https://github.com/bauer-group/GitHubRunner) |
+| **Bare-Metal / VM** | Legacy systems, Non-Docker workloads | This directory |
 
-### Docker Deployment
-- **Multi-architecture support**: AMD64, ARM64
-- **Container orchestration**: Docker Compose with health checks
-- **Auto-scaling**: Dynamic runner registration/deregistration
-- **Security hardening**: Non-root containers, minimal attack surface
+## Docker-in-Docker Solution (Recommended)
 
-### Cloud Infrastructure
-- **Cloud-init configuration**: Automated VM setup
-- **Systemd integration**: Professional service management
-- **Auto-updates**: Automated runner and system updates
-- **Monitoring**: Built-in health checks and logging
+For production environments requiring full Docker capabilities, use our dedicated containerized runner solution:
 
-### Management Scripts
-- **Installation**: Automated runner deployment
-- **Configuration**: Dynamic runner configuration
-- **Monitoring**: Health checks and performance metrics
-- **Cleanup**: Safe runner decommissioning
+**Repository:** [bauer-group/GitHubRunner](https://github.com/bauer-group/GitHubRunner)
 
-## 🚀 Quick Start
+### Key Features
 
-### Docker Deployment
+- **True Docker-in-Docker isolation** - Workflow containers run inside DinD, not on host
+- **Ephemeral runners** - Auto-destroy after each job (like GitHub-hosted)
+- **High performance** - Configurable resources (default: 16 CPU, 32GB RAM)
+- **Auto-scaling** - Scale runners with `docker compose --scale`
+- **GitHub App support** - Secure authentication with minimal permissions
+- **Professional scripts** - Deploy, scale, status, cleanup utilities
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Host System                          │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              Docker Engine (Host)                    │   │
+│  │  ┌────────────────────────────────────────────────┐ │   │
+│  │  │           Isolated Runner Network              │ │   │
+│  │  │  ┌──────────────┐    ┌───────────────────┐   │ │   │
+│  │  │  │   DinD       │    │  GitHub Runner    │   │ │   │
+│  │  │  │  Container   │◄───│    Container      │   │ │   │
+│  │  │  │  ┌────────┐  │    │  myoung34/        │   │ │   │
+│  │  │  │  │ Docker │  │    │  github-runner    │   │ │   │
+│  │  │  │  │ Daemon │  │    └───────────────────┘   │ │   │
+│  │  │  │  └────────┘  │                            │ │   │
+│  │  │  │  ┌─────────┐ │                            │ │   │
+│  │  │  │  │Workflow │ │                            │ │   │
+│  │  │  │  │Containers│ │                            │ │   │
+│  │  │  │  └─────────┘ │                            │ │   │
+│  │  │  └──────────────┘                            │ │   │
+│  │  └────────────────────────────────────────────────┘ │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Quick Start (Docker-in-Docker)
 
 ```bash
-# Clone configuration
-git clone https://github.com/bauer-group/automation-templates.git
-cd automation-templates/github/runner
+# Clone the dedicated runner repository
+git clone https://github.com/bauer-group/GitHubRunner.git
+cd GitHubRunner
+
+# Run interactive setup
+./scripts/deploy.sh --init
+
+# Start runners
+./scripts/start.sh 4  # Start 4 runners
+
+# Check status
+./scripts/status.sh
+```
+
+### Why Docker-in-Docker?
+
+| Feature | Docker Socket Mount | Docker-in-Docker |
+|---------|---------------------|------------------|
+| **Host Isolation** | Workflows can affect host | Complete isolation |
+| **Security** | Docker daemon shared | Dedicated daemon |
+| **Cleanup** | Manual cleanup needed | Auto-cleanup on restart |
+| **Resource Control** | Limited | Full control |
+| **Recommended** | Development only | Production |
+
+For full documentation, see: [bauer-group/GitHubRunner](https://github.com/bauer-group/GitHubRunner)
+
+---
+
+## Bare-Metal / VM Deployment
+
+For environments where containerization is not possible or desired, use the following approach.
+
+### Components
+
+```
+github/runner/
+├── cloud-init/          # Cloud VM auto-provisioning
+│   └── user-data.yaml   # Cloud-init configuration
+├── scripts/             # Management scripts
+│   ├── install.sh       # Runner installation
+│   ├── manage.sh        # Runtime management
+│   └── uninstall.sh     # Clean uninstallation
+├── systemd/             # Service configuration
+│   └── gha-runners.service
+├── windows/             # Windows support
+│   └── setup.ps1        # PowerShell setup script
+├── docker-compose.yml   # Simple Docker deployment
+└── .env.example         # Environment template
+```
+
+### Installation
+
+#### Option 1: Cloud VM with Cloud-Init
+
+```bash
+# Prepare cloud-init configuration
+cp cloud-init/user-data.yaml user-data-configured.yaml
+
+# Edit with your values
+sed -i 's/YOUR_GITHUB_TOKEN/ghp_your_token_here/' user-data-configured.yaml
+sed -i 's/YOUR_ORG_NAME/your-org/' user-data-configured.yaml
+
+# Deploy on cloud provider (AWS, Azure, GCP, etc.)
+# Use user-data-configured.yaml as user-data
+```
+
+#### Option 2: Manual Installation
+
+```bash
+# Download and run installation script
+./scripts/install.sh
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your GitHub token and settings
+nano .env
 
-# Deploy runners
+# Start service
+sudo systemctl enable gha-runners
+sudo systemctl start gha-runners
+```
+
+#### Option 3: Simple Docker (Socket Mount)
+
+> **Warning**: This approach mounts the host Docker socket. For production, use the [Docker-in-Docker solution](#docker-in-docker-solution-recommended).
+
+```bash
+# Configure environment
+cp .env.example .env
+nano .env
+
+# Start with Docker Compose
 docker-compose up -d
 
 # Scale runners
 docker-compose up -d --scale runner=5
 ```
 
-### Cloud VM Deployment
-
-```bash
-# Use cloud-init for automated setup
-cat cloud-init/user-data.yaml | \
-  sed 's/YOUR_GITHUB_TOKEN/ghp_your_token_here/' | \
-  sed 's/YOUR_ORG_NAME/your-org/' > user-data-configured.yaml
-
-# Deploy on cloud provider with user-data-configured.yaml
-```
-
-## 🔧 Configuration
-
 ### Environment Variables
 
 ```bash
-# GitHub Configuration
-GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxx    # GitHub PAT with admin:org scope
-GITHUB_URL=https://github.com/your-org    # Organization or repository URL
-RUNNER_NAME_PREFIX=enterprise-runner      # Runner name prefix
-RUNNER_LABELS=self-hosted,linux,X64      # Runner labels
+# Required
+GITHUB_PAT=ghp_xxxxxxxxxxxxxxxxxxxxx    # GitHub PAT with admin:org scope
+RUNNER_SCOPE=org                         # org | repo | enterprise
+ORG_NAME=your-organization               # For org scope
+# REPO_URL=https://github.com/org/repo  # For repo scope
 
-# Runner Configuration
-RUNNER_GROUP=default                      # Runner group assignment
-RUNNER_WORK_DIR=/tmp/_work               # Work directory
-RUNNER_REPLACE_EXISTING=true             # Replace existing runners
-
-# Security Configuration
-RUNNER_USER=runner                       # Non-root user
-DISABLE_AUTO_UPDATE=false               # Auto-update control
-EPHEMERAL=true                          # Ephemeral runners (recommended)
+# Optional
+RUNNER_LABELS=self-hosted,linux,X64      # Custom labels
+RUNNER_GROUP=Default                     # Runner group
+TZ=Europe/Berlin                         # Timezone
 ```
 
-### Docker Compose Configuration
-
-```yaml
-version: '3.8'
-
-services:
-  runner:
-    build: .
-    environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - GITHUB_URL=${GITHUB_URL}
-      - RUNNER_NAME_PREFIX=${RUNNER_NAME_PREFIX}
-      - RUNNER_LABELS=${RUNNER_LABELS}
-      - EPHEMERAL=true
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    restart: unless-stopped
-    deploy:
-      replicas: 3
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 4G
-```
-
-## 🛡️ Security Features
-
-### Container Security
-- **Non-root execution**: Runners execute as unprivileged user
-- **Resource limits**: CPU and memory constraints
-- **Network isolation**: Restricted network access
-- **Secret management**: Secure token handling
-
-### Infrastructure Security
-- **Automated updates**: Security patches and runner updates
-- **Firewall configuration**: Minimal port exposure
-- **Audit logging**: Comprehensive activity logs
-- **Access control**: Token-based authentication
-
-### Runtime Security
-- **Ephemeral runners**: Fresh environment for each job
-- **Workspace isolation**: Isolated work directories
-- **Cleanup automation**: Automatic resource cleanup
-- **Monitoring**: Real-time security monitoring
-
-## 📊 Monitoring & Management
-
-### Health Checks
+### Management Commands
 
 ```bash
-# Check runner status
+# Check status
 ./scripts/manage.sh status
 
-# View runner logs
-docker-compose logs -f runner
+# View logs
+journalctl -u gha-runners -f
 
-# Monitor resource usage
-docker stats
-```
-
-### Performance Metrics
-
-- **Job execution time**: Average job duration
-- **Queue wait time**: Time in queue before execution
-- **Resource utilization**: CPU, memory, disk usage
-- **Success rate**: Job completion percentage
-
-### Scaling Operations
-
-```bash
-# Scale up runners
-docker-compose up -d --scale runner=10
-
-# Scale down runners
-docker-compose up -d --scale runner=2
-
-# Emergency shutdown
-docker-compose down
-```
-
-## 🔄 Maintenance
-
-### Automated Updates
-
-The runners are configured for automatic updates:
-
-- **GitHub Actions Runner**: Auto-updates to latest version
-- **System packages**: Automated security updates
-- **Container images**: Scheduled rebuilds with latest base images
-
-### Manual Operations
-
-```bash
-# Update runners
-./scripts/manage.sh update
-
-# Restart all runners
+# Restart runners
 ./scripts/manage.sh restart
 
-# Clean up old runners
+# Update runner
+./scripts/manage.sh update
+
+# Clean up
 ./scripts/manage.sh cleanup
-
-# Backup configuration
-./scripts/manage.sh backup
 ```
 
-## 🏛️ Enterprise Features
+### Windows Installation
 
-### High Availability
-- **Multi-zone deployment**: Runners across availability zones
-- **Load balancing**: GitHub automatic job distribution
-- **Failover**: Automatic runner replacement
-- **Backup runners**: Standby capacity for peak loads
-
-### Compliance
-- **Audit logging**: Complete audit trail
-- **Resource tagging**: Compliance and cost tracking
-- **Access controls**: Fine-grained permissions
-- **Retention policies**: Log and data retention
-
-### Cost Optimization
-- **Auto-scaling**: Dynamic capacity adjustment
-- **Spot instances**: Cost-effective cloud instances
-- **Scheduling**: Off-hours capacity reduction
-- **Resource monitoring**: Usage optimization
-
-## 🚀 Deployment Patterns
-
-### Development Environment
-
-```yaml
-# Minimal development setup
-version: '3.8'
-services:
-  runner:
-    image: github-runner:latest
-    environment:
-      - EPHEMERAL=true
-      - RUNNER_LABELS=dev,linux
-    deploy:
-      replicas: 1
+```powershell
+# Run PowerShell as Administrator
+.\windows\setup.ps1 -Token "ghp_xxx" -Org "your-org" -Labels "windows,X64"
 ```
-
-### Production Environment
-
-```yaml
-# Production-grade setup
-version: '3.8'
-services:
-  runner:
-    image: github-runner:latest
-    environment:
-      - EPHEMERAL=true
-      - RUNNER_LABELS=prod,linux,X64
-      - RUNNER_GROUP=production
-    deploy:
-      replicas: 5
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 8G
-      restart_policy:
-        condition: on-failure
-        max_attempts: 3
-```
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-1. **Registration failures**: Check GitHub token permissions
-2. **Connection issues**: Verify network connectivity
-3. **Resource exhaustion**: Monitor CPU/memory usage
-4. **Job failures**: Review runner logs
-
-### Debug Commands
-
-```bash
-# View runner registration logs
-docker-compose logs runner | grep -i registration
-
-# Check runner connectivity
-curl -H "Authorization: token $GITHUB_TOKEN" \
-     https://api.github.com/orgs/YOUR_ORG/actions/runners
-
-# Test runner performance
-./scripts/manage.sh benchmark
-```
-
-## 📚 Documentation
-
-- [Installation Guide](./docs/installation.md)
-- [Configuration Reference](./docs/configuration.md)
-- [Security Best Practices](./docs/security.md)
-- [Troubleshooting Guide](./docs/troubleshooting.md)
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/bauer-group/automation-templates/issues)
-- **Enterprise Support**: Contact your GitHub Enterprise administrator
-- **Community**: [GitHub Community Discussions](https://github.com/github/docs/discussions)
 
 ---
 
-*This runner deployment solution is production-tested and used in enterprise environments worldwide.*
+## Using Self-Hosted Runners in Workflows
+
+### Basic Usage
+
+```yaml
+jobs:
+  build:
+    runs-on: [self-hosted, linux, docker]
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "Running on self-hosted runner!"
+```
+
+### With Runner Groups (Organization)
+
+```yaml
+jobs:
+  build:
+    runs-on:
+      group: Self-Hosted (BAUER GROUP)
+      labels: [linux, docker]
+    steps:
+      - uses: actions/checkout@v4
+```
+
+### With Automation-Templates Workflows
+
+All workflows in this repository support the `runs-on` parameter:
+
+```yaml
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'src/MyApp.csproj'
+      # Use self-hosted runner
+      runs-on: '["self-hosted", "linux", "docker"]'
+```
+
+See [Self-Hosted Runner Documentation](../../docs/self-hosted-runners.md) for complete workflow integration guide.
+
+---
+
+## Security Considerations
+
+### Best Practices
+
+1. **Use ephemeral runners** - Fresh environment for each job
+2. **Limit runner scope** - Use repository-level runners when possible
+3. **Rotate tokens regularly** - Use GitHub Apps for auto-rotation
+4. **Restrict network access** - Only allow necessary outbound connections
+5. **Monitor activity** - Enable audit logging
+6. **Use runner groups** - Control which repos can use runners
+
+### Docker-in-Docker vs Socket Mount
+
+| Security Aspect | Socket Mount | Docker-in-Docker |
+|-----------------|--------------|------------------|
+| Host Docker access | Yes (risky) | No (isolated) |
+| Container escape | Possible | Contained |
+| Resource isolation | None | Full |
+| Cleanup | Manual | Automatic |
+
+**Recommendation**: Always use Docker-in-Docker for production.
+
+---
+
+## Troubleshooting
+
+### Runner Not Registering
+
+```bash
+# Check token permissions
+curl -H "Authorization: token $GITHUB_PAT" \
+     https://api.github.com/orgs/YOUR_ORG/actions/runners
+
+# Verify token scopes (need admin:org for org runners)
+curl -sI -H "Authorization: token $GITHUB_PAT" \
+     https://api.github.com | grep x-oauth-scopes
+```
+
+### Jobs Stuck in Queue
+
+1. Verify runner is online in GitHub Settings
+2. Check label matching - all labels must match
+3. Check runner group permissions
+
+### Docker Commands Failing
+
+```bash
+# For Docker-in-Docker
+docker compose logs docker-in-docker
+
+# For Socket Mount
+docker ps
+docker info
+```
+
+---
+
+## Related Resources
+
+- **Docker-in-Docker Runner**: [bauer-group/GitHubRunner](https://github.com/bauer-group/GitHubRunner)
+- **Workflow Integration**: [Self-Hosted Runner Documentation](../../docs/self-hosted-runners.md)
+- **GitHub Documentation**: [Self-hosted runners](https://docs.github.com/en/actions/hosting-your-own-runners)
+- **myoung34/github-runner**: [Docker image](https://github.com/myoung34/docker-github-actions-runner)
+
+---
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/bauer-group/automation-templates/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/bauer-group/automation-templates/discussions)

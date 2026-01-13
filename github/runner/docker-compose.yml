@@ -1,44 +1,63 @@
-# https://github.com/myoung34/docker-github-actions-runner
+# =============================================================================
+# GitHub Self-Hosted Runner - Docker Socket Mount
+# =============================================================================
+# WARNING: This configuration mounts the host Docker socket, which allows
+# workflow containers to access the host Docker daemon.
+#
+# For production environments with full isolation, use the Docker-in-Docker
+# solution instead: https://github.com/bauer-group/GitHubRunner
+#
+# Image: https://github.com/myoung34/docker-github-actions-runner
+# =============================================================================
 
-version: "3.9"
 services:
   runner:
     image: myoung34/github-runner:latest
     restart: always
     environment:
       # --- Target scope ---
-      RUNNER_SCOPE: ${RUNNER_SCOPE}        # org | repo | enterprise
-      ORG_NAME: ${ORG_NAME}
-      REPO_URL: ${REPO_URL}
-      ENTERPRISE_NAME: ${ENTERPRISE_NAME}
+      RUNNER_SCOPE: ${RUNNER_SCOPE:-org}
+      ORG_NAME: ${ORG_NAME:-}
+      REPO_URL: ${REPO_URL:-}
+      ENTERPRISE_NAME: ${ENTERPRISE_NAME:-}
 
-      # --- Auth: choose ONE ---
-      ACCESS_TOKEN: ${GITHUB_PAT}          # Personal Access Token (PAT)
-      APP_ID: ${APP_ID}                    # GitHub App (optional)
-      APP_PRIVATE_KEY: ${APP_PRIVATE_KEY}
-      APP_LOGIN: ${APP_LOGIN}
+      # --- Authentication (choose ONE) ---
+      ACCESS_TOKEN: ${GITHUB_PAT:-}
+      APP_ID: ${APP_ID:-}
+      APP_PRIVATE_KEY: ${APP_PRIVATE_KEY:-}
+      APP_LOGIN: ${APP_LOGIN:-}
 
-      # --- Runner behavior ---
-      EPHEMERAL: "1"                       # fresh runner per job
-      RUNNER_NAME_PREFIX: linux            # as requested
-      TZ: ${TZ}
+      # --- Runner configuration ---
+      EPHEMERAL: "true"
+      RUNNER_NAME_PREFIX: ${RUNNER_NAME_PREFIX:-linux}
+      LABELS: ${RUNNER_LABELS:-self-hosted,linux,docker}
+      RUNNER_GROUP: ${RUNNER_GROUP:-Default}
+      RUNNER_WORKDIR: ${RUNNER_WORKDIR:-/tmp/runner/work}
+      DISABLE_AUTO_UPDATE: "false"
+      TZ: ${TZ:-Europe/Berlin}
 
-    # docker-outside-of-docker for jobs that use Docker
+    # Docker-outside-of-Docker (WARNING: shares host Docker daemon)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
     # Per-runner resource limits
-    cpus: "2.0"
-    mem_limit: "8g"
+    cpus: "${RUNNER_CPU_LIMIT:-2.0}"
+    mem_limit: "${RUNNER_MEMORY_LIMIT:-8g}"
 
     labels:
       com.centurylinklabs.watchtower.enable: "true"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   watchtower:
     image: containrrr/watchtower:latest
     restart: unless-stopped
     environment:
-      TZ: ${TZ}
+      TZ: ${TZ:-Europe/Berlin}
       WATCHTOWER_CLEANUP: "true"
       WATCHTOWER_ROLLING_RESTART: "true"
       WATCHTOWER_LABEL_ENABLE: "true"
@@ -46,3 +65,8 @@ services:
       WATCHTOWER_SCHEDULE: "0 30 3 * * 6"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
