@@ -155,7 +155,7 @@ on:
 
       # Runner Configuration
       runs-on:
-        description: 'Runner OS'
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         type: string
         required: false
         default: 'ubuntu-latest'
@@ -203,7 +203,7 @@ on:
 jobs:
   build:
     name: Build & Release Shopware 5 Plugin
-    runs-on: ${{ inputs.runs-on }}
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
 
     outputs:

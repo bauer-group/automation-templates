@@ -35,7 +35,28 @@ The Microsoft Teams Notifications System is an enterprise-grade solution that br
 | **Configuration System** | Event-specific settings | `.github/config/teams-notification/` |
 | **Example Templates** | Usage demonstrations | `github/workflows/examples/teams-notification/` |
 
-## ✨ Features
+### Platform Configuration
+
+| Input | Description | Default | Options |
+|-------|-------------|---------|---------|
+| `runs-on` | Runner to use | `ubuntu-latest` | String or JSON array (see below) |
+
+#### Self-Hosted Runner Support
+
+The `runs-on` parameter supports both GitHub-hosted and self-hosted runners:
+
+```yaml
+# GitHub-hosted (string)
+runs-on: 'ubuntu-latest'
+
+# Self-hosted (JSON array)
+runs-on: '["self-hosted", "linux"]'
+runs-on: '["self-hosted", "linux", "docker"]'
+```
+
+See [Self-Hosted Runner Documentation](../self-hosted-runners.md) for details.
+
+## Features
 
 ### 🎨 Rich Visual Experience
 - **Adaptive Cards 1.5**: Modern, responsive card layout

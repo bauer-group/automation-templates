@@ -51,7 +51,7 @@ on:
         default: 'renovate[bot],renovate'
 
       runs-on:
-        description: 'Runner to use'
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         type: string
         required: false
         default: 'ubuntu-latest'
@@ -63,7 +63,7 @@ permissions:
 jobs:
   automerge:
     name: Auto-merge Renovate PRs
-    runs-on: ${{ inputs.runs-on }}
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     if: contains(inputs.allowed-actors, github.actor)
 
     steps:

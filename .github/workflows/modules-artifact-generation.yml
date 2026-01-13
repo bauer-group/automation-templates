@@ -31,6 +31,11 @@ on:
         required: false
         type: string
         default: 'ghcr.io'
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
     secrets:
       DOCKER_USERNAME:
         description: 'Docker registry username'
@@ -60,7 +65,7 @@ permissions:
 jobs:
   generate-artifacts:
     name: 🔧 Artifact Creation
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     outputs:
       artifacts-generated: ${{ steps.summary.outputs.artifacts-generated }}
       source-archive-created: ${{ steps.artifacts.outputs.source-archive-created }}

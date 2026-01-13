@@ -1,0 +1,168 @@
+name: Node.js Build (Self-Hosted Example)
+
+# ============================================================================
+# Self-Hosted Runner Example for Node.js Projects
+# ============================================================================
+# This workflow demonstrates how to configure the nodejs-build reusable
+# workflow to run on self-hosted runners instead of GitHub-hosted runners.
+#
+# Key features demonstrated:
+# - JSON array format for self-hosted runner labels
+# - Dynamic runner selection via workflow_dispatch input
+# - Fallback to GitHub-hosted runners
+# - Package manager support (npm, yarn, pnpm, bun) on self-hosted
+#
+# Self-hosted runner labels:
+# - 'self-hosted' (required) - Identifies the runner as self-hosted
+# - 'linux', 'windows', 'macos' - Operating system labels
+# - Custom labels like 'nodejs', 'npm', 'docker' for specialized workloads
+# ============================================================================
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'yarn.lock'
+      - 'pnpm-lock.yaml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      use-self-hosted:
+        description: 'Use self-hosted runner instead of GitHub-hosted'
+        type: boolean
+        default: true
+      runner-os:
+        description: 'Runner operating system'
+        type: choice
+        options:
+          - linux
+          - windows
+          - macos
+        default: 'linux'
+
+jobs:
+  # ============================================================================
+  # Example 1: Dynamic Runner Selection
+  # ============================================================================
+  # Allows switching between self-hosted and GitHub-hosted runners
+  # via workflow_dispatch input.
+  build-dynamic:
+    uses: bauer-group/automation-templates/.github/workflows/nodejs-build.yml@main
+    with:
+      node-version: '20.x'
+      package-manager: 'npm'
+      build-command: 'npm run build'
+      run-tests: true
+      run-lint: true
+      # Dynamic runner selection
+      runs-on: ${{ github.event.inputs.use-self-hosted == 'true' && '["self-hosted", "linux", "nodejs"]' || 'ubuntu-latest' }}
+    secrets: inherit
+
+  # ============================================================================
+  # Example 2: Fixed Self-Hosted Linux Runner
+  # ============================================================================
+  # Always runs on a self-hosted Linux runner with Node.js pre-installed.
+  # Ideal for CI/CD pipelines with dedicated build infrastructure.
+  build-self-hosted-linux:
+    uses: bauer-group/automation-templates/.github/workflows/nodejs-build.yml@main
+    with:
+      node-version: '20.x'
+      package-manager: 'npm'
+      frozen-lockfile: true
+      build-command: 'npm run build'
+      run-tests: true
+      run-lint: true
+      test-coverage: true
+      # Self-hosted Linux runner with Node.js
+      runs-on: '["self-hosted", "linux", "nodejs"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 3: Self-Hosted with pnpm
+  # ============================================================================
+  # Runs on a self-hosted runner with pnpm support.
+  # pnpm offers faster installs and disk space efficiency.
+  build-self-hosted-pnpm:
+    uses: bauer-group/automation-templates/.github/workflows/nodejs-build.yml@main
+    with:
+      node-version: '20.x'
+      package-manager: 'pnpm'
+      frozen-lockfile: true
+      build-command: 'pnpm run build'
+      run-tests: true
+      # Self-hosted runner with pnpm support
+      runs-on: '["self-hosted", "linux", "nodejs", "pnpm"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 4: Self-Hosted Windows Runner
+  # ============================================================================
+  # Runs on a self-hosted Windows runner - useful for Electron apps
+  # or when you need Windows-specific Node.js behavior.
+  build-self-hosted-windows:
+    uses: bauer-group/automation-templates/.github/workflows/nodejs-build.yml@main
+    with:
+      node-version: '20.x'
+      package-manager: 'npm'
+      build-command: 'npm run build'
+      run-tests: true
+      # Self-hosted Windows runner
+      runs-on: '["self-hosted", "windows", "x64"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 5: Monorepo with High-Performance Runner
+  # ============================================================================
+  # Uses a high-performance self-hosted runner for large monorepos.
+  # The extra CPU/RAM helps with parallel builds and testing.
+  build-monorepo:
+    uses: bauer-group/automation-templates/.github/workflows/nodejs-build.yml@main
+    with:
+      node-version: '20.x'
+      package-manager: 'pnpm'
+      is-monorepo: true
+      packages-path: 'packages/*'
+      build-command: 'pnpm run build --filter=...'
+      run-tests: true
+      # High-performance runner for monorepo builds
+      runs-on: '["self-hosted", "linux", "high-memory", "nodejs"]'
+      timeout-minutes: 45
+    secrets: inherit
+
+  # ============================================================================
+  # Example 6: Docker Build on Self-Hosted
+  # ============================================================================
+  # Builds a Node.js application and creates a Docker image.
+  # Requires the self-hosted runner to have Docker installed.
+  build-with-docker:
+    uses: bauer-group/automation-templates/.github/workflows/nodejs-build.yml@main
+    with:
+      node-version: '20.x'
+      package-manager: 'npm'
+      build-command: 'npm run build'
+      run-tests: true
+      build-docker: true
+      dockerfile-path: './Dockerfile'
+      # Self-hosted runner with Docker capability
+      runs-on: '["self-hosted", "linux", "docker"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 7: Fallback Strategy
+  # ============================================================================
+  # Uses repository variable to control runner preference.
+  # Set PREFER_SELF_HOSTED=true in repository variables for self-hosted.
+  build-with-fallback:
+    uses: bauer-group/automation-templates/.github/workflows/nodejs-build.yml@main
+    with:
+      node-version: '20.x'
+      package-manager: 'npm'
+      build-command: 'npm run build'
+      run-tests: true
+      # Fallback: self-hosted if available, otherwise GitHub-hosted
+      runs-on: ${{ vars.PREFER_SELF_HOSTED == 'true' && '["self-hosted", "linux"]' || 'ubuntu-latest' }}
+    secrets: inherit

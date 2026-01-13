@@ -139,6 +139,11 @@ on:
         type: boolean
         required: false
         default: false
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
 
     outputs:
       cleanup-success:
@@ -173,7 +178,7 @@ jobs:
   # Pre-flight validation and configuration loading
   pre-flight-check:
     name: 🔍 Pre-flight Validation
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     
     outputs:
       config-validated: ${{ steps.validation.outputs.config-validated }}
@@ -329,7 +334,7 @@ jobs:
   repository-cleanup:
     name: 🧹 Execute Repository Cleanup
     needs: pre-flight-check
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     
     outputs:
       cleanup-success: ${{ steps.cleanup-action.conclusion == 'success' }}
@@ -375,7 +380,7 @@ jobs:
     name: 📊 Post-Cleanup Reporting
     if: always() && inputs.generate-report
     needs: [pre-flight-check, repository-cleanup]
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     
     steps:
       - name: 📊 Generate Comprehensive Report

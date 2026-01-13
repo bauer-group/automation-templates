@@ -110,6 +110,11 @@ on:
         required: false
         type: string
         default: '["ubuntu-latest"]'
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
 
     outputs:
       build-status:
@@ -128,7 +133,7 @@ jobs:
   # Security and Compliance Checks
   security:
     name: 🛡️ Security & Compliance
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     if: inputs.run-compliance
     
     steps:
@@ -294,7 +299,7 @@ jobs:
   # Results Summary
   summary:
     name: 📋 Build Summary
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     needs: [security, build, hardware-test]
     if: always()
     

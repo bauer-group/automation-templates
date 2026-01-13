@@ -1,0 +1,196 @@
+name: Docker Build (Self-Hosted Example)
+
+# ============================================================================
+# Self-Hosted Runner Example for Docker Builds
+# ============================================================================
+# This workflow demonstrates how to configure the docker-build reusable
+# workflow to run on self-hosted runners instead of GitHub-hosted runners.
+#
+# Key features demonstrated:
+# - JSON array format for self-hosted runner labels
+# - Dynamic runner selection via workflow_dispatch input
+# - Fallback to GitHub-hosted runners
+# - Multi-platform builds on self-hosted infrastructure
+# - Private registry access from internal network
+#
+# Self-hosted runner labels:
+# - 'self-hosted' (required) - Identifies the runner as self-hosted
+# - 'linux', 'windows' - Operating system labels
+# - Custom labels like 'docker', 'buildx', 'arm64' for Docker capabilities
+#
+# Prerequisites for self-hosted Docker builds:
+# - Docker Engine installed and running
+# - docker buildx available for multi-platform builds
+# - Sufficient disk space for image layers
+# - Network access to target registries
+# ============================================================================
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'Dockerfile'
+      - 'docker/**'
+      - 'src/**'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      use-self-hosted:
+        description: 'Use self-hosted runner instead of GitHub-hosted'
+        type: boolean
+        default: true
+      push-image:
+        description: 'Push image to registry'
+        type: boolean
+        default: false
+      platforms:
+        description: 'Target platforms (comma-separated)'
+        type: string
+        default: 'linux/amd64'
+
+jobs:
+  # ============================================================================
+  # Example 1: Dynamic Runner Selection
+  # ============================================================================
+  # Allows switching between self-hosted and GitHub-hosted runners
+  # via workflow_dispatch input.
+  build-dynamic:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      dockerfile-path: './Dockerfile'
+      platforms: ${{ github.event.inputs.platforms || 'linux/amd64' }}
+      push: ${{ github.event.inputs.push-image == 'true' }}
+      security-scan: true
+      # Dynamic runner selection
+      runs-on: ${{ github.event.inputs.use-self-hosted == 'true' && '["self-hosted", "linux", "docker"]' || 'ubuntu-latest' }}
+    secrets: inherit
+
+  # ============================================================================
+  # Example 2: Fixed Self-Hosted Linux Runner
+  # ============================================================================
+  # Always runs on a self-hosted Linux runner with Docker installed.
+  # Ideal for internal builds with access to private registries.
+  build-self-hosted-linux:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      dockerfile-path: './Dockerfile'
+      platforms: 'linux/amd64'
+      push: true
+      publish-to: 'ghcr'
+      security-scan: true
+      cache-enabled: true
+      # Self-hosted Linux runner with Docker
+      runs-on: '["self-hosted", "linux", "docker"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 3: Multi-Platform Build
+  # ============================================================================
+  # Builds images for multiple platforms using buildx on self-hosted.
+  # Self-hosted runners with QEMU can build for ARM without native hardware.
+  build-multi-platform:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      dockerfile-path: './Dockerfile'
+      platforms: 'linux/amd64,linux/arm64'
+      multi-platform: true
+      push: true
+      publish-to: 'ghcr'
+      # Self-hosted runner with buildx and QEMU for cross-platform builds
+      runs-on: '["self-hosted", "linux", "docker", "buildx"]'
+      build-timeout: 60
+    secrets: inherit
+
+  # ============================================================================
+  # Example 4: Private Registry with Internal Network
+  # ============================================================================
+  # Pushes images to a private registry accessible only from the
+  # self-hosted runner's internal network.
+  build-private-registry:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      dockerfile-path: './Dockerfile'
+      platforms: 'linux/amd64'
+      push: true
+      publish-to: 'dockerhub'
+      docker-image-name: 'internal-registry.company.com/myapp'
+      security-scan: true
+      # Self-hosted runner with access to internal registry
+      runs-on: '["self-hosted", "linux", "docker", "internal-network"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 5: High-Performance Build Runner
+  # ============================================================================
+  # Uses a high-performance self-hosted runner for large image builds.
+  # More CPU/RAM helps with multi-stage builds and parallel operations.
+  build-high-performance:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      dockerfile-path: './Dockerfile'
+      platforms: 'linux/amd64'
+      push: true
+      publish-to: 'both'
+      cache-enabled: true
+      cache-mode: 'max'
+      security-scan: true
+      generate-sbom: true
+      # High-performance runner for large builds
+      runs-on: '["self-hosted", "linux", "high-memory", "docker"]'
+      build-timeout: 90
+    secrets: inherit
+
+  # ============================================================================
+  # Example 6: Windows Container Build
+  # ============================================================================
+  # Builds Windows containers on a self-hosted Windows runner.
+  # Required for native Windows container images.
+  build-windows-container:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      dockerfile-path: './Dockerfile.windows'
+      platforms: 'windows/amd64'
+      push: true
+      publish-to: 'ghcr'
+      # Self-hosted Windows runner with Docker
+      runs-on: '["self-hosted", "windows", "docker"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 7: Security-Focused Build with Signing
+  # ============================================================================
+  # Builds and signs images on self-hosted infrastructure.
+  # Keeps signing keys within the self-hosted environment.
+  build-with-signing:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      dockerfile-path: './Dockerfile'
+      platforms: 'linux/amd64'
+      push: true
+      publish-to: 'ghcr'
+      security-scan: true
+      security-fail-on: 'HIGH'
+      sign-image: true
+      generate-sbom: true
+      sbom-format: 'cyclonedx'
+      # Self-hosted runner with cosign keys available
+      runs-on: '["self-hosted", "linux", "docker", "secure"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 8: Fallback Strategy
+  # ============================================================================
+  # Uses repository variable to control runner preference.
+  # Set PREFER_SELF_HOSTED=true in repository variables for self-hosted.
+  build-with-fallback:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      dockerfile-path: './Dockerfile'
+      platforms: 'linux/amd64'
+      push: true
+      publish-to: 'ghcr'
+      security-scan: true
+      # Fallback: self-hosted if available, otherwise GitHub-hosted
+      runs-on: ${{ vars.PREFER_SELF_HOSTED == 'true' && '["self-hosted", "linux", "docker"]' || 'ubuntu-latest' }}
+    secrets: inherit

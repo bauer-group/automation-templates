@@ -49,7 +49,12 @@ on:
         description: 'Update security policy after release'
         type: boolean
         default: true
-        
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+
     secrets:
       PYPI_API_TOKEN:
         description: 'PyPI API token (optional if using Trusted Publishing)'
@@ -100,7 +105,7 @@ jobs:
   test-and-quality:
     name: 🧪 Tests & Quality
     if: inputs.run-tests == true && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     outputs:
       tests-passed: ${{ steps.run-tests.outputs.tests-passed || 'skipped' }}
       coverage-percentage: ${{ steps.run-tests.outputs.coverage-percentage || 'N/A' }}
@@ -293,7 +298,7 @@ jobs:
     name: 🚀 Semantic Release
     if: always() && (github.event_name == 'push' || github.event_name == 'workflow_call') && (needs.test-and-quality.result == 'success' || needs.test-and-quality.result == 'skipped') && (needs.security-scan.result == 'success' || needs.security-scan.result == 'skipped') && (needs.license-compliance.result == 'success' || needs.license-compliance.result == 'skipped')
     needs: [test-and-quality, security-scan, license-compliance]
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     concurrency: release
     outputs:
       released: ${{ steps.release.outputs.released }}
@@ -457,7 +462,7 @@ jobs:
     name: 📤 Publish to PyPI
     if: needs.release.outputs.released == 'true' && needs.release.outputs.wheel-built == 'true' && inputs.skip-pypi != true
     needs: [release]
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     environment: production
     
     steps:
@@ -501,7 +506,7 @@ jobs:
     name: 📊 Pipeline Summary
     if: always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call')
     needs: [test-and-quality, security-scan, license-compliance, release, pypi-publish, update-documentation, update-security]
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     
     steps:
       - name: 📊 Generate Pipeline Summary

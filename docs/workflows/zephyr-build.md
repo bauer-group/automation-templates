@@ -182,6 +182,22 @@ Core composite action for building Zephyr applications:
 | `enable-coverage` | Enable code coverage | `false` | No |
 | `static-analysis` | Enable static analysis | `false` | No |
 | `upload-artifacts` | Upload build artifacts | `true` | No |
+| `runs-on` | Runner to use | `ubuntu-latest` | No |
+
+#### Self-Hosted Runner Support
+
+The `runs-on` parameter supports both GitHub-hosted and self-hosted runners:
+
+```yaml
+# GitHub-hosted (string)
+runs-on: 'ubuntu-latest'
+
+# Self-hosted (JSON array)
+runs-on: '["self-hosted", "linux"]'
+runs-on: '["self-hosted", "linux", "docker"]'
+```
+
+See [Self-Hosted Runner Documentation](../self-hosted-runners.md) for details.
 
 ### Workflow Outputs
 

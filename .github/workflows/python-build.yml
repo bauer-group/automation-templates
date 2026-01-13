@@ -277,7 +277,7 @@ on:
       
       # Platform Configuration
       runs-on:
-        description: 'Runner OS (ubuntu-latest, windows-latest, macos-latest)'
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         type: string
         required: false
         default: 'ubuntu-latest'
@@ -354,7 +354,7 @@ on:
 jobs:
   build:
     name: Python Build
-    runs-on: ${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}
+    runs-on: ${{ inputs.enable-matrix && matrix.os || (startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on) }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     
     strategy:

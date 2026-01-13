@@ -33,6 +33,11 @@ on:
         required: false
         type: string
         default: 'GPL-*,AGPL-*,SSPL-*'
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
     secrets:
       FOSSA_API_KEY:
         description: 'FOSSA API key for enterprise license scanning'
@@ -58,7 +63,7 @@ permissions:
 jobs:
   license-check:
     name: 📄 License Analysis
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     outputs:
       compliance-status: ${{ steps.license.outputs.compliance-status }}
       forbidden-count: ${{ steps.license.outputs.forbidden-count }}

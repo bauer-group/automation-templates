@@ -1,0 +1,122 @@
+name: .NET Build (Self-Hosted Example)
+
+# ============================================================================
+# Self-Hosted Runner Example for .NET Projects
+# ============================================================================
+# This workflow demonstrates how to configure the dotnet-build reusable
+# workflow to run on self-hosted runners instead of GitHub-hosted runners.
+#
+# Key features demonstrated:
+# - JSON array format for self-hosted runner labels
+# - Dynamic runner selection via workflow_dispatch input
+# - Fallback to GitHub-hosted runners
+# - Multiple label combinations for runner matching
+#
+# Self-hosted runner labels:
+# - 'self-hosted' (required) - Identifies the runner as self-hosted
+# - 'linux', 'windows', 'macos' - Operating system labels
+# - Custom labels like 'dotnet', 'x64', 'gpu' for specialized workloads
+# ============================================================================
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - '*.csproj'
+      - '*.sln'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      use-self-hosted:
+        description: 'Use self-hosted runner instead of GitHub-hosted'
+        type: boolean
+        default: true
+      runner-labels:
+        description: 'Self-hosted runner labels (comma-separated)'
+        type: string
+        default: 'self-hosted,linux,dotnet'
+
+jobs:
+  # ============================================================================
+  # Example 1: Dynamic Runner Selection
+  # ============================================================================
+  # Allows switching between self-hosted and GitHub-hosted runners
+  # via workflow_dispatch input.
+  build-dynamic:
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'src/MyApp.csproj'
+      dotnet-version: '8.0.x'
+      configuration: 'Release'
+      run-tests: true
+      # Dynamic runner selection using ternary expression
+      # When use-self-hosted is true, uses JSON array format for self-hosted
+      # Otherwise falls back to GitHub-hosted ubuntu-latest
+      runs-on: ${{ github.event.inputs.use-self-hosted == 'true' && '["self-hosted", "linux", "dotnet"]' || 'ubuntu-latest' }}
+    secrets: inherit
+
+  # ============================================================================
+  # Example 2: Fixed Self-Hosted Linux Runner
+  # ============================================================================
+  # Always runs on a self-hosted Linux runner with the 'dotnet' label.
+  # Use this when you have dedicated .NET build runners.
+  build-self-hosted-linux:
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'src/MyApp.csproj'
+      dotnet-version: '8.0.x'
+      configuration: 'Release'
+      run-tests: true
+      collect-coverage: true
+      # Self-hosted Linux runner with .NET SDK pre-installed
+      runs-on: '["self-hosted", "linux", "dotnet"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 3: Self-Hosted Windows Runner
+  # ============================================================================
+  # Runs on a self-hosted Windows runner - useful for Windows-specific builds
+  # or when you need access to Windows-only tools.
+  build-self-hosted-windows:
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'src/MyApp.csproj'
+      dotnet-version: '8.0.x'
+      configuration: 'Release'
+      run-tests: true
+      # Self-hosted Windows runner
+      runs-on: '["self-hosted", "windows", "x64"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 4: High-Performance Runner
+  # ============================================================================
+  # Uses a self-hosted runner with specific hardware labels for
+  # resource-intensive builds (e.g., large solutions, parallel testing).
+  build-high-performance:
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'src/MyApp.sln'
+      dotnet-version: '8.0.x'
+      configuration: 'Release'
+      run-tests: true
+      # High-performance runner with more CPU/RAM
+      runs-on: '["self-hosted", "linux", "high-memory", "x64"]'
+      timeout-minutes: 60
+    secrets: inherit
+
+  # ============================================================================
+  # Example 5: Fallback Strategy with needs
+  # ============================================================================
+  # First tries self-hosted, if not available (skipped), uses GitHub-hosted.
+  # This pattern provides resilience when self-hosted runners may be offline.
+  build-with-fallback:
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'src/MyApp.csproj'
+      dotnet-version: '8.0.x'
+      # Try self-hosted first, fallback to ubuntu-latest if unavailable
+      runs-on: ${{ vars.PREFER_SELF_HOSTED == 'true' && '["self-hosted", "linux"]' || 'ubuntu-latest' }}
+    secrets: inherit

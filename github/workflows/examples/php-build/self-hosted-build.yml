@@ -1,0 +1,209 @@
+name: PHP Build (Self-Hosted Example)
+
+# ============================================================================
+# Self-Hosted Runner Example for PHP Projects
+# ============================================================================
+# This workflow demonstrates how to configure the php-build reusable
+# workflow to run on self-hosted runners instead of GitHub-hosted runners.
+#
+# Key features demonstrated:
+# - JSON array format for self-hosted runner labels
+# - Dynamic runner selection via workflow_dispatch input
+# - Fallback to GitHub-hosted runners
+# - Framework support (Laravel, Symfony) on self-hosted
+# - Access to internal databases and services
+#
+# Self-hosted runner labels:
+# - 'self-hosted' (required) - Identifies the runner as self-hosted
+# - 'linux', 'windows' - Operating system labels
+# - Custom labels like 'php', 'composer', 'mysql' for PHP environments
+#
+# Prerequisites for self-hosted PHP builds:
+# - PHP installed with required extensions
+# - Composer installed globally
+# - Database access for integration tests (optional)
+# ============================================================================
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - 'app/**'
+      - 'composer.json'
+      - 'composer.lock'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      use-self-hosted:
+        description: 'Use self-hosted runner instead of GitHub-hosted'
+        type: boolean
+        default: true
+      php-version:
+        description: 'PHP version'
+        type: string
+        default: '8.2'
+
+jobs:
+  # ============================================================================
+  # Example 1: Dynamic Runner Selection
+  # ============================================================================
+  # Allows switching between self-hosted and GitHub-hosted runners
+  # via workflow_dispatch input.
+  build-dynamic:
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: ${{ github.event.inputs.php-version || '8.2' }}
+      run-tests: true
+      run-phpcs: true
+      run-phpstan: true
+      # Dynamic runner selection
+      runs-on: ${{ github.event.inputs.use-self-hosted == 'true' && '["self-hosted", "linux", "php"]' || 'ubuntu-latest' }}
+    secrets: inherit
+
+  # ============================================================================
+  # Example 2: Fixed Self-Hosted Linux Runner
+  # ============================================================================
+  # Always runs on a self-hosted Linux runner with PHP pre-installed.
+  # Ideal for CI/CD pipelines with dedicated build infrastructure.
+  build-self-hosted-linux:
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.2'
+      extensions: 'mbstring, xml, curl, zip, intl, gd, mysql, redis'
+      run-tests: true
+      run-phpcs: true
+      phpcs-standard: 'PSR12'
+      run-phpstan: true
+      phpstan-level: '6'
+      run-security-check: true
+      # Self-hosted Linux runner with PHP
+      runs-on: '["self-hosted", "linux", "php"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 3: Laravel Application
+  # ============================================================================
+  # Builds and tests a Laravel application on self-hosted infrastructure.
+  # Can access internal databases and services for integration tests.
+  build-laravel:
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.2'
+      extensions: 'mbstring, xml, curl, zip, intl, gd, mysql, redis, pcntl'
+      framework: 'laravel'
+      run-tests: true
+      run-migrations: true
+      coverage: 'pcov'
+      run-phpstan: true
+      phpstan-level: '5'
+      # Self-hosted runner with database access for Laravel tests
+      runs-on: '["self-hosted", "linux", "php", "mysql"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 4: Symfony Application
+  # ============================================================================
+  # Builds and tests a Symfony application on self-hosted infrastructure.
+  # Includes framework-specific optimizations and caching.
+  build-symfony:
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.2'
+      extensions: 'mbstring, xml, curl, zip, intl, gd, pdo_pgsql, redis, apcu'
+      framework: 'symfony'
+      run-tests: true
+      run-migrations: true
+      coverage: 'xdebug'
+      run-phpstan: true
+      phpstan-level: '7'
+      # Self-hosted runner with PostgreSQL for Symfony tests
+      runs-on: '["self-hosted", "linux", "php", "postgres"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 5: High-Performance Build Runner
+  # ============================================================================
+  # Uses a high-performance self-hosted runner for large PHP applications.
+  # More CPU/RAM helps with extensive test suites and static analysis.
+  build-high-performance:
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.2'
+      run-tests: true
+      run-phpcs: true
+      run-phpstan: true
+      phpstan-level: 'max'
+      run-psalm: true
+      psalm-level: '2'
+      run-phpmd: true
+      # High-performance runner for comprehensive analysis
+      runs-on: '["self-hosted", "linux", "high-memory", "php"]'
+      timeout-minutes: 60
+    secrets: inherit
+
+  # ============================================================================
+  # Example 6: PHP with Docker Build
+  # ============================================================================
+  # Builds a PHP application and creates a Docker image.
+  # Requires Docker to be available on the self-hosted runner.
+  build-with-docker:
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.2'
+      run-tests: true
+      run-phpstan: true
+      build-docker: true
+      dockerfile-path: 'Dockerfile'
+      # Self-hosted runner with Docker capability
+      runs-on: '["self-hosted", "linux", "php", "docker"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 7: Private Composer Packages
+  # ============================================================================
+  # Builds PHP project with access to private Composer repositories.
+  # Self-hosted runners can access internal package servers.
+  build-private-packages:
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.2'
+      run-tests: true
+      run-phpstan: true
+      # Self-hosted runner with access to private Satis/Packagist server
+      runs-on: '["self-hosted", "linux", "php", "internal-network"]'
+    secrets:
+      COMPOSER_AUTH_JSON: ${{ secrets.COMPOSER_AUTH_JSON }}
+
+  # ============================================================================
+  # Example 8: Matrix Build on Self-Hosted
+  # ============================================================================
+  # Tests multiple PHP versions on self-hosted runners.
+  # Useful for libraries that need to support multiple PHP versions.
+  build-matrix:
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.1,8.2,8.3'
+      enable-matrix: true
+      run-tests: true
+      run-phpstan: true
+      # Self-hosted runner pool for matrix builds
+      runs-on: '["self-hosted", "linux", "php"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 9: Fallback Strategy
+  # ============================================================================
+  # Uses repository variable to control runner preference.
+  # Set PREFER_SELF_HOSTED=true in repository variables for self-hosted.
+  build-with-fallback:
+    uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    with:
+      php-version: '8.2'
+      run-tests: true
+      run-phpcs: true
+      run-phpstan: true
+      # Fallback: self-hosted if available, otherwise GitHub-hosted
+      runs-on: ${{ vars.PREFER_SELF_HOSTED == 'true' && '["self-hosted", "linux", "php"]' || 'ubuntu-latest' }}
+    secrets: inherit

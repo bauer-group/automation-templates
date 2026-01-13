@@ -43,6 +43,11 @@ on:
         type: string
         required: false
         default: ''
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
 
 permissions:
   contents: write
@@ -52,7 +57,7 @@ jobs:
   # Generate README using the readme-generate action directly
   generate-documentation:
     name: Generate Documentation
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name == 'workflow_call' && startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on)) || (github.event_name == 'workflow_call' && inputs.runs-on) || 'ubuntu-latest' }}
     outputs:
       should_run: ${{ steps.should-run.outputs.should_run }}
       readme_updated: ${{ steps.generate.outputs.readme_updated || 'false' }}
@@ -249,7 +254,7 @@ jobs:
     name: Validate Documentation
     needs: generate-documentation
     if: needs.generate-documentation.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name == 'workflow_call' && startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on)) || (github.event_name == 'workflow_call' && inputs.runs-on) || 'ubuntu-latest' }}
     
     steps:
       - name: 🚀 Checkout Repository

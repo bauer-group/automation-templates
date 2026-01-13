@@ -193,6 +193,27 @@ The Docker build action provides:
 | `builder-driver` | Builder driver: `'docker'`, `'docker-container'`, `'kubernetes'` | `'docker-container'` |
 | `build-timeout` | Build timeout in minutes | `30` |
 
+### Platform Configuration
+
+| Parameter | Description | Default | Options |
+|-----------|-------------|---------|---------|
+| `runs-on` | Runner to use | `ubuntu-latest` | String or JSON array (see below) |
+
+#### Self-Hosted Runner Support
+
+The `runs-on` parameter supports both GitHub-hosted and self-hosted runners:
+
+```yaml
+# GitHub-hosted (string)
+runs-on: 'ubuntu-latest'
+
+# Self-hosted (JSON array)
+runs-on: '["self-hosted", "linux"]'
+runs-on: '["self-hosted", "linux", "docker"]'
+```
+
+See [Self-Hosted Runner Documentation](../self-hosted-runners.md) for details.
+
 ### Deployment
 
 | Parameter | Description | Default |

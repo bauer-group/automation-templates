@@ -808,6 +808,43 @@ jobs:
 - **Comprehensive coverage**: Document all features and configurations
 - **Regular updates**: Keep documentation current with changes
 
+## 🏃 Self-Hosted Runner Support
+
+All reusable workflows support self-hosted GitHub Actions runners, allowing organizations to run workflows on their own infrastructure.
+
+### Configuration
+
+Every workflow accepts a `runs-on` parameter:
+
+```yaml
+jobs:
+  build:
+    uses: {{REPO_FULL_NAME}}/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'src/MyApp.csproj'
+      # GitHub-hosted (default)
+      runs-on: 'ubuntu-latest'
+      # OR Self-hosted with labels
+      runs-on: '["self-hosted", "linux", "docker"]'
+```
+
+### Input Formats
+
+| Format | Example | Use Case |
+|--------|---------|----------|
+| String | `'ubuntu-latest'` | GitHub-hosted runners |
+| JSON Array | `'["self-hosted", "linux"]'` | Self-hosted with labels |
+| JSON Array | `'["self-hosted", "Windows", "vs2022"]'` | Windows self-hosted |
+
+### Benefits
+
+- **Cost Control**: No GitHub Actions minutes consumption
+- **Custom Hardware**: Use specialized hardware (GPU, high memory)
+- **Network Access**: Access to internal networks and resources
+- **Compliance**: Keep builds within your infrastructure
+
+For detailed setup instructions, see [Self-Hosted Runner Documentation](docs/self-hosted-runners.md).
+
 ## 🏛️ Enterprise Features
 
 ### Multi-Repository Management
@@ -918,6 +955,7 @@ gh auth status --show-token
 - [🚀 **Coolify Deploy**](docs/workflows/coolify-deploy.md) - Coolify deployment automation
 - [🔄 **Meta Repository Sync**](docs/workflows/meta-repository-sync.md) - Automated submodule synchronization
 - [🔔 **Teams Notifications**](docs/workflows/teams-notifications.md) - Microsoft Teams integration
+- [🏃 **Self-Hosted Runners**](docs/self-hosted-runners.md) - Self-hosted runner configuration guide
 
 ### 🔧 Actions Documentation
 

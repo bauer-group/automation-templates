@@ -257,7 +257,7 @@ on:
         default: 30
       
       runs-on:
-        description: 'Runner OS (ubuntu-latest, windows-latest, macos-latest)'
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         type: string
         required: false
         default: 'ubuntu-latest'
@@ -344,7 +344,7 @@ permissions:
 jobs:
   build:
     name: Docker Build
-    runs-on: ${{ inputs.enable-matrix && matrix.platform && 'ubuntu-latest' || inputs.runs-on }}
+    runs-on: ${{ inputs.enable-matrix && matrix.platform && (startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on) || (startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on) }}
     timeout-minutes: ${{ inputs.build-timeout }}
     
     strategy:
@@ -479,7 +479,7 @@ jobs:
     needs: build
     # Only sync README if image was actually pushed (security scan passed)
     if: inputs.sync-dockerhub-readme == true && (inputs.publish-to == 'dockerhub' || inputs.publish-to == 'both') && needs.build.result == 'success' && needs.build.outputs.image-pushed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     timeout-minutes: 5
     
     steps:
@@ -586,7 +586,7 @@ jobs:
     name: 🛡️ Advanced Security Analysis
     needs: build
     if: always() && needs.build.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     timeout-minutes: 15
 
     steps:
@@ -652,7 +652,7 @@ jobs:
     name: 🚀 Deploy Image
     needs: [build, security-analysis]
     if: always() && needs.build.result == 'success' && needs.security-analysis.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     environment:
       name: ${{ inputs.deploy-environment }}
       url: ${{ steps.deploy.outputs.url }}
@@ -725,7 +725,7 @@ jobs:
     name: 📊 Pipeline Summary
     needs: [build, dockerhub-readme, security-analysis, deploy]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
 
     steps:
       - name: 📊 Generate Build Summary

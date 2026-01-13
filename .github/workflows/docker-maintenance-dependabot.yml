@@ -46,7 +46,7 @@ on:
         default: 30
 
       runs-on:
-        description: 'Runner to use'
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         type: string
         required: false
         default: 'ubuntu-latest'
@@ -58,7 +58,7 @@ permissions:
 jobs:
   maintenance:
     name: Docker Maintenance
-    runs-on: ${{ inputs.runs-on }}
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     if: github.actor == 'dependabot[bot]'
 
     steps:

@@ -28,6 +28,11 @@ on:
         required: false
         type: string
         default: ''
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
     outputs:
       release-created:
         description: 'Whether a release was created'
@@ -47,7 +52,7 @@ permissions:
 jobs:
   semantic-release:
     name: 📦 Semantic Release
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     outputs:
       release-created: ${{ steps.release.outputs.release-created }}
       version: ${{ steps.release.outputs.version }}

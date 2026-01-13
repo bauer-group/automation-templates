@@ -152,6 +152,11 @@ on:
         type: number
         required: false
         default: 1
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
 
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
@@ -188,7 +193,7 @@ jobs:
   # Validation job - check if Claude should respond
   validate:
     name: 🔍 Validate Trigger
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     outputs:
       should-respond: ${{ steps.check.outputs.should-respond }}
       trigger-type: ${{ steps.check.outputs.trigger-type }}
@@ -296,7 +301,7 @@ jobs:
     name: 🤖 Claude Code
     needs: validate
     if: needs.validate.outputs.should-respond == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     outputs:
       response: ${{ steps.claude.outputs.response }}
       response-url: ${{ steps.claude.outputs.response-url }}
@@ -377,7 +382,7 @@ jobs:
     name: 📢 Notify
     needs: [validate, claude]
     if: always() && needs.validate.outputs.should-respond == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     steps:
       - name: 📊 Log Result
         run: |

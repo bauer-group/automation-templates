@@ -193,8 +193,25 @@ jobs:
 
 | Input | Description | Default | Options |
 |-------|-------------|---------|---------|
-| `runs-on` | Runner OS | `ubuntu-latest` | `ubuntu-latest`, `windows-latest`, `macos-latest` |
+| `runs-on` | Runner to use | `ubuntu-latest` | String or JSON array (see below) |
 | `timeout-minutes` | Job timeout | `30` | Minutes |
+
+#### Self-Hosted Runner Support
+
+The `runs-on` parameter supports both GitHub-hosted and self-hosted runners:
+
+```yaml
+# GitHub-hosted (string)
+runs-on: 'ubuntu-latest'
+runs-on: 'windows-latest'
+
+# Self-hosted (JSON array)
+runs-on: '["self-hosted", "linux"]'
+runs-on: '["self-hosted", "linux", "docker"]'
+runs-on: '["self-hosted", "Windows", "vs2022"]'
+```
+
+See [Self-Hosted Runner Documentation](../self-hosted-runners.md) for details.
 
 ### Matrix Support
 

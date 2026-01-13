@@ -295,9 +295,24 @@ with:
 
 | Input | Type | Default | Description |
 |-------|------|---------|-------------|
-| `runs-on` | string | `ubuntu-latest` | Runner OS |
+| `runs-on` | string | `ubuntu-latest` | Runner to use (String or JSON array) |
 | `timeout-minutes` | number | `30` | Job timeout |
 | `artifact-retention-days` | number | `90` | Artifact retention |
+
+#### Self-Hosted Runner Support
+
+The `runs-on` parameter supports both GitHub-hosted and self-hosted runners:
+
+```yaml
+# GitHub-hosted (string)
+runs-on: 'ubuntu-latest'
+
+# Self-hosted (JSON array)
+runs-on: '["self-hosted", "linux"]'
+runs-on: '["self-hosted", "linux", "docker"]'
+```
+
+See [Self-Hosted Runner Documentation](../self-hosted-runners.md) for details.
 
 ## Secrets
 

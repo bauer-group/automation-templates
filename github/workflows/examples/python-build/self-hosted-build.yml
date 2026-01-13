@@ -1,0 +1,176 @@
+name: Python Build (Self-Hosted Example)
+
+# ============================================================================
+# Self-Hosted Runner Example for Python Projects
+# ============================================================================
+# This workflow demonstrates how to configure the python-build reusable
+# workflow to run on self-hosted runners instead of GitHub-hosted runners.
+#
+# Key features demonstrated:
+# - JSON array format for self-hosted runner labels
+# - Dynamic runner selection via workflow_dispatch input
+# - Fallback to GitHub-hosted runners
+# - Package manager support (pip, poetry, pipenv) on self-hosted
+# - Data science workloads with GPU support
+#
+# Self-hosted runner labels:
+# - 'self-hosted' (required) - Identifies the runner as self-hosted
+# - 'linux', 'windows', 'macos' - Operating system labels
+# - Custom labels like 'python', 'gpu', 'ml' for specialized workloads
+# ============================================================================
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - '*.py'
+      - 'requirements*.txt'
+      - 'pyproject.toml'
+      - 'setup.py'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      use-self-hosted:
+        description: 'Use self-hosted runner instead of GitHub-hosted'
+        type: boolean
+        default: true
+      python-version:
+        description: 'Python version'
+        type: string
+        default: '3.12'
+
+jobs:
+  # ============================================================================
+  # Example 1: Dynamic Runner Selection
+  # ============================================================================
+  # Allows switching between self-hosted and GitHub-hosted runners
+  # via workflow_dispatch input.
+  build-dynamic:
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    with:
+      python-version: ${{ github.event.inputs.python-version || '3.12' }}
+      run-tests: true
+      run-lint: true
+      collect-coverage: true
+      # Dynamic runner selection
+      runs-on: ${{ github.event.inputs.use-self-hosted == 'true' && '["self-hosted", "linux", "python"]' || 'ubuntu-latest' }}
+    secrets: inherit
+
+  # ============================================================================
+  # Example 2: Fixed Self-Hosted Linux Runner
+  # ============================================================================
+  # Always runs on a self-hosted Linux runner with Python pre-installed.
+  # Ideal for CI/CD pipelines with dedicated build infrastructure.
+  build-self-hosted-linux:
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    with:
+      python-version: '3.12'
+      package-manager: 'pip'
+      run-tests: true
+      run-lint: true
+      linter: 'ruff'
+      collect-coverage: true
+      run-type-check: true
+      type-checker: 'mypy'
+      # Self-hosted Linux runner with Python
+      runs-on: '["self-hosted", "linux", "python"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 3: Poetry on Self-Hosted
+  # ============================================================================
+  # Runs on a self-hosted runner with Poetry package manager.
+  # Poetry provides better dependency management for Python projects.
+  build-self-hosted-poetry:
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    with:
+      python-version: '3.12'
+      package-manager: 'poetry'
+      run-tests: true
+      run-lint: true
+      collect-coverage: true
+      # Self-hosted runner with Poetry support
+      runs-on: '["self-hosted", "linux", "python", "poetry"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 4: Data Science / ML Workload with GPU
+  # ============================================================================
+  # Runs on a self-hosted runner with GPU support for machine learning.
+  # Requires GPU-enabled self-hosted runner with CUDA drivers.
+  build-data-science:
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    with:
+      python-version: '3.11'
+      project-type: 'data-science'
+      run-tests: true
+      # GPU-enabled self-hosted runner for ML workloads
+      runs-on: '["self-hosted", "linux", "gpu", "cuda"]'
+      timeout-minutes: 60
+    secrets: inherit
+
+  # ============================================================================
+  # Example 5: Self-Hosted Windows Runner
+  # ============================================================================
+  # Runs on a self-hosted Windows runner - useful for Windows-specific
+  # Python packages or when you need Windows API access.
+  build-self-hosted-windows:
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    with:
+      python-version: '3.12'
+      run-tests: true
+      # Self-hosted Windows runner
+      runs-on: '["self-hosted", "windows", "x64"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 6: Web Application (Django/FastAPI)
+  # ============================================================================
+  # Builds a Python web application on self-hosted infrastructure.
+  # Can include database tests if runner has access to test databases.
+  build-web-app:
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    with:
+      python-version: '3.12'
+      project-type: 'web-app'
+      run-tests: true
+      run-lint: true
+      run-security-scan: true
+      collect-coverage: true
+      # Self-hosted runner with network access to test databases
+      runs-on: '["self-hosted", "linux", "python", "docker"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 7: Package Build and Publish
+  # ============================================================================
+  # Builds a Python package on self-hosted runner.
+  # Can publish to private PyPI server accessible from self-hosted network.
+  build-package:
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    with:
+      python-version: '3.12'
+      project-type: 'package'
+      run-tests: true
+      build-package: true
+      run-lint: true
+      # Self-hosted runner with access to private PyPI
+      runs-on: '["self-hosted", "linux", "python"]'
+    secrets: inherit
+
+  # ============================================================================
+  # Example 8: Fallback Strategy
+  # ============================================================================
+  # Uses repository variable to control runner preference.
+  # Set PREFER_SELF_HOSTED=true in repository variables for self-hosted.
+  build-with-fallback:
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    with:
+      python-version: '3.12'
+      run-tests: true
+      run-lint: true
+      # Fallback: self-hosted if available, otherwise GitHub-hosted
+      runs-on: ${{ vars.PREFER_SELF_HOSTED == 'true' && '["self-hosted", "linux"]' || 'ubuntu-latest' }}
+    secrets: inherit

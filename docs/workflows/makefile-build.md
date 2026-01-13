@@ -40,7 +40,29 @@ graph TD
 | **Configurations** | Build system templates | `.github/config/makefile-build/` |
 | **Examples** | Usage demonstrations | `github/workflows/examples/makefile-build/` |
 
-## 🚀 Getting Started
+## Platform Configuration
+
+| Input | Description | Default | Options |
+|-------|-------------|---------|---------|
+| `runs-on` | Runner to use | `ubuntu-latest` | String or JSON array (see below) |
+| `timeout-minutes` | Job timeout | `30` | Minutes |
+
+### Self-Hosted Runner Support
+
+The `runs-on` parameter supports both GitHub-hosted and self-hosted runners:
+
+```yaml
+# GitHub-hosted (string)
+runs-on: 'ubuntu-latest'
+
+# Self-hosted (JSON array)
+runs-on: '["self-hosted", "linux"]'
+runs-on: '["self-hosted", "linux", "docker"]'
+```
+
+See [Self-Hosted Runner Documentation](../self-hosted-runners.md) for details.
+
+## Getting Started
 
 ### 1. Choose Your Build System
 

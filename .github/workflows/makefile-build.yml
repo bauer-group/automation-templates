@@ -88,7 +88,7 @@ on:
         required: false
       
       runs-on:
-        description: 'Runner type to use for the build'
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         type: string
         default: 'ubuntu-latest'
         required: false
@@ -121,7 +121,7 @@ jobs:
   security-scan:
     name: 🛡️ Security Scan
     if: inputs.security-scan
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     steps:
       - name: 🔍 Checkout Code
         uses: actions/checkout@v6
@@ -137,7 +137,7 @@ jobs:
     name: 🔨 Build & Test
     needs: [security-scan]
     if: always() && (needs.security-scan.result == 'success' || needs.security-scan.result == 'skipped')
-    runs-on: ${{ inputs.runs-on }}
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     
     outputs:
       build-status: ${{ steps.build.outputs.build-status }}

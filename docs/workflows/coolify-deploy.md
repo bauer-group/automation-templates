@@ -95,6 +95,22 @@ jobs:
 | `wait-for-completion` | boolean | `false` | Wait for deployment to complete before finishing |
 | `wait-timeout` | number | `300` | Timeout in seconds when waiting for completion |
 | `fail-on-error` | boolean | `true` | Fail the workflow if deployment fails or times out |
+| `runs-on` | string | `ubuntu-latest` | Runner to use (String or JSON array) |
+
+### Self-Hosted Runner Support
+
+The `runs-on` parameter supports both GitHub-hosted and self-hosted runners:
+
+```yaml
+# GitHub-hosted (string)
+runs-on: 'ubuntu-latest'
+
+# Self-hosted (JSON array)
+runs-on: '["self-hosted", "linux"]'
+runs-on: '["self-hosted", "linux", "docker"]'
+```
+
+See [Self-Hosted Runner Documentation](../self-hosted-runners.md) for details.
 
 ## Required Secrets
 

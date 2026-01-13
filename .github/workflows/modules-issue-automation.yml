@@ -23,6 +23,11 @@ on:
         required: false
         type: boolean
         default: false
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
     secrets:
       token:
         description: 'GitHub Token with issues write permission'
@@ -35,7 +40,7 @@ permissions:
 jobs:
   process-issue:
     name: 🏷️ Process Issue Based on Label
-    runs-on: ubuntu-latest
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     
     steps:
       - name: 🚀 Checkout Repository
