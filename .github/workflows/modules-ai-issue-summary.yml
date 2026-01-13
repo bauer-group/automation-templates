@@ -341,9 +341,10 @@ jobs:
           {
             echo "response<<${DELIMITER}"
             cat /tmp/openai_response.txt
+            echo ""  # Ensure newline before delimiter
             echo "${DELIMITER}"
           } >> $GITHUB_OUTPUT
-      
+
       - name: 🧠 Fallback Summary (No AI)
         id: fallback
         if: ${{ steps.inference-github.outcome != 'success' && steps.inference-openai.outcome != 'success' }}
@@ -384,9 +385,10 @@ jobs:
           {
             echo "response<<${DELIMITER}"
             cat /tmp/fallback_response.txt
+            echo ""  # Ensure newline before delimiter
             echo "${DELIMITER}"
           } >> $GITHUB_OUTPUT
-      
+
       - name: 📝 Process AI Response
         id: process
         env:
@@ -452,6 +454,7 @@ jobs:
           {
             echo "summary<<${DELIMITER}"
             cat /tmp/clean_summary.txt
+            echo ""  # Ensure newline before delimiter
             echo "${DELIMITER}"
           } >> $GITHUB_OUTPUT
       
