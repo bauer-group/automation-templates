@@ -475,6 +475,24 @@ runs:
         echo "📋 Combined tags:"
         echo "$COMBINED_TAGS"
 
+    - name: 🔧 Determine Cache Settings
+      id: cache-settings
+      shell: bash
+      run: |
+        # Handle cache-enabled input - can be string 'true'/'false' or boolean
+        CACHE_ENABLED="${{ inputs.cache-enabled }}"
+
+        # Normalize to lowercase and check for truthy values
+        if [[ "${CACHE_ENABLED,,}" == "true" || "${CACHE_ENABLED}" == "1" ]]; then
+          echo "cache-from=type=gha" >> $GITHUB_OUTPUT
+          echo "cache-to=type=gha,mode=${{ inputs.cache-mode }}" >> $GITHUB_OUTPUT
+          echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }})"
+        else
+          echo "cache-from=" >> $GITHUB_OUTPUT
+          echo "cache-to=" >> $GITHUB_OUTPUT
+          echo "📦 Build cache: DISABLED"
+        fi
+
     - name: 🐳 Build Docker Image (Local)
       id: build-local
       uses: docker/build-push-action@v5
@@ -490,8 +508,8 @@ runs:
         build-args: ${{ inputs.build-args }}
         secrets: ${{ inputs.build-secrets }}
         target: ${{ inputs.target }}
-        cache-from: ${{ inputs.cache-enabled == 'true' && 'type=gha' || '' }}
-        cache-to: ${{ inputs.cache-enabled == 'true' && format('type=gha,mode={0}', inputs.cache-mode) || '' }}
+        cache-from: ${{ steps.cache-settings.outputs.cache-from }}
+        cache-to: ${{ steps.cache-settings.outputs.cache-to }}
         provenance: false
         sbom: false
 
@@ -618,8 +636,8 @@ runs:
         build-args: ${{ inputs.build-args }}
         secrets: ${{ inputs.build-secrets }}
         target: ${{ inputs.target }}
-        cache-from: ${{ inputs.cache-enabled == 'true' && 'type=gha' || '' }}
-        # Reuse the cache from local build
+        cache-from: ${{ steps.cache-settings.outputs.cache-from }}
+        # Note: cache-to is only used in local build step
         provenance: false
         sbom: false
 
