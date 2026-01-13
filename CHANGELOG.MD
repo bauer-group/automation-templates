@@ -1,3 +1,9 @@
+## [4.10.0](https://github.com/bauer-group/automation-templates/compare/v4.9.0...v4.10.0) (2026-01-13)
+
+### 🚀 Features
+
+* Enhance self-hosted GitHub Actions runner documentation and scripts ([a01a687](https://github.com/bauer-group/automation-templates/commit/a01a687bdc267b454f2ab4cebf26db7a4c42e44f))
+
 ## [4.9.0](https://github.com/bauer-group/automation-templates/compare/v4.8.0...v4.9.0) (2026-01-13)
 
 ### 🚀 Features
