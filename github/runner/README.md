@@ -154,44 +154,133 @@ docker-compose up -d --scale runner=5
 
 ### Environment Variables
 
+Configure your `.env` file with the following variables:
+
 ```bash
-# Required
-GITHUB_PAT=ghp_xxxxxxxxxxxxxxxxxxxxx    # GitHub PAT with admin:org scope
+# =============================================================================
+# Authentication (choose ONE method)
+# =============================================================================
+
+# Option 1: Personal Access Token (requires admin:org scope)
+GITHUB_PAT=ghp_xxxxxxxxxxxxxxxxxxxxx
+
+# Option 2: GitHub App (recommended for production)
+APP_ID=123456
+APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+APP_LOGIN=your-org
+
+# =============================================================================
+# Runner Scope
+# =============================================================================
+
 RUNNER_SCOPE=org                         # org | repo | enterprise
 ORG_NAME=your-organization               # For org scope
 # REPO_URL=https://github.com/org/repo  # For repo scope
+# ENTERPRISE_NAME=your-enterprise       # For enterprise scope
 
-# Optional
-RUNNER_LABELS=self-hosted,linux,X64      # Custom labels
-RUNNER_GROUP=Default                     # Runner group
+# =============================================================================
+# Runner Configuration
+# =============================================================================
+
+RUNNER_NAME_PREFIX=linux                 # Prefix for runner names
+RUNNER_LABELS=self-hosted,linux,docker   # Comma-separated labels
+RUNNER_GROUP=Default                     # Runner group name
+RUNNER_WORKDIR=/tmp/runner/work          # Working directory
+
+# =============================================================================
+# Scaling & Resources
+# =============================================================================
+
+RUNNER_COUNT=8                           # Number of runners to start
+RUNNER_CPU_LIMIT=2.0                     # CPU limit per runner
+RUNNER_MEMORY_LIMIT=8g                   # Memory limit per runner
+
+# =============================================================================
+# General
+# =============================================================================
+
 TZ=Europe/Berlin                         # Timezone
 ```
 
 ### Management Commands
 
+The `manage.sh` script provides comprehensive runner management:
+
 ```bash
-# Check status
-./scripts/manage.sh status
+# Start all runners (uses RUNNER_COUNT from .env)
+./scripts/manage.sh start
 
-# View logs
-journalctl -u gha-runners -f
+# Stop all runners
+./scripts/manage.sh stop
 
-# Restart runners
+# Restart all runners (pulls latest image)
 ./scripts/manage.sh restart
 
-# Update runner
+# Show runner status
+./scripts/manage.sh status
+
+# Scale to specific number of runners
+./scripts/manage.sh scale 4
+
+# View runner logs (follow mode)
+./scripts/manage.sh logs
+
+# Update runner images and restart
 ./scripts/manage.sh update
 
-# Clean up
+# Clean up stopped containers and unused images
 ./scripts/manage.sh cleanup
+
+# Show help
+./scripts/manage.sh help
+```
+
+**Systemd Service Commands:**
+
+```bash
+# View service logs
+journalctl -u gha-runners -f
+
+# Restart service
+sudo systemctl restart gha-runners
+
+# Check service status
+sudo systemctl status gha-runners
 ```
 
 ### Windows Installation
 
 ```powershell
 # Run PowerShell as Administrator
-.\windows\setup.ps1 -Token "ghp_xxx" -Org "your-org" -Labels "windows,X64"
+.\windows\setup.ps1 -Url "https://github.com/your-org" -Token "<REG_TOKEN>"
+
+# With custom labels and runner group
+.\windows\setup.ps1 `
+  -Url "https://github.com/your-org" `
+  -Token "<REG_TOKEN>" `
+  -Labels "self-hosted,Windows,vs2022,dotnet" `
+  -RunnerGroup "Windows-Runners" `
+  -RunnerName "WIN-BUILD-01"
+
+# With .NET SDK installation
+.\windows\setup.ps1 `
+  -Url "https://github.com/your-org" `
+  -Token "<REG_TOKEN>" `
+  -InstallDotNet `
+  -DotNetVersions "Microsoft.DotNet.SDK.8","Microsoft.DotNet.SDK.9"
 ```
+
+**Windows Parameters:**
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `-Url` | GitHub org/repo URL | Required |
+| `-Token` | Registration token | Required |
+| `-Labels` | Runner labels | `self-hosted,Windows,X64` |
+| `-RunnerGroup` | Runner group name | `Default` |
+| `-RunnerName` | Runner name | Hostname |
+| `-InstallDotNet` | Install .NET SDKs | `false` |
+| `-DotNetVersions` | .NET SDK versions | `Microsoft.DotNet.SDK.9` |
 
 ---
 
@@ -233,6 +322,21 @@ jobs:
       # Use self-hosted runner
       runs-on: '["self-hosted", "linux", "docker"]'
 ```
+
+### Important: Cache Configuration
+
+Self-hosted runners **cannot access** GitHub's cache infrastructure. For Docker builds, disable caching:
+
+```yaml
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      runs-on: '["self-hosted", "linux", "docker"]'
+      cache-enabled: false  # Required for self-hosted runners!
+```
+
+Without this setting, builds will fail with HTTP 502 errors when trying to access the GitHub Actions Cache.
 
 See [Self-Hosted Runner Documentation](../../docs/self-hosted-runners.md) for complete workflow integration guide.
 

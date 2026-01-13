@@ -1,5 +1,7 @@
 # Self-Hosted Runner Support
 
+> **Quick Links:** [Docker-in-Docker Setup](https://github.com/bauer-group/GitHubRunner) | [Bare-Metal Setup](../github/runner/README.md) | [Workflow Examples](#usage-examples)
+
 ## Overview
 
 All reusable workflows in this repository support self-hosted GitHub Actions runners. This allows organizations to run workflows on their own infrastructure instead of GitHub-hosted runners, providing:
@@ -8,7 +10,9 @@ All reusable workflows in this repository support self-hosted GitHub Actions run
 - **Custom Hardware**: Use specialized hardware (GPU, high memory, etc.)
 - **Network Access**: Access to internal networks and resources
 - **Compliance**: Keep builds within your infrastructure
-- **Performance**: Potentially faster builds with local caching
+- **Performance**: Faster builds with local resources
+
+> **Important**: Self-hosted runners outside GitHub's infrastructure cannot access the GitHub Actions Cache service. See [Cache Configuration](#cache-configuration) for details.
 
 ## Configuration
 
@@ -344,6 +348,62 @@ sudo systemctl enable docker
 sudo usermod -aG docker $(whoami)
 newgrp docker
 ```
+
+## Cache Configuration
+
+Self-hosted runners outside GitHub's infrastructure **cannot access** the GitHub Actions Cache service (`type=gha`). This causes HTTP 502 errors when workflows try to use caching.
+
+### Disabling Cache for Self-Hosted Runners
+
+For Docker builds, disable caching explicitly:
+
+```yaml
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      runs-on: '["self-hosted", "linux", "docker"]'
+      cache-enabled: false  # Required for self-hosted runners
+```
+
+### Workflows with Cache Support
+
+| Workflow | Cache Parameter | Default |
+|----------|----------------|---------|
+| `docker-build.yml` | `cache-enabled` | `true` |
+| `nodejs-build.yml` | `cache` | `true` |
+| `python-build.yml` | `cache-pip` | `true` |
+| `dotnet-build.yml` | `cache-packages` | `true` |
+
+### Alternative Caching Strategies
+
+For self-hosted runners, consider these alternatives:
+
+1. **Local Docker Registry Cache**
+
+   ```yaml
+   # Use a local registry for layer caching
+   cache-enabled: false
+   # Configure BuildKit to use local registry
+   ```
+
+2. **Persistent Build Cache**
+
+   Mount a persistent volume for BuildKit cache:
+
+   ```yaml
+   # In your runner configuration
+   volumes:
+     - buildkit-cache:/var/lib/buildkit
+   ```
+
+3. **No Cache (Recommended for CI)**
+
+   For ephemeral runners, caching provides minimal benefit:
+
+   ```yaml
+   cache-enabled: false
+   ```
 
 ## Security Considerations
 
