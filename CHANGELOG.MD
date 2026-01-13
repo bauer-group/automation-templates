@@ -1,3 +1,21 @@
+## [4.9.0](https://github.com/bauer-group/automation-templates/compare/v4.8.0...v4.9.0) (2026-01-13)
+
+### 🚀 Features
+
+* add labels for Dependabot updates in configuration ([bd1bf89](https://github.com/bauer-group/automation-templates/commit/bd1bf89e937a2ee8672ad65580561e8e6f93d503))
+* Enhance self-hosted runner support across workflows ([4367389](https://github.com/bauer-group/automation-templates/commit/4367389c0aa77defcb5dec9b9b869105bb8aa0de))
+
+### 🐛 Bug Fixes
+
+* ensure newline before delimiter in AI response output ([9c9ef3e](https://github.com/bauer-group/automation-templates/commit/9c9ef3ed38e1b6000a0f226469bec3c78e97786a))
+* improve prompt formatting for AI summary generation ([2988466](https://github.com/bauer-group/automation-templates/commit/2988466e0243a9d886238afa1835f8cf375f1454))
+* update branch reference condition for auto-tagging in Docker action ([cec01e4](https://github.com/bauer-group/automation-templates/commit/cec01e4acd6ff7121d65c60ca56833d14f02a88b))
+
+### 🔧 Maintenance
+
+* **ci:** bump actions/checkout from 4 to 6 ([a021f33](https://github.com/bauer-group/automation-templates/commit/a021f33d41d148acf68ef5bf5f29e7c08252cfbf))
+* **ci:** bump lewagon/wait-on-check-action from 1.3.4 to 1.4.1 ([25ce20e](https://github.com/bauer-group/automation-templates/commit/25ce20efd47c99e35c3e2aa811bcb087a080d94f))
+
 ## [4.8.0](https://github.com/bauer-group/automation-templates/compare/v4.7.0...v4.8.0) (2026-01-06)
 
 ### 🚀 Features
