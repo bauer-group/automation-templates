@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-01-06 07:50:58 UTC -->
+<!-- Generated on 2026-01-13 12:36:32 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -9,7 +9,7 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 
 **Repository Information:**
 
-- **Version:** 4.8.0 (2026-01-06)
+- **Version:** 4.8.0 (2026-01-13)
 - **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)
 - **Branch:** main
 - **Architecture:** Modular, Reusable, Enterprise-Ready
@@ -811,6 +811,43 @@ jobs:
 - **Comprehensive coverage**: Document all features and configurations
 - **Regular updates**: Keep documentation current with changes
 
+## 🏃 Self-Hosted Runner Support
+
+All reusable workflows support self-hosted GitHub Actions runners, allowing organizations to run workflows on their own infrastructure.
+
+### Configuration
+
+Every workflow accepts a `runs-on` parameter:
+
+```yaml
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'src/MyApp.csproj'
+      # GitHub-hosted (default)
+      runs-on: 'ubuntu-latest'
+      # OR Self-hosted with labels
+      runs-on: '["self-hosted", "linux", "docker"]'
+```
+
+### Input Formats
+
+| Format | Example | Use Case |
+|--------|---------|----------|
+| String | `'ubuntu-latest'` | GitHub-hosted runners |
+| JSON Array | `'["self-hosted", "linux"]'` | Self-hosted with labels |
+| JSON Array | `'["self-hosted", "Windows", "vs2022"]'` | Windows self-hosted |
+
+### Benefits
+
+- **Cost Control**: No GitHub Actions minutes consumption
+- **Custom Hardware**: Use specialized hardware (GPU, high memory)
+- **Network Access**: Access to internal networks and resources
+- **Compliance**: Keep builds within your infrastructure
+
+For detailed setup instructions, see [Self-Hosted Runner Documentation](docs/self-hosted-runners.md).
+
 ## 🏛️ Enterprise Features
 
 ### Multi-Repository Management
@@ -921,6 +958,7 @@ gh auth status --show-token
 - [🚀 **Coolify Deploy**](docs/workflows/coolify-deploy.md) - Coolify deployment automation
 - [🔄 **Meta Repository Sync**](docs/workflows/meta-repository-sync.md) - Automated submodule synchronization
 - [🔔 **Teams Notifications**](docs/workflows/teams-notifications.md) - Microsoft Teams integration
+- [🏃 **Self-Hosted Runners**](docs/self-hosted-runners.md) - Self-hosted runner configuration guide
 
 ### 🔧 Actions Documentation
 
@@ -1026,5 +1064,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-01-06 07:50:58 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-01-13 12:36:32 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
