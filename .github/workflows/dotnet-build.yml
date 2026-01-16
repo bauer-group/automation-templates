@@ -268,7 +268,13 @@ on:
         type: string
         required: false
         default: 'nuget'
-      
+
+      cache-nuget-lockfile:
+        description: 'Enable setup-dotnet integrated caching (requires packages.lock.json in project). Uses RestorePackagesWithLockFile. Set to true only if your project generates lock files.'
+        type: boolean
+        required: false
+        default: false
+
       # Platform Configuration
       runs-on:
         description: 'Runner to use. Use string for GitHub-hosted (e.g., ubuntu-latest, windows-latest, macos-latest) or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
@@ -383,14 +389,15 @@ jobs:
           dotnet-version: ${{ inputs.enable-matrix && matrix.dotnet || inputs.dotnet-version }}
           global-json-file: ${{ inputs.global-json-file }}
           dotnet-quality: ${{ inputs.dotnet-quality }}
-          cache: ${{ inputs.cache-dependencies }}
-      
+          cache: ${{ inputs.cache-nuget-lockfile }}
+
       - name: 🔧 Setup Additional .NET Versions
         if: contains(inputs.dotnet-version, ',')
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: |
             ${{ inputs.dotnet-version }}
+          cache: ${{ inputs.cache-nuget-lockfile }}
       
       - name: 📦 Cache NuGet Packages
         if: inputs.cache-dependencies
