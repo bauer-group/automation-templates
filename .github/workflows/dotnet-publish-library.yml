@@ -167,6 +167,12 @@ on:
         required: false
         default: true
 
+      cache-nuget-lockfile:
+        description: 'Enable setup-dotnet integrated caching (requires packages.lock.json). Set to true only if your project generates lock files.'
+        type: boolean
+        required: false
+        default: false
+
       # =======================================================================
       # Runner Configuration
       # =======================================================================
@@ -310,6 +316,7 @@ jobs:
           push-to-nuget: 'false'
           push-to-github: 'false'
           cache-enabled: ${{ inputs.cache-enabled }}
+          cache-nuget-lockfile: ${{ inputs.cache-nuget-lockfile }}
 
       - name: Upload Coverage to Codecov
         if: inputs.collect-coverage == true && steps.dotnet-build.outputs.test-skipped != 'true'
@@ -362,6 +369,7 @@ jobs:
           push-to-nuget: 'false'
           push-to-github: 'false'
           cache-enabled: ${{ inputs.cache-enabled }}
+          cache-nuget-lockfile: ${{ inputs.cache-nuget-lockfile }}
 
   # ===========================================================================
   # Publish to NuGet.org

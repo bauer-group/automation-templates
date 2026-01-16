@@ -127,6 +127,10 @@ inputs:
     description: 'Enable NuGet package caching'
     required: false
     default: 'true'
+  cache-nuget-lockfile:
+    description: 'Enable setup-dotnet integrated caching (requires packages.lock.json). Set to true only if your project generates lock files.'
+    required: false
+    default: 'false'
 
 outputs:
   version:
@@ -170,6 +174,7 @@ runs:
       uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ inputs.dotnet-version }}
+        cache: ${{ inputs.cache-nuget-lockfile == 'true' }}
 
     - name: Setup NuGet Cache
       if: inputs.cache-enabled == 'true'

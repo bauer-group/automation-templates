@@ -67,6 +67,17 @@ runs:
             ["@semantic-release/commit-analyzer", {
               "preset": "conventionalcommits",
               "releaseRules": [
+                {"type": "feat", "breaking": true, "release": "major"},
+                {"type": "fix", "breaking": true, "release": "major"},
+                {"type": "perf", "breaking": true, "release": "major"},
+                {"type": "refactor", "breaking": true, "release": "major"},
+                {"type": "revert", "breaking": true, "release": "major"},
+                {"type": "chore", "breaking": true, "release": "major"},
+                {"type": "docs", "breaking": true, "release": "major"},
+                {"type": "style", "breaking": true, "release": "major"},
+                {"type": "test", "breaking": true, "release": "major"},
+                {"type": "build", "breaking": true, "release": "major"},
+                {"type": "ci", "breaking": true, "release": "major"},
                 {"breaking": true, "release": "major"},
                 {"type": "feat", "release": "minor"},
                 {"type": "fix", "release": "patch"},
@@ -120,6 +131,11 @@ runs:
             ["@semantic-release/commit-analyzer", {
               "preset": "conventionalcommits",
               "releaseRules": [
+                {"type": "feat", "breaking": true, "release": "major"},
+                {"type": "fix", "breaking": true, "release": "major"},
+                {"type": "perf", "breaking": true, "release": "major"},
+                {"type": "refactor", "breaking": true, "release": "major"},
+                {"type": "revert", "breaking": true, "release": "major"},
                 {"breaking": true, "release": "major"},
                 {"type": "feat", "release": "minor"},
                 {"type": "fix", "release": "patch"},
