@@ -1,3 +1,17 @@
+## [4.11.0](https://github.com/bauer-group/automation-templates/compare/v4.10.1...v4.11.0) (2026-01-16)
+
+### 🚀 Features
+
+* Add .NET Library Publishing Workflow and related scripts ([9225bbc](https://github.com/bauer-group/automation-templates/commit/9225bbc2bb613d15bfb4f621eb7a6153691c5408))
+
+### 🐛 Bug Fixes
+
+* update AI model description and default value in workflow to gpt-4.1-mini ([5a40148](https://github.com/bauer-group/automation-templates/commit/5a40148c02c6d0c675fcd531ce47c081fce13502))
+
+### 💄 UI/UX Improvements
+
+* Update workflow names to include emojis for better visibility ([daecaf2](https://github.com/bauer-group/automation-templates/commit/daecaf2ccdef3538ac68ff6f2994db9678e1337a))
+
 ## [4.10.1](https://github.com/bauer-group/automation-templates/compare/v4.10.0...v4.10.1) (2026-01-13)
 
 ### 🐛 Bug Fixes
