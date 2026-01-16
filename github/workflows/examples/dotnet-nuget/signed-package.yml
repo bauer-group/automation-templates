@@ -1,0 +1,60 @@
+# =============================================================================
+# Signed NuGet Package Publish
+# =============================================================================
+# Workflow for publishing a strong-name signed .NET library.
+# Uses SNK key stored as GitHub secret for assembly signing.
+#
+# Prerequisites:
+# 1. Generate SNK file: sn -k MyProject.snk
+# 2. Convert to base64: base64 -w 0 MyProject.snk
+# 3. Add as GitHub secret: DOTNET_SIGNKEY_BASE64
+# 4. Configure Trusted Publishing on NuGet.org
+# =============================================================================
+
+name: Publish Signed NuGet Package
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 1.0.0)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  publish:
+    name: Build, Sign & Publish
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    with:
+      project-path: 'src/MyLibrary/MyLibrary.csproj'
+      dotnet-version: '9.0.x'
+
+      # Version from tag or manual input
+      package-version: ${{ inputs.version || '' }}
+
+      # Testing
+      run-tests: true
+      collect-coverage: true
+
+      # Assembly Signing
+      sign-assembly: true
+      delay-sign: false
+
+      # Publishing
+      push-to-nuget: true
+      push-to-github: true
+
+      # Package options
+      include-symbols: true
+      include-source: true
+      deterministic-build: true
+    secrets:
+      DOTNET_SIGNKEY_BASE64: ${{ secrets.DOTNET_SIGNKEY_BASE64 }}

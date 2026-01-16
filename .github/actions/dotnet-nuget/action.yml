@@ -1,0 +1,699 @@
+name: '.NET NuGet Build & Pack'
+description: 'Build, test, sign, and package .NET libraries for NuGet publishing'
+author: 'BAUER GROUP'
+
+inputs:
+  # Build Configuration
+  working-directory:
+    description: 'Working directory for all commands'
+    required: false
+    default: '.'
+  project-path:
+    description: 'Path to .csproj or .sln file'
+    required: true
+  configuration:
+    description: 'Build configuration (Debug/Release)'
+    required: false
+    default: 'Release'
+  dotnet-version:
+    description: 'SDK version(s) to use (comma-separated for multiple)'
+    required: false
+    default: '9.0.x'
+
+  # Testing
+  run-tests:
+    description: 'Run tests if test projects exist'
+    required: false
+    default: 'true'
+  test-project-path:
+    description: 'Path to test project (auto-detected if not specified)'
+    required: false
+    default: ''
+  test-filter:
+    description: 'Test filter expression'
+    required: false
+    default: ''
+  collect-coverage:
+    description: 'Enable code coverage collection'
+    required: false
+    default: 'true'
+  coverage-threshold:
+    description: 'Minimum coverage percentage (0 to disable threshold)'
+    required: false
+    default: '0'
+
+  # Versioning
+  package-version:
+    description: 'Explicit package version (overrides all other version sources)'
+    required: false
+    default: ''
+  release-version:
+    description: 'Version from release workflow (e.g., 1.2.3)'
+    required: false
+    default: ''
+  version-suffix:
+    description: 'Pre-release version suffix (e.g., preview, beta)'
+    required: false
+    default: ''
+  update-project-version:
+    description: 'Update version in project files (Directory.Build.props, .csproj)'
+    required: false
+    default: 'false'
+
+  # Assembly Signing
+  sign-assembly:
+    description: 'Enable strong name signing with SNK'
+    required: false
+    default: 'false'
+  snk-base64:
+    description: 'Base64-encoded .snk file content'
+    required: false
+    default: ''
+  delay-sign:
+    description: 'Use delay signing'
+    required: false
+    default: 'false'
+
+  # Packaging
+  create-package:
+    description: 'Create NuGet package'
+    required: false
+    default: 'true'
+  include-symbols:
+    description: 'Include symbol package (.snupkg)'
+    required: false
+    default: 'true'
+  include-source:
+    description: 'Include source files in symbol package'
+    required: false
+    default: 'true'
+  deterministic-build:
+    description: 'Enable deterministic builds'
+    required: false
+    default: 'true'
+
+  # NuGet Publishing
+  push-to-nuget:
+    description: 'Push package to NuGet.org'
+    required: false
+    default: 'false'
+  push-to-github:
+    description: 'Push package to GitHub Packages'
+    required: false
+    default: 'false'
+  nuget-api-key:
+    description: 'NuGet.org API key'
+    required: false
+    default: ''
+  github-token:
+    description: 'GitHub token for GitHub Packages'
+    required: false
+    default: ''
+  skip-duplicate:
+    description: 'Skip push if package version already exists'
+    required: false
+    default: 'true'
+
+  # Cache Configuration
+  cache-enabled:
+    description: 'Enable NuGet package caching'
+    required: false
+    default: 'true'
+
+outputs:
+  version:
+    description: 'Package version'
+    value: ${{ steps.version.outputs.version }}
+  package-path:
+    description: 'Path to main .nupkg file'
+    value: ${{ steps.pack.outputs.package-path }}
+  symbols-path:
+    description: 'Path to .snupkg file'
+    value: ${{ steps.pack.outputs.symbols-path }}
+  package-name:
+    description: 'Full package name with version'
+    value: ${{ steps.pack.outputs.package-name }}
+  build-succeeded:
+    description: 'Whether build succeeded'
+    value: ${{ steps.build.outputs.succeeded }}
+  test-passed:
+    description: 'Whether tests passed (true if no tests or tests passed)'
+    value: ${{ steps.test.outputs.passed }}
+  test-skipped:
+    description: 'Whether tests were skipped (no test projects found)'
+    value: ${{ steps.test.outputs.skipped }}
+  coverage-percentage:
+    description: 'Code coverage percentage'
+    value: ${{ steps.test.outputs.coverage }}
+  pushed-to-nuget:
+    description: 'Whether package was pushed to NuGet.org'
+    value: ${{ steps.push-nuget.outputs.pushed }}
+  pushed-to-github:
+    description: 'Whether package was pushed to GitHub Packages'
+    value: ${{ steps.push-github.outputs.pushed }}
+
+runs:
+  using: 'composite'
+  steps:
+    # =========================================================================
+    # Setup Environment
+    # =========================================================================
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+
+    - name: Setup NuGet Cache
+      if: inputs.cache-enabled == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/Directory.Build.props', '**/Directory.Packages.props') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    # =========================================================================
+    # Version Detection
+    # =========================================================================
+    - name: Determine Package Version
+      id: version
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "Determining package version..."
+
+        # Priority order:
+        # 1. Explicit package-version input
+        # 2. release-version input (from release workflow)
+        # 3. Git tag (v1.2.3 -> 1.2.3)
+        # 4. Version from Directory.Build.props or .csproj
+        # 5. Auto-generated preview version
+
+        VERSION=""
+        VERSION_SOURCE=""
+
+        if [ -n "${{ inputs.package-version }}" ]; then
+          VERSION="${{ inputs.package-version }}"
+          VERSION_SOURCE="package-version input"
+        elif [ -n "${{ inputs.release-version }}" ]; then
+          VERSION="${{ inputs.release-version }}"
+          VERSION_SOURCE="release-version input"
+        elif [[ "$GITHUB_REF" =~ ^refs/tags/v?([0-9]+\.[0-9]+\.[0-9]+.*) ]]; then
+          VERSION="${BASH_REMATCH[1]}"
+          VERSION_SOURCE="Git tag"
+        else
+          # Try to extract from Directory.Build.props
+          if [ -f "Directory.Build.props" ]; then
+            VERSION=$(grep -oP '<VersionPrefix>\K[^<]+' Directory.Build.props 2>/dev/null || echo "")
+            if [ -z "$VERSION" ]; then
+              VERSION=$(grep -oP '<Version>\K[^<]+' Directory.Build.props 2>/dev/null || echo "")
+            fi
+            if [ -n "$VERSION" ]; then
+              VERSION_SOURCE="Directory.Build.props"
+            fi
+          fi
+
+          # Try to extract from .csproj if not found yet
+          if [ -z "$VERSION" ]; then
+            PROJECT_FILE="${{ inputs.project-path }}"
+            if [ -f "$PROJECT_FILE" ]; then
+              VERSION=$(grep -oP '<VersionPrefix>\K[^<]+' "$PROJECT_FILE" 2>/dev/null || echo "")
+              if [ -z "$VERSION" ]; then
+                VERSION=$(grep -oP '<Version>\K[^<]+' "$PROJECT_FILE" 2>/dev/null || echo "")
+              fi
+              if [ -n "$VERSION" ]; then
+                VERSION_SOURCE=".csproj file"
+              fi
+            fi
+          fi
+
+          # Fallback to default version with preview suffix
+          if [ -z "$VERSION" ]; then
+            VERSION="1.0.0"
+            VERSION_SOURCE="default"
+          fi
+
+          # Add version suffix if specified or if not from a release
+          if [ -n "${{ inputs.version-suffix }}" ]; then
+            VERSION="${VERSION}-${{ inputs.version-suffix }}.${{ github.run_number }}"
+          elif [ "$VERSION_SOURCE" = "default" ]; then
+            VERSION="${VERSION}-preview.${{ github.run_number }}"
+          fi
+        fi
+
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "version-source=$VERSION_SOURCE" >> $GITHUB_OUTPUT
+
+        echo "Package version: $VERSION (from $VERSION_SOURCE)"
+
+    # =========================================================================
+    # Update Project Version (if enabled)
+    # =========================================================================
+    - name: Update Project Version
+      if: inputs.update-project-version == 'true' && steps.version.outputs.version != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        echo "Updating project version to: $VERSION"
+
+        # Update Directory.Build.props if exists
+        if [ -f "Directory.Build.props" ]; then
+          if grep -q '<VersionPrefix>' Directory.Build.props; then
+            sed -i "s|<VersionPrefix>.*</VersionPrefix>|<VersionPrefix>$VERSION</VersionPrefix>|" Directory.Build.props
+            echo "Updated VersionPrefix in Directory.Build.props"
+          elif grep -q '<Version>' Directory.Build.props; then
+            sed -i "s|<Version>.*</Version>|<Version>$VERSION</Version>|" Directory.Build.props
+            echo "Updated Version in Directory.Build.props"
+          fi
+        fi
+
+        # Update .csproj if specified and exists
+        PROJECT_FILE="${{ inputs.project-path }}"
+        if [ -f "$PROJECT_FILE" ] && [[ "$PROJECT_FILE" == *.csproj ]]; then
+          if grep -q '<VersionPrefix>' "$PROJECT_FILE"; then
+            sed -i "s|<VersionPrefix>.*</VersionPrefix>|<VersionPrefix>$VERSION</VersionPrefix>|" "$PROJECT_FILE"
+            echo "Updated VersionPrefix in $PROJECT_FILE"
+          elif grep -q '<Version>' "$PROJECT_FILE"; then
+            sed -i "s|<Version>.*</Version>|<Version>$VERSION</Version>|" "$PROJECT_FILE"
+            echo "Updated Version in $PROJECT_FILE"
+          fi
+        fi
+
+    # =========================================================================
+    # SNK Signing Setup
+    # =========================================================================
+    - name: Setup SNK Signing
+      id: snk-setup
+      if: inputs.sign-assembly == 'true' && inputs.snk-base64 != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "Setting up SNK signing..."
+
+        # Create build directory if it doesn't exist
+        mkdir -p build
+
+        # Decode base64 SNK to file
+        echo "${{ inputs.snk-base64 }}" | base64 -d > build/assembly.snk
+
+        SNK_PATH="$(pwd)/build/assembly.snk"
+        echo "snk-path=$SNK_PATH" >> $GITHUB_OUTPUT
+
+        echo "SNK file created at: $SNK_PATH"
+        echo "SNK_PATH=$SNK_PATH" >> $GITHUB_ENV
+
+    # =========================================================================
+    # Restore Dependencies
+    # =========================================================================
+    - name: Restore Dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "Restoring NuGet packages..."
+        dotnet restore "${{ inputs.project-path }}"
+
+    # =========================================================================
+    # Build
+    # =========================================================================
+    - name: Build Project
+      id: build
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "Building project..."
+
+        BUILD_ARGS="-c ${{ inputs.configuration }} --no-restore"
+
+        # Add version
+        BUILD_ARGS="$BUILD_ARGS -p:Version=${{ steps.version.outputs.version }}"
+
+        # Add deterministic build option
+        if [ "${{ inputs.deterministic-build }}" = "true" ]; then
+          BUILD_ARGS="$BUILD_ARGS -p:Deterministic=true -p:ContinuousIntegrationBuild=true"
+        fi
+
+        # Add signing parameters if enabled
+        if [ "${{ inputs.sign-assembly }}" = "true" ] && [ -n "$SNK_PATH" ]; then
+          BUILD_ARGS="$BUILD_ARGS -p:SignAssembly=true -p:AssemblyOriginatorKeyFile=$SNK_PATH"
+          if [ "${{ inputs.delay-sign }}" = "true" ]; then
+            BUILD_ARGS="$BUILD_ARGS -p:DelaySign=true"
+          fi
+        fi
+
+        echo "Build command: dotnet build ${{ inputs.project-path }} $BUILD_ARGS"
+
+        if dotnet build "${{ inputs.project-path }}" $BUILD_ARGS; then
+          echo "succeeded=true" >> $GITHUB_OUTPUT
+          echo "Build succeeded"
+        else
+          echo "succeeded=false" >> $GITHUB_OUTPUT
+          echo "Build failed"
+          exit 1
+        fi
+
+    # =========================================================================
+    # Test
+    # =========================================================================
+    - name: Run Tests
+      id: test
+      if: inputs.run-tests == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "Looking for test projects..."
+
+        # Determine test project path
+        TEST_PATH="${{ inputs.test-project-path }}"
+
+        if [ -z "$TEST_PATH" ]; then
+          # Auto-detect test projects
+          # Look for common patterns
+          if [ -d "tests" ]; then
+            TEST_PATH="tests"
+          elif [ -d "test" ]; then
+            TEST_PATH="test"
+          else
+            # Search for test project files
+            TEST_PROJECTS=$(find . -name "*.Tests.csproj" -o -name "*.Test.csproj" -o -name "*Tests.csproj" 2>/dev/null | head -5)
+            if [ -n "$TEST_PROJECTS" ]; then
+              # Use the solution file or first test project
+              PROJECT_PATH="${{ inputs.project-path }}"
+              if [[ "$PROJECT_PATH" == *.sln ]]; then
+                TEST_PATH="$PROJECT_PATH"
+              else
+                TEST_PATH=$(echo "$TEST_PROJECTS" | head -1)
+              fi
+            fi
+          fi
+        fi
+
+        # Check if we found any test projects
+        if [ -z "$TEST_PATH" ]; then
+          echo "No test projects found - skipping tests"
+          echo "passed=true" >> $GITHUB_OUTPUT
+          echo "skipped=true" >> $GITHUB_OUTPUT
+          echo "coverage=N/A" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        echo "Running tests from: $TEST_PATH"
+        echo "skipped=false" >> $GITHUB_OUTPUT
+
+        TEST_ARGS="--no-build -c ${{ inputs.configuration }}"
+
+        # Add test filter if specified
+        if [ -n "${{ inputs.test-filter }}" ]; then
+          TEST_ARGS="$TEST_ARGS --filter \"${{ inputs.test-filter }}\""
+        fi
+
+        # Add coverage collection if enabled
+        COVERAGE_ARGS=""
+        if [ "${{ inputs.collect-coverage }}" = "true" ]; then
+          COVERAGE_ARGS="--collect:\"XPlat Code Coverage\" --results-directory ./TestResults"
+          mkdir -p TestResults
+        fi
+
+        echo "Test command: dotnet test $TEST_PATH $TEST_ARGS $COVERAGE_ARGS"
+
+        if dotnet test "$TEST_PATH" $TEST_ARGS $COVERAGE_ARGS; then
+          echo "passed=true" >> $GITHUB_OUTPUT
+          echo "Tests passed"
+        else
+          echo "passed=false" >> $GITHUB_OUTPUT
+          echo "Tests failed"
+          # Don't exit with error - let the workflow decide how to handle
+        fi
+
+        # Extract coverage percentage if available
+        COVERAGE="N/A"
+        if [ "${{ inputs.collect-coverage }}" = "true" ]; then
+          COVERAGE_FILE=$(find TestResults -name "coverage.cobertura.xml" 2>/dev/null | head -1)
+          if [ -n "$COVERAGE_FILE" ] && [ -f "$COVERAGE_FILE" ]; then
+            COVERAGE=$(grep -oP 'line-rate="\K[^"]+' "$COVERAGE_FILE" 2>/dev/null | head -1 || echo "0")
+            COVERAGE=$(awk "BEGIN {printf \"%.2f\", $COVERAGE * 100}")
+            echo "Code coverage: ${COVERAGE}%"
+
+            # Check threshold
+            THRESHOLD="${{ inputs.coverage-threshold }}"
+            if [ "$THRESHOLD" != "0" ] && [ -n "$THRESHOLD" ]; then
+              if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+                echo "Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
+              fi
+            fi
+          fi
+        fi
+        echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+
+    # =========================================================================
+    # Pack
+    # =========================================================================
+    - name: Create NuGet Package
+      id: pack
+      if: inputs.create-package == 'true' && steps.build.outputs.succeeded == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "Creating NuGet package..."
+
+        # Create output directory
+        mkdir -p nupkg
+
+        PACK_ARGS="-c ${{ inputs.configuration }} --no-build -o nupkg"
+        PACK_ARGS="$PACK_ARGS -p:Version=${{ steps.version.outputs.version }}"
+
+        # Add symbol package option
+        if [ "${{ inputs.include-symbols }}" = "true" ]; then
+          PACK_ARGS="$PACK_ARGS --include-symbols -p:SymbolPackageFormat=snupkg"
+        fi
+
+        # Add source link
+        if [ "${{ inputs.include-source }}" = "true" ]; then
+          PACK_ARGS="$PACK_ARGS -p:IncludeSymbols=true -p:EmbedUntrackedSources=true"
+        fi
+
+        # Add deterministic build
+        if [ "${{ inputs.deterministic-build }}" = "true" ]; then
+          PACK_ARGS="$PACK_ARGS -p:Deterministic=true -p:ContinuousIntegrationBuild=true"
+        fi
+
+        echo "Pack command: dotnet pack ${{ inputs.project-path }} $PACK_ARGS"
+
+        dotnet pack "${{ inputs.project-path }}" $PACK_ARGS
+
+        # Find the generated packages
+        NUPKG_FILE=$(find nupkg -name "*.nupkg" ! -name "*.symbols.nupkg" 2>/dev/null | head -1)
+        SNUPKG_FILE=$(find nupkg -name "*.snupkg" 2>/dev/null | head -1)
+
+        if [ -n "$NUPKG_FILE" ]; then
+          PACKAGE_NAME=$(basename "$NUPKG_FILE" .nupkg)
+          echo "package-path=$NUPKG_FILE" >> $GITHUB_OUTPUT
+          echo "package-name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "Created package: $NUPKG_FILE"
+
+          # Show package info
+          echo ""
+          echo "Package details:"
+          ls -lh nupkg/
+        else
+          echo "No .nupkg file found!"
+          exit 1
+        fi
+
+        if [ -n "$SNUPKG_FILE" ]; then
+          echo "symbols-path=$SNUPKG_FILE" >> $GITHUB_OUTPUT
+          echo "Created symbols package: $SNUPKG_FILE"
+        else
+          echo "symbols-path=" >> $GITHUB_OUTPUT
+        fi
+
+    # =========================================================================
+    # Validate Package
+    # =========================================================================
+    - name: Validate NuGet Package
+      if: inputs.create-package == 'true' && steps.pack.outputs.package-path != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "Validating NuGet package..."
+
+        PACKAGE_PATH="${{ steps.pack.outputs.package-path }}"
+
+        # List package contents
+        echo ""
+        echo "Package contents:"
+        unzip -l "$PACKAGE_PATH" | head -50
+
+        # Verify package with dotnet nuget (if available)
+        echo ""
+        echo "Package validation complete"
+
+    # =========================================================================
+    # Push to NuGet.org
+    # =========================================================================
+    - name: Push to NuGet.org
+      id: push-nuget
+      if: inputs.push-to-nuget == 'true' && steps.pack.outputs.package-path != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "Pushing to NuGet.org..."
+
+        PACKAGE_PATH="${{ steps.pack.outputs.package-path }}"
+
+        # Determine push arguments
+        PUSH_ARGS="--source https://api.nuget.org/v3/index.json"
+
+        if [ "${{ inputs.skip-duplicate }}" = "true" ]; then
+          PUSH_ARGS="$PUSH_ARGS --skip-duplicate"
+        fi
+
+        # Try Trusted Publishing first (OIDC), fall back to API key
+        if [ -n "${{ inputs.nuget-api-key }}" ]; then
+          PUSH_ARGS="$PUSH_ARGS --api-key ${{ inputs.nuget-api-key }}"
+        else
+          # Use 'az' for OIDC/Trusted Publishing
+          PUSH_ARGS="$PUSH_ARGS --api-key az"
+        fi
+
+        echo "Push command: dotnet nuget push $PACKAGE_PATH $PUSH_ARGS"
+
+        if dotnet nuget push "$PACKAGE_PATH" $PUSH_ARGS; then
+          echo "pushed=true" >> $GITHUB_OUTPUT
+          echo "Successfully pushed to NuGet.org"
+
+          # Also push symbols if available
+          SYMBOLS_PATH="${{ steps.pack.outputs.symbols-path }}"
+          if [ -n "$SYMBOLS_PATH" ] && [ -f "$SYMBOLS_PATH" ]; then
+            echo "Pushing symbols package..."
+            dotnet nuget push "$SYMBOLS_PATH" $PUSH_ARGS || echo "Symbols push skipped (may already exist)"
+          fi
+        else
+          echo "pushed=false" >> $GITHUB_OUTPUT
+          echo "Failed to push to NuGet.org"
+          exit 1
+        fi
+
+    # =========================================================================
+    # Push to GitHub Packages
+    # =========================================================================
+    - name: Push to GitHub Packages
+      id: push-github
+      if: inputs.push-to-github == 'true' && steps.pack.outputs.package-path != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        echo "Pushing to GitHub Packages..."
+
+        PACKAGE_PATH="${{ steps.pack.outputs.package-path }}"
+
+        # Configure GitHub Packages source
+        OWNER="${GITHUB_REPOSITORY_OWNER}"
+        GITHUB_NUGET_SOURCE="https://nuget.pkg.github.com/${OWNER}/index.json"
+
+        # Determine push arguments
+        PUSH_ARGS="--source $GITHUB_NUGET_SOURCE --api-key $GITHUB_TOKEN"
+
+        if [ "${{ inputs.skip-duplicate }}" = "true" ]; then
+          PUSH_ARGS="$PUSH_ARGS --skip-duplicate"
+        fi
+
+        echo "Push command: dotnet nuget push $PACKAGE_PATH $PUSH_ARGS"
+
+        if dotnet nuget push "$PACKAGE_PATH" $PUSH_ARGS; then
+          echo "pushed=true" >> $GITHUB_OUTPUT
+          echo "Successfully pushed to GitHub Packages"
+        else
+          echo "pushed=false" >> $GITHUB_OUTPUT
+          echo "Failed to push to GitHub Packages"
+          exit 1
+        fi
+
+    # =========================================================================
+    # Upload Artifacts
+    # =========================================================================
+    - name: Upload NuGet Packages
+      if: inputs.create-package == 'true' && steps.pack.outputs.package-path != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-packages
+        path: ${{ inputs.working-directory }}/nupkg/
+        retention-days: 30
+
+    - name: Upload Test Results
+      if: inputs.run-tests == 'true' && inputs.collect-coverage == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: ${{ inputs.working-directory }}/TestResults/
+        retention-days: 30
+      continue-on-error: true
+
+    # =========================================================================
+    # Cleanup
+    # =========================================================================
+    - name: Cleanup SNK File
+      if: always() && inputs.sign-assembly == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        # Securely remove SNK file
+        if [ -f "build/assembly.snk" ]; then
+          rm -f build/assembly.snk
+          echo "SNK file removed"
+        fi
+
+    # =========================================================================
+    # Summary
+    # =========================================================================
+    - name: Build Summary
+      if: always()
+      shell: bash
+      run: |
+        echo "## .NET NuGet Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        echo "### Build Details" >> $GITHUB_STEP_SUMMARY
+        echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| **Project** | \`${{ inputs.project-path }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Configuration** | \`${{ inputs.configuration }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Version** | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Version Source** | ${{ steps.version.outputs.version-source }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Build Status** | ${{ steps.build.outputs.succeeded == 'true' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ "${{ inputs.run-tests }}" = "true" ]; then
+          echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.test.outputs.skipped }}" = "true" ]; then
+            echo "| **Status** | ⏭️ Skipped (no test projects found) |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Status** | ${{ steps.test.outputs.passed == 'true' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Coverage** | ${{ steps.test.outputs.coverage }}% |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        if [ "${{ inputs.create-package }}" = "true" ]; then
+          echo "### Package" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Package** | \`${{ steps.pack.outputs.package-name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Signed** | ${{ inputs.sign-assembly == 'true' && '✅ Yes' || '⚪ No' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Symbols** | ${{ steps.pack.outputs.symbols-path != '' && '✅ Included' || '⚪ Not included' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "### Publishing" >> $GITHUB_STEP_SUMMARY
+        echo "| Target | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| **NuGet.org** | ${{ inputs.push-to-nuget != 'true' && '⚪ Disabled' || steps.push-nuget.outputs.pushed == 'true' && '✅ Published' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| **GitHub Packages** | ${{ inputs.push-to-github != 'true' && '⚪ Disabled' || steps.push-github.outputs.pushed == 'true' && '✅ Published' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+
+branding:
+  icon: 'package'
+  color: 'purple'

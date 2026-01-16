@@ -1,0 +1,52 @@
+# =============================================================================
+# Basic NuGet Package Publish
+# =============================================================================
+# Simple workflow for publishing a .NET library to NuGet.org and GitHub Packages
+# on tag push. Uses Trusted Publishing (OIDC) for authentication.
+#
+# Prerequisites:
+# 1. Configure Trusted Publishing on NuGet.org for your package
+# 2. No secrets required for NuGet.org with Trusted Publishing
+# =============================================================================
+
+name: Publish NuGet Package
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 1.0.0)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write  # Required for NuGet Trusted Publishing
+
+jobs:
+  publish:
+    name: Build & Publish
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    with:
+      project-path: 'src/MyLibrary/MyLibrary.csproj'
+      dotnet-version: '9.0.x'
+
+      # Version from tag or manual input
+      package-version: ${{ inputs.version || '' }}
+
+      # Testing
+      run-tests: true
+      collect-coverage: true
+
+      # Publishing
+      push-to-nuget: true
+      push-to-github: true
+
+      # Package options
+      include-symbols: true
+      deterministic-build: true
+    secrets: inherit

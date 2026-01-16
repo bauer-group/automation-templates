@@ -1,0 +1,128 @@
+# =============================================================================
+# Release Workflow with Semantic Versioning
+# =============================================================================
+# Complete CI/CD workflow for .NET libraries with:
+# - PR validation
+# - Semantic versioning (conventional commits)
+# - Automatic release creation
+# - NuGet publishing with version from release
+#
+# Uses conventional commits for automatic version bumping:
+# - feat: -> minor version bump
+# - fix: -> patch version bump
+# - feat!: or BREAKING CHANGE: -> major version bump
+# =============================================================================
+
+name: Release & Publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '*.sln'
+      - 'Directory.Build.props'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+  workflow_dispatch:
+    inputs:
+      force-release:
+        description: 'Force create release (even without conventional commits)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  # ==========================================================================
+  # Validation (runs on all triggers)
+  # ==========================================================================
+  validate:
+    name: Build & Test
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'src/MyLibrary.sln'
+      dotnet-version: '9.0.x'
+      run-tests: true
+      collect-coverage: true
+    secrets: inherit
+
+  # ==========================================================================
+  # Semantic Release (only on main branch push or manual trigger)
+  # ==========================================================================
+  release:
+    name: Create Release
+    needs: validate
+    if: |
+      github.event_name == 'push' && github.ref == 'refs/heads/main' ||
+      github.event_name == 'workflow_dispatch'
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      target-branch: 'main'
+      force-release: ${{ inputs.force-release || false }}
+    secrets: inherit
+
+  # ==========================================================================
+  # NuGet Publish (only when release is created)
+  # ==========================================================================
+  publish:
+    name: Publish to NuGet
+    needs: release
+    if: needs.release.outputs.release-created == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    with:
+      project-path: 'src/MyLibrary/MyLibrary.csproj'
+      dotnet-version: '9.0.x'
+
+      # Use version from semantic-release
+      release-version: ${{ needs.release.outputs.version }}
+
+      # Assembly signing (optional)
+      sign-assembly: true
+
+      # Publish to both registries
+      push-to-nuget: true
+      push-to-github: true
+
+      # Package options
+      include-symbols: true
+      include-source: true
+      deterministic-build: true
+
+      # Update version in project files
+      update-project-version: true
+    secrets:
+      DOTNET_SIGNKEY_BASE64: ${{ secrets.DOTNET_SIGNKEY_BASE64 }}
+
+  # ==========================================================================
+  # PR Validation (only on pull requests)
+  # ==========================================================================
+  pr-package-check:
+    name: Validate NuGet Package (PR)
+    needs: validate
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    with:
+      project-path: 'src/MyLibrary/MyLibrary.csproj'
+      dotnet-version: '9.0.x'
+
+      # Preview version for PR
+      version-suffix: 'pr'
+
+      # Build and validate package
+      create-package: true
+      include-symbols: true
+
+      # Don't publish
+      push-to-nuget: false
+      push-to-github: false
+    secrets: inherit

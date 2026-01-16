@@ -1,0 +1,70 @@
+# =============================================================================
+# Multi-Target Framework NuGet Package
+# =============================================================================
+# Workflow for publishing a library that targets multiple .NET versions.
+# Builds and tests against multiple SDK versions.
+#
+# Your .csproj should include:
+# <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+# =============================================================================
+
+name: Publish Multi-Target NuGet Package
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - '*.sln'
+      - 'Directory.Build.props'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  # Validate on PR
+  validate:
+    name: Validate (PR)
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    with:
+      project-path: 'src/MyLibrary.sln'
+      dotnet-version: '8.0.x,9.0.x,10.0.x'  # Multiple SDK versions
+
+      # Testing
+      run-tests: true
+      collect-coverage: true
+
+      # Build package but don't publish
+      create-package: true
+      push-to-nuget: false
+      push-to-github: false
+    secrets: inherit
+
+  # Publish on tag
+  publish:
+    name: Publish (Release)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    with:
+      project-path: 'src/MyLibrary.sln'
+      dotnet-version: '8.0.x,9.0.x,10.0.x'
+
+      # Testing
+      run-tests: true
+      collect-coverage: true
+
+      # Publishing
+      push-to-nuget: true
+      push-to-github: true
+
+      # Package options
+      include-symbols: true
+      deterministic-build: true
+    secrets: inherit
