@@ -11,7 +11,7 @@
 # 4. Configure Trusted Publishing on NuGet.org
 # =============================================================================
 
-name: Publish Signed NuGet Package
+name: 🔐 Publish Signed NuGet Package
 
 on:
   push:

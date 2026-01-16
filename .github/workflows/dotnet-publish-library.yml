@@ -1,4 +1,4 @@
-name: .NET Library Publish
+name: 📦 .NET Library Publish
 
 on:
   workflow_call:

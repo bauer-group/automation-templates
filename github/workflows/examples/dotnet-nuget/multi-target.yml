@@ -8,7 +8,7 @@
 # <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
 # =============================================================================
 
-name: Publish Multi-Target NuGet Package
+name: 📦 Publish Multi-Target NuGet Package
 
 on:
   push:

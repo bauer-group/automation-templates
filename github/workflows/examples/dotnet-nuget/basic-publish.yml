@@ -9,7 +9,7 @@
 # 2. No secrets required for NuGet.org with Trusted Publishing
 # =============================================================================
 
-name: Publish NuGet Package
+name: 📦 Publish NuGet Package
 
 on:
   push:

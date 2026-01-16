@@ -13,7 +13,7 @@
 # - feat!: or BREAKING CHANGE: -> major version bump
 # =============================================================================
 
-name: Release & Publish
+name: 🚀 Release & Publish
 
 on:
   push:
