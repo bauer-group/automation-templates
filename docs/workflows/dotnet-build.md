@@ -120,6 +120,14 @@ jobs:
 | `verbosity` | Logging verbosity | `normal` |
 | `treat-warnings-as-errors` | Treat warnings as errors | `false` |
 
+### Assembly Signing (SNK)
+
+| Input           | Description                                                          | Default |
+|-----------------|----------------------------------------------------------------------|---------|
+| `snk-file-path` | Path where SNK key should be created (relative to working-directory) | `''`    |
+
+The `snk-file-path` must match the `AssemblyOriginatorKeyFile` setting in your `.csproj` or `Directory.Build.props`. The workflow decodes `DOTNET_SIGNKEY_BASE64` secret and writes it to this path before building.
+
 ### Runtime Configuration
 
 | Input | Description | Default | Examples |
@@ -230,6 +238,7 @@ See [Self-Hosted Runner Documentation](../self-hosted-runners.md) for details.
 | `DOCKER_PASSWORD` | Docker password | When pushing images |
 | `CODECOV_TOKEN` | Codecov token | For coverage upload |
 | `SONAR_TOKEN` | SonarCloud token | For code analysis |
+| `DOTNET_SIGNKEY_BASE64` | Base64-encoded SNK key for assembly signing | When `snk-file-path` is set |
 
 ## Outputs
 
@@ -273,6 +282,32 @@ jobs:
       push-to-nuget: true
     secrets:
       NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+```
+
+### Signed Assembly Build
+
+For projects with `SignAssembly=true` in `.csproj` or `Directory.Build.props`:
+
+```yaml
+jobs:
+  build-signed:
+    uses: your-org/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'MyLibrary.sln'
+      # Path must match AssemblyOriginatorKeyFile in your project
+      snk-file-path: 'build/MyLibrary.snk'
+      run-tests: true
+    secrets: inherit
+```
+
+The workflow decodes `DOTNET_SIGNKEY_BASE64` and creates the SNK file at the specified path before building. Your project configuration should look like:
+
+```xml
+<!-- Directory.Build.props -->
+<PropertyGroup>
+  <SignAssembly>true</SignAssembly>
+  <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)build\MyLibrary.snk</AssemblyOriginatorKeyFile>
+</PropertyGroup>
 ```
 
 ### Blazor WebAssembly

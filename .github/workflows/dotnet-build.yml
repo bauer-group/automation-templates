@@ -47,7 +47,14 @@ on:
         type: string
         required: false
         default: ''
-      
+
+      # Assembly Signing
+      snk-file-path:
+        description: 'Path where SNK key should be created (relative to working-directory). Must match AssemblyOriginatorKeyFile in csproj/Directory.Build.props. Example: build/MyProject.snk'
+        type: string
+        required: false
+        default: ''
+
       restore-args:
         description: 'Additional arguments for dotnet restore'
         type: string
@@ -314,7 +321,11 @@ on:
       SONARCLOUD_ANALYSIS_TOKEN:
         description: 'SonarCloud token for .NET code quality analysis'
         required: false
-    
+
+      DOTNET_SIGNKEY_BASE64:
+        description: 'Base64-encoded SNK key for assembly signing (decoded and written to snk-file-path)'
+        required: false
+
     outputs:
       version:
         description: 'Version of the built application/package'
@@ -409,7 +420,33 @@ jobs:
           
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
-      
+
+      - name: 🔐 Setup SNK Signing Key
+        if: inputs.snk-file-path != '' && env.DOTNET_SIGNKEY_BASE64 != ''
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          DOTNET_SIGNKEY_BASE64: ${{ secrets.DOTNET_SIGNKEY_BASE64 }}
+        run: |
+          SNK_PATH="${{ inputs.snk-file-path }}"
+          SNK_DIR=$(dirname "$SNK_PATH")
+
+          # Create directory if needed
+          if [ -n "$SNK_DIR" ] && [ "$SNK_DIR" != "." ]; then
+            mkdir -p "$SNK_DIR"
+          fi
+
+          # Decode base64 and write SNK file
+          echo "$DOTNET_SIGNKEY_BASE64" | base64 -d > "$SNK_PATH"
+
+          # Verify file was created
+          if [ -f "$SNK_PATH" ]; then
+            FILE_SIZE=$(stat -f%z "$SNK_PATH" 2>/dev/null || stat -c%s "$SNK_PATH" 2>/dev/null || wc -c < "$SNK_PATH")
+            echo "✅ SNK key created: $SNK_PATH ($FILE_SIZE bytes)"
+          else
+            echo "❌ Failed to create SNK file"
+            exit 1
+          fi
+
       - name: 📚 Restore Dependencies
         working-directory: ${{ inputs.working-directory }}
         run: |
