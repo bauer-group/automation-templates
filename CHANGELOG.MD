@@ -1,3 +1,9 @@
+## [4.12.0](https://github.com/bauer-group/automation-templates/compare/v4.11.0...v4.12.0) (2026-01-16)
+
+### 🚀 Features
+
+* Update .NET SDK version to 10.0.x and enhance platform matrix support ([f21dbfd](https://github.com/bauer-group/automation-templates/commit/f21dbfde289730da981bb8eef3d343030998a1d5))
+
 ## [4.11.0](https://github.com/bauer-group/automation-templates/compare/v4.10.1...v4.11.0) (2026-01-16)
 
 ### 🚀 Features
