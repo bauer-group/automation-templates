@@ -29,10 +29,10 @@ on:
         type: string
         default: ''
       model:
-        description: 'AI model to use'
+        description: 'AI model to use (gpt-4.1-mini, gpt-4.1, gpt-5)'
         required: false
         type: string
-        default: 'gpt-4o'
+        default: 'gpt-4.1-mini'
       comment-template:
         description: 'Template for the comment (use {summary} placeholder)'
         required: false
