@@ -383,6 +383,7 @@ jobs:
           dotnet-version: ${{ inputs.enable-matrix && matrix.dotnet || inputs.dotnet-version }}
           global-json-file: ${{ inputs.global-json-file }}
           dotnet-quality: ${{ inputs.dotnet-quality }}
+          cache: ${{ inputs.cache-dependencies }}
       
       - name: 🔧 Setup Additional .NET Versions
         if: contains(inputs.dotnet-version, ',')
