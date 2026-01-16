@@ -1,4 +1,4 @@
-name: 📦 .NET Library Publish
+name: .NET Library Publish
 
 on:
   workflow_call:
@@ -171,19 +171,19 @@ on:
       # Runner Configuration
       # =======================================================================
       runs-on:
-        description: 'Runner to use for Linux/cross-platform builds. String for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        description: 'Primary runner for builds. Default: ubuntu-latest. Windows TFMs are built using EnableWindowsTargeting on Linux.'
         type: string
         required: false
         default: 'ubuntu-latest'
 
       runs-on-windows:
-        description: 'Runner to use for Windows-specific builds (net*-windows TFMs). String for GitHub-hosted (e.g., "windows-latest") or JSON array for self-hosted (e.g., ["self-hosted", "windows"])'
+        description: 'Windows runner for validation builds (only used when enable-platform-matrix is true)'
         type: string
         required: false
         default: 'windows-latest'
 
       enable-platform-matrix:
-        description: 'Enable parallel matrix builds for cross-platform and Windows-specific target frameworks. When true, builds run in parallel on Linux (cross-platform TFMs) and Windows (Windows-specific TFMs like net10.0-windows).'
+        description: 'Enable parallel validation builds on BOTH Linux AND Windows. Both build ALL TFMs. Package is produced from primary runner only. Use for cross-platform build verification.'
         type: boolean
         required: false
         default: false
@@ -210,35 +210,35 @@ on:
     outputs:
       version:
         description: 'Package version'
-        value: ${{ jobs.build.outputs.version || jobs.merge-artifacts.outputs.version }}
+        value: ${{ jobs.build.outputs.version }}
 
       package-path:
         description: 'Path to main .nupkg file'
-        value: ${{ jobs.build.outputs.package-path || jobs.merge-artifacts.outputs.package-path }}
+        value: ${{ jobs.build.outputs.package-path }}
 
       symbols-path:
         description: 'Path to .snupkg file'
-        value: ${{ jobs.build.outputs.symbols-path || jobs.merge-artifacts.outputs.symbols-path }}
+        value: ${{ jobs.build.outputs.symbols-path }}
 
       package-name:
         description: 'Full package name with version'
-        value: ${{ jobs.build.outputs.package-name || jobs.merge-artifacts.outputs.package-name }}
+        value: ${{ jobs.build.outputs.package-name }}
 
       build-succeeded:
         description: 'Whether build succeeded'
-        value: ${{ jobs.build.outputs.build-succeeded || jobs.merge-artifacts.outputs.build-succeeded }}
+        value: ${{ jobs.build.outputs.build-succeeded }}
 
       test-passed:
         description: 'Whether tests passed'
-        value: ${{ jobs.build.outputs.test-passed || jobs.merge-artifacts.outputs.test-passed }}
+        value: ${{ jobs.build.outputs.test-passed }}
 
       test-skipped:
         description: 'Whether tests were skipped (no test projects found)'
-        value: ${{ jobs.build.outputs.test-skipped || jobs.merge-artifacts.outputs.test-skipped }}
+        value: ${{ jobs.build.outputs.test-skipped }}
 
       coverage-percentage:
         description: 'Code coverage percentage'
-        value: ${{ jobs.build.outputs.coverage-percentage || jobs.merge-artifacts.outputs.coverage-percentage }}
+        value: ${{ jobs.build.outputs.coverage-percentage }}
 
       pushed-to-nuget:
         description: 'Whether package was pushed to NuGet.org'
@@ -248,120 +248,22 @@ on:
         description: 'Whether package was pushed to GitHub Packages'
         value: ${{ jobs.publish-github.outputs.pushed || 'false' }}
 
-      # Platform matrix outputs
-      has-windows-tfms:
-        description: 'Whether Windows-specific TFMs were detected (only when enable-platform-matrix is true)'
-        value: ${{ jobs.detect-platforms.outputs.has-windows-tfms || 'false' }}
+      windows-build-succeeded:
+        description: 'Whether Windows validation build succeeded (only when enable-platform-matrix is true)'
+        value: ${{ jobs.build-windows.outputs.build-succeeded || 'skipped' }}
 
-      has-crossplatform-tfms:
-        description: 'Whether cross-platform TFMs were detected (only when enable-platform-matrix is true)'
-        value: ${{ jobs.detect-platforms.outputs.has-crossplatform-tfms || 'false' }}
-
-# Permissions required for this reusable workflow
 permissions:
-  contents: write       # For committing version updates
-  packages: write       # For pushing to GitHub Packages
-  id-token: write       # For NuGet Trusted Publishing (OIDC)
-  security-events: write # For uploading security reports
+  contents: write
+  packages: write
+  id-token: write
+  security-events: write
 
 jobs:
   # ===========================================================================
-  # Platform Detection Job (for matrix builds)
-  # ===========================================================================
-  detect-platforms:
-    name: Detect Platforms
-    if: inputs.enable-platform-matrix == true
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    outputs:
-      has-windows-tfms: ${{ steps.detect.outputs.has-windows-tfms }}
-      has-crossplatform-tfms: ${{ steps.detect.outputs.has-crossplatform-tfms }}
-      windows-tfms: ${{ steps.detect.outputs.windows-tfms }}
-      crossplatform-tfms: ${{ steps.detect.outputs.crossplatform-tfms }}
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            ${{ inputs.project-path }}
-            Directory.Build.props
-          sparse-checkout-cone-mode: false
-
-      - name: Detect Target Frameworks
-        id: detect
-        shell: bash
-        run: |
-          echo "Detecting target frameworks..."
-
-          PROJECT_PATH="${{ inputs.project-path }}"
-          TFMS=""
-
-          # Function to extract TFMs from a file
-          extract_tfms() {
-            local file="$1"
-            if [ -f "$file" ]; then
-              # Extract TargetFramework or TargetFrameworks
-              local single=$(grep -oP '<TargetFramework>\K[^<]+' "$file" 2>/dev/null || true)
-              local multi=$(grep -oP '<TargetFrameworks>\K[^<]+' "$file" 2>/dev/null || true)
-              echo "$single;$multi" | tr ';' '\n' | grep -v '^$' | sort -u
-            fi
-          }
-
-          # Check project file(s)
-          if [[ "$PROJECT_PATH" == *.sln ]]; then
-            # For solution files, find all .csproj files
-            SLN_DIR=$(dirname "$PROJECT_PATH")
-            for csproj in $(find "$SLN_DIR" -name "*.csproj" 2>/dev/null); do
-              TFMS="$TFMS\n$(extract_tfms "$csproj")"
-            done
-          elif [[ "$PROJECT_PATH" == *.csproj ]]; then
-            TFMS=$(extract_tfms "$PROJECT_PATH")
-          fi
-
-          # Also check Directory.Build.props
-          if [ -f "Directory.Build.props" ]; then
-            TFMS="$TFMS\n$(extract_tfms "Directory.Build.props")"
-          fi
-
-          # Parse TFMs
-          TFMS=$(echo -e "$TFMS" | grep -v '^$' | sort -u)
-          echo "Found TFMs:"
-          echo "$TFMS"
-
-          # Separate Windows and cross-platform TFMs
-          WINDOWS_TFMS=$(echo "$TFMS" | grep -E '\-windows' || true)
-          CROSSPLATFORM_TFMS=$(echo "$TFMS" | grep -vE '\-windows|\-android|\-ios|\-maccatalyst|\-tvos' || true)
-
-          # Check if we have each type
-          HAS_WINDOWS="false"
-          HAS_CROSSPLATFORM="false"
-
-          if [ -n "$WINDOWS_TFMS" ]; then
-            HAS_WINDOWS="true"
-            echo "Windows TFMs: $WINDOWS_TFMS"
-          fi
-
-          if [ -n "$CROSSPLATFORM_TFMS" ]; then
-            HAS_CROSSPLATFORM="true"
-            echo "Cross-platform TFMs: $CROSSPLATFORM_TFMS"
-          fi
-
-          # Output results
-          echo "has-windows-tfms=$HAS_WINDOWS" >> $GITHUB_OUTPUT
-          echo "has-crossplatform-tfms=$HAS_CROSSPLATFORM" >> $GITHUB_OUTPUT
-          echo "windows-tfms=$(echo "$WINDOWS_TFMS" | tr '\n' ';' | sed 's/;$//')" >> $GITHUB_OUTPUT
-          echo "crossplatform-tfms=$(echo "$CROSSPLATFORM_TFMS" | tr '\n' ';' | sed 's/;$//')" >> $GITHUB_OUTPUT
-
-          echo "Detection complete: Windows=$HAS_WINDOWS, CrossPlatform=$HAS_CROSSPLATFORM"
-
-  # ===========================================================================
-  # Build & Test Job (Standard - no matrix)
+  # Primary Build Job (produces the package)
   # ===========================================================================
   build:
-    name: Build & Test
-    if: inputs.enable-platform-matrix != true
+    name: Build & Pack
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
 
@@ -419,89 +321,17 @@ jobs:
         continue-on-error: true
 
   # ===========================================================================
-  # Build Cross-Platform (Matrix Mode - Linux Runner)
-  # ===========================================================================
-  build-crossplatform:
-    name: Build (Cross-Platform)
-    needs: detect-platforms
-    if: inputs.enable-platform-matrix == true && needs.detect-platforms.outputs.has-crossplatform-tfms == 'true'
-    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
-    timeout-minutes: ${{ inputs.timeout-minutes }}
-
-    outputs:
-      version: ${{ steps.dotnet-build.outputs.version }}
-      package-path: ${{ steps.dotnet-build.outputs.package-path }}
-      symbols-path: ${{ steps.dotnet-build.outputs.symbols-path }}
-      package-name: ${{ steps.dotnet-build.outputs.package-name }}
-      build-succeeded: ${{ steps.dotnet-build.outputs.build-succeeded }}
-      test-passed: ${{ steps.dotnet-build.outputs.test-passed }}
-      test-skipped: ${{ steps.dotnet-build.outputs.test-skipped }}
-      coverage-percentage: ${{ steps.dotnet-build.outputs.coverage-percentage }}
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: .NET Build & Pack (Cross-Platform TFMs)
-        id: dotnet-build
-        uses: bauer-group/automation-templates/.github/actions/dotnet-nuget@main
-        with:
-          working-directory: ${{ inputs.working-directory }}
-          project-path: ${{ inputs.project-path }}
-          configuration: ${{ inputs.configuration }}
-          dotnet-version: ${{ inputs.dotnet-version }}
-          target-frameworks: ${{ needs.detect-platforms.outputs.crossplatform-tfms }}
-          run-tests: ${{ inputs.run-tests }}
-          test-project-path: ${{ inputs.test-project-path }}
-          test-filter: ${{ inputs.test-filter }}
-          collect-coverage: ${{ inputs.collect-coverage }}
-          coverage-threshold: ${{ inputs.coverage-threshold }}
-          package-version: ${{ inputs.package-version }}
-          release-version: ${{ inputs.release-version }}
-          version-suffix: ${{ inputs.version-suffix }}
-          update-project-version: ${{ inputs.update-project-version }}
-          sign-assembly: ${{ inputs.sign-assembly }}
-          snk-base64: ${{ secrets.DOTNET_SIGNKEY_BASE64 }}
-          delay-sign: ${{ inputs.delay-sign }}
-          create-package: ${{ inputs.create-package }}
-          include-symbols: ${{ inputs.include-symbols }}
-          include-source: ${{ inputs.include-source }}
-          deterministic-build: ${{ inputs.deterministic-build }}
-          push-to-nuget: 'false'
-          push-to-github: 'false'
-          cache-enabled: ${{ inputs.cache-enabled }}
-          artifact-suffix: '-crossplatform'
-
-      - name: Upload Coverage to Codecov
-        if: inputs.collect-coverage == true && steps.dotnet-build.outputs.test-skipped != 'true'
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          directory: ${{ inputs.working-directory }}/TestResults
-          fail_ci_if_error: false
-        continue-on-error: true
-
-  # ===========================================================================
-  # Build Windows (Matrix Mode - Windows Runner)
+  # Windows Validation Build (optional, for cross-platform verification)
   # ===========================================================================
   build-windows:
-    name: Build (Windows)
-    needs: detect-platforms
-    if: inputs.enable-platform-matrix == true && needs.detect-platforms.outputs.has-windows-tfms == 'true'
+    name: Build (Windows Validation)
+    if: inputs.enable-platform-matrix == true
     runs-on: ${{ startsWith(inputs.runs-on-windows, '[') && fromJSON(inputs.runs-on-windows) || inputs.runs-on-windows }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
 
     outputs:
-      version: ${{ steps.dotnet-build.outputs.version }}
-      package-path: ${{ steps.dotnet-build.outputs.package-path }}
-      symbols-path: ${{ steps.dotnet-build.outputs.symbols-path }}
-      package-name: ${{ steps.dotnet-build.outputs.package-name }}
       build-succeeded: ${{ steps.dotnet-build.outputs.build-succeeded }}
       test-passed: ${{ steps.dotnet-build.outputs.test-passed }}
-      test-skipped: ${{ steps.dotnet-build.outputs.test-skipped }}
-      coverage-percentage: ${{ steps.dotnet-build.outputs.coverage-percentage }}
 
     steps:
       - name: Checkout Repository
@@ -509,7 +339,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: .NET Build & Pack (Windows TFMs)
+      - name: .NET Build (Validation Only)
         id: dotnet-build
         uses: bauer-group/automation-templates/.github/actions/dotnet-nuget@main
         with:
@@ -517,137 +347,35 @@ jobs:
           project-path: ${{ inputs.project-path }}
           configuration: ${{ inputs.configuration }}
           dotnet-version: ${{ inputs.dotnet-version }}
-          target-frameworks: ${{ needs.detect-platforms.outputs.windows-tfms }}
           run-tests: ${{ inputs.run-tests }}
           test-project-path: ${{ inputs.test-project-path }}
           test-filter: ${{ inputs.test-filter }}
-          collect-coverage: ${{ inputs.collect-coverage }}
-          coverage-threshold: ${{ inputs.coverage-threshold }}
+          collect-coverage: false
           package-version: ${{ inputs.package-version }}
           release-version: ${{ inputs.release-version }}
           version-suffix: ${{ inputs.version-suffix }}
-          update-project-version: ${{ inputs.update-project-version }}
           sign-assembly: ${{ inputs.sign-assembly }}
           snk-base64: ${{ secrets.DOTNET_SIGNKEY_BASE64 }}
           delay-sign: ${{ inputs.delay-sign }}
-          create-package: ${{ inputs.create-package }}
-          include-symbols: ${{ inputs.include-symbols }}
-          include-source: ${{ inputs.include-source }}
-          deterministic-build: ${{ inputs.deterministic-build }}
+          # Don't create package - just validate build
+          create-package: false
           push-to-nuget: 'false'
           push-to-github: 'false'
           cache-enabled: ${{ inputs.cache-enabled }}
-          artifact-suffix: '-windows'
-
-      - name: Upload Coverage to Codecov
-        if: inputs.collect-coverage == true && steps.dotnet-build.outputs.test-skipped != 'true'
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          directory: ${{ inputs.working-directory }}/TestResults
-          fail_ci_if_error: false
-        continue-on-error: true
 
   # ===========================================================================
-  # Merge Artifacts (Matrix Mode)
-  # ===========================================================================
-  merge-artifacts:
-    name: Merge Build Artifacts
-    needs: [detect-platforms, build-crossplatform, build-windows]
-    if: |
-      always() &&
-      inputs.enable-platform-matrix == true &&
-      (needs.build-crossplatform.result == 'success' || needs.build-crossplatform.result == 'skipped') &&
-      (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped') &&
-      (needs.build-crossplatform.result == 'success' || needs.build-windows.result == 'success')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    outputs:
-      version: ${{ needs.build-crossplatform.outputs.version || needs.build-windows.outputs.version }}
-      package-path: ${{ steps.merge.outputs.package-path }}
-      symbols-path: ${{ steps.merge.outputs.symbols-path }}
-      package-name: ${{ needs.build-crossplatform.outputs.package-name || needs.build-windows.outputs.package-name }}
-      build-succeeded: ${{ steps.merge.outputs.build-succeeded }}
-      test-passed: ${{ needs.build-crossplatform.outputs.test-passed || needs.build-windows.outputs.test-passed }}
-      test-skipped: ${{ needs.build-crossplatform.outputs.test-skipped || needs.build-windows.outputs.test-skipped }}
-      coverage-percentage: ${{ needs.build-crossplatform.outputs.coverage-percentage || needs.build-windows.outputs.coverage-percentage }}
-
-    steps:
-      - name: Download Cross-Platform Artifacts
-        if: needs.build-crossplatform.result == 'success'
-        uses: actions/download-artifact@v4
-        with:
-          name: nuget-packages-crossplatform
-          path: nupkg-crossplatform
-        continue-on-error: true
-
-      - name: Download Windows Artifacts
-        if: needs.build-windows.result == 'success'
-        uses: actions/download-artifact@v4
-        with:
-          name: nuget-packages-windows
-          path: nupkg-windows
-        continue-on-error: true
-
-      - name: Merge Packages
-        id: merge
-        shell: bash
-        run: |
-          mkdir -p nupkg
-
-          # Copy cross-platform packages
-          if [ -d "nupkg-crossplatform" ]; then
-            cp -r nupkg-crossplatform/* nupkg/ 2>/dev/null || true
-            echo "Merged cross-platform packages"
-          fi
-
-          # Copy Windows packages
-          if [ -d "nupkg-windows" ]; then
-            cp -r nupkg-windows/* nupkg/ 2>/dev/null || true
-            echo "Merged Windows packages"
-          fi
-
-          # List merged packages
-          echo "Merged packages:"
-          ls -la nupkg/ || echo "No packages found"
-
-          # Find package paths
-          NUPKG_FILE=$(find nupkg -name "*.nupkg" ! -name "*.symbols.nupkg" 2>/dev/null | head -1)
-          SNUPKG_FILE=$(find nupkg -name "*.snupkg" 2>/dev/null | head -1)
-
-          echo "package-path=$NUPKG_FILE" >> $GITHUB_OUTPUT
-          echo "symbols-path=$SNUPKG_FILE" >> $GITHUB_OUTPUT
-
-          if [ -n "$NUPKG_FILE" ]; then
-            echo "build-succeeded=true" >> $GITHUB_OUTPUT
-          else
-            echo "build-succeeded=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Upload Merged Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: nuget-packages
-          path: nupkg/*
-          if-no-files-found: error
-
-  # ===========================================================================
-  # Publish to NuGet.org Job
+  # Publish to NuGet.org
   # ===========================================================================
   publish-nuget:
     name: Publish to NuGet.org
-    needs: [build, merge-artifacts]
+    needs: [build, build-windows]
     if: |
       always() &&
       inputs.push-to-nuget == true &&
-      (
-        (inputs.enable-platform-matrix != true && needs.build.outputs.build-succeeded == 'true') ||
-        (inputs.enable-platform-matrix == true && needs.merge-artifacts.outputs.build-succeeded == 'true')
-      )
+      needs.build.outputs.build-succeeded == 'true' &&
+      (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped')
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     timeout-minutes: 10
-    environment: production
 
     outputs:
       pushed: ${{ steps.push.outputs.pushed }}
@@ -664,17 +392,16 @@ jobs:
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
 
-      - name: Push to NuGet.org (Trusted Publishing)
+      - name: Push to NuGet.org
         id: push
         shell: bash
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-          PACKAGE_NAME: ${{ needs.build.outputs.package-name || needs.merge-artifacts.outputs.package-name }}
-          PACKAGE_VERSION: ${{ needs.build.outputs.version || needs.merge-artifacts.outputs.version }}
+          PACKAGE_NAME: ${{ needs.build.outputs.package-name }}
+          PACKAGE_VERSION: ${{ needs.build.outputs.version }}
         run: |
           echo "Pushing to NuGet.org..."
 
-          # Find the package file
           NUPKG_FILE=$(find nupkg -name "*.nupkg" ! -name "*.symbols.nupkg" 2>/dev/null | head -1)
           SNUPKG_FILE=$(find nupkg -name "*.snupkg" 2>/dev/null | head -1)
 
@@ -686,14 +413,12 @@ jobs:
 
           echo "Package: $NUPKG_FILE"
 
-          # Determine push arguments
           PUSH_ARGS="--source https://api.nuget.org/v3/index.json"
 
           if [ "${{ inputs.skip-duplicate }}" = "true" ]; then
             PUSH_ARGS="$PUSH_ARGS --skip-duplicate"
           fi
 
-          # Authentication: Trusted Publishing (OIDC) is default, API key is fallback
           if [ "${{ inputs.nuget-auth-method }}" = "api-key" ] && [ -n "$NUGET_API_KEY" ]; then
             echo "Using API key authentication"
             PUSH_ARGS="$PUSH_ARGS --api-key $NUGET_API_KEY"
@@ -701,61 +426,34 @@ jobs:
             echo "Using API key authentication (fallback)"
             PUSH_ARGS="$PUSH_ARGS --api-key $NUGET_API_KEY"
           else
-            # Trusted Publishing - use 'az' as API key to trigger OIDC
             echo "Using Trusted Publishing (OIDC)"
             PUSH_ARGS="$PUSH_ARGS --api-key az"
           fi
 
-          # Push main package
           if dotnet nuget push "$NUPKG_FILE" $PUSH_ARGS; then
             echo "pushed=true" >> $GITHUB_OUTPUT
             echo "Successfully pushed to NuGet.org"
 
-            # Also push symbols if available
             if [ -n "$SNUPKG_FILE" ] && [ -f "$SNUPKG_FILE" ]; then
               echo "Pushing symbols package..."
-              dotnet nuget push "$SNUPKG_FILE" $PUSH_ARGS || echo "Symbols push skipped (may already exist)"
+              dotnet nuget push "$SNUPKG_FILE" $PUSH_ARGS || echo "Symbols push skipped"
             fi
           else
             echo "pushed=false" >> $GITHUB_OUTPUT
-            echo "Failed to push to NuGet.org"
             exit 1
           fi
 
-      - name: NuGet Publish Summary
-        if: always()
-        shell: bash
-        env:
-          PACKAGE_NAME: ${{ needs.build.outputs.package-name || needs.merge-artifacts.outputs.package-name }}
-          PACKAGE_VERSION: ${{ needs.build.outputs.version || needs.merge-artifacts.outputs.version }}
-        run: |
-          echo "## NuGet.org Publishing" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Package** | \`$PACKAGE_NAME\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Version** | \`$PACKAGE_VERSION\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Auth Method** | ${{ inputs.nuget-auth-method }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Status** | ${{ steps.push.outputs.pushed == 'true' && '✅ Published' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.push.outputs.pushed }}" = "true" ]; then
-            PACKAGE_ID=$(echo "$PACKAGE_NAME" | sed 's/\.[0-9]*\.[0-9]*\.[0-9]*.*//')
-            echo "**View on NuGet.org:** https://www.nuget.org/packages/${PACKAGE_ID}/${PACKAGE_VERSION}" >> $GITHUB_STEP_SUMMARY
-          fi
-
   # ===========================================================================
-  # Publish to GitHub Packages Job
+  # Publish to GitHub Packages
   # ===========================================================================
   publish-github:
     name: Publish to GitHub Packages
-    needs: [build, merge-artifacts]
+    needs: [build, build-windows]
     if: |
       always() &&
       inputs.push-to-github == true &&
-      (
-        (inputs.enable-platform-matrix != true && needs.build.outputs.build-succeeded == 'true') ||
-        (inputs.enable-platform-matrix == true && needs.merge-artifacts.outputs.build-succeeded == 'true')
-      )
+      needs.build.outputs.build-succeeded == 'true' &&
+      (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped')
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     timeout-minutes: 10
 
@@ -782,7 +480,6 @@ jobs:
         run: |
           echo "Pushing to GitHub Packages..."
 
-          # Find the package file
           NUPKG_FILE=$(find nupkg -name "*.nupkg" ! -name "*.symbols.nupkg" 2>/dev/null | head -1)
 
           if [ -z "$NUPKG_FILE" ]; then
@@ -793,59 +490,33 @@ jobs:
 
           echo "Package: $NUPKG_FILE"
 
-          # Configure GitHub Packages source
           OWNER="${GITHUB_REPOSITORY_OWNER}"
           GITHUB_NUGET_SOURCE="https://nuget.pkg.github.com/${OWNER}/index.json"
 
-          # Determine push arguments
           PUSH_ARGS="--source $GITHUB_NUGET_SOURCE --api-key $GITHUB_TOKEN"
 
           if [ "${{ inputs.skip-duplicate }}" = "true" ]; then
             PUSH_ARGS="$PUSH_ARGS --skip-duplicate"
           fi
 
-          # Push package
           if dotnet nuget push "$NUPKG_FILE" $PUSH_ARGS; then
             echo "pushed=true" >> $GITHUB_OUTPUT
             echo "Successfully pushed to GitHub Packages"
           else
             echo "pushed=false" >> $GITHUB_OUTPUT
-            echo "Failed to push to GitHub Packages"
             exit 1
           fi
 
-      - name: GitHub Packages Summary
-        if: always()
-        shell: bash
-        env:
-          PACKAGE_NAME: ${{ needs.build.outputs.package-name || needs.merge-artifacts.outputs.package-name }}
-          PACKAGE_VERSION: ${{ needs.build.outputs.version || needs.merge-artifacts.outputs.version }}
-        run: |
-          echo "## GitHub Packages Publishing" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Package** | \`$PACKAGE_NAME\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Version** | \`$PACKAGE_VERSION\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Status** | ${{ steps.push.outputs.pushed == 'true' && '✅ Published' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.push.outputs.pushed }}" = "true" ]; then
-            echo "**View on GitHub:** https://github.com/${{ github.repository }}/packages" >> $GITHUB_STEP_SUMMARY
-          fi
-
   # ===========================================================================
-  # Commit Version Update Job
+  # Commit Version Update
   # ===========================================================================
   commit-version:
     name: Commit Version Update
-    needs: [build, merge-artifacts, publish-nuget, publish-github]
+    needs: [build, publish-nuget, publish-github]
     if: |
       always() &&
       inputs.update-project-version == true &&
-      (
-        (inputs.enable-platform-matrix != true && needs.build.outputs.build-succeeded == 'true') ||
-        (inputs.enable-platform-matrix == true && needs.merge-artifacts.outputs.build-succeeded == 'true')
-      ) &&
+      needs.build.outputs.build-succeeded == 'true' &&
       (needs.publish-nuget.result == 'success' || needs.publish-nuget.result == 'skipped') &&
       (needs.publish-github.result == 'success' || needs.publish-github.result == 'skipped')
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
@@ -860,27 +531,20 @@ jobs:
       - name: Commit Version Changes
         shell: bash
         env:
-          PACKAGE_VERSION: ${{ needs.build.outputs.version || needs.merge-artifacts.outputs.version }}
+          PACKAGE_VERSION: ${{ needs.build.outputs.version }}
         run: |
           VERSION="$PACKAGE_VERSION"
           echo "Committing version update: $VERSION"
 
-          # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Get the default branch
           DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
-          echo "Default branch: $DEFAULT_BRANCH"
-
-          # Checkout default branch
           git checkout "$DEFAULT_BRANCH"
           git pull origin "$DEFAULT_BRANCH" --ff-only
 
-          # Update version in files
           CHANGED=false
 
-          # Update Directory.Build.props
           if [ -f "Directory.Build.props" ]; then
             if grep -q '<VersionPrefix>' Directory.Build.props; then
               sed -i "s|<VersionPrefix>.*</VersionPrefix>|<VersionPrefix>$VERSION</VersionPrefix>|" Directory.Build.props
@@ -891,7 +555,6 @@ jobs:
             fi
           fi
 
-          # Update .csproj if specified
           PROJECT_FILE="${{ inputs.project-path }}"
           if [ -f "$PROJECT_FILE" ] && [[ "$PROJECT_FILE" == *.csproj ]]; then
             if grep -q '<VersionPrefix>' "$PROJECT_FILE"; then
@@ -903,15 +566,9 @@ jobs:
             fi
           fi
 
-          # Commit and push if changes were made
           if [ "$CHANGED" = "true" ] && ! git diff --quiet; then
             git add -A
-            git commit -m "chore(release): bump version to $VERSION
-
-          Automatically updated by dotnet-publish-library workflow
-
-          Generated by GitHub Actions"
-
+            git commit -m "chore(release): bump version to $VERSION"
             git push origin "$DEFAULT_BRANCH"
             echo "Version update committed"
           else
@@ -919,91 +576,60 @@ jobs:
           fi
 
   # ===========================================================================
-  # Summary Job
+  # Pipeline Summary
   # ===========================================================================
   summary:
     name: Pipeline Summary
-    needs: [build, merge-artifacts, build-crossplatform, build-windows, publish-nuget, publish-github, commit-version]
+    needs: [build, build-windows, publish-nuget, publish-github]
     if: always()
-    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
       - name: Generate Summary
         shell: bash
         env:
-          PACKAGE_NAME: ${{ needs.build.outputs.package-name || needs.merge-artifacts.outputs.package-name }}
-          PACKAGE_VERSION: ${{ needs.build.outputs.version || needs.merge-artifacts.outputs.version }}
-          TEST_SKIPPED: ${{ needs.build.outputs.test-skipped || needs.merge-artifacts.outputs.test-skipped }}
-          TEST_PASSED: ${{ needs.build.outputs.test-passed || needs.merge-artifacts.outputs.test-passed }}
-          COVERAGE: ${{ needs.build.outputs.coverage-percentage || needs.merge-artifacts.outputs.coverage-percentage }}
+          PACKAGE_NAME: ${{ needs.build.outputs.package-name }}
+          PACKAGE_VERSION: ${{ needs.build.outputs.version }}
+          TEST_SKIPPED: ${{ needs.build.outputs.test-skipped }}
+          TEST_PASSED: ${{ needs.build.outputs.test-passed }}
+          COVERAGE: ${{ needs.build.outputs.coverage-percentage }}
         run: |
           echo "## .NET Library Publishing Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Feature Configuration
           echo "### Configuration" >> $GITHUB_STEP_SUMMARY
           echo "| Feature | Enabled |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|---------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Tests** | ${{ inputs.run-tests == true && '✅ Yes' || '⚪ No' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Code Coverage** | ${{ inputs.collect-coverage == true && '✅ Yes' || '⚪ No' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Assembly Signing** | ${{ inputs.sign-assembly == true && '🔐 Yes' || '⚪ No' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Symbol Packages** | ${{ inputs.include-symbols == true && '✅ Yes' || '⚪ No' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Deterministic Build** | ${{ inputs.deterministic-build == true && '✅ Yes' || '⚪ No' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Platform Matrix** | ${{ inputs.enable-platform-matrix == true && '✅ Yes' || '⚪ No' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests | ${{ inputs.run-tests && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Coverage | ${{ inputs.collect-coverage && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Assembly Signing | ${{ inputs.sign-assembly && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Symbol Packages | ${{ inputs.include-symbols && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deterministic Build | ${{ inputs.deterministic-build && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Platform Matrix | ${{ inputs.enable-platform-matrix && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Pipeline Status
           echo "### Pipeline Status" >> $GITHUB_STEP_SUMMARY
           echo "| Stage | Result |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Build (Primary) | ${{ needs.build.result == 'success' && 'Success' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
 
-          # Build status depends on mode
           if [ "${{ inputs.enable-platform-matrix }}" = "true" ]; then
-            # Matrix mode - show individual build results
-            echo "| **Build (Cross-Platform)** | ${{ needs.build-crossplatform.result == 'success' && '✅ Success' || needs.build-crossplatform.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Build (Windows)** | ${{ needs.build-windows.result == 'success' && '✅ Success' || needs.build-windows.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Merge Artifacts** | ${{ needs.merge-artifacts.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| **Build** | ${{ needs.build.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Build (Windows Validation) | ${{ needs.build-windows.result == 'success' && 'Success' || needs.build-windows.result == 'skipped' && 'Skipped' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
           fi
 
-          if [ "${{ inputs.run-tests }}" = "true" ]; then
-            if [ "$TEST_SKIPPED" = "true" ]; then
-              echo "| **Tests** | ⏭️ Skipped (no tests found) |" >> $GITHUB_STEP_SUMMARY
-            else
-              if [ "$TEST_PASSED" = "true" ]; then
-                echo "| **Tests** | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-              else
-                echo "| **Tests** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
-              fi
-            fi
-          fi
-
-          echo "| **NuGet.org** | ${{ inputs.push-to-nuget != true && '⚪ Disabled' || needs.publish-nuget.result == 'success' && '✅ Published' || '❌ Failed/Skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **GitHub Packages** | ${{ inputs.push-to-github != true && '⚪ Disabled' || needs.publish-github.result == 'success' && '✅ Published' || '❌ Failed/Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| NuGet.org | ${{ inputs.push-to-nuget != true && 'Disabled' || needs.publish-nuget.result == 'success' && 'Published' || 'Failed/Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| GitHub Packages | ${{ inputs.push-to-github != true && 'Disabled' || needs.publish-github.result == 'success' && 'Published' || 'Failed/Skipped' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Package Information
           echo "### Package Information" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Project** | \`${{ inputs.project-path }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Configuration** | \`${{ inputs.configuration }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Version** | \`$PACKAGE_VERSION\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Package Name** | \`$PACKAGE_NAME\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Project | \`${{ inputs.project-path }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Configuration | \`${{ inputs.configuration }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`$PACKAGE_VERSION\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Package Name | \`$PACKAGE_NAME\` |" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ inputs.collect-coverage }}" = "true" ] && [ "$TEST_SKIPPED" != "true" ]; then
-            echo "| **Coverage** | ${COVERAGE}% |" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Links
-          echo "### Links" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ needs.publish-nuget.result }}" = "success" ]; then
-            PACKAGE_ID=$(echo "$PACKAGE_NAME" | sed 's/\.[0-9]*\.[0-9]*\.[0-9]*.*//')
-            echo "- **NuGet.org:** https://www.nuget.org/packages/${PACKAGE_ID}/${PACKAGE_VERSION}" >> $GITHUB_STEP_SUMMARY
-          fi
-          if [ "${{ needs.publish-github.result }}" = "success" ]; then
-            echo "- **GitHub Packages:** https://github.com/${{ github.repository }}/packages" >> $GITHUB_STEP_SUMMARY
+            echo "| Coverage | ${COVERAGE}% |" >> $GITHUB_STEP_SUMMARY
           fi

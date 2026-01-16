@@ -450,18 +450,32 @@ jobs:
       - name: 📚 Restore Dependencies
         working-directory: ${{ inputs.working-directory }}
         run: |
+          # Enable Windows targeting on non-Windows platforms to allow building Windows TFMs
+          WINDOWS_TARGETING=""
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            WINDOWS_TARGETING="-p:EnableWindowsTargeting=true"
+          fi
+
           dotnet restore ${{ inputs.project-path }} \
             --verbosity ${{ inputs.verbosity }} \
+            $WINDOWS_TARGETING \
             ${{ inputs.runtime && format('--runtime {0}', inputs.runtime) || '' }} \
             ${{ inputs.restore-args }}
       
       - name: 🏗️ Build Project
         working-directory: ${{ inputs.working-directory }}
         run: |
+          # Enable Windows targeting on non-Windows platforms to allow building Windows TFMs
+          WINDOWS_TARGETING=""
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            WINDOWS_TARGETING="-p:EnableWindowsTargeting=true"
+          fi
+
           dotnet build ${{ inputs.project-path }} \
             --configuration ${{ inputs.configuration }} \
             --no-restore \
             --verbosity ${{ inputs.verbosity }} \
+            $WINDOWS_TARGETING \
             ${{ inputs.treat-warnings-as-errors && '--warnaserror' || '' }} \
             ${{ inputs.runtime && format('--runtime {0}', inputs.runtime) || '' }} \
             ${{ inputs.self-contained && '--self-contained' || '' }} \
@@ -546,9 +560,16 @@ jobs:
         if: inputs.run-code-analysis
         working-directory: ${{ inputs.working-directory }}
         run: |
+          # Enable Windows targeting on non-Windows platforms
+          WINDOWS_TARGETING=""
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            WINDOWS_TARGETING="-p:EnableWindowsTargeting=true"
+          fi
+
           dotnet build ${{ inputs.project-path }} \
             --configuration ${{ inputs.configuration }} \
             --no-restore \
+            $WINDOWS_TARGETING \
             -p:AnalysisLevel=${{ inputs.analysis-level }} \
             -p:EnableNETAnalyzers=true \
             -p:EnforceCodeStyleInBuild=true
@@ -557,10 +578,17 @@ jobs:
         if: inputs.publish
         working-directory: ${{ inputs.working-directory }}
         run: |
+          # Enable Windows targeting on non-Windows platforms
+          WINDOWS_TARGETING=""
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            WINDOWS_TARGETING="-p:EnableWindowsTargeting=true"
+          fi
+
           dotnet publish ${{ inputs.project-path }} \
             --configuration ${{ inputs.configuration }} \
             --output ${{ inputs.output-directory }} \
             --no-build \
+            $WINDOWS_TARGETING \
             ${{ inputs.runtime && format('--runtime {0}', inputs.runtime) || '' }} \
             ${{ inputs.self-contained && '--self-contained' || '--no-self-contained' }} \
             -p:Version=${{ steps.version.outputs.version }} \
@@ -573,11 +601,18 @@ jobs:
         run: |
           PACKAGE_OUTPUT_DIR="${{ runner.temp }}/packages"
           mkdir -p "$PACKAGE_OUTPUT_DIR"
-          
+
+          # Enable Windows targeting on non-Windows platforms
+          WINDOWS_TARGETING=""
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            WINDOWS_TARGETING="-p:EnableWindowsTargeting=true"
+          fi
+
           dotnet pack ${{ inputs.project-path }} \
             --configuration ${{ inputs.configuration }} \
             --output "$PACKAGE_OUTPUT_DIR" \
             --no-build \
+            $WINDOWS_TARGETING \
             -p:PackageVersion=${{ steps.version.outputs.version }} \
             ${{ inputs.include-symbols && '-p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg' || '' }} \
             ${{ inputs.include-source && '-p:IncludeSource=true' || '' }}

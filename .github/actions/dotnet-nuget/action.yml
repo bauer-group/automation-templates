@@ -327,6 +327,13 @@ runs:
           RESTORE_ARGS="-p:TargetFrameworks=\"$TARGET_FRAMEWORKS\""
         fi
 
+        # Enable Windows targeting on non-Windows platforms
+        # This allows Linux/macOS to restore/build projects that target Windows
+        if [ "$RUNNER_OS" != "Windows" ]; then
+          RESTORE_ARGS="$RESTORE_ARGS -p:EnableWindowsTargeting=true"
+          echo "Enabled Windows targeting for non-Windows runner"
+        fi
+
         dotnet restore "${{ inputs.project-path }}" $RESTORE_ARGS
 
     # =========================================================================
@@ -362,6 +369,11 @@ runs:
           if [ "${{ inputs.delay-sign }}" = "true" ]; then
             BUILD_ARGS="$BUILD_ARGS -p:DelaySign=true"
           fi
+        fi
+
+        # Enable Windows targeting on non-Windows platforms
+        if [ "$RUNNER_OS" != "Windows" ]; then
+          BUILD_ARGS="$BUILD_ARGS -p:EnableWindowsTargeting=true"
         fi
 
         echo "Build command: dotnet build ${{ inputs.project-path }} $BUILD_ARGS"
@@ -505,6 +517,11 @@ runs:
         # Add deterministic build
         if [ "${{ inputs.deterministic-build }}" = "true" ]; then
           PACK_ARGS="$PACK_ARGS -p:Deterministic=true -p:ContinuousIntegrationBuild=true"
+        fi
+
+        # Enable Windows targeting on non-Windows platforms
+        if [ "$RUNNER_OS" != "Windows" ]; then
+          PACK_ARGS="$PACK_ARGS -p:EnableWindowsTargeting=true"
         fi
 
         echo "Pack command: dotnet pack ${{ inputs.project-path }} $PACK_ARGS"
