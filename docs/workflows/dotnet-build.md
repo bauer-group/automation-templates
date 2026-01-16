@@ -99,8 +99,8 @@ jobs:
 
 | Input | Description | Default | Options |
 |-------|-------------|---------|---------|
-| `dotnet-version` | .NET SDK version(s) | `8.0.x` | `6.0.x`, `7.0.x`, `8.0.x`, `9.0.x` |
-| `dotnet-version-file` | Path to global.json | `''` | File path |
+| `dotnet-version` | .NET SDK version(s) | `10.0.x` | `8.0.x`, `9.0.x`, `10.0.x` |
+| `global-json-file` | Path to global.json | `''` | File path |
 | `dotnet-quality` | SDK quality level | `''` | `daily`, `signed`, `validated`, `preview`, `ga` |
 
 ### Project Configuration
@@ -455,6 +455,46 @@ test-args: '--parallel --max-parallel-threads 4'
    - Exclude generated code
    - Add more test cases
    - Review threshold settings
+
+5. **"No test report files were found"**
+   - This warning appears when no `.trx` files are generated
+   - **Cause**: No test projects exist or `run-tests: true` is set but the solution has no tests
+   - **Solution A**: Set `run-tests: false` if your project has no tests:
+
+     ```yaml
+     uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+     with:
+       run-tests: false
+     ```
+
+   - **Solution B**: Add a test project with `Microsoft.NET.Test.Sdk` package reference
+   - The workflow now gracefully skips test reporting when no test projects are found
+
+6. **"Input required and not supplied: path" (Upload artifact)**
+   - This error occurs when test results path is empty
+   - **Cause**: Tests didn't run or no test projects were found
+   - **Solution**: Same as issue #5 above - set `run-tests: false` or add test projects
+   - The workflow now includes `if-no-files-found: ignore` to prevent this error
+
+### For Developers Using This Workflow
+
+If your repository uses this reusable workflow and you see test-related warnings:
+
+```yaml
+# Option 1: Disable tests if your project has none
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'src/MyLibrary.csproj'
+      run-tests: false  # No test projects in this repo
+
+# Option 2: Ensure test projects are properly configured
+# Your test project .csproj must include:
+#   <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+#   <PackageReference Include="xunit" Version="2.*" /> (or NUnit/MSTest)
+#   <PackageReference Include="xunit.runner.visualstudio" Version="2.*" />
+```
 
 ### Debug Mode
 

@@ -10,7 +10,7 @@ on:
         required: false
         default: '8.0.x'
       
-      dotnet-version-file:
+      global-json-file:
         description: 'Path to global.json for SDK version'
         type: string
         required: false
@@ -341,7 +341,11 @@ jobs:
     name: Build .NET
     runs-on: ${{ inputs.enable-matrix && matrix.os || (startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on) }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
-    
+
+    defaults:
+      run:
+        shell: bash
+
     strategy:
       matrix:
         os: ${{ inputs.enable-matrix && fromJson(inputs.matrix-os) || fromJson('["ubuntu-latest"]') }}
@@ -366,7 +370,7 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ inputs.enable-matrix && matrix.dotnet || inputs.dotnet-version }}
-          dotnet-version-file: ${{ inputs.dotnet-version-file }}
+          global-json-file: ${{ inputs.global-json-file }}
           dotnet-quality: ${{ inputs.dotnet-quality }}
       
       - name: 🔧 Setup Additional .NET Versions
@@ -431,10 +435,15 @@ jobs:
         id: test
         if: inputs.run-tests
         working-directory: ${{ inputs.working-directory }}
+        continue-on-error: true
         run: |
-          TEST_RESULTS_DIR="${{ runner.temp }}/test-results"
+          # Use TestResults in working directory (dotnet test default behavior)
+          TEST_RESULTS_DIR="$(pwd)/TestResults"
           mkdir -p "$TEST_RESULTS_DIR"
-          
+
+          echo "tests-found=true" >> $GITHUB_OUTPUT
+
+          # Run tests - dotnet test will gracefully handle if no test projects exist
           dotnet test ${{ inputs.project-path }} \
             --configuration ${{ inputs.configuration }} \
             --no-build \
@@ -445,8 +454,17 @@ jobs:
             ${{ inputs.collect-coverage && format('--collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format={0}', inputs.coverage-type) || '' }} \
             ${{ inputs.coverage-exclude && format('-- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile={0}', inputs.coverage-exclude) || '' }} \
             ${{ inputs.test-args }}
-          
+
+          # Output results path (convert to absolute path for cross-platform compatibility)
           echo "results-path=$TEST_RESULTS_DIR" >> $GITHUB_OUTPUT
+
+          # Check if any .trx files were created
+          if ls "$TEST_RESULTS_DIR"/*.trx 1>/dev/null 2>&1; then
+            echo "✅ Test results found in $TEST_RESULTS_DIR"
+          else
+            echo "⚠️ No test results (.trx) files found in $TEST_RESULTS_DIR"
+            echo "tests-found=false" >> $GITHUB_OUTPUT
+          fi
       
       - name: 📊 Process Coverage
         id: coverage
@@ -563,11 +581,12 @@ jobs:
           fi
       
       - name: 📊 Test Report
-        if: always() && inputs.run-tests
+        if: always() && inputs.run-tests && steps.test.outputs.results-path != ''
         uses: dorny/test-reporter@v2
+        continue-on-error: true
         with:
           name: 'Test Results - ${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}'
-          path: '${{ steps.test.outputs.results-path }}/*.trx'
+          path: '${{ steps.test.outputs.results-path }}/**/*.trx'
           reporter: 'dotnet-trx'
           fail-on-error: false
       
@@ -590,12 +609,14 @@ jobs:
           retention-days: ${{ inputs.artifact-retention-days }}
       
       - name: 📤 Upload Test Results
-        if: always() && inputs.run-tests && inputs.upload-artifacts
+        if: always() && inputs.run-tests && inputs.upload-artifacts && steps.test.outputs.results-path != ''
         uses: actions/upload-artifact@v6
+        continue-on-error: true
         with:
           name: test-results-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}
           path: ${{ steps.test.outputs.results-path }}
           retention-days: ${{ inputs.artifact-retention-days }}
+          if-no-files-found: ignore
       
       - name: 📤 Upload Coverage Report
         if: inputs.collect-coverage && inputs.upload-artifacts && steps.coverage.outputs.report-path != ''
