@@ -1,3 +1,9 @@
+## [4.12.1](https://github.com/bauer-group/automation-templates/compare/v4.12.0...v4.12.1) (2026-01-16)
+
+### 🐛 Bug Fixes
+
+* Resolve output path early in SNK generator script ([652d089](https://github.com/bauer-group/automation-templates/commit/652d0899984a7410fcd1d78f4fd15fdeb0debb57))
+
 ## [4.12.0](https://github.com/bauer-group/automation-templates/compare/v4.11.0...v4.12.0) (2026-01-16)
 
 ### 🚀 Features
