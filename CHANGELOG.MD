@@ -1,3 +1,9 @@
+## [4.10.1](https://github.com/bauer-group/automation-templates/compare/v4.10.0...v4.10.1) (2026-01-13)
+
+### 🐛 Bug Fixes
+
+* Add cache settings for Docker build process ([0480ed9](https://github.com/bauer-group/automation-templates/commit/0480ed9688b63f51f8b06a22203ad6f1d64dd951))
+
 ## [4.10.0](https://github.com/bauer-group/automation-templates/compare/v4.9.0...v4.10.0) (2026-01-13)
 
 ### 🚀 Features
