@@ -317,6 +317,7 @@ jobs:
           push-to-github: 'false'
           cache-enabled: ${{ inputs.cache-enabled }}
           cache-nuget-lockfile: ${{ inputs.cache-nuget-lockfile }}
+          generate-summary: 'false'
 
       - name: Upload Coverage to Codecov
         if: inputs.collect-coverage == true && steps.dotnet-build.outputs.test-skipped != 'true'
@@ -370,6 +371,7 @@ jobs:
           push-to-github: 'false'
           cache-enabled: ${{ inputs.cache-enabled }}
           cache-nuget-lockfile: ${{ inputs.cache-nuget-lockfile }}
+          generate-summary: 'false'
 
   # ===========================================================================
   # Publish to NuGet.org
@@ -602,42 +604,81 @@ jobs:
           TEST_SKIPPED: ${{ needs.build.outputs.test-skipped }}
           TEST_PASSED: ${{ needs.build.outputs.test-passed }}
           COVERAGE: ${{ needs.build.outputs.coverage-percentage }}
+          BUILD_SUCCEEDED: ${{ needs.build.outputs.build-succeeded }}
+          SYMBOLS_PATH: ${{ needs.build.outputs.symbols-path }}
         run: |
           echo "## .NET Library Publishing Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          echo "### Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "| Feature | Enabled |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|---------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Tests | ${{ inputs.run-tests && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Code Coverage | ${{ inputs.collect-coverage && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Assembly Signing | ${{ inputs.sign-assembly && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Symbol Packages | ${{ inputs.include-symbols && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Deterministic Build | ${{ inputs.deterministic-build && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Platform Matrix | ${{ inputs.enable-platform-matrix && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          echo "### Pipeline Status" >> $GITHUB_STEP_SUMMARY
-          echo "| Stage | Result |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Build (Primary) | ${{ needs.build.result == 'success' && 'Success' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
-
-          if [ "${{ inputs.enable-platform-matrix }}" = "true" ]; then
-            echo "| Build (Windows Validation) | ${{ needs.build-windows.result == 'success' && 'Success' || needs.build-windows.result == 'skipped' && 'Skipped' || 'Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          echo "| NuGet.org | ${{ inputs.push-to-nuget != true && 'Disabled' || needs.publish-nuget.result == 'success' && 'Published' || 'Failed/Skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| GitHub Packages | ${{ inputs.push-to-github != true && 'Disabled' || needs.publish-github.result == 'success' && 'Published' || 'Failed/Skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          echo "### Package Information" >> $GITHUB_STEP_SUMMARY
+          # Build Details section (like action summary)
+          echo "### Build Details" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Project | \`${{ inputs.project-path }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Configuration | \`${{ inputs.configuration }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Version | \`$PACKAGE_VERSION\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Package Name | \`$PACKAGE_NAME\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Project** | \`${{ inputs.project-path }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Configuration** | \`${{ inputs.configuration }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | \`$PACKAGE_VERSION\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build Status** | ${{ needs.build.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ inputs.collect-coverage }}" = "true" ] && [ "$TEST_SKIPPED" != "true" ]; then
-            echo "| Coverage | ${COVERAGE}% |" >> $GITHUB_STEP_SUMMARY
+          # Test Results section (if tests were run)
+          if [ "${{ inputs.run-tests }}" = "true" ]; then
+            echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            if [ "$TEST_SKIPPED" = "true" ]; then
+              echo "| **Status** | ⏭️ Skipped (no test projects found) |" >> $GITHUB_STEP_SUMMARY
+            else
+              if [ "$TEST_PASSED" = "true" ]; then
+                echo "| **Status** | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| **Status** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+              fi
+              if [ "${{ inputs.collect-coverage }}" = "true" ] && [ -n "$COVERAGE" ]; then
+                echo "| **Coverage** | ${COVERAGE}% |" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Package section
+          if [ "${{ inputs.create-package }}" = "true" ]; then
+            echo "### Package" >> $GITHUB_STEP_SUMMARY
+            echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| **Package** | \`$PACKAGE_NAME\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Signed** | ${{ inputs.sign-assembly && '✅ Yes' || '⚪ No' }} |" >> $GITHUB_STEP_SUMMARY
+            if [ -n "$SYMBOLS_PATH" ]; then
+              echo "| **Symbols** | ✅ Included |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| **Symbols** | ${{ inputs.include-symbols && '✅ Included' || '⚪ Not included' }} |" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "| **Deterministic** | ${{ inputs.deterministic-build && '✅ Yes' || '⚪ No' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Pipeline Status section
+          echo "### Publishing" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ inputs.enable-platform-matrix }}" = "true" ]; then
+            echo "| **Build (Windows Validation)** | ${{ needs.build-windows.result == 'success' && '✅ Success' || needs.build-windows.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # NuGet.org status
+          if [ "${{ inputs.push-to-nuget }}" != "true" ]; then
+            echo "| **NuGet.org** | ⚪ Disabled |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.publish-nuget.result }}" = "success" ]; then
+            echo "| **NuGet.org** | ✅ Published |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **NuGet.org** | ❌ Failed/Skipped |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # GitHub Packages status
+          if [ "${{ inputs.push-to-github }}" != "true" ]; then
+            echo "| **GitHub Packages** | ⚪ Disabled |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.publish-github.result }}" = "success" ]; then
+            echo "| **GitHub Packages** | ✅ Published |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **GitHub Packages** | ❌ Failed/Skipped |" >> $GITHUB_STEP_SUMMARY
           fi
