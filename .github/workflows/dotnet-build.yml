@@ -348,8 +348,8 @@ jobs:
 
     strategy:
       matrix:
-        os: ${{ inputs.enable-matrix && fromJson(inputs.matrix-os) || fromJson('["ubuntu-latest"]') }}
-        dotnet: ${{ inputs.enable-matrix && fromJson(inputs.matrix-dotnet) || fromJson('["8.0.x"]') }}
+        os: ${{ inputs.enable-matrix && fromJson(inputs.matrix-os) || fromJson(format('["{0}"]', inputs.runs-on)) }}
+        dotnet: ${{ inputs.enable-matrix && fromJson(inputs.matrix-dotnet) || fromJson(format('["{0}"]', inputs.dotnet-version)) }}
       fail-fast: false
     
     outputs:
