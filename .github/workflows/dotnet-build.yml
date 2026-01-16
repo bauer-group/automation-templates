@@ -437,9 +437,8 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         continue-on-error: true
         run: |
-          # Use TestResults in working directory (dotnet test default behavior)
-          TEST_RESULTS_DIR="$(pwd)/TestResults"
-          mkdir -p "$TEST_RESULTS_DIR"
+          # Use TestResults in working directory
+          mkdir -p TestResults
 
           echo "tests-found=true" >> $GITHUB_OUTPUT
 
@@ -449,39 +448,52 @@ jobs:
             --no-build \
             --verbosity ${{ inputs.verbosity }} \
             --logger "${{ inputs.test-logger }}" \
-            --results-directory "$TEST_RESULTS_DIR" \
+            --results-directory TestResults \
             ${{ inputs.test-filter && format('--filter "{0}"', inputs.test-filter) || '' }} \
             ${{ inputs.collect-coverage && format('--collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format={0}', inputs.coverage-type) || '' }} \
             ${{ inputs.coverage-exclude && format('-- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile={0}', inputs.coverage-exclude) || '' }} \
             ${{ inputs.test-args }}
 
-          # Output results path (convert to absolute path for cross-platform compatibility)
-          echo "results-path=$TEST_RESULTS_DIR" >> $GITHUB_OUTPUT
+          # List what was created
+          echo "Contents of TestResults:"
+          ls -la TestResults/ || echo "Directory empty or not found"
 
           # Check if any .trx files were created
-          if ls "$TEST_RESULTS_DIR"/*.trx 1>/dev/null 2>&1; then
-            echo "✅ Test results found in $TEST_RESULTS_DIR"
+          TRX_COUNT=$(find TestResults -name "*.trx" 2>/dev/null | wc -l)
+          if [ "$TRX_COUNT" -gt 0 ]; then
+            echo "✅ Found $TRX_COUNT test result file(s)"
+            # Use workspace-relative path for cross-platform compatibility
+            WORKING_DIR="${{ inputs.working-directory }}"
+            if [ "$WORKING_DIR" = "." ]; then
+              echo "results-path=TestResults" >> $GITHUB_OUTPUT
+            else
+              echo "results-path=${WORKING_DIR}/TestResults" >> $GITHUB_OUTPUT
+            fi
           else
-            echo "⚠️ No test results (.trx) files found in $TEST_RESULTS_DIR"
+            echo "⚠️ No test results (.trx) files found"
             echo "tests-found=false" >> $GITHUB_OUTPUT
+            echo "results-path=" >> $GITHUB_OUTPUT
           fi
       
       - name: 📊 Process Coverage
         id: coverage
-        if: inputs.collect-coverage
+        if: inputs.collect-coverage && steps.test.outputs.results-path != ''
         shell: bash
+        working-directory: ${{ inputs.working-directory }}
         run: |
-          COVERAGE_FILE=$(find "${{ runner.temp }}/test-results" -name "coverage.${{ inputs.coverage-type }}.xml" -type f | head -1)
-          
+          COVERAGE_FILE=$(find TestResults -name "coverage.${{ inputs.coverage-type }}.xml" -type f 2>/dev/null | head -1)
+
           if [ -n "$COVERAGE_FILE" ]; then
             echo "Coverage report: $COVERAGE_FILE"
-            echo "report-path=$COVERAGE_FILE" >> $GITHUB_OUTPUT
-            
+            echo "report-path=${{ steps.test.outputs.results-path }}/${COVERAGE_FILE#TestResults/}" >> $GITHUB_OUTPUT
+
             # Check threshold if specified
             if [ "${{ inputs.coverage-threshold }}" -gt 0 ]; then
-              # Parse coverage percentage (simplified - you might need a proper tool)
               echo "Coverage threshold check: ${{ inputs.coverage-threshold }}%"
             fi
+          else
+            echo "No coverage file found"
+            echo "report-path=" >> $GITHUB_OUTPUT
           fi
       
       - name: 📊 Upload Coverage to Codecov
