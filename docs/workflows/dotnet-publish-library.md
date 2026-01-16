@@ -204,7 +204,7 @@ The .NET NuGet action provides:
 | `project-path` | Path to .csproj or .sln file | **Required** |
 | `working-directory` | Working directory for commands | `.` |
 | `configuration` | Build configuration | `'Release'` |
-| `dotnet-version` | .NET SDK version(s) | `'9.0.x'` |
+| `dotnet-version` | .NET SDK version(s) | `'10.0.x'` |
 
 ### Testing
 
@@ -254,7 +254,9 @@ The .NET NuGet action provides:
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `runs-on` | Runner (string or JSON array) | `'ubuntu-latest'` |
+| `runs-on` | Runner for Linux/cross-platform builds | `'ubuntu-latest'` |
+| `runs-on-windows` | Runner for Windows-specific builds | `'windows-latest'` |
+| `enable-platform-matrix` | Enable parallel Linux + Windows builds | `false` |
 | `timeout-minutes` | Job timeout | `30` |
 | `cache-enabled` | Enable NuGet caching | `true` |
 
@@ -280,6 +282,8 @@ The .NET NuGet action provides:
 | `coverage-percentage` | Code coverage % |
 | `pushed-to-nuget` | NuGet.org publish status |
 | `pushed-to-github` | GitHub Packages publish status |
+| `has-windows-tfms` | Windows TFMs detected (platform matrix) |
+| `has-crossplatform-tfms` | Cross-platform TFMs detected (platform matrix) |
 
 ## Assembly Signing (SNK)
 
@@ -406,6 +410,83 @@ MyLibrary/
 │       └── MyLibrary.csproj
 ├── Directory.Build.props
 └── MyLibrary.sln
+```
+
+## Windows Desktop / Platform Matrix
+
+For libraries that target Windows-specific TFMs (like `net8.0-windows` for WPF/WinForms), use the platform matrix feature to build on appropriate runners.
+
+### Why Platform Matrix?
+
+- **Windows TFMs require Windows**: `net8.0-windows`, `net9.0-windows` cannot be built on Linux
+- **Cross-platform TFMs are flexible**: `net8.0`, `net9.0` can build on any runner
+- **Parallel builds**: Build both in parallel for faster CI/CD
+- **Auto-detection**: Workflow automatically detects which TFMs require which runner
+
+### Enable Platform Matrix
+
+```yaml
+jobs:
+  publish:
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    with:
+      project-path: 'src/MyDesktopLib/MyDesktopLib.csproj'
+      dotnet-version: '8.0.x,9.0.x'
+
+      # Enable parallel platform builds
+      enable-platform-matrix: true
+
+      # Configure runners (optional - these are defaults)
+      runs-on: 'ubuntu-latest'
+      runs-on-windows: 'windows-latest'
+
+      push-to-nuget: true
+    secrets: inherit
+```
+
+### How It Works
+
+When `enable-platform-matrix: true`:
+
+1. **Detect Platforms**: Workflow scans `.csproj` and `Directory.Build.props` for TFMs
+2. **Split Build**: Creates separate jobs for:
+   - Cross-platform TFMs (net8.0, net9.0) → Linux runner
+   - Windows TFMs (net8.0-windows, net9.0-windows) → Windows runner
+3. **Merge Artifacts**: Combines packages from both builds
+4. **Single Release**: Publishes a unified package to NuGet
+
+### Detected Framework Categories
+
+| Category                 | Examples                                 | Runner                       |
+|--------------------------|------------------------------------------|------------------------------|
+| Cross-Platform           | net6.0, net7.0, net8.0, net9.0, net10.0  | Linux (`runs-on`)            |
+| Windows-Specific         | net8.0-windows, net9.0-windows10.0.17763 | Windows (`runs-on-windows`)  |
+| Other Platform-Specific  | net8.0-android, net8.0-ios               | Skipped (not supported)      |
+
+### Self-Hosted Windows Runners
+
+For self-hosted runners with Windows:
+
+```yaml
+with:
+  enable-platform-matrix: true
+  runs-on: '["self-hosted", "linux"]'
+  runs-on-windows: '["self-hosted", "windows"]'
+  cache-enabled: false  # GitHub Actions cache not available on self-hosted
+```
+
+### Example .csproj
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Multi-target: cross-platform + Windows-specific -->
+    <TargetFrameworks>net8.0;net8.0-windows;net9.0;net9.0-windows</TargetFrameworks>
+
+    <!-- Windows-specific settings -->
+    <UseWPF Condition="$(TargetFramework.Contains('windows'))">true</UseWPF>
+  </PropertyGroup>
+</Project>
 ```
 
 ## Self-Hosted Runners

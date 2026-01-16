@@ -6,11 +6,15 @@
 # - Semantic versioning (conventional commits)
 # - Automatic release creation
 # - NuGet publishing with version from release
+# - Platform matrix support for Windows-specific TFMs (optional)
 #
 # Uses conventional commits for automatic version bumping:
 # - feat: -> minor version bump
 # - fix: -> patch version bump
 # - feat!: or BREAKING CHANGE: -> major version bump
+#
+# For Windows desktop libraries (WPF, WinForms), set enable-platform-matrix: true
+# to build Windows TFMs on Windows runners and cross-platform TFMs on Linux.
 # =============================================================================
 
 name: 🚀 Release & Publish
@@ -51,7 +55,7 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
     with:
       project-path: 'src/MyLibrary.sln'
-      dotnet-version: '9.0.x'
+      dotnet-version: '10.0.x'
       run-tests: true
       collect-coverage: true
     secrets: inherit
@@ -81,7 +85,7 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
     with:
       project-path: 'src/MyLibrary/MyLibrary.csproj'
-      dotnet-version: '9.0.x'
+      dotnet-version: '10.0.x'
 
       # Use version from semantic-release
       release-version: ${{ needs.release.outputs.version }}
@@ -113,7 +117,7 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
     with:
       project-path: 'src/MyLibrary/MyLibrary.csproj'
-      dotnet-version: '9.0.x'
+      dotnet-version: '10.0.x'
 
       # Preview version for PR
       version-suffix: 'pr'

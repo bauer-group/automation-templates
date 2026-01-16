@@ -1,0 +1,96 @@
+# =============================================================================
+# Windows Desktop Application (WPF/WinForms)
+# =============================================================================
+# Workflow for building .NET libraries that target Windows-specific TFMs
+# like net8.0-windows, net9.0-windows (for WPF, WinForms, WinUI).
+#
+# Uses platform matrix to build:
+# - Cross-platform TFMs (net8.0, net9.0) on Linux runners
+# - Windows-specific TFMs (net8.0-windows, net9.0-windows) on Windows runners
+#
+# Your .csproj should include:
+# <TargetFrameworks>net8.0;net8.0-windows;net9.0;net9.0-windows</TargetFrameworks>
+# =============================================================================
+
+name: 🖥️ Windows Desktop Library
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - '*.sln'
+      - 'Directory.Build.props'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  # ===========================================================================
+  # Validate on PR (platform matrix for parallel builds)
+  # ===========================================================================
+  validate:
+    name: Validate (PR)
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    with:
+      project-path: 'src/MyDesktopLib/MyDesktopLib.csproj'
+      dotnet-version: '8.0.x,9.0.x'
+
+      # Enable platform matrix for parallel Linux + Windows builds
+      enable-platform-matrix: true
+
+      # Runners (can be customized for self-hosted)
+      runs-on: 'ubuntu-latest'
+      runs-on-windows: 'windows-latest'
+
+      # Testing
+      run-tests: true
+      collect-coverage: true
+
+      # Build package but don't publish
+      create-package: true
+      push-to-nuget: false
+      push-to-github: false
+    secrets: inherit
+
+  # ===========================================================================
+  # Publish on Tag (platform matrix for parallel builds)
+  # ===========================================================================
+  publish:
+    name: Publish (Release)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    with:
+      project-path: 'src/MyDesktopLib/MyDesktopLib.csproj'
+      dotnet-version: '8.0.x,9.0.x'
+
+      # Enable platform matrix for parallel Linux + Windows builds
+      enable-platform-matrix: true
+
+      # Runners
+      runs-on: 'ubuntu-latest'
+      runs-on-windows: 'windows-latest'
+
+      # Testing
+      run-tests: true
+      collect-coverage: true
+
+      # Assembly signing (optional)
+      sign-assembly: true
+
+      # Publishing
+      push-to-nuget: true
+      push-to-github: true
+
+      # Package options
+      include-symbols: true
+      deterministic-build: true
+    secrets:
+      DOTNET_SIGNKEY_BASE64: ${{ secrets.DOTNET_SIGNKEY_BASE64 }}

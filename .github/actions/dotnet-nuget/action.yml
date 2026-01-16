@@ -18,7 +18,15 @@ inputs:
   dotnet-version:
     description: 'SDK version(s) to use (comma-separated for multiple)'
     required: false
-    default: '9.0.x'
+    default: '10.0.x'
+  target-frameworks:
+    description: 'Target frameworks to build (semicolon-separated, e.g., "net8.0;net9.0"). Leave empty to build all TFMs from project.'
+    required: false
+    default: ''
+  artifact-suffix:
+    description: 'Suffix to append to artifact names (for platform matrix builds, e.g., "-windows", "-crossplatform")'
+    required: false
+    default: ''
 
   # Testing
   run-tests:
@@ -311,7 +319,15 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         echo "Restoring NuGet packages..."
-        dotnet restore "${{ inputs.project-path }}"
+
+        RESTORE_ARGS=""
+        TARGET_FRAMEWORKS="${{ inputs.target-frameworks }}"
+        if [ -n "$TARGET_FRAMEWORKS" ]; then
+          echo "Restoring for specified frameworks: $TARGET_FRAMEWORKS"
+          RESTORE_ARGS="-p:TargetFrameworks=\"$TARGET_FRAMEWORKS\""
+        fi
+
+        dotnet restore "${{ inputs.project-path }}" $RESTORE_ARGS
 
     # =========================================================================
     # Build
@@ -327,6 +343,13 @@ runs:
 
         # Add version
         BUILD_ARGS="$BUILD_ARGS -p:Version=${{ steps.version.outputs.version }}"
+
+        # Add target framework filter if specified (for platform matrix builds)
+        TARGET_FRAMEWORKS="${{ inputs.target-frameworks }}"
+        if [ -n "$TARGET_FRAMEWORKS" ]; then
+          echo "Building only specified frameworks: $TARGET_FRAMEWORKS"
+          BUILD_ARGS="$BUILD_ARGS -p:TargetFrameworks=\"$TARGET_FRAMEWORKS\""
+        fi
 
         # Add deterministic build option
         if [ "${{ inputs.deterministic-build }}" = "true" ]; then
@@ -461,6 +484,13 @@ runs:
 
         PACK_ARGS="-c ${{ inputs.configuration }} --no-build -o nupkg"
         PACK_ARGS="$PACK_ARGS -p:Version=${{ steps.version.outputs.version }}"
+
+        # Add target framework filter if specified (for platform matrix builds)
+        TARGET_FRAMEWORKS="${{ inputs.target-frameworks }}"
+        if [ -n "$TARGET_FRAMEWORKS" ]; then
+          echo "Packing only specified frameworks: $TARGET_FRAMEWORKS"
+          PACK_ARGS="$PACK_ARGS -p:TargetFrameworks=\"$TARGET_FRAMEWORKS\""
+        fi
 
         # Add symbol package option
         if [ "${{ inputs.include-symbols }}" = "true" ]; then
@@ -618,7 +648,7 @@ runs:
       if: inputs.create-package == 'true' && steps.pack.outputs.package-path != ''
       uses: actions/upload-artifact@v4
       with:
-        name: nuget-packages
+        name: nuget-packages${{ inputs.artifact-suffix }}
         path: ${{ inputs.working-directory }}/nupkg/
         retention-days: 30
 
@@ -626,7 +656,7 @@ runs:
       if: inputs.run-tests == 'true' && inputs.collect-coverage == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: test-results
+        name: test-results${{ inputs.artifact-suffix }}
         path: ${{ inputs.working-directory }}/TestResults/
         retention-days: 30
       continue-on-error: true
