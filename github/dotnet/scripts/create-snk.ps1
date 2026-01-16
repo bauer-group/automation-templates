@@ -49,6 +49,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Resolve to absolute path early
+$OutputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputPath)
+
 # Colors
 function Write-ColorOutput {
     param(
