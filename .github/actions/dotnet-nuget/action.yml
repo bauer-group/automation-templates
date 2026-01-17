@@ -154,6 +154,9 @@ outputs:
   package-count:
     description: 'Number of packages created'
     value: ${{ steps.pack.outputs.package-count }}
+  package-names:
+    description: 'JSON array of all package names (without .nupkg extension)'
+    value: ${{ steps.pack.outputs.package-names }}
   build-succeeded:
     description: 'Whether build succeeded'
     value: ${{ steps.build.outputs.succeeded }}
@@ -555,6 +558,12 @@ runs:
           echo "package-path=$FIRST_NUPKG" >> $GITHUB_OUTPUT
           echo "package-name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
           echo "package-count=$PACKAGE_COUNT" >> $GITHUB_OUTPUT
+
+          # Build JSON array of all package names
+          PACKAGE_NAMES_JSON=$(echo "$NUPKG_FILES" | while read -r pkg; do
+            basename "$pkg" .nupkg
+          done | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "package-names=$PACKAGE_NAMES_JSON" >> $GITHUB_OUTPUT
 
           echo "Created $PACKAGE_COUNT package(s):"
           echo "$NUPKG_FILES" | while read -r pkg; do

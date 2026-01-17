@@ -227,8 +227,16 @@ on:
         value: ${{ jobs.build.outputs.symbols-path }}
 
       package-name:
-        description: 'Full package name with version'
+        description: 'Full package name with version (first package)'
         value: ${{ jobs.build.outputs.package-name }}
+
+      package-count:
+        description: 'Number of packages created'
+        value: ${{ jobs.build.outputs.package-count }}
+
+      package-names:
+        description: 'JSON array of all package names'
+        value: ${{ jobs.build.outputs.package-names }}
 
       build-succeeded:
         description: 'Whether build succeeded'
@@ -278,6 +286,8 @@ jobs:
       package-path: ${{ steps.dotnet-build.outputs.package-path }}
       symbols-path: ${{ steps.dotnet-build.outputs.symbols-path }}
       package-name: ${{ steps.dotnet-build.outputs.package-name }}
+      package-count: ${{ steps.dotnet-build.outputs.package-count }}
+      package-names: ${{ steps.dotnet-build.outputs.package-names }}
       build-succeeded: ${{ steps.dotnet-build.outputs.build-succeeded }}
       test-passed: ${{ steps.dotnet-build.outputs.test-passed }}
       test-skipped: ${{ steps.dotnet-build.outputs.test-skipped }}
@@ -657,6 +667,8 @@ jobs:
         shell: bash
         env:
           PACKAGE_NAME: ${{ needs.build.outputs.package-name }}
+          PACKAGE_COUNT: ${{ needs.build.outputs.package-count }}
+          PACKAGE_NAMES: ${{ needs.build.outputs.package-names }}
           PACKAGE_VERSION: ${{ needs.build.outputs.version }}
           TEST_SKIPPED: ${{ needs.build.outputs.test-skipped }}
           TEST_PASSED: ${{ needs.build.outputs.test-passed }}
@@ -699,10 +711,25 @@ jobs:
 
           # Package section
           if [ "${{ inputs.create-package }}" = "true" ]; then
-            echo "### Package" >> $GITHUB_STEP_SUMMARY
+            echo "### Packages" >> $GITHUB_STEP_SUMMARY
             echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
             echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| **Package** | \`$PACKAGE_NAME\` |" >> $GITHUB_STEP_SUMMARY
+            if [ -n "$PACKAGE_COUNT" ] && [ "$PACKAGE_COUNT" -gt 1 ] 2>/dev/null; then
+              echo "| **Package Count** | $PACKAGE_COUNT |" >> $GITHUB_STEP_SUMMARY
+              # List all packages from JSON array
+              if [ -n "$PACKAGE_NAMES" ] && [ "$PACKAGE_NAMES" != "null" ]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "**Packages:**" >> $GITHUB_STEP_SUMMARY
+                echo "$PACKAGE_NAMES" | jq -r '.[]' | while read -r pkg; do
+                  echo "- \`$pkg\`" >> $GITHUB_STEP_SUMMARY
+                done
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+                echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "| **Package** | \`$PACKAGE_NAME\` |" >> $GITHUB_STEP_SUMMARY
+            fi
             echo "| **Signed** | ${{ inputs.sign-assembly && '✅ Yes' || '⚪ No' }} |" >> $GITHUB_STEP_SUMMARY
             if [ -n "$SYMBOLS_PATH" ]; then
               echo "| **Symbols** | ✅ Included |" >> $GITHUB_STEP_SUMMARY
