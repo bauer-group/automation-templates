@@ -49,116 +49,153 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
-    - name: Copy Config
+    - name: Build Config
       shell: bash
       run: |
-        # Use repository config if exists, otherwise use default
+        echo "Building semantic-release config..."
+
+        # Default release rules
+        DEFAULT_RULES='[
+          {"breaking": true, "release": "major"},
+          {"type": "feat", "release": "minor"},
+          {"type": "fix", "release": "patch"},
+          {"type": "perf", "release": "patch"},
+          {"type": "revert", "release": "patch"},
+          {"type": "refactor", "release": "patch"}
+        ]'
+
+        FORCE_RULES='[
+          {"breaking": true, "release": "major"},
+          {"type": "feat", "release": "minor"},
+          {"type": "fix", "release": "patch"},
+          {"type": "perf", "release": "patch"},
+          {"type": "revert", "release": "patch"},
+          {"type": "refactor", "release": "patch"},
+          {"type": "docs", "release": "patch"},
+          {"type": "style", "release": "patch"},
+          {"type": "chore", "release": "patch"},
+          {"type": "test", "release": "patch"},
+          {"type": "build", "release": "patch"},
+          {"type": "ci", "release": "patch"},
+          {"message": "*", "release": "patch"}
+        ]'
+
+        # Check for repo-specific config to merge
+        EXTRA_PLUGINS="[]"
+        CHANGELOG_FILE="CHANGELOG.md"
+        GIT_ASSETS='["CHANGELOG.md"]'
+        GIT_MESSAGE='chore(release): ${nextRelease.version}\n\n${nextRelease.notes}'
+        RELEASE_RULES=""
+
         if [ -f ".github/config/release/semantic-release.json" ]; then
-          echo "Using repository semantic-release config"
-          cp .github/config/release/semantic-release.json .releaserc.json
-        else
-          echo "Creating default semantic-release config"
-          if [ "${{ inputs.force-release }}" = "true" ]; then
-            echo "Creating force-release config"
-            cat > .releaserc.json << 'EOF'
-        {
-          "branches": ["${{ inputs.branches }}"],
-          "plugins": [
-            ["@semantic-release/commit-analyzer", {
-              "preset": "conventionalcommits",
-              "releaseRules": [
-                {"breaking": true, "release": "major"},
-                {"type": "feat", "release": "minor"},
-                {"type": "fix", "release": "patch"},
-                {"type": "perf", "release": "patch"},
-                {"type": "revert", "release": "patch"},
-                {"type": "refactor", "release": "patch"},
-                {"type": "docs", "release": "patch"},
-                {"type": "style", "release": "patch"},
-                {"type": "chore", "release": "patch"},
-                {"type": "test", "release": "patch"},
-                {"type": "build", "release": "patch"},
-                {"type": "ci", "release": "patch"},
-                {"message": "*", "release": "patch"}
-              ]
-            }],
-            ["@semantic-release/release-notes-generator", {
-              "preset": "conventionalcommits",
-              "presetConfig": {
-                "types": [
-                  {"type": "feat", "section": "🚀 Features"},
-                  {"type": "fix", "section": "🐛 Bug Fixes"},
-                  {"type": "perf", "section": "⚡ Performance"},
-                  {"type": "revert", "section": "⏪ Reverts"},
-                  {"type": "refactor", "section": "♻️ Refactoring"},
-                  {"type": "docs", "section": "📚 Documentation", "hidden": true},
-                  {"type": "style", "section": "💄 Styles", "hidden": true},
-                  {"type": "chore", "section": "🔧 Chores", "hidden": true},
-                  {"type": "test", "section": "🧪 Tests", "hidden": true},
-                  {"type": "build", "section": "🔨 Build", "hidden": true},
-                  {"type": "ci", "section": "👷 CI", "hidden": true}
-                ]
-              }
-            }],
-            ["@semantic-release/changelog", {
-              "changelogFile": "CHANGELOG.MD"
-            }],
-            ["@semantic-release/git", {
-              "assets": ["CHANGELOG.MD"],
-              "message": "chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"
-            }],
-            "@semantic-release/github"
-          ]
-        }
-        EOF
-          else
-            echo "Creating standard semantic-release config"
-            cat > .releaserc.json << 'EOF'
-        {
-          "branches": ["${{ inputs.branches }}"],
-          "plugins": [
-            ["@semantic-release/commit-analyzer", {
-              "preset": "conventionalcommits",
-              "releaseRules": [
-                {"breaking": true, "release": "major"},
-                {"type": "feat", "release": "minor"},
-                {"type": "fix", "release": "patch"},
-                {"type": "perf", "release": "patch"},
-                {"type": "revert", "release": "patch"},
-                {"type": "refactor", "release": "patch"}
-              ]
-            }],
-            ["@semantic-release/release-notes-generator", {
-              "preset": "conventionalcommits",
-              "presetConfig": {
-                "types": [
-                  {"type": "feat", "section": "🚀 Features"},
-                  {"type": "fix", "section": "🐛 Bug Fixes"},
-                  {"type": "perf", "section": "⚡ Performance"},
-                  {"type": "revert", "section": "⏪ Reverts"},
-                  {"type": "refactor", "section": "♻️ Refactoring"},
-                  {"type": "docs", "section": "📚 Documentation", "hidden": true},
-                  {"type": "style", "section": "💄 Styles", "hidden": true},
-                  {"type": "chore", "section": "🔧 Chores", "hidden": true},
-                  {"type": "test", "section": "🧪 Tests", "hidden": true},
-                  {"type": "build", "section": "🔨 Build", "hidden": true},
-                  {"type": "ci", "section": "👷 CI", "hidden": true}
-                ]
-              }
-            }],
-            ["@semantic-release/changelog", {
-              "changelogFile": "CHANGELOG.MD"
-            }],
-            ["@semantic-release/git", {
-              "assets": ["CHANGELOG.MD"],
-              "message": "chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"
-            }],
-            "@semantic-release/github"
-          ]
-        }
-        EOF
+          echo "Found repository config - extracting custom settings..."
+          REPO_CONFIG=".github/config/release/semantic-release.json"
+
+          # Extract releaseRules if specified (REPLACES default rules)
+          CUSTOM_RULES=$(jq -c '.plugins[] | select(type == "array") | select(.[0] == "@semantic-release/commit-analyzer") | .[1].releaseRules // empty' "$REPO_CONFIG" 2>/dev/null || echo "")
+          if [ -n "$CUSTOM_RULES" ] && [ "$CUSTOM_RULES" != "null" ] && [ "$CUSTOM_RULES" != "[]" ]; then
+            RELEASE_RULES="$CUSTOM_RULES"
+            echo "  Using custom releaseRules from repo config"
           fi
+
+          # Extract changelog file path if specified
+          CUSTOM_CHANGELOG=$(jq -r '.plugins[] | select(type == "array") | select(.[0] == "@semantic-release/changelog") | .[1].changelogFile // empty' "$REPO_CONFIG" 2>/dev/null || echo "")
+          if [ -n "$CUSTOM_CHANGELOG" ]; then
+            CHANGELOG_FILE="$CUSTOM_CHANGELOG"
+            echo "  Using custom changelog: $CHANGELOG_FILE"
+          fi
+
+          # Extract git assets if specified
+          CUSTOM_ASSETS=$(jq -c '.plugins[] | select(type == "array") | select(.[0] == "@semantic-release/git") | .[1].assets // empty' "$REPO_CONFIG" 2>/dev/null || echo "")
+          if [ -n "$CUSTOM_ASSETS" ] && [ "$CUSTOM_ASSETS" != "null" ]; then
+            GIT_ASSETS="$CUSTOM_ASSETS"
+            echo "  Using custom git assets: $GIT_ASSETS"
+          fi
+
+          # Extract git message if specified
+          CUSTOM_MESSAGE=$(jq -r '.plugins[] | select(type == "array") | select(.[0] == "@semantic-release/git") | .[1].message // empty' "$REPO_CONFIG" 2>/dev/null || echo "")
+          if [ -n "$CUSTOM_MESSAGE" ]; then
+            GIT_MESSAGE="$CUSTOM_MESSAGE"
+            echo "  Using custom git message"
+          fi
+
+          # Extract extra plugins (not commit-analyzer, release-notes-generator, changelog, git, github)
+          EXTRA_PLUGINS=$(jq -c '[.plugins[] | select(
+            (type == "string" and . != "@semantic-release/commit-analyzer" and . != "@semantic-release/release-notes-generator" and . != "@semantic-release/changelog" and . != "@semantic-release/git" and . != "@semantic-release/github") or
+            (type == "array" and .[0] != "@semantic-release/commit-analyzer" and .[0] != "@semantic-release/release-notes-generator" and .[0] != "@semantic-release/changelog" and .[0] != "@semantic-release/git" and .[0] != "@semantic-release/github")
+          )]' "$REPO_CONFIG" 2>/dev/null || echo "[]")
+
+          if [ "$EXTRA_PLUGINS" != "[]" ] && [ "$EXTRA_PLUGINS" != "null" ]; then
+            echo "  Found extra plugins: $EXTRA_PLUGINS"
+          else
+            EXTRA_PLUGINS="[]"
+          fi
+        else
+          echo "No repository config found - using defaults"
         fi
+
+        # Determine final release rules
+        if [ -n "$RELEASE_RULES" ]; then
+          echo "Using: custom releaseRules from repo"
+        elif [ "${{ inputs.force-release }}" = "true" ]; then
+          echo "Using: force-release rules (all commit types trigger release)"
+          RELEASE_RULES="$FORCE_RULES"
+        else
+          echo "Using: standard releaseRules (feat/fix/perf/revert/refactor)"
+          RELEASE_RULES="$DEFAULT_RULES"
+        fi
+
+        # Build the final config
+        cat > .releaserc.json << EOF
+        {
+          "branches": ["${{ inputs.branches }}"],
+          "plugins": [
+            ["@semantic-release/commit-analyzer", {
+              "preset": "conventionalcommits",
+              "releaseRules": $RELEASE_RULES
+            }],
+            ["@semantic-release/release-notes-generator", {
+              "preset": "conventionalcommits",
+              "presetConfig": {
+                "types": [
+                  {"type": "feat", "section": "🚀 Features"},
+                  {"type": "fix", "section": "🐛 Bug Fixes"},
+                  {"type": "perf", "section": "⚡ Performance"},
+                  {"type": "revert", "section": "⏪ Reverts"},
+                  {"type": "refactor", "section": "♻️ Refactoring"},
+                  {"type": "docs", "section": "📚 Documentation", "hidden": true},
+                  {"type": "style", "section": "💄 Styles", "hidden": true},
+                  {"type": "chore", "section": "🔧 Chores", "hidden": true},
+                  {"type": "test", "section": "🧪 Tests", "hidden": true},
+                  {"type": "build", "section": "🔨 Build", "hidden": true},
+                  {"type": "ci", "section": "👷 CI", "hidden": true}
+                ]
+              }
+            }],
+            ["@semantic-release/changelog", {
+              "changelogFile": "$CHANGELOG_FILE"
+            }],
+            ["@semantic-release/git", {
+              "assets": $GIT_ASSETS,
+              "message": "$GIT_MESSAGE"
+            }],
+            "@semantic-release/github"
+          ]
+        }
+        EOF
+
+        # Merge extra plugins if any
+        if [ "$EXTRA_PLUGINS" != "[]" ]; then
+          echo "Merging extra plugins into config..."
+          # Insert extra plugins before @semantic-release/github
+          jq --argjson extra "$EXTRA_PLUGINS" '
+            .plugins = [.plugins[0], .plugins[1], .plugins[2]] + $extra + [.plugins[3], .plugins[4]]
+          ' .releaserc.json > .releaserc.tmp.json && mv .releaserc.tmp.json .releaserc.json
+        fi
+
+        echo ""
+        echo "Final config:"
+        cat .releaserc.json | jq .
 
     - name: Semantic Release
       id: release
