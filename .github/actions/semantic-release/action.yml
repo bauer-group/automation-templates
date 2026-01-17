@@ -84,7 +84,7 @@ runs:
         EXTRA_PLUGINS="[]"
         CHANGELOG_FILE="CHANGELOG.md"
         GIT_ASSETS='["CHANGELOG.md"]'
-        GIT_MESSAGE='chore(release): ${nextRelease.version}\n\n${nextRelease.notes}'
+        GIT_MESSAGE='"chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"'
         RELEASE_RULES=""
 
         if [ -f ".github/config/release/semantic-release.json" ]; then
@@ -112,9 +112,9 @@ runs:
             echo "  Using custom git assets: $GIT_ASSETS"
           fi
 
-          # Extract git message if specified
-          CUSTOM_MESSAGE=$(jq -r '.plugins[] | select(type == "array") | select(.[0] == "@semantic-release/git") | .[1].message // empty' "$REPO_CONFIG" 2>/dev/null || echo "")
-          if [ -n "$CUSTOM_MESSAGE" ]; then
+          # Extract git message if specified (keep as JSON string to preserve escapes)
+          CUSTOM_MESSAGE=$(jq '.plugins[] | select(type == "array") | select(.[0] == "@semantic-release/git") | .[1].message // empty' "$REPO_CONFIG" 2>/dev/null || echo "null")
+          if [ "$CUSTOM_MESSAGE" != "null" ] && [ "$CUSTOM_MESSAGE" != '""' ] && [ -n "$CUSTOM_MESSAGE" ]; then
             GIT_MESSAGE="$CUSTOM_MESSAGE"
             echo "  Using custom git message"
           fi
@@ -177,7 +177,7 @@ runs:
             }],
             ["@semantic-release/git", {
               "assets": $GIT_ASSETS,
-              "message": "$GIT_MESSAGE"
+              "message": $GIT_MESSAGE
             }],
             "@semantic-release/github"
           ]
