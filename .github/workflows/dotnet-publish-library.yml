@@ -389,6 +389,7 @@ jobs:
 
     outputs:
       pushed: ${{ steps.push.outputs.pushed }}
+      pushed-count: ${{ steps.push.outputs.pushed-count }}
 
     steps:
       - name: Download NuGet Packages
@@ -412,16 +413,17 @@ jobs:
         run: |
           echo "Pushing to NuGet.org..."
 
-          NUPKG_FILE=$(find nupkg -name "*.nupkg" ! -name "*.symbols.nupkg" 2>/dev/null | head -1)
-          SNUPKG_FILE=$(find nupkg -name "*.snupkg" 2>/dev/null | head -1)
+          # Find ALL .nupkg files (not just the first one)
+          NUPKG_FILES=$(find nupkg -name "*.nupkg" ! -name "*.symbols.nupkg" 2>/dev/null | sort)
+          PACKAGE_COUNT=$(echo "$NUPKG_FILES" | grep -c . || echo 0)
 
-          if [ -z "$NUPKG_FILE" ]; then
-            echo "No .nupkg file found!"
+          if [ -z "$NUPKG_FILES" ] || [ "$PACKAGE_COUNT" -eq 0 ]; then
+            echo "No .nupkg files found!"
             echo "pushed=false" >> $GITHUB_OUTPUT
             exit 1
           fi
 
-          echo "Package: $NUPKG_FILE"
+          echo "Found $PACKAGE_COUNT package(s) to push"
 
           PUSH_ARGS="--source https://api.nuget.org/v3/index.json"
 
@@ -440,14 +442,44 @@ jobs:
             PUSH_ARGS="$PUSH_ARGS --api-key az"
           fi
 
-          if dotnet nuget push "$NUPKG_FILE" $PUSH_ARGS; then
-            echo "pushed=true" >> $GITHUB_OUTPUT
-            echo "Successfully pushed to NuGet.org"
+          PUSHED_COUNT=0
+          FAILED_COUNT=0
 
-            if [ -n "$SNUPKG_FILE" ] && [ -f "$SNUPKG_FILE" ]; then
-              echo "Pushing symbols package..."
-              dotnet nuget push "$SNUPKG_FILE" $PUSH_ARGS || echo "Symbols push skipped"
+          # Push each package
+          while IFS= read -r NUPKG_FILE; do
+            if [ -n "$NUPKG_FILE" ]; then
+              PACKAGE_NAME=$(basename "$NUPKG_FILE")
+              echo "Pushing: $PACKAGE_NAME"
+
+              if dotnet nuget push "$NUPKG_FILE" $PUSH_ARGS; then
+                echo "  ✓ Successfully pushed $PACKAGE_NAME"
+                PUSHED_COUNT=$((PUSHED_COUNT + 1))
+              else
+                echo "  ✗ Failed to push $PACKAGE_NAME"
+                FAILED_COUNT=$((FAILED_COUNT + 1))
+              fi
             fi
+          done <<< "$NUPKG_FILES"
+
+          echo ""
+          echo "Push summary: $PUSHED_COUNT succeeded, $FAILED_COUNT failed"
+
+          # Push ALL symbol packages
+          SNUPKG_FILES=$(find nupkg -name "*.snupkg" 2>/dev/null | sort)
+          if [ -n "$SNUPKG_FILES" ]; then
+            echo ""
+            echo "Pushing symbol packages..."
+            while IFS= read -r SNUPKG_FILE; do
+              if [ -n "$SNUPKG_FILE" ] && [ -f "$SNUPKG_FILE" ]; then
+                SYMBOLS_NAME=$(basename "$SNUPKG_FILE")
+                dotnet nuget push "$SNUPKG_FILE" $PUSH_ARGS && echo "  ✓ Pushed $SYMBOLS_NAME" || echo "  ⊘ Skipped $SYMBOLS_NAME"
+              fi
+            done <<< "$SNUPKG_FILES"
+          fi
+
+          if [ "$PUSHED_COUNT" -gt 0 ]; then
+            echo "pushed=true" >> $GITHUB_OUTPUT
+            echo "pushed-count=$PUSHED_COUNT" >> $GITHUB_OUTPUT
           else
             echo "pushed=false" >> $GITHUB_OUTPUT
             exit 1
@@ -469,6 +501,7 @@ jobs:
 
     outputs:
       pushed: ${{ steps.push.outputs.pushed }}
+      pushed-count: ${{ steps.push.outputs.pushed-count }}
 
     steps:
       - name: Download NuGet Packages
@@ -490,15 +523,17 @@ jobs:
         run: |
           echo "Pushing to GitHub Packages..."
 
-          NUPKG_FILE=$(find nupkg -name "*.nupkg" ! -name "*.symbols.nupkg" 2>/dev/null | head -1)
+          # Find ALL .nupkg files (not just the first one)
+          NUPKG_FILES=$(find nupkg -name "*.nupkg" ! -name "*.symbols.nupkg" 2>/dev/null | sort)
+          PACKAGE_COUNT=$(echo "$NUPKG_FILES" | grep -c . || echo 0)
 
-          if [ -z "$NUPKG_FILE" ]; then
-            echo "No .nupkg file found!"
+          if [ -z "$NUPKG_FILES" ] || [ "$PACKAGE_COUNT" -eq 0 ]; then
+            echo "No .nupkg files found!"
             echo "pushed=false" >> $GITHUB_OUTPUT
             exit 1
           fi
 
-          echo "Package: $NUPKG_FILE"
+          echo "Found $PACKAGE_COUNT package(s) to push"
 
           OWNER="${GITHUB_REPOSITORY_OWNER}"
           GITHUB_NUGET_SOURCE="https://nuget.pkg.github.com/${OWNER}/index.json"
@@ -509,9 +544,31 @@ jobs:
             PUSH_ARGS="$PUSH_ARGS --skip-duplicate"
           fi
 
-          if dotnet nuget push "$NUPKG_FILE" $PUSH_ARGS; then
+          PUSHED_COUNT=0
+          FAILED_COUNT=0
+
+          # Push each package
+          while IFS= read -r NUPKG_FILE; do
+            if [ -n "$NUPKG_FILE" ]; then
+              PACKAGE_NAME=$(basename "$NUPKG_FILE")
+              echo "Pushing: $PACKAGE_NAME"
+
+              if dotnet nuget push "$NUPKG_FILE" $PUSH_ARGS; then
+                echo "  ✓ Successfully pushed $PACKAGE_NAME"
+                PUSHED_COUNT=$((PUSHED_COUNT + 1))
+              else
+                echo "  ✗ Failed to push $PACKAGE_NAME"
+                FAILED_COUNT=$((FAILED_COUNT + 1))
+              fi
+            fi
+          done <<< "$NUPKG_FILES"
+
+          echo ""
+          echo "Push summary: $PUSHED_COUNT succeeded, $FAILED_COUNT failed"
+
+          if [ "$PUSHED_COUNT" -gt 0 ]; then
             echo "pushed=true" >> $GITHUB_OUTPUT
-            echo "Successfully pushed to GitHub Packages"
+            echo "pushed-count=$PUSHED_COUNT" >> $GITHUB_OUTPUT
           else
             echo "pushed=false" >> $GITHUB_OUTPUT
             exit 1
@@ -666,19 +723,29 @@ jobs:
           fi
 
           # NuGet.org status
+          NUGET_COUNT="${{ needs.publish-nuget.outputs.pushed-count }}"
           if [ "${{ inputs.push-to-nuget }}" != "true" ]; then
             echo "| **NuGet.org** | ⚪ Disabled |" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ needs.publish-nuget.result }}" = "success" ]; then
-            echo "| **NuGet.org** | ✅ Published |" >> $GITHUB_STEP_SUMMARY
+            if [ -n "$NUGET_COUNT" ] && [ "$NUGET_COUNT" -gt 1 ] 2>/dev/null; then
+              echo "| **NuGet.org** | ✅ Published ($NUGET_COUNT packages) |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| **NuGet.org** | ✅ Published |" >> $GITHUB_STEP_SUMMARY
+            fi
           else
             echo "| **NuGet.org** | ❌ Failed/Skipped |" >> $GITHUB_STEP_SUMMARY
           fi
 
           # GitHub Packages status
+          GITHUB_COUNT="${{ needs.publish-github.outputs.pushed-count }}"
           if [ "${{ inputs.push-to-github }}" != "true" ]; then
             echo "| **GitHub Packages** | ⚪ Disabled |" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ needs.publish-github.result }}" = "success" ]; then
-            echo "| **GitHub Packages** | ✅ Published |" >> $GITHUB_STEP_SUMMARY
+            if [ -n "$GITHUB_COUNT" ] && [ "$GITHUB_COUNT" -gt 1 ] 2>/dev/null; then
+              echo "| **GitHub Packages** | ✅ Published ($GITHUB_COUNT packages) |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| **GitHub Packages** | ✅ Published |" >> $GITHUB_STEP_SUMMARY
+            fi
           else
             echo "| **GitHub Packages** | ❌ Failed/Skipped |" >> $GITHUB_STEP_SUMMARY
           fi
