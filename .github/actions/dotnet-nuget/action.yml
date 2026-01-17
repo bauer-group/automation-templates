@@ -468,13 +468,16 @@ runs:
 
         echo "Test command: dotnet test $TEST_PATH $TEST_ARGS $COVERAGE_ARGS"
 
+        TEST_RESULT="passed"
         if dotnet test "$TEST_PATH" $TEST_ARGS $COVERAGE_ARGS; then
           echo "passed=true" >> $GITHUB_OUTPUT
           echo "Tests passed"
         else
+          TEST_RESULT="failed"
           echo "passed=false" >> $GITHUB_OUTPUT
           echo "Tests failed"
-          # Don't exit with error - let the workflow decide how to handle
+          # No exit 1 here yet - collect coverage first, then exit with error
+          # so the job is marked as failed while still reporting coverage.
         fi
 
         # Extract coverage percentage if available
@@ -497,12 +500,17 @@ runs:
         fi
         echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
 
+        # Exit with error after coverage is collected so the job is marked as failed
+        if [ "$TEST_RESULT" = "failed" ]; then
+          exit 1
+        fi
+
     # =========================================================================
     # Pack
     # =========================================================================
     - name: Create NuGet Package
       id: pack
-      if: inputs.create-package == 'true' && steps.build.outputs.succeeded == 'true'
+      if: inputs.create-package == 'true' && steps.build.outputs.succeeded == 'true' && (steps.test.outputs.passed == 'true' || steps.test.outputs.skipped == 'true' || inputs.run-tests != 'true')
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
