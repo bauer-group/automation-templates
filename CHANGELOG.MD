@@ -1,3 +1,27 @@
+## [4.13.0](https://github.com/bauer-group/automation-templates/compare/v4.12.1...v4.13.0) (2026-01-17)
+
+### 🚀 Features
+
+* Add comprehensive documentation for .NET NuGet and semantic-release actions with examples ([755f3a8](https://github.com/bauer-group/automation-templates/commit/755f3a8a30e977dd0e256acb47955d4bd2a4c8e5))
+
+### 🐛 Bug Fixes
+
+* Add assembly signing support with SNK key configuration in dotnet-build workflow ([e4cd23c](https://github.com/bauer-group/automation-templates/commit/e4cd23cef173d8a36b838c16f6a156a419765e8e))
+* Add cache support for NuGet lockfile and update semantic-release rules for breaking changes ([6f2913a](https://github.com/bauer-group/automation-templates/commit/6f2913abb16f777c41c269ba21094487a531617b))
+* Add cache support for NuGet lockfile in dotnet workflows ([635d81e](https://github.com/bauer-group/automation-templates/commit/635d81e9f6ed0325e37055314e6c2b04addeccfa))
+* Add package count and names outputs to .NET NuGet action and workflow ([ffff9c1](https://github.com/bauer-group/automation-templates/commit/ffff9c19ff5e57c485932e351bb49c4e1eb2d2bd))
+* Enable Windows targeting for non-Windows platforms in dotnet workflows ([35b999f](https://github.com/bauer-group/automation-templates/commit/35b999f1a3df7bb657d5d1088bfa4599588aca35))
+* Enhance .NET NuGet action outputs with package count and names for multi-package solutions ([f791959](https://github.com/bauer-group/automation-templates/commit/f791959ed331c3524c8cdffd3407e54b3bcb34d4))
+* Enhance .NET NuGet action with package count output and summary generation options ([4ec108f](https://github.com/bauer-group/automation-templates/commit/4ec108fc26bd47e19b2b3fb996293f7ef6239282))
+* Enhance package push process with detailed success/failure counts and summary output ([9e6e15e](https://github.com/bauer-group/automation-templates/commit/9e6e15e985e0d46bb754f7960bbf4614cbfb642e))
+* Improve semantic-release configuration by adding support for custom release rules, changelog paths, and extra plugins ([a426ea8](https://github.com/bauer-group/automation-templates/commit/a426ea8d146b72c08414a329e1baf32cbb4ab2f2))
+* Preserve JSON string format for git message in semantic-release configuration ([cfd8eae](https://github.com/bauer-group/automation-templates/commit/cfd8eae370f7484b99cf0ec4648f4f2dfd6d4f88))
+* Refactor test results handling in dotnet-build workflow for improved clarity and cross-platform compatibility ([aa9bd4a](https://github.com/bauer-group/automation-templates/commit/aa9bd4a9f0876e2e94e6dcb528e2bc15a0a82bbd))
+* Simplify release rules by removing redundant breaking change types in semantic-release configuration ([0562caa](https://github.com/bauer-group/automation-templates/commit/0562caa2f1985488b355b0ce0203eebbf75ae664))
+* Update dotnet-build workflow to use global-json-file and improve test result handling ([aa77835](https://github.com/bauer-group/automation-templates/commit/aa778355d19fcb9ed3b665362ea6290148b663e3))
+* Update matrix strategy to use formatted inputs for OS and .NET version ([d75efab](https://github.com/bauer-group/automation-templates/commit/d75efab0309a744e7ebe4d5a9f29f767ad841d0b))
+* Upgrade to actions/setup-dotnet@v5 and add cache support for improved performance ([b6cc9e7](https://github.com/bauer-group/automation-templates/commit/b6cc9e7a80e941b87d42fdb4c5944c60d3da8ff1))
+
 ## [4.12.1](https://github.com/bauer-group/automation-templates/compare/v4.12.0...v4.12.1) (2026-01-16)
 
 ### 🐛 Bug Fixes
