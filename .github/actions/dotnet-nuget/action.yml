@@ -760,7 +760,7 @@ runs:
     # Upload Artifacts
     # =========================================================================
     - name: Upload NuGet Packages
-      if: inputs.create-package == 'true' && steps.pack.outputs.package-path != ''
+      if: success() && inputs.create-package == 'true' && steps.pack.outputs.package-path != ''
       uses: actions/upload-artifact@v4
       with:
         name: nuget-packages${{ inputs.artifact-suffix }}
@@ -768,7 +768,7 @@ runs:
         retention-days: 30
 
     - name: Upload Test Results
-      if: inputs.run-tests == 'true' && inputs.collect-coverage == 'true'
+      if: always() && inputs.run-tests == 'true' && inputs.collect-coverage == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: test-results${{ inputs.artifact-suffix }}
@@ -865,6 +865,16 @@ runs:
         else
           echo "| **GitHub Packages** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
         fi
+
+    # =========================================================================
+    # Fail Job if Tests Failed
+    # =========================================================================
+    - name: Fail if Tests Failed
+      if: always() && steps.test.outputs.passed == 'false'
+      shell: bash
+      run: |
+        echo "::error::Tests failed - marking job as failed"
+        exit 1
 
 branding:
   icon: 'package'
