@@ -273,9 +273,11 @@ The .NET NuGet action provides:
 | Output | Description |
 |--------|-------------|
 | `version` | Package version |
-| `package-path` | Path to .nupkg file |
-| `symbols-path` | Path to .snupkg file |
-| `package-name` | Full package name |
+| `package-path` | Path to .nupkg file (first package) |
+| `symbols-path` | Path to .snupkg file (first package) |
+| `package-name` | Full package name with version (first package) |
+| `package-count` | Number of packages created |
+| `package-names` | JSON array of all package names |
 | `build-succeeded` | Build success status |
 | `test-passed` | Test success status |
 | `test-skipped` | Tests skipped (no projects) |
@@ -284,6 +286,29 @@ The .NET NuGet action provides:
 | `pushed-to-github` | GitHub Packages publish status |
 | `has-windows-tfms` | Windows TFMs detected (platform matrix) |
 | `has-crossplatform-tfms` | Cross-platform TFMs detected (platform matrix) |
+
+### Multi-Package Solutions
+
+When building a solution with multiple projects, all packages are built and published:
+
+```yaml
+# Access outputs
+jobs:
+  publish:
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    with:
+      project-path: 'src/MyLibrary.sln'  # Solution with multiple projects
+      push-to-github: true
+
+  post-publish:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show package info
+        run: |
+          echo "Published ${{ needs.publish.outputs.package-count }} packages"
+          echo "Packages: ${{ needs.publish.outputs.package-names }}"
+```
 
 ## Assembly Signing (SNK)
 
