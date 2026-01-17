@@ -337,6 +337,7 @@ jobs:
           directory: ${{ inputs.working-directory }}/TestResults
           fail_ci_if_error: false
         continue-on-error: true
+        # Note: If CODECOV_TOKEN is not set, this step will fail but continue-on-error ensures the workflow continues
 
   # ===========================================================================
   # Windows Validation Build (optional, for cross-platform verification)
