@@ -330,14 +330,13 @@ jobs:
           generate-summary: 'false'
 
       - name: Upload Coverage to Codecov
-        if: inputs.collect-coverage == true && steps.dotnet-build.outputs.test-skipped != 'true'
+        if: inputs.run-tests == true && inputs.collect-coverage == true && steps.dotnet-build.outputs.test-skipped != 'true'
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: ${{ inputs.working-directory }}/TestResults
           fail_ci_if_error: false
         continue-on-error: true
-        # Note: If CODECOV_TOKEN is not set, this step will fail but continue-on-error ensures the workflow continues
 
   # ===========================================================================
   # Windows Validation Build (optional, for cross-platform verification)
