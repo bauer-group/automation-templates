@@ -405,7 +405,80 @@ type(scope): kurze Beschreibung im Imperativ
 
 ---
 
-## 18. Kernprinzipien
+## 18. Planung & Konzeption
+
+> **Schlank** - Kein Overhead, kein Bloat, nur das Nötige
+>
+> **Professionell** - Enterprise-Grade Qualität in jedem Commit
+>
+> **Performant** - Optimiert wo es zählt, effizient überall
+>
+> **Sicher** - Security by Design, nicht als Afterthought
+>
+> **Modern** - Aktuelle Standards, bewährte Patterns
+>
+> **Zukunftsfähig** - Heute bauen, morgen erweitern
+>
+> **Smart** - Clevere Lösungen, keine komplexen
+
+### 18.1 Anforderungsanalyse
+
+- **Scope klar definieren:** Was ist in/out of scope?
+- **Akzeptanzkriterien:** Messbar und testbar formulieren
+- **Stakeholder identifizieren:** Wer muss informiert/einbezogen werden?
+- **Dependencies klären:** Externe Abhängigkeiten früh erkennen
+
+### 18.2 Technische Konzeption
+
+- **Design vor Code:** Erst denken, dann implementieren
+- **Architecture Decision Records (ADRs):** Entscheidungen dokumentieren
+- **Proof of Concept:** Bei Unsicherheit erst validieren
+- **Impact Analysis:** Auswirkungen auf bestehende Systeme bewerten
+
+### 18.3 Planungsartefakte
+
+- **Epic/Story Breakdown:** Große Features in lieferbare Einheiten zerlegen
+- **Task Estimation:** Realistische Schätzungen mit Puffer
+- **Risk Assessment:** Risiken identifizieren und mitigieren
+- **Rollback Plan:** Exit-Strategie bei Problemen
+
+---
+
+## 19. Freigabeprozesse
+
+### 19.1 Code Review Gates
+
+- **Minimum 1 Approver:** Keine Self-Merges auf geschützte Branches
+- **CI muss grün sein:** Keine Merges bei fehlgeschlagenen Checks
+- **Review-Checkliste:** Security, Performance, Wartbarkeit
+- **Blocking Comments:** Müssen resolved sein vor Merge
+
+### 19.2 Deployment Stages
+
+```text
+Development → Staging → Production
+     ↓           ↓          ↓
+  Feature    Integration   Release
+   Tests       Tests       Gates
+```
+
+### 19.3 Release Management
+
+- **Semantic Versioning:** MAJOR.MINOR.PATCH konsequent
+- **Changelog:** Alle Änderungen dokumentiert
+- **Release Notes:** User-facing Beschreibung
+- **Rollback Readiness:** Jederzeit auf vorherige Version zurück
+
+### 19.4 Approval Workflows
+
+- **Feature Toggles:** Neue Features deaktiviert deployen
+- **Canary Releases:** Schrittweiser Rollout
+- **Stakeholder Sign-off:** Bei Business-kritischen Änderungen
+- **Post-Deployment Verification:** Smoke Tests nach Release
+
+---
+
+## 20. Kernprinzipien
 
 > **Schlank** - Kein Overhead, kein Bloat, nur das Nötige
 >
