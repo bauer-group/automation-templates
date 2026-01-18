@@ -40,6 +40,23 @@ type(scope): kurze Beschreibung im Imperativ
 - Hotfixes: `hotfix/beschreibung`
 - Keine direkten Pushes auf geschützte Branches
 
+### 1.3 Fortgeschrittene Git-Konzepte
+
+- **Interactive Rebase:** History aufräumen vor PR
+- **Squash:** Logische Einheiten zusammenfassen
+- **Cherry-Pick:** Gezielte Commits übertragen
+- **Bisect:** Systematische Fehlersuche
+- **Reflog:** Recovery bei Fehlern
+- **Stash:** Kontextwechsel ohne Commit
+- **Worktrees:** Paralleles Arbeiten an Branches
+
+### 1.4 History-Integrität
+
+- Lineare History auf main/master
+- Force-Push nur auf eigenen Feature-Branches
+- Signed Commits bei kritischen Änderungen
+- Keine History-Rewrites nach Merge
+
 ---
 
 ## 2. Code-Qualität
@@ -335,6 +352,74 @@ type(scope): kurze Beschreibung im Imperativ
 - Keine kritischen Security-Findings
 - Performance-Benchmarks eingehalten
 - Technische Schulden dokumentiert
+
+---
+
+## 16. Effizienz & Lean Development
+
+### 16.1 Maximaler Output, Minimaler Aufwand
+
+- **80/20 Regel:** Fokus auf das Wesentliche
+- **Automation First:** Wiederkehrende Tasks automatisieren
+- **Reuse vor Rebuild:** Bestehende Lösungen nutzen
+- **MVP Mindset:** Erst funktionieren, dann optimieren
+
+### 16.2 Smarte Entscheidungen
+
+- Pragmatismus über Dogmatismus
+- Trade-offs bewusst abwägen
+- Technical Debt kalkuliert eingehen
+- Opportunity Cost berücksichtigen
+
+### 16.3 Zeitmanagement
+
+- Blocker sofort eskalieren
+- Parallelisierbare Tasks identifizieren
+- Quick Wins priorisieren
+- Deep Work für komplexe Probleme
+
+---
+
+## 17. Zukunftsfähigkeit
+
+### 17.1 Evolutionäres Design
+
+- Erweiterbarkeit einplanen
+- Modulare Architektur
+- Versionierte APIs
+- Feature Flags für Rollouts
+
+### 17.2 Technologie-Radar
+
+- Emerging Technologies beobachten
+- Proof of Concepts vor Adoption
+- Migration Paths definieren
+- Vendor Lock-in minimieren
+
+### 17.3 Nachhaltigkeit
+
+- Wartbare Codebasis
+- Wissenstransfer sicherstellen
+- Dokumentierte Architektur-Entscheidungen (ADRs)
+- Onboarding-freundliche Strukturen
+
+---
+
+## 18. Kernprinzipien
+
+> **Schlank** - Kein Overhead, kein Bloat, nur das Nötige
+>
+> **Professionell** - Enterprise-Grade Qualität in jedem Commit
+>
+> **Performant** - Optimiert wo es zählt, effizient überall
+>
+> **Sicher** - Security by Design, nicht als Afterthought
+>
+> **Modern** - Aktuelle Standards, bewährte Patterns
+>
+> **Zukunftsfähig** - Heute bauen, morgen erweitern
+>
+> **Smart** - Clevere Lösungen, keine komplexen
 
 ---
 
