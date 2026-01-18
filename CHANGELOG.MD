@@ -1,3 +1,14 @@
+## [4.13.1](https://github.com/bauer-group/automation-templates/compare/v4.13.0...v4.13.1) (2026-01-18)
+
+### 🐛 Bug Fixes
+
+* Add note for CODECOV_TOKEN handling in Windows validation build step ([a5d5446](https://github.com/bauer-group/automation-templates/commit/a5d544691d3156ef26988d176ab84a3fb657b259))
+* Enhance conditions for publishing to NuGet and GitHub based on test results ([3ee8567](https://github.com/bauer-group/automation-templates/commit/3ee8567faa9df686df70b68132871ab20807b0e2))
+* Enhance job failure handling for test results and artifact uploads ([1fcd503](https://github.com/bauer-group/automation-templates/commit/1fcd5036990ed4e05f4fcc7be10cb153d8840baf))
+* Ensure successful execution before validating and pushing NuGet packages ([3dfd487](https://github.com/bauer-group/automation-templates/commit/3dfd487ab3ffd8c7d6069dfaaf7ca44907e73a46))
+* Improve test result handling and coverage reporting in .NET NuGet action ([b501c44](https://github.com/bauer-group/automation-templates/commit/b501c448a48f051629c0d843bf4e0ae82424d4b7))
+* Update coverage upload condition to include test execution check ([630894e](https://github.com/bauer-group/automation-templates/commit/630894e5167e67bbe8eb695bfaacee1b8364af27))
+
 ## [4.13.0](https://github.com/bauer-group/automation-templates/compare/v4.12.1...v4.13.0) (2026-01-17)
 
 ### 🚀 Features
