@@ -174,7 +174,7 @@ gh secret set DOTNET_SIGNKEY_BASE64 --body "$(base64 -w 0 < MyKey.snk)"
 secrets:
   DOTNET_SIGNKEY_BASE64: ${{ secrets.DOTNET_SIGNKEY_BASE64 }}      # Assembly Signing
   DOTNET_NUGET_PUBLISH_API_KEY: ${{ secrets.NUGET_API_KEY }}       # NuGet Publishing
-  CODECOV_UPLOAD_TOKEN: ${{ secrets.CODECOV_TOKEN }}               # Coverage Upload
+  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}                       # Coverage Upload
   DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_USERNAME }}         # Docker Push
   DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}         # Docker Push
 ```

@@ -34,7 +34,7 @@ jobs:
       coverage: ${{ matrix.php == '8.2' && matrix.dependencies == 'locked' && 'pcov' || 'none' }}
       upload-artifacts: ${{ matrix.php == '8.2' && matrix.dependencies == 'locked' }}
     secrets:
-      CODECOV_UPLOAD_TOKEN: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   publish:
     needs: test-matrix

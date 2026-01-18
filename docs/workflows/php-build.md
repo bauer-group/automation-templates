@@ -129,7 +129,7 @@ jobs:
 | `PHP_FTP_PASSWORD` | FTP password for deployment | No |
 | `DOCKER_REGISTRY_USERNAME` | Docker registry username | No |
 | `DOCKER_REGISTRY_PASSWORD` | Docker registry password | No |
-| `CODECOV_UPLOAD_TOKEN` | Codecov token | No |
+| `CODECOV_TOKEN` | Codecov token | No |
 | `SONARCLOUD_TOKEN` | SonarCloud token | No |
 
 ### Platform Configuration

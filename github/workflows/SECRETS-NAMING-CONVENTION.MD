@@ -46,7 +46,7 @@ This document defines the naming convention for GitHub Secrets used in our workf
 
 | Secret Name | Description | Scope | Used In |
 |------------|-------------|-------|---------|
-| `CODECOV_UPLOAD_TOKEN` | Token for uploading coverage reports to Codecov | Project | All build workflows |
+| `CODECOV_TOKEN` | Token for uploading coverage reports to Codecov | Project | All build workflows |
 | `SONARCLOUD_ANALYSIS_TOKEN` | Token for SonarCloud code quality analysis | Project | All build workflows |
 
 ### 🔒 Security Scanning

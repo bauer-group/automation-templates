@@ -18,4 +18,4 @@ jobs:
       coverage: 'xdebug'
       test-coverage-threshold: 80
     secrets:
-      CODECOV_UPLOAD_TOKEN: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

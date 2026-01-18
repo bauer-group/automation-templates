@@ -56,7 +56,7 @@ jobs:
       timeout-minutes: 45
     secrets:
       COMPOSER_AUTH_JSON: ${{ secrets.COMPOSER_AUTH_JSON }}
-      CODECOV_UPLOAD_TOKEN: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       SONARCLOUD_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
 
   code-quality:

@@ -362,7 +362,7 @@ on:
         description: 'Password for Docker registry authentication'
         required: false
       
-      CODECOV_UPLOAD_TOKEN:
+      CODECOV_TOKEN:
         description: 'Codecov token for uploading JavaScript/TypeScript test coverage'
         required: false
       
@@ -673,10 +673,12 @@ jobs:
           fi
       
       - name: 📊 Upload Coverage
-        if: inputs.test-coverage
+        if: inputs.test-coverage && env.HAS_CODECOV_TOKEN == 'true'
         uses: codecov/codecov-action@v4
+        env:
+          HAS_CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN != '' }}
         with:
-          token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
+          token: ${{ secrets.CODECOV_TOKEN }}
           working-directory: ${{ inputs.working-directory }}
           fail_ci_if_error: false
       

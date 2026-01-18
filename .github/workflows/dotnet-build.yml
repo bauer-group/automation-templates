@@ -320,7 +320,7 @@ on:
         description: 'Password for Docker registry authentication'
         required: false
       
-      CODECOV_UPLOAD_TOKEN:
+      CODECOV_TOKEN:
         description: 'Codecov token for uploading .NET test coverage reports'
         required: false
       
@@ -556,10 +556,12 @@ jobs:
           fi
       
       - name: 📊 Upload Coverage to Codecov
-        if: inputs.collect-coverage && steps.coverage.outputs.report-path != ''
+        if: inputs.collect-coverage && steps.coverage.outputs.report-path != '' && env.HAS_CODECOV_TOKEN == 'true'
         uses: codecov/codecov-action@v4
+        env:
+          HAS_CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN != '' }}
         with:
-          token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
+          token: ${{ secrets.CODECOV_TOKEN }}
           file: ${{ steps.coverage.outputs.report-path }}
           fail_ci_if_error: false
           verbose: true

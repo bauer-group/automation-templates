@@ -264,7 +264,7 @@ on:
         description: 'Docker registry password'
         required: false
       
-      CODECOV_UPLOAD_TOKEN:
+      CODECOV_TOKEN:
         description: 'Codecov token for coverage upload'
         required: false
       
@@ -452,10 +452,12 @@ jobs:
           fi
       
       - name: 📤 Upload Coverage to Codecov
-        if: inputs.run-tests && inputs.coverage != 'none'
+        if: inputs.run-tests && inputs.coverage != 'none' && env.HAS_CODECOV_TOKEN == 'true'
         uses: codecov/codecov-action@v4
+        env:
+          HAS_CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN != '' }}
         with:
-          token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
+          token: ${{ secrets.CODECOV_TOKEN }}
           file: ${{ inputs.working-directory }}/coverage.xml
           flags: phpunit
           name: PHP ${{ matrix.php-version }}
