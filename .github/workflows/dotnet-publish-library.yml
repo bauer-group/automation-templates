@@ -330,8 +330,10 @@ jobs:
           generate-summary: 'false'
 
       - name: Upload Coverage to Codecov
-        if: inputs.run-tests == true && inputs.collect-coverage == true && steps.dotnet-build.outputs.test-skipped != 'true'
+        if: inputs.run-tests == true && inputs.collect-coverage == true && steps.dotnet-build.outputs.test-skipped != 'true' && env.HAS_CODECOV_TOKEN == 'true'
         uses: codecov/codecov-action@v4
+        env:
+          HAS_CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN != '' }}
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: ${{ inputs.working-directory }}/TestResults

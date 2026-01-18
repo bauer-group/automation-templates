@@ -802,8 +802,10 @@ jobs:
           fi
       
       - name: 📊 Upload Coverage to Codecov
-        if: inputs.collect-coverage == 'true'
+        if: inputs.collect-coverage == 'true' && env.HAS_CODECOV_TOKEN == 'true'
         uses: codecov/codecov-action@v4
+        env:
+          HAS_CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN != '' }}
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ${{ inputs.working-directory }}/coverage.xml
