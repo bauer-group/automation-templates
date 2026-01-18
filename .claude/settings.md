@@ -1,499 +1,242 @@
 # Claude Code - Projektrichtlinien
 
-> Verbindliche Richtlinien für alle Code-Änderungen in diesem Repository.
+> Verbindliche Richtlinien mit klarer Priorisierung.
+>
+> **MUST** = Merge-Blocker | **SHOULD** = Standard | **MAY** = Optional
 
 ---
 
-## 1. Git & Versionskontrolle
+## 1. Merge-Blocker (MUST)
 
-### 1.1 Commit-Hygiene
+> Diese Regeln sind **nicht verhandelbar**. Verstöße blockieren jeden Merge.
 
-**Absolut verboten:**
+### 1.1 Absolute Verbote
 
-- `Co-Authored-By:` Zeilen jeglicher Art
-- Hinweise auf AI, Claude oder automatische Generierung
-- Signaturen, Footer oder Attributionen
-- Merge-Commits bei linearer History
+- ❌ `Co-Authored-By:` oder AI-Hinweise in Commits
+- ❌ Secrets, Credentials, API-Keys im Code oder Diff
+- ❌ Merge bei roter CI-Pipeline
+- ❌ Merge ohne mindestens 1 Approval
+- ❌ Breaking Changes ohne dokumentierten Migration Path
+- ❌ Self-Merges auf geschützte Branches
+- ❌ Unresolved Blocking Comments
 
-**Commit-Format:**
+### 1.2 Pflicht-Kriterien vor Merge
+
+| Kriterium | Schwellwert |
+|-----------|-------------|
+| CI Status | ✅ Grün |
+| Tests | Alle bestanden |
+| Coverage (kritische Module) | ≥ 80% |
+| Security Scan | 0 Critical, 0 High |
+| Linting | 0 Errors |
+| Review | ≥ 1 Approval |
+
+### 1.3 Pflicht-Dokumentation
+
+- **Breaking Change:** Migration Guide erforderlich
+- **Architekturänderung:** ADR (Architecture Decision Record) erforderlich
+- **Neue Dependency:** Lizenz geprüft und dokumentiert
+
+---
+
+## 2. AI Usage Policy (MUST)
+
+### 2.1 Verbindliche Regeln
+
+- **MUST:** Jeder AI-generierte Code wird lokal getestet
+- **MUST:** Fakten und APIs werden gegen Dokumentation verifiziert
+- **MUST:** Keine Annahmen - bei Unklarheit nachfragen oder recherchieren
+- **MUST:** Trade-offs werden im PR dokumentiert
+
+### 2.2 Verboten
+
+- ❌ Ungeprüfter AI-Code direkt committen
+- ❌ Halluzinierte APIs oder Funktionen
+- ❌ Spekulative Implementierungen ohne Validierung
+- ❌ AI-Hinweise oder Signaturen in Commits/Code
+
+---
+
+## 3. Git & Commits (MUST/SHOULD)
+
+### 3.1 Commit-Format (MUST)
 
 ```text
-type(scope): kurze Beschreibung im Imperativ
+type(scope): beschreibung im imperativ
 
-- Detailpunkt bei Bedarf
-- Maximal 72 Zeichen pro Zeile
+[optionaler body]
 ```
 
 **Typen:** `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `ci`, `perf`, `security`
 
-**Regeln:**
+### 3.2 Commit-Regeln
 
-- Ein Commit = eine logische Änderung
-- Atomic Commits: jeder Commit muss standalone funktionieren
-- Keine WIP-Commits auf main/master
-- Rebase vor Merge, niemals Merge-Commits
+| Regel | Prio |
+|-------|------|
+| Ein Commit = eine logische Änderung | MUST |
+| Atomic: jeder Commit muss standalone funktionieren | MUST |
+| Keine WIP-Commits auf main/master | MUST |
+| Rebase vor Merge | SHOULD |
+| Squash bei Feature-Branches | SHOULD |
 
-### 1.2 Branch-Strategie
+### 3.3 Branch-Namenskonvention (SHOULD)
 
-- Feature-Branches: `feature/beschreibung`
-- Bugfixes: `fix/beschreibung`
-- Hotfixes: `hotfix/beschreibung`
-- Keine direkten Pushes auf geschützte Branches
-
-### 1.3 Fortgeschrittene Git-Konzepte
-
-- **Interactive Rebase:** History aufräumen vor PR
-- **Squash:** Logische Einheiten zusammenfassen
-- **Cherry-Pick:** Gezielte Commits übertragen
-- **Bisect:** Systematische Fehlersuche
-- **Reflog:** Recovery bei Fehlern
-- **Stash:** Kontextwechsel ohne Commit
-- **Worktrees:** Paralleles Arbeiten an Branches
-
-### 1.4 History-Integrität
-
-- Lineare History auf main/master
-- Force-Push nur auf eigenen Feature-Branches
-- Signed Commits bei kritischen Änderungen
-- Keine History-Rewrites nach Merge
+- `feature/beschreibung`
+- `fix/beschreibung`
+- `hotfix/beschreibung`
 
 ---
 
-## 2. Code-Qualität
+## 4. Code-Qualität (MUST/SHOULD)
 
-### 2.1 Fundamentale Prinzipien
+### 4.1 Prinzipien (SHOULD)
 
-- **SOLID:** Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion
-- **DRY:** Don't Repeat Yourself - aber nicht auf Kosten der Lesbarkeit
-- **KISS:** Keep It Simple, Stupid - Einfachheit vor Cleverness
-- **YAGNI:** You Ain't Gonna Need It - keine spekulativen Features
+- **Single Responsibility:** Eine Funktion/Klasse = eine Aufgabe
+- **DRY:** Keine Duplikation, aber Lesbarkeit vor Abstraktion
+- **KISS:** Einfachste Lösung, die funktioniert
+- **YAGNI:** Nur implementieren was gebraucht wird
 
-### 2.2 Code-Struktur
+### 4.2 Struktur-Empfehlungen (SHOULD)
 
-- Funktionen: maximal 20-30 Zeilen, eine Aufgabe
-- Klassen: maximal 200-300 Zeilen, eine Verantwortung
-- Dateien: logisch gruppiert, keine God-Files
-- Verschachtelung: maximal 3 Ebenen, Early Returns bevorzugen
+| Element | Empfehlung | Begründung |
+|---------|------------|------------|
+| Funktion | Fokussiert, eine Aufgabe | Testbarkeit |
+| Klasse | Single Responsibility | Wartbarkeit |
+| Verschachtelung | Max 3 Ebenen, Early Returns | Lesbarkeit |
 
-### 2.3 Naming Conventions
+> **Hinweis:** Keine starren Zeilenlimits - Komplexität und Kohäsion sind wichtiger als Zeilenzahlen.
 
-- Selbstdokumentierender Code durch präzise Namen
-- Keine Abkürzungen außer etablierte (ID, URL, HTTP)
-- Boolean-Variablen: `is`, `has`, `can`, `should` Präfix
-- Funktionen: Verben für Aktionen, Substantive für Getter
+### 4.3 Naming (SHOULD)
 
-### 2.4 Fehlerbehandlung
-
-- Fail Fast: Fehler früh erkennen und abbrechen
-- Defensive Programming an System-Grenzen
-- Keine leeren Catch-Blöcke
-- Strukturierte Fehlermeldungen mit Kontext
-- Graceful Degradation wo sinnvoll
+- Selbstdokumentierend durch präzise Namen
+- Boolean: `is`, `has`, `can`, `should` Präfix
+- Keine kryptischen Abkürzungen
 
 ---
 
-## 3. Architektur
+## 5. Security (MUST/SHOULD)
 
-### 3.1 Design-Prinzipien
+### 5.1 Kritische Regeln (MUST)
 
-- Separation of Concerns: klare Schichtentrennung
-- Loose Coupling: minimale Abhängigkeiten zwischen Modulen
-- High Cohesion: zusammengehörige Logik gruppieren
-- Dependency Injection: Abhängigkeiten explizit machen
-
-### 3.2 API-Design
-
-- Konsistente Namensgebung und Struktur
-- Versionierung bei Breaking Changes
-- Idempotenz wo möglich
-- Defensive Input-Validierung
-
-### 3.3 Konfiguration
-
-- Keine Hardcoded Values für Umgebungsspezifisches
-- Secrets niemals im Code oder Commits
-- Environment-basierte Konfiguration
-- Sinnvolle Defaults mit Override-Möglichkeit
-
----
-
-## 4. Security
-
-### 4.1 Grundregeln
-
-- Input ist immer feindlich: validieren, sanitizen, escapen
-- Principle of Least Privilege
-- Defense in Depth: mehrere Sicherheitsebenen
+- Input validieren, sanitizen, escapen
+- Secrets nur via Secret-Manager oder Environment Variables
 - Keine sensiblen Daten in Logs
+- OWASP Top 10 beachten
 
-### 4.2 Secrets Management
+### 5.2 Best Practices (SHOULD)
 
-- Secrets nur über Secret-Manager oder Environment Variables
-- Keine Credentials in Repositories
-- Rotation-fähige Architekturen
-- Audit-Trails für Zugriffe
-
-### 4.3 OWASP Top 10 Awareness
-
-- Injection Prevention
-- Authentication/Authorization korrekt implementieren
-- Sensitive Data Exposure vermeiden
-- Security Misconfiguration prüfen
+- Principle of Least Privilege
+- Defense in Depth
+- Rotation-fähige Credentials
+- Audit-Trails für kritische Operationen
 
 ---
 
-## 5. Performance
+## 6. Testing (MUST/SHOULD)
 
-### 5.1 Grundsätze
+### 6.1 Pflicht (MUST)
 
-- Messen vor Optimieren: keine premature optimization
-- Bottlenecks identifizieren, nicht raten
-- Caching strategisch einsetzen
-- Resource Cleanup sicherstellen
+- Neue Features haben Tests
+- Bug-Fixes haben Regression-Tests
+- Kritische Pfade: Coverage ≥ 80%
 
-### 5.2 Effizienz
+### 6.2 Empfehlung (SHOULD)
 
-- O(n) Komplexität verstehen und beachten
-- Unnötige Iterationen vermeiden
-- Lazy Loading wo sinnvoll
-- Connection Pooling nutzen
-
----
-
-## 6. Testing
-
-### 6.1 Test-Pyramide
-
-- Unit Tests: schnell, isoliert, viele
+- Unit Tests: schnell, isoliert
 - Integration Tests: Komponenten-Zusammenspiel
-- E2E Tests: kritische Pfade, wenige
-
-### 6.2 Test-Qualität
-
 - Arrange-Act-Assert Pattern
-- Ein Assert pro Test (logisch)
 - Aussagekräftige Testnamen
-- Keine Test-Interdependenzen
 
 ---
 
-## 7. Dokumentation
+## 7. Stabilität & Observability (SHOULD)
 
-### 7.1 Code-Dokumentation
+### 7.1 Fehlertoleranz
 
-- Code ist die primäre Dokumentation
-- Kommentare nur für das WARUM, nicht das WAS
-- README aktuell halten
-- API-Dokumentation bei öffentlichen Schnittstellen
-
-### 7.2 Inline-Kommentare
-
-- Nur bei komplexer Business-Logik
-- Keine auskommentierten Code-Blöcke
-- TODOs mit Kontext und Ticket-Referenz
-
----
-
-## 8. CI/CD & DevOps
-
-### 8.1 GitHub Actions
-
-- Aktuelle Action-Versionen verwenden
-- Composite Actions konsistent halten
-- README-Beispiele synchron halten
-- Secrets über GitHub Secrets, niemals hardcoded
-
-### 8.2 Pipeline-Prinzipien
-
-- Fast Feedback: schnelle Checks zuerst
-- Reproducible Builds
-- Infrastructure as Code
-- Rollback-Fähigkeit sicherstellen
-
----
-
-## 9. Wartbarkeit
-
-### 9.1 Technische Schulden
-
-- Boy Scout Rule: Code besser hinterlassen als vorgefunden
-- Refactoring in separaten Commits
-- Deprecation vor Removal
-- Breaking Changes dokumentieren
-
-### 9.2 Dependencies
-
-- Minimale externe Abhängigkeiten
-- Regelmäßige Updates (Security!)
-- Lock-Files committen
-- Lizenzen prüfen
-
----
-
-## 10. Review-Standards
-
-### 10.1 Code Review Fokus
-
-- Korrektheit der Logik
-- Edge Cases und Fehlerbehandlung
-- Security-Implikationen
-- Performance-Auswirkungen
-- Wartbarkeit und Lesbarkeit
-
-### 10.2 Review-Etikette
-
-- Konstruktives Feedback
-- Fragen statt Anweisungen
-- Lob für gute Lösungen
-- Zeitnahes Review
-
----
-
-## 11. Workflow
-
-### 11.1 Änderungen
-
-- Bestehende Patterns verstehen bevor ändern
-- Minimale, fokussierte Änderungen
-- Backwards Compatibility beachten
-- Keine Breaking Changes ohne Migration Path
-
-### 11.2 Kommunikation
-
-- Commit-Messages sind Dokumentation
-- PR-Descriptions vollständig
-- Blocking Issues sofort kommunizieren
-- Assumptions validieren
-
----
-
-## 12. Arbeitsweise
-
-### 12.1 Keine Spekulationen
-
-- **Faktenbasiert:** Nur implementieren was verifiziert ist
-- **Keine Annahmen:** Bei Unklarheit nachfragen oder recherchieren
-- **Kein Raten:** Code muss auf Wissen basieren, nicht auf Vermutungen
-- **Validieren:** Jeden Ansatz vor Implementation prüfen
-
-### 12.2 Verifikation
-
-- Änderungen vor Commit lokal testen
-- Edge Cases durchdenken und abdecken
-- Regressions-Risiko bewerten
-- Bei Unsicherheit: lieber nachfragen
-
----
-
-## 13. Moderne Standards
-
-### 13.1 Technologie-Stack
-
-- Aktuelle, stabile Versionen verwenden
-- LTS-Versionen bevorzugen
-- Security-Updates zeitnah einspielen
-- Deprecated Features aktiv ersetzen
-
-### 13.2 Patterns & Practices
-
-- Industry Best Practices befolgen
-- Etablierte Design Patterns nutzen
-- Anti-Patterns vermeiden
-- Clean Code Prinzipien
-
-### 13.3 Skalierbarkeit
-
-- Horizontal skalierbare Architekturen
-- Stateless Design wo möglich
-- Asynchrone Verarbeitung für lange Operationen
-- Resource Limits definieren
-
----
-
-## 14. Stabilität & Robustheit
-
-### 14.1 Fehlertoleranz
-
-- Graceful Degradation implementieren
-- Circuit Breaker bei externen Abhängigkeiten
-- Retry-Strategien mit Exponential Backoff
 - Timeouts für alle externen Calls
+- Retry mit Exponential Backoff
+- Circuit Breaker bei kritischen Dependencies
+- Graceful Degradation
 
-### 14.2 Observability
+### 7.2 Monitoring
 
 - Structured Logging
+- Health Checks
 - Metrics für kritische Pfade
-- Health Checks implementieren
-- Tracing bei verteilten Systemen
-
-### 14.3 Resilienz
-
-- Keine Single Points of Failure
-- Fallback-Strategien definieren
-- Chaos Engineering Mindset
-- Disaster Recovery berücksichtigen
+- Mindestens 1 Failure-Szenario-Test pro Quartal
 
 ---
 
-## 15. Qualitätssicherung
+## 8. Release Governance (MUST/SHOULD)
 
-### 15.1 Definition of Done
+### 8.1 Review Gates (MUST)
 
-- Code kompiliert fehlerfrei
-- Alle Tests grün
-- Keine Linting-Fehler
-- Security-Scan bestanden
-- Code Review abgeschlossen
-- Dokumentation aktualisiert
+| Gate | Bedingung |
+|------|-----------|
+| CI | Grün |
+| Approval | ≥ 1 |
+| Blocking Comments | Alle resolved |
+| Security Scan | Bestanden |
 
-### 15.2 Metriken
-
-- Code Coverage > 80% für kritische Pfade
-- Keine kritischen Security-Findings
-- Performance-Benchmarks eingehalten
-- Technische Schulden dokumentiert
-
----
-
-## 16. Effizienz & Lean Development
-
-### 16.1 Maximaler Output, Minimaler Aufwand
-
-- **80/20 Regel:** Fokus auf das Wesentliche
-- **Automation First:** Wiederkehrende Tasks automatisieren
-- **Reuse vor Rebuild:** Bestehende Lösungen nutzen
-- **MVP Mindset:** Erst funktionieren, dann optimieren
-
-### 16.2 Smarte Entscheidungen
-
-- Pragmatismus über Dogmatismus
-- Trade-offs bewusst abwägen
-- Technical Debt kalkuliert eingehen
-- Opportunity Cost berücksichtigen
-
-### 16.3 Zeitmanagement
-
-- Blocker sofort eskalieren
-- Parallelisierbare Tasks identifizieren
-- Quick Wins priorisieren
-- Deep Work für komplexe Probleme
-
----
-
-## 17. Zukunftsfähigkeit
-
-### 17.1 Evolutionäres Design
-
-- Erweiterbarkeit einplanen
-- Modulare Architektur
-- Versionierte APIs
-- Feature Flags für Rollouts
-
-### 17.2 Technologie-Radar
-
-- Emerging Technologies beobachten
-- Proof of Concepts vor Adoption
-- Migration Paths definieren
-- Vendor Lock-in minimieren
-
-### 17.3 Nachhaltigkeit
-
-- Wartbare Codebasis
-- Wissenstransfer sicherstellen
-- Dokumentierte Architektur-Entscheidungen (ADRs)
-- Onboarding-freundliche Strukturen
-
----
-
-## 18. Planung & Konzeption
-
-> **Schlank** - Kein Overhead, kein Bloat, nur das Nötige
->
-> **Professionell** - Enterprise-Grade Qualität in jedem Commit
->
-> **Performant** - Optimiert wo es zählt, effizient überall
->
-> **Sicher** - Security by Design, nicht als Afterthought
->
-> **Modern** - Aktuelle Standards, bewährte Patterns
->
-> **Zukunftsfähig** - Heute bauen, morgen erweitern
->
-> **Smart** - Clevere Lösungen, keine komplexen
-
-### 18.1 Anforderungsanalyse
-
-- **Scope klar definieren:** Was ist in/out of scope?
-- **Akzeptanzkriterien:** Messbar und testbar formulieren
-- **Stakeholder identifizieren:** Wer muss informiert/einbezogen werden?
-- **Dependencies klären:** Externe Abhängigkeiten früh erkennen
-
-### 18.2 Technische Konzeption
-
-- **Design vor Code:** Erst denken, dann implementieren
-- **Architecture Decision Records (ADRs):** Entscheidungen dokumentieren
-- **Proof of Concept:** Bei Unsicherheit erst validieren
-- **Impact Analysis:** Auswirkungen auf bestehende Systeme bewerten
-
-### 18.3 Planungsartefakte
-
-- **Epic/Story Breakdown:** Große Features in lieferbare Einheiten zerlegen
-- **Task Estimation:** Realistische Schätzungen mit Puffer
-- **Risk Assessment:** Risiken identifizieren und mitigieren
-- **Rollback Plan:** Exit-Strategie bei Problemen
-
----
-
-## 19. Freigabeprozesse
-
-### 19.1 Code Review Gates
-
-- **Minimum 1 Approver:** Keine Self-Merges auf geschützte Branches
-- **CI muss grün sein:** Keine Merges bei fehlgeschlagenen Checks
-- **Review-Checkliste:** Security, Performance, Wartbarkeit
-- **Blocking Comments:** Müssen resolved sein vor Merge
-
-### 19.2 Deployment Stages
+### 8.2 Deployment Flow (SHOULD)
 
 ```text
-Development → Staging → Production
-     ↓           ↓          ↓
-  Feature    Integration   Release
-   Tests       Tests       Gates
+Feature Branch → PR Review → Main → Staging → Production
 ```
 
-### 19.3 Release Management
+### 8.3 Release Checklist (SHOULD)
 
-- **Semantic Versioning:** MAJOR.MINOR.PATCH konsequent
-- **Changelog:** Alle Änderungen dokumentiert
-- **Release Notes:** User-facing Beschreibung
-- **Rollback Readiness:** Jederzeit auf vorherige Version zurück
-
-### 19.4 Approval Workflows
-
-- **Feature Toggles:** Neue Features deaktiviert deployen
-- **Canary Releases:** Schrittweiser Rollout
-- **Stakeholder Sign-off:** Bei Business-kritischen Änderungen
-- **Post-Deployment Verification:** Smoke Tests nach Release
+- [ ] Changelog aktualisiert
+- [ ] Version nach SemVer erhöht
+- [ ] Breaking Changes dokumentiert
+- [ ] Rollback-Plan vorhanden
 
 ---
 
-## 20. Kernprinzipien
+## 9. Eskalation & Entscheidungen
 
-> **Schlank** - Kein Overhead, kein Bloat, nur das Nötige
->
-> **Professionell** - Enterprise-Grade Qualität in jedem Commit
->
-> **Performant** - Optimiert wo es zählt, effizient überall
->
-> **Sicher** - Security by Design, nicht als Afterthought
->
-> **Modern** - Aktuelle Standards, bewährte Patterns
->
-> **Zukunftsfähig** - Heute bauen, morgen erweitern
->
-> **Smart** - Clevere Lösungen, keine komplexen
+### 9.1 Eskalationsstufen
+
+| Situation | Aktion |
+|-----------|--------|
+| Code-Konflikt im Review | Dritter Reviewer entscheidet |
+| Architektur-Entscheidung | Tech Lead / Architekt |
+| Security-Bedenken | Security Review (Stop-the-Line) |
+| Breaking Change mit Kundenimpact | Product Owner Sign-off |
+
+### 9.2 Stop-the-Line Trigger
+
+- Critical Security Finding
+- Daten-Korruption möglich
+- Produktions-Incident durch Change
 
 ---
 
-*Diese Richtlinien sind verbindlich und werden bei jedem Review geprüft.*
+## 10. Definition of Done
+
+### 10.1 Checkliste (MUST alle erfüllt)
+
+- [ ] Code kompiliert fehlerfrei
+- [ ] Alle Tests grün
+- [ ] Coverage ≥ 80% (kritische Module)
+- [ ] 0 Linting Errors
+- [ ] 0 Critical/High Security Findings
+- [ ] Code Review abgeschlossen
+- [ ] Changelog aktualisiert (bei Release)
+- [ ] ADR vorhanden (bei Architekturänderung)
+
+---
+
+## Legende
+
+| Symbol | Bedeutung |
+|--------|-----------|
+| MUST | Merge-Blocker, nicht verhandelbar |
+| SHOULD | Standard, Abweichung begründen |
+| MAY | Optional, Best Practice |
+| ❌ | Verboten |
+| ✅ | Erforderlich |
+
+---
+
+*Stand: 2026-01 | Review: Bei Bedarf*
