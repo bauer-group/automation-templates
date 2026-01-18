@@ -177,6 +177,11 @@ Most workflows support configuration through:
 
 ## Support
 
+### Setup & Configuration
+
+- [Secrets Reference](../../../docs/secrets-reference.md) - All required secrets and tokens
+- [Self-Hosted Runners](../../../docs/self-hosted-runners.md) - Runner configuration
+
 ### Build Workflow Documentation
 - [Docker Build Documentation](../../../docs/workflows/docker-build.md)
 - [Python Build Documentation](../../../docs/workflows/python-build.md)

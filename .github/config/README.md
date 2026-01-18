@@ -341,6 +341,7 @@ No additional configuration needed! The workflow automatically:
 
 ## 📚 Related Documentation
 
+- [Secrets Reference](../../docs/secrets-reference.md) - All required secrets and tokens
 - [Workflow Modules](../workflows/MODULES-README.MD)
 - [GitHub Actions](../actions/README.MD)
 - [Examples](../../github/workflows/examples/)
