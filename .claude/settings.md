@@ -227,6 +227,57 @@ Feature Branch → PR Review → Main → Staging → Production
 
 ---
 
+## 11. Personalunion (Solo-Entwickler)
+
+> Vereinfachungen wenn **eine Person alle Rollen** übernimmt:
+> Entwickler, Reviewer, Architekt, Release Manager in Personalunion.
+
+### 11.1 Entfallende Anforderungen
+
+| Standard-Regel | Personalunion |
+|----------------|---------------|
+| ≥ 1 Approval vor Merge | Entfällt |
+| Keine Self-Merges | Erlaubt |
+| PR für jeden Change | Direkt auf main erlaubt |
+| Dritter Reviewer bei Konflikt | Entfällt |
+| Stakeholder Sign-off | Selbst-Entscheidung |
+| ADR-Review | Self-Review genügt |
+
+### 11.2 Weiterhin MUST
+
+- ❌ Keine Secrets im Code
+- ❌ Keine AI-Signaturen in Commits
+- ✅ CI muss grün sein
+- ✅ Tests für neue Features
+- ✅ Security Scan bestanden
+- ✅ Atomic Commits
+
+### 11.3 Empfohlen (SHOULD)
+
+- Commit-Format einhalten (History bleibt lesbar)
+- Breaking Changes dokumentieren (für eigenes Future-Self)
+- Changelog bei Releases pflegen
+- 24h Cooldown vor kritischen Produktions-Deployments
+- Self-Review: Code nochmal lesen vor Push
+
+### 11.4 Anwendungsbereich
+
+**Gilt bei:**
+
+- 1 menschlicher Contributor (Bots wie Dependabot zählen nicht)
+- Persönliche Projekte
+- Prototypen / PoCs
+- Interne Tools ohne externe User
+
+**Gilt NICHT bei:**
+
+- Produktions-kritische Systeme mit Kunden
+- Open Source mit Community
+- Projekte mit Compliance-Anforderungen
+- Sobald zweiter menschlicher Contributor aktiv wird
+
+---
+
 ## Legende
 
 | Symbol | Bedeutung |
