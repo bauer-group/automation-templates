@@ -93,10 +93,10 @@ jobs:
   release:
     needs: [validate-base, validate-dev, validate-prod, validate-scripts]
     if: |
-      needs.validate-base.outputs.valid == 'true' &&
-      needs.validate-dev.outputs.valid == 'true' &&
-      needs.validate-prod.outputs.valid == 'true' &&
-      needs.validate-scripts.outputs.passed == 'true'
+      needs.validate-base.result == 'success' &&
+      needs.validate-dev.result == 'success' &&
+      needs.validate-prod.result == 'success' &&
+      needs.validate-scripts.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     with:
       target-branch: 'main'

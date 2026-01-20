@@ -73,8 +73,8 @@ jobs:
     needs: [validate-compose, validate-scripts]
     if: |
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      needs.validate-compose.outputs.valid == 'true' &&
-      needs.validate-scripts.outputs.passed == 'true'
+      needs.validate-compose.result == 'success' &&
+      needs.validate-scripts.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     with:
       target-branch: 'main'

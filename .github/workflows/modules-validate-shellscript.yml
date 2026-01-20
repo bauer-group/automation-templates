@@ -105,11 +105,11 @@ jobs:
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
 
     outputs:
-      passed: ${{ steps.shellcheck.outputs.passed }}
-      files-checked: ${{ steps.shellcheck.outputs.files-checked }}
-      issues-found: ${{ steps.shellcheck.outputs.issues-found }}
-      error-count: ${{ steps.shellcheck.outputs.error-count }}
-      warning-count: ${{ steps.shellcheck.outputs.warning-count }}
+      passed: ${{ steps.shellcheck.outputs.passed || steps.no-files.outputs.passed }}
+      files-checked: ${{ steps.shellcheck.outputs.files-checked || steps.no-files.outputs.files-checked }}
+      issues-found: ${{ steps.shellcheck.outputs.issues-found || steps.no-files.outputs.issues-found }}
+      error-count: ${{ steps.shellcheck.outputs.error-count || steps.no-files.outputs.error-count }}
+      warning-count: ${{ steps.shellcheck.outputs.warning-count || steps.no-files.outputs.warning-count }}
 
     steps:
       - name: 🚀 Checkout Repository
