@@ -139,4 +139,4 @@ github_token.txt
 *.log
 
 # Exemptions
-!.claude/settings.md
+!.claude/CLAUDE.md
