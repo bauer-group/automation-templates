@@ -1,0 +1,235 @@
+name: 'STM32 Build Action'
+description: 'Build STM32 firmware using ARM GCC toolchain'
+author: 'BAUER GROUP'
+
+branding:
+  icon: 'cpu'
+  color: 'blue'
+
+inputs:
+  config-file:
+    description: 'Configuration file from .github/config/stm32-build/'
+    required: false
+    default: 'default'
+
+  build-system:
+    description: 'Build system: makefile, cmake, cubeide'
+    required: false
+    default: 'makefile'
+
+  toolchain-version:
+    description: 'ARM GCC toolchain version'
+    required: false
+    default: '13.3.rel1'
+
+  target-mcu:
+    description: 'Target MCU (e.g., STM32F407VG)'
+    required: false
+    default: ''
+
+  project-path:
+    description: 'Path to project directory'
+    required: false
+    default: '.'
+
+  build-type:
+    description: 'Build type (Release, Debug)'
+    required: false
+    default: 'Release'
+
+  extra-build-args:
+    description: 'Additional build arguments'
+    required: false
+    default: ''
+
+  run-tests:
+    description: 'Run unit tests'
+    required: false
+    default: 'false'
+
+  enable-analysis:
+    description: 'Run static analysis'
+    required: false
+    default: 'false'
+
+  create-hex:
+    description: 'Generate HEX file'
+    required: false
+    default: 'true'
+
+  create-bin:
+    description: 'Generate BIN file'
+    required: false
+    default: 'true'
+
+  generate-artifacts:
+    description: 'Prepare build artifacts'
+    required: false
+    default: 'true'
+
+outputs:
+  build-status:
+    description: 'Build status (success, failure)'
+    value: ${{ steps.build.outputs.status }}
+
+  binary-path:
+    description: 'Path to built binaries'
+    value: ${{ steps.artifacts.outputs.output-dir }}
+
+  flash-size:
+    description: 'Flash usage in bytes'
+    value: ${{ steps.size.outputs.flash-size }}
+
+  ram-size:
+    description: 'RAM usage in bytes'
+    value: ${{ steps.size.outputs.ram-size }}
+
+  version:
+    description: 'Firmware version'
+    value: ${{ steps.version.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Determine Version
+      id: version
+      shell: bash
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+        else
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          BRANCH="${{ github.ref_name }}"
+          SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9]/-/g' | head -c 20)
+          VERSION="0.0.0-${SAFE_BRANCH}+${SHORT_SHA}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Install ARM GCC Toolchain
+      shell: bash
+      run: |
+        echo "Installing ARM GCC Toolchain..."
+        npm install -g xpm@latest
+        xpm install --global @xpack-dev-tools/arm-none-eabi-gcc@latest
+
+        TOOLCHAIN_PATH="$HOME/.local/xPacks/@xpack-dev-tools/arm-none-eabi-gcc"
+        TOOLCHAIN_BIN=$(find "$TOOLCHAIN_PATH" -name "bin" -type d 2>/dev/null | head -1)
+
+        if [[ -n "$TOOLCHAIN_BIN" ]]; then
+          echo "$TOOLCHAIN_BIN" >> $GITHUB_PATH
+        fi
+
+        arm-none-eabi-gcc --version
+
+    - name: Create Build Info
+      shell: bash
+      run: |
+        mkdir -p ${{ inputs.project-path }}/build_info
+        cat > ${{ inputs.project-path }}/build_info/version.json << EOF
+        {
+          "version": "${{ steps.version.outputs.version }}",
+          "target_mcu": "${{ inputs.target-mcu }}",
+          "build_type": "${{ inputs.build-type }}",
+          "toolchain": "arm-none-eabi-gcc ${{ inputs.toolchain-version }}",
+          "build_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+          "git_commit": "${{ github.sha }}",
+          "git_branch": "${{ github.ref_name }}"
+        }
+        EOF
+
+    - name: Build with Makefile
+      id: build
+      if: inputs.build-system == 'makefile'
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      run: |
+        BUILD_TYPE="${{ inputs.build-type }}"
+
+        if [[ "$BUILD_TYPE" == "Release" ]]; then
+          OPT="-O2"
+        else
+          OPT="-Og -g3"
+        fi
+
+        make -j$(nproc) BUILD_TYPE="$BUILD_TYPE" OPT="$OPT" ${{ inputs.extra-build-args }}
+
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Build with CMake
+      if: inputs.build-system == 'cmake'
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      run: |
+        mkdir -p build && cd build
+
+        cmake .. \
+          -G "Unix Makefiles" \
+          -DCMAKE_BUILD_TYPE="${{ inputs.build-type }}" \
+          ${{ inputs.extra-build-args }}
+
+        cmake --build . --parallel $(nproc)
+
+    - name: Analyze Size
+      id: size
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      run: |
+        ELF_FILE=$(find . -name "*.elf" -type f | head -1)
+
+        if [[ -n "$ELF_FILE" ]]; then
+          arm-none-eabi-size "$ELF_FILE"
+
+          SIZES=$(arm-none-eabi-size "$ELF_FILE" | tail -1)
+          TEXT=$(echo "$SIZES" | awk '{print $1}')
+          DATA=$(echo "$SIZES" | awk '{print $2}')
+          BSS=$(echo "$SIZES" | awk '{print $3}')
+
+          echo "flash-size=$((TEXT + DATA))" >> $GITHUB_OUTPUT
+          echo "ram-size=$((DATA + BSS))" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Generate Output Files
+      id: artifacts
+      if: inputs.generate-artifacts == 'true'
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      run: |
+        ELF_FILE=$(find . -name "*.elf" -type f | head -1)
+        OUTPUT_DIR="firmware-output"
+        mkdir -p "$OUTPUT_DIR"
+
+        if [[ -n "$ELF_FILE" ]]; then
+          BASE_NAME=$(basename "$ELF_FILE" .elf)
+
+          cp "$ELF_FILE" "$OUTPUT_DIR/"
+
+          if [[ "${{ inputs.create-hex }}" == "true" ]]; then
+            arm-none-eabi-objcopy -O ihex "$ELF_FILE" "$OUTPUT_DIR/${BASE_NAME}.hex"
+          fi
+
+          if [[ "${{ inputs.create-bin }}" == "true" ]]; then
+            arm-none-eabi-objcopy -O binary "$ELF_FILE" "$OUTPUT_DIR/${BASE_NAME}.bin"
+          fi
+
+          arm-none-eabi-size "$ELF_FILE" > "$OUTPUT_DIR/size-report.txt"
+
+          cd "$OUTPUT_DIR"
+          sha256sum *.bin *.hex *.elf 2>/dev/null > checksums.sha256 || true
+        fi
+
+        echo "output-dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
+
+    - name: Static Analysis
+      if: inputs.enable-analysis == 'true'
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      run: |
+        sudo apt-get install -y cppcheck || true
+
+        cppcheck \
+          --enable=warning,style,performance \
+          --suppress=missingIncludeSystem \
+          --std=c11 \
+          Core/Src/ Drivers/ 2>&1 || true

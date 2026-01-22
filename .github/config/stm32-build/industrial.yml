@@ -1,0 +1,123 @@
+# STM32 Build Configuration: Industrial
+# Safety-critical configuration for industrial/automotive applications
+
+# Build System
+build-system: cmake
+# CMake recommended for complex industrial projects
+
+# Toolchain
+toolchain-version: 13.3.rel1
+
+# Build Configuration - Both for validation
+build-types:
+  - Release
+  - Debug
+
+# Compiler Optimization
+optimization:
+  Release: -O2
+  Debug: -Og -g3
+
+# Strict Compiler Warnings
+warnings:
+  - -Wall
+  - -Wextra
+  - -Werror
+  - -Wpedantic
+  - -Wconversion
+  - -Wshadow
+  - -Wdouble-promotion
+  - -Wformat=2
+  - -Wundef
+  - -fno-common
+  - -ffunction-sections
+  - -fdata-sections
+
+# Linker Flags
+linker-flags:
+  - -Wl,--gc-sections
+  - -Wl,--print-memory-usage
+
+# Output Formats
+outputs:
+  elf: true
+  hex: true
+  bin: true
+  map: true
+  lst: true  # Assembly listing
+
+# Testing - Comprehensive
+tests:
+  enabled: true
+  framework: unity
+  path: tests/
+  coverage:
+    enabled: true
+    minimum: 80
+  hardware-tests: false
+
+# Static Analysis - Full suite
+analysis:
+  enabled: true
+  tools:
+    - cppcheck
+    - clang-tidy
+  fail-on-warning: true
+  cppcheck-args:
+    - --enable=all
+    - --std=c11
+    - --platform=arm32-wchar_t2
+    - --suppress=missingIncludeSystem
+
+# MISRA Compliance - Mandatory for safety-critical
+misra:
+  enabled: true
+  standard: MISRA-C:2012
+  required-rules: true
+  advisory-rules: false
+  report-format: xml
+
+# Size Limits
+size-limits:
+  max-flash: 524288  # 512KB
+  max-ram: 131072    # 128KB
+  warn-threshold: 90 # Warn at 90% usage
+
+# Artifacts
+artifacts:
+  upload: true
+  retention-days: 365  # Long retention for compliance
+  include:
+    - '*.bin'
+    - '*.hex'
+    - '*.elf'
+    - '*.map'
+    - '*.lst'
+    - 'checksums.sha256'
+    - 'cppcheck-report.xml'
+    - 'misra-report.txt'
+
+# Release
+release:
+  enabled: true
+  draft: true  # Always draft first for review
+  require-all-checks: true
+  include-debug-symbols: true
+
+# Compliance
+compliance:
+  sbom: true
+  license-check: true
+  allowed-licenses:
+    - Apache-2.0
+    - MIT
+    - BSD-2-Clause
+    - BSD-3-Clause
+
+# Quality Gates
+quality-gates:
+  no-warnings: true
+  tests-pass: true
+  analysis-pass: true
+  misra-pass: true
+  min-coverage: 80

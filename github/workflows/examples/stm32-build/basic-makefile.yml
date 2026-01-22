@@ -1,0 +1,43 @@
+# STM32 Basic Makefile Build Example
+# Simple build for STM32CubeMX generated projects
+#
+# Use case: Standard STM32 projects with Makefile from CubeMX
+# Features: Single target, Release build, artifact upload
+
+name: STM32 Basic Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/stm32-build.yml@main
+    with:
+      # Use Makefile build system (default for CubeMX)
+      build-system: makefile
+
+      # Target MCU
+      target-mcu: STM32F407VG
+
+      # ARM GCC toolchain version
+      toolchain-version: 13.3.rel1
+
+      # Release build
+      build-types: '["Release"]'
+
+      # Generate output files
+      create-hex: true
+      create-bin: true
+
+      # Run tests if available
+      run-tests: false
+
+      # Upload artifacts
+      upload-artifacts: true
+      artifact-retention: 30
+
+      # Build timeout
+      timeout-minutes: 20

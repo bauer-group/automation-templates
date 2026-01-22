@@ -1,0 +1,51 @@
+# STM32 CMake Build Example
+# Build CMake-based STM32 projects
+#
+# Use case: Complex projects using CMake build system
+# Features: CMake toolchain, multiple build types, testing
+
+name: STM32 CMake Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/stm32-build.yml@main
+    with:
+      # Use CMake build system
+      build-system: cmake
+
+      # Target MCU
+      target-mcu: STM32H743ZI
+
+      # CMake toolchain file
+      cmake-toolchain: cmake/arm-none-eabi.cmake
+
+      # Build both Release and Debug
+      build-types: '["Release", "Debug"]'
+
+      # ARM GCC toolchain version
+      toolchain-version: 13.3.rel1
+
+      # Generate all output formats
+      create-hex: true
+      create-bin: true
+
+      # Run unit tests
+      run-tests: true
+      test-framework: unity
+      test-path: tests/
+
+      # Enable static analysis
+      enable-analysis: true
+
+      # Upload artifacts
+      upload-artifacts: true
+      artifact-retention: 30
+
+      # Build timeout (longer for CMake)
+      timeout-minutes: 30

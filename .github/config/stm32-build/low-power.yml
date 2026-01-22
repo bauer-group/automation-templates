@@ -1,0 +1,93 @@
+# STM32 Build Configuration: Low Power
+# Optimized for battery-powered and low-power applications
+
+# Build System
+build-system: makefile
+
+# Toolchain
+toolchain-version: 13.3.rel1
+
+# Target MCU Families (typically STM32L series)
+# recommended-mcus:
+#   - STM32L0xx  # Ultra-low-power Cortex-M0+
+#   - STM32L1xx  # Ultra-low-power Cortex-M3
+#   - STM32L4xx  # Ultra-low-power Cortex-M4
+#   - STM32L5xx  # Ultra-low-power with security
+#   - STM32U5xx  # Next-gen ultra-low-power
+
+# Build Configuration
+build-types:
+  - Release
+
+# Compiler Optimization - Size and power optimized
+optimization: -Os
+# -Os: Optimize for size (often better for power)
+# Alternative: -O2 for performance-critical sections
+
+# Compiler Flags for Low Power
+compiler-flags:
+  - -Wall
+  - -Wextra
+  - -ffunction-sections
+  - -fdata-sections
+  - -fno-common
+  - -fno-exceptions
+  - -fno-rtti
+  # LTO for maximum optimization
+  - -flto
+
+# Linker Flags
+linker-flags:
+  - -Wl,--gc-sections
+  - -Wl,--print-memory-usage
+  - -flto
+
+# Output Formats
+outputs:
+  elf: true
+  hex: true
+  bin: true
+  map: true
+
+# Testing
+tests:
+  enabled: true
+  framework: unity
+  path: tests/
+  # Power consumption tests
+  power-tests: false
+
+# Static Analysis
+analysis:
+  enabled: true
+  tools:
+    - cppcheck
+  # Check for power-wasting patterns
+  custom-checks:
+    - busy-wait-detection
+    - unused-peripheral-detection
+
+# Size Analysis - Critical for low power devices
+size-analysis:
+  enabled: true
+  detailed: true
+  # Low power devices often have limited flash
+  max-flash: 262144  # 256KB typical for L-series
+  max-ram: 65536     # 64KB typical
+
+# Artifacts
+artifacts:
+  upload: true
+  retention-days: 30
+  include:
+    - '*.bin'
+    - '*.hex'
+    - '*.elf'
+    - '*.map'
+    - 'size-report.txt'
+    - 'checksums.sha256'
+
+# Release
+release:
+  enabled: true
+  draft: false

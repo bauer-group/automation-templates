@@ -1,0 +1,60 @@
+# STM32 Build Configuration: Prototype
+# Fast iteration configuration for prototyping and development
+
+# Build System
+build-system: makefile
+
+# Toolchain
+toolchain-version: 13.3.rel1
+
+# Build Configuration - Debug only for fast iteration
+build-type: Debug
+
+# Compiler Optimization - Debug friendly
+optimization: -Og -g3
+
+# Basic Warnings (non-blocking)
+warnings:
+  - -Wall
+  # No -Werror for flexibility
+
+# Output Formats
+outputs:
+  elf: true
+  hex: true
+  bin: true
+  map: false  # Skip map for speed
+
+# Testing - Disabled for speed
+tests:
+  enabled: false
+
+# Static Analysis - Disabled for speed
+analysis:
+  enabled: false
+
+# MISRA - Disabled for prototypes
+misra:
+  enabled: false
+
+# Artifacts
+artifacts:
+  upload: true
+  retention-days: 7  # Short retention
+  include:
+    - '*.bin'
+    - '*.hex'
+    - '*.elf'
+
+# Release - Disabled for prototypes
+release:
+  enabled: false
+
+# Development helpers
+development:
+  # Fast rebuild
+  incremental: true
+  # Include debug symbols
+  debug-symbols: true
+  # Printf debugging via SWO/UART
+  printf-redirect: true

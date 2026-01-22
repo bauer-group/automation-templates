@@ -1,0 +1,65 @@
+# STM32 Build Configuration: Default
+# Standard configuration for general STM32 projects
+
+# Build System
+build-system: makefile
+# Options: makefile, cmake, cubeide
+
+# Toolchain
+toolchain-version: 13.3.rel1
+# ARM GCC version from xPack or ARM downloads
+
+# Build Configuration
+build-type: Release
+# Options: Release, Debug
+
+# Compiler Optimization
+optimization: -O2
+# Release: -O2, Debug: -Og -g3
+
+# Compiler Warnings
+warnings:
+  - -Wall
+  - -Wextra
+  # Add -Werror for stricter builds
+
+# Output Formats
+outputs:
+  elf: true
+  hex: true
+  bin: true
+  map: true
+
+# Testing
+tests:
+  enabled: true
+  framework: unity
+  path: tests/
+
+# Static Analysis
+analysis:
+  enabled: false
+  tools:
+    - cppcheck
+  fail-on-warning: false
+
+# MISRA Compliance
+misra:
+  enabled: false
+  standard: MISRA-C:2012
+
+# Artifacts
+artifacts:
+  upload: true
+  retention-days: 30
+  include:
+    - '*.bin'
+    - '*.hex'
+    - '*.elf'
+    - '*.map'
+    - 'checksums.sha256'
+
+# Release
+release:
+  enabled: false
+  draft: false

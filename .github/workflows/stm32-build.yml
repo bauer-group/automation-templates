@@ -1,0 +1,716 @@
+name: STM32 Build & Release
+
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: 'Configuration file name from .github/config/stm32-build/ (without .yml extension)'
+        required: false
+        type: string
+        default: 'default'
+
+      build-system:
+        description: 'Build system to use: makefile, cmake, cubeide'
+        required: false
+        type: string
+        default: 'makefile'
+
+      toolchain-version:
+        description: 'ARM GCC toolchain version (e.g., 13.3.rel1, 12.3.rel1)'
+        required: false
+        type: string
+        default: '13.3.rel1'
+
+      target-mcu:
+        description: 'Single target MCU (e.g., STM32F407VG, STM32H743ZI)'
+        required: false
+        type: string
+        default: ''
+
+      target-mcus:
+        description: 'JSON array of target MCUs for matrix builds'
+        required: false
+        type: string
+        default: ''
+
+      project-path:
+        description: 'Path to the project directory'
+        required: false
+        type: string
+        default: '.'
+
+      build-types:
+        description: 'JSON array of build types (e.g., ["Release", "Debug"])'
+        required: false
+        type: string
+        default: '["Release"]'
+
+      makefile-path:
+        description: 'Path to Makefile (for makefile build system)'
+        required: false
+        type: string
+        default: 'Makefile'
+
+      cmake-toolchain:
+        description: 'Path to CMake toolchain file (for cmake build system)'
+        required: false
+        type: string
+        default: 'cmake/arm-none-eabi.cmake'
+
+      cubeide-project:
+        description: 'STM32CubeIDE project name'
+        required: false
+        type: string
+        default: ''
+
+      cubeide-config:
+        description: 'STM32CubeIDE build configuration'
+        required: false
+        type: string
+        default: 'Release'
+
+      extra-build-args:
+        description: 'Additional build arguments'
+        required: false
+        type: string
+        default: ''
+
+      run-tests:
+        description: 'Run unit tests'
+        required: false
+        type: boolean
+        default: true
+
+      test-framework:
+        description: 'Test framework: unity, cpputest, gtest, native'
+        required: false
+        type: string
+        default: 'unity'
+
+      test-path:
+        description: 'Path to test directory'
+        required: false
+        type: string
+        default: 'tests'
+
+      enable-analysis:
+        description: 'Run static analysis (cppcheck, clang-tidy)'
+        required: false
+        type: boolean
+        default: false
+
+      enable-misra:
+        description: 'Run MISRA compliance check'
+        required: false
+        type: boolean
+        default: false
+
+      create-hex:
+        description: 'Generate Intel HEX file'
+        required: false
+        type: boolean
+        default: true
+
+      create-bin:
+        description: 'Generate raw binary file'
+        required: false
+        type: boolean
+        default: true
+
+      create-dfu:
+        description: 'Generate DFU file for USB bootloader'
+        required: false
+        type: boolean
+        default: false
+
+      create-release:
+        description: 'Create GitHub release with firmware artifacts'
+        required: false
+        type: boolean
+        default: false
+
+      upload-artifacts:
+        description: 'Upload build artifacts'
+        required: false
+        type: boolean
+        default: true
+
+      artifact-retention:
+        description: 'Days to retain artifacts'
+        required: false
+        type: number
+        default: 30
+
+      fail-fast:
+        description: 'Fail fast on first error in matrix builds'
+        required: false
+        type: boolean
+        default: false
+
+      timeout-minutes:
+        description: 'Timeout for build jobs in minutes'
+        required: false
+        type: number
+        default: 30
+
+      runs-on:
+        description: 'Runner to use'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+
+    outputs:
+      build-status:
+        description: 'Overall build status'
+        value: ${{ jobs.build.result }}
+
+      firmware-version:
+        description: 'Firmware version from build'
+        value: ${{ jobs.prepare.outputs.version }}
+
+      artifact-url:
+        description: 'URL to build artifacts'
+        value: ${{ jobs.build.outputs.artifacts-url }}
+
+      release-url:
+        description: 'URL to GitHub release (if created)'
+        value: ${{ jobs.release.outputs.release-url }}
+
+env:
+  ARM_TOOLCHAIN_URL: https://developer.arm.com/-/media/Files/downloads/gnu
+
+jobs:
+  # Prepare build matrix and version
+  prepare:
+    name: Prepare Build
+    runs-on: ${{ inputs.runs-on }}
+
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Determine Build Matrix
+        id: matrix
+        shell: bash
+        run: |
+          # Use MCUs array if provided, otherwise use single MCU
+          if [[ -n "${{ inputs.target-mcus }}" && "${{ inputs.target-mcus }}" != "" ]]; then
+            MCUS='${{ inputs.target-mcus }}'
+          elif [[ -n "${{ inputs.target-mcu }}" ]]; then
+            MCUS='["${{ inputs.target-mcu }}"]'
+          else
+            # Default - no MCU specified, use placeholder
+            MCUS='["default"]'
+          fi
+
+          BUILD_TYPES='${{ inputs.build-types }}'
+
+          # Create matrix JSON
+          MATRIX=$(jq -n \
+            --argjson mcus "$MCUS" \
+            --argjson buildTypes "$BUILD_TYPES" \
+            '{mcu: $mcus, build_type: $buildTypes}')
+
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "Build Matrix: $MATRIX"
+
+      - name: Determine Version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          else
+            BRANCH="${{ github.ref_name }}"
+            SHA="${{ github.sha }}"
+            SHORT_SHA="${SHA:0:7}"
+
+            if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
+              VERSION="0.0.0-dev+${SHORT_SHA}"
+            else
+              SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9]/-/g' | head -c 20)
+              VERSION="0.0.0-${SAFE_BRANCH}+${SHORT_SHA}"
+            fi
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Firmware Version: $VERSION"
+
+  # Security Scan
+  security:
+    name: Security Scan
+    runs-on: ${{ inputs.runs-on }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Security Scan
+        uses: bauer-group/automation-templates/.github/actions/security-scan@main
+        with:
+          scan-engines: 'gitleaks'
+          fail-on-findings: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Main Build Job
+  build:
+    name: Build (${{ matrix.mcu }}, ${{ matrix.build_type }})
+    runs-on: ${{ inputs.runs-on }}
+    needs: [prepare, security]
+    if: always() && needs.security.result == 'success'
+
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    strategy:
+      fail-fast: ${{ inputs.fail-fast }}
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+
+    outputs:
+      artifacts-url: ${{ steps.upload.outputs.artifact-url }}
+      flash-size: ${{ steps.size.outputs.flash-size }}
+      ram-size: ${{ steps.size.outputs.ram-size }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install ARM GCC Toolchain
+        id: toolchain
+        shell: bash
+        run: |
+          TOOLCHAIN_VERSION="${{ inputs.toolchain-version }}"
+
+          echo "Installing ARM GCC Toolchain ${TOOLCHAIN_VERSION}..."
+
+          # Use xPack ARM toolchain for reliable installation
+          npm install -g xpm@latest
+          xpm install --global @xpack-dev-tools/arm-none-eabi-gcc@latest
+
+          # Add to PATH
+          TOOLCHAIN_PATH="$HOME/.local/xPacks/@xpack-dev-tools/arm-none-eabi-gcc"
+          TOOLCHAIN_BIN=$(find "$TOOLCHAIN_PATH" -name "bin" -type d 2>/dev/null | head -1)
+
+          if [[ -n "$TOOLCHAIN_BIN" ]]; then
+            echo "$TOOLCHAIN_BIN" >> $GITHUB_PATH
+            echo "toolchain-path=$TOOLCHAIN_BIN" >> $GITHUB_OUTPUT
+          fi
+
+          # Verify installation
+          arm-none-eabi-gcc --version
+
+      - name: Setup Build Environment
+        shell: bash
+        run: |
+          # Install additional tools
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            python3-pip
+
+          # Install Python tools for STM32
+          pip3 install \
+            pyserial \
+            intelhex
+
+      - name: Create Build Info
+        shell: bash
+        run: |
+          mkdir -p ${{ inputs.project-path }}/build_info
+
+          cat > ${{ inputs.project-path }}/build_info/version.json << EOF
+          {
+            "version": "${{ needs.prepare.outputs.version }}",
+            "target_mcu": "${{ matrix.mcu }}",
+            "build_type": "${{ matrix.build_type }}",
+            "toolchain": "arm-none-eabi-gcc ${{ inputs.toolchain-version }}",
+            "build_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "git_commit": "${{ github.sha }}",
+            "git_branch": "${{ github.ref_name }}"
+          }
+          EOF
+
+      - name: Build with Makefile
+        if: inputs.build-system == 'makefile'
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          BUILD_TYPE="${{ matrix.build_type }}"
+
+          # Set optimization based on build type
+          if [[ "$BUILD_TYPE" == "Release" ]]; then
+            OPT="-O2"
+          elif [[ "$BUILD_TYPE" == "Debug" ]]; then
+            OPT="-Og -g3"
+          else
+            OPT="-O2"
+          fi
+
+          # Build with make
+          make -j$(nproc) \
+            BUILD_TYPE="$BUILD_TYPE" \
+            OPT="$OPT" \
+            ${{ inputs.extra-build-args }}
+
+      - name: Build with CMake
+        if: inputs.build-system == 'cmake'
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          BUILD_TYPE="${{ matrix.build_type }}"
+          MCU="${{ matrix.mcu }}"
+
+          mkdir -p build
+          cd build
+
+          # Configure with CMake
+          cmake .. \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+            -DCMAKE_TOOLCHAIN_FILE="../${{ inputs.cmake-toolchain }}" \
+            -DTARGET_MCU="$MCU" \
+            ${{ inputs.extra-build-args }}
+
+          # Build
+          cmake --build . --parallel $(nproc)
+
+      - name: Build with STM32CubeIDE
+        if: inputs.build-system == 'cubeide'
+        shell: bash
+        run: |
+          # Install STM32CubeIDE headless build tools
+          echo "STM32CubeIDE headless build..."
+
+          # Use Docker image for STM32CubeIDE
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace/${{ inputs.project-path }} \
+            xanderhendriks/stm32cubeide:latest \
+            /opt/st/stm32cubeide/stm32cubeide \
+            --launcher.suppressErrors \
+            -nosplash \
+            -application org.eclipse.cdt.managedbuilder.core.headlessbuild \
+            -data /tmp/workspace \
+            -import . \
+            -build "${{ inputs.cubeide-project }}/${{ inputs.cubeide-config }}"
+
+      - name: Generate Output Files
+        id: outputs
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          # Find the ELF file
+          ELF_FILE=$(find . -name "*.elf" -type f | head -1)
+
+          if [[ -z "$ELF_FILE" ]]; then
+            echo "ERROR: No ELF file found"
+            exit 1
+          fi
+
+          echo "Found ELF: $ELF_FILE"
+
+          # Create output directory
+          OUTPUT_DIR="firmware-output"
+          mkdir -p "$OUTPUT_DIR"
+
+          # Get base name
+          BASE_NAME=$(basename "$ELF_FILE" .elf)
+          VERSION="${{ needs.prepare.outputs.version }}"
+          MCU="${{ matrix.mcu }}"
+          BUILD_TYPE="${{ matrix.build_type }}"
+
+          if [[ "$MCU" != "default" ]]; then
+            ARTIFACT_NAME="${BASE_NAME}-${MCU}-${BUILD_TYPE}-${VERSION}"
+          else
+            ARTIFACT_NAME="${BASE_NAME}-${BUILD_TYPE}-${VERSION}"
+          fi
+
+          # Copy ELF
+          cp "$ELF_FILE" "$OUTPUT_DIR/${ARTIFACT_NAME}.elf"
+
+          # Generate HEX
+          if [[ "${{ inputs.create-hex }}" == "true" ]]; then
+            arm-none-eabi-objcopy -O ihex "$ELF_FILE" "$OUTPUT_DIR/${ARTIFACT_NAME}.hex"
+            echo "Generated: ${ARTIFACT_NAME}.hex"
+          fi
+
+          # Generate BIN
+          if [[ "${{ inputs.create-bin }}" == "true" ]]; then
+            arm-none-eabi-objcopy -O binary "$ELF_FILE" "$OUTPUT_DIR/${ARTIFACT_NAME}.bin"
+            echo "Generated: ${ARTIFACT_NAME}.bin"
+          fi
+
+          # Generate MAP file location
+          MAP_FILE="${ELF_FILE%.elf}.map"
+          if [[ -f "$MAP_FILE" ]]; then
+            cp "$MAP_FILE" "$OUTPUT_DIR/${ARTIFACT_NAME}.map"
+          fi
+
+          # Generate DFU
+          if [[ "${{ inputs.create-dfu }}" == "true" ]]; then
+            python3 -c "
+          from intelhex import IntelHex
+          ih = IntelHex('$OUTPUT_DIR/${ARTIFACT_NAME}.hex')
+          ih.tobinfile('$OUTPUT_DIR/${ARTIFACT_NAME}.dfu')
+          " 2>/dev/null || echo "DFU generation skipped (intelhex not available)"
+          fi
+
+          echo "output-dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
+          echo "artifact-name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+
+          ls -la "$OUTPUT_DIR"
+
+      - name: Analyze Size
+        id: size
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          ELF_FILE=$(find . -name "*.elf" -type f | head -1)
+
+          if [[ -n "$ELF_FILE" ]]; then
+            echo "=== Firmware Size Analysis ===" | tee size-report.txt
+            arm-none-eabi-size "$ELF_FILE" | tee -a size-report.txt
+
+            echo "" >> size-report.txt
+            echo "=== Section Details ===" >> size-report.txt
+            arm-none-eabi-size -A "$ELF_FILE" | tee -a size-report.txt
+
+            # Extract sizes
+            SIZES=$(arm-none-eabi-size "$ELF_FILE" | tail -1)
+            TEXT=$(echo "$SIZES" | awk '{print $1}')
+            DATA=$(echo "$SIZES" | awk '{print $2}')
+            BSS=$(echo "$SIZES" | awk '{print $3}')
+
+            FLASH_SIZE=$((TEXT + DATA))
+            RAM_SIZE=$((DATA + BSS))
+
+            echo "flash-size=$FLASH_SIZE" >> $GITHUB_OUTPUT
+            echo "ram-size=$RAM_SIZE" >> $GITHUB_OUTPUT
+
+            echo ""
+            echo "Flash usage: $FLASH_SIZE bytes"
+            echo "RAM usage: $RAM_SIZE bytes"
+
+            # Copy to output
+            cp size-report.txt "${{ steps.outputs.outputs.output-dir }}/"
+          fi
+
+      - name: Run Unit Tests
+        if: inputs.run-tests
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          TEST_PATH="${{ inputs.test-path }}"
+
+          if [[ -d "$TEST_PATH" ]]; then
+            echo "Running tests from $TEST_PATH..."
+
+            case "${{ inputs.test-framework }}" in
+              unity)
+                # Build and run Unity tests (native)
+                if [[ -f "$TEST_PATH/Makefile" ]]; then
+                  make -C "$TEST_PATH" test
+                fi
+                ;;
+              native)
+                # Run native tests with host GCC
+                if [[ -f "$TEST_PATH/CMakeLists.txt" ]]; then
+                  mkdir -p "$TEST_PATH/build"
+                  cd "$TEST_PATH/build"
+                  cmake .. -DCMAKE_BUILD_TYPE=Debug
+                  cmake --build .
+                  ctest --output-on-failure
+                fi
+                ;;
+              *)
+                echo "Test framework ${{ inputs.test-framework }} not configured"
+                ;;
+            esac
+          else
+            echo "Test directory not found: $TEST_PATH"
+          fi
+
+      - name: Static Analysis
+        if: inputs.enable-analysis
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          # Install cppcheck
+          sudo apt-get install -y cppcheck
+
+          echo "Running static analysis..."
+
+          # Run cppcheck
+          cppcheck \
+            --enable=warning,style,performance,portability \
+            --suppress=missingIncludeSystem \
+            --std=c11 \
+            --platform=arm32-wchar_t2 \
+            --xml --xml-version=2 \
+            --output-file="${{ steps.outputs.outputs.output-dir }}/cppcheck-report.xml" \
+            Core/Src/ Drivers/ 2>&1 || true
+
+          echo "Static analysis complete"
+
+      - name: MISRA Compliance Check
+        if: inputs.enable-misra
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          echo "Running MISRA compliance check..."
+
+          # cppcheck with MISRA addon (if available)
+          cppcheck \
+            --addon=misra.py \
+            --suppress=missingIncludeSystem \
+            Core/Src/ 2>&1 | tee "${{ steps.outputs.outputs.output-dir }}/misra-report.txt" || true
+
+      - name: Prepare Artifacts
+        id: artifacts
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          OUTPUT_DIR="${{ steps.outputs.outputs.output-dir }}"
+
+          # Copy build info
+          cp build_info/version.json "$OUTPUT_DIR/" 2>/dev/null || true
+
+          # Generate checksums
+          cd "$OUTPUT_DIR"
+          sha256sum *.bin *.hex *.elf 2>/dev/null > checksums.sha256 || true
+
+          echo "=== Artifacts ==="
+          ls -la
+
+      - name: Upload Build Artifacts
+        id: upload
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: stm32-${{ matrix.mcu }}-${{ matrix.build_type }}-${{ needs.prepare.outputs.version }}
+          path: ${{ inputs.project-path }}/${{ steps.outputs.outputs.output-dir }}
+          retention-days: ${{ inputs.artifact-retention }}
+          compression-level: 6
+
+  # Release Job
+  release:
+    name: Create Release
+    runs-on: ${{ inputs.runs-on }}
+    needs: [prepare, build]
+    if: inputs.create-release && github.ref_type == 'tag'
+
+    outputs:
+      release-url: ${{ steps.create-release.outputs.html_url }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: release-artifacts
+          pattern: stm32-*
+
+      - name: Prepare Release Assets
+        shell: bash
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+
+          mkdir -p release
+
+          # Consolidate artifacts
+          for dir in release-artifacts/*/; do
+            if [[ -d "$dir" ]]; then
+              cp -r "$dir"/* release/ 2>/dev/null || true
+            fi
+          done
+
+          # Create combined checksums
+          cd release
+          sha256sum *.bin *.hex *.elf 2>/dev/null > checksums.sha256 || true
+          cd ..
+
+          ls -la release/
+
+      - name: Generate Changelog
+        id: changelog
+        shell: bash
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [[ -n "$PREV_TAG" ]]; then
+            echo "## Changes since ${PREV_TAG}" > changelog.md
+            echo "" >> changelog.md
+            git log --pretty=format:"- %s (%h)" "${PREV_TAG}..HEAD" >> changelog.md
+          else
+            echo "## Initial Release" > changelog.md
+          fi
+
+          cat changelog.md
+
+      - name: Create GitHub Release
+        id: create-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "STM32 Firmware ${{ github.ref_name }}"
+          body_path: changelog.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            release/*.bin
+            release/*.hex
+            release/*.elf
+            release/checksums.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Build Summary
+  summary:
+    name: Build Summary
+    runs-on: ${{ inputs.runs-on }}
+    needs: [prepare, security, build, release]
+    if: always()
+
+    steps:
+      - name: Generate Summary
+        shell: bash
+        run: |
+          echo "# STM32 Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release | ${{ needs.release.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Firmware Version**: ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build System**: ${{ inputs.build-system }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Toolchain**: ARM GCC ${{ inputs.toolchain-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target(s)**: ${{ inputs.target-mcus || inputs.target-mcu || 'default' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Types**: ${{ inputs.build-types }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ needs.build.result }}" == "success" ]]; then
+            echo "Build completed successfully"
+          else
+            echo "Build failed"
+            exit 1
+          fi

@@ -1,0 +1,78 @@
+# STM32 Multi-MCU Matrix Build Example
+# Build firmware for multiple STM32 MCU variants
+#
+# Use case: Products supporting multiple STM32 chips
+# Features: Matrix build, multiple MCUs, parallel execution
+
+name: STM32 Multi-MCU Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/stm32-build.yml@main
+    with:
+      # Build for multiple MCU variants
+      target-mcus: '["STM32F103C8", "STM32F407VG", "STM32F446RE", "STM32H743ZI"]'
+
+      # Use Makefile (ensure conditional compilation in Makefile)
+      build-system: makefile
+
+      # Build both configurations
+      build-types: '["Release", "Debug"]'
+
+      # Toolchain
+      toolchain-version: 13.3.rel1
+
+      # Output files
+      create-hex: true
+      create-bin: true
+
+      # Tests
+      run-tests: true
+
+      # Analysis
+      enable-analysis: true
+
+      # Don't fail immediately - build all variants
+      fail-fast: false
+
+      # Upload all artifacts
+      upload-artifacts: true
+      artifact-retention: 30
+
+      # Longer timeout for matrix
+      timeout-minutes: 45
+
+  # Combine all artifacts after build
+  combine:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: all-firmware
+          pattern: stm32-*
+
+      - name: List all builds
+        run: |
+          echo "=== All STM32 Firmware Builds ==="
+          find all-firmware -name "*.bin" -o -name "*.hex" | sort
+
+      - name: Create combined archive
+        run: |
+          tar -czvf firmware-all-mcus.tar.gz all-firmware/
+
+      - name: Upload combined archive
+        uses: actions/upload-artifact@v6
+        with:
+          name: firmware-all-mcus
+          path: firmware-all-mcus.tar.gz
+          retention-days: 30
