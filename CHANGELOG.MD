@@ -1,3 +1,18 @@
+## [4.15.0](https://github.com/bauer-group/automation-templates/compare/v4.14.0...v4.15.0) (2026-01-22)
+
+### 🚀 Features
+
+*  PlatformIO Build Workflow Documentation and Examples ([b0ac8b3](https://github.com/bauer-group/automation-templates/commit/b0ac8b3f225717cf5138062528ce792ac2e8884c))
+* aktualisiere .gitignore, um alle Dateien im .claude-Verzeichnis auszuschließen ([847b8a1](https://github.com/bauer-group/automation-templates/commit/847b8a1b48e9f028222fa0d3dcc17b07acf01f39))
+* aktualisiere Ausnahme in .gitignore für CLAUDE.md ([3ab1c85](https://github.com/bauer-group/automation-templates/commit/3ab1c855f1680bd4038896224d4374c1be222f80))
+* erweitere ESP32 Build Workflow um Unterstützung für VS Code und PlatformIO Projekte ([3575569](https://github.com/bauer-group/automation-templates/commit/35755697c1c26425622a5f954b3a66e561fc325d))
+* füge Ausnahme für Claude Einstellungen zur .gitignore hinzu ([a388be4](https://github.com/bauer-group/automation-templates/commit/a388be48ea4bca57a0e1e732e3f8d3192666bc6a))
+* füge UI/UX Design- und Standardrichtlinien hinzu ([1271ca9](https://github.com/bauer-group/automation-templates/commit/1271ca90fe3dc573c2f87d70981b9b5527792b09))
+
+### ♻️ Refactoring
+
+* aktualisiere Verhaltensanweisungen für Claude Code und verbessere Struktur ([617d976](https://github.com/bauer-group/automation-templates/commit/617d976f0fb63113a810ba1d4795d59a74c70ce8))
+
 ## [4.14.0](https://github.com/bauer-group/automation-templates/compare/v4.13.1...v4.14.0) (2026-01-22)
 
 ### 🚀 Features
