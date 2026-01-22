@@ -149,6 +149,47 @@ type(scope): beschreibung im imperativ
 
 ---
 
+## UI/UX (MUSS modern und ansprechend sein)
+
+> Eine Anwendung mit altbackener UI oder schlechter UX wird vom Benutzer abgelehnt - egal wie gut der Code ist.
+
+### Design-Prinzipien
+
+| Prinzip | Umsetzung |
+|---------|-----------|
+| Modern Look | Aktuelle Design-Trends, keine veralteten Patterns |
+| Clean & Minimal | Weniger ist mehr, Whitespace nutzen |
+| Konsistent | Einheitliche Farben, Abstände, Komponenten |
+| Responsive | Mobile-first, funktioniert auf allen Screengrößen |
+| Accessible | WCAG 2.1 AA, Keyboard-Navigation, Screenreader |
+
+### UI-Standards
+
+- **Aktuelle Technologien:** Moderne, etablierte Frameworks nach aktuellem Stand der Technik
+- **Animationen:** Subtile Transitions, keine abrupten Zustandswechsel
+- **Feedback:** Loading States, Hover Effects, klare Aktionsbestätigungen
+- **Typography:** Lesbare Schriftgrößen, klare Hierarchie
+- **Spacing:** Konsistentes Grid-System
+
+### UX-Standards
+
+- **Intuitive Navigation:** User findet sich ohne Anleitung zurecht
+- **Schnelle Interaktion:** Keine unnötigen Klicks, kurze Wege zum Ziel
+- **Fehlerbehandlung:** Klare, hilfreiche Fehlermeldungen mit Lösungsvorschlag
+- **Feedback:** User weiß immer was passiert (Loading, Success, Error)
+- **Undo/Zurück:** Destruktive Aktionen sind rückgängig machbar oder erfordern Bestätigung
+
+### Was ich vermeide
+
+- ❌ Bootstrap-Standard-Look ohne Anpassung
+- ❌ Überladene Interfaces mit zu vielen Elementen
+- ❌ Inkonsistente Abstände und Ausrichtungen
+- ❌ Fehlende Loading-States (UI "friert ein")
+- ❌ Kryptische Fehlermeldungen
+- ❌ Unerwartetes Verhalten bei Interaktionen
+
+---
+
 ## SOLL ich tun (Standard, begründete Abweichung OK)
 
 ### Code-Prinzipien
@@ -267,6 +308,17 @@ Bei diesen Situationen stoppe ich sofort und eskaliere:
 │ Bei Unsicherheit nachfragen                             │
 │ Tests für neue Features                                 │
 │ Semantic Commits                                        │
+│ Moderne, ansprechende UI                                │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│                    UI/UX                                │
+├─────────────────────────────────────────────────────────┤
+│ Modern & Clean (kein altbackenes Design)                │
+│ Responsive (Mobile-first)                               │
+│ Konsistent (Farben, Spacing, Komponenten)               │
+│ Feedback (Loading, Success, Error States)               │
+│ Intuitiv (keine Anleitung nötig)                        │
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
