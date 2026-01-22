@@ -1,3 +1,15 @@
+## [4.14.0](https://github.com/bauer-group/automation-templates/compare/v4.13.1...v4.14.0) (2026-01-22)
+
+### 🚀 Features
+
+* erweitere STM32CubeIDE Workflow mit neuen Eingabeparametern und Beispiel-Workflow ([6857409](https://github.com/bauer-group/automation-templates/commit/6857409ad7d20d71d35bbef8ef4ab15e346a55f5))
+* ESP32 Build Workflow Documentation and Examples ([5523edd](https://github.com/bauer-group/automation-templates/commit/5523edd7f14b3d5363cb850221628979a63d7b20))
+* STM32 Build Workflow Documentation and Examples ([ce8ce9c](https://github.com/bauer-group/automation-templates/commit/ce8ce9c7e0a0f79f777d97bce4d88deed50d4710))
+
+### 🐛 Bug Fixes
+
+* update condition checks in Docker Compose workflows to use 'result' instead of 'outputs.valid' ([869b32d](https://github.com/bauer-group/automation-templates/commit/869b32db0930eb841718c3c7c0e169037f3049e4))
+
 ## [4.13.1](https://github.com/bauer-group/automation-templates/compare/v4.13.0...v4.13.1) (2026-01-18)
 
 ### 🐛 Bug Fixes
