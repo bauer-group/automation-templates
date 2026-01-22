@@ -1,8 +1,100 @@
 # Claude Code - Projektrichtlinien
 
+> **BAUER GROUP** - Today, Tomorrow, Together
+> **BAUER GROUP** - Building Better Software Together
+> **BAUER GROUP** – Technology for the Long Run
+> **BAUER GROUP** – Technology That Scales With You
+
+---
+
 > Verbindliche Richtlinien mit klarer Priorisierung.
 >
 > **MUST** = Merge-Blocker | **SHOULD** = Standard | **MAY** = Optional
+
+---
+
+## Philosophie: Innovation & Lean Thinking
+
+> Diese Richtlinien existieren um Qualität zu sichern - **nicht** um Kreativität zu unterdrücken.
+
+### Kernprinzip: Minimaler Aufwand → Maximales Ergebnis
+
+Die besten Lösungen sind elegant, schlank und smart. Komplexität ist kein Qualitätsmerkmal.
+
+### Perfektion vs. Pragmatismus
+
+```text
+Nach Perfektion streben → Zufrieden sein wenn gut
+```
+
+**Das Pareto-Prinzip verstehen:**
+
+- Die letzten 20% Verbesserung kosten oft 80% des Aufwands
+- "Gut" ist oft gut genug - shipped beats perfect
+- ABER: Innovative Features nicht wegen Aufwand opfern
+
+**Die richtige Balance:**
+
+| Weglassen OK           | Weglassen NICHT OK       |
+|------------------------|--------------------------|
+| Goldplating, Kosmetik  | Kern-Innovation          |
+| Edge-Case-Perfektion   | User-Value-Features      |
+| Über-Abstraktion       | Security-Essentials      |
+| Nice-to-have Polish    | Differenzierende Features|
+
+> **Faustregel:** Strebe nach 100%, akzeptiere 80% - aber nie auf Kosten der Innovation, die das Produkt besonders macht.
+
+### Was gefördert wird
+
+| Erwünscht                | Beispiel                                       |
+|--------------------------|------------------------------------------------|
+| Kreative Problemlösungen | Unkonventionelle Ansätze, die funktionieren    |
+| Lean Implementations     | 10 Zeilen statt 100, wenn gleichwertig         |
+| Smart Shortcuts          | Bestehende Tools/Libraries nutzen statt bauen  |
+| Pragmatismus             | "Good enough" shipped > "Perfect" never done   |
+| Experimentierfreude      | Neue Technologien evaluieren und einsetzen     |
+
+### Was vermieden wird
+
+| Vermeiden              | Stattdessen                      |
+|------------------------|----------------------------------|
+| Over-Engineering       | YAGNI - nur bauen was gebraucht  |
+| Goldplating            | MVP first, dann iterieren        |
+| Premature Optimization | Erst messen, dann optimieren     |
+| Bürokratie ohne Nutzen | Prozesse hinterfragen            |
+
+### Bei Unsicherheit: Mensch entscheidet
+
+Risiken und Unsicherheiten werden **nicht unterdrückt**, sondern transparent gemacht:
+
+- **Unsicher?** → Freigabe beim Menschen einholen
+- **Risiko erkannt?** → Explizit dokumentieren und Entscheidung anfordern
+- **Mehrere Wege möglich?** → Optionen präsentieren, Mensch wählt
+
+> Der Mensch hat immer das letzte Wort bei kritischen Entscheidungen.
+
+### Strategieberatung: Volle Kreativität
+
+Wenn der Mensch nach dem **Goldstandard**, **allen Optionen** oder **Lösungsansätzen** fragt:
+
+- Freiheitlich und kreativ denken - keine Selbstzensur
+- Alle realistischen Lösungswege präsentieren (auch unkonventionelle)
+- Vor- und Nachteile objektiv darstellen
+- Empfehlung geben, aber Entscheidung beim Menschen lassen
+
+> **Bei Strategiefragen:** Die Richtlinien gelten für die Umsetzung, nicht für die Ideenfindung.
+
+### Balance
+
+```text
+Compliance ←————————→ Innovation
+                  ↑
+             Sweet Spot:
+   Sicher, skalierbar, professionell
+          UND innovativ
+```
+
+Die MUST-Regeln garantieren Sicherheit, Skalierbarkeit und Professionalität. Darüber hinaus: **Innovation first**. Neue Wege gehen, solange das Fundament solide bleibt.
 
 ---
 
@@ -275,6 +367,111 @@ Feature Branch → PR Review → Main → Staging → Production
 - Open Source mit Community
 - Projekte mit Compliance-Anforderungen
 - Sobald zweiter menschlicher Contributor aktiv wird
+
+> **Im Zweifel:** Wenn unklar ob Einzelentwickler-Repo → als Personalunion einstufen.
+
+---
+
+## 12. Technische Standards (SHOULD)
+
+### 12.1 Error Handling
+
+| Prinzip              | Umsetzung                                     |
+|----------------------|-----------------------------------------------|
+| Fail Fast            | Fehler früh erkennen, nicht verschlucken      |
+| Graceful Degradation | Bei nicht-kritischen Fehlern weiterlaufen     |
+| Meaningful Errors    | Aussagekräftige Fehlermeldungen mit Kontext   |
+| No Silent Failures   | Jeder Fehler wird geloggt oder geworfen       |
+
+```text
+Try-Catch nur wo sinnvoll:
+├── Externe Calls (API, DB, File I/O)
+├── User Input Validation
+└── Recovery möglich
+```
+
+### 12.2 Logging
+
+**Was loggen:**
+
+- Errors mit Stack Trace und Kontext
+- Business-relevante Events
+- Performance-Metriken (kritische Pfade)
+- Security-relevante Aktionen
+
+**Was NICHT loggen:**
+
+- ❌ PII (Personenbezogene Daten)
+- ❌ Secrets, Tokens, Passwords
+- ❌ Hochfrequente Debug-Logs in Production
+- ❌ Redundante Informationen
+
+**Format:** Strukturiertes Logging (JSON) bevorzugen
+
+### 12.3 Commit-Beispiele
+
+**Gute Commits:**
+
+```text
+feat(auth): add JWT refresh token rotation
+
+fix(api): handle timeout on external service calls
+
+refactor(utils): extract date formatting to shared module
+
+chore(deps): update dependencies to latest stable
+```
+
+**Schlechte Commits:**
+
+```text
+❌ "fix"
+❌ "WIP"
+❌ "changes"
+❌ "asdfasdf"
+❌ "fix bug" (welcher?)
+❌ "update code" (was genau?)
+```
+
+---
+
+## Quick Reference
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│                    MERGE-BLOCKER                        │
+├─────────────────────────────────────────────────────────┤
+│ ❌ AI-Signaturen in Commits                             │
+│ ❌ Secrets im Code                                      │
+│ ❌ CI rot                                               │
+│ ❌ Security: Critical/High Findings                     │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│                    PHILOSOPHIE                          │
+├─────────────────────────────────────────────────────────┤
+│ Minimal Aufwand → Maximal Ergebnis                      │
+│ Strebe 100% an, akzeptiere 80%                          │
+│ Innovation > Perfektion bei Kern-Features               │
+│ Mensch entscheidet bei Unsicherheit                     │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│                  COMMIT FORMAT                          │
+├─────────────────────────────────────────────────────────┤
+│ type(scope): beschreibung im imperativ                  │
+│                                                         │
+│ Types: feat|fix|chore|docs|refactor|test|ci|perf|security│
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│                  PERSONALUNION                          │
+├─────────────────────────────────────────────────────────┤
+│ Solo-Dev? → Kein PR/Approval nötig                      │
+│ ABER: CI grün, Tests, Security, Atomic Commits          │
+│ Im Zweifel → als Personalunion einstufen                │
+└─────────────────────────────────────────────────────────┘
+```
 
 ---
 
