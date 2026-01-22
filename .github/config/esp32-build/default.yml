@@ -1,0 +1,63 @@
+# ESP32 Build Configuration: Default
+# General-purpose configuration for standard ESP32 projects
+
+# ESP-IDF Version
+# Available versions: https://hub.docker.com/r/espressif/idf/tags
+idf-version: v5.2
+
+# Target Configuration
+target: esp32
+# Supported targets: esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2
+
+# Build Configuration
+build-types:
+  - release
+
+# Build Optimization
+ccache: true
+parallel-jobs: auto
+
+# Project Settings
+project-path: '.'
+sdkconfig-defaults: ''
+
+# Testing
+tests:
+  enabled: true
+  framework: pytest
+  components: ''
+
+# Analysis
+analysis:
+  enabled: false
+  tools:
+    - cppcheck
+
+# Size Analysis
+size-analysis: true
+
+# Security (disabled by default)
+security:
+  secure-boot: false
+  flash-encryption: false
+
+# OTA Support
+ota:
+  enabled: false
+  server-url: ''
+
+# Artifacts
+artifacts:
+  upload: true
+  retention-days: 30
+  include:
+    - '*.bin'
+    - '*.elf'
+    - '*.map'
+    - 'checksums.sha256'
+
+# Release (only on tags)
+release:
+  enabled: false
+  draft: false
+  prerelease: false

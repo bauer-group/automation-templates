@@ -1,0 +1,144 @@
+# ESP32 Build Configuration: Industrial
+# Safety-critical configuration for industrial/automotive applications
+
+# ESP-IDF Version - Use LTS version for stability
+idf-version: v5.2
+
+# Target Configuration
+# ESP32-S3 recommended for industrial applications (more memory, AI features)
+target: esp32s3
+
+# Build Configuration - Both debug and release for validation
+build-types:
+  - release
+  - debug
+
+# Build Optimization
+ccache: true
+parallel-jobs: auto
+
+# Project Settings
+project-path: '.'
+sdkconfig-defaults: 'sdkconfig.defaults.industrial'
+
+# Recommended sdkconfig for industrial applications:
+# CONFIG_COMPILER_OPTIMIZATION_PERF=y
+# CONFIG_COMPILER_STACK_CHECK_MODE_STRONG=y
+# CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y
+# CONFIG_ESP_INT_WDT=y
+# CONFIG_ESP_TASK_WDT=y
+# CONFIG_ESP_TASK_WDT_PANIC=y
+# CONFIG_BOOTLOADER_WDT_ENABLE=y
+# CONFIG_ESP_DEBUG_STUBS_ENABLE=n
+# CONFIG_LOG_DEFAULT_LEVEL_WARN=y
+
+# Extra CMake arguments for strict compilation
+extra-cmake-args: '-DCMAKE_C_FLAGS="-Werror -Wall -Wextra"'
+
+# Testing - Comprehensive testing required
+tests:
+  enabled: true
+  framework: pytest
+  components: 'all'
+  # Enable hardware-in-loop testing if available
+  hardware-tests: false
+  # Minimum coverage requirement
+  coverage:
+    enabled: true
+    minimum: 80
+
+# Analysis - Full static analysis
+analysis:
+  enabled: true
+  tools:
+    - cppcheck
+    - clang-tidy
+  fail-on-warning: true
+  # MISRA compliance check (if tool available)
+  misra-check: false
+
+# Size Analysis
+size-analysis: true
+
+# Security - MANDATORY for industrial applications
+security:
+  # Secure Boot v2 for ESP32-S2/S3/C3
+  secure-boot:
+    enabled: true
+    version: v2
+    # Key must be provided via secrets
+    # signing-key: ${{ secrets.SECURE_BOOT_SIGNING_KEY }}
+
+  # Flash encryption for IP protection
+  flash-encryption:
+    enabled: true
+    mode: release  # 'development' or 'release'
+
+  # NVS encryption for sensitive data
+  nvs-encryption: true
+
+# OTA Support - With signature verification
+ota:
+  enabled: true
+  # OTA images must be signed
+  signed: true
+  # Version rollback protection
+  anti-rollback: true
+  # Minimum version (set in sdkconfig)
+  # CONFIG_BOOTLOADER_APP_SEC_VER
+
+# Artifacts
+artifacts:
+  upload: true
+  retention-days: 90  # Longer retention for compliance
+  include:
+    - '*.bin'
+    - '*.elf'
+    - '*.map'
+    - 'checksums.sha256'
+    - 'size-report.txt'
+    - 'size-components.txt'
+    - 'cppcheck-report.xml'
+
+# Release - Strict release process
+release:
+  enabled: true
+  draft: true  # Always draft first for review
+  prerelease: false
+  # Require all checks to pass
+  require-all-checks: true
+  # Include debug symbols for field debugging
+  include-debug-symbols: true
+
+# Compliance
+compliance:
+  # Generate SBOM (Software Bill of Materials)
+  sbom: true
+  # License compliance check
+  license-check: true
+  # Allowed licenses
+  allowed-licenses:
+    - Apache-2.0
+    - MIT
+    - BSD-2-Clause
+    - BSD-3-Clause
+
+# Documentation
+documentation:
+  # Generate API documentation
+  doxygen: false
+  # Include in release artifacts
+  include-docs: false
+
+# Quality Gates
+quality-gates:
+  # Build must succeed with -Werror
+  no-warnings: true
+  # All tests must pass
+  tests-pass: true
+  # Static analysis must pass
+  analysis-pass: true
+  # Minimum code coverage
+  min-coverage: 80
+  # Maximum binary size (bytes)
+  max-binary-size: 2097152  # 2MB

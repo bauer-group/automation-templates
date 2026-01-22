@@ -1,0 +1,42 @@
+# ESP32 Basic Build Example
+# Simple single-target build for getting started
+#
+# Use case: Simple ESP32 projects, prototypes, learning
+# Features: Single target, basic testing, artifact upload
+
+name: ESP32 Basic Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/esp32-build.yml@main
+    with:
+      # Target ESP32 (original chip)
+      target: esp32
+
+      # Use latest stable ESP-IDF
+      idf-version: v5.2
+
+      # Release build only
+      build-types: '["release"]'
+
+      # Enable build caching for faster subsequent builds
+      enable-ccache: true
+
+      # Run unit tests
+      run-tests: true
+
+      # Generate size analysis report
+      enable-size-analysis: true
+
+      # Upload build artifacts
+      upload-artifacts: true
+      artifact-retention: 30
+
+      # Build timeout
+      timeout-minutes: 30

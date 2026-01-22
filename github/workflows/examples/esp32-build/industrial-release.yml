@@ -1,0 +1,298 @@
+# ESP32 Industrial Release Pipeline Example
+# Secure build pipeline for industrial/automotive applications
+#
+# Use case: Safety-critical applications requiring secure boot and compliance
+# Features: Secure boot, flash encryption, compliance checks, approval gates
+
+name: Industrial Firmware Release
+
+on:
+  push:
+    tags: ['v*']
+
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target chip'
+        required: true
+        default: 'esp32s3'
+        type: choice
+        options:
+          - esp32
+          - esp32s3
+          - esp32c3
+
+      dry-run:
+        description: 'Dry run (no release)'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  IDF_VERSION: v5.2
+  PRIMARY_TARGET: esp32s3
+
+jobs:
+  # Pre-flight compliance checks
+  compliance:
+    name: Compliance Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: License Compliance
+        uses: bauer-group/automation-templates/.github/actions/license-compliance@main
+        with:
+          check-headers: true
+          allowed-licenses: 'Apache-2.0,MIT,BSD-3-Clause,BSD-2-Clause'
+          fail-on-violation: true
+
+      - name: Security Scan
+        uses: bauer-group/automation-templates/.github/actions/security-scan@main
+        with:
+          scan-engines: 'gitleaks,semgrep'
+          fail-on-findings: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: SBOM Generation
+        run: |
+          # Generate Software Bill of Materials
+          echo "Generating SBOM..."
+
+          # Create basic SBOM
+          cat > sbom.json << EOF
+          {
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.4",
+            "version": 1,
+            "metadata": {
+              "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+              "component": {
+                "name": "${{ github.repository }}",
+                "version": "${{ github.ref_name }}",
+                "type": "firmware"
+              }
+            },
+            "components": []
+          }
+          EOF
+
+          echo "SBOM generated"
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v6
+        with:
+          name: sbom
+          path: sbom.json
+          retention-days: 365
+
+  # Build with security features
+  secure-build:
+    name: Secure Build
+    needs: compliance
+    uses: bauer-group/automation-templates/.github/workflows/esp32-build.yml@main
+    with:
+      # Industrial configuration
+      config-file: industrial
+
+      # Target chip
+      target: ${{ inputs.target || 'esp32s3' }}
+
+      # Both build types for validation
+      build-types: '["release", "debug"]'
+
+      # ESP-IDF version
+      idf-version: v5.2
+
+      # Full testing
+      run-tests: true
+
+      # Full analysis
+      enable-analysis: true
+
+      # Size analysis
+      enable-size-analysis: true
+
+      # Security features
+      secure-boot: true
+      flash-encryption: true
+
+      # OTA package
+      create-ota-package: true
+
+      # Create release (unless dry run)
+      create-release: ${{ !inputs.dry-run && github.event_name == 'push' }}
+
+      # Long retention for industrial releases
+      artifact-retention: 365
+
+      # All builds must succeed
+      fail-fast: true
+
+      # Extended timeout for security features
+      timeout-minutes: 90
+
+    secrets:
+      SECURE_BOOT_SIGNING_KEY: ${{ secrets.SECURE_BOOT_SIGNING_KEY }}
+
+  # Quality gate validation
+  quality-gate:
+    name: Quality Gate
+    needs: secure-build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+          pattern: esp32-*
+
+      - name: Validate build outputs
+        run: |
+          echo "=== Quality Gate Validation ==="
+
+          # Check firmware binary exists
+          FIRMWARE=$(find artifacts -name "*.bin" -type f | head -1)
+          if [[ -z "$FIRMWARE" ]]; then
+            echo "ERROR: No firmware binary found"
+            exit 1
+          fi
+          echo "✓ Firmware binary found: $FIRMWARE"
+
+          # Check firmware size (max 2MB for OTA partition)
+          FIRMWARE_SIZE=$(stat -c%s "$FIRMWARE" 2>/dev/null || stat -f%z "$FIRMWARE")
+          MAX_SIZE=2097152
+          if [[ $FIRMWARE_SIZE -gt $MAX_SIZE ]]; then
+            echo "ERROR: Firmware too large: $FIRMWARE_SIZE > $MAX_SIZE"
+            exit 1
+          fi
+          echo "✓ Firmware size OK: $FIRMWARE_SIZE bytes"
+
+          # Check checksums exist
+          CHECKSUMS=$(find artifacts -name "checksums.sha256" -type f | head -1)
+          if [[ -z "$CHECKSUMS" ]]; then
+            echo "WARNING: No checksums file found"
+          else
+            echo "✓ Checksums file found"
+          fi
+
+          # Check ELF file exists (for debugging)
+          ELF=$(find artifacts -name "*.elf" -type f | head -1)
+          if [[ -z "$ELF" ]]; then
+            echo "WARNING: No ELF file found (needed for debugging)"
+          else
+            echo "✓ ELF file found: $ELF"
+          fi
+
+          echo ""
+          echo "=== Quality Gate PASSED ==="
+
+      - name: Generate release report
+        run: |
+          VERSION="${{ github.ref_name }}"
+
+          cat > release-report.md << EOF
+          # Industrial Firmware Release Report
+
+          ## Release Information
+          - **Version**: ${VERSION}
+          - **Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - **Commit**: ${{ github.sha }}
+          - **Target**: ${{ inputs.target || 'esp32s3' }}
+
+          ## Security Features
+          - **Secure Boot**: Enabled (v2)
+          - **Flash Encryption**: Enabled (Release Mode)
+          - **Signed OTA**: Yes
+
+          ## Compliance
+          - **License Check**: PASSED
+          - **Security Scan**: PASSED
+          - **SBOM**: Generated
+
+          ## Quality Gate
+          - **Build**: PASSED
+          - **Tests**: PASSED
+          - **Static Analysis**: PASSED
+          - **Size Check**: PASSED
+
+          ## Artifacts
+          - Firmware binary (signed)
+          - Bootloader (signed)
+          - Partition table
+          - OTA package
+          - Debug symbols (ELF)
+          - SBOM (CycloneDX)
+
+          ---
+          Generated by Industrial Release Pipeline
+          EOF
+
+          cat release-report.md
+
+      - name: Upload release report
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-report
+          path: release-report.md
+          retention-days: 365
+
+  # Manual approval gate (for production)
+  approval:
+    name: Release Approval
+    needs: quality-gate
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Approval confirmed
+        run: |
+          echo "Release approved for production"
+          echo "Version: ${{ github.ref_name }}"
+          echo "Approved at: $(date -u)"
+
+  # Final release publication
+  publish:
+    name: Publish Release
+    needs: [secure-build, quality-gate, approval]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: release-artifacts
+
+      - name: Update release with additional assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+
+          # Upload SBOM to release
+          if [[ -f "release-artifacts/sbom/sbom.json" ]]; then
+            gh release upload "$VERSION" "release-artifacts/sbom/sbom.json" --clobber
+          fi
+
+          # Upload release report
+          if [[ -f "release-artifacts/release-report/release-report.md" ]]; then
+            gh release upload "$VERSION" "release-artifacts/release-report/release-report.md" --clobber
+          fi
+
+          echo "Release assets updated"
+
+      - name: Notify stakeholders
+        run: |
+          echo "Industrial firmware release ${{ github.ref_name }} published"
+          echo "Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}"

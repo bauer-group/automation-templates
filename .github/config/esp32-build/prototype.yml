@@ -1,0 +1,70 @@
+# ESP32 Build Configuration: Prototype
+# Fast iteration configuration for prototyping and development
+
+# ESP-IDF Version - Latest for newest features
+idf-version: latest
+
+# Target Configuration - Single target for speed
+target: esp32
+
+# Build Configuration - Debug only for fast iteration
+build-types:
+  - debug
+
+# Build Optimization
+ccache: true
+parallel-jobs: auto
+
+# Project Settings
+project-path: '.'
+sdkconfig-defaults: ''
+
+# Recommended sdkconfig for prototyping:
+# CONFIG_COMPILER_OPTIMIZATION_DEBUG=y
+# CONFIG_LOG_DEFAULT_LEVEL_DEBUG=y
+# CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y
+# CONFIG_BOOTLOADER_LOG_LEVEL_DEBUG=y
+# CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y (for S3/C3)
+
+# Testing - Minimal for speed
+tests:
+  enabled: false
+  framework: pytest
+  components: ''
+
+# Analysis - Disabled for speed
+analysis:
+  enabled: false
+
+# Size Analysis - Quick check only
+size-analysis: true
+
+# Security - Disabled for development
+security:
+  secure-boot: false
+  flash-encryption: false
+
+# OTA Support - Disabled
+ota:
+  enabled: false
+
+# Artifacts
+artifacts:
+  upload: true
+  retention-days: 7  # Short retention for prototypes
+  include:
+    - '*.bin'
+    - '*.elf'
+
+# Release - Disabled for prototypes
+release:
+  enabled: false
+
+# Development helpers
+development:
+  # Enable serial monitor friendly output
+  serial-output: true
+  # Faster flash speed for development
+  flash-speed: 460800
+  # Monitor baud rate
+  monitor-baud: 115200

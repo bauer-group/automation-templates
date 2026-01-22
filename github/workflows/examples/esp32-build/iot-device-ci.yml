@@ -1,0 +1,206 @@
+# ESP32 IoT Device CI/CD Pipeline Example
+# Complete CI/CD for production IoT devices
+#
+# Use case: Connected IoT devices with OTA support
+# Features: PR validation, multi-target builds, releases, OTA deployment
+
+name: IoT Device CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  PRIMARY_TARGET: esp32s3
+  ALL_TARGETS: '["esp32", "esp32s3", "esp32c3"]'
+
+jobs:
+  # Quick validation for pull requests
+  pr-validation:
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/esp32-build.yml@main
+    with:
+      # Only build primary target for PRs (faster feedback)
+      target: esp32s3
+
+      # Debug build for faster compilation
+      build-types: '["debug"]'
+
+      # ESP-IDF version
+      idf-version: v5.2
+
+      # Enable tests
+      run-tests: true
+
+      # Quick analysis
+      enable-analysis: false
+
+      # Size check
+      enable-size-analysis: true
+
+      # Short artifact retention for PRs
+      artifact-retention: 7
+
+      # Fast timeout
+      timeout-minutes: 30
+
+  # Full build for main/develop branches
+  full-build:
+    if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+    uses: bauer-group/automation-templates/.github/workflows/esp32-build.yml@main
+    with:
+      # Use IoT device configuration
+      config-file: iot-device
+
+      # Build all supported targets
+      targets: '["esp32", "esp32s3", "esp32c3"]'
+
+      # Release builds
+      build-types: '["release"]'
+
+      # ESP-IDF version
+      idf-version: v5.2
+
+      # Full testing
+      run-tests: true
+
+      # Static analysis
+      enable-analysis: true
+
+      # Size analysis
+      enable-size-analysis: true
+
+      # Create OTA packages
+      create-ota-package: true
+
+      # Standard retention
+      artifact-retention: 30
+
+      # Allow all targets to complete
+      fail-fast: false
+
+      timeout-minutes: 60
+
+  # Release build on tags
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: bauer-group/automation-templates/.github/workflows/esp32-build.yml@main
+    with:
+      # Use IoT device configuration
+      config-file: iot-device
+
+      # Build all supported targets
+      targets: '["esp32", "esp32s3", "esp32c3"]'
+
+      # Release builds only
+      build-types: '["release"]'
+
+      # ESP-IDF version
+      idf-version: v5.2
+
+      # Full testing
+      run-tests: true
+
+      # Analysis
+      enable-analysis: true
+
+      # Size analysis
+      enable-size-analysis: true
+
+      # Create OTA packages
+      create-ota-package: true
+
+      # Create GitHub release
+      create-release: true
+
+      # Long retention for releases
+      artifact-retention: 90
+
+      # All targets must succeed
+      fail-fast: true
+
+      timeout-minutes: 90
+
+    secrets: inherit
+
+  # Deploy to OTA server after release
+  deploy-ota:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        target: [esp32, esp32s3, esp32c3]
+
+    steps:
+      - name: Download firmware artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: esp32-${{ matrix.target }}-release-*
+          path: firmware
+
+      - name: Deploy to OTA Server
+        if: vars.OTA_SERVER_URL != ''
+        env:
+          OTA_SERVER_URL: ${{ vars.OTA_SERVER_URL }}
+          OTA_API_KEY: ${{ secrets.OTA_API_KEY }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+
+          echo "Deploying firmware for ${{ matrix.target }} version $VERSION"
+
+          # Find the firmware binary
+          FIRMWARE_FILE=$(find firmware -name "*.bin" -type f | head -1)
+
+          if [[ -z "$FIRMWARE_FILE" ]]; then
+            echo "No firmware binary found"
+            exit 1
+          fi
+
+          # Upload to OTA server
+          curl -X POST "${OTA_SERVER_URL}/api/v1/firmware/upload" \
+            -H "Authorization: Bearer ${OTA_API_KEY}" \
+            -H "Content-Type: multipart/form-data" \
+            -F "firmware=@${FIRMWARE_FILE}" \
+            -F "target=${{ matrix.target }}" \
+            -F "version=${VERSION}" \
+            -F "channel=stable"
+
+          echo "Deployment complete"
+
+  # Notify on completion
+  notify:
+    needs: [release, deploy-ota]
+    if: always() && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send notification
+        if: vars.TEAMS_WEBHOOK_URL != ''
+        env:
+          TEAMS_WEBHOOK_URL: ${{ vars.TEAMS_WEBHOOK_URL }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          BUILD_STATUS="${{ needs.release.result }}"
+          DEPLOY_STATUS="${{ needs.deploy-ota.result }}"
+
+          if [[ "$BUILD_STATUS" == "success" && "$DEPLOY_STATUS" == "success" ]]; then
+            EMOJI="✅"
+            STATUS="Success"
+          else
+            EMOJI="❌"
+            STATUS="Failed"
+          fi
+
+          curl -X POST "${TEAMS_WEBHOOK_URL}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"title\": \"${EMOJI} IoT Firmware Release ${VERSION}\",
+              \"text\": \"Build: ${BUILD_STATUS}\\nDeploy: ${DEPLOY_STATUS}\",
+              \"themeColor\": \"$([ \"$STATUS\" == \"Success\" ] && echo \"00FF00\" || echo \"FF0000\")\"
+            }"

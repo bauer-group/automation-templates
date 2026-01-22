@@ -1,0 +1,73 @@
+# ESP32 Multi-Target Matrix Build Example
+# Build firmware for multiple ESP32 chip variants
+#
+# Use case: IoT products supporting multiple ESP32 chips
+# Features: Matrix build, multiple targets, parallel execution
+
+name: ESP32 Multi-Target Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/esp32-build.yml@main
+    with:
+      # Build for multiple ESP32 variants
+      targets: '["esp32", "esp32s3", "esp32c3"]'
+
+      # ESP-IDF version
+      idf-version: v5.2
+
+      # Build both debug and release
+      build-types: '["release", "debug"]'
+
+      # Enable caching
+      enable-ccache: true
+
+      # Run tests on all targets
+      run-tests: true
+
+      # Enable static analysis
+      enable-analysis: true
+
+      # Size analysis
+      enable-size-analysis: true
+
+      # Upload all artifacts
+      upload-artifacts: true
+      artifact-retention: 30
+
+      # Don't fail immediately - build all targets
+      fail-fast: false
+
+      # Longer timeout for matrix builds
+      timeout-minutes: 60
+
+  # Optional: Combine artifacts after build
+  combine-artifacts:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: all-firmware
+          pattern: esp32-*
+
+      - name: Create combined archive
+        run: |
+          cd all-firmware
+          tar -czvf ../firmware-all-targets.tar.gz .
+
+      - name: Upload combined archive
+        uses: actions/upload-artifact@v6
+        with:
+          name: firmware-combined
+          path: firmware-all-targets.tar.gz
+          retention-days: 30

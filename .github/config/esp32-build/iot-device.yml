@@ -1,0 +1,97 @@
+# ESP32 Build Configuration: IoT Device
+# Optimized for WiFi/Bluetooth connected devices with OTA support
+
+# ESP-IDF Version
+idf-version: v5.2
+
+# Target Configuration - Multiple chips for IoT devices
+targets:
+  - esp32      # Classic ESP32 with WiFi + BT
+  - esp32s3    # ESP32-S3 with AI acceleration
+  - esp32c3    # RISC-V with WiFi + BLE
+
+# Build Configuration
+build-types:
+  - release
+
+# Build Optimization
+ccache: true
+parallel-jobs: auto
+
+# Project Settings
+project-path: '.'
+
+# sdkconfig optimizations for IoT
+sdkconfig-defaults: 'sdkconfig.defaults.iot'
+
+# Recommended sdkconfig settings for IoT devices:
+# CONFIG_ESP_WIFI_SOFTAP_SUPPORT=y
+# CONFIG_ESP_WIFI_NVS_ENABLED=y
+# CONFIG_BT_ENABLED=y
+# CONFIG_BT_BLE_ENABLED=y
+# CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+# CONFIG_PARTITION_TABLE_CUSTOM=y
+# CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_ota.csv"
+# CONFIG_APP_ROLLBACK_ENABLE=y
+# CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Testing
+tests:
+  enabled: true
+  framework: pytest
+  components: ''
+  # Network tests may require special setup
+  network-tests: false
+
+# Analysis
+analysis:
+  enabled: true
+  tools:
+    - cppcheck
+  fail-on-warning: false
+
+# Size Analysis
+size-analysis: true
+
+# Security
+security:
+  secure-boot: false
+  flash-encryption: false
+  # Enable for production IoT devices:
+  # secure-boot: true
+  # flash-encryption: true
+
+# OTA Support - Essential for IoT devices
+ota:
+  enabled: true
+  # Configure these in workflow secrets:
+  # server-url: ${{ secrets.OTA_SERVER_URL }}
+  # api-key: ${{ secrets.OTA_API_KEY }}
+
+# Artifacts
+artifacts:
+  upload: true
+  retention-days: 30
+  include:
+    - '*.bin'
+    - '*.elf'
+    - 'checksums.sha256'
+    - 'size-report.txt'
+
+# Release
+release:
+  enabled: true
+  draft: false
+  # Mark as prerelease for non-main branches
+  prerelease: false
+  # Include all target binaries in release
+  include-all-targets: true
+
+# Deployment hints
+deployment:
+  # OTA server integration
+  ota-endpoint: '/api/v1/firmware/upload'
+  # Version check endpoint
+  version-endpoint: '/api/v1/firmware/latest'
+  # Rollback support
+  rollback-enabled: true

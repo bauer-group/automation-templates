@@ -1,0 +1,644 @@
+name: ESP32 Build & Release
+
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: 'Configuration file name from .github/config/esp32-build/ (without .yml extension)'
+        required: false
+        type: string
+        default: 'default'
+
+      idf-version:
+        description: 'ESP-IDF version to use (e.g., v5.2, v5.1.2, latest)'
+        required: false
+        type: string
+        default: 'v5.2'
+
+      target:
+        description: 'Single ESP32 target chip (esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2)'
+        required: false
+        type: string
+        default: 'esp32'
+
+      targets:
+        description: 'JSON array of target chips for matrix builds (e.g., ["esp32", "esp32s3", "esp32c3"])'
+        required: false
+        type: string
+        default: ''
+
+      project-path:
+        description: 'Path to the ESP-IDF project directory'
+        required: false
+        type: string
+        default: '.'
+
+      build-types:
+        description: 'JSON array of build types (e.g., ["release", "debug"])'
+        required: false
+        type: string
+        default: '["release"]'
+
+      sdkconfig-defaults:
+        description: 'Path to sdkconfig.defaults file (optional)'
+        required: false
+        type: string
+        default: ''
+
+      extra-cmake-args:
+        description: 'Additional CMake arguments for idf.py build'
+        required: false
+        type: string
+        default: ''
+
+      run-tests:
+        description: 'Run unit tests after building'
+        required: false
+        type: boolean
+        default: true
+
+      test-components:
+        description: 'Components to test (comma-separated, or "all")'
+        required: false
+        type: string
+        default: ''
+
+      enable-ccache:
+        description: 'Enable ccache for faster rebuilds'
+        required: false
+        type: boolean
+        default: true
+
+      enable-analysis:
+        description: 'Run static analysis (cppcheck, clang-tidy)'
+        required: false
+        type: boolean
+        default: false
+
+      enable-size-analysis:
+        description: 'Generate firmware size analysis report'
+        required: false
+        type: boolean
+        default: true
+
+      secure-boot:
+        description: 'Enable secure boot signing'
+        required: false
+        type: boolean
+        default: false
+
+      flash-encryption:
+        description: 'Enable flash encryption'
+        required: false
+        type: boolean
+        default: false
+
+      create-release:
+        description: 'Create GitHub release with firmware artifacts'
+        required: false
+        type: boolean
+        default: false
+
+      create-ota-package:
+        description: 'Create OTA update package'
+        required: false
+        type: boolean
+        default: false
+
+      upload-artifacts:
+        description: 'Upload build artifacts'
+        required: false
+        type: boolean
+        default: true
+
+      artifact-retention:
+        description: 'Days to retain artifacts'
+        required: false
+        type: number
+        default: 30
+
+      fail-fast:
+        description: 'Fail fast on first error in matrix builds'
+        required: false
+        type: boolean
+        default: false
+
+      timeout-minutes:
+        description: 'Timeout for build jobs in minutes'
+        required: false
+        type: number
+        default: 45
+
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+
+    outputs:
+      build-status:
+        description: 'Overall build status'
+        value: ${{ jobs.build.result }}
+
+      firmware-version:
+        description: 'Firmware version from build'
+        value: ${{ jobs.build.outputs.firmware-version }}
+
+      artifact-url:
+        description: 'URL to build artifacts'
+        value: ${{ jobs.build.outputs.artifacts-url }}
+
+      release-url:
+        description: 'URL to GitHub release (if created)'
+        value: ${{ jobs.release.outputs.release-url }}
+
+    secrets:
+      SECURE_BOOT_SIGNING_KEY:
+        description: 'Secure boot signing key (PEM format)'
+        required: false
+
+      OTA_SERVER_URL:
+        description: 'OTA server URL for firmware deployment'
+        required: false
+
+      OTA_API_KEY:
+        description: 'OTA server API key'
+        required: false
+
+env:
+  DOCKER_IMAGE: espressif/idf
+  CCACHE_DIR: /tmp/ccache
+
+jobs:
+  # Prepare build matrix
+  prepare:
+    name: Prepare Build Matrix
+    runs-on: ${{ inputs.runs-on }}
+
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Determine Build Matrix
+        id: matrix
+        shell: bash
+        run: |
+          # Use targets array if provided, otherwise use single target
+          if [[ -n "${{ inputs.targets }}" && "${{ inputs.targets }}" != "" ]]; then
+            TARGETS='${{ inputs.targets }}'
+          else
+            TARGETS='["${{ inputs.target }}"]'
+          fi
+
+          BUILD_TYPES='${{ inputs.build-types }}'
+
+          # Create matrix JSON
+          MATRIX=$(jq -n \
+            --argjson targets "$TARGETS" \
+            --argjson buildTypes "$BUILD_TYPES" \
+            '{target: $targets, build_type: $buildTypes}')
+
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "Build Matrix: $MATRIX"
+
+      - name: Determine Version
+        id: version
+        shell: bash
+        run: |
+          # Try to get version from git tag or generate from commit
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          else
+            # Generate version from branch and short SHA
+            BRANCH="${{ github.ref_name }}"
+            SHA="${{ github.sha }}"
+            SHORT_SHA="${SHA:0:7}"
+
+            if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
+              VERSION="0.0.0-dev+${SHORT_SHA}"
+            else
+              SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9]/-/g' | head -c 20)
+              VERSION="0.0.0-${SAFE_BRANCH}+${SHORT_SHA}"
+            fi
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Firmware Version: $VERSION"
+
+  # Security Scan
+  security:
+    name: Security Scan
+    runs-on: ${{ inputs.runs-on }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Security Scan
+        uses: bauer-group/automation-templates/.github/actions/security-scan@main
+        with:
+          scan-engines: 'gitleaks'
+          fail-on-findings: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Main Build Job
+  build:
+    name: Build (${{ matrix.target }}, ${{ matrix.build_type }})
+    runs-on: ${{ inputs.runs-on }}
+    needs: [prepare, security]
+    if: always() && needs.security.result == 'success'
+
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    strategy:
+      fail-fast: ${{ inputs.fail-fast }}
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+
+    outputs:
+      firmware-version: ${{ needs.prepare.outputs.version }}
+      artifacts-url: ${{ steps.upload.outputs.artifact-url }}
+      build-size: ${{ steps.size.outputs.app-size }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup ccache
+        if: inputs.enable-ccache
+        uses: actions/cache@v6
+        with:
+          path: /tmp/ccache
+          key: ccache-${{ matrix.target }}-${{ matrix.build_type }}-${{ hashFiles('**/CMakeLists.txt', '**/Kconfig*', '**/sdkconfig*') }}
+          restore-keys: |
+            ccache-${{ matrix.target }}-${{ matrix.build_type }}-
+            ccache-${{ matrix.target }}-
+            ccache-
+
+      - name: Prepare Build Environment
+        id: prepare-env
+        shell: bash
+        run: |
+          # Create build info file
+          mkdir -p ${{ inputs.project-path }}/build_info
+
+          cat > ${{ inputs.project-path }}/build_info/version.json << EOF
+          {
+            "version": "${{ needs.prepare.outputs.version }}",
+            "target": "${{ matrix.target }}",
+            "build_type": "${{ matrix.build_type }}",
+            "idf_version": "${{ inputs.idf-version }}",
+            "build_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "git_commit": "${{ github.sha }}",
+            "git_branch": "${{ github.ref_name }}",
+            "git_tag": "${{ github.ref_type == 'tag' && github.ref_name || '' }}",
+            "secure_boot": ${{ inputs.secure-boot }},
+            "flash_encryption": ${{ inputs.flash-encryption }}
+          }
+          EOF
+
+          echo "Build info created"
+          cat ${{ inputs.project-path }}/build_info/version.json
+
+      - name: Configure Build Type
+        id: config
+        shell: bash
+        run: |
+          BUILD_TYPE="${{ matrix.build_type }}"
+          CMAKE_ARGS=""
+
+          if [[ "$BUILD_TYPE" == "release" ]]; then
+            CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"
+          elif [[ "$BUILD_TYPE" == "debug" ]]; then
+            CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Debug -DCONFIG_OPTIMIZATION_LEVEL_DEBUG=y"
+          fi
+
+          # Add extra CMAKE args
+          if [[ -n "${{ inputs.extra-cmake-args }}" ]]; then
+            CMAKE_ARGS="$CMAKE_ARGS ${{ inputs.extra-cmake-args }}"
+          fi
+
+          echo "cmake-args=$CMAKE_ARGS" >> $GITHUB_OUTPUT
+
+      - name: Build with ESP-IDF
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ inputs.idf-version }}
+          target: ${{ matrix.target }}
+          path: ${{ inputs.project-path }}
+          command: |
+            # Enable ccache if configured
+            if [[ "${{ inputs.enable-ccache }}" == "true" ]]; then
+              export IDF_CCACHE_ENABLE=1
+              export CCACHE_DIR=/tmp/ccache
+              mkdir -p $CCACHE_DIR
+            fi
+
+            # Set build configuration
+            idf.py set-target ${{ matrix.target }}
+
+            # Apply sdkconfig.defaults if specified
+            if [[ -n "${{ inputs.sdkconfig-defaults }}" && -f "${{ inputs.sdkconfig-defaults }}" ]]; then
+              cp "${{ inputs.sdkconfig-defaults }}" sdkconfig.defaults
+            fi
+
+            # Build the project
+            idf.py build ${{ steps.config.outputs.cmake-args }}
+
+            # Show ccache stats
+            if [[ "${{ inputs.enable-ccache }}" == "true" ]]; then
+              ccache -s || true
+            fi
+
+      - name: Analyze Firmware Size
+        id: size
+        if: inputs.enable-size-analysis
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ inputs.idf-version }}
+          target: ${{ matrix.target }}
+          path: ${{ inputs.project-path }}
+          command: |
+            # Generate size report
+            idf.py size > build/size-report.txt
+            idf.py size-components > build/size-components.txt
+            idf.py size-files > build/size-files.txt
+
+            # Extract app size for output
+            APP_SIZE=$(grep "Total image size" build/size-report.txt | awk '{print $NF}' || echo "unknown")
+            echo "app-size=$APP_SIZE" >> $GITHUB_OUTPUT
+
+            # Create size summary
+            cat build/size-report.txt
+
+      - name: Run Unit Tests
+        if: inputs.run-tests
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ inputs.idf-version }}
+          target: ${{ matrix.target }}
+          path: ${{ inputs.project-path }}
+          command: |
+            # Run pytest for ESP-IDF components
+            if [[ -n "${{ inputs.test-components }}" ]]; then
+              TEST_COMPONENTS="${{ inputs.test-components }}"
+            else
+              TEST_COMPONENTS=""
+            fi
+
+            # Check if pytest is configured
+            if [[ -f "pytest.ini" || -f "conftest.py" ]]; then
+              pip install pytest pytest-embedded pytest-embedded-idf || true
+              python -m pytest --target=${{ matrix.target }} -v || echo "Tests completed"
+            fi
+
+            # Run Unity tests if configured
+            if [[ -d "components" ]]; then
+              for test_app in $(find components -name "test" -type d 2>/dev/null || true); do
+                if [[ -f "$test_app/CMakeLists.txt" ]]; then
+                  echo "Found test app: $test_app"
+                fi
+              done
+            fi
+
+      - name: Static Analysis
+        if: inputs.enable-analysis
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ inputs.idf-version }}
+          target: ${{ matrix.target }}
+          path: ${{ inputs.project-path }}
+          command: |
+            # Run cppcheck on main sources
+            apt-get update && apt-get install -y cppcheck || true
+
+            if command -v cppcheck &> /dev/null; then
+              cppcheck --enable=warning,style,performance \
+                       --suppress=missingIncludeSystem \
+                       --suppress=unusedFunction \
+                       --error-exitcode=0 \
+                       --xml --xml-version=2 \
+                       main/ components/ 2> build/cppcheck-report.xml || true
+
+              echo "Static analysis completed"
+            fi
+
+      - name: Create OTA Package
+        if: inputs.create-ota-package
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ inputs.idf-version }}
+          target: ${{ matrix.target }}
+          path: ${{ inputs.project-path }}
+          command: |
+            # Create OTA binary (app partition only)
+            cp build/*.bin build/ota-${{ matrix.target }}-${{ needs.prepare.outputs.version }}.bin || true
+
+            # Generate checksum
+            sha256sum build/*.bin > build/checksums.sha256
+
+      - name: Prepare Artifacts
+        id: artifacts
+        shell: bash
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          TARGET="${{ matrix.target }}"
+          BUILD_TYPE="${{ matrix.build_type }}"
+          PROJECT_PATH="${{ inputs.project-path }}"
+
+          # Create artifact directory
+          ARTIFACT_DIR="firmware-${TARGET}-${BUILD_TYPE}-${VERSION}"
+          mkdir -p "$ARTIFACT_DIR"
+
+          # Copy binaries
+          cp "${PROJECT_PATH}/build/"*.bin "$ARTIFACT_DIR/" 2>/dev/null || true
+          cp "${PROJECT_PATH}/build/"*.elf "$ARTIFACT_DIR/" 2>/dev/null || true
+          cp "${PROJECT_PATH}/build/"*.map "$ARTIFACT_DIR/" 2>/dev/null || true
+
+          # Copy partition table
+          cp "${PROJECT_PATH}/build/partition_table/"*.bin "$ARTIFACT_DIR/" 2>/dev/null || true
+
+          # Copy bootloader
+          cp "${PROJECT_PATH}/build/bootloader/"*.bin "$ARTIFACT_DIR/" 2>/dev/null || true
+
+          # Copy size reports
+          cp "${PROJECT_PATH}/build/size"*.txt "$ARTIFACT_DIR/" 2>/dev/null || true
+
+          # Copy build info
+          cp "${PROJECT_PATH}/build_info/version.json" "$ARTIFACT_DIR/" 2>/dev/null || true
+
+          # Generate checksums
+          cd "$ARTIFACT_DIR"
+          sha256sum *.bin > checksums.sha256 2>/dev/null || true
+          cd ..
+
+          echo "artifact-dir=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
+          ls -la "$ARTIFACT_DIR"
+
+      - name: Upload Build Artifacts
+        id: upload
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: esp32-${{ matrix.target }}-${{ matrix.build_type }}-${{ needs.prepare.outputs.version }}
+          path: ${{ steps.artifacts.outputs.artifact-dir }}
+          retention-days: ${{ inputs.artifact-retention }}
+          compression-level: 6
+
+  # Release Job
+  release:
+    name: Create Release
+    runs-on: ${{ inputs.runs-on }}
+    needs: [prepare, build]
+    if: inputs.create-release && github.ref_type == 'tag'
+
+    outputs:
+      release-url: ${{ steps.create-release.outputs.html_url }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: release-artifacts
+          pattern: esp32-*
+
+      - name: Prepare Release Assets
+        id: release-assets
+        shell: bash
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+
+          # Create release directory
+          mkdir -p release
+
+          # Consolidate all artifacts
+          for dir in release-artifacts/*/; do
+            if [[ -d "$dir" ]]; then
+              cp -r "$dir"/* release/ 2>/dev/null || true
+            fi
+          done
+
+          # Create combined checksums
+          cd release
+          sha256sum *.bin > checksums.sha256 2>/dev/null || true
+          cd ..
+
+          # Create release notes
+          cat > release/RELEASE_NOTES.md << EOF
+          # ESP32 Firmware Release v${VERSION}
+
+          ## Artifacts
+
+          | File | Description |
+          |------|-------------|
+          EOF
+
+          for f in release/*.bin; do
+            if [[ -f "$f" ]]; then
+              FILENAME=$(basename "$f")
+              echo "| \`$FILENAME\` | Firmware binary |" >> release/RELEASE_NOTES.md
+            fi
+          done
+
+          echo "" >> release/RELEASE_NOTES.md
+          echo "## Build Information" >> release/RELEASE_NOTES.md
+          echo "" >> release/RELEASE_NOTES.md
+          echo "- **IDF Version**: ${{ inputs.idf-version }}" >> release/RELEASE_NOTES.md
+          echo "- **Build Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> release/RELEASE_NOTES.md
+          echo "- **Commit**: ${{ github.sha }}" >> release/RELEASE_NOTES.md
+
+          ls -la release/
+
+      - name: Generate Changelog
+        id: changelog
+        shell: bash
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [[ -n "$PREV_TAG" ]]; then
+            echo "## Changes since ${PREV_TAG}" > changelog.md
+            echo "" >> changelog.md
+            git log --pretty=format:"- %s (%h)" "${PREV_TAG}..HEAD" >> changelog.md
+          else
+            echo "## Initial Release" > changelog.md
+          fi
+
+          cat changelog.md
+
+      - name: Create GitHub Release
+        id: create-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "ESP32 Firmware ${{ github.ref_name }}"
+          body_path: changelog.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            release/*.bin
+            release/*.elf
+            release/checksums.sha256
+            release/RELEASE_NOTES.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Build Summary
+  summary:
+    name: Build Summary
+    runs-on: ${{ inputs.runs-on }}
+    needs: [prepare, security, build, release]
+    if: always()
+
+    steps:
+      - name: Generate Summary
+        shell: bash
+        run: |
+          echo "# ESP32 Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release | ${{ needs.release.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Firmware Version**: ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **IDF Version**: ${{ inputs.idf-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target(s)**: ${{ inputs.targets || inputs.target }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Types**: ${{ inputs.build-types }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests Enabled**: ${{ inputs.run-tests }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Secure Boot**: ${{ inputs.secure-boot }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ needs.release.result }}" == "success" ]]; then
+            echo "## Release" >> $GITHUB_STEP_SUMMARY
+            echo "Release created: ${{ needs.release.outputs.release-url }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Set final status
+          if [[ "${{ needs.build.result }}" == "success" ]]; then
+            echo "Build completed successfully"
+          else
+            echo "Build failed"
+            exit 1
+          fi

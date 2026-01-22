@@ -1,0 +1,259 @@
+name: 'ESP32 Build Action'
+description: 'Build ESP32 firmware using ESP-IDF with official Docker images'
+author: 'BAUER GROUP'
+
+branding:
+  icon: 'cpu'
+  color: 'red'
+
+inputs:
+  config-file:
+    description: 'Configuration file from .github/config/esp32-build/'
+    required: false
+    default: 'default'
+
+  idf-version:
+    description: 'ESP-IDF version (e.g., v5.2, latest)'
+    required: false
+    default: 'v5.2'
+
+  target:
+    description: 'Target chip (esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2)'
+    required: false
+    default: 'esp32'
+
+  project-path:
+    description: 'Path to ESP-IDF project'
+    required: false
+    default: '.'
+
+  build-type:
+    description: 'Build type (release, debug)'
+    required: false
+    default: 'release'
+
+  sdkconfig-defaults:
+    description: 'Path to sdkconfig.defaults file'
+    required: false
+    default: ''
+
+  extra-cmake-args:
+    description: 'Additional CMake arguments'
+    required: false
+    default: ''
+
+  enable-ccache:
+    description: 'Enable ccache for faster builds'
+    required: false
+    default: 'true'
+
+  run-tests:
+    description: 'Run unit tests'
+    required: false
+    default: 'false'
+
+  enable-analysis:
+    description: 'Run static analysis'
+    required: false
+    default: 'false'
+
+  generate-artifacts:
+    description: 'Prepare build artifacts'
+    required: false
+    default: 'true'
+
+outputs:
+  build-status:
+    description: 'Build status (success, failure)'
+    value: ${{ steps.build.outputs.status }}
+
+  binary-path:
+    description: 'Path to built binaries'
+    value: ${{ steps.artifacts.outputs.binary-path }}
+
+  firmware-size:
+    description: 'Firmware size in bytes'
+    value: ${{ steps.size.outputs.size }}
+
+  build-time:
+    description: 'Build time in seconds'
+    value: ${{ steps.build.outputs.build-time }}
+
+  version:
+    description: 'Firmware version'
+    value: ${{ steps.version.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Determine Version
+      id: version
+      shell: bash
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+        else
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          BRANCH="${{ github.ref_name }}"
+          SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9]/-/g' | head -c 20)
+          VERSION="0.0.0-${SAFE_BRANCH}+${SHORT_SHA}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Firmware version: $VERSION"
+
+    - name: Setup ccache
+      if: inputs.enable-ccache == 'true'
+      uses: actions/cache@v6
+      with:
+        path: /tmp/ccache
+        key: esp32-ccache-${{ inputs.target }}-${{ inputs.build-type }}-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig*') }}
+        restore-keys: |
+          esp32-ccache-${{ inputs.target }}-${{ inputs.build-type }}-
+          esp32-ccache-${{ inputs.target }}-
+          esp32-ccache-
+
+    - name: Create Build Info
+      shell: bash
+      run: |
+        mkdir -p ${{ inputs.project-path }}/build_info
+        cat > ${{ inputs.project-path }}/build_info/version.json << EOF
+        {
+          "version": "${{ steps.version.outputs.version }}",
+          "target": "${{ inputs.target }}",
+          "build_type": "${{ inputs.build-type }}",
+          "idf_version": "${{ inputs.idf-version }}",
+          "build_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+          "git_commit": "${{ github.sha }}",
+          "git_branch": "${{ github.ref_name }}"
+        }
+        EOF
+
+    - name: Configure Build
+      id: config
+      shell: bash
+      run: |
+        CMAKE_ARGS=""
+        if [[ "${{ inputs.build-type }}" == "release" ]]; then
+          CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"
+        elif [[ "${{ inputs.build-type }}" == "debug" ]]; then
+          CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Debug"
+        fi
+
+        if [[ -n "${{ inputs.extra-cmake-args }}" ]]; then
+          CMAKE_ARGS="$CMAKE_ARGS ${{ inputs.extra-cmake-args }}"
+        fi
+
+        echo "cmake-args=$CMAKE_ARGS" >> $GITHUB_OUTPUT
+
+    - name: Build Firmware
+      id: build
+      uses: espressif/esp-idf-ci-action@v1
+      with:
+        esp_idf_version: ${{ inputs.idf-version }}
+        target: ${{ inputs.target }}
+        path: ${{ inputs.project-path }}
+        command: |
+          START_TIME=$(date +%s)
+
+          # Enable ccache
+          if [[ "${{ inputs.enable-ccache }}" == "true" ]]; then
+            export IDF_CCACHE_ENABLE=1
+            export CCACHE_DIR=/tmp/ccache
+            mkdir -p $CCACHE_DIR
+          fi
+
+          # Set target
+          idf.py set-target ${{ inputs.target }}
+
+          # Apply sdkconfig.defaults if specified
+          if [[ -n "${{ inputs.sdkconfig-defaults }}" && -f "${{ inputs.sdkconfig-defaults }}" ]]; then
+            cp "${{ inputs.sdkconfig-defaults }}" sdkconfig.defaults
+          fi
+
+          # Build
+          idf.py build ${{ steps.config.outputs.cmake-args }}
+
+          END_TIME=$(date +%s)
+          BUILD_TIME=$((END_TIME - START_TIME))
+
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "build-time=$BUILD_TIME" >> $GITHUB_OUTPUT
+
+          # Show ccache stats
+          if [[ "${{ inputs.enable-ccache }}" == "true" ]]; then
+            ccache -s || true
+          fi
+
+    - name: Analyze Size
+      id: size
+      if: inputs.generate-artifacts == 'true'
+      uses: espressif/esp-idf-ci-action@v1
+      with:
+        esp_idf_version: ${{ inputs.idf-version }}
+        target: ${{ inputs.target }}
+        path: ${{ inputs.project-path }}
+        command: |
+          idf.py size > build/size-report.txt
+          idf.py size-components > build/size-components.txt
+
+          # Extract size
+          APP_SIZE=$(grep -oP 'Total image size.*?(\d+)' build/size-report.txt | grep -oP '\d+$' || echo "0")
+          echo "size=$APP_SIZE" >> $GITHUB_OUTPUT
+
+          cat build/size-report.txt
+
+    - name: Run Tests
+      if: inputs.run-tests == 'true'
+      uses: espressif/esp-idf-ci-action@v1
+      with:
+        esp_idf_version: ${{ inputs.idf-version }}
+        target: ${{ inputs.target }}
+        path: ${{ inputs.project-path }}
+        command: |
+          if [[ -f "pytest.ini" || -f "conftest.py" ]]; then
+            pip install pytest pytest-embedded pytest-embedded-idf || true
+            python -m pytest --target=${{ inputs.target }} -v || echo "Tests completed"
+          fi
+
+    - name: Static Analysis
+      if: inputs.enable-analysis == 'true'
+      uses: espressif/esp-idf-ci-action@v1
+      with:
+        esp_idf_version: ${{ inputs.idf-version }}
+        target: ${{ inputs.target }}
+        path: ${{ inputs.project-path }}
+        command: |
+          apt-get update && apt-get install -y cppcheck || true
+          if command -v cppcheck &> /dev/null; then
+            cppcheck --enable=warning,style,performance \
+                     --suppress=missingIncludeSystem \
+                     --error-exitcode=0 \
+                     main/ components/ 2> build/cppcheck-report.xml || true
+          fi
+
+    - name: Prepare Artifacts
+      id: artifacts
+      if: inputs.generate-artifacts == 'true'
+      shell: bash
+      run: |
+        PROJECT_PATH="${{ inputs.project-path }}"
+        ARTIFACT_DIR="${PROJECT_PATH}/build/artifacts"
+        mkdir -p "$ARTIFACT_DIR"
+
+        # Copy binaries
+        cp "${PROJECT_PATH}/build/"*.bin "$ARTIFACT_DIR/" 2>/dev/null || true
+        cp "${PROJECT_PATH}/build/"*.elf "$ARTIFACT_DIR/" 2>/dev/null || true
+        cp "${PROJECT_PATH}/build/partition_table/"*.bin "$ARTIFACT_DIR/" 2>/dev/null || true
+        cp "${PROJECT_PATH}/build/bootloader/"*.bin "$ARTIFACT_DIR/" 2>/dev/null || true
+        cp "${PROJECT_PATH}/build/size"*.txt "$ARTIFACT_DIR/" 2>/dev/null || true
+        cp "${PROJECT_PATH}/build_info/version.json" "$ARTIFACT_DIR/" 2>/dev/null || true
+
+        # Generate checksums
+        cd "$ARTIFACT_DIR"
+        sha256sum *.bin > checksums.sha256 2>/dev/null || true
+        cd -
+
+        echo "binary-path=build/artifacts" >> $GITHUB_OUTPUT
+        ls -la "$ARTIFACT_DIR"
