@@ -118,7 +118,10 @@ jobs:
 │   │   ├── semantic-release/     # Automated semantic releases
 │   │   ├── teams-notification/   # Microsoft Teams integration
 │   │   ├── dotnet-nuget/         # .NET NuGet build and pack
-│   │   └── zephyr-build/         # Zephyr RTOS build automation
+│   │   ├── zephyr-build/         # Zephyr RTOS build automation
+│   │   ├── esp32-build/          # ESP32 microcontroller build automation
+│   │   ├── stm32-build/          # STM32 microcontroller build automation
+│   │   └── platformio-build/     # PlatformIO cross-platform builds
 │   ├── config/                # 📋 Configuration Templates
 │   │   ├── claude-code/          # Claude Code Assistant configurations
 │   │   ├── docker-build/         # Docker build configurations
@@ -137,6 +140,9 @@ jobs:
 │   │   ├── shopware5-build/      # Shopware 5 plugin configurations
 │   │   ├── teams-notification/   # Teams notification configurations
 │   │   ├── zephyr-build/         # Zephyr RTOS configurations
+│   │   ├── esp32-build/          # ESP32 microcontroller configurations
+│   │   ├── stm32-build/          # STM32 microcontroller configurations
+│   │   ├── platformio-build/     # PlatformIO build configurations
 │   │   └── commitlint.config.js  # Commit linting rules
 │   └── workflows/             # 🚀 Reusable Workflows
 │       ├── ai-issue-summary.yml       # AI-powered issue summarization
@@ -162,6 +168,9 @@ jobs:
 │       ├── shopware5-build.yml        # Shopware 5 plugin builds
 │       ├── teams-notifications.yml    # Microsoft Teams notifications
 │       ├── zephyr-build.yml           # Zephyr RTOS builds
+│       ├── esp32-build.yml            # ESP32 microcontroller builds
+│       ├── stm32-build.yml            # STM32 microcontroller builds
+│       ├── platformio-build.yml       # PlatformIO cross-platform builds
 │       └── modules-*.yml              # Module-specific workflows
 ├── github/                    # 🛠️ Repository Management Tools
 │   ├── branch-protect/           # Branch protection automation
@@ -191,7 +200,10 @@ jobs:
 │           ├── security/             # Security workflow examples
 │           ├── shopware5-build/      # Shopware 5 plugin examples
 │           ├── teams-notification/   # Teams notification examples
-│           └── zephyr-build/         # Zephyr RTOS examples
+│           ├── zephyr-build/         # Zephyr RTOS examples
+│           ├── esp32-build/          # ESP32 microcontroller examples
+│           ├── stm32-build/          # STM32 microcontroller examples
+│           └── platformio-build/     # PlatformIO build examples
 ├── docs/                      # 📚 Comprehensive Documentation
 │   ├── workflows/                # Workflow documentation
 │   │   ├── claude-code.md            # Claude Code AI assistant
@@ -209,7 +221,10 @@ jobs:
 │   │   ├── python-semantic-release.md # Python releases
 │   │   ├── shopware5-build.md        # Shopware 5 plugin builds
 │   │   ├── teams-notifications.md    # Teams notifications
-│   │   └── zephyr-build.md           # Zephyr RTOS builds
+│   │   ├── zephyr-build.md           # Zephyr RTOS builds
+│   │   ├── esp32-build.md            # ESP32 microcontroller builds
+│   │   ├── stm32-build.md            # STM32 microcontroller builds
+│   │   └── platformio-build.md       # PlatformIO builds
 │   ├── README.template.MD        # This template file
 │   └── SECRETS-NAMING-CONVENTION.md # Secret naming standards
 └── scripts/                   # 🔨 Utility Scripts
@@ -316,6 +331,106 @@ jobs:
       build-types: '["debug", "release"]'
       run-tests: true
       enable-coverage: true
+```
+
+### 📟 ESP32 Build System
+
+Complete automation for ESP32 microcontroller projects using official Espressif ESP-IDF toolchain.
+
+| Component | Purpose | Usage |
+|-----------|---------|-------|
+| **🔧 esp32-build action** | ESP32 firmware builds | Composite action with ESP-IDF setup, testing |
+| **🚀 esp32-build workflow** | Complete ESP32 CI/CD | `uses: {{REPO_FULL_NAME}}/.github/workflows/esp32-build.yml@main` |
+| **📋 Configuration Templates** | Pre-configured setups | `default`, `iot-device`, `industrial`, `prototype` |
+
+**Features:**
+- ✅ **Official ESP-IDF Docker Images** - Espressif's official container images
+- ✅ **Multi-Target Support** - ESP32, ESP32-S2, ESP32-S3, ESP32-C3, ESP32-C6
+- ✅ **VS Code ESP-IDF Extension** - Support for VS Code project structure
+- ✅ **OTA Updates** - Over-the-Air firmware update support
+- ✅ **Secure Boot & Flash Encryption** - Production security features
+
+**Quick Start - ESP32:**
+```yaml
+name: 📟 ESP32 Build
+
+on: [push]
+
+jobs:
+  esp32:
+    uses: {{REPO_FULL_NAME}}/.github/workflows/esp32-build.yml@main
+    with:
+      idf-version: 'v5.3'
+      targets: '["esp32", "esp32s3", "esp32c3"]'
+      run-tests: true
+      create-release: ${{ startsWith(github.ref, 'refs/tags/v') }}
+```
+
+### 🔧 STM32 Build System
+
+Complete automation for STM32 microcontroller projects with support for multiple build systems.
+
+| Component | Purpose | Usage |
+|-----------|---------|-------|
+| **🔧 stm32-build action** | STM32 firmware builds | Composite action with ARM toolchain, CubeIDE support |
+| **🚀 stm32-build workflow** | Complete STM32 CI/CD | `uses: {{REPO_FULL_NAME}}/.github/workflows/stm32-build.yml@main` |
+| **📋 Configuration Templates** | Pre-configured setups | `default`, `industrial`, `prototype`, `low-power` |
+
+**Features:**
+- ✅ **Multiple Build Systems** - Makefile, CMake, STM32CubeIDE
+- ✅ **CubeIDE Version Support** - Configurable STM32CubeIDE versions (1.16.0, 1.15.x, etc.)
+- ✅ **Multi-MCU Matrix** - Build for multiple STM32 families in parallel
+- ✅ **Static Analysis** - Integrated code quality checks
+- ✅ **Industrial Compliance** - Quality gates for industrial applications
+
+**Quick Start - STM32:**
+```yaml
+name: 🔧 STM32 Build
+
+on: [push]
+
+jobs:
+  stm32:
+    uses: {{REPO_FULL_NAME}}/.github/workflows/stm32-build.yml@main
+    with:
+      build-system: 'cmake'
+      mcus: '["STM32F446RE", "STM32H743ZI"]'
+      cubeide-version: '1.16.0'
+      run-tests: true
+```
+
+### ⚡ PlatformIO Build System
+
+Complete automation for PlatformIO cross-platform embedded development.
+
+| Component | Purpose | Usage |
+|-----------|---------|-------|
+| **🔧 platformio-build action** | Multi-environment PlatformIO builds | Composite action with testing, analysis |
+| **🚀 platformio-build workflow** | Complete PlatformIO CI/CD | `uses: {{REPO_FULL_NAME}}/.github/workflows/platformio-build.yml@main` |
+| **📋 Configuration Templates** | Pre-configured setups | `default`, `multi-platform`, `production`, `esp32-iot`, `stm32-industrial` |
+
+**Features:**
+- ✅ **Cross-Platform Support** - ESP32, STM32, AVR, ARM, native
+- ✅ **Multi-Environment Matrix** - Parallel builds for all targets
+- ✅ **Unit Testing** - Native and embedded test execution
+- ✅ **Static Analysis** - cppcheck, clangtidy integration
+- ✅ **Library Registry** - Automatic publishing to PlatformIO Registry
+
+**Quick Start - PlatformIO:**
+```yaml
+name: ⚡ PlatformIO Build
+
+on: [push]
+
+jobs:
+  platformio:
+    uses: {{REPO_FULL_NAME}}/.github/workflows/platformio-build.yml@main
+    with:
+      environments: '["esp32dev", "nucleo_f446re", "uno"]'
+      pio-version: 'latest'
+      run-tests: true
+      enable-check: true
+      create-release: ${{ startsWith(github.ref, 'refs/tags/v') }}
 ```
 
 ### 🛒 Shopware 5 Plugin Build System
@@ -443,6 +558,9 @@ jobs:
 | **🟢 PHP Build** | Available | PHP and Composer automation | `uses: {{REPO_FULL_NAME}}/.github/workflows/php-build.yml@main` |
 | **🟢 Makefile Build** | Available | Makefile-based build automation | `uses: {{REPO_FULL_NAME}}/.github/workflows/makefile-build.yml@main` |
 | **🟢 Zephyr RTOS** | Available | Real-time OS build automation with hardware testing | `uses: {{REPO_FULL_NAME}}/.github/workflows/zephyr-build.yml@main` |
+| **🟢 ESP32** | Available | ESP32 microcontroller builds with ESP-IDF | `uses: {{REPO_FULL_NAME}}/.github/workflows/esp32-build.yml@main` |
+| **🟢 STM32** | Available | STM32 microcontroller builds (Makefile/CMake/CubeIDE) | `uses: {{REPO_FULL_NAME}}/.github/workflows/stm32-build.yml@main` |
+| **🟢 PlatformIO** | Available | Cross-platform embedded development | `uses: {{REPO_FULL_NAME}}/.github/workflows/platformio-build.yml@main` |
 | **🟢 Shopware 5** | Available | Shopware 5 plugin build and store automation | `uses: {{REPO_FULL_NAME}}/.github/workflows/shopware5-build.yml@main` |
 | **🟡 Go Build** | Planned | Go module and build automation | - |
 | **🟡 Rust Build** | Planned | Cargo and Rust build automation | - |
@@ -949,6 +1067,9 @@ gh auth status --show-token
 - [🐍 **Python Build System**](docs/workflows/python-build.md) - Python application builds and testing
 - [🐍 **Python Semantic Release System**](docs/workflows/python-semantic-release.md) - Modern Python CI/CD with semantic versioning
 - [⚡ **Zephyr RTOS Build System**](docs/workflows/zephyr-build.md) - Real-time OS automation with hardware testing
+- [📟 **ESP32 Build System**](docs/workflows/esp32-build.md) - ESP32 microcontroller automation with ESP-IDF
+- [🔧 **STM32 Build System**](docs/workflows/stm32-build.md) - STM32 microcontroller automation
+- [⚡ **PlatformIO Build System**](docs/workflows/platformio-build.md) - Cross-platform embedded development
 - [🔨 **.NET Build System**](docs/workflows/dotnet-build.md) - .NET Core/Framework automation
 - [🖥️ **.NET Desktop Build System**](docs/workflows/dotnet-desktop-build.md) - Desktop application automation
 - [📦 **.NET Library Publishing**](docs/workflows/dotnet-publish-library.md) - NuGet package build, sign, and publish
@@ -969,6 +1090,9 @@ gh auth status --show-token
 - [🐳 **docker-build**](.github/actions/docker-build/README.md) - Multi-platform Docker builds with security
 - [📦 **dotnet-nuget**](.github/actions/dotnet-nuget/action.yml) - .NET NuGet build, sign, and pack
 - [⚡ **zephyr-build**](.github/actions/zephyr-build/README.md) - Complete Zephyr RTOS build automation with SDK management
+- [📟 **esp32-build**](.github/actions/esp32-build/README.md) - ESP32 microcontroller build automation with ESP-IDF
+- [🔧 **stm32-build**](.github/actions/stm32-build/README.md) - STM32 microcontroller build automation
+- [⚡ **platformio-build**](.github/actions/platformio-build/README.md) - PlatformIO cross-platform build automation
 - [🔧 **makefile-build**](.github/actions/makefile-build/README.md) - Makefile-based build automation
 
 #### Security & Compliance Actions
@@ -998,6 +1122,9 @@ gh auth status --show-token
 
 - [🐳 **Docker Configurations**](.github/config/docker-build/) - Docker build configuration templates
 - [⚡ **Zephyr Configurations**](.github/config/zephyr-build/) - Zephyr RTOS build configuration templates
+- [📟 **ESP32 Configurations**](.github/config/esp32-build/) - ESP32 build configuration templates
+- [🔧 **STM32 Configurations**](.github/config/stm32-build/) - STM32 build configuration templates
+- [⚡ **PlatformIO Configurations**](.github/config/platformio-build/) - PlatformIO build configuration templates
 - [🤖 **Claude Code Configurations**](.github/config/claude-code/) - Claude Code AI assistant configurations
 - [🛒 **Shopware 5 Configurations**](.github/config/shopware5-build/) - Shopware 5 plugin build configuration templates
 - [🔄 **Meta Repository Configurations**](.github/config/meta-repository/) - Meta repository sync configurations
@@ -1018,6 +1145,9 @@ gh auth status --show-token
 - [🐍 **Python Examples**](github/workflows/examples/python-build/) - Python build and test examples
 - [🐍 **Python Release Examples**](github/workflows/examples/python-release/) - Python semantic release examples
 - [⚡ **Zephyr Examples**](github/workflows/examples/zephyr-build/) - Zephyr RTOS project examples
+- [📟 **ESP32 Examples**](github/workflows/examples/esp32-build/) - ESP32 microcontroller examples
+- [🔧 **STM32 Examples**](github/workflows/examples/stm32-build/) - STM32 microcontroller examples
+- [⚡ **PlatformIO Examples**](github/workflows/examples/platformio-build/) - PlatformIO build examples
 - [🔨 **.NET Examples**](github/workflows/examples/dotnet-build/) - .NET project examples
 - [🖥️ **.NET Desktop Examples**](github/workflows/examples/dotnet-desktop-build/) - .NET desktop application examples
 - [📦 **.NET NuGet Examples**](github/workflows/examples/dotnet-nuget/) - .NET NuGet publishing examples
