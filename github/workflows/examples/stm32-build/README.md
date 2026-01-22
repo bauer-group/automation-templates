@@ -8,6 +8,7 @@ This directory contains example workflows for building STM32 firmware using the 
 |---------|-------------|----------|
 | [basic-makefile.yml](basic-makefile.yml) | Simple Makefile build | STM32CubeMX generated projects |
 | [cmake-project.yml](cmake-project.yml) | CMake-based build | Complex projects with CMake |
+| [cubeide-project.yml](cubeide-project.yml) | STM32CubeIDE headless build | Native CubeIDE projects |
 | [multi-mcu-matrix.yml](multi-mcu-matrix.yml) | Matrix build for multiple MCUs | Products supporting multiple STM32 variants |
 | [industrial-release.yml](industrial-release.yml) | Secure release pipeline | Safety-critical applications |
 

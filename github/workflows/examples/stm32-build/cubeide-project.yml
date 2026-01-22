@@ -1,0 +1,84 @@
+# STM32CubeIDE Project Build Example
+# Build STM32CubeIDE projects with version control
+#
+# Use case: Projects created and maintained in STM32CubeIDE
+# Features: Versioned CubeIDE, headless build, multiple configurations
+
+name: STM32CubeIDE Build
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Quick build for PRs with latest CubeIDE
+  pr-build:
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/stm32-build.yml@main
+    with:
+      build-system: cubeide
+
+      # Use latest CubeIDE for PR validation
+      cubeide-version: latest
+
+      # Project settings
+      cubeide-project: MyFirmware
+      cubeide-config: Debug
+
+      # Quick build settings
+      create-hex: true
+      create-bin: true
+      run-tests: false
+
+      # Short retention for PRs
+      artifact-retention: 7
+      timeout-minutes: 20
+
+  # Production build with pinned CubeIDE version
+  production-build:
+    if: github.event_name == 'push'
+    uses: bauer-group/automation-templates/.github/workflows/stm32-build.yml@main
+    with:
+      build-system: cubeide
+
+      # Pin specific CubeIDE version for reproducibility
+      cubeide-version: 1.16.0
+
+      # Project settings
+      cubeide-project: MyFirmware
+      cubeide-config: Release
+
+      # Full build
+      create-hex: true
+      create-bin: true
+      run-tests: true
+      enable-analysis: true
+
+      # Create release on tags
+      create-release: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      # Standard retention
+      artifact-retention: 30
+      timeout-minutes: 30
+
+  # Multi-configuration build
+  multi-config:
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        config: [Debug, Release]
+        cubeide-version: ['1.15.1', '1.16.0']
+
+    uses: bauer-group/automation-templates/.github/workflows/stm32-build.yml@main
+    with:
+      build-system: cubeide
+      cubeide-version: ${{ matrix.cubeide-version }}
+      cubeide-project: MyFirmware
+      cubeide-config: ${{ matrix.config }}
+
+      create-hex: true
+      create-bin: true
+      artifact-retention: 14

@@ -57,6 +57,12 @@ on:
         type: string
         default: 'cmake/arm-none-eabi.cmake'
 
+      cubeide-version:
+        description: 'STM32CubeIDE version (e.g., 1.16.0, 1.15.1, 1.14.0, latest)'
+        required: false
+        type: string
+        default: '1.16.0'
+
       cubeide-project:
         description: 'STM32CubeIDE project name'
         required: false
@@ -68,6 +74,12 @@ on:
         required: false
         type: string
         default: 'Release'
+
+      cubeide-workspace:
+        description: 'STM32CubeIDE workspace path'
+        required: false
+        type: string
+        default: '/tmp/workspace'
 
       extra-build-args:
         description: 'Additional build arguments'
@@ -388,21 +400,49 @@ jobs:
         if: inputs.build-system == 'cubeide'
         shell: bash
         run: |
-          # Install STM32CubeIDE headless build tools
-          echo "STM32CubeIDE headless build..."
+          CUBEIDE_VERSION="${{ inputs.cubeide-version }}"
+          CUBEIDE_PROJECT="${{ inputs.cubeide-project }}"
+          CUBEIDE_CONFIG="${{ inputs.cubeide-config }}"
+          CUBEIDE_WORKSPACE="${{ inputs.cubeide-workspace }}"
 
-          # Use Docker image for STM32CubeIDE
+          echo "=== STM32CubeIDE Headless Build ==="
+          echo "Version: ${CUBEIDE_VERSION}"
+          echo "Project: ${CUBEIDE_PROJECT}"
+          echo "Config:  ${CUBEIDE_CONFIG}"
+
+          # Determine Docker image tag based on version
+          # Available versions: https://hub.docker.com/r/xanderhendriks/stm32cubeide/tags
+          # Supported: 1.16.0, 1.15.1, 1.15.0, 1.14.1, 1.14.0, 1.13.2, 1.13.1, 1.13.0, etc.
+          if [[ "$CUBEIDE_VERSION" == "latest" ]]; then
+            DOCKER_TAG="latest"
+          else
+            DOCKER_TAG="${CUBEIDE_VERSION}"
+          fi
+
+          echo "Using Docker image: xanderhendriks/stm32cubeide:${DOCKER_TAG}"
+
+          # Pull the image first to get better error messages
+          docker pull "xanderhendriks/stm32cubeide:${DOCKER_TAG}" || {
+            echo "ERROR: CubeIDE version ${CUBEIDE_VERSION} not available"
+            echo "Available versions: 1.16.0, 1.15.1, 1.15.0, 1.14.1, 1.14.0, 1.13.2, 1.13.1, 1.13.0"
+            echo "Or use 'latest' for the newest version"
+            exit 1
+          }
+
+          # Run headless build
           docker run --rm \
             -v "${{ github.workspace }}:/workspace" \
-            -w /workspace/${{ inputs.project-path }} \
-            xanderhendriks/stm32cubeide:latest \
+            -w "/workspace/${{ inputs.project-path }}" \
+            "xanderhendriks/stm32cubeide:${DOCKER_TAG}" \
             /opt/st/stm32cubeide/stm32cubeide \
             --launcher.suppressErrors \
             -nosplash \
             -application org.eclipse.cdt.managedbuilder.core.headlessbuild \
-            -data /tmp/workspace \
+            -data "${CUBEIDE_WORKSPACE}" \
             -import . \
-            -build "${{ inputs.cubeide-project }}/${{ inputs.cubeide-config }}"
+            -build "${CUBEIDE_PROJECT}/${CUBEIDE_CONFIG}"
+
+          echo "STM32CubeIDE build completed"
 
       - name: Generate Output Files
         id: outputs

@@ -78,9 +78,26 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/stm32-build.yml@main
     with:
       build-system: cubeide
+      cubeide-version: 1.16.0
       cubeide-project: MyProject
       cubeide-config: Release
 ```
+
+**Supported CubeIDE Versions:**
+
+| Version | Status | Notes |
+|---------|--------|-------|
+| `1.16.0` | Current (Default) | Latest stable |
+| `1.15.1` | Stable | Previous release |
+| `1.15.0` | Stable | |
+| `1.14.1` | Stable | |
+| `1.14.0` | Stable | |
+| `1.13.2` | Stable | |
+| `1.13.1` | Stable | |
+| `1.13.0` | Stable | |
+| `latest` | Rolling | Always newest |
+
+Docker images provided by [xanderhendriks/stm32cubeide](https://hub.docker.com/r/xanderhendriks/stm32cubeide/tags).
 
 ## Configuration
 
