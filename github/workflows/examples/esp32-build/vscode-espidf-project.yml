@@ -1,0 +1,107 @@
+# ESP32 VS Code ESP-IDF Extension Project Example
+# Build projects created with VS Code ESP-IDF Extension
+#
+# Use case: Projects using VS Code with Espressif IDF Extension
+# Features: VS Code project structure, multiple IDF versions, settings.json support
+
+name: ESP32 VS Code Project Build
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Quick build for PRs
+  pr-validation:
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/esp32-build.yml@main
+    with:
+      # VS Code ESP-IDF project type
+      project-type: vscode
+
+      # Use latest IDF for PR validation
+      idf-version: v5.2
+
+      # Target from VS Code settings or default
+      target: esp32s3
+
+      # Debug build for faster feedback
+      build-types: '["debug"]'
+
+      # Enable ccache
+      enable-ccache: true
+
+      # Skip tests for PRs
+      run-tests: false
+
+      # Short retention
+      artifact-retention: 7
+      timeout-minutes: 20
+
+  # Full build for main branch
+  build:
+    if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+    uses: bauer-group/automation-templates/.github/workflows/esp32-build.yml@main
+    with:
+      project-type: vscode
+      idf-version: v5.2
+
+      # Build for multiple targets
+      targets: '["esp32", "esp32s3", "esp32c3"]'
+
+      # Release builds
+      build-types: '["release"]'
+
+      enable-ccache: true
+      run-tests: true
+      enable-size-analysis: true
+
+      artifact-retention: 30
+      timeout-minutes: 45
+
+  # Release build with pinned IDF version
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: bauer-group/automation-templates/.github/workflows/esp32-build.yml@main
+    with:
+      project-type: vscode
+
+      # Pin specific IDF version for reproducibility
+      idf-version: v5.2.2
+
+      # All supported targets
+      targets: '["esp32", "esp32s3", "esp32c3"]'
+
+      # Release only
+      build-types: '["release"]'
+
+      enable-ccache: true
+      run-tests: true
+      enable-size-analysis: true
+      create-ota-package: true
+      create-release: true
+
+      artifact-retention: 90
+      timeout-minutes: 60
+
+    secrets: inherit
+
+  # Test with multiple IDF versions
+  idf-version-matrix:
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        idf-version: ['v5.1.4', 'v5.2', 'v5.3']
+
+    uses: bauer-group/automation-templates/.github/workflows/esp32-build.yml@main
+    with:
+      project-type: vscode
+      idf-version: ${{ matrix.idf-version }}
+      target: esp32s3
+      build-types: '["release"]'
+      enable-ccache: true
+      artifact-retention: 7

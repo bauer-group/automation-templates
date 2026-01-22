@@ -8,6 +8,7 @@ This directory contains example workflows for building ESP32 firmware using the 
 |---------|-------------|----------|
 | [basic-build.yml](basic-build.yml) | Simple single-target build | Getting started, simple projects |
 | [multi-target-matrix.yml](multi-target-matrix.yml) | Matrix build for multiple ESP32 variants | IoT products supporting multiple chips |
+| [vscode-espidf-project.yml](vscode-espidf-project.yml) | VS Code ESP-IDF Extension projects | VS Code development workflow |
 | [iot-device-ci.yml](iot-device-ci.yml) | Complete IoT CI/CD pipeline | Production IoT devices with OTA |
 | [industrial-release.yml](industrial-release.yml) | Secure build with compliance | Industrial/automotive applications |
 

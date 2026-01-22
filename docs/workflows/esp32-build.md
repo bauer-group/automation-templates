@@ -58,6 +58,51 @@ jobs:
       build-types: release,debug
 ```
 
+### VS Code ESP-IDF Extension Project
+
+```yaml
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/esp32-build.yml@main
+    with:
+      project-type: vscode
+      target: esp32s3
+      idf-version: v5.2
+```
+
+### PlatformIO Project
+
+```yaml
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/esp32-build.yml@main
+    with:
+      project-type: platformio
+      target: esp32
+```
+
+## ESP-IDF Versions
+
+Available versions from [Docker Hub](https://hub.docker.com/r/espressif/idf/tags):
+
+| Version | Status | Release Date |
+|---------|--------|--------------|
+| `v5.3` | Latest | 2024 |
+| `v5.2.2` | Stable | 2024 |
+| `v5.2` | Stable (Default) | 2024 |
+| `v5.1.4` | LTS | 2024 |
+| `v5.1` | LTS | 2023 |
+| `v5.0.6` | Maintenance | 2024 |
+| `v5.0` | Maintenance | 2023 |
+| `v4.4.7` | Legacy LTS | 2024 |
+| `v4.4` | Legacy LTS | 2022 |
+| `latest` | Rolling | Always newest |
+
+**Recommendation:**
+- Production: Use specific version (e.g., `v5.2.2`)
+- Development: Use `v5.2` or `latest`
+- Legacy projects: Use `v4.4.7` for compatibility
+
 ## Configuration
 
 ### Input Parameters
@@ -65,11 +110,13 @@ jobs:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `config-file` | string | `default` | Configuration template to use |
-| `target` | string | `esp32` | Single target chip |
-| `targets` | string | - | Comma-separated list for matrix builds |
 | `idf-version` | string | `v5.2` | ESP-IDF version tag |
-| `build-types` | string | `release` | Build types: `release`, `debug`, or both |
+| `project-type` | string | `standard` | Project type: `standard`, `vscode`, `platformio` |
+| `target` | string | `esp32` | Single target chip |
+| `targets` | string | - | JSON array for matrix builds |
+| `build-types` | string | `["release"]` | Build types: `release`, `debug`, or both |
 | `project-path` | string | `.` | Path to the ESP-IDF project |
+| `vscode-build-path` | string | `build` | Build output path for VS Code projects |
 | `run-tests` | boolean | `true` | Run unit tests |
 | `enable-ccache` | boolean | `true` | Enable build caching |
 | `enable-analysis` | boolean | `false` | Run static analysis |

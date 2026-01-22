@@ -10,10 +10,22 @@ on:
         default: 'default'
 
       idf-version:
-        description: 'ESP-IDF version to use (e.g., v5.2, v5.1.2, latest)'
+        description: 'ESP-IDF version to use (e.g., v5.3, v5.2.2, v5.1.4, v5.0.6, latest)'
         required: false
         type: string
         default: 'v5.2'
+
+      project-type:
+        description: 'Project type: standard (idf.py), vscode (ESP-IDF Extension), platformio'
+        required: false
+        type: string
+        default: 'standard'
+
+      vscode-build-path:
+        description: 'Build output path for VS Code projects (default: build)'
+        required: false
+        type: string
+        default: 'build'
 
       target:
         description: 'Single ESP32 target chip (esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2)'
@@ -338,6 +350,14 @@ jobs:
           target: ${{ matrix.target }}
           path: ${{ inputs.project-path }}
           command: |
+            PROJECT_TYPE="${{ inputs.project-type }}"
+            BUILD_PATH="${{ inputs.vscode-build-path }}"
+
+            echo "=== ESP-IDF Build ==="
+            echo "IDF Version: ${{ inputs.idf-version }}"
+            echo "Target: ${{ matrix.target }}"
+            echo "Project Type: ${PROJECT_TYPE}"
+
             # Enable ccache if configured
             if [[ "${{ inputs.enable-ccache }}" == "true" ]]; then
               export IDF_CCACHE_ENABLE=1
@@ -345,21 +365,73 @@ jobs:
               mkdir -p $CCACHE_DIR
             fi
 
-            # Set build configuration
-            idf.py set-target ${{ matrix.target }}
+            # Handle different project types
+            case "${PROJECT_TYPE}" in
+              vscode)
+                # VS Code ESP-IDF Extension project
+                echo "Building VS Code ESP-IDF Extension project..."
 
-            # Apply sdkconfig.defaults if specified
-            if [[ -n "${{ inputs.sdkconfig-defaults }}" && -f "${{ inputs.sdkconfig-defaults }}" ]]; then
-              cp "${{ inputs.sdkconfig-defaults }}" sdkconfig.defaults
-            fi
+                # Check for .vscode/settings.json (VS Code project indicator)
+                if [[ -f ".vscode/settings.json" ]]; then
+                  echo "Found VS Code project configuration"
 
-            # Build the project
-            idf.py build ${{ steps.config.outputs.cmake-args }}
+                  # Extract target from settings if available
+                  if grep -q "idf.adapterTargetName" .vscode/settings.json; then
+                    echo "Using target from VS Code settings"
+                  fi
+                fi
+
+                # Set target
+                idf.py set-target ${{ matrix.target }}
+
+                # Apply sdkconfig.defaults if specified
+                if [[ -n "${{ inputs.sdkconfig-defaults }}" && -f "${{ inputs.sdkconfig-defaults }}" ]]; then
+                  cp "${{ inputs.sdkconfig-defaults }}" sdkconfig.defaults
+                fi
+
+                # Build with VS Code compatible output path
+                idf.py -B "${BUILD_PATH}" build ${{ steps.config.outputs.cmake-args }}
+                ;;
+
+              platformio)
+                # PlatformIO project
+                echo "Building PlatformIO project..."
+
+                # Install PlatformIO
+                pip install platformio
+
+                # Build with PlatformIO
+                if [[ -f "platformio.ini" ]]; then
+                  pio run -e ${{ matrix.target }} || pio run
+                else
+                  echo "ERROR: platformio.ini not found"
+                  exit 1
+                fi
+                ;;
+
+              standard|*)
+                # Standard ESP-IDF project (idf.py)
+                echo "Building standard ESP-IDF project..."
+
+                # Set target
+                idf.py set-target ${{ matrix.target }}
+
+                # Apply sdkconfig.defaults if specified
+                if [[ -n "${{ inputs.sdkconfig-defaults }}" && -f "${{ inputs.sdkconfig-defaults }}" ]]; then
+                  cp "${{ inputs.sdkconfig-defaults }}" sdkconfig.defaults
+                fi
+
+                # Build the project
+                idf.py build ${{ steps.config.outputs.cmake-args }}
+                ;;
+            esac
 
             # Show ccache stats
             if [[ "${{ inputs.enable-ccache }}" == "true" ]]; then
               ccache -s || true
             fi
+
+            echo "Build completed successfully"
 
       - name: Analyze Firmware Size
         id: size
