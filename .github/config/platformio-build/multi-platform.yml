@@ -1,0 +1,52 @@
+# PlatformIO Build Configuration: Multi-Platform
+# Configuration for cross-platform libraries and projects
+
+# PlatformIO Version
+pio-version: latest
+
+# Build Configuration
+build-all-environments: true
+# Builds all environments defined in platformio.ini
+
+# Testing
+tests:
+  enabled: true
+  filter: '*'
+  environments:
+    - native  # Native tests run on host
+  # Embedded tests require hardware
+
+# Static Analysis
+check:
+  enabled: true
+  tools:
+    - cppcheck
+    - clangtidy
+  severity: medium
+  fail-on-defect: false
+
+# Caching
+cache:
+  enabled: true
+
+# Artifacts
+artifacts:
+  upload: true
+  retention-days: 30
+  include:
+    - '*.bin'
+    - '*.hex'
+  include-elf: false
+
+# Release
+release:
+  enabled: false
+
+# Library Development
+library:
+  # For library projects, test with multiple platforms
+  test-platforms:
+    - espressif32
+    - ststm32
+    - atmelavr
+    - native

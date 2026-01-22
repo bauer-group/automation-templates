@@ -1,0 +1,41 @@
+# PlatformIO Build Configuration: Default
+# Standard configuration for general PlatformIO projects
+
+# PlatformIO Version
+pio-version: latest
+
+# Build Configuration
+build-all-environments: false
+# Set to true to build all envs from platformio.ini
+
+# Testing
+tests:
+  enabled: true
+  filter: '*'
+  # environments: ['native']  # Specific test environments
+
+# Static Analysis (PIO Check)
+check:
+  enabled: false
+  tools:
+    - cppcheck
+  severity: medium
+  fail-on-defect: false
+
+# Caching
+cache:
+  enabled: true
+
+# Artifacts
+artifacts:
+  upload: true
+  retention-days: 30
+  include:
+    - '*.bin'
+    - '*.hex'
+  include-elf: false
+
+# Release
+release:
+  enabled: false
+  draft: false

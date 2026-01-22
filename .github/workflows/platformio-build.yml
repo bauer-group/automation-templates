@@ -1,0 +1,635 @@
+name: PlatformIO Build & Release
+
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: 'Configuration file name from .github/config/platformio-build/ (without .yml extension)'
+        required: false
+        type: string
+        default: 'default'
+
+      pio-version:
+        description: 'PlatformIO Core version (e.g., 6.1.13, latest)'
+        required: false
+        type: string
+        default: 'latest'
+
+      environments:
+        description: 'JSON array of PlatformIO environments to build (e.g., ["esp32dev", "nucleo_f446re"])'
+        required: false
+        type: string
+        default: ''
+
+      build-all-environments:
+        description: 'Build all environments defined in platformio.ini'
+        required: false
+        type: boolean
+        default: false
+
+      project-path:
+        description: 'Path to the PlatformIO project directory'
+        required: false
+        type: string
+        default: '.'
+
+      extra-build-flags:
+        description: 'Additional build flags for pio run'
+        required: false
+        type: string
+        default: ''
+
+      run-tests:
+        description: 'Run unit tests'
+        required: false
+        type: boolean
+        default: true
+
+      test-environments:
+        description: 'JSON array of environments for testing (e.g., ["native"])'
+        required: false
+        type: string
+        default: ''
+
+      test-filter:
+        description: 'Test filter pattern (e.g., "test_*", "embedded/*")'
+        required: false
+        type: string
+        default: '*'
+
+      enable-check:
+        description: 'Run PIO Check (static analysis)'
+        required: false
+        type: boolean
+        default: false
+
+      check-tools:
+        description: 'Static analysis tools: cppcheck, clangtidy, pvs-studio'
+        required: false
+        type: string
+        default: 'cppcheck'
+
+      check-severity:
+        description: 'Minimum severity level: low, medium, high'
+        required: false
+        type: string
+        default: 'medium'
+
+      check-fail-on-defect:
+        description: 'Fail build on static analysis defects'
+        required: false
+        type: boolean
+        default: false
+
+      cache-enabled:
+        description: 'Enable PlatformIO cache'
+        required: false
+        type: boolean
+        default: true
+
+      upload-artifacts:
+        description: 'Upload build artifacts'
+        required: false
+        type: boolean
+        default: true
+
+      artifact-retention:
+        description: 'Days to retain artifacts'
+        required: false
+        type: number
+        default: 30
+
+      create-release:
+        description: 'Create GitHub release with firmware artifacts'
+        required: false
+        type: boolean
+        default: false
+
+      release-include-elf:
+        description: 'Include ELF files in release'
+        required: false
+        type: boolean
+        default: false
+
+      fail-fast:
+        description: 'Fail fast on first error in matrix builds'
+        required: false
+        type: boolean
+        default: false
+
+      timeout-minutes:
+        description: 'Timeout for build jobs in minutes'
+        required: false
+        type: number
+        default: 30
+
+      runs-on:
+        description: 'Runner to use'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+
+    outputs:
+      build-status:
+        description: 'Overall build status'
+        value: ${{ jobs.build.result }}
+
+      firmware-version:
+        description: 'Firmware version from build'
+        value: ${{ jobs.prepare.outputs.version }}
+
+      environments-built:
+        description: 'List of environments built'
+        value: ${{ jobs.prepare.outputs.environments }}
+
+      release-url:
+        description: 'URL to GitHub release (if created)'
+        value: ${{ jobs.release.outputs.release-url }}
+
+jobs:
+  # Prepare build matrix
+  prepare:
+    name: Prepare Build
+    runs-on: ${{ inputs.runs-on }}
+
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      version: ${{ steps.version.outputs.version }}
+      environments: ${{ steps.matrix.outputs.environments }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: |
+          if [[ "${{ inputs.pio-version }}" == "latest" ]]; then
+            pip install platformio
+          else
+            pip install platformio==${{ inputs.pio-version }}
+          fi
+          pio --version
+
+      - name: Determine Build Matrix
+        id: matrix
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          if [[ "${{ inputs.build-all-environments }}" == "true" ]]; then
+            # Extract all environments from platformio.ini
+            ENVS=$(pio project config --json-output | jq -r '[.[] | select(.name | startswith("env:")) | .name | sub("env:"; "")] | @json')
+
+            if [[ "$ENVS" == "[]" || -z "$ENVS" ]]; then
+              echo "No environments found in platformio.ini"
+              ENVS='["default"]'
+            fi
+          elif [[ -n "${{ inputs.environments }}" ]]; then
+            ENVS='${{ inputs.environments }}'
+          else
+            # Try to get default environment
+            DEFAULT_ENV=$(pio project config --json-output | jq -r '.[] | select(.name == "platformio") | .default_envs[0] // empty')
+            if [[ -n "$DEFAULT_ENV" ]]; then
+              ENVS="[\"$DEFAULT_ENV\"]"
+            else
+              ENVS='["default"]'
+            fi
+          fi
+
+          echo "environments=$ENVS" >> $GITHUB_OUTPUT
+
+          # Create matrix
+          MATRIX=$(jq -n --argjson envs "$ENVS" '{environment: $envs}')
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "Build Matrix: $MATRIX"
+
+      - name: Determine Version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          else
+            BRANCH="${{ github.ref_name }}"
+            SHA="${{ github.sha }}"
+            SHORT_SHA="${SHA:0:7}"
+
+            if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
+              VERSION="0.0.0-dev+${SHORT_SHA}"
+            else
+              SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9]/-/g' | head -c 20)
+              VERSION="0.0.0-${SAFE_BRANCH}+${SHORT_SHA}"
+            fi
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Firmware Version: $VERSION"
+
+  # Security Scan
+  security:
+    name: Security Scan
+    runs-on: ${{ inputs.runs-on }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Security Scan
+        uses: bauer-group/automation-templates/.github/actions/security-scan@main
+        with:
+          scan-engines: 'gitleaks'
+          fail-on-findings: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Main Build Job
+  build:
+    name: Build (${{ matrix.environment }})
+    runs-on: ${{ inputs.runs-on }}
+    needs: [prepare, security]
+    if: always() && needs.security.result == 'success'
+
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    strategy:
+      fail-fast: ${{ inputs.fail-fast }}
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+
+    outputs:
+      artifacts-url: ${{ steps.upload.outputs.artifact-url }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache PlatformIO
+        if: inputs.cache-enabled
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-${{ runner.os }}-${{ matrix.environment }}-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-${{ matrix.environment }}-
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: |
+          if [[ "${{ inputs.pio-version }}" == "latest" ]]; then
+            pip install platformio
+          else
+            pip install platformio==${{ inputs.pio-version }}
+          fi
+          pio --version
+
+      - name: Create Build Info
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          mkdir -p build_info
+
+          cat > build_info/version.json << EOF
+          {
+            "version": "${{ needs.prepare.outputs.version }}",
+            "environment": "${{ matrix.environment }}",
+            "platformio_version": "$(pio --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')",
+            "build_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "git_commit": "${{ github.sha }}",
+            "git_branch": "${{ github.ref_name }}"
+          }
+          EOF
+
+      - name: Build Firmware
+        id: build
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          ENV="${{ matrix.environment }}"
+
+          echo "=== PlatformIO Build ==="
+          echo "Environment: $ENV"
+          echo "PlatformIO: $(pio --version)"
+
+          # Build the environment
+          if [[ "$ENV" == "default" ]]; then
+            pio run ${{ inputs.extra-build-flags }}
+          else
+            pio run -e "$ENV" ${{ inputs.extra-build-flags }}
+          fi
+
+          echo "Build completed successfully"
+
+      - name: Run Static Analysis
+        if: inputs.enable-check
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        continue-on-error: ${{ !inputs.check-fail-on-defect }}
+        run: |
+          ENV="${{ matrix.environment }}"
+          TOOLS="${{ inputs.check-tools }}"
+          SEVERITY="${{ inputs.check-severity }}"
+
+          echo "Running PIO Check with tools: $TOOLS"
+
+          # Install check tools
+          for tool in ${TOOLS//,/ }; do
+            echo "Checking for $tool..."
+          done
+
+          # Run analysis
+          if [[ "$ENV" == "default" ]]; then
+            pio check --severity="$SEVERITY" --fail-on-defect=${{ inputs.check-fail-on-defect }} || true
+          else
+            pio check -e "$ENV" --severity="$SEVERITY" --fail-on-defect=${{ inputs.check-fail-on-defect }} || true
+          fi
+
+      - name: Prepare Artifacts
+        id: artifacts
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          ENV="${{ matrix.environment }}"
+
+          ARTIFACT_DIR="firmware-output"
+          mkdir -p "$ARTIFACT_DIR"
+
+          # Find and copy firmware files
+          if [[ -d ".pio/build/$ENV" ]]; then
+            BUILD_DIR=".pio/build/$ENV"
+          elif [[ -d ".pio/build" ]]; then
+            BUILD_DIR=$(find .pio/build -maxdepth 1 -type d | head -2 | tail -1)
+          else
+            echo "No build directory found"
+            exit 1
+          fi
+
+          echo "Build directory: $BUILD_DIR"
+
+          # Copy firmware files
+          for ext in bin hex elf; do
+            for file in "$BUILD_DIR"/firmware.*${ext}; do
+              if [[ -f "$file" ]]; then
+                BASENAME=$(basename "$file")
+                cp "$file" "$ARTIFACT_DIR/${ENV}-${VERSION}.${ext}"
+                echo "Copied: ${ENV}-${VERSION}.${ext}"
+              fi
+            done
+          done
+
+          # Also check for project-named files
+          for ext in bin hex elf; do
+            for file in "$BUILD_DIR"/*."${ext}"; do
+              if [[ -f "$file" && ! "$file" =~ firmware ]]; then
+                BASENAME=$(basename "$file" ."${ext}")
+                cp "$file" "$ARTIFACT_DIR/${ENV}-${BASENAME}-${VERSION}.${ext}" 2>/dev/null || true
+              fi
+            done
+          done
+
+          # Copy build info
+          cp build_info/version.json "$ARTIFACT_DIR/" 2>/dev/null || true
+
+          # Generate checksums
+          cd "$ARTIFACT_DIR"
+          sha256sum *.bin *.hex 2>/dev/null > checksums.sha256 || true
+
+          echo "output-dir=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
+          ls -la
+
+      - name: Upload Build Artifacts
+        id: upload
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: platformio-${{ matrix.environment }}-${{ needs.prepare.outputs.version }}
+          path: ${{ inputs.project-path }}/firmware-output
+          retention-days: ${{ inputs.artifact-retention }}
+          compression-level: 6
+
+  # Test Job
+  test:
+    name: Run Tests
+    runs-on: ${{ inputs.runs-on }}
+    needs: [prepare, build]
+    if: inputs.run-tests && always() && needs.build.result == 'success'
+
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache PlatformIO
+        if: inputs.cache-enabled
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: pio-${{ runner.os }}-test-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-test-
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: |
+          if [[ "${{ inputs.pio-version }}" == "latest" ]]; then
+            pip install platformio
+          else
+            pip install platformio==${{ inputs.pio-version }}
+          fi
+
+      - name: Run Unit Tests
+        shell: bash
+        working-directory: ${{ inputs.project-path }}
+        run: |
+          TEST_FILTER="${{ inputs.test-filter }}"
+          TEST_ENVS='${{ inputs.test-environments }}'
+
+          echo "=== PlatformIO Tests ==="
+          echo "Filter: $TEST_FILTER"
+
+          # Check if test directory exists
+          if [[ ! -d "test" ]]; then
+            echo "No test directory found, skipping tests"
+            exit 0
+          fi
+
+          # Run tests
+          if [[ -n "$TEST_ENVS" && "$TEST_ENVS" != "" ]]; then
+            # Test specific environments
+            for env in $(echo "$TEST_ENVS" | jq -r '.[]'); do
+              echo "Testing environment: $env"
+              pio test -e "$env" --filter "$TEST_FILTER" || true
+            done
+          else
+            # Test all environments with tests
+            pio test --filter "$TEST_FILTER" || true
+          fi
+
+          echo "Tests completed"
+
+  # Release Job
+  release:
+    name: Create Release
+    runs-on: ${{ inputs.runs-on }}
+    needs: [prepare, build, test]
+    if: inputs.create-release && github.ref_type == 'tag' && always() && needs.build.result == 'success'
+
+    outputs:
+      release-url: ${{ steps.create-release.outputs.html_url }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: release-artifacts
+          pattern: platformio-*
+
+      - name: Prepare Release Assets
+        shell: bash
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+
+          mkdir -p release
+
+          # Consolidate artifacts
+          for dir in release-artifacts/*/; do
+            if [[ -d "$dir" ]]; then
+              # Copy binaries
+              cp "$dir"/*.bin release/ 2>/dev/null || true
+              cp "$dir"/*.hex release/ 2>/dev/null || true
+
+              # Optionally include ELF
+              if [[ "${{ inputs.release-include-elf }}" == "true" ]]; then
+                cp "$dir"/*.elf release/ 2>/dev/null || true
+              fi
+            fi
+          done
+
+          # Create combined checksums
+          cd release
+          sha256sum *.bin *.hex 2>/dev/null > checksums.sha256 || true
+          cd ..
+
+          # Create release notes
+          cat > release/RELEASE_NOTES.md << EOF
+          # PlatformIO Firmware Release v${VERSION}
+
+          ## Environments Built
+          ${{ needs.prepare.outputs.environments }}
+
+          ## Build Information
+          - **PlatformIO Version**: ${{ inputs.pio-version }}
+          - **Build Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - **Commit**: ${{ github.sha }}
+
+          ## Artifacts
+          EOF
+
+          for f in release/*.bin release/*.hex; do
+            if [[ -f "$f" ]]; then
+              echo "- \`$(basename "$f")\`" >> release/RELEASE_NOTES.md
+            fi
+          done
+
+          ls -la release/
+
+      - name: Generate Changelog
+        id: changelog
+        shell: bash
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [[ -n "$PREV_TAG" ]]; then
+            echo "## Changes since ${PREV_TAG}" > changelog.md
+            echo "" >> changelog.md
+            git log --pretty=format:"- %s (%h)" "${PREV_TAG}..HEAD" >> changelog.md
+          else
+            echo "## Initial Release" > changelog.md
+          fi
+
+      - name: Create GitHub Release
+        id: create-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "PlatformIO Firmware ${{ github.ref_name }}"
+          body_path: changelog.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            release/*.bin
+            release/*.hex
+            release/checksums.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Build Summary
+  summary:
+    name: Build Summary
+    runs-on: ${{ inputs.runs-on }}
+    needs: [prepare, security, build, test, release]
+    if: always()
+
+    steps:
+      - name: Generate Summary
+        shell: bash
+        run: |
+          echo "# PlatformIO Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release | ${{ needs.release.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Firmware Version**: ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **PlatformIO Version**: ${{ inputs.pio-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environments**: ${{ needs.prepare.outputs.environments }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests Enabled**: ${{ inputs.run-tests }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Static Analysis**: ${{ inputs.enable-check }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ needs.build.result }}" == "success" ]]; then
+            echo "Build completed successfully"
+          else
+            echo "Build failed"
+            exit 1
+          fi

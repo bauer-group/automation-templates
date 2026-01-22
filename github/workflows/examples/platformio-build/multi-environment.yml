@@ -1,0 +1,46 @@
+# PlatformIO Multi-Environment Build Example
+# Build for multiple platforms in parallel
+#
+# Use case: Cross-platform projects and libraries
+# Features: Matrix build, multiple platforms, testing
+
+name: PlatformIO Multi-Environment Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/platformio-build.yml@main
+    with:
+      # Multiple environments
+      environments: '["esp32dev", "esp32-s3-devkitc-1", "nucleo_f446re", "uno"]'
+
+      # Or build all from platformio.ini
+      # build-all-environments: true
+
+      # PlatformIO version
+      pio-version: latest
+
+      # Run tests on native environment
+      run-tests: true
+      test-environments: '["native"]'
+
+      # Enable static analysis
+      enable-check: true
+      check-tools: 'cppcheck'
+
+      # Caching
+      cache-enabled: true
+
+      # Don't fail on first error
+      fail-fast: false
+
+      # Upload all artifacts
+      upload-artifacts: true
+      artifact-retention: 30
+
+      timeout-minutes: 45

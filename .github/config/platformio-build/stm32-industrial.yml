@@ -1,0 +1,70 @@
+# PlatformIO Build Configuration: STM32 Industrial
+# Configuration for industrial STM32 applications
+
+# PlatformIO Version - Pinned for stability
+pio-version: '6.1.13'
+
+# Build Configuration
+build-all-environments: false
+environments:
+  - nucleo_f446re
+  - nucleo_h743zi
+
+# Testing - Comprehensive
+tests:
+  enabled: true
+  filter: '*'
+  fail-on-error: true
+  environments:
+    - native
+
+# Static Analysis - Full suite for safety
+check:
+  enabled: true
+  tools:
+    - cppcheck
+    - clangtidy
+  severity: low
+  fail-on-defect: true
+
+# Caching
+cache:
+  enabled: true
+
+# Artifacts
+artifacts:
+  upload: true
+  retention-days: 365
+  include:
+    - '*.bin'
+    - '*.hex'
+    - '*.elf'
+
+# Release
+release:
+  enabled: true
+  draft: true
+  include-elf: true
+
+# STM32 Specific
+stm32:
+  framework: stm32cube  # or arduino
+  # HAL configuration
+  hal-enabled: true
+  # Low-layer drivers
+  ll-enabled: false
+
+# Quality Gates
+quality-gates:
+  tests-pass: true
+  analysis-pass: true
+
+# Recommended platformio.ini settings:
+# [env:nucleo_f446re]
+# platform = ststm32
+# board = nucleo_f446re
+# framework = stm32cube
+# build_flags =
+#     -DUSE_HAL_DRIVER
+#     -DSTM32F446xx
+# debug_tool = stlink

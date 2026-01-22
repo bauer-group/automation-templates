@@ -1,0 +1,132 @@
+# PlatformIO STM32 Industrial Release Example
+# Secure release pipeline for industrial applications
+#
+# Use case: Industrial, automotive applications
+# Features: Full analysis, quality gates, compliance
+
+name: STM32 Industrial Release
+
+on:
+  push:
+    tags: ['v*']
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'nucleo_f446re'
+        type: choice
+        options:
+          - nucleo_f446re
+          - nucleo_h743zi
+          - all
+
+jobs:
+  # Compliance checks
+  compliance:
+    name: Compliance Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: License Compliance
+        uses: bauer-group/automation-templates/.github/actions/license-compliance@main
+        with:
+          check-headers: true
+          allowed-licenses: 'Apache-2.0,MIT,BSD-3-Clause'
+
+      - name: Security Scan
+        uses: bauer-group/automation-templates/.github/actions/security-scan@main
+        with:
+          scan-engines: 'gitleaks'
+          fail-on-findings: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Build with full analysis
+  build:
+    name: Industrial Build
+    needs: compliance
+    uses: bauer-group/automation-templates/.github/workflows/platformio-build.yml@main
+    with:
+      config-file: stm32-industrial
+
+      # Environments based on input or all
+      environments: ${{ inputs.environment == 'all' && '["nucleo_f446re", "nucleo_h743zi"]' || format('["{0}"]', inputs.environment || 'nucleo_f446re') }}
+
+      # Pinned PlatformIO version
+      pio-version: '6.1.13'
+
+      cache-enabled: true
+
+      # Full testing
+      run-tests: true
+      test-environments: '["native"]'
+
+      # Full static analysis
+      enable-check: true
+      check-tools: 'cppcheck,clangtidy'
+      check-severity: 'low'
+      check-fail-on-defect: true
+
+      # Create release
+      create-release: ${{ github.event_name == 'push' }}
+      release-include-elf: true
+
+      artifact-retention: 365
+      fail-fast: true
+      timeout-minutes: 60
+
+  # Quality gate
+  quality-gate:
+    name: Quality Gate
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+          pattern: platformio-*
+
+      - name: Validate build
+        run: |
+          echo "=== Quality Gate Validation ==="
+
+          # Check firmware exists
+          FIRMWARE=$(find artifacts -name "*.bin" -type f | head -1)
+          if [[ -z "$FIRMWARE" ]]; then
+            echo "ERROR: No firmware binary found"
+            exit 1
+          fi
+          echo "Firmware found: $FIRMWARE"
+
+          # Check size
+          SIZE=$(stat -c%s "$FIRMWARE" 2>/dev/null || stat -f%z "$FIRMWARE")
+          MAX_SIZE=524288  # 512KB
+          if [[ $SIZE -gt $MAX_SIZE ]]; then
+            echo "ERROR: Firmware too large: $SIZE > $MAX_SIZE"
+            exit 1
+          fi
+          echo "Size OK: $SIZE bytes"
+
+          echo "=== Quality Gate PASSED ==="
+
+  # Notify
+  notify:
+    name: Notify
+    needs: [build, quality-gate]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Summary
+        run: |
+          echo "Industrial Release: ${{ github.ref_name }}"
+          echo "Build: ${{ needs.build.result }}"
+          echo "Quality Gate: ${{ needs.quality-gate.result }}"

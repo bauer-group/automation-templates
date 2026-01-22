@@ -1,0 +1,64 @@
+# PlatformIO Build Configuration: ESP32 IoT
+# Optimized for ESP32-based IoT devices
+
+# PlatformIO Version
+pio-version: latest
+
+# Build Configuration
+build-all-environments: false
+environments:
+  - esp32dev
+  - esp32-s3-devkitc-1
+  - esp32-c3-devkitm-1
+
+# Testing
+tests:
+  enabled: true
+  filter: '*'
+  environments:
+    - native  # Unit tests on host
+
+# Static Analysis
+check:
+  enabled: true
+  tools:
+    - cppcheck
+  severity: medium
+  fail-on-defect: false
+
+# Caching
+cache:
+  enabled: true
+
+# Artifacts
+artifacts:
+  upload: true
+  retention-days: 30
+  include:
+    - '*.bin'
+    - '*.hex'
+
+# Release
+release:
+  enabled: true
+  draft: false
+
+# ESP32 Specific
+esp32:
+  # OTA partition support
+  ota-enabled: true
+  # Partition table
+  partitions: default
+  # Flash size
+  flash-size: 4MB
+
+# Recommended platformio.ini settings:
+# [env:esp32dev]
+# platform = espressif32
+# board = esp32dev
+# framework = arduino
+# monitor_speed = 115200
+# board_build.partitions = min_spiffs.csv
+# lib_deps =
+#     bblanchon/ArduinoJson@^7.0.0
+#     knolleary/PubSubClient@^2.8

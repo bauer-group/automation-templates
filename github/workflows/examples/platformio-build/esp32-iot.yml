@@ -1,0 +1,79 @@
+# PlatformIO ESP32 IoT Device Example
+# Complete CI/CD for ESP32-based IoT devices
+#
+# Use case: WiFi/Bluetooth connected devices
+# Features: Multi-variant build, OTA, releases
+
+name: ESP32 IoT Device CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Quick validation for PRs
+  pr-validation:
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/platformio-build.yml@main
+    with:
+      # Primary ESP32 variant only
+      environments: '["esp32dev"]'
+
+      pio-version: latest
+      cache-enabled: true
+      run-tests: true
+      test-environments: '["native"]'
+
+      artifact-retention: 7
+      timeout-minutes: 20
+
+  # Full build for main branch
+  build:
+    if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+    uses: bauer-group/automation-templates/.github/workflows/platformio-build.yml@main
+    with:
+      # All ESP32 variants
+      environments: '["esp32dev", "esp32-s3-devkitc-1", "esp32-c3-devkitm-1"]'
+
+      pio-version: latest
+      cache-enabled: true
+
+      # Full testing
+      run-tests: true
+      test-environments: '["native"]'
+
+      # Static analysis
+      enable-check: true
+      check-tools: 'cppcheck'
+
+      fail-fast: false
+      artifact-retention: 30
+      timeout-minutes: 45
+
+  # Release build
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: bauer-group/automation-templates/.github/workflows/platformio-build.yml@main
+    with:
+      config-file: esp32-iot
+
+      # All production variants
+      environments: '["esp32dev", "esp32-s3-devkitc-1", "esp32-c3-devkitm-1"]'
+
+      # Pinned version for reproducibility
+      pio-version: '6.1.13'
+
+      cache-enabled: true
+      run-tests: true
+      enable-check: true
+
+      # Create GitHub release
+      create-release: true
+
+      artifact-retention: 90
+      timeout-minutes: 60
+
+    secrets: inherit

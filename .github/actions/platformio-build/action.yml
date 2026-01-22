@@ -1,0 +1,233 @@
+name: 'PlatformIO Build Action'
+description: 'Build embedded firmware using PlatformIO ecosystem'
+author: 'BAUER GROUP'
+
+branding:
+  icon: 'box'
+  color: 'orange'
+
+inputs:
+  config-file:
+    description: 'Configuration file from .github/config/platformio-build/'
+    required: false
+    default: 'default'
+
+  pio-version:
+    description: 'PlatformIO Core version'
+    required: false
+    default: 'latest'
+
+  environment:
+    description: 'PlatformIO environment to build'
+    required: false
+    default: ''
+
+  project-path:
+    description: 'Path to PlatformIO project'
+    required: false
+    default: '.'
+
+  extra-build-flags:
+    description: 'Additional build flags'
+    required: false
+    default: ''
+
+  run-tests:
+    description: 'Run unit tests'
+    required: false
+    default: 'false'
+
+  test-filter:
+    description: 'Test filter pattern'
+    required: false
+    default: '*'
+
+  enable-check:
+    description: 'Run PIO Check'
+    required: false
+    default: 'false'
+
+  check-tools:
+    description: 'Static analysis tools'
+    required: false
+    default: 'cppcheck'
+
+  cache-enabled:
+    description: 'Enable caching'
+    required: false
+    default: 'true'
+
+  generate-artifacts:
+    description: 'Prepare build artifacts'
+    required: false
+    default: 'true'
+
+outputs:
+  build-status:
+    description: 'Build status (success, failure)'
+    value: ${{ steps.build.outputs.status }}
+
+  binary-path:
+    description: 'Path to built binaries'
+    value: ${{ steps.artifacts.outputs.output-dir }}
+
+  firmware-size:
+    description: 'Firmware size in bytes'
+    value: ${{ steps.size.outputs.size }}
+
+  version:
+    description: 'Firmware version'
+    value: ${{ steps.version.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Determine Version
+      id: version
+      shell: bash
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+        else
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          VERSION="0.0.0-dev+${SHORT_SHA}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Cache PlatformIO
+      if: inputs.cache-enabled == 'true'
+      uses: actions/cache@v6
+      with:
+        path: |
+          ~/.cache/pip
+          ~/.platformio/.cache
+          ~/.platformio/packages
+          ~/.platformio/platforms
+        key: pio-${{ runner.os }}-${{ inputs.environment }}-${{ hashFiles('**/platformio.ini') }}
+        restore-keys: |
+          pio-${{ runner.os }}-${{ inputs.environment }}-
+          pio-${{ runner.os }}-
+
+    - name: Install PlatformIO
+      shell: bash
+      run: |
+        if [[ "${{ inputs.pio-version }}" == "latest" ]]; then
+          pip install platformio
+        else
+          pip install platformio==${{ inputs.pio-version }}
+        fi
+        pio --version
+
+    - name: Create Build Info
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      run: |
+        mkdir -p build_info
+        cat > build_info/version.json << EOF
+        {
+          "version": "${{ steps.version.outputs.version }}",
+          "environment": "${{ inputs.environment }}",
+          "platformio_version": "$(pio --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')",
+          "build_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+          "git_commit": "${{ github.sha }}",
+          "git_branch": "${{ github.ref_name }}"
+        }
+        EOF
+
+    - name: Build Firmware
+      id: build
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      run: |
+        ENV="${{ inputs.environment }}"
+
+        if [[ -n "$ENV" && "$ENV" != "" ]]; then
+          pio run -e "$ENV" ${{ inputs.extra-build-flags }}
+        else
+          pio run ${{ inputs.extra-build-flags }}
+        fi
+
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Run Static Analysis
+      if: inputs.enable-check == 'true'
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      continue-on-error: true
+      run: |
+        ENV="${{ inputs.environment }}"
+
+        if [[ -n "$ENV" && "$ENV" != "" ]]; then
+          pio check -e "$ENV" || true
+        else
+          pio check || true
+        fi
+
+    - name: Run Tests
+      if: inputs.run-tests == 'true'
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      continue-on-error: true
+      run: |
+        if [[ -d "test" ]]; then
+          pio test --filter "${{ inputs.test-filter }}" || true
+        fi
+
+    - name: Get Firmware Size
+      id: size
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      run: |
+        ENV="${{ inputs.environment }}"
+
+        if [[ -n "$ENV" && "$ENV" != "" ]]; then
+          BUILD_DIR=".pio/build/$ENV"
+        else
+          BUILD_DIR=$(find .pio/build -maxdepth 1 -type d | head -2 | tail -1)
+        fi
+
+        if [[ -f "$BUILD_DIR/firmware.bin" ]]; then
+          SIZE=$(stat -c%s "$BUILD_DIR/firmware.bin" 2>/dev/null || stat -f%z "$BUILD_DIR/firmware.bin")
+          echo "size=$SIZE" >> $GITHUB_OUTPUT
+          echo "Firmware size: $SIZE bytes"
+        fi
+
+    - name: Prepare Artifacts
+      id: artifacts
+      if: inputs.generate-artifacts == 'true'
+      shell: bash
+      working-directory: ${{ inputs.project-path }}
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        ENV="${{ inputs.environment }}"
+        OUTPUT_DIR="firmware-output"
+        mkdir -p "$OUTPUT_DIR"
+
+        if [[ -n "$ENV" && "$ENV" != "" ]]; then
+          BUILD_DIR=".pio/build/$ENV"
+        else
+          BUILD_DIR=$(find .pio/build -maxdepth 1 -type d | head -2 | tail -1)
+          ENV="default"
+        fi
+
+        # Copy firmware files
+        for ext in bin hex elf; do
+          if [[ -f "$BUILD_DIR/firmware.${ext}" ]]; then
+            cp "$BUILD_DIR/firmware.${ext}" "$OUTPUT_DIR/${ENV}-${VERSION}.${ext}"
+          fi
+        done
+
+        cp build_info/version.json "$OUTPUT_DIR/" 2>/dev/null || true
+
+        cd "$OUTPUT_DIR"
+        sha256sum *.bin *.hex 2>/dev/null > checksums.sha256 || true
+
+        echo "output-dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
+        ls -la

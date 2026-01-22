@@ -1,0 +1,138 @@
+# PlatformIO Library CI Example
+# CI/CD for PlatformIO library development
+#
+# Use case: Developing reusable PlatformIO libraries
+# Features: Multi-platform testing, examples build, registry publish
+
+name: PlatformIO Library CI
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Build library examples on multiple platforms
+  build-examples:
+    uses: bauer-group/automation-templates/.github/workflows/platformio-build.yml@main
+    with:
+      # Path to examples directory
+      project-path: 'examples/basic'
+
+      # Test on multiple platforms
+      environments: '["esp32dev", "nucleo_f446re", "uno", "pico"]'
+
+      pio-version: latest
+      cache-enabled: true
+      fail-fast: false
+
+      upload-artifacts: true
+      artifact-retention: 14
+      timeout-minutes: 30
+
+  # Run unit tests
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Run Native Tests
+        run: |
+          # Run tests on native platform
+          pio test -e native --verbose
+
+      - name: Run Embedded Tests (Simulation)
+        run: |
+          # Build tests for embedded targets
+          pio test -e esp32dev --without-uploading || true
+
+  # Static analysis
+  analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Run PIO Check
+        run: |
+          pio check --severity=medium --verbose || true
+
+  # Validate library.json
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate library.json
+        run: |
+          if [[ -f "library.json" ]]; then
+            echo "Validating library.json..."
+            python -m json.tool library.json > /dev/null
+            echo "library.json is valid JSON"
+
+            # Check required fields
+            for field in name version description; do
+              if ! grep -q "\"$field\"" library.json; then
+                echo "WARNING: Missing field: $field"
+              fi
+            done
+          else
+            echo "No library.json found"
+          fi
+
+  # Publish to PlatformIO Registry (on release)
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-examples, test, validate]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Publish to Registry
+        if: vars.PLATFORMIO_AUTH_TOKEN != ''
+        env:
+          PLATFORMIO_AUTH_TOKEN: ${{ secrets.PLATFORMIO_AUTH_TOKEN }}
+        run: |
+          echo "Publishing to PlatformIO Registry..."
+          pio pkg publish --no-interactive || echo "Publish skipped (no token or already published)"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,52 @@
+# PlatformIO Build Configuration: Production
+# Configuration for production releases with full validation
+
+# PlatformIO Version - Pinned for reproducibility
+pio-version: '6.1.13'
+
+# Build Configuration
+build-all-environments: true
+
+# Testing - Full test suite required
+tests:
+  enabled: true
+  filter: '*'
+  fail-on-error: true
+  coverage:
+    enabled: true
+    minimum: 70
+
+# Static Analysis - Full suite
+check:
+  enabled: true
+  tools:
+    - cppcheck
+    - clangtidy
+  severity: low  # Report all issues
+  fail-on-defect: true
+
+# Caching
+cache:
+  enabled: true
+
+# Artifacts
+artifacts:
+  upload: true
+  retention-days: 365  # Long retention for releases
+  include:
+    - '*.bin'
+    - '*.hex'
+  include-elf: true  # Include debug symbols
+
+# Release
+release:
+  enabled: true
+  draft: true  # Review before publish
+  include-elf: true
+  include-map: false
+
+# Quality Gates
+quality-gates:
+  tests-pass: true
+  analysis-pass: true
+  no-warnings: false  # PIO doesn't easily support this
