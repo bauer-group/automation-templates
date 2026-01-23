@@ -1,0 +1,57 @@
+# Strenge Production Dockerfile-Validierung
+# Maximale Qualitäts- und Sicherheitsprüfung für Production-Deployments
+
+name: 🐳 Production Dockerfile Validation
+
+on:
+  pull_request:
+    branches: [main, master, production]
+    paths:
+      - '**/Dockerfile*'
+      - '**/*.Dockerfile'
+  push:
+    branches: [main, master, production]
+    paths:
+      - '**/Dockerfile*'
+      - '**/*.Dockerfile'
+
+jobs:
+  strict-validation:
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-dockerfile.yml@main
+    with:
+      # Strenger Threshold - auch Info-Meldungen führen zum Fail
+      failure-threshold: 'info'
+
+      # Keine Regeln ignorieren
+      ignore-rules: '[]'
+
+      # Kritische Regeln als Error hochstufen
+      override-error: '["DL3007", "DL3006", "DL3002", "DL3004"]'
+
+      # Nur vertrauenswürdige Registries erlauben
+      trusted-registries: '["ghcr.io/your-org", "your-registry.example.com"]'
+
+      # Bei Findings fehlschlagen
+      fail-on-findings: true
+
+  # Zusätzlicher Security-Check mit Trivy
+  trivy-scan:
+    needs: strict-validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🔍 Trivy Dockerfile Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: 📤 Upload Trivy Results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'

@@ -171,7 +171,10 @@ jobs:
 │       ├── esp32-build.yml            # ESP32 microcontroller builds
 │       ├── stm32-build.yml            # STM32 microcontroller builds
 │       ├── platformio-build.yml       # PlatformIO cross-platform builds
-│       └── modules-*.yml              # Module-specific workflows
+│       ├── modules-validate-dockerfile.yml # Dockerfile validation (Hadolint)
+│       ├── modules-validate-compose.yml    # Docker Compose validation
+│       ├── modules-validate-shellscript.yml # Shell script validation (ShellCheck)
+│       └── modules-*.yml              # Additional module workflows
 ├── github/                    # 🛠️ Repository Management Tools
 │   ├── branch-protect/           # Branch protection automation
 │   ├── claude-code/              # Claude Code documentation & tools
@@ -184,6 +187,7 @@ jobs:
 │           ├── coolify-deploy/       # Coolify deployment examples
 │           ├── docker/               # Docker build examples
 │           ├── docker-compose/       # Docker Compose examples
+│           ├── dockerfile-validation/ # Dockerfile linting examples
 │           ├── documentation/        # Documentation examples
 │           ├── dotnet-build/         # .NET project examples
 │           ├── dotnet-desktop-build/ # .NET desktop examples
@@ -214,6 +218,7 @@ jobs:
 │   │   ├── makefile-build.md         # Makefile build system
 │   │   ├── meta-repository-sync.md   # Meta repository sync
 │   │   ├── modules-validate-compose.md # Compose validation
+│   │   ├── modules-validate-dockerfile.md # Dockerfile validation (Hadolint)
 │   │   ├── modules-validate-shellscript.md # Shell validation
 │   │   ├── nodejs-build.md           # Node.js build system
 │   │   ├── php-build.md              # PHP build system
@@ -1083,6 +1088,12 @@ gh auth status --show-token
 - [🔔 **Teams Notifications**](docs/workflows/teams-notifications.md) - Microsoft Teams integration
 - [🏃 **Self-Hosted Runners**](docs/self-hosted-runners.md) - Self-hosted runner configuration guide
 
+#### 🔍 Validation Modules
+
+- [🐳 **Dockerfile Validation**](docs/workflows/modules-validate-dockerfile.md) - Dockerfile linting with Hadolint
+- [📋 **Docker Compose Validation**](docs/workflows/modules-validate-compose.md) - Docker Compose validation
+- [🐚 **Shell Script Validation**](docs/workflows/modules-validate-shellscript.md) - Shell script linting with ShellCheck
+
 ### 🔧 Actions Documentation
 
 #### Build Actions
@@ -1142,6 +1153,7 @@ gh auth status --show-token
 
 - [🐳 **Docker Examples**](github/workflows/examples/docker/) - Complete Docker workflow examples
 - [🐳 **Docker Compose Examples**](github/workflows/examples/docker-compose/) - Docker Compose workflow examples
+- [🐳 **Dockerfile Validation Examples**](github/workflows/examples/dockerfile-validation/) - Dockerfile linting examples
 - [🐍 **Python Examples**](github/workflows/examples/python-build/) - Python build and test examples
 - [🐍 **Python Release Examples**](github/workflows/examples/python-release/) - Python semantic release examples
 - [⚡ **Zephyr Examples**](github/workflows/examples/zephyr-build/) - Zephyr RTOS project examples

@@ -1,0 +1,103 @@
+# Kombinierte Docker-Validierung
+# Validiert Dockerfiles, Docker Compose und Shell-Scripts zusammen
+
+name: 🐳 Complete Docker Validation
+
+on:
+  push:
+    paths:
+      - '**/Dockerfile*'
+      - '**/*.Dockerfile'
+      - '**/docker-compose*.yml'
+      - '**/docker-compose*.yaml'
+      - 'scripts/**/*.sh'
+      - 'docker/**'
+  pull_request:
+    paths:
+      - '**/Dockerfile*'
+      - '**/*.Dockerfile'
+      - '**/docker-compose*.yml'
+      - '**/docker-compose*.yaml'
+      - 'scripts/**/*.sh'
+      - 'docker/**'
+
+jobs:
+  # Dockerfile Linting mit Hadolint
+  dockerfile-lint:
+    name: 🐳 Hadolint
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-dockerfile.yml@main
+    with:
+      failure-threshold: 'warning'
+      trusted-registries: '["docker.io", "ghcr.io"]'
+      ignore-rules: '["DL3008", "DL3013"]'
+
+  # Docker Compose Validierung
+  compose-validate:
+    name: 📋 Compose
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-compose.yml@main
+    with:
+      compose-files: '["docker-compose.yml", "docker-compose.override.yml"]'
+      create-dummy-env: true
+      fail-on-warning: false
+
+  # Shell Script Validierung (für Entrypoints und Build-Scripts)
+  shellcheck:
+    name: 🐚 ShellCheck
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-shellscript.yml@main
+    with:
+      scan-paths: '["scripts/", "docker/"]'
+      severity: 'warning'
+      fail-on-findings: true
+
+  # Zusammenfassung aller Validierungen
+  validation-summary:
+    name: 📊 Summary
+    needs: [dockerfile-lint, compose-validate, shellcheck]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: 📊 Generate Summary
+        run: |
+          echo "## 🐳 Docker Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Hadolint
+          if [ "${{ needs.dockerfile-lint.outputs.passed }}" = "true" ]; then
+            echo "✅ **Hadolint** - ${{ needs.dockerfile-lint.outputs.files-checked }} files checked" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Hadolint** - ${{ needs.dockerfile-lint.outputs.issues-found }} issues found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Compose
+          if [ "${{ needs.compose-validate.outputs.valid }}" = "true" ]; then
+            echo "✅ **Docker Compose** - ${{ needs.compose-validate.outputs.service-count }} services validated" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Docker Compose** - Invalid configuration" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # ShellCheck
+          if [ "${{ needs.shellcheck.outputs.passed }}" = "true" ]; then
+            echo "✅ **ShellCheck** - ${{ needs.shellcheck.outputs.files-checked }} scripts checked" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **ShellCheck** - ${{ needs.shellcheck.outputs.issues-found }} issues found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Overall Status
+          if [ "${{ needs.dockerfile-lint.outputs.passed }}" = "true" ] && \
+             [ "${{ needs.compose-validate.outputs.valid }}" = "true" ] && \
+             [ "${{ needs.shellcheck.outputs.passed }}" = "true" ]; then
+            echo "### ✅ All validations passed!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ⚠️ Some validations failed - please review above" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: ❌ Fail if any validation failed
+        if: |
+          needs.dockerfile-lint.outputs.passed != 'true' ||
+          needs.compose-validate.outputs.valid != 'true' ||
+          needs.shellcheck.outputs.passed != 'true'
+        run: exit 1

@@ -1,0 +1,20 @@
+# Einfache Dockerfile-Validierung
+# Scannt alle Dockerfiles im Repository mit Standard-Einstellungen
+
+name: 🐳 Dockerfile Lint
+
+on:
+  push:
+    paths:
+      - '**/Dockerfile*'
+      - '**/*.Dockerfile'
+  pull_request:
+    paths:
+      - '**/Dockerfile*'
+      - '**/*.Dockerfile'
+
+jobs:
+  hadolint:
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-dockerfile.yml@main
+    with:
+      failure-threshold: 'warning'

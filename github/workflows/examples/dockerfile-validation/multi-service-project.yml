@@ -1,0 +1,26 @@
+# Multi-Service Docker-Projekt
+# Für Projekte mit mehreren Dockerfiles in verschiedenen Verzeichnissen
+
+name: 🐳 Multi-Service Dockerfile Validation
+
+on:
+  push:
+    paths:
+      - 'services/**/Dockerfile*'
+      - 'docker/**'
+      - 'apps/**/Dockerfile*'
+  pull_request:
+    paths:
+      - 'services/**/Dockerfile*'
+      - 'docker/**'
+      - 'apps/**/Dockerfile*'
+
+jobs:
+  hadolint:
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-dockerfile.yml@main
+    with:
+      scan-paths: '["services/", "docker/", "apps/"]'
+      dockerfile-patterns: '["Dockerfile", "Dockerfile.*", "*.Dockerfile"]'
+      failure-threshold: 'warning'
+      trusted-registries: '["docker.io", "ghcr.io", "mcr.microsoft.com"]'
+      ignore-rules: '["DL3008"]'  # apt-get Version Pinning oft unpraktisch

@@ -1,0 +1,57 @@
+# Dockerfile-Validierung mit Konfigurationsdatei
+# Verwendet eine .hadolint.yaml für zentrale Konfiguration
+
+name: 🐳 Hadolint with Config
+
+on:
+  push:
+    paths:
+      - '**/Dockerfile*'
+      - '.hadolint.yaml'
+  pull_request:
+    paths:
+      - '**/Dockerfile*'
+      - '.hadolint.yaml'
+
+jobs:
+  hadolint:
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-dockerfile.yml@main
+    with:
+      config-file: '.hadolint.yaml'
+      failure-threshold: 'warning'
+      fail-on-findings: true
+
+# Beispiel .hadolint.yaml (im Repository-Root erstellen):
+#
+# ---
+# # Regeln ignorieren
+# ignored:
+#   - DL3008  # apt-get Version Pinning
+#   - DL3013  # pip Version Pinning
+#   - DL3018  # apk Version Pinning
+#
+# # Vertrauenswürdige Registries
+# trustedRegistries:
+#   - docker.io
+#   - ghcr.io
+#   - mcr.microsoft.com
+#   - gcr.io
+#
+# # Severity Overrides
+# override:
+#   error:
+#     - DL3002  # USER root
+#     - DL3004  # sudo
+#     - DL3007  # latest tag
+#   warning:
+#     - DL3025  # CMD format
+#     - DL3006  # tag image
+#
+# # Strenge Shell-Prüfung
+# strict-labels: true
+#
+# # Label-Schema (optional)
+# label-schema:
+#   maintainer: text
+#   version: semver
+#   description: text

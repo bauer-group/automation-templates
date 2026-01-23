@@ -1,0 +1,519 @@
+name: 🐳 Module | Validate Dockerfile
+
+on:
+  workflow_call:
+    inputs:
+      scan-directory:
+        description: 'Directory to scan for Dockerfiles'
+        required: false
+        type: string
+        default: '.'
+
+      scan-paths:
+        description: 'Specific paths to scan (JSON array, e.g., ["docker/", "services/"])'
+        required: false
+        type: string
+        default: ''
+
+      dockerfile-patterns:
+        description: 'File patterns to match (JSON array, e.g., ["Dockerfile", "Dockerfile.*", "*.dockerfile"])'
+        required: false
+        type: string
+        default: '["Dockerfile", "Dockerfile.*", "*.Dockerfile"]'
+
+      recursive:
+        description: 'Recursively search for Dockerfiles'
+        required: false
+        type: boolean
+        default: true
+
+      failure-threshold:
+        description: 'Minimum severity level to fail (error, warning, info, style, ignore)'
+        required: false
+        type: string
+        default: 'warning'
+
+      ignore-rules:
+        description: 'Hadolint rules to ignore (JSON array, e.g., ["DL3008", "DL3013"])'
+        required: false
+        type: string
+        default: ''
+
+      trusted-registries:
+        description: 'Trusted Docker registries (JSON array, e.g., ["docker.io", "ghcr.io"])'
+        required: false
+        type: string
+        default: ''
+
+      config-file:
+        description: 'Path to .hadolint.yaml configuration file'
+        required: false
+        type: string
+        default: ''
+
+      format:
+        description: 'Output format (tty, json, checkstyle, codeclimate, gitlab_codeclimate, codacy, sarif)'
+        required: false
+        type: string
+        default: 'tty'
+
+      fail-on-findings:
+        description: 'Fail the workflow if issues are found'
+        required: false
+        type: boolean
+        default: true
+
+      override-error:
+        description: 'Rules to treat as errors (JSON array, e.g., ["DL3001", "DL3002"])'
+        required: false
+        type: string
+        default: ''
+
+      override-warning:
+        description: 'Rules to treat as warnings (JSON array)'
+        required: false
+        type: string
+        default: ''
+
+      override-info:
+        description: 'Rules to treat as info (JSON array)'
+        required: false
+        type: string
+        default: ''
+
+      override-style:
+        description: 'Rules to treat as style (JSON array)'
+        required: false
+        type: string
+        default: ''
+
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+
+    outputs:
+      passed:
+        description: 'Whether all Dockerfiles passed validation'
+        value: ${{ jobs.hadolint.outputs.passed }}
+
+      files-checked:
+        description: 'Number of Dockerfiles checked'
+        value: ${{ jobs.hadolint.outputs.files-checked }}
+
+      issues-found:
+        description: 'Total number of issues found'
+        value: ${{ jobs.hadolint.outputs.issues-found }}
+
+      error-count:
+        description: 'Number of errors found'
+        value: ${{ jobs.hadolint.outputs.error-count }}
+
+      warning-count:
+        description: 'Number of warnings found'
+        value: ${{ jobs.hadolint.outputs.warning-count }}
+
+      info-count:
+        description: 'Number of info messages found'
+        value: ${{ jobs.hadolint.outputs.info-count }}
+
+      style-count:
+        description: 'Number of style issues found'
+        value: ${{ jobs.hadolint.outputs.style-count }}
+
+permissions:
+  contents: read
+
+jobs:
+  hadolint:
+    name: 🐳 Hadolint
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+
+    outputs:
+      passed: ${{ steps.hadolint.outputs.passed || steps.no-files.outputs.passed }}
+      files-checked: ${{ steps.hadolint.outputs.files-checked || steps.no-files.outputs.files-checked }}
+      issues-found: ${{ steps.hadolint.outputs.issues-found || steps.no-files.outputs.issues-found }}
+      error-count: ${{ steps.hadolint.outputs.error-count || steps.no-files.outputs.error-count }}
+      warning-count: ${{ steps.hadolint.outputs.warning-count || steps.no-files.outputs.warning-count }}
+      info-count: ${{ steps.hadolint.outputs.info-count || steps.no-files.outputs.info-count }}
+      style-count: ${{ steps.hadolint.outputs.style-count || steps.no-files.outputs.style-count }}
+
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 📋 Find Dockerfiles
+        id: find-dockerfiles
+        shell: bash
+        run: |
+          echo "🔍 Searching for Dockerfiles..."
+
+          # Prepare scan paths
+          SCAN_PATHS="${{ inputs.scan-directory }}"
+          if [ -n '${{ inputs.scan-paths }}' ] && [ '${{ inputs.scan-paths }}' != '' ]; then
+            SCAN_PATHS=$(echo '${{ inputs.scan-paths }}' | python3 -c "
+          import sys, json
+          paths = json.load(sys.stdin)
+          print(' '.join(paths))
+          ")
+          fi
+
+          echo "📂 Scan paths: $SCAN_PATHS"
+
+          # Get dockerfile patterns
+          PATTERNS='${{ inputs.dockerfile-patterns }}'
+          if [ -z "$PATTERNS" ] || [ "$PATTERNS" = '' ]; then
+            PATTERNS='["Dockerfile", "Dockerfile.*", "*.Dockerfile"]'
+          fi
+
+          echo "📄 Patterns: $PATTERNS"
+
+          # Prepare find depth option
+          DEPTH_OPT=""
+          if [ "${{ inputs.recursive }}" != "true" ]; then
+            DEPTH_OPT="-maxdepth 1"
+          fi
+
+          # Always exclude common non-project directories
+          EXCLUDE_FIND="-not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/vendor/*'"
+
+          # Find Dockerfiles
+          DOCKERFILE_FILES=""
+
+          for path in $SCAN_PATHS; do
+            if [ -d "$path" ]; then
+              # Find files matching each pattern
+              while IFS= read -r pattern; do
+                while IFS= read -r file; do
+                  [ -n "$file" ] && DOCKERFILE_FILES="$DOCKERFILE_FILES $file"
+                done < <(eval "find \"$path\" $DEPTH_OPT -type f -name '$pattern' $EXCLUDE_FIND 2>/dev/null")
+              done < <(echo "$PATTERNS" | python3 -c "
+          import sys, json
+          for p in json.load(sys.stdin):
+              print(p)
+          ")
+            elif [ -f "$path" ]; then
+              DOCKERFILE_FILES="$DOCKERFILE_FILES $path"
+            fi
+          done
+
+          # Remove duplicates and count
+          DOCKERFILE_FILES=$(echo "$DOCKERFILE_FILES" | tr ' ' '\n' | sort -u | grep -v '^$' || true)
+          DOCKERFILE_FILES=$(echo "$DOCKERFILE_FILES" | tr '\n' ' ')
+          FILE_COUNT=$(echo "$DOCKERFILE_FILES" | wc -w | tr -d ' ')
+
+          if [ "$FILE_COUNT" -gt 0 ]; then
+            echo "📄 Found $FILE_COUNT Dockerfile(s):"
+            echo "$DOCKERFILE_FILES" | tr ' ' '\n' | grep -v '^$' | head -30 | while read -r f; do
+              echo "   - $f"
+            done
+
+            if [ "$FILE_COUNT" -gt 30 ]; then
+              echo "   ... and $((FILE_COUNT - 30)) more"
+            fi
+          fi
+
+          # Save to file for next step
+          echo "$DOCKERFILE_FILES" > /tmp/dockerfile-files.txt
+          echo "file-count=$FILE_COUNT" >> $GITHUB_OUTPUT
+
+          # Handle no files found
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "ℹ️ No Dockerfiles found - skipping validation"
+            echo "no-files=true" >> $GITHUB_OUTPUT
+          else
+            echo "no-files=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🐳 Run Hadolint
+        id: hadolint
+        if: steps.find-dockerfiles.outputs.no-files != 'true'
+        shell: bash
+        run: |
+          echo "🔍 Running Hadolint analysis..."
+
+          # Install hadolint if not available
+          if ! command -v hadolint &> /dev/null; then
+            echo "📦 Installing Hadolint..."
+            HADOLINT_VERSION="v2.12.0"
+            wget -qO /tmp/hadolint "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/hadolint-Linux-x86_64"
+            chmod +x /tmp/hadolint
+            HADOLINT_CMD="/tmp/hadolint"
+          else
+            HADOLINT_CMD="hadolint"
+          fi
+
+          # Build hadolint arguments
+          HADOLINT_ARGS=""
+
+          # Failure threshold
+          if [ -n "${{ inputs.failure-threshold }}" ]; then
+            HADOLINT_ARGS="$HADOLINT_ARGS --failure-threshold ${{ inputs.failure-threshold }}"
+          fi
+
+          # Config file
+          if [ -n "${{ inputs.config-file }}" ] && [ -f "${{ inputs.config-file }}" ]; then
+            HADOLINT_ARGS="$HADOLINT_ARGS --config ${{ inputs.config-file }}"
+          fi
+
+          # Ignore rules
+          if [ -n '${{ inputs.ignore-rules }}' ] && [ '${{ inputs.ignore-rules }}' != '' ]; then
+            while IFS= read -r rule; do
+              HADOLINT_ARGS="$HADOLINT_ARGS --ignore $rule"
+            done < <(echo '${{ inputs.ignore-rules }}' | python3 -c "
+          import sys, json
+          for r in json.load(sys.stdin):
+              print(r)
+          ")
+          fi
+
+          # Trusted registries
+          if [ -n '${{ inputs.trusted-registries }}' ] && [ '${{ inputs.trusted-registries }}' != '' ]; then
+            while IFS= read -r registry; do
+              HADOLINT_ARGS="$HADOLINT_ARGS --trusted-registry $registry"
+            done < <(echo '${{ inputs.trusted-registries }}' | python3 -c "
+          import sys, json
+          for r in json.load(sys.stdin):
+              print(r)
+          ")
+          fi
+
+          # Override error
+          if [ -n '${{ inputs.override-error }}' ] && [ '${{ inputs.override-error }}' != '' ]; then
+            while IFS= read -r rule; do
+              HADOLINT_ARGS="$HADOLINT_ARGS --error $rule"
+            done < <(echo '${{ inputs.override-error }}' | python3 -c "
+          import sys, json
+          for r in json.load(sys.stdin):
+              print(r)
+          ")
+          fi
+
+          # Override warning
+          if [ -n '${{ inputs.override-warning }}' ] && [ '${{ inputs.override-warning }}' != '' ]; then
+            while IFS= read -r rule; do
+              HADOLINT_ARGS="$HADOLINT_ARGS --warning $rule"
+            done < <(echo '${{ inputs.override-warning }}' | python3 -c "
+          import sys, json
+          for r in json.load(sys.stdin):
+              print(r)
+          ")
+          fi
+
+          # Override info
+          if [ -n '${{ inputs.override-info }}' ] && [ '${{ inputs.override-info }}' != '' ]; then
+            while IFS= read -r rule; do
+              HADOLINT_ARGS="$HADOLINT_ARGS --info $rule"
+            done < <(echo '${{ inputs.override-info }}' | python3 -c "
+          import sys, json
+          for r in json.load(sys.stdin):
+              print(r)
+          ")
+          fi
+
+          # Override style
+          if [ -n '${{ inputs.override-style }}' ] && [ '${{ inputs.override-style }}' != '' ]; then
+            while IFS= read -r rule; do
+              HADOLINT_ARGS="$HADOLINT_ARGS --style $rule"
+            done < <(echo '${{ inputs.override-style }}' | python3 -c "
+          import sys, json
+          for r in json.load(sys.stdin):
+              print(r)
+          ")
+          fi
+
+          echo "📋 Hadolint arguments: $HADOLINT_ARGS"
+          echo ""
+
+          # Read dockerfile files
+          DOCKERFILE_FILES=$(cat /tmp/dockerfile-files.txt | tr '\n' ' ')
+          FILE_COUNT=${{ steps.find-dockerfiles.outputs.file-count }}
+
+          # Initialize counters
+          TOTAL_ERRORS=0
+          TOTAL_WARNINGS=0
+          TOTAL_INFO=0
+          TOTAL_STYLE=0
+          TOTAL_ISSUES=0
+          PASSED="true"
+
+          # Process each dockerfile and collect results
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          for dockerfile in $DOCKERFILE_FILES; do
+            [ -z "$dockerfile" ] && continue
+            echo "📄 Checking: $dockerfile"
+
+            # Run hadolint with JSON format to count issues
+            JSON_OUTPUT=$($HADOLINT_CMD --format json $HADOLINT_ARGS "$dockerfile" 2>/dev/null || true)
+
+            # Parse JSON to count issues by level
+            COUNTS=$(echo "$JSON_OUTPUT" | python3 -c "
+          import sys, json
+          try:
+              data = json.load(sys.stdin)
+              if not data:
+                  print('0 0 0 0')
+              else:
+                  errors = sum(1 for c in data if c.get('level') == 'error')
+                  warnings = sum(1 for c in data if c.get('level') == 'warning')
+                  info = sum(1 for c in data if c.get('level') == 'info')
+                  style = sum(1 for c in data if c.get('level') == 'style')
+                  print(f'{errors} {warnings} {info} {style}')
+          except:
+              print('0 0 0 0')
+          " 2>/dev/null || echo "0 0 0 0")
+
+            read -r FILE_ERRORS FILE_WARNINGS FILE_INFO FILE_STYLE <<< "$COUNTS"
+
+            TOTAL_ERRORS=$((TOTAL_ERRORS + FILE_ERRORS))
+            TOTAL_WARNINGS=$((TOTAL_WARNINGS + FILE_WARNINGS))
+            TOTAL_INFO=$((TOTAL_INFO + FILE_INFO))
+            TOTAL_STYLE=$((TOTAL_STYLE + FILE_STYLE))
+
+            FILE_ISSUES=$((FILE_ERRORS + FILE_WARNINGS + FILE_INFO + FILE_STYLE))
+
+            if [ "$FILE_ISSUES" -gt 0 ]; then
+              # Show issues with TTY format
+              $HADOLINT_CMD --format ${{ inputs.format }} $HADOLINT_ARGS "$dockerfile" 2>&1 || true
+              echo ""
+            else
+              echo "   ✅ No issues found"
+            fi
+          done
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          TOTAL_ISSUES=$((TOTAL_ERRORS + TOTAL_WARNINGS + TOTAL_INFO + TOTAL_STYLE))
+
+          # Determine pass/fail based on threshold
+          case "${{ inputs.failure-threshold }}" in
+            "error")
+              [ "$TOTAL_ERRORS" -gt 0 ] && PASSED="false"
+              ;;
+            "warning")
+              [ "$TOTAL_ERRORS" -gt 0 ] || [ "$TOTAL_WARNINGS" -gt 0 ] && PASSED="false"
+              ;;
+            "info")
+              [ "$TOTAL_ERRORS" -gt 0 ] || [ "$TOTAL_WARNINGS" -gt 0 ] || [ "$TOTAL_INFO" -gt 0 ] && PASSED="false"
+              ;;
+            "style")
+              [ "$TOTAL_ISSUES" -gt 0 ] && PASSED="false"
+              ;;
+            "ignore")
+              PASSED="true"
+              ;;
+          esac
+
+          # Summary
+          echo ""
+          echo "📊 Hadolint Results:"
+          echo "   Files checked: $FILE_COUNT"
+          echo "   Total issues:  $TOTAL_ISSUES"
+          echo "   Errors:        $TOTAL_ERRORS"
+          echo "   Warnings:      $TOTAL_WARNINGS"
+          echo "   Info:          $TOTAL_INFO"
+          echo "   Style:         $TOTAL_STYLE"
+
+          # Set outputs
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+          echo "files-checked=$FILE_COUNT" >> $GITHUB_OUTPUT
+          echo "issues-found=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
+          echo "error-count=$TOTAL_ERRORS" >> $GITHUB_OUTPUT
+          echo "warning-count=$TOTAL_WARNINGS" >> $GITHUB_OUTPUT
+          echo "info-count=$TOTAL_INFO" >> $GITHUB_OUTPUT
+          echo "style-count=$TOTAL_STYLE" >> $GITHUB_OUTPUT
+
+          # Determine exit status
+          if [ "$PASSED" = "false" ] && [ "${{ inputs.fail-on-findings }}" = "true" ]; then
+            echo ""
+            echo "❌ Hadolint found issues - see above for details"
+            exit 1
+          elif [ "$PASSED" = "false" ]; then
+            echo ""
+            echo "⚠️ Hadolint found issues (fail-on-findings: false)"
+          else
+            echo ""
+            echo "✅ All Dockerfiles passed Hadolint validation"
+          fi
+
+      - name: 📊 Handle No Files
+        if: steps.find-dockerfiles.outputs.no-files == 'true'
+        id: no-files
+        shell: bash
+        run: |
+          echo "passed=true" >> $GITHUB_OUTPUT
+          echo "files-checked=0" >> $GITHUB_OUTPUT
+          echo "issues-found=0" >> $GITHUB_OUTPUT
+          echo "error-count=0" >> $GITHUB_OUTPUT
+          echo "warning-count=0" >> $GITHUB_OUTPUT
+          echo "info-count=0" >> $GITHUB_OUTPUT
+          echo "style-count=0" >> $GITHUB_OUTPUT
+          echo "ℹ️ No Dockerfiles found - validation passed"
+
+      - name: 📊 Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "### 🐳 Dockerfile Validation Results (Hadolint)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          PASSED="${{ steps.hadolint.outputs.passed || steps.no-files.outputs.passed || 'true' }}"
+          FILES="${{ steps.hadolint.outputs.files-checked || steps.no-files.outputs.files-checked || '0' }}"
+          ISSUES="${{ steps.hadolint.outputs.issues-found || steps.no-files.outputs.issues-found || '0' }}"
+          ERRORS="${{ steps.hadolint.outputs.error-count || steps.no-files.outputs.error-count || '0' }}"
+          WARNINGS="${{ steps.hadolint.outputs.warning-count || steps.no-files.outputs.warning-count || '0' }}"
+          INFO="${{ steps.hadolint.outputs.info-count || steps.no-files.outputs.info-count || '0' }}"
+          STYLE="${{ steps.hadolint.outputs.style-count || steps.no-files.outputs.style-count || '0' }}"
+
+          if [ "$PASSED" = "true" ]; then
+            echo "✅ **Validation Passed**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Validation Failed**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Files Checked** | $FILES |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Total Issues** | $ISSUES |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Errors** | $ERRORS |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Warnings** | $WARNINGS |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Info** | $INFO |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Style** | $STYLE |" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### ⚙️ Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Failure Threshold** | \`${{ inputs.failure-threshold }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Scan Directory** | \`${{ inputs.scan-directory }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Recursive** | \`${{ inputs.recursive }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Fail on Findings** | \`${{ inputs.fail-on-findings }}\` |" >> $GITHUB_STEP_SUMMARY
+
+          # Show ignored rules if any
+          IGNORED='${{ inputs.ignore-rules }}'
+          if [ -n "$IGNORED" ] && [ "$IGNORED" != '' ]; then
+            IGNORED_LIST=$(echo "$IGNORED" | python3 -c "import sys, json; print(', '.join(json.load(sys.stdin)))" 2>/dev/null || echo "$IGNORED")
+            echo "| **Ignored Rules** | \`$IGNORED_LIST\` |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### 📚 Common Hadolint Rules" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Rule | Description |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| DL3000 | Use absolute WORKDIR |" >> $GITHUB_STEP_SUMMARY
+          echo "| DL3001 | Use WORKDIR instead of RUN cd |" >> $GITHUB_STEP_SUMMARY
+          echo "| DL3002 | Do not switch to root USER |" >> $GITHUB_STEP_SUMMARY
+          echo "| DL3003 | Use WORKDIR to switch to directory |" >> $GITHUB_STEP_SUMMARY
+          echo "| DL3006 | Always tag image version |" >> $GITHUB_STEP_SUMMARY
+          echo "| DL3007 | Avoid using latest tag |" >> $GITHUB_STEP_SUMMARY
+          echo "| DL3008 | Pin versions in apt-get install |" >> $GITHUB_STEP_SUMMARY
+          echo "| DL3013 | Pin versions in pip install |" >> $GITHUB_STEP_SUMMARY
+          echo "| DL3018 | Pin versions in apk add |" >> $GITHUB_STEP_SUMMARY
+          echo "| DL3025 | Use JSON notation for CMD |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[📖 Full Hadolint Rules Reference](https://github.com/hadolint/hadolint#rules)" >> $GITHUB_STEP_SUMMARY
