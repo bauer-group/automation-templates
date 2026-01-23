@@ -1,3 +1,9 @@
+## [4.16.0](https://github.com/bauer-group/automation-templates/compare/v4.15.0...v4.16.0) (2026-01-23)
+
+### 🚀 Features
+
+* Add Dockerfile validation workflow using Hadolint ([522a03d](https://github.com/bauer-group/automation-templates/commit/522a03d294004f29c9f638dae1ba2e9358658172))
+
 ## [4.15.0](https://github.com/bauer-group/automation-templates/compare/v4.14.0...v4.15.0) (2026-01-22)
 
 ### 🚀 Features
