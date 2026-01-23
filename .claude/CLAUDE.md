@@ -345,4 +345,4 @@ Bei diesen Situationen stoppe ich sofort und eskaliere:
 
 ---
 
-*Stand: 2026-01*
+*Stand: 2026-01-22*
