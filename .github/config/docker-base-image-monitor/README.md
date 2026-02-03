@@ -209,31 +209,19 @@ jobs:
 
 ### Schritt 5: Semantic Release konfigurieren
 
-Damit der automatische Commit ein Release triggert, muss Semantic Release entsprechend konfiguriert sein.
+Die Standard-Konfiguration in `.github/config/release/semantic-release.json` enthält bereits die Regel für `chore(deps):` → PATCH-Release.
 
-Erstelle oder erweitere `.releaserc.json`:
+**Falls du `modules-semantic-release.yml` verwendest:** Keine weitere Konfiguration nötig.
+
+**Falls du eine eigene `.releaserc.json` nutzt:** Stelle sicher, dass diese Regel vorhanden ist:
 
 ```json
 {
-  "branches": ["main"],
-  "plugins": [
-    ["@semantic-release/commit-analyzer", {
-      "preset": "conventionalcommits",
-      "releaseRules": [
-        { "type": "feat", "release": "minor" },
-        { "type": "fix", "release": "patch" },
-        { "type": "perf", "release": "patch" },
-        { "type": "chore", "scope": "deps", "release": "patch" }
-      ]
-    }],
-    "@semantic-release/release-notes-generator",
-    "@semantic-release/changelog",
-    "@semantic-release/github"
+  "releaseRules": [
+    { "type": "chore", "scope": "deps", "release": "patch" }
   ]
 }
 ```
-
-**Wichtig:** Die Regel `{ "type": "chore", "scope": "deps", "release": "patch" }` sorgt dafür, dass Commits mit `chore(deps):` ein PATCH-Release auslösen.
 
 ---
 
@@ -552,13 +540,9 @@ So sieht der vollständige automatische Release-Flow aus:
 
 **Ursache:** Der Commit-Prefix ist nicht in den releaseRules konfiguriert.
 
-**Lösung:** Füge in `.releaserc.json` hinzu:
+**Lösung:** Verwende `modules-semantic-release.yml` - dort ist `chore(deps)` bereits konfiguriert. Bei eigener `.releaserc.json` prüfe, ob die Regel vorhanden ist:
 ```json
-{
-  "releaseRules": [
-    { "type": "chore", "scope": "deps", "release": "patch" }
-  ]
-}
+{ "type": "chore", "scope": "deps", "release": "patch" }
 ```
 
 ### Variable wird nicht angelegt
