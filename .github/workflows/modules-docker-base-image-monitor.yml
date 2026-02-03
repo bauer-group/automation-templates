@@ -33,37 +33,37 @@ on:
   workflow_call:
     inputs:
       images:
-        description: 'JSON array of images to monitor (alternative to config-file)'
+        description: "JSON array of images to monitor (alternative to config-file)"
         required: false
         type: string
-        default: ''
+        default: ""
       config-file:
-        description: 'Path to JSON config file (alternative to images)'
+        description: "Path to JSON config file (alternative to images)"
         required: false
         type: string
-        default: ''
+        default: ""
       target-workflow:
-        description: 'Workflow file to trigger on update (optional, uses commit trigger if empty)'
+        description: "Workflow file to trigger on update (optional, uses commit trigger if empty)"
         required: false
         type: string
-        default: ''
+        default: ""
       target-workflow-ref:
-        description: 'Branch for workflow_dispatch'
+        description: "Branch for workflow_dispatch"
         required: false
         type: string
-        default: 'main'
+        default: "main"
       commit-prefix:
-        description: 'Commit message prefix for semantic release'
+        description: "Commit message prefix for semantic release"
         required: false
         type: string
-        default: 'chore(deps)'
+        default: "chore(deps)"
       commit-and-release:
-        description: 'Create commit to trigger semantic release'
+        description: "Create commit to trigger semantic release"
         required: false
         type: boolean
         default: true
       dry-run:
-        description: 'Only check, do not trigger or update variables'
+        description: "Only check, do not trigger or update variables"
         required: false
         type: boolean
         default: false
@@ -71,28 +71,28 @@ on:
         description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         required: false
         type: string
-        default: 'ubuntu-latest'
+        default: "ubuntu-latest"
 
     secrets:
-      PAT_READWRITE_REPOSITORY:
-        description: 'GitHub PAT with variable write and contents write permissions'
+      PAT_READWRITE_ORGANISATION:
+        description: "GitHub PAT with variable write and contents write permissions"
         required: true
 
     outputs:
       updates-found:
-        description: 'True if at least one update was found'
+        description: "True if at least one update was found"
         value: ${{ jobs.monitor.outputs.updates-found }}
       updated-images:
-        description: 'JSON array of updated image names'
+        description: "JSON array of updated image names"
         value: ${{ jobs.monitor.outputs.updated-images }}
       triggered:
-        description: 'True if target workflow was triggered or commit was pushed'
+        description: "True if target workflow was triggered or commit was pushed"
         value: ${{ jobs.monitor.outputs.triggered }}
       commit-sha:
-        description: 'SHA of the created commit'
+        description: "SHA of the created commit"
         value: ${{ jobs.monitor.outputs.commit-sha }}
       new-digests:
-        description: 'JSON object with new digests per image'
+        description: "JSON object with new digests per image"
         value: ${{ jobs.monitor.outputs.new-digests }}
 
 jobs:
@@ -107,16 +107,16 @@ jobs:
       new-digests: ${{ steps.check.outputs.new-digests }}
 
     steps:
-      - name: "🔐 Validate PAT_READWRITE_REPOSITORY secret"
+      - name: "🔐 Validate PAT_READWRITE_ORGANISATION secret"
         shell: bash
         env:
-          PAT_TOKEN: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+          PAT_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
         run: |
           if [ -z "$PAT_TOKEN" ]; then
-            echo "::error::❌ Secret 'PAT_READWRITE_REPOSITORY' is not defined!"
+            echo "::error::❌ Secret 'PAT_READWRITE_ORGANISATION' is not defined!"
             echo ""
             echo "═══════════════════════════════════════════════════════════════════"
-            echo "  MISSING SECRET: PAT_READWRITE_REPOSITORY"
+            echo "  MISSING SECRET: PAT_READWRITE_ORGANISATION"
             echo "═══════════════════════════════════════════════════════════════════"
             echo ""
             echo "  This workflow requires a Personal Access Token (PAT) with"
@@ -130,19 +130,19 @@ jobs:
             echo "  2. Add the secret to your repository:"
             echo "     Repository → Settings → Secrets and variables → Actions"
             echo "     → New repository secret"
-            echo "     Name: PAT_READWRITE_REPOSITORY"
+            echo "     Name: PAT_READWRITE_ORGANISATION"
             echo ""
             echo "  3. Call this workflow with 'secrets: inherit'"
             echo ""
             echo "═══════════════════════════════════════════════════════════════════"
             exit 1
           fi
-          echo "✅ PAT_READWRITE_REPOSITORY secret is configured"
+          echo "✅ PAT_READWRITE_ORGANISATION secret is configured"
 
       - name: "📥 Checkout repository"
         uses: actions/checkout@v6
         with:
-          token: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+          token: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           fetch-depth: 0
 
       - name: "📄 Load configuration"
@@ -188,7 +188,7 @@ jobs:
       - name: "🔍 Check for image updates"
         id: check
         env:
-          GH_TOKEN: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+          GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           IMAGES: ${{ steps.config.outputs.images }}
           DRY_RUN: ${{ inputs.dry-run }}
         shell: bash
@@ -311,7 +311,7 @@ jobs:
         id: release
         if: steps.check.outputs.updates-found == 'true' && inputs.commit-and-release == true && inputs.dry-run != true
         env:
-          GH_TOKEN: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+          GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           COMMIT_PREFIX: ${{ steps.config.outputs.commit-prefix }}
         shell: bash
         run: |
@@ -354,7 +354,7 @@ jobs:
         id: dispatch
         if: steps.check.outputs.updates-found == 'true' && inputs.target-workflow != '' && inputs.commit-and-release != true && inputs.dry-run != true
         env:
-          GH_TOKEN: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+          GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
         shell: bash
         run: |
           echo "🚀 Triggering workflow: ${{ inputs.target-workflow }}"

@@ -73,7 +73,7 @@ n8nio/n8n:stable
 
 Repository → Settings → Secrets and variables → Actions → New repository secret
 
-- Name: `PAT_READWRITE_REPOSITORY`
+- Name: `PAT_READWRITE_ORGANISATION`
 - Value: [Personal Access Token erstellen](https://github.com/settings/tokens/new) mit `repo` Scope
 
 **2. Workflow-Datei erstellen**
@@ -138,7 +138,7 @@ jobs:
 
 1. Gehe zu deinem Repository → Settings → Secrets and variables → Actions
 2. Klicke "New repository secret"
-3. Name: `PAT_READWRITE_REPOSITORY`
+3. Name: `PAT_READWRITE_ORGANISATION`
 4. Value: Dein kopierter Token
 5. Klicke "Add secret"
 

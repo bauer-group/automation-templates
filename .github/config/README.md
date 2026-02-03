@@ -124,7 +124,7 @@ Monitors Docker base images for digest changes and triggers rebuilds. Solves the
 - Supports dry-run mode for testing
 
 **Required Secrets:**
-- `PAT_READWRITE_REPOSITORY` - Personal Access Token with:
+- `PAT_READWRITE_ORGANISATION` - Personal Access Token with:
   - Variables (Read/Write)
   - Contents (Read/Write)
 
