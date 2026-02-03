@@ -107,6 +107,38 @@ jobs:
       new-digests: ${{ steps.check.outputs.new-digests }}
 
     steps:
+      - name: "🔐 Validate PAT_READWRITE_REPOSITORY secret"
+        shell: bash
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+        run: |
+          if [ -z "$PAT_TOKEN" ]; then
+            echo "::error::❌ Secret 'PAT_READWRITE_REPOSITORY' is not defined!"
+            echo ""
+            echo "═══════════════════════════════════════════════════════════════════"
+            echo "  MISSING SECRET: PAT_READWRITE_REPOSITORY"
+            echo "═══════════════════════════════════════════════════════════════════"
+            echo ""
+            echo "  This workflow requires a Personal Access Token (PAT) with"
+            echo "  read/write permissions for Variables and Contents."
+            echo ""
+            echo "  Setup instructions:"
+            echo "  1. Create a PAT at: https://github.com/settings/tokens"
+            echo "     - Classic: Select 'repo' scope"
+            echo "     - Fine-grained: Select 'Variables' + 'Contents' (Read/Write)"
+            echo ""
+            echo "  2. Add the secret to your repository:"
+            echo "     Repository → Settings → Secrets and variables → Actions"
+            echo "     → New repository secret"
+            echo "     Name: PAT_READWRITE_REPOSITORY"
+            echo ""
+            echo "  3. Call this workflow with 'secrets: inherit'"
+            echo ""
+            echo "═══════════════════════════════════════════════════════════════════"
+            exit 1
+          fi
+          echo "✅ PAT_READWRITE_REPOSITORY secret is configured"
+
       - name: "📥 Checkout repository"
         uses: actions/checkout@v6
         with:
