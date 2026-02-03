@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/bauer-group/automation-templates/main/.github/config/docker-base-image-monitor/docker-base-images.schema.json",
+  "title": "Docker Base Image Monitor Configuration",
+  "description": "Configuration schema for the Docker Base Image Monitor workflow",
+  "type": "object",
+  "required": ["images"],
+  "properties": {
+    "images": {
+      "type": "array",
+      "description": "List of Docker images to monitor for digest changes",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "image", "tag", "variable"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Friendly name for the image (used in logs and commit messages)",
+            "minLength": 1,
+            "examples": ["n8n", "runner", "postgres"]
+          },
+          "image": {
+            "type": "string",
+            "description": "Docker image name without tag (e.g., 'n8nio/n8n', 'library/postgres')",
+            "pattern": "^[a-z0-9][a-z0-9._/-]*[a-z0-9]$",
+            "examples": ["n8nio/n8n", "n8nio/runners", "library/node"]
+          },
+          "tag": {
+            "type": "string",
+            "description": "Docker tag to monitor (typically floating tags like 'stable', 'latest')",
+            "minLength": 1,
+            "examples": ["stable", "latest", "lts", "alpine"]
+          },
+          "variable": {
+            "type": "string",
+            "description": "GitHub repository variable name to store the digest",
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "examples": ["N8N_STABLE_DIGEST", "RUNNER_STABLE_DIGEST"]
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description for documentation purposes"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "settings": {
+      "type": "object",
+      "description": "Global settings for the monitor",
+      "properties": {
+        "commit-prefix": {
+          "type": "string",
+          "description": "Commit message prefix for semantic release compatibility",
+          "default": "chore(deps)",
+          "examples": ["chore(deps)", "chore(docker)", "build(deps)"]
+        },
+        "auto-create-variables": {
+          "type": "boolean",
+          "description": "Automatically create GitHub variables if they don't exist",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "images": [
+        {
+          "name": "n8n",
+          "image": "n8nio/n8n",
+          "tag": "stable",
+          "variable": "N8N_STABLE_DIGEST",
+          "description": "n8n workflow automation platform"
+        }
+      ],
+      "settings": {
+        "commit-prefix": "chore(deps)",
+        "auto-create-variables": true
+      }
+    }
+  ]
+}

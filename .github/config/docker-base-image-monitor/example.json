@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/bauer-group/automation-templates/main/.github/config/docker-base-image-monitor/docker-base-images.schema.json",
+  "images": [
+    {
+      "name": "n8n",
+      "image": "n8nio/n8n",
+      "tag": "stable",
+      "variable": "N8N_STABLE_DIGEST",
+      "description": "n8n workflow automation platform"
+    },
+    {
+      "name": "runner",
+      "image": "n8nio/runners",
+      "tag": "stable",
+      "variable": "N8N_RUNNER_STABLE_DIGEST",
+      "description": "n8n task runner for code execution"
+    }
+  ],
+  "settings": {
+    "commit-prefix": "chore(deps)",
+    "auto-create-variables": true
+  }
+}

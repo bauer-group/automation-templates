@@ -1,0 +1,380 @@
+# =============================================================================
+# Docker Base Image Monitor - Reusable Workflow
+# =============================================================================
+# Monitors Docker base images for digest changes and triggers rebuilds.
+# Solves the problem that Dependabot cannot track floating tags (stable/latest).
+#
+# Features:
+# - Monitors multiple images via JSON config or inline definition
+# - Auto-creates GitHub variables for digest storage
+# - Creates semantic-release compatible commits for automatic versioning
+# - Supports dry-run mode for testing
+#
+# Usage (inline):
+#   uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
+#   with:
+#     images: '[{"name": "n8n", "image": "n8nio/n8n", "tag": "stable", "variable": "N8N_STABLE_DIGEST"}]'
+#   secrets:
+#     token: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+#
+# Usage (config file):
+#   uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
+#   with:
+#     config-file: '.github/config/docker-base-image-monitor/base-images.json'
+#   secrets:
+#     token: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+#
+# Required Permissions:
+#   - PAT with 'repo' scope (Classic) OR
+#   - Fine-grained PAT with Variables (Read/Write) + Contents (Read/Write)
+# =============================================================================
+
+name: "🔍 Module | Docker Base Image Monitor"
+
+on:
+  workflow_call:
+    inputs:
+      images:
+        description: 'JSON array of images to monitor (alternative to config-file)'
+        required: false
+        type: string
+        default: ''
+      config-file:
+        description: 'Path to JSON config file (alternative to images)'
+        required: false
+        type: string
+        default: ''
+      target-workflow:
+        description: 'Workflow file to trigger on update (optional, uses commit trigger if empty)'
+        required: false
+        type: string
+        default: ''
+      target-workflow-ref:
+        description: 'Branch for workflow_dispatch'
+        required: false
+        type: string
+        default: 'main'
+      commit-prefix:
+        description: 'Commit message prefix for semantic release'
+        required: false
+        type: string
+        default: 'chore(deps)'
+      commit-and-release:
+        description: 'Create commit to trigger semantic release'
+        required: false
+        type: boolean
+        default: true
+      dry-run:
+        description: 'Only check, do not trigger or update variables'
+        required: false
+        type: boolean
+        default: false
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+
+    secrets:
+      token:
+        description: 'GitHub token with variable write and contents write permissions (PAT required)'
+        required: true
+
+    outputs:
+      updates-found:
+        description: 'True if at least one update was found'
+        value: ${{ jobs.monitor.outputs.updates-found }}
+      updated-images:
+        description: 'JSON array of updated image names'
+        value: ${{ jobs.monitor.outputs.updated-images }}
+      triggered:
+        description: 'True if target workflow was triggered or commit was pushed'
+        value: ${{ jobs.monitor.outputs.triggered }}
+      commit-sha:
+        description: 'SHA of the created commit'
+        value: ${{ jobs.monitor.outputs.commit-sha }}
+      new-digests:
+        description: 'JSON object with new digests per image'
+        value: ${{ jobs.monitor.outputs.new-digests }}
+
+jobs:
+  monitor:
+    name: "🔍 Check Base Images"
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    outputs:
+      updates-found: ${{ steps.check.outputs.updates-found }}
+      updated-images: ${{ steps.check.outputs.updated-images }}
+      triggered: ${{ steps.release.outputs.triggered || steps.dispatch.outputs.triggered || 'false' }}
+      commit-sha: ${{ steps.release.outputs.commit-sha }}
+      new-digests: ${{ steps.check.outputs.new-digests }}
+
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.token }}
+          fetch-depth: 0
+
+      - name: "📄 Load configuration"
+        id: config
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Check if config-file is provided
+          if [ -n "${{ inputs.config-file }}" ]; then
+            echo "📂 Loading config from file: ${{ inputs.config-file }}"
+
+            if [ ! -f "${{ inputs.config-file }}" ]; then
+              echo "::error::Config file not found: ${{ inputs.config-file }}"
+              exit 1
+            fi
+
+            # Extract images array and settings
+            IMAGES=$(jq -c '.images' "${{ inputs.config-file }}")
+            COMMIT_PREFIX=$(jq -r '.settings."commit-prefix" // "${{ inputs.commit-prefix }}"' "${{ inputs.config-file }}")
+
+            echo "images=$IMAGES" >> $GITHUB_OUTPUT
+            echo "commit-prefix=$COMMIT_PREFIX" >> $GITHUB_OUTPUT
+            echo "✅ Loaded $(echo "$IMAGES" | jq 'length') images from config file"
+
+          elif [ -n '${{ inputs.images }}' ] && [ '${{ inputs.images }}' != '' ]; then
+            echo "📋 Using inline images configuration"
+
+            # Validate JSON
+            if ! echo '${{ inputs.images }}' | jq -e '.' > /dev/null 2>&1; then
+              echo "::error::Invalid JSON in 'images' input"
+              exit 1
+            fi
+
+            echo 'images=${{ inputs.images }}' >> $GITHUB_OUTPUT
+            echo 'commit-prefix=${{ inputs.commit-prefix }}' >> $GITHUB_OUTPUT
+            echo "✅ Loaded $(echo '${{ inputs.images }}' | jq 'length') images from inline config"
+          else
+            echo "::error::Either 'images' or 'config-file' must be provided"
+            exit 1
+          fi
+
+      - name: "🔍 Check for image updates"
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.token }}
+          IMAGES: ${{ steps.config.outputs.images }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "::group::📋 Image Configuration"
+          echo "$IMAGES" | jq -r '.[] | "  - \(.name): \(.image):\(.tag)"'
+          echo "::endgroup::"
+
+          UPDATES_FOUND="false"
+          UPDATED_IMAGES="[]"
+          NEW_DIGESTS="{}"
+          UPDATE_DETAILS=""
+
+          # Process each image
+          for img in $(echo "$IMAGES" | jq -c '.[]'); do
+            NAME=$(echo "$img" | jq -r '.name')
+            IMAGE=$(echo "$img" | jq -r '.image')
+            TAG=$(echo "$img" | jq -r '.tag')
+            VARIABLE=$(echo "$img" | jq -r '.variable')
+
+            echo "::group::🐳 Checking $NAME ($IMAGE:$TAG)"
+
+            # Get current digest from registry
+            echo "📡 Fetching current digest from Docker Hub..."
+
+            # Try to get digest, handling multi-arch manifests
+            CURRENT_DIGEST=""
+            MANIFEST_OUTPUT=$(docker manifest inspect "$IMAGE:$TAG" 2>&1) || {
+              echo "::warning::Could not fetch manifest for $IMAGE:$TAG"
+              echo "::endgroup::"
+              continue
+            }
+
+            # Try to extract digest (handles both single and multi-arch)
+            CURRENT_DIGEST=$(echo "$MANIFEST_OUTPUT" | jq -r '
+              if .config.digest then
+                .config.digest
+              elif .manifests then
+                .manifests | sort_by(.platform.architecture) | .[0].digest
+              else
+                empty
+              end
+            ' 2>/dev/null || echo "")
+
+            if [ -z "$CURRENT_DIGEST" ]; then
+              echo "::warning::Could not extract digest for $IMAGE:$TAG"
+              echo "::endgroup::"
+              continue
+            fi
+
+            echo "📦 Current digest: ${CURRENT_DIGEST:0:20}..."
+
+            # Get stored digest from variable (auto-create if missing)
+            echo "🔎 Fetching stored digest from variable $VARIABLE..."
+            STORED_DIGEST=$(gh variable get "$VARIABLE" 2>/dev/null || echo "")
+
+            if [ -z "$STORED_DIGEST" ]; then
+              echo "ℹ️  Variable $VARIABLE does not exist (will be created)"
+            else
+              echo "📦 Stored digest: ${STORED_DIGEST:0:20}..."
+            fi
+
+            # Compare digests
+            if [ "$CURRENT_DIGEST" != "$STORED_DIGEST" ]; then
+              echo ""
+              echo "✅ Update detected for $NAME!"
+              echo "   Old: ${STORED_DIGEST:-<none>}"
+              echo "   New: $CURRENT_DIGEST"
+
+              UPDATES_FOUND="true"
+              UPDATED_IMAGES=$(echo "$UPDATED_IMAGES" | jq --arg name "$NAME" '. + [$name]')
+              NEW_DIGESTS=$(echo "$NEW_DIGESTS" | jq --arg name "$NAME" --arg digest "$CURRENT_DIGEST" '. + {($name): $digest}')
+
+              # Build update details for commit message
+              UPDATE_DETAILS="${UPDATE_DETAILS}
+          - $NAME ($IMAGE:$TAG)
+            Old: ${STORED_DIGEST:-<none>}
+            New: $CURRENT_DIGEST"
+
+              if [ "$DRY_RUN" != "true" ]; then
+                # Update or create variable
+                echo "💾 Setting variable $VARIABLE..."
+                gh variable set "$VARIABLE" --body "$CURRENT_DIGEST"
+                echo "✅ Variable updated"
+              else
+                echo "🔍 DRY RUN: Would set variable $VARIABLE"
+              fi
+            else
+              echo ""
+              echo "ℹ️  No update for $NAME (digest unchanged)"
+            fi
+
+            echo "::endgroup::"
+          done
+
+          # Write outputs
+          echo "updates-found=$UPDATES_FOUND" >> $GITHUB_OUTPUT
+          echo "updated-images=$UPDATED_IMAGES" >> $GITHUB_OUTPUT
+          echo "new-digests=$NEW_DIGESTS" >> $GITHUB_OUTPUT
+
+          # Store update details for commit message (using delimiter for multiline)
+          {
+            echo "UPDATE_DETAILS<<DETAILS_EOF"
+            echo "$UPDATE_DETAILS"
+            echo "DETAILS_EOF"
+          } >> $GITHUB_ENV
+
+          echo ""
+          echo "═══════════════════════════════════════════"
+          echo "📊 Summary"
+          echo "═══════════════════════════════════════════"
+          echo "Updates found: $UPDATES_FOUND"
+          if [ "$UPDATES_FOUND" = "true" ]; then
+            echo "Updated images: $(echo "$UPDATED_IMAGES" | jq -r 'join(", ")')"
+          fi
+
+      - name: "📝 Create release commit"
+        id: release
+        if: steps.check.outputs.updates-found == 'true' && inputs.commit-and-release == true && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ secrets.token }}
+          COMMIT_PREFIX: ${{ steps.config.outputs.commit-prefix }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Get list of updated images for commit message
+          UPDATED=$(echo '${{ steps.check.outputs.updated-images }}' | jq -r 'join(", ")')
+
+          # Create commit message using heredoc for proper formatting
+          COMMIT_MSG=$(cat <<COMMIT_EOF
+          ${COMMIT_PREFIX}: update base image ${UPDATED}
+
+          Base image digest changed:
+          ${UPDATE_DETAILS}
+
+          Triggered by: Docker Base Image Monitor
+          COMMIT_EOF
+          )
+
+          # Create an empty commit (the actual change is in GitHub variables)
+          git commit --allow-empty -m "$COMMIT_MSG"
+
+          # Push
+          git push origin HEAD
+
+          # Get commit SHA
+          COMMIT_SHA=$(git rev-parse HEAD)
+          echo "commit-sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "triggered=true" >> $GITHUB_OUTPUT
+
+          echo ""
+          echo "✅ Created commit: $COMMIT_SHA"
+          echo "🚀 Semantic release will be triggered by push event"
+
+      - name: "🚀 Trigger target workflow"
+        id: dispatch
+        if: steps.check.outputs.updates-found == 'true' && inputs.target-workflow != '' && inputs.commit-and-release != true && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ secrets.token }}
+        shell: bash
+        run: |
+          echo "🚀 Triggering workflow: ${{ inputs.target-workflow }}"
+          gh workflow run "${{ inputs.target-workflow }}" --ref "${{ inputs.target-workflow-ref }}"
+          echo "triggered=true" >> $GITHUB_OUTPUT
+          echo "✅ Workflow triggered successfully"
+
+      - name: "📋 Summary"
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## 🔍 Docker Base Image Monitor Results"
+            echo ""
+
+            if [ "${{ inputs.dry-run }}" = "true" ]; then
+              echo "> ⚠️ **Dry run mode** - No changes were made"
+              echo ""
+            fi
+
+            if [ "${{ steps.check.outputs.updates-found }}" = "true" ]; then
+              echo "### ✅ Updates found!"
+              echo ""
+              echo "**Updated images:**"
+              echo '${{ steps.check.outputs.updated-images }}' | jq -r '.[] | "- `" + . + "`"'
+              echo ""
+              echo "**New digests:**"
+              echo '```json'
+              echo '${{ steps.check.outputs.new-digests }}' | jq '.'
+              echo '```'
+
+              if [ "${{ steps.release.outputs.triggered }}" = "true" ]; then
+                echo ""
+                echo "### 🚀 Release triggered"
+                echo ""
+                echo "| Property | Value |"
+                echo "|----------|-------|"
+                echo "| **Commit** | \`${{ steps.release.outputs.commit-sha }}\` |"
+                echo "| **Prefix** | \`${{ steps.config.outputs.commit-prefix }}\` |"
+                echo ""
+                echo "Semantic Release will create a new version based on the commit."
+              elif [ "${{ steps.dispatch.outputs.triggered }}" = "true" ]; then
+                echo ""
+                echo "### 🚀 Workflow triggered"
+                echo ""
+                echo "Target workflow \`${{ inputs.target-workflow }}\` was dispatched."
+              fi
+            else
+              echo "### ℹ️ No updates found"
+              echo ""
+              echo "All base images are up to date."
+            fi
+          } >> $GITHUB_STEP_SUMMARY

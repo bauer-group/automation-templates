@@ -25,6 +25,9 @@ Organized configuration files for GitHub Actions workflows and modules.
 │   ├── issue-helper.yml
 │   ├── security-review.yml
 │   └── minimal.yml
+├── 📁 docker-base-image-monitor/  # Docker base image monitoring
+│   ├── docker-base-images.schema.json
+│   └── example.json
 └── commitlint.config.js # Commit message linting configuration
 ```
 
@@ -101,6 +104,30 @@ Organized configuration files for GitHub Actions workflows and modules.
   - Uses Sonnet for faster responses
   - Minimal context for brief answers
 
+### 🐳 Docker Base Image Monitor (`docker-base-image-monitor/`)
+**Module:** `modules-docker-base-image-monitor.yml`
+
+Monitors Docker base images for digest changes and triggers rebuilds. Solves the problem that Dependabot cannot track floating tags like `stable` or `latest`.
+
+- **`docker-base-images.schema.json`** - JSON Schema for configuration validation
+  - Validates image configuration structure
+  - IDE autocompletion support
+
+- **`example.json`** - Example configuration file
+  - Shows n8n and runner image monitoring setup
+  - Demonstrates all available options
+
+**Key Features:**
+- Monitors multiple images via JSON config or inline definition
+- Auto-creates GitHub variables for digest storage
+- Creates semantic-release compatible commits (`chore(deps):`)
+- Supports dry-run mode for testing
+
+**Required Secrets:**
+- `PAT_READWRITE_REPOSITORY` - Personal Access Token with:
+  - Variables (Read/Write)
+  - Contents (Read/Write)
+
 ## 📝 Naming Convention
 
 Files follow a clear naming pattern:
@@ -171,6 +198,7 @@ with:
 | `modules-ai-issue-summary` | `issues/` | `ai-prompts.yml` | No | AI-powered summaries |
 | `modules-security-scan` | `security/` | `gitleaks.toml` | No | Secret patterns |
 | `modules-license-compliance` | `license/` | `allowed-licenses.yml` | No | License rules |
+| `modules-docker-base-image-monitor` | `docker-base-image-monitor/` | `*.json` | No | Base image monitoring |
 
 ## 🔍 Configuration Examples
 
