@@ -101,8 +101,7 @@ jobs:
             "variable": "N8N_STABLE_DIGEST"
           }
         ]
-    secrets:
-      token: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+    secrets: inherit
 ```
 
 **Fertig!** Der Workflow prüft jetzt täglich, ob ein neues n8n Base Image verfügbar ist.
@@ -192,8 +191,7 @@ jobs:
     with:
       config-file: '.github/config/docker-base-image-monitor/base-images.json'
       dry-run: ${{ inputs.dry-run || false }}
-    secrets:
-      token: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+    secrets: inherit
 
   # Optional: Benachrichtigung bei Updates
   notify:
@@ -340,8 +338,7 @@ jobs:
     with:
       config-file: '.github/config/docker-base-image-monitor/base-images.json'
       dry-run: ${{ inputs.dry-run || false }}
-    secrets:
-      token: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+    secrets: inherit
 ```
 
 ### Beispiel 2: PostgreSQL + Redis (Datenbank-Stack)
@@ -430,8 +427,7 @@ jobs:
           }
         ]
       commit-prefix: 'chore(deps)'
-    secrets:
-      token: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+    secrets: inherit
 ```
 
 ### Beispiel 5: Mit Workflow-Dispatch statt Commit
@@ -453,8 +449,7 @@ jobs:
       commit-and-release: false
       target-workflow: 'docker-build.yml'
       target-workflow-ref: 'main'
-    secrets:
-      token: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+    secrets: inherit
 ```
 
 ### Beispiel 6: Mit Self-Hosted Runner
@@ -466,8 +461,7 @@ jobs:
     with:
       config-file: '.github/config/docker-base-image-monitor/base-images.json'
       runs-on: '["self-hosted", "linux", "docker"]'
-    secrets:
-      token: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+    secrets: inherit
 ```
 
 ---

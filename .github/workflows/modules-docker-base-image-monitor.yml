@@ -14,15 +14,13 @@
 #   uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
 #   with:
 #     images: '[{"name": "n8n", "image": "n8nio/n8n", "tag": "stable", "variable": "N8N_STABLE_DIGEST"}]'
-#   secrets:
-#     token: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+#   secrets: inherit
 #
 # Usage (config file):
 #   uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
 #   with:
 #     config-file: '.github/config/docker-base-image-monitor/base-images.json'
-#   secrets:
-#     token: ${{ secrets.PAT_READWRITE_REPOSITORY }}
+#   secrets: inherit
 #
 # Required Permissions:
 #   - PAT with 'repo' scope (Classic) OR
@@ -76,8 +74,8 @@ on:
         default: 'ubuntu-latest'
 
     secrets:
-      token:
-        description: 'GitHub token with variable write and contents write permissions (PAT required)'
+      PAT_READWRITE_REPOSITORY:
+        description: 'GitHub PAT with variable write and contents write permissions'
         required: true
 
     outputs:
@@ -112,7 +110,7 @@ jobs:
       - name: "📥 Checkout repository"
         uses: actions/checkout@v6
         with:
-          token: ${{ secrets.token }}
+          token: ${{ secrets.PAT_READWRITE_REPOSITORY }}
           fetch-depth: 0
 
       - name: "📄 Load configuration"
@@ -158,7 +156,7 @@ jobs:
       - name: "🔍 Check for image updates"
         id: check
         env:
-          GH_TOKEN: ${{ secrets.token }}
+          GH_TOKEN: ${{ secrets.PAT_READWRITE_REPOSITORY }}
           IMAGES: ${{ steps.config.outputs.images }}
           DRY_RUN: ${{ inputs.dry-run }}
         shell: bash
@@ -281,7 +279,7 @@ jobs:
         id: release
         if: steps.check.outputs.updates-found == 'true' && inputs.commit-and-release == true && inputs.dry-run != true
         env:
-          GH_TOKEN: ${{ secrets.token }}
+          GH_TOKEN: ${{ secrets.PAT_READWRITE_REPOSITORY }}
           COMMIT_PREFIX: ${{ steps.config.outputs.commit-prefix }}
         shell: bash
         run: |
@@ -324,7 +322,7 @@ jobs:
         id: dispatch
         if: steps.check.outputs.updates-found == 'true' && inputs.target-workflow != '' && inputs.commit-and-release != true && inputs.dry-run != true
         env:
-          GH_TOKEN: ${{ secrets.token }}
+          GH_TOKEN: ${{ secrets.PAT_READWRITE_REPOSITORY }}
         shell: bash
         run: |
           echo "🚀 Triggering workflow: ${{ inputs.target-workflow }}"
