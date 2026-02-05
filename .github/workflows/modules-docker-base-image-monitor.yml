@@ -145,65 +145,51 @@ jobs:
           token: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           fetch-depth: 0
 
-      - name: "📄 Load configuration"
-        id: config
+      - name: "🔍 Check for image updates"
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
+          CONFIG_FILE: ${{ inputs.config-file }}
+          INLINE_IMAGES: ${{ inputs.images }}
+          COMMIT_PREFIX_INPUT: ${{ inputs.commit-prefix }}
+          DRY_RUN: ${{ inputs.dry-run }}
         shell: bash
         run: |
           set -euo pipefail
 
-          # Check if config-file is provided
-          if [ -n "${{ inputs.config-file }}" ]; then
-            echo "📂 Loading config from file: ${{ inputs.config-file }}"
+          # Load configuration directly in this step to avoid JSON escaping issues
+          echo "::group::📄 Loading Configuration"
+          if [ -n "$CONFIG_FILE" ]; then
+            echo "📂 Loading config from file: $CONFIG_FILE"
 
-            if [ ! -f "${{ inputs.config-file }}" ]; then
-              echo "::error::Config file not found: ${{ inputs.config-file }}"
+            if [ ! -f "$CONFIG_FILE" ]; then
+              echo "::error::Config file not found: $CONFIG_FILE"
               exit 1
             fi
 
-            # Extract images array and settings
-            IMAGES=$(jq -c '.images' "${{ inputs.config-file }}")
-            COMMIT_PREFIX=$(jq -r '.settings."commit-prefix" // "${{ inputs.commit-prefix }}"' "${{ inputs.config-file }}")
-
-            # Use heredoc for JSON to preserve special characters
-            {
-              echo 'images<<IMAGES_EOF'
-              echo "$IMAGES"
-              echo 'IMAGES_EOF'
-            } >> $GITHUB_OUTPUT
-            echo "commit-prefix=$COMMIT_PREFIX" >> $GITHUB_OUTPUT
+            IMAGES=$(jq -c '.images' "$CONFIG_FILE")
+            COMMIT_PREFIX=$(jq -r '.settings."commit-prefix" // "'"$COMMIT_PREFIX_INPUT"'"' "$CONFIG_FILE")
             echo "✅ Loaded $(printf '%s' "$IMAGES" | jq 'length') images from config file"
 
-          elif [ -n '${{ inputs.images }}' ] && [ '${{ inputs.images }}' != '' ]; then
+          elif [ -n "$INLINE_IMAGES" ]; then
             echo "📋 Using inline images configuration"
 
-            # Validate JSON
-            if ! printf '%s' '${{ inputs.images }}' | jq -e '.' > /dev/null 2>&1; then
+            if ! printf '%s' "$INLINE_IMAGES" | jq -e '.' > /dev/null 2>&1; then
               echo "::error::Invalid JSON in 'images' input"
               exit 1
             fi
 
-            # Use heredoc for JSON to preserve special characters
-            {
-              echo 'images<<IMAGES_EOF'
-              printf '%s\n' '${{ inputs.images }}'
-              echo 'IMAGES_EOF'
-            } >> $GITHUB_OUTPUT
-            echo 'commit-prefix=${{ inputs.commit-prefix }}' >> $GITHUB_OUTPUT
-            echo "✅ Loaded $(printf '%s' '${{ inputs.images }}' | jq 'length') images from inline config"
+            IMAGES="$INLINE_IMAGES"
+            COMMIT_PREFIX="$COMMIT_PREFIX_INPUT"
+            echo "✅ Loaded $(printf '%s' "$IMAGES" | jq 'length') images from inline config"
           else
             echo "::error::Either 'images' or 'config-file' must be provided"
             exit 1
           fi
 
-      - name: "🔍 Check for image updates"
-        id: check
-        env:
-          GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
-          IMAGES: ${{ steps.config.outputs.images }}
-          DRY_RUN: ${{ inputs.dry-run }}
-        shell: bash
-        run: |
-          set -euo pipefail
+          # Save commit-prefix for later steps
+          echo "commit-prefix=$COMMIT_PREFIX" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
 
           echo "::group::📋 Image Configuration"
           printf '%s' "$IMAGES" | jq -r '.[] | "  - \(.name): \(.image):\(.tag)"'
@@ -322,7 +308,7 @@ jobs:
         if: steps.check.outputs.updates-found == 'true' && inputs.commit-and-release == true && inputs.dry-run != true
         env:
           GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
-          COMMIT_PREFIX: ${{ steps.config.outputs.commit-prefix }}
+          COMMIT_PREFIX: ${{ steps.check.outputs.commit-prefix }}
         shell: bash
         run: |
           set -euo pipefail
@@ -403,7 +389,7 @@ jobs:
                 echo "| Property | Value |"
                 echo "|----------|-------|"
                 echo "| **Commit** | \`${{ steps.release.outputs.commit-sha }}\` |"
-                echo "| **Prefix** | \`${{ steps.config.outputs.commit-prefix }}\` |"
+                echo "| **Prefix** | \`${{ steps.check.outputs.commit-prefix }}\` |"
                 echo ""
                 echo "Semantic Release will create a new version based on the commit."
               elif [ "${{ steps.dispatch.outputs.triggered }}" = "true" ]; then
