@@ -164,22 +164,32 @@ jobs:
             IMAGES=$(jq -c '.images' "${{ inputs.config-file }}")
             COMMIT_PREFIX=$(jq -r '.settings."commit-prefix" // "${{ inputs.commit-prefix }}"' "${{ inputs.config-file }}")
 
-            echo "images=$IMAGES" >> $GITHUB_OUTPUT
+            # Use heredoc for JSON to preserve special characters
+            {
+              echo 'images<<IMAGES_EOF'
+              echo "$IMAGES"
+              echo 'IMAGES_EOF'
+            } >> $GITHUB_OUTPUT
             echo "commit-prefix=$COMMIT_PREFIX" >> $GITHUB_OUTPUT
-            echo "✅ Loaded $(echo "$IMAGES" | jq 'length') images from config file"
+            echo "✅ Loaded $(printf '%s' "$IMAGES" | jq 'length') images from config file"
 
           elif [ -n '${{ inputs.images }}' ] && [ '${{ inputs.images }}' != '' ]; then
             echo "📋 Using inline images configuration"
 
             # Validate JSON
-            if ! echo '${{ inputs.images }}' | jq -e '.' > /dev/null 2>&1; then
+            if ! printf '%s' '${{ inputs.images }}' | jq -e '.' > /dev/null 2>&1; then
               echo "::error::Invalid JSON in 'images' input"
               exit 1
             fi
 
-            echo 'images=${{ inputs.images }}' >> $GITHUB_OUTPUT
+            # Use heredoc for JSON to preserve special characters
+            {
+              echo 'images<<IMAGES_EOF'
+              printf '%s\n' '${{ inputs.images }}'
+              echo 'IMAGES_EOF'
+            } >> $GITHUB_OUTPUT
             echo 'commit-prefix=${{ inputs.commit-prefix }}' >> $GITHUB_OUTPUT
-            echo "✅ Loaded $(echo '${{ inputs.images }}' | jq 'length') images from inline config"
+            echo "✅ Loaded $(printf '%s' '${{ inputs.images }}' | jq 'length') images from inline config"
           else
             echo "::error::Either 'images' or 'config-file' must be provided"
             exit 1
@@ -196,7 +206,7 @@ jobs:
           set -euo pipefail
 
           echo "::group::📋 Image Configuration"
-          echo "$IMAGES" | jq -r '.[] | "  - \(.name): \(.image):\(.tag)"'
+          printf '%s' "$IMAGES" | jq -r '.[] | "  - \(.name): \(.image):\(.tag)"'
           echo "::endgroup::"
 
           UPDATES_FOUND="false"
@@ -204,12 +214,12 @@ jobs:
           NEW_DIGESTS="{}"
           UPDATE_DETAILS=""
 
-          # Process each image
-          for img in $(echo "$IMAGES" | jq -c '.[]'); do
-            NAME=$(echo "$img" | jq -r '.name')
-            IMAGE=$(echo "$img" | jq -r '.image')
-            TAG=$(echo "$img" | jq -r '.tag')
-            VARIABLE=$(echo "$img" | jq -r '.variable')
+          # Process each image (using process substitution to preserve variables)
+          while IFS= read -r img; do
+            NAME=$(printf '%s' "$img" | jq -r '.name')
+            IMAGE=$(printf '%s' "$img" | jq -r '.image')
+            TAG=$(printf '%s' "$img" | jq -r '.tag')
+            VARIABLE=$(printf '%s' "$img" | jq -r '.variable')
 
             echo "::group::🐳 Checking $NAME ($IMAGE:$TAG)"
 
@@ -284,7 +294,7 @@ jobs:
             fi
 
             echo "::endgroup::"
-          done
+          done < <(printf '%s' "$IMAGES" | jq -c '.[]')
 
           # Write outputs
           echo "updates-found=$UPDATES_FOUND" >> $GITHUB_OUTPUT
