@@ -309,6 +309,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           COMMIT_PREFIX: ${{ steps.check.outputs.commit-prefix }}
+          UPDATED_IMAGES_JSON: ${{ steps.check.outputs.updated-images }}
         shell: bash
         run: |
           set -euo pipefail
@@ -318,7 +319,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Get list of updated images for commit message
-          UPDATED=$(echo '${{ steps.check.outputs.updated-images }}' | jq -r 'join(", ")')
+          UPDATED=$(printf '%s' "$UPDATED_IMAGES_JSON" | jq -r 'join(", ")')
 
           # Create commit message using heredoc for proper formatting
           COMMIT_MSG=$(cat <<COMMIT_EOF
@@ -351,52 +352,64 @@ jobs:
         if: steps.check.outputs.updates-found == 'true' && inputs.target-workflow != '' && inputs.commit-and-release != true && inputs.dry-run != true
         env:
           GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
+          TARGET_WORKFLOW: ${{ inputs.target-workflow }}
+          TARGET_REF: ${{ inputs.target-workflow-ref }}
         shell: bash
         run: |
-          echo "🚀 Triggering workflow: ${{ inputs.target-workflow }}"
-          gh workflow run "${{ inputs.target-workflow }}" --ref "${{ inputs.target-workflow-ref }}"
+          echo "🚀 Triggering workflow: $TARGET_WORKFLOW"
+          gh workflow run "$TARGET_WORKFLOW" --ref "$TARGET_REF"
           echo "triggered=true" >> $GITHUB_OUTPUT
           echo "✅ Workflow triggered successfully"
 
       - name: "📋 Summary"
         if: always()
+        env:
+          DRY_RUN: ${{ inputs.dry-run }}
+          UPDATES_FOUND: ${{ steps.check.outputs.updates-found }}
+          UPDATED_IMAGES_JSON: ${{ steps.check.outputs.updated-images }}
+          NEW_DIGESTS_JSON: ${{ steps.check.outputs.new-digests }}
+          RELEASE_TRIGGERED: ${{ steps.release.outputs.triggered }}
+          RELEASE_SHA: ${{ steps.release.outputs.commit-sha }}
+          RELEASE_PREFIX: ${{ steps.check.outputs.commit-prefix }}
+          DISPATCH_TRIGGERED: ${{ steps.dispatch.outputs.triggered }}
+          TARGET_WORKFLOW: ${{ inputs.target-workflow }}
         shell: bash
         run: |
           {
             echo "## 🔍 Docker Base Image Monitor Results"
             echo ""
 
-            if [ "${{ inputs.dry-run }}" = "true" ]; then
+            if [ "$DRY_RUN" = "true" ]; then
               echo "> ⚠️ **Dry run mode** - No changes were made"
               echo ""
             fi
 
-            if [ "${{ steps.check.outputs.updates-found }}" = "true" ]; then
+            if [ "$UPDATES_FOUND" = "true" ]; then
               echo "### ✅ Updates found!"
               echo ""
               echo "**Updated images:**"
-              echo '${{ steps.check.outputs.updated-images }}' | jq -r '.[] | "- `" + . + "`"'
+              printf '%s' "$UPDATED_IMAGES_JSON" | jq -r '.[] | "- `" + . + "`"'
               echo ""
               echo "**New digests:**"
               echo '```json'
-              echo '${{ steps.check.outputs.new-digests }}' | jq '.'
+              printf '%s' "$NEW_DIGESTS_JSON" | jq '.'
               echo '```'
 
-              if [ "${{ steps.release.outputs.triggered }}" = "true" ]; then
+              if [ "$RELEASE_TRIGGERED" = "true" ]; then
                 echo ""
                 echo "### 🚀 Release triggered"
                 echo ""
                 echo "| Property | Value |"
                 echo "|----------|-------|"
-                echo "| **Commit** | \`${{ steps.release.outputs.commit-sha }}\` |"
-                echo "| **Prefix** | \`${{ steps.check.outputs.commit-prefix }}\` |"
+                echo "| **Commit** | \`$RELEASE_SHA\` |"
+                echo "| **Prefix** | \`$RELEASE_PREFIX\` |"
                 echo ""
                 echo "Semantic Release will create a new version based on the commit."
-              elif [ "${{ steps.dispatch.outputs.triggered }}" = "true" ]; then
+              elif [ "$DISPATCH_TRIGGERED" = "true" ]; then
                 echo ""
                 echo "### 🚀 Workflow triggered"
                 echo ""
-                echo "Target workflow \`${{ inputs.target-workflow }}\` was dispatched."
+                echo "Target workflow \`$TARGET_WORKFLOW\` was dispatched."
               fi
             else
               echo "### ℹ️ No updates found"
