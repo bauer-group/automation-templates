@@ -8,18 +8,21 @@
 # - Monitors multiple images via JSON config or inline definition
 # - Auto-creates GitHub variables for digest storage
 # - Creates semantic-release compatible commits for automatic versioning
+# - Triggers target workflows via workflow_dispatch (with optional inputs)
 # - Supports dry-run mode for testing
 #
-# Usage (inline):
-#   uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
-#   with:
-#     images: '[{"name": "n8n", "image": "n8nio/n8n", "tag": "stable", "variable": "N8N_STABLE_DIGEST"}]'
-#   secrets: inherit
-#
-# Usage (config file):
+# Usage (config file + workflow dispatch):
 #   uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
 #   with:
 #     config-file: '.github/config/docker-base-image-monitor/base-images.json'
+#     target-workflow: 'ci.yml'
+#     target-workflow-inputs: '{"force-release": "true"}'
+#   secrets: inherit
+#
+# Usage (inline images):
+#   uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
+#   with:
+#     images: '[{"name": "n8n", "image": "n8nio/n8n", "tag": "stable", "variable": "N8N_STABLE_DIGEST"}]'
 #   secrets: inherit
 #
 # Required Permissions:
@@ -52,6 +55,11 @@ on:
         required: false
         type: string
         default: "main"
+      target-workflow-inputs:
+        description: "JSON object of inputs to pass to target workflow (e.g. '{\"force-release\": \"true\"}')"
+        required: false
+        type: string
+        default: ""
       commit-prefix:
         description: "Commit message prefix for semantic release"
         required: false
@@ -349,15 +357,28 @@ jobs:
 
       - name: "🚀 Trigger target workflow"
         id: dispatch
-        if: steps.check.outputs.updates-found == 'true' && inputs.target-workflow != '' && inputs.commit-and-release != true && inputs.dry-run != true
+        if: steps.check.outputs.updates-found == 'true' && inputs.target-workflow != '' && inputs.dry-run != true
         env:
           GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           TARGET_WORKFLOW: ${{ inputs.target-workflow }}
           TARGET_REF: ${{ inputs.target-workflow-ref }}
+          TARGET_INPUTS: ${{ inputs.target-workflow-inputs }}
         shell: bash
         run: |
           echo "🚀 Triggering workflow: $TARGET_WORKFLOW"
-          gh workflow run "$TARGET_WORKFLOW" --ref "$TARGET_REF"
+
+          # Build gh workflow run command with optional inputs
+          ARGS=("gh" "workflow" "run" "$TARGET_WORKFLOW" "--ref" "$TARGET_REF")
+
+          if [ -n "$TARGET_INPUTS" ]; then
+            echo "📋 With inputs:"
+            while IFS= read -r field; do
+              echo "  - $field"
+              ARGS+=("--field" "$field")
+            done < <(printf '%s' "$TARGET_INPUTS" | jq -r 'to_entries[] | "\(.key)=\(.value)"')
+          fi
+
+          "${ARGS[@]}"
           echo "triggered=true" >> $GITHUB_OUTPUT
           echo "✅ Workflow triggered successfully"
 
@@ -397,19 +418,19 @@ jobs:
 
               if [ "$RELEASE_TRIGGERED" = "true" ]; then
                 echo ""
-                echo "### 🚀 Release triggered"
+                echo "### 📝 Commit created"
                 echo ""
                 echo "| Property | Value |"
                 echo "|----------|-------|"
                 echo "| **Commit** | \`$RELEASE_SHA\` |"
                 echo "| **Prefix** | \`$RELEASE_PREFIX\` |"
+              fi
+
+              if [ "$DISPATCH_TRIGGERED" = "true" ]; then
                 echo ""
-                echo "Semantic Release will create a new version based on the commit."
-              elif [ "$DISPATCH_TRIGGERED" = "true" ]; then
+                echo "### 🚀 Workflow dispatched"
                 echo ""
-                echo "### 🚀 Workflow triggered"
-                echo ""
-                echo "Target workflow \`$TARGET_WORKFLOW\` was dispatched."
+                echo "Target workflow \`$TARGET_WORKFLOW\` was triggered via \`workflow_dispatch\`."
               fi
             else
               echo "### ℹ️ No updates found"
