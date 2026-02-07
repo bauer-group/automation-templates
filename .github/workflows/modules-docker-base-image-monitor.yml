@@ -257,8 +257,8 @@ jobs:
               echo "   New: $CURRENT_DIGEST"
 
               UPDATES_FOUND="true"
-              UPDATED_IMAGES=$(echo "$UPDATED_IMAGES" | jq --arg name "$NAME" '. + [$name]')
-              NEW_DIGESTS=$(echo "$NEW_DIGESTS" | jq --arg name "$NAME" --arg digest "$CURRENT_DIGEST" '. + {($name): $digest}')
+              UPDATED_IMAGES=$(echo "$UPDATED_IMAGES" | jq -c --arg name "$NAME" '. + [$name]')
+              NEW_DIGESTS=$(echo "$NEW_DIGESTS" | jq -c --arg name "$NAME" --arg digest "$CURRENT_DIGEST" '. + {($name): $digest}')
 
               # Build update details for commit message
               UPDATE_DETAILS="${UPDATE_DETAILS}
