@@ -108,8 +108,6 @@ jobs:
     secrets: inherit
 ```
 
-> **Note:** The job `name` must match the `caller-job-name` input (default: `Auto-merge Dependabot PRs`). If you change the job name, pass it explicitly via `caller-job-name`.
-
 #### 3. Enable Auto-Merge
 
 1. Go to **Settings** → **General** → **Pull Requests**
@@ -122,9 +120,6 @@ jobs:
 | `merge-method` | squash, merge, or rebase | `squash` |
 | `auto-approve` | Automatically approve PRs | `true` |
 | `wait-interval` | Seconds between status polls | `30` |
-| `caller-job-name` | Name of calling job (for self-exclusion from check waiting) | `Auto-merge Dependabot PRs` |
-
-> **Important:** The `caller-job-name` must match the `name:` of your calling job exactly. GitHub creates check names in the format `<caller-job-name> / Docker Maintenance` for reusable workflows. If these don't match, the workflow will loop infinitely waiting for itself.
 
 ### Examples
 
@@ -191,8 +186,6 @@ jobs:
     secrets: inherit
 ```
 
-> **Note:** The job `name` must match the `caller-job-name` input (default: `Auto-merge Renovate PRs`). If you change the job name, pass it explicitly via `caller-job-name`.
-
 #### 4. Enable Auto-Merge
 
 1. Go to **Settings** → **General** → **Pull Requests**
@@ -206,7 +199,6 @@ jobs:
 | `auto-approve` | Automatically approve PRs | `true` |
 | `wait-interval` | Seconds between status polls | `30` |
 | `allowed-actors` | Comma-separated bot actors | `renovate[bot],renovate` |
-| `caller-job-name` | Name of calling job (for self-exclusion from check waiting) | `Auto-merge Renovate PRs` |
 
 ### Renovate Features
 
@@ -315,27 +307,9 @@ jobs:
 
 The maintenance workflow polls every 30 seconds but never completes.
 
-**Cause:** The `caller-job-name` doesn't match the actual calling job name. GitHub creates check names as `<caller-job-name> / <reusable-job-name>` for reusable workflows. If the `running-workflow-name` doesn't match, the workflow waits for itself forever.
+**Cause:** The workflow cannot exclude its own check from the waiting list. GitHub creates compound check names (`<caller-job> / <reusable-job>`) for reusable workflows.
 
-**Fix:** Ensure the `name:` of your calling job matches the `caller-job-name` input:
-
-```yaml
-jobs:
-  maintenance:
-    name: Auto-merge Dependabot PRs  # ← Must match caller-job-name (default)
-    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
-```
-
-Or pass your custom job name explicitly:
-
-```yaml
-jobs:
-  maintenance:
-    name: My Custom Job Name
-    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
-    with:
-      caller-job-name: 'My Custom Job Name'
-```
+**Fix:** The workflow auto-detects its own check name via the GitHub API. Ensure the `GITHUB_TOKEN` has `actions: read` permission (included by default). If auto-detection fails, a warning is logged and the workflow falls back to the simple job name.
 
 ### No Semantic Release Created
 

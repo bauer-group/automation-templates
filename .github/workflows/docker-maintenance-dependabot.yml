@@ -45,12 +45,6 @@ on:
         required: false
         default: 30
 
-      caller-job-name:
-        description: 'Name of the calling job. Required to exclude self from check waiting. The GitHub check name for reusable workflows is "<caller-job-name> / Docker Maintenance"'
-        type: string
-        required: false
-        default: 'Auto-merge Dependabot PRs'
-
       runs-on:
         description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         type: string
@@ -81,13 +75,28 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: 🔎 Detect own check name
+        id: detect-self
+        shell: bash
+        run: |
+          OWN_NAME=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" \
+            --jq '[.jobs[] | select(.name | endswith("/ Docker Maintenance"))][0].name // empty')
+          if [ -z "$OWN_NAME" ]; then
+            echo "::warning::Could not detect compound check name, falling back to job name"
+            OWN_NAME="Docker Maintenance"
+          fi
+          echo "check-name=$OWN_NAME" >> "$GITHUB_OUTPUT"
+          echo "ℹ️ Own check name: $OWN_NAME"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: ⏳ Wait for checks to complete
         uses: lewagon/wait-on-check-action@v1.4.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: ${{ inputs.wait-interval }}
-          running-workflow-name: "${{ inputs.caller-job-name }} / Docker Maintenance"
+          running-workflow-name: ${{ steps.detect-self.outputs.check-name }}
           allowed-conclusions: success,skipped
 
       - name: ✅ Auto-approve Dependabot PR
