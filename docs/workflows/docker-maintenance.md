@@ -108,18 +108,18 @@ jobs:
     secrets: inherit
 ```
 
-#### 3. Enable Auto-Merge
+#### 3. Enable Auto-Merge and Branch Protection
 
-1. Go to **Settings** → **General** → **Pull Requests**
-2. Enable **"Allow auto-merge"**
+1. Go to **Settings** → **General** → **Pull Requests** → Enable **"Allow auto-merge"**
+2. Go to **Settings** → **Branches** → Add branch protection rule for `main`
+3. Enable **"Require status checks to pass before merging"** and select relevant checks
 
 ### Workflow Options
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `merge-method` | squash, merge, or rebase | `squash` |
-| `auto-approve` | Automatically approve PRs | `true` |
-| `wait-interval` | Seconds between status polls | `30` |
+| Input            | Description                | Default  |
+|------------------|----------------------------|----------|
+| `merge-method`   | squash, merge, or rebase   | `squash` |
+| `auto-approve`   | Automatically approve PRs  | `true`   |
 
 ### Examples
 
@@ -186,18 +186,18 @@ jobs:
     secrets: inherit
 ```
 
-#### 4. Enable Auto-Merge
+#### 4. Enable Auto-Merge and Branch Protection
 
-1. Go to **Settings** → **General** → **Pull Requests**
-2. Enable **"Allow auto-merge"**
+1. Go to **Settings** → **General** → **Pull Requests** → Enable **"Allow auto-merge"**
+2. Go to **Settings** → **Branches** → Add branch protection rule for `main`
+3. Enable **"Require status checks to pass before merging"** and select relevant checks
 
 ### Workflow Options
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `merge-method` | squash, merge, or rebase | `squash` |
-| `auto-approve` | Automatically approve PRs | `true` |
-| `wait-interval` | Seconds between status polls | `30` |
+| Input            | Description                | Default                  |
+|------------------|----------------------------|--------------------------|
+| `merge-method`   | squash, merge, or rebase   | `squash`                 |
+| `auto-approve`   | Automatically approve PRs  | `true`                   |
 | `allowed-actors` | Comma-separated bot actors | `renovate[bot],renovate` |
 
 ### Renovate Features
@@ -303,13 +303,17 @@ jobs:
 
 ## Troubleshooting
 
-### Workflow Runs in Infinite Loop
+### Auto-Merge Not Triggering
 
-The maintenance workflow polls every 30 seconds but never completes.
+The workflow completes but the PR is not merged.
 
-**Cause:** The workflow cannot exclude its own check from the waiting list. GitHub creates compound check names (`<caller-job> / <reusable-job>`) for reusable workflows.
+**Cause:** GitHub's auto-merge requires **branch protection with required status checks**. Without required checks, auto-merge has nothing to wait for and may not behave as expected.
 
-**Fix:** The workflow auto-detects its own check name via the GitHub API. Ensure the `GITHUB_TOKEN` has `actions: read` permission (included by default). If auto-detection fails, a warning is logged and the workflow falls back to the simple job name.
+**Fix:**
+
+1. Go to **Settings** → **Branches** → **Branch protection rules** for `main`
+2. Enable **"Require status checks to pass before merging"**
+3. Select the relevant checks (e.g., Docker build validation)
 
 ### No Semantic Release Created
 

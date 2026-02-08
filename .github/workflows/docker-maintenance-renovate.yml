@@ -4,6 +4,10 @@
 # Automatically merges Renovate PRs when all checks pass.
 # This enables fully automated Docker base image updates.
 #
+# Uses GitHub's native auto-merge: the PR is approved and auto-merge is
+# enabled immediately. GitHub waits for all required status checks to pass
+# before actually merging.
+#
 # Usage in your repository:
 #   name: Docker Maintenance
 #   on:
@@ -17,8 +21,8 @@
 #
 # Requirements:
 # - Renovate GitHub App must be installed on the repository
-# - Branch protection rules should allow auto-merge
 # - Repository setting "Allow auto-merge" must be enabled
+# - Branch protection with required status checks configured
 # =============================================================================
 
 name: 🐳 Docker Maintenance (Renovate)
@@ -37,12 +41,6 @@ on:
         type: boolean
         required: false
         default: true
-
-      wait-interval:
-        description: 'Seconds to wait between check status polls'
-        type: number
-        required: false
-        default: 30
 
       allowed-actors:
         description: 'Comma-separated list of allowed bot actors'
@@ -74,29 +72,11 @@ jobs:
           echo "🤖 PR opened by: ${{ github.actor }}"
           echo "✅ Actor is in allowed list: ${{ inputs.allowed-actors }}"
 
-      - name: 🔎 Detect own check name
-        id: detect-self
-        shell: bash
-        run: |
-          OWN_NAME=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs" \
-            --jq '[.jobs[] | select(.name | endswith("/ Auto-merge Renovate PRs"))][0].name // empty')
-          if [ -z "$OWN_NAME" ]; then
-            echo "::warning::Could not detect compound check name, falling back to job name"
-            OWN_NAME="Auto-merge Renovate PRs"
-          fi
-          echo "check-name=$OWN_NAME" >> "$GITHUB_OUTPUT"
-          echo "ℹ️ Own check name: $OWN_NAME"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: ⏳ Wait for checks to complete
-        uses: lewagon/wait-on-check-action@v1.4.1
+      - name: ✅ Auto-approve Renovate PR
+        if: inputs.auto-approve
+        uses: hmarr/auto-approve-action@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: ${{ inputs.wait-interval }}
-          running-workflow-name: ${{ steps.detect-self.outputs.check-name }}
-          allowed-conclusions: success,skipped
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🔀 Enable auto-merge
         uses: peter-evans/enable-pull-request-automerge@v3
@@ -104,12 +84,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           pull-request-number: ${{ github.event.pull_request.number }}
           merge-method: ${{ inputs.merge-method }}
-
-      - name: ✅ Auto-approve Renovate PR
-        if: inputs.auto-approve
-        uses: hmarr/auto-approve-action@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📊 Summary
         shell: bash
@@ -123,4 +97,4 @@ jobs:
           echo "| **Merge Method** | ${{ inputs.merge-method }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Auto-Approve** | ${{ inputs.auto-approve && '✅ Yes' || '❌ No' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ PR will be automatically merged once all checks pass." >> $GITHUB_STEP_SUMMARY
+          echo "✅ Auto-merge enabled. GitHub will merge once all required checks pass." >> $GITHUB_STEP_SUMMARY
