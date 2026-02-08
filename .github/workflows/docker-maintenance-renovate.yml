@@ -50,6 +50,12 @@ on:
         required: false
         default: 'renovate[bot],renovate'
 
+      caller-job-name:
+        description: 'Name of the calling job. Required to exclude self from check waiting. The GitHub check name for reusable workflows is "<caller-job-name> / Auto-merge Renovate PRs"'
+        type: string
+        required: false
+        default: 'Auto-merge Renovate PRs'
+
       runs-on:
         description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         type: string
@@ -80,7 +86,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: ${{ inputs.wait-interval }}
-          running-workflow-name: "Auto-merge Renovate PRs"
+          running-workflow-name: "${{ inputs.caller-job-name }} / Auto-merge Renovate PRs"
           allowed-conclusions: success,skipped
 
       - name: 🔀 Enable auto-merge
