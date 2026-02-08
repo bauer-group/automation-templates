@@ -25,9 +25,12 @@
 #     images: '[{"name": "n8n", "image": "n8nio/n8n", "tag": "stable", "variable": "N8N_STABLE_DIGEST"}]'
 #   secrets: inherit
 #
-# Required Permissions:
-#   - PAT with 'repo' scope (Classic) OR
-#   - Fine-grained PAT with Variables (Read/Write) + Contents (Read/Write)
+# Required Secret: PAT_READWRITE_ORGANISATION
+#   - Classic PAT: 'repo' scope OR
+#   - Fine-grained PAT:
+#       - Contents (Read/Write)  - checkout + commit/push
+#       - Variables (Read/Write) - digest storage
+#       - Actions (Read/Write)   - workflow_dispatch (only if target-workflow is used)
 # =============================================================================
 
 name: "🔍 Module | Docker Base Image Monitor"
