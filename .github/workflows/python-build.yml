@@ -456,8 +456,9 @@ jobs:
         shell: bash
         working-directory: ${{ inputs.working-directory }}
         run: |
-          if [ -n "${{ inputs.install-command }}" ]; then
-            eval "${{ inputs.install-command }}"
+          CUSTOM_CMD="${{ inputs.install-command }}"
+          if [ -n "$CUSTOM_CMD" ]; then
+            eval "$CUSTOM_CMD"
           elif [ "${{ inputs.package-manager }}" = "poetry" ]; then
             poetry install
           elif [ "${{ inputs.package-manager }}" = "pipenv" ]; then

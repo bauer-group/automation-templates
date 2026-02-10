@@ -509,9 +509,10 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           PM="${{ steps.detect-pm.outputs.package-manager }}"
-          
-          if [ -n "${{ inputs.install-command }}" ]; then
-            ${{ inputs.install-command }}
+          CUSTOM_CMD="${{ inputs.install-command }}"
+
+          if [ -n "$CUSTOM_CMD" ]; then
+            eval "$CUSTOM_CMD"
           else
             case $PM in
               npm)
