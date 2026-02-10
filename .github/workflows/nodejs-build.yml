@@ -443,7 +443,7 @@ jobs:
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ inputs.enable-matrix && matrix.node || inputs.node-version }}
+          node-version: ${{ inputs.node-version-file == '' && (inputs.enable-matrix && matrix.node || inputs.node-version) || '' }}
           node-version-file: ${{ inputs.node-version-file }}
           cache: ${{ inputs.cache-dependencies && steps.detect-pm.outputs.package-manager || '' }}
           cache-dependency-path: ${{ inputs.working-directory }}/${{ steps.detect-pm.outputs.lockfile }}
