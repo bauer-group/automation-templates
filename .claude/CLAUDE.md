@@ -92,6 +92,7 @@ Diese Regeln breche ich **niemals**:
 | Halluzinierte APIs oder Funktionen | Korrektheit |
 | Spekulative Implementierungen ohne Validierung | Korrektheit |
 | Sensible Daten (PII, Secrets) in Logs | Security |
+| Unicode/Emoji als Escape-Sequenzen schreiben (`\U0001F...`) - immer echte Zeichen verwenden | Korrektheit |
 
 ---
 
