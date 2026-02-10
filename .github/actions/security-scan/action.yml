@@ -163,6 +163,11 @@ runs:
           echo "ℹ️ Reports already in target location: $GITGUARDIAN_REPORT_PATH"
         fi
 
+    - name: 📁 Prepare Vulnerability Report Directory
+      if: inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities'
+      shell: bash
+      run: mkdir -p security-reports/vulnerabilities
+
     - name: 🛡️ Trivy Vulnerability Scan
       id: trivy-vuln-scan
       if: inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities'
@@ -182,8 +187,6 @@ runs:
       shell: bash
       run: |
         echo "🔍 Evaluating Trivy vulnerability scan results..."
-
-        mkdir -p security-reports/vulnerabilities
         VULNERABILITIES_FOUND=false
         CRITICAL=0
         HIGH=0
