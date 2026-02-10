@@ -1,3 +1,28 @@
+## [4.17.0](https://github.com/bauer-group/automation-templates/compare/v4.16.0...v4.17.0) (2026-02-10)
+
+### 🚀 Features
+
+* Add Docker Base Image Monitor module with configuration and examples ([082ba72](https://github.com/bauer-group/automation-templates/commit/082ba727cc101e9729b29a61326fc42c5c86c563))
+* **docker-maintenance:** entferne caller-job-name Input und implementiere automatische Erkennung des Check-Namens ([0428a86](https://github.com/bauer-group/automation-templates/commit/0428a86bd720e9a9b7b76bedc1c60eef9fac560f))
+* **docker-maintenance:** füge caller-job-name Input hinzu, um Selbstüberprüfung zu vermeiden ([25492ed](https://github.com/bauer-group/automation-templates/commit/25492ed3fa9e24f689037925ccfa002e5d895090))
+* **docker-monitor:** erlaube Commit + Workflow-Dispatch gleichzeitig ([79e0aad](https://github.com/bauer-group/automation-templates/commit/79e0aada646bc882f9c7d004030658cfcd7c37bd))
+* Füge Validierung für das PAT_READWRITE_REPOSITORY Geheimnis hinzu ([755fb71](https://github.com/bauer-group/automation-templates/commit/755fb710e5f71121c8e36c106d35aaf691070713))
+* **osv-scanner:** implement OSV-Scanner with evaluation and summary reporting ([46d39b6](https://github.com/bauer-group/automation-templates/commit/46d39b6eb8256c72d3503f35ae3cb615ded3468d))
+* **security-scan:** füge Schritt zur Vorbereitung des Verzeichnisses für den Vulnerabilitätsbericht hinzu ([d8762ab](https://github.com/bauer-group/automation-templates/commit/d8762abb327af6efb14c4315eb2ae8560be1c0cd))
+* **security-scan:** implement Trivy vulnerability scanning and enhance summary reporting ([e09cb8a](https://github.com/bauer-group/automation-templates/commit/e09cb8aa36a09026e5492333c6b98483d4b61ba6))
+
+### 🐛 Bug Fixes
+
+* Ändere den Namen des Personal Access Tokens von PAT_READWRITE_REPOSITORY zu PAT_READWRITE_ORGANISATION in der Dokumentation und Workflow-Konfiguration ([3ca764d](https://github.com/bauer-group/automation-templates/commit/3ca764d02e1f99d404d27ba94589c7ca521ef0e6))
+* **docker-monitor:** behebe JSON-Parsing-Fehler bei Step-Übergabe ([73fb522](https://github.com/bauer-group/automation-templates/commit/73fb522acee16852806691f079b0bbc56561d3ca))
+* **docker-monitor:** verwende kompaktes JSON für GITHUB_OUTPUT ([b2a8613](https://github.com/bauer-group/automation-templates/commit/b2a86132f5345ec9654067a9d434258695128f68))
+
+### ♻️ Refactoring
+
+* **docker-monitor:** verwende env-Variablen statt GitHub Expressions in Shell ([291fc70](https://github.com/bauer-group/automation-templates/commit/291fc70adc1c92059e248fc6925c80f271c3fe4f))
+* Update secrets handling in Docker Base Image Monitor workflows to use 'inherit' ([3c845fd](https://github.com/bauer-group/automation-templates/commit/3c845fddd138a89a211948295fc35e15b16733b4))
+* Verwende heredoc für JSON-Ausgaben und verbessere die Verarbeitung von Bildkonfigurationen ([4dae503](https://github.com/bauer-group/automation-templates/commit/4dae50325535c3cadd9b31a757403f09d40a4542))
+
 ## [4.16.0](https://github.com/bauer-group/automation-templates/compare/v4.15.0...v4.16.0) (2026-01-23)
 
 ### 🚀 Features
