@@ -573,8 +573,9 @@ jobs:
         if: inputs.run-lint
         working-directory: ${{ inputs.working-directory }}
         run: |
-          if [ -n "${{ inputs.lint-command }}" ]; then
-            ${{ inputs.lint-command }}
+          CUSTOM_CMD="${{ inputs.lint-command }}"
+          if [ -n "$CUSTOM_CMD" ]; then
+            eval "$CUSTOM_CMD"
           else
             PM="${{ steps.detect-pm.outputs.package-manager }}"
             case $PM in
@@ -589,8 +590,9 @@ jobs:
         if: inputs.run-format-check
         working-directory: ${{ inputs.working-directory }}
         run: |
-          if [ -n "${{ inputs.format-command }}" ]; then
-            ${{ inputs.format-command }}
+          CUSTOM_CMD="${{ inputs.format-command }}"
+          if [ -n "$CUSTOM_CMD" ]; then
+            eval "$CUSTOM_CMD"
           else
             PM="${{ steps.detect-pm.outputs.package-manager }}"
             case $PM in
@@ -605,8 +607,9 @@ jobs:
         if: inputs.run-typecheck
         working-directory: ${{ inputs.working-directory }}
         run: |
-          if [ -n "${{ inputs.typecheck-command }}" ]; then
-            ${{ inputs.typecheck-command }}
+          CUSTOM_CMD="${{ inputs.typecheck-command }}"
+          if [ -n "$CUSTOM_CMD" ]; then
+            eval "$CUSTOM_CMD"
           else
             PM="${{ steps.detect-pm.outputs.package-manager }}"
             case $PM in
@@ -623,8 +626,9 @@ jobs:
         env:
           NODE_ENV: ${{ inputs.build-env }}
         run: |
-          if [ -n "${{ inputs.build-command }}" ]; then
-            ${{ inputs.build-command }}
+          CUSTOM_CMD="${{ inputs.build-command }}"
+          if [ -n "$CUSTOM_CMD" ]; then
+            eval "$CUSTOM_CMD"
           else
             PM="${{ steps.detect-pm.outputs.package-manager }}"
             case $PM in
@@ -639,8 +643,9 @@ jobs:
         if: inputs.run-tests
         working-directory: ${{ inputs.working-directory }}
         run: |
-          if [ -n "${{ inputs.test-command }}" ]; then
-            ${{ inputs.test-command }}
+          CUSTOM_CMD="${{ inputs.test-command }}"
+          if [ -n "$CUSTOM_CMD" ]; then
+            eval "$CUSTOM_CMD"
           else
             PM="${{ steps.detect-pm.outputs.package-manager }}"
             case $PM in
@@ -655,8 +660,9 @@ jobs:
         if: inputs.test-coverage
         working-directory: ${{ inputs.working-directory }}
         run: |
-          if [ -n "${{ inputs.coverage-command }}" ]; then
-            ${{ inputs.coverage-command }}
+          CUSTOM_CMD="${{ inputs.coverage-command }}"
+          if [ -n "$CUSTOM_CMD" ]; then
+            eval "$CUSTOM_CMD"
           else
             PM="${{ steps.detect-pm.outputs.package-manager }}"
             case $PM in
@@ -687,8 +693,9 @@ jobs:
         if: inputs.analyze-bundle
         working-directory: ${{ inputs.working-directory }}
         run: |
-          if [ -n "${{ inputs.bundle-command }}" ]; then
-            ${{ inputs.bundle-command }}
+          CUSTOM_CMD="${{ inputs.bundle-command }}"
+          if [ -n "$CUSTOM_CMD" ]; then
+            eval "$CUSTOM_CMD"
           else
             PM="${{ steps.detect-pm.outputs.package-manager }}"
             case $PM in
