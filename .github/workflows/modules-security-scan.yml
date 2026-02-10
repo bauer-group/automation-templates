@@ -100,7 +100,7 @@ jobs:
           echo "| **Scan Type** | ${{ inputs.scan-type }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Security Score** | ${{ steps.security.outputs.security-score || '100' }}/100 |" >> $GITHUB_STEP_SUMMARY
           echo "| **Secrets Found** | ${{ steps.security.outputs.secrets-found || 'false' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Vulnerabilities** | ${{ steps.security.outputs.vulnerabilities-found || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Vulnerabilities (Trivy)** | ${{ steps.security.outputs.vulnerabilities-found || 'false' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Status** | ${{ steps.security.outputs.scan-results || 'Complete' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           

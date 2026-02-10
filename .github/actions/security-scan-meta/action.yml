@@ -150,60 +150,54 @@ runs:
         verbose: ${{ inputs.verbose }}
         token: ${{ inputs.github-token }}
 
-    - name: 🔬 Run Vulnerability Scan
+    - name: 🔬 Trivy Vulnerability Scan
+      id: trivy-vuln-scan
+      if: inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities'
+      uses: aquasecurity/trivy-action@0.33.1
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'json'
+        output: 'security-reports/trivy-results.json'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+        scanners: 'vuln'
+        exit-code: '0'
+
+    - name: 📊 Evaluate Vulnerability Results
       id: vulnerability-scan
       if: inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities'
       shell: bash
       run: |
-        echo "🔬 Running vulnerability scan..."
-        
+        echo "🔬 Evaluating Trivy vulnerability scan results..."
+
         VULNS_FOUND="false"
-        
-        # Check for known vulnerable file patterns
-        echo "Checking for potentially vulnerable files..."
-        
-        # Check for old dependency files
-        VULNERABLE_FILES=""
-        
-        # JavaScript/Node.js vulnerabilities
-        if find . -name "package-lock.json" -o -name "yarn.lock" | head -1 | grep -q .; then
-          echo "Found Node.js dependency files, checking for known vulnerabilities..."
-          if command -v npm &> /dev/null; then
-            if npm audit --audit-level=moderate --json > vulnerability-report.json 2>/dev/null; then
-              if command -v jq &> /dev/null; then
-                VULN_COUNT=$(jq '.metadata.vulnerabilities.total // 0' vulnerability-report.json 2>/dev/null)
-                if [ "$VULN_COUNT" -gt 0 ]; then
-                  VULNS_FOUND="true"
-                  VULNERABLE_FILES="$VULNERABLE_FILES package.json,"
-                fi
-              fi
-            fi
-          fi
-        fi
-        
-        # Python vulnerabilities  
-        if find . -name "requirements.txt" -o -name "Pipfile" -o -name "pyproject.toml" | head -1 | grep -q .; then
-          echo "Found Python dependency files..."
-          VULNERABLE_FILES="$VULNERABLE_FILES requirements.txt,"
-        fi
-        
-        # Check for sensitive file permissions (Unix-like systems)
-        if [ "$(uname)" != "Darwin" ] && [ "$(uname)" != "MINGW"* ]; then
-          echo "Checking file permissions..."
-          if find . -type f -perm /o+w 2>/dev/null | grep -v "\.git" | head -1 | grep -q .; then
-            echo "Found world-writable files"
+        CRITICAL=0
+        HIGH=0
+        MEDIUM=0
+
+        REPORT="security-reports/trivy-results.json"
+        if [ -f "$REPORT" ]; then
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$REPORT" 2>/dev/null || echo "0")
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$REPORT" 2>/dev/null || echo "0")
+          MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "$REPORT" 2>/dev/null || echo "0")
+
+          TOTAL=$((CRITICAL + HIGH + MEDIUM))
+          if [ $TOTAL -gt 0 ]; then
             VULNS_FOUND="true"
           fi
+
+          echo "🔬 Trivy Vulnerability Results:"
+          echo "  • Critical: $CRITICAL"
+          echo "  • High: $HIGH"
+          echo "  • Medium: $MEDIUM"
+        else
+          echo "ℹ️ No Trivy report found, skipping evaluation"
         fi
-        
-        # Check for common insecure patterns in code
-        echo "Scanning for insecure code patterns..."
-        if grep -r -i "eval\|exec\|system\|shell_exec" --include="*.py" --include="*.js" --include="*.php" . 2>/dev/null | head -1 | grep -q .; then
-          echo "Found potentially dangerous function calls"
-          VULNS_FOUND="true"
-        fi
-        
+
         echo "vulnerabilities-found=$VULNS_FOUND" >> $GITHUB_OUTPUT
+        echo "trivy-critical=$CRITICAL" >> $GITHUB_OUTPUT
+        echo "trivy-high=$HIGH" >> $GITHUB_OUTPUT
+        echo "trivy-medium=$MEDIUM" >> $GITHUB_OUTPUT
         echo "Vulnerabilities found: $VULNS_FOUND"
 
     - name: 📊 Generate Dual Security Summary
@@ -256,10 +250,17 @@ runs:
           fi
         fi
         
-        # Vulnerability penalty
+        # Vulnerability penalty (granular based on Trivy findings)
+        TRIVY_CRITICAL="${{ steps.vulnerability-scan.outputs.trivy-critical || '0' }}"
+        TRIVY_HIGH="${{ steps.vulnerability-scan.outputs.trivy-high || '0' }}"
+        TRIVY_MEDIUM="${{ steps.vulnerability-scan.outputs.trivy-medium || '0' }}"
+        VULN_PENALTY=$((TRIVY_CRITICAL * 30 + TRIVY_HIGH * 15 + TRIVY_MEDIUM * 5))
+        if [ $VULN_PENALTY -gt 50 ]; then
+          VULN_PENALTY=50
+        fi
         if [ "$VULNS_FOUND" == "true" ]; then
-          GITLEAKS_SCORE=$((GITLEAKS_SCORE - 20))
-          GITGUARDIAN_SCORE=$((GITGUARDIAN_SCORE - 20))
+          GITLEAKS_SCORE=$((GITLEAKS_SCORE - VULN_PENALTY))
+          GITGUARDIAN_SCORE=$((GITGUARDIAN_SCORE - VULN_PENALTY))
         fi
         
         # Ensure scores don't go below 0

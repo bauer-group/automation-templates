@@ -9,7 +9,7 @@ Diese Sammlung von wiederverwendbaren Workflows ermöglicht es, CI/CD-Pipelines 
 ## 📦 Verfügbare Module
 
 ### 🛡️ [Security Scan](./modules-security-scan.yml)
-**Zweck:** Umfassende Sicherheitsanalyse mit Gitleaks und GitGuardian
+**Zweck:** Secrets-Erkennung mit Gitleaks und GitGuardian + Trivy Vulnerability Scan
 
 ```yaml
 uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
@@ -24,8 +24,35 @@ secrets:
 
 **Ausgaben:**
 - `secrets-found`: Ob Secrets gefunden wurden
-- `vulnerabilities-found`: Ob Schwachstellen entdeckt wurden  
+- `vulnerabilities-found`: Ob Schwachstellen entdeckt wurden (via Trivy)
 - `security-score`: Sicherheitsbewertung (0-100)
+- `scan-results`: Zusammenfassung der Ergebnisse
+
+### 🛡️ [Vulnerability Scan](./modules-vulnerability-scan.yml)
+**Zweck:** Professionelles Dependency-Vulnerability-Scanning mit Trivy + OSV-Scanner + Anchore/Grype
+
+Kombiniert drei offizielle GitHub Actions für maximale Abdeckung:
+- **Trivy** (Filesystem): Dependencies, Secrets, Misconfigs
+- **OSV-Scanner** (Google): Dependency-Scan via OSV.dev (20+ Vulnerability-Quellen)
+- **Anchore/Grype** (Container): Container-Image-Scanning (optional, Multi-Image)
+
+```yaml
+uses: bauer-group/automation-templates/.github/workflows/modules-vulnerability-scan.yml@main
+with:
+  scan-engine: 'both'           # osv-scanner, trivy, both
+  trivy-severity: 'CRITICAL,HIGH'
+  fail-on-findings: true
+  container-images: |            # Optional: eins pro Zeile
+    ghcr.io/org/api:latest
+    ghcr.io/org/frontend:latest
+```
+
+**Ausgaben:**
+- `vulnerabilities-found`: Ob irgendeine Engine Schwachstellen gefunden hat
+- `trivy-result`: Trivy Ergebnis (pass/fail/skipped)
+- `osv-result`: OSV-Scanner Ergebnis (pass/fail/skipped)
+- `container-result`: Container-Scan Ergebnis (pass/fail/skipped)
+- `security-score`: Kombinierte Sicherheitsbewertung (0-100)
 - `scan-results`: Zusammenfassung der Ergebnisse
 
 ### 📋 [License Compliance](./modules-license-compliance.yml)
@@ -149,15 +176,23 @@ jobs:
 ### 2. Security-First Pipeline
 ```yaml
 jobs:
-  security:
+  secrets:
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
-  
+    with:
+      scan-engine: 'both'
+
+  vulnerabilities:
+    uses: bauer-group/automation-templates/.github/workflows/modules-vulnerability-scan.yml@main
+    with:
+      scan-engine: 'both'
+      trivy-severity: 'CRITICAL,HIGH'
+
   compliance:
     uses: bauer-group/automation-templates/.github/workflows/modules-license-compliance.yml@main
-  
+
   release:
-    needs: [security, compliance]
-    if: needs.security.outputs.security-score >= 80
+    needs: [secrets, vulnerabilities, compliance]
+    if: needs.vulnerabilities.outputs.security-score >= 80
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
 ```
 
