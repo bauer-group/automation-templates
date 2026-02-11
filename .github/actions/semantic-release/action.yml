@@ -153,17 +153,10 @@ runs:
           RELEASE_RULES="$DEFAULT_RULES"
         fi
 
-        # Build tagFormat line (empty = omit from config)
-        TAG_FORMAT_LINE=""
-        if [ -n "$TAG_FORMAT" ]; then
-          TAG_FORMAT_LINE="\"tagFormat\": \"$TAG_FORMAT\","
-        fi
-
         # Build the final config
         cat > .releaserc.json << EOF
         {
           "branches": ["${{ inputs.branches }}"],
-          $TAG_FORMAT_LINE
           "plugins": [
             ["@semantic-release/commit-analyzer", {
               "preset": "conventionalcommits",
@@ -198,6 +191,11 @@ runs:
           ]
         }
         EOF
+
+        # Merge tagFormat if specified (via jq for safe JSON handling)
+        if [ -n "$TAG_FORMAT" ]; then
+          jq --arg tf "$TAG_FORMAT" '.tagFormat = $tf' .releaserc.json > .releaserc.tmp.json && mv .releaserc.tmp.json .releaserc.json
+        fi
 
         # Merge extra plugins if any
         if [ "$EXTRA_PLUGINS" != "[]" ]; then
