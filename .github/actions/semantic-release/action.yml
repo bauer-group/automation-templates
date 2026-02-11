@@ -86,6 +86,7 @@ runs:
         GIT_ASSETS='["CHANGELOG.md"]'
         GIT_MESSAGE='"chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"'
         RELEASE_RULES=""
+        TAG_FORMAT=""
 
         if [ -f ".github/config/release/semantic-release.json" ]; then
           echo "Found repository config - extracting custom settings..."
@@ -130,6 +131,13 @@ runs:
           else
             EXTRA_PLUGINS="[]"
           fi
+
+          # Extract tagFormat if specified
+          CUSTOM_TAG_FORMAT=$(jq -r '.tagFormat // empty' "$REPO_CONFIG" 2>/dev/null || echo "")
+          if [ -n "$CUSTOM_TAG_FORMAT" ]; then
+            TAG_FORMAT="$CUSTOM_TAG_FORMAT"
+            echo "  Using custom tagFormat: $TAG_FORMAT"
+          fi
         else
           echo "No repository config found - using defaults"
         fi
@@ -145,10 +153,17 @@ runs:
           RELEASE_RULES="$DEFAULT_RULES"
         fi
 
+        # Build tagFormat line (empty = omit from config)
+        TAG_FORMAT_LINE=""
+        if [ -n "$TAG_FORMAT" ]; then
+          TAG_FORMAT_LINE="\"tagFormat\": \"$TAG_FORMAT\","
+        fi
+
         # Build the final config
         cat > .releaserc.json << EOF
         {
           "branches": ["${{ inputs.branches }}"],
+          $TAG_FORMAT_LINE
           "plugins": [
             ["@semantic-release/commit-analyzer", {
               "preset": "conventionalcommits",
@@ -216,7 +231,13 @@ runs:
       shell: bash
       if: steps.release.outputs.new_release_published == 'true'
       run: |
-        echo "tag=v${{ steps.release.outputs.new_release_version }}" >> $GITHUB_OUTPUT
+        ACTUAL_TAG="${{ steps.release.outputs.new_release_git_tag }}"
+        if [ -n "$ACTUAL_TAG" ]; then
+          echo "tag=$ACTUAL_TAG" >> $GITHUB_OUTPUT
+        else
+          # Fallback to v-prefix if output is empty (backwards-compatible)
+          echo "tag=v${{ steps.release.outputs.new_release_version }}" >> $GITHUB_OUTPUT
+        fi
 
 branding:
   icon: 'package'
