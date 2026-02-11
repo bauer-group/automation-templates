@@ -1,3 +1,15 @@
+## [4.17.1](https://github.com/bauer-group/automation-templates/compare/v4.17.0...v4.17.1) (2026-02-11)
+
+### 🐛 Bug Fixes
+
+* Changes in action.yml ([3553516](https://github.com/bauer-group/automation-templates/commit/3553516c7d3f400847cf5a3a9e620685c0e82fc1))
+
+### ♻️ Refactoring
+
+* verbessere die Ausführung von Befehlen in den Build-Workflows durch Verwendung von eval ([db223fb](https://github.com/bauer-group/automation-templates/commit/db223fbffe2b161451e874c2d5b9ed238fce6e7d))
+* verbessere die Handhabung der Node.js- und Python-Versionen in den Build-Workflows ([13c50f6](https://github.com/bauer-group/automation-templates/commit/13c50f682b199d87f23e7a2f96606797bdfc6431))
+* verbessere die Handhabung des Installationsbefehls in den Build-Workflows für Node.js und Python ([022b576](https://github.com/bauer-group/automation-templates/commit/022b5769746c7051725bd0a4d1051e1bff97be0f))
+
 ## [4.17.0](https://github.com/bauer-group/automation-templates/compare/v4.16.0...v4.17.0) (2026-02-10)
 
 ### 🚀 Features
