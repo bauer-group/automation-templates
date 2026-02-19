@@ -289,7 +289,7 @@ jobs:
 
       - name: 🔧 Setup Node.js
         if: inputs.node-build
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
           cache: 'npm'
