@@ -558,28 +558,40 @@ jobs:
           fi
       
       - name: 🔍 Security Audit
+        id: audit
         if: inputs.run-audit
         working-directory: ${{ inputs.working-directory }}
         run: |
           PM="${{ steps.detect-pm.outputs.package-manager }}"
-          
+          AUDIT_FILE="${{ runner.temp }}/audit-output.txt"
+          AUDIT_EXIT=0
+
           case $PM in
             npm)
-              npm audit --audit-level=${{ inputs.audit-level }}
+              npm audit --audit-level=${{ inputs.audit-level }} > "$AUDIT_FILE" 2>&1 || AUDIT_EXIT=$?
               ;;
             yarn)
-              yarn audit --level ${{ inputs.audit-level }}
+              yarn audit --level ${{ inputs.audit-level }} > "$AUDIT_FILE" 2>&1 || AUDIT_EXIT=$?
               ;;
             pnpm)
-              pnpm audit --audit-level ${{ inputs.audit-level }}
+              pnpm audit --audit-level ${{ inputs.audit-level }} > "$AUDIT_FILE" 2>&1 || AUDIT_EXIT=$?
               ;;
             bun)
-              # Bun doesn't have audit yet
-              echo "Bun doesn't support audit yet"
+              echo "Bun doesn't support audit yet" > "$AUDIT_FILE"
               ;;
           esac
+
+          cat "$AUDIT_FILE"
+
+          # Parse vulnerability summary for job summary
+          SUMMARY=$(grep -oE '[0-9]+ (low|moderate|high|critical) severity' "$AUDIT_FILE" | tr '\n' ', ' | sed 's/, $//' || echo "")
+          [ -z "$SUMMARY" ] && SUMMARY="No issues above threshold"
+          echo "audit-summary=$SUMMARY" >> $GITHUB_OUTPUT
+
+          exit $AUDIT_EXIT
       
       - name: 🎨 Lint Code
+        id: lint
         if: inputs.run-lint
         working-directory: ${{ inputs.working-directory }}
         run: |
@@ -597,6 +609,7 @@ jobs:
           fi
       
       - name: 💅 Check Formatting
+        id: format
         if: inputs.run-format-check
         working-directory: ${{ inputs.working-directory }}
         run: |
@@ -614,6 +627,7 @@ jobs:
           fi
       
       - name: 🔍 Type Check
+        id: typecheck
         if: inputs.run-typecheck
         working-directory: ${{ inputs.working-directory }}
         run: |
@@ -631,6 +645,7 @@ jobs:
           fi
       
       - name: 🏗️ Build Project
+        id: build-project
         if: inputs.build-command != ''
         working-directory: ${{ inputs.working-directory }}
         env:
@@ -650,6 +665,7 @@ jobs:
           fi
       
       - name: 🧪 Run Tests
+        id: tests
         if: inputs.run-tests
         working-directory: ${{ inputs.working-directory }}
         run: |
@@ -667,6 +683,7 @@ jobs:
           fi
       
       - name: 📊 Code Coverage
+        id: coverage
         if: inputs.test-coverage
         working-directory: ${{ inputs.working-directory }}
         run: |
@@ -873,3 +890,106 @@ jobs:
           path: ${{ steps.artifacts.outputs.path }}
           retention-days: ${{ inputs.artifact-retention-days }}
           overwrite: true
+
+      - name: 📋 Job Summary
+        if: always()
+        run: |
+          # --- Status helper ---
+          status() {
+            case "$1" in
+              success) echo "✅ Passed" ;;
+              failure) echo "❌ Failed" ;;
+              cancelled) echo "⚠️ Cancelled" ;;
+              skipped) echo "⏭️ Skipped" ;;
+              *) echo "➖ Not run" ;;
+            esac
+          }
+
+          {
+            echo "## 📦 Node.js Build & Publish Summary"
+            echo ""
+            echo "### ⚙️ Configuration"
+            echo "| Setting | Value |"
+            echo "|---------|-------|"
+            echo "| **Node.js** | \`${{ matrix.node }}\` |"
+            echo "| **Package Manager** | \`${{ steps.detect-pm.outputs.package-manager }}\` |"
+            echo "| **Version** | \`${{ steps.version.outputs.version }}\` |"
+            echo "| **Runner** | \`${{ matrix.os }}\` |"
+          } >> $GITHUB_STEP_SUMMARY
+
+          # --- Quality Checks ---
+          {
+            echo ""
+            echo "### 🔍 Quality Checks"
+            echo "| Check | Status | Details |"
+            echo "|-------|--------|---------|"
+
+            # Security Audit
+            if [ "${{ inputs.run-audit }}" = "true" ]; then
+              echo "| 🔍 Security Audit | $(status ${{ steps.audit.outcome }}) | Level: \`${{ inputs.audit-level }}\` — ${{ steps.audit.outputs.audit-summary }} |"
+            else
+              echo "| 🔍 Security Audit | ➖ Disabled | |"
+            fi
+
+            # Lint
+            if [ "${{ inputs.run-lint }}" = "true" ]; then
+              echo "| 🎨 Lint | $(status ${{ steps.lint.outcome }}) | |"
+            else
+              echo "| 🎨 Lint | ➖ Disabled | |"
+            fi
+
+            # Formatting
+            if [ "${{ inputs.run-format-check }}" = "true" ]; then
+              echo "| 💅 Formatting | $(status ${{ steps.format.outcome }}) | |"
+            else
+              echo "| 💅 Formatting | ➖ Disabled | |"
+            fi
+
+            # Type Check
+            if [ "${{ inputs.run-typecheck }}" = "true" ]; then
+              echo "| 🔍 Type Check | $(status ${{ steps.typecheck.outcome }}) | |"
+            else
+              echo "| 🔍 Type Check | ➖ Disabled | |"
+            fi
+
+            # Tests
+            if [ "${{ inputs.run-tests }}" = "true" ]; then
+              echo "| 🧪 Tests | $(status ${{ steps.tests.outcome }}) | |"
+            else
+              echo "| 🧪 Tests | ➖ Disabled | |"
+            fi
+
+            # Coverage
+            if [ "${{ inputs.test-coverage }}" = "true" ]; then
+              echo "| 📊 Coverage | $(status ${{ steps.coverage.outcome }}) | Threshold: \`${{ inputs.coverage-threshold }}%\` |"
+            else
+              echo "| 📊 Coverage | ➖ Disabled | |"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
+
+          # --- Build & Publish ---
+          {
+            echo ""
+            echo "### 🏗️ Build & Publish"
+            echo "| Step | Status | Details |"
+            echo "|------|--------|---------|"
+
+            # Build
+            if [ -n "${{ inputs.build-command }}" ]; then
+              echo "| 🏗️ Build | $(status ${{ steps.build-project.outcome }}) | \`${{ inputs.build-command }}\` |"
+            else
+              echo "| 🏗️ Build | ➖ No build command | |"
+            fi
+
+            # Publish
+            if [ "${{ inputs.publish-package }}" = "true" ]; then
+              PROV=""
+              [ "${{ inputs.publish-provenance }}" = "true" ] && PROV="OIDC ✅" || PROV="Token"
+              echo "| 📤 Publish | $(status ${{ steps.publish.outcome }}) | Registry: \`${{ inputs.publish-registry }}\`, Tag: \`${{ inputs.publish-tag }}\`, Access: \`${{ inputs.publish-access }}\`, Auth: ${PROV} |"
+            fi
+
+            # Artifacts
+            if [ "${{ inputs.upload-artifacts }}" = "true" ]; then
+              echo "| 📦 Artifacts | ✅ Uploaded | \`${{ inputs.artifact-name }}-${{ matrix.os }}-${{ steps.version.outputs.version }}\` |"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
