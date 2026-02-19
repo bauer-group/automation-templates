@@ -63,7 +63,8 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
-| `NPM_TOKEN` | nodejs-build | NPM Access Token | [npmjs.com](https://www.npmjs.com) → Access Tokens |
+| `NPM_REGISTRY_PUBLISH_TOKEN` | nodejs-build | npm Granular Access Token. Nur nötig wenn `publish-provenance: false`. Bei OIDC Trusted Publishing (Default) wird kein Token benötigt. | [npmjs.com](https://www.npmjs.com) → Access Tokens |
+| `GITHUB_PACKAGES_TOKEN` | nodejs-build | GitHub Token für Publishing zu GitHub Packages | Automatisch oder PAT |
 
 ### Security Scanning
 
@@ -182,11 +183,18 @@ secrets:
 ### nodejs-build.yml
 
 ```yaml
+# Mit OIDC Trusted Publishing (Default - kein NPM Token nötig):
 secrets:
-  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}                # NPM Publishing
-  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}        # Coverage Upload
-  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}    # Docker Push
-  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}    # Docker Push
+  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}                        # Coverage Upload
+  DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_USERNAME }}            # Docker Push
+  DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}            # Docker Push
+
+# Ohne OIDC (publish-provenance: false):
+secrets:
+  NPM_REGISTRY_PUBLISH_TOKEN: ${{ secrets.NPM_REGISTRY_PUBLISH_TOKEN }}  # NPM Publishing
+  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}                              # Coverage Upload
+  DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_USERNAME }}                 # Docker Push
+  DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}                 # Docker Push
 ```
 
 ### python-build.yml

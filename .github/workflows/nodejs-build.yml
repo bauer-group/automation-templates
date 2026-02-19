@@ -199,6 +199,12 @@ on:
         type: boolean
         required: false
         default: false
+
+      publish-provenance:
+        description: 'Enable npm provenance/OIDC trusted publishing (eliminates need for NPM_REGISTRY_PUBLISH_TOKEN)'
+        type: boolean
+        required: false
+        default: true
       
       # Version Management
       version-strategy:
@@ -392,7 +398,12 @@ jobs:
     name: Build Node.js
     runs-on: ${{ inputs.enable-matrix && matrix.os || (startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on) }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
-    
+
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+
     strategy:
       matrix:
         os: ${{ inputs.enable-matrix && fromJson(inputs.matrix-os) || fromJson('["ubuntu-latest"]') }}
@@ -732,14 +743,23 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           PM="${{ steps.detect-pm.outputs.package-manager }}"
-          
-          # Set auth token based on registry
-          if [ "${{ inputs.publish-registry }}" = "github" ]; then
-            export NODE_AUTH_TOKEN="${{ secrets.GITHUB_PACKAGES_TOKEN }}"
+
+          # Set auth token based on registry and provenance mode
+          if [ "${{ inputs.publish-provenance }}" != "true" ]; then
+            # Token-based auth (fallback)
+            if [ "${{ inputs.publish-registry }}" = "github" ]; then
+              export NODE_AUTH_TOKEN="${{ secrets.GITHUB_PACKAGES_TOKEN }}"
+            else
+              export NODE_AUTH_TOKEN="${{ secrets.NPM_REGISTRY_PUBLISH_TOKEN }}"
+            fi
           else
-            export NODE_AUTH_TOKEN="${{ secrets.NPM_REGISTRY_PUBLISH_TOKEN }}"
+            # OIDC: No token needed for npm registry
+            # GitHub Packages still requires GITHUB_TOKEN
+            if [ "${{ inputs.publish-registry }}" = "github" ]; then
+              export NODE_AUTH_TOKEN="${{ secrets.GITHUB_PACKAGES_TOKEN }}"
+            fi
           fi
-          
+
           # Publish command based on package manager
           PUBLISH_CMD=""
           case $PM in
@@ -748,18 +768,21 @@ jobs:
               [ "${{ inputs.publish-access }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --access ${{ inputs.publish-access }}"
               [ "${{ inputs.publish-tag }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --tag ${{ inputs.publish-tag }}"
               [ "${{ inputs.dry-run }}" = "true" ] && PUBLISH_CMD="$PUBLISH_CMD --dry-run"
+              [ "${{ inputs.publish-provenance }}" = "true" ] && PUBLISH_CMD="$PUBLISH_CMD --provenance"
               ;;
             yarn)
               PUBLISH_CMD="yarn publish"
               [ "${{ inputs.publish-access }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --access ${{ inputs.publish-access }}"
               [ "${{ inputs.publish-tag }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --tag ${{ inputs.publish-tag }}"
               [ "${{ inputs.dry-run }}" = "true" ] && PUBLISH_CMD="$PUBLISH_CMD --dry-run"
+              # yarn does not support --provenance
               ;;
             pnpm)
               PUBLISH_CMD="pnpm publish"
               [ "${{ inputs.publish-access }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --access ${{ inputs.publish-access }}"
               [ "${{ inputs.publish-tag }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --tag ${{ inputs.publish-tag }}"
               [ "${{ inputs.dry-run }}" = "true" ] && PUBLISH_CMD="$PUBLISH_CMD --dry-run"
+              [ "${{ inputs.publish-provenance }}" = "true" ] && PUBLISH_CMD="$PUBLISH_CMD --provenance"
               ;;
             bun)
               # Bun uses npm for publishing
@@ -767,9 +790,10 @@ jobs:
               [ "${{ inputs.publish-access }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --access ${{ inputs.publish-access }}"
               [ "${{ inputs.publish-tag }}" != "" ] && PUBLISH_CMD="$PUBLISH_CMD --tag ${{ inputs.publish-tag }}"
               [ "${{ inputs.dry-run }}" = "true" ] && PUBLISH_CMD="$PUBLISH_CMD --dry-run"
+              # bun does not support --provenance
               ;;
           esac
-          
+
           # Execute publish
           $PUBLISH_CMD
           

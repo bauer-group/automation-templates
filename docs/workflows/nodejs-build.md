@@ -164,6 +164,7 @@ jobs:
 | `registry-url` | Custom registry URL | `''` | URL |
 | `publish-tag` | NPM dist-tag | `latest` | `latest`, `beta`, `next` |
 | `publish-access` | Access level | `public` | `public`, `restricted` |
+| `publish-provenance` | OIDC Trusted Publishing (kein NPM Token nötig) | `true` | `true`, `false` |
 | `dry-run` | Dry run | `false` | `true`, `false` |
 
 ### Version Management
@@ -424,6 +425,80 @@ jobs:
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 ```
+
+### NPM OIDC Trusted Publishing
+
+Ab Dezember 2025 sind npm Classic Tokens abgeschafft. Granular Tokens sind auf 90 Tage limitiert.
+**OIDC Trusted Publishing** eliminiert die Notwendigkeit von npm Tokens vollständig.
+
+**Voraussetzungen:**
+
+1. npm-Account ist Mitglied der Organisation `@bauer-group`
+2. Paket existiert bereits auf npmjs.org (erster Publish muss manuell oder per Token erfolgen)
+3. GitHub Repository ist öffentlich ODER hat GitHub Actions Pro/Enterprise
+
+**Einrichtung auf npmjs.com:**
+
+1. Auf [npmjs.com](https://www.npmjs.com) einloggen
+2. Zum Paket navigieren → **Settings** → **Publishing access**
+3. Unter **"Trusted publishing"** auf **"Add trusted publisher"** klicken
+4. Repository-Informationen eintragen:
+   - **Repository owner:** `bauer-group`
+   - **Repository name:** `<euer-repo-name>` (z.B. `n8n-nodes-http-throttled-request`)
+   - **Workflow filename:** `nodejs-release.yml` (der exakte Name des Release-Workflows, der `nodejs-build.yml` als Reusable Workflow aufruft)
+   - **Environment:** leer lassen (oder ein GitHub Environment angeben, falls verwendet)
+5. **Speichern**
+
+**Einrichtung im Caller-Workflow:**
+
+```yaml
+permissions:
+  contents: write
+  id-token: write    # Erforderlich für npm OIDC
+  packages: write
+
+jobs:
+  publish:
+    uses: bauer-group/automation-templates/.github/workflows/nodejs-build.yml@main
+    with:
+      publish-package: true
+      publish-registry: 'npm'
+      publish-provenance: true   # Default, kann weggelassen werden
+      publish-access: 'public'
+    secrets: inherit
+```
+
+> **Wichtig:** Der aufrufende Workflow muss `id-token: write` in seinen Permissions haben, damit GitHub ein OIDC-Token für npm generieren kann.
+
+**Erster Publish (Bootstrap):**
+
+Beim allerersten Publish eines neuen Pakets muss dieses zuerst auf npm existieren, bevor Trusted Publishing konfiguriert werden kann.
+
+*Option A — Manuell:*
+
+```bash
+npm login
+npm publish --access public
+```
+
+*Option B — Einmaliger Granular Token (90 Tage):*
+
+1. Granular Token auf npmjs.com erstellen (Write, Bypass 2FA aktivieren)
+2. Als `NPM_REGISTRY_PUBLISH_TOKEN` Secret hinterlegen
+3. `publish-provenance: false` setzen
+4. Nach erstem Release: Trusted Publishing einrichten, Token löschen, `publish-provenance: true` setzen
+
+**Fallback: Token-basierte Authentifizierung:**
+
+```yaml
+with:
+  publish-provenance: false
+secrets:
+  NPM_REGISTRY_PUBLISH_TOKEN: ${{ secrets.NPM_REGISTRY_PUBLISH_TOKEN }}
+```
+
+> **Hinweis:** Granular Tokens mit Write-Berechtigung sind auf **max. 90 Tage** limitiert und müssen regelmäßig rotiert werden.
+> `--provenance` wird nur von **npm** und **pnpm** unterstützt. Bei yarn und bun wird das Flag ignoriert.
 
 ### GitHub Packages
 
