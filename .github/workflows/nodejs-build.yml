@@ -872,3 +872,4 @@ jobs:
           name: ${{ inputs.artifact-name }}-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}-${{ steps.version.outputs.version }}
           path: ${{ steps.artifacts.outputs.path }}
           retention-days: ${{ inputs.artifact-retention-days }}
+          overwrite: true
