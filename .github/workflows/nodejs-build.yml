@@ -756,20 +756,14 @@ jobs:
           PM="${{ steps.detect-pm.outputs.package-manager }}"
 
           # Set auth token based on registry and provenance mode
-          if [ "${{ inputs.publish-provenance }}" != "true" ]; then
-            # Token-based auth (fallback)
-            if [ "${{ inputs.publish-registry }}" = "github" ]; then
-              export NODE_AUTH_TOKEN="${{ secrets.GITHUB_PACKAGES_TOKEN }}"
-            else
-              export NODE_AUTH_TOKEN="${{ secrets.NPM_REGISTRY_PUBLISH_TOKEN }}"
-            fi
-          else
-            # OIDC: No token needed for npm registry
-            # GitHub Packages still requires GITHUB_TOKEN
-            if [ "${{ inputs.publish-registry }}" = "github" ]; then
-              export NODE_AUTH_TOKEN="${{ secrets.GITHUB_PACKAGES_TOKEN }}"
-            fi
+          if [ "${{ inputs.publish-registry }}" = "github" ]; then
+            # GitHub Packages always needs a token (OIDC not supported)
+            export NODE_AUTH_TOKEN="${{ secrets.GITHUB_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}"
+          elif [ "${{ inputs.publish-provenance }}" != "true" ]; then
+            # Token-based auth for npm (fallback when OIDC disabled)
+            export NODE_AUTH_TOKEN="${{ secrets.NPM_REGISTRY_PUBLISH_TOKEN }}"
           fi
+          # OIDC mode for npm: no token needed, provenance handles auth
 
           # Publish command based on package manager
           PUBLISH_CMD=""
