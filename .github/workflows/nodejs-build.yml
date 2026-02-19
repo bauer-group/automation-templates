@@ -742,10 +742,10 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           
           case $PM in
-            npm) npm version $VERSION --no-git-tag-version ;;
+            npm) npm version $VERSION --no-git-tag-version --allow-same-version ;;
             yarn) yarn version --new-version $VERSION --no-git-tag-version ;;
-            pnpm) pnpm version $VERSION --no-git-tag-version ;;
-            bun) npm version $VERSION --no-git-tag-version ;;
+            pnpm) pnpm version $VERSION --no-git-tag-version --allow-same-version ;;
+            bun) npm version $VERSION --no-git-tag-version --allow-same-version ;;
           esac
       
       - name: 📤 Publish Package
