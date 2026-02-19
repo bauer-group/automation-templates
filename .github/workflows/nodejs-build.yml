@@ -407,7 +407,7 @@ jobs:
     strategy:
       matrix:
         os: ${{ inputs.enable-matrix && fromJson(inputs.matrix-os) || fromJson('["ubuntu-latest"]') }}
-        node: ${{ inputs.enable-matrix && fromJson(inputs.matrix-node) || fromJson('["20.x"]') }}
+        node: ${{ inputs.enable-matrix && fromJson(inputs.matrix-node) || fromJson(format('["{0}"]', inputs.node-version)) }}
       fail-fast: false
     
     outputs:
@@ -452,7 +452,7 @@ jobs:
           echo "lockfile=$LOCKFILE" >> $GITHUB_OUTPUT
       
       - name: 🔧 Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version-file == '' && (inputs.enable-matrix && matrix.node || inputs.node-version) || '' }}
           node-version-file: ${{ inputs.node-version-file }}
@@ -676,12 +676,23 @@ jobs:
             eval "$CUSTOM_CMD"
           else
             PM="${{ steps.detect-pm.outputs.package-manager }}"
-            case $PM in
-              npm) npm run test:coverage ;;
-              yarn) yarn test:coverage ;;
-              pnpm) pnpm test:coverage ;;
-              bun) bun run test:coverage ;;
-            esac
+            # Check if test:coverage script exists in package.json
+            if node -e "const p=require('./package.json'); process.exit(p.scripts && p.scripts['test:coverage'] ? 0 : 1)" 2>/dev/null; then
+              case $PM in
+                npm) npm run test:coverage ;;
+                yarn) yarn test:coverage ;;
+                pnpm) pnpm test:coverage ;;
+                bun) bun run test:coverage ;;
+              esac
+            else
+              echo "No test:coverage script found, falling back to test with --coverage flag"
+              case $PM in
+                npm) npm test -- --coverage ;;
+                yarn) yarn test --coverage ;;
+                pnpm) pnpm test -- --coverage ;;
+                bun) bun test --coverage ;;
+              esac
+            fi
           fi
           
           # Check coverage threshold
