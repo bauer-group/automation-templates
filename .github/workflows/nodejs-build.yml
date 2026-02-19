@@ -560,7 +560,6 @@ jobs:
       - name: 🔍 Security Audit
         if: inputs.run-audit
         working-directory: ${{ inputs.working-directory }}
-        continue-on-error: true
         run: |
           PM="${{ steps.detect-pm.outputs.package-manager }}"
           
