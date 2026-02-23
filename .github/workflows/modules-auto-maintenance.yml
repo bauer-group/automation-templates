@@ -1,0 +1,877 @@
+# =============================================================================
+# Auto Maintenance - Reusable Workflow
+# =============================================================================
+# Unified repository maintenance: base image monitoring, dependency updates,
+# validation with rollback, and automatic release triggering.
+#
+# Replaces separate workflows (check-base-images, scheduled-dependency-update)
+# with a single workflow controlled by one JSON config file per repository.
+#
+# Features:
+# - Docker base image digest monitoring (floating tags like stable/latest)
+# - Multi-ecosystem dependency updates (Node.js, Python, .NET, Go)
+# - Build/Test/Typecheck validation with automatic rollback on failure
+# - Selective staging (only dependency files committed)
+# - Semantic release compatible commits
+# - Optional workflow_dispatch trigger for release pipelines
+# - Comprehensive Job Summary
+# - Dry-run mode for testing
+#
+# Usage:
+#   uses: bauer-group/automation-templates/.github/workflows/modules-auto-maintenance.yml@main
+#   with:
+#     config-file: '.github/config/maintenance/config.json'
+#   secrets: inherit
+#
+# Config file schema:
+#   https://raw.githubusercontent.com/bauer-group/automation-templates/main/.github/config/maintenance/auto-maintenance.schema.json
+#
+# Token requirements (one of):
+#   - MAINTENANCE_TOKEN (recommended)
+#   - PAT_READWRITE_ORGANISATION (backward compatible)
+#   - GITHUB_TOKEN (fallback, limited: no variable write, no cross-repo dispatch)
+# =============================================================================
+
+name: "🔧 Module | Auto Maintenance"
+
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: "Path to JSON config file"
+        required: false
+        type: string
+        default: ".github/config/maintenance/config.json"
+      dry-run:
+        description: "Only check, do not commit or trigger"
+        required: false
+        type: boolean
+        default: false
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: "ubuntu-latest"
+
+    secrets:
+      MAINTENANCE_TOKEN:
+        description: "GitHub PAT with Contents + Variables + Actions write permissions (recommended)"
+        required: false
+      PAT_READWRITE_ORGANISATION:
+        description: "Legacy PAT (backward compatible with existing repos)"
+        required: false
+
+    outputs:
+      updates-found:
+        description: "True if any updates were found"
+        value: ${{ jobs.maintenance.outputs.updates-found }}
+      summary:
+        description: "Summary of changes"
+        value: ${{ jobs.maintenance.outputs.summary }}
+
+jobs:
+  maintenance:
+    name: "🔧 Auto Maintenance"
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    outputs:
+      updates-found: ${{ steps.detect-changes.outputs.updates-found }}
+      summary: ${{ steps.detect-changes.outputs.summary }}
+
+    steps:
+      # =====================================================================
+      # Step 1: Validate authentication
+      # =====================================================================
+      - name: "🔐 Validate authentication"
+        id: auth
+        shell: bash
+        env:
+          MAINTENANCE_TOKEN: ${{ secrets.MAINTENANCE_TOKEN }}
+          PAT_READWRITE: ${{ secrets.PAT_READWRITE_ORGANISATION }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "$MAINTENANCE_TOKEN" ]; then
+            echo "token-source=MAINTENANCE_TOKEN" >> $GITHUB_OUTPUT
+            echo "✅ Using MAINTENANCE_TOKEN"
+          elif [ -n "$PAT_READWRITE" ]; then
+            echo "token-source=PAT_READWRITE_ORGANISATION" >> $GITHUB_OUTPUT
+            echo "✅ Using PAT_READWRITE_ORGANISATION (legacy)"
+          else
+            echo "token-source=GITHUB_TOKEN" >> $GITHUB_OUTPUT
+            echo "⚠️ Using GITHUB_TOKEN (limited: no variable write, no cross-repo dispatch)"
+          fi
+
+      # =====================================================================
+      # Step 2: Checkout repository
+      # =====================================================================
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          fetch-depth: 0
+
+      # =====================================================================
+      # Step 3: Parse configuration
+      # =====================================================================
+      - name: "⚙️ Parse configuration"
+        id: config
+        shell: bash
+        env:
+          CONFIG_FILE: ${{ inputs.config-file }}
+        run: |
+          set -euo pipefail
+
+          echo "::group::📄 Loading Configuration"
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "::error::Config file not found: $CONFIG_FILE"
+            exit 1
+          fi
+
+          # Validate JSON
+          if ! jq -e '.' "$CONFIG_FILE" > /dev/null 2>&1; then
+            echo "::error::Invalid JSON in config file: $CONFIG_FILE"
+            exit 1
+          fi
+
+          echo "✅ Config loaded: $CONFIG_FILE"
+          echo "::endgroup::"
+
+          # --- Base Images ---
+          HAS_BASE_IMAGES=$(jq 'has("base-images") and (.["base-images"] | length > 0)' "$CONFIG_FILE")
+          echo "has-base-images=$HAS_BASE_IMAGES" >> $GITHUB_OUTPUT
+
+          if [ "$HAS_BASE_IMAGES" = "true" ]; then
+            BASE_IMAGES=$(jq -c '.["base-images"]' "$CONFIG_FILE")
+            echo "base-images=$BASE_IMAGES" >> $GITHUB_OUTPUT
+            echo "🐳 Base images: $(printf '%s' "$BASE_IMAGES" | jq 'length') configured"
+          fi
+
+          # --- Node.js ---
+          HAS_NODE=$(jq '.ecosystems.node != null' "$CONFIG_FILE")
+          echo "has-node=$HAS_NODE" >> $GITHUB_OUTPUT
+
+          if [ "$HAS_NODE" = "true" ]; then
+            echo "node-version=$(jq -r '.ecosystems.node.version // "22"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "node-pm=$(jq -r '.ecosystems.node."package-manager" // "npm"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "node-workdir=$(jq -r '.ecosystems.node."working-directory" // "."' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "📦 Node.js: $(jq -r '.ecosystems.node."package-manager" // "npm"' "$CONFIG_FILE") v$(jq -r '.ecosystems.node.version // "22"' "$CONFIG_FILE")"
+          fi
+
+          # --- Python ---
+          HAS_PYTHON=$(jq '.ecosystems.python != null' "$CONFIG_FILE")
+          echo "has-python=$HAS_PYTHON" >> $GITHUB_OUTPUT
+
+          if [ "$HAS_PYTHON" = "true" ]; then
+            echo "python-version=$(jq -r '.ecosystems.python.version // "3.13"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "python-requirements=$(jq -r '.ecosystems.python."requirements-file" // "requirements.txt"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "python-workdir=$(jq -r '.ecosystems.python."working-directory" // "."' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "🐍 Python: v$(jq -r '.ecosystems.python.version // "3.13"' "$CONFIG_FILE")"
+          fi
+
+          # --- .NET ---
+          HAS_DOTNET=$(jq '.ecosystems.dotnet != null' "$CONFIG_FILE")
+          echo "has-dotnet=$HAS_DOTNET" >> $GITHUB_OUTPUT
+
+          if [ "$HAS_DOTNET" = "true" ]; then
+            echo "dotnet-version=$(jq -r '.ecosystems.dotnet.version // "8.0.x"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "dotnet-project=$(jq -r '.ecosystems.dotnet."project-path" // "."' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "dotnet-workdir=$(jq -r '.ecosystems.dotnet."working-directory" // "."' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "dotnet-strategy=$(jq -r '.ecosystems.dotnet."update-strategy" // "minor"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "🔵 .NET: v$(jq -r '.ecosystems.dotnet.version // "8.0.x"' "$CONFIG_FILE")"
+          fi
+
+          # --- Go ---
+          HAS_GO=$(jq '.ecosystems.go != null' "$CONFIG_FILE")
+          echo "has-go=$HAS_GO" >> $GITHUB_OUTPUT
+
+          if [ "$HAS_GO" = "true" ]; then
+            echo "go-version=$(jq -r '.ecosystems.go.version // "stable"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "go-workdir=$(jq -r '.ecosystems.go."working-directory" // "."' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "🔵 Go: v$(jq -r '.ecosystems.go.version // "stable"' "$CONFIG_FILE")"
+          fi
+
+          # --- Validation ---
+          HAS_VALIDATION=$(jq '.validation != null' "$CONFIG_FILE")
+          echo "has-validation=$HAS_VALIDATION" >> $GITHUB_OUTPUT
+          echo "build-command=$(jq -r '.validation."build-command" // ""' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+          echo "test-command=$(jq -r '.validation."test-command" // ""' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+          echo "typecheck-command=$(jq -r '.validation."typecheck-command" // ""' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+
+          # --- Release ---
+          echo "commit-prefix=$(jq -r '.release."commit-prefix" // "fix(deps)"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+          echo "target-branch=$(jq -r '.release."target-branch" // "main"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+          echo "trigger-workflow=$(jq -r '.release."trigger-workflow" // ""' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+          echo "trigger-inputs=$(jq -c '.release."trigger-inputs" // {}' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+
+      # =====================================================================
+      # Step 4: Check base images
+      # =====================================================================
+      - name: "🐳 Check base images"
+        id: base-images
+        if: steps.config.outputs.has-base-images == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          BASE_IMAGES: ${{ steps.config.outputs.base-images }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          UPDATES_FOUND="false"
+          UPDATED_IMAGES="[]"
+          NEW_DIGESTS="{}"
+          UPDATE_DETAILS=""
+
+          while IFS= read -r img; do
+            NAME=$(printf '%s' "$img" | jq -r '.name')
+            IMAGE=$(printf '%s' "$img" | jq -r '.image')
+            TAG=$(printf '%s' "$img" | jq -r '.tag')
+            VARIABLE=$(printf '%s' "$img" | jq -r '.variable')
+
+            echo "::group::🐳 Checking $NAME ($IMAGE:$TAG)"
+
+            # Get current digest from registry
+            echo "📡 Fetching current digest from registry..."
+
+            MANIFEST_OUTPUT=$(docker manifest inspect "$IMAGE:$TAG" 2>&1) || {
+              echo "::warning::Could not fetch manifest for $IMAGE:$TAG"
+              echo "::endgroup::"
+              continue
+            }
+
+            CURRENT_DIGEST=$(echo "$MANIFEST_OUTPUT" | jq -r '
+              if .config.digest then
+                .config.digest
+              elif .manifests then
+                .manifests | sort_by(.platform.architecture) | .[0].digest
+              else
+                empty
+              end
+            ' 2>/dev/null || echo "")
+
+            if [ -z "$CURRENT_DIGEST" ]; then
+              echo "::warning::Could not extract digest for $IMAGE:$TAG"
+              echo "::endgroup::"
+              continue
+            fi
+
+            echo "📦 Current digest: ${CURRENT_DIGEST:0:20}..."
+
+            # Get stored digest from GitHub variable
+            echo "🔎 Fetching stored digest from variable $VARIABLE..."
+            STORED_DIGEST=$(gh variable get "$VARIABLE" 2>/dev/null || echo "")
+
+            if [ -z "$STORED_DIGEST" ]; then
+              echo "ℹ️ Variable $VARIABLE does not exist (will be created)"
+            else
+              echo "📦 Stored digest: ${STORED_DIGEST:0:20}..."
+            fi
+
+            # Compare digests
+            if [ "$CURRENT_DIGEST" != "$STORED_DIGEST" ]; then
+              echo ""
+              echo "✅ Update detected for $NAME!"
+              echo "   Old: ${STORED_DIGEST:-<none>}"
+              echo "   New: $CURRENT_DIGEST"
+
+              UPDATES_FOUND="true"
+              UPDATED_IMAGES=$(echo "$UPDATED_IMAGES" | jq -c --arg name "$NAME" '. + [$name]')
+              NEW_DIGESTS=$(echo "$NEW_DIGESTS" | jq -c --arg name "$NAME" --arg digest "$CURRENT_DIGEST" '. + {($name): $digest}')
+
+              UPDATE_DETAILS="${UPDATE_DETAILS}
+          - $NAME ($IMAGE:$TAG): ${STORED_DIGEST:+${STORED_DIGEST:0:12}... ->} ${CURRENT_DIGEST:0:12}..."
+
+              if [ "$DRY_RUN" != "true" ]; then
+                echo "💾 Setting variable $VARIABLE..."
+                gh variable set "$VARIABLE" --body "$CURRENT_DIGEST"
+                echo "✅ Variable updated"
+              else
+                echo "🔍 DRY RUN: Would set variable $VARIABLE"
+              fi
+            else
+              echo ""
+              echo "ℹ️ No update for $NAME (digest unchanged)"
+            fi
+
+            echo "::endgroup::"
+          done < <(printf '%s' "$BASE_IMAGES" | jq -c '.[]')
+
+          echo "updates-found=$UPDATES_FOUND" >> $GITHUB_OUTPUT
+          echo "updated-images=$UPDATED_IMAGES" >> $GITHUB_OUTPUT
+          echo "new-digests=$NEW_DIGESTS" >> $GITHUB_OUTPUT
+
+          # Store update details for commit message
+          {
+            echo "UPDATE_DETAILS<<DETAILS_EOF"
+            echo "$UPDATE_DETAILS"
+            echo "DETAILS_EOF"
+          } >> $GITHUB_ENV
+
+      # =====================================================================
+      # Step 5: Setup Node.js
+      # =====================================================================
+      - name: "🔧 Setup Node.js"
+        if: steps.config.outputs.has-node == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ steps.config.outputs.node-version }}
+
+      # =====================================================================
+      # Step 6: Node.js dependency updates
+      # =====================================================================
+      - name: "📦 Node.js dependency updates"
+        id: node-update
+        if: steps.config.outputs.has-node == 'true'
+        working-directory: ${{ steps.config.outputs.node-workdir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PM="${{ steps.config.outputs.node-pm }}"
+          echo "::group::📦 $PM dependency updates"
+
+          case "$PM" in
+            npm)
+              echo "📥 npm ci --ignore-scripts..."
+              npm ci --ignore-scripts 2>&1 | tail -5
+              echo ""
+              echo "🔄 npm update..."
+              npm update 2>&1 | tail -20
+              echo ""
+              echo "🛡️ npm audit fix..."
+              npm audit fix 2>&1 || echo "⚠️ Audit fix had issues (non-fatal)"
+              ;;
+            yarn)
+              echo "📥 yarn install --frozen-lockfile..."
+              yarn install --frozen-lockfile 2>&1 | tail -5
+              echo ""
+              echo "🔄 yarn upgrade..."
+              yarn upgrade 2>&1 | tail -20
+              ;;
+            pnpm)
+              echo "📥 pnpm install --frozen-lockfile..."
+              pnpm install --frozen-lockfile 2>&1 | tail -5
+              echo ""
+              echo "🔄 pnpm update..."
+              pnpm update 2>&1 | tail -20
+              ;;
+          esac
+
+          echo "::endgroup::"
+
+      # =====================================================================
+      # Step 7: Setup Python
+      # =====================================================================
+      - name: "🔧 Setup Python"
+        if: steps.config.outputs.has-python == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ steps.config.outputs.python-version }}
+
+      # =====================================================================
+      # Step 8: Python dependency updates
+      # =====================================================================
+      - name: "🐍 Python dependency updates"
+        id: python-update
+        if: steps.config.outputs.has-python == 'true'
+        working-directory: ${{ steps.config.outputs.python-workdir }}
+        shell: bash
+        env:
+          REQUIREMENTS_FILE: ${{ steps.config.outputs.python-requirements }}
+        run: |
+          set -euo pipefail
+
+          echo "::group::🐍 Python dependency updates"
+
+          if [ ! -f "$REQUIREMENTS_FILE" ]; then
+            echo "::warning::Requirements file not found: $REQUIREMENTS_FILE"
+            echo "::endgroup::"
+            exit 0
+          fi
+
+          echo "📥 Installing current dependencies..."
+          pip install -r "$REQUIREMENTS_FILE" 2>&1 | tail -10
+
+          echo ""
+          echo "🔄 Upgrading dependencies..."
+          pip install --upgrade --upgrade-strategy only-if-needed -r "$REQUIREMENTS_FILE" 2>&1 | tail -20
+
+          # Freeze back only packages that were in the original requirements file
+          echo ""
+          echo "💾 Updating requirements file..."
+          TEMP_FREEZE=$(mktemp)
+          pip freeze > "$TEMP_FREEZE"
+
+          # For each package in requirements.txt, update the version from freeze
+          while IFS= read -r line; do
+            # Skip comments and empty lines
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            [[ -z "${line// }" ]] && continue
+
+            # Extract package name (handle ==, >=, ~=, etc.)
+            PKG_NAME=$(echo "$line" | sed -E 's/([a-zA-Z0-9_-]+).*/\1/' | tr '[:upper:]' '[:lower:]')
+            if [ -n "$PKG_NAME" ]; then
+              FROZEN_LINE=$(grep -i "^${PKG_NAME}==" "$TEMP_FREEZE" || echo "")
+              if [ -n "$FROZEN_LINE" ]; then
+                # Only update if original used pinned version (==)
+                if [[ "$line" =~ == ]]; then
+                  sed -i "s|^${PKG_NAME}==.*|${FROZEN_LINE}|i" "$REQUIREMENTS_FILE"
+                fi
+              fi
+            fi
+          done < "$REQUIREMENTS_FILE"
+
+          rm -f "$TEMP_FREEZE"
+          echo "::endgroup::"
+
+      # =====================================================================
+      # Step 9: Setup .NET SDK
+      # =====================================================================
+      - name: "🔧 Setup .NET SDK"
+        if: steps.config.outputs.has-dotnet == 'true'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ steps.config.outputs.dotnet-version }}
+
+      # =====================================================================
+      # Step 10: .NET dependency updates
+      # =====================================================================
+      - name: "🔵 .NET dependency updates"
+        id: dotnet-update
+        if: steps.config.outputs.has-dotnet == 'true'
+        working-directory: ${{ steps.config.outputs.dotnet-workdir }}
+        shell: bash
+        env:
+          DOTNET_STRATEGY: ${{ steps.config.outputs.dotnet-strategy }}
+          PROJECT_PATH: ${{ steps.config.outputs.dotnet-project }}
+        run: |
+          set -euo pipefail
+
+          echo "::group::🔵 .NET dependency updates"
+
+          # Install dotnet-outdated tool
+          echo "🔧 Installing dotnet-outdated..."
+          dotnet tool install --global dotnet-outdated-tool 2>&1 || \
+            dotnet tool update --global dotnet-outdated-tool 2>&1
+          export PATH="$HOME/.dotnet/tools:$PATH"
+
+          # Determine version lock
+          VERSION_LOCK="Minor"
+          if [ "$DOTNET_STRATEGY" = "patch" ]; then
+            VERSION_LOCK="Patch"
+          fi
+
+          echo "🔄 Updating packages (strategy: $DOTNET_STRATEGY, lock: $VERSION_LOCK)..."
+          dotnet outdated --upgrade --version-lock "$VERSION_LOCK" "$PROJECT_PATH" 2>&1 | tail -30
+
+          echo ""
+          echo "🔄 Restoring packages..."
+          dotnet restore "$PROJECT_PATH" 2>&1 | tail -10
+
+          echo "::endgroup::"
+
+      # =====================================================================
+      # Step 11: Setup Go
+      # =====================================================================
+      - name: "🔧 Setup Go"
+        if: steps.config.outputs.has-go == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.config.outputs.go-version }}
+
+      # =====================================================================
+      # Step 12: Go dependency updates
+      # =====================================================================
+      - name: "🔵 Go dependency updates"
+        id: go-update
+        if: steps.config.outputs.has-go == 'true'
+        working-directory: ${{ steps.config.outputs.go-workdir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "::group::🔵 Go dependency updates"
+
+          echo "🔄 Updating Go modules..."
+          go get -u ./... 2>&1 | tail -20
+
+          echo ""
+          echo "🧹 Tidying modules..."
+          go mod tidy 2>&1
+
+          echo "::endgroup::"
+
+      # =====================================================================
+      # Step 13: Detect changes
+      # =====================================================================
+      - name: "🔍 Detect changes"
+        id: detect-changes
+        shell: bash
+        env:
+          BASE_IMAGES_UPDATED: ${{ steps.base-images.outputs.updates-found }}
+        run: |
+          set -euo pipefail
+
+          echo "::group::🔍 Detecting changes"
+
+          CHANGED_FILES=$(git diff --name-only 2>/dev/null || echo "")
+          UNTRACKED_FILES=$(git ls-files --others --exclude-standard 2>/dev/null || echo "")
+
+          FILE_CHANGES="false"
+          if [ -n "$CHANGED_FILES" ] || [ -n "$UNTRACKED_FILES" ]; then
+            FILE_CHANGES="true"
+            echo "📝 Changed files:"
+            git diff --name-only 2>/dev/null | head -30
+            if [ -n "$UNTRACKED_FILES" ]; then
+              echo ""
+              echo "🆕 Untracked files:"
+              echo "$UNTRACKED_FILES" | head -10
+            fi
+          else
+            echo "ℹ️ No file changes detected"
+          fi
+
+          # Combine: file changes OR base image digest updates
+          if [ "$FILE_CHANGES" = "true" ] || [ "$BASE_IMAGES_UPDATED" = "true" ]; then
+            echo "updates-found=true" >> $GITHUB_OUTPUT
+            echo "has-file-changes=$FILE_CHANGES" >> $GITHUB_OUTPUT
+
+            # Build summary
+            SUMMARY_PARTS=""
+            if [ "$BASE_IMAGES_UPDATED" = "true" ]; then
+              SUMMARY_PARTS="base images"
+            fi
+            if [ "$FILE_CHANGES" = "true" ]; then
+              [ -n "$SUMMARY_PARTS" ] && SUMMARY_PARTS="$SUMMARY_PARTS + "
+              SUMMARY_PARTS="${SUMMARY_PARTS}dependencies"
+            fi
+            echo "summary=Updates found: $SUMMARY_PARTS" >> $GITHUB_OUTPUT
+            echo "✅ Updates found: $SUMMARY_PARTS"
+          else
+            echo "updates-found=false" >> $GITHUB_OUTPUT
+            echo "has-file-changes=false" >> $GITHUB_OUTPUT
+            echo "summary=No updates found" >> $GITHUB_OUTPUT
+            echo "ℹ️ No updates found"
+          fi
+
+          echo "::endgroup::"
+
+      # =====================================================================
+      # Step 14: Run validation
+      # =====================================================================
+      - name: "✅ Run validation"
+        id: validation
+        if: steps.detect-changes.outputs.has-file-changes == 'true' && steps.config.outputs.has-validation == 'true'
+        shell: bash
+        env:
+          BUILD_CMD: ${{ steps.config.outputs.build-command }}
+          TEST_CMD: ${{ steps.config.outputs.test-command }}
+          TYPECHECK_CMD: ${{ steps.config.outputs.typecheck-command }}
+          NODE_WORKDIR: ${{ steps.config.outputs.node-workdir }}
+          PYTHON_WORKDIR: ${{ steps.config.outputs.python-workdir }}
+          DOTNET_WORKDIR: ${{ steps.config.outputs.dotnet-workdir }}
+          GO_WORKDIR: ${{ steps.config.outputs.go-workdir }}
+        run: |
+          set -euo pipefail
+
+          # Use the first configured ecosystem's working directory
+          WORKDIR="${NODE_WORKDIR:-${PYTHON_WORKDIR:-${DOTNET_WORKDIR:-${GO_WORKDIR:-.}}}}"
+          cd "$WORKDIR"
+
+          VALIDATION_PASSED="true"
+
+          # Build
+          if [ -n "$BUILD_CMD" ]; then
+            echo "::group::🏗️ Running build: $BUILD_CMD"
+            if eval "$BUILD_CMD" 2>&1; then
+              echo "✅ Build passed"
+            else
+              echo "❌ Build failed"
+              VALIDATION_PASSED="false"
+            fi
+            echo "::endgroup::"
+          fi
+
+          # Test (only if build passed)
+          if [ "$VALIDATION_PASSED" = "true" ] && [ -n "$TEST_CMD" ]; then
+            echo "::group::🧪 Running tests: $TEST_CMD"
+            if eval "$TEST_CMD" 2>&1; then
+              echo "✅ Tests passed"
+            else
+              echo "❌ Tests failed"
+              VALIDATION_PASSED="false"
+            fi
+            echo "::endgroup::"
+          fi
+
+          # Typecheck (only if previous steps passed)
+          if [ "$VALIDATION_PASSED" = "true" ] && [ -n "$TYPECHECK_CMD" ]; then
+            echo "::group::🔍 Running typecheck: $TYPECHECK_CMD"
+            if eval "$TYPECHECK_CMD" 2>&1; then
+              echo "✅ Typecheck passed"
+            else
+              echo "❌ Typecheck failed"
+              VALIDATION_PASSED="false"
+            fi
+            echo "::endgroup::"
+          fi
+
+          # Rollback on failure
+          if [ "$VALIDATION_PASSED" != "true" ]; then
+            echo ""
+            echo "⚠️ Validation failed - reverting all changes..."
+            cd "$GITHUB_WORKSPACE"
+            git checkout -- .
+            git clean -fd
+            echo "🔄 All changes reverted"
+          fi
+
+          echo "validation-passed=$VALIDATION_PASSED" >> $GITHUB_OUTPUT
+
+      # =====================================================================
+      # Step 15: Commit and push
+      # =====================================================================
+      - name: "📤 Commit and push"
+        id: commit
+        if: |
+          steps.detect-changes.outputs.updates-found == 'true'
+          && (steps.detect-changes.outputs.has-file-changes != 'true' || steps.validation.outputs.validation-passed != 'false')
+          && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          COMMIT_PREFIX: ${{ steps.config.outputs.commit-prefix }}
+          TARGET_BRANCH: ${{ steps.config.outputs.target-branch }}
+          BASE_IMAGES_UPDATED: ${{ steps.base-images.outputs.updates-found }}
+          UPDATED_IMAGES_JSON: ${{ steps.base-images.outputs.updated-images }}
+          HAS_FILE_CHANGES: ${{ steps.detect-changes.outputs.has-file-changes }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          COMMITTED="false"
+
+          # Stage only dependency files (selective staging)
+          if [ "$HAS_FILE_CHANGES" = "true" ]; then
+            echo "📁 Staging dependency files..."
+            git add package.json package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null || true
+            git add requirements.txt requirements*.txt Pipfile.lock poetry.lock 2>/dev/null || true
+            git add '*.csproj' '*.fsproj' Directory.Build.props Directory.Packages.props 2>/dev/null || true
+            git add go.mod go.sum 2>/dev/null || true
+
+            # Check if anything was staged
+            if git diff --cached --quiet; then
+              echo "ℹ️ No dependency files to commit"
+            else
+              echo "📝 Staged files:"
+              git diff --cached --name-only
+
+              # Build commit message
+              COMMIT_BODY=""
+              if [ "$BASE_IMAGES_UPDATED" = "true" ]; then
+                UPDATED=$(printf '%s' "$UPDATED_IMAGES_JSON" | jq -r 'join(", ")' 2>/dev/null || echo "images")
+                COMMIT_BODY="${COMMIT_BODY}Base image updates: ${UPDATED}
+          ${UPDATE_DETAILS:-}"
+              fi
+
+              git commit -m "${COMMIT_PREFIX}: automated maintenance update" \
+                         -m "$(echo "$COMMIT_BODY" | head -20)"
+              COMMITTED="true"
+              echo "✅ Changes committed"
+            fi
+          fi
+
+          # If only base images changed (no file changes), create empty commit for release trigger
+          if [ "$COMMITTED" = "false" ] && [ "$BASE_IMAGES_UPDATED" = "true" ]; then
+            UPDATED=$(printf '%s' "$UPDATED_IMAGES_JSON" | jq -r 'join(", ")' 2>/dev/null || echo "images")
+            git commit --allow-empty \
+              -m "${COMMIT_PREFIX}: update base image ${UPDATED}" \
+              -m "Base image digest changed:
+          ${UPDATE_DETAILS:-}
+
+          Triggered by: Auto Maintenance"
+            COMMITTED="true"
+            echo "✅ Empty commit created (base image digest update)"
+          fi
+
+          if [ "$COMMITTED" = "true" ]; then
+            echo "🚀 Pushing to $TARGET_BRANCH..."
+            git push origin HEAD:"$TARGET_BRANCH"
+            COMMIT_SHA=$(git rev-parse HEAD)
+            echo "committed=true" >> $GITHUB_OUTPUT
+            echo "commit-sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+            echo "✅ Pushed: $COMMIT_SHA"
+          else
+            echo "committed=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Nothing to commit"
+          fi
+
+      # =====================================================================
+      # Step 16: Trigger release workflow
+      # =====================================================================
+      - name: "🚀 Trigger release workflow"
+        id: dispatch
+        if: steps.commit.outputs.committed == 'true' && steps.config.outputs.trigger-workflow != '' && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          TRIGGER_WORKFLOW: ${{ steps.config.outputs.trigger-workflow }}
+          TRIGGER_REF: ${{ steps.config.outputs.target-branch }}
+          TRIGGER_INPUTS: ${{ steps.config.outputs.trigger-inputs }}
+        shell: bash
+        run: |
+          echo "🚀 Triggering workflow: $TRIGGER_WORKFLOW"
+
+          ARGS=("gh" "workflow" "run" "$TRIGGER_WORKFLOW" "--ref" "$TRIGGER_REF")
+
+          if [ "$TRIGGER_INPUTS" != "{}" ] && [ -n "$TRIGGER_INPUTS" ]; then
+            echo "📋 With inputs:"
+            while IFS= read -r field; do
+              echo "  - $field"
+              ARGS+=("--field" "$field")
+            done < <(printf '%s' "$TRIGGER_INPUTS" | jq -r 'to_entries[] | "\(.key)=\(.value)"')
+          fi
+
+          "${ARGS[@]}"
+          echo "triggered=true" >> $GITHUB_OUTPUT
+          echo "✅ Workflow triggered successfully"
+
+      # =====================================================================
+      # Step 17: Job Summary
+      # =====================================================================
+      - name: "📋 Job Summary"
+        if: always()
+        env:
+          DRY_RUN: ${{ inputs.dry-run }}
+          CONFIG_FILE: ${{ inputs.config-file }}
+          TOKEN_SOURCE: ${{ steps.auth.outputs.token-source }}
+          # Config flags
+          HAS_BASE_IMAGES: ${{ steps.config.outputs.has-base-images }}
+          HAS_NODE: ${{ steps.config.outputs.has-node }}
+          HAS_PYTHON: ${{ steps.config.outputs.has-python }}
+          HAS_DOTNET: ${{ steps.config.outputs.has-dotnet }}
+          HAS_GO: ${{ steps.config.outputs.has-go }}
+          HAS_VALIDATION: ${{ steps.config.outputs.has-validation }}
+          # Results
+          BASE_IMAGES_UPDATED: ${{ steps.base-images.outputs.updates-found }}
+          UPDATED_IMAGES_JSON: ${{ steps.base-images.outputs.updated-images }}
+          NEW_DIGESTS_JSON: ${{ steps.base-images.outputs.new-digests }}
+          UPDATES_FOUND: ${{ steps.detect-changes.outputs.updates-found }}
+          HAS_FILE_CHANGES: ${{ steps.detect-changes.outputs.has-file-changes }}
+          VALIDATION_PASSED: ${{ steps.validation.outputs.validation-passed }}
+          COMMITTED: ${{ steps.commit.outputs.committed }}
+          COMMIT_SHA: ${{ steps.commit.outputs.commit-sha }}
+          DISPATCH_TRIGGERED: ${{ steps.dispatch.outputs.triggered }}
+          TRIGGER_WORKFLOW: ${{ steps.config.outputs.trigger-workflow }}
+        shell: bash
+        run: |
+          {
+            echo "## 🔧 Auto Maintenance Results"
+            echo ""
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "> ⚠️ **Dry run mode** - No changes were made"
+              echo ""
+            fi
+
+            # Configuration table
+            echo "### ⚙️ Configuration"
+            echo ""
+            echo "| Setting | Value |"
+            echo "|---------|-------|"
+            echo "| **Config** | \`$CONFIG_FILE\` |"
+            echo "| **Token** | \`$TOKEN_SOURCE\` |"
+
+            # Show enabled modules
+            MODULES=""
+            [ "$HAS_BASE_IMAGES" = "true" ] && MODULES="${MODULES}Docker, "
+            [ "$HAS_NODE" = "true" ] && MODULES="${MODULES}Node.js, "
+            [ "$HAS_PYTHON" = "true" ] && MODULES="${MODULES}Python, "
+            [ "$HAS_DOTNET" = "true" ] && MODULES="${MODULES}.NET, "
+            [ "$HAS_GO" = "true" ] && MODULES="${MODULES}Go, "
+            MODULES="${MODULES%, }"
+            [ -z "$MODULES" ] && MODULES="None"
+            echo "| **Modules** | $MODULES |"
+            echo "| **Validation** | $([ "$HAS_VALIDATION" = "true" ] && echo "✅ Enabled" || echo "❌ Disabled") |"
+            echo ""
+
+            # Base image results
+            if [ "$HAS_BASE_IMAGES" = "true" ]; then
+              echo "### 🐳 Base Images"
+              echo ""
+              if [ "$BASE_IMAGES_UPDATED" = "true" ]; then
+                echo "✅ **Updates found:**"
+                printf '%s' "$UPDATED_IMAGES_JSON" | jq -r '.[] | "- \`" + . + "\`"' 2>/dev/null || echo "- (unknown)"
+                echo ""
+                echo "<details><summary>New digests</summary>"
+                echo ""
+                echo '```json'
+                printf '%s' "$NEW_DIGESTS_JSON" | jq '.' 2>/dev/null || echo "{}"
+                echo '```'
+                echo "</details>"
+              else
+                echo "ℹ️ All base images are up to date."
+              fi
+              echo ""
+            fi
+
+            # Dependency results
+            if [ "$HAS_NODE" = "true" ] || [ "$HAS_PYTHON" = "true" ] || [ "$HAS_DOTNET" = "true" ] || [ "$HAS_GO" = "true" ]; then
+              echo "### 📦 Dependencies"
+              echo ""
+              if [ "$HAS_FILE_CHANGES" = "true" ]; then
+                echo "✅ Dependency file changes detected."
+              else
+                echo "ℹ️ All dependencies are up to date."
+              fi
+              echo ""
+            fi
+
+            # Validation results
+            if [ "$HAS_VALIDATION" = "true" ] && [ "$HAS_FILE_CHANGES" = "true" ]; then
+              echo "### 🧪 Validation"
+              echo ""
+              if [ "$VALIDATION_PASSED" = "true" ]; then
+                echo "✅ All validation checks passed."
+              elif [ "$VALIDATION_PASSED" = "false" ]; then
+                echo "❌ **Validation failed** - all changes were reverted."
+              else
+                echo "⏭️ Validation was skipped."
+              fi
+              echo ""
+            fi
+
+            # Commit & Release
+            if [ "$COMMITTED" = "true" ]; then
+              echo "### 🚀 Release"
+              echo ""
+              echo "| Property | Value |"
+              echo "|----------|-------|"
+              echo "| **Commit** | \`${COMMIT_SHA:-unknown}\` |"
+              if [ "$DISPATCH_TRIGGERED" = "true" ]; then
+                echo "| **Workflow** | \`$TRIGGER_WORKFLOW\` triggered |"
+              fi
+              echo ""
+            elif [ "$UPDATES_FOUND" = "true" ] && [ "$DRY_RUN" != "true" ]; then
+              if [ "$VALIDATION_PASSED" = "false" ]; then
+                echo "### ⚠️ No Release"
+                echo ""
+                echo "Changes were found but validation failed. No commit was created."
+                echo ""
+              fi
+            fi
+
+            # Overall status
+            echo "---"
+            if [ "$UPDATES_FOUND" != "true" ]; then
+              echo "✅ **Everything is up to date.** No action needed."
+            elif [ "$COMMITTED" = "true" ]; then
+              echo "✅ **Maintenance completed successfully.**"
+            elif [ "$DRY_RUN" = "true" ]; then
+              echo "🔍 **Dry run completed.** Updates were found but no changes were made."
+            elif [ "$VALIDATION_PASSED" = "false" ]; then
+              echo "⚠️ **Maintenance aborted.** Validation failed, changes reverted."
+            fi
+          } >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,262 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/bauer-group/automation-templates/main/.github/config/maintenance/auto-maintenance.schema.json",
+  "title": "Auto Maintenance Configuration",
+  "description": "Configuration schema for the Auto Maintenance reusable workflow. Controls base image monitoring, dependency updates, validation, and release triggering.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for IDE support"
+    },
+
+    "base-images": {
+      "type": "array",
+      "description": "Docker base images with floating tags to monitor for digest changes",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "image", "tag", "variable"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Friendly name for the image (used in logs and commit messages)",
+            "minLength": 1,
+            "examples": ["n8n", "runner", "postgres", "nocodb"]
+          },
+          "image": {
+            "type": "string",
+            "description": "Docker image name without tag (e.g., 'n8nio/n8n', 'library/postgres')",
+            "pattern": "^[a-z0-9][a-z0-9._/-]*[a-z0-9]$",
+            "examples": ["n8nio/n8n", "nocodb/nocodb", "python", "bugsink/bugsink"]
+          },
+          "tag": {
+            "type": "string",
+            "description": "Docker tag to monitor (typically floating tags like 'stable', 'latest')",
+            "minLength": 1,
+            "examples": ["stable", "latest", "lts", "3.13-alpine"]
+          },
+          "variable": {
+            "type": "string",
+            "description": "GitHub repository variable name to store the digest",
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "examples": ["N8N_STABLE_DIGEST", "NOCODB_LATEST_DIGEST", "PYTHON_ALPINE_DIGEST"]
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description for documentation purposes"
+          }
+        }
+      }
+    },
+
+    "ecosystems": {
+      "type": "object",
+      "description": "Ecosystems to maintain with automatic dependency updates",
+      "additionalProperties": false,
+      "properties": {
+        "node": {
+          "type": "object",
+          "description": "Node.js dependency updates (npm update + npm audit fix)",
+          "additionalProperties": false,
+          "properties": {
+            "version": {
+              "type": "string",
+              "description": "Node.js version to use (e.g., '22', '24', 'lts')",
+              "default": "22",
+              "examples": ["20", "22", "24"]
+            },
+            "package-manager": {
+              "type": "string",
+              "description": "Package manager to use",
+              "enum": ["npm", "yarn", "pnpm"],
+              "default": "npm"
+            },
+            "working-directory": {
+              "type": "string",
+              "description": "Working directory relative to repository root",
+              "default": "."
+            },
+            "update-strategy": {
+              "type": "string",
+              "description": "Update strategy: 'safe' = npm update + npm audit fix (SemVer-compliant within package.json ranges)",
+              "enum": ["safe"],
+              "default": "safe"
+            }
+          }
+        },
+        "python": {
+          "type": "object",
+          "description": "Python dependency updates (pip install --upgrade)",
+          "additionalProperties": false,
+          "properties": {
+            "version": {
+              "type": "string",
+              "description": "Python version to use",
+              "default": "3.13",
+              "examples": ["3.11", "3.12", "3.13"]
+            },
+            "requirements-file": {
+              "type": "string",
+              "description": "Path to requirements.txt relative to working-directory",
+              "default": "requirements.txt"
+            },
+            "working-directory": {
+              "type": "string",
+              "description": "Working directory relative to repository root",
+              "default": "."
+            },
+            "update-strategy": {
+              "type": "string",
+              "description": "Update strategy: 'compatible' = upgrade within constraints",
+              "enum": ["compatible"],
+              "default": "compatible"
+            }
+          }
+        },
+        "dotnet": {
+          "type": "object",
+          "description": ".NET dependency updates (dotnet-outdated)",
+          "additionalProperties": false,
+          "properties": {
+            "version": {
+              "type": "string",
+              "description": ".NET SDK version to use",
+              "default": "8.0.x",
+              "examples": ["6.0.x", "7.0.x", "8.0.x", "9.0.x"]
+            },
+            "project-path": {
+              "type": "string",
+              "description": "Path to .sln or .csproj file relative to working-directory",
+              "default": "."
+            },
+            "working-directory": {
+              "type": "string",
+              "description": "Working directory relative to repository root",
+              "default": "."
+            },
+            "update-strategy": {
+              "type": "string",
+              "description": "Update strategy: 'minor' = patch + minor updates, 'patch' = only patch updates",
+              "enum": ["minor", "patch"],
+              "default": "minor"
+            }
+          }
+        },
+        "go": {
+          "type": "object",
+          "description": "Go module updates (go get -u + go mod tidy)",
+          "additionalProperties": false,
+          "properties": {
+            "version": {
+              "type": "string",
+              "description": "Go version to use",
+              "default": "stable",
+              "examples": ["1.22", "1.23", "stable"]
+            },
+            "working-directory": {
+              "type": "string",
+              "description": "Working directory relative to repository root",
+              "default": "."
+            },
+            "update-strategy": {
+              "type": "string",
+              "description": "Update strategy: 'compatible' = SemVer-compliant minor/patch updates",
+              "enum": ["compatible"],
+              "default": "compatible"
+            }
+          }
+        }
+      }
+    },
+
+    "validation": {
+      "type": "object",
+      "description": "Validation commands to run after dependency updates. If any command fails, all changes are reverted.",
+      "additionalProperties": false,
+      "properties": {
+        "build-command": {
+          "type": "string",
+          "description": "Build command (e.g., 'npm run build', 'dotnet build --configuration Release')",
+          "examples": ["npm run build", "go build ./...", "dotnet build --configuration Release"]
+        },
+        "test-command": {
+          "type": "string",
+          "description": "Test command (e.g., 'npm test', 'go test ./...')",
+          "examples": ["npm test", "npm test -- --passWithNoTests", "go test ./...", "dotnet test"]
+        },
+        "typecheck-command": {
+          "type": "string",
+          "description": "Type checking command (e.g., 'npm run typecheck')",
+          "examples": ["npm run typecheck", "npm run type-check"]
+        }
+      }
+    },
+
+    "release": {
+      "type": "object",
+      "description": "Release configuration for commit messages and workflow triggering",
+      "additionalProperties": false,
+      "properties": {
+        "commit-prefix": {
+          "type": "string",
+          "description": "Conventional Commit prefix for semantic release compatibility",
+          "default": "fix(deps)",
+          "examples": ["fix(deps)", "chore(deps)", "build(deps)"]
+        },
+        "target-branch": {
+          "type": "string",
+          "description": "Target branch for commits and pushes",
+          "default": "main"
+        },
+        "trigger-workflow": {
+          "type": "string",
+          "description": "Workflow file to trigger via workflow_dispatch after commit (e.g., 'docker-release.yml')",
+          "examples": ["docker-release.yml", "release.yml", "docker-release-build.yml"]
+        },
+        "trigger-inputs": {
+          "type": "object",
+          "description": "Inputs to pass to the triggered workflow",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "examples": [{ "force-release": "true" }]
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "$schema": "https://raw.githubusercontent.com/bauer-group/automation-templates/main/.github/config/maintenance/auto-maintenance.schema.json",
+      "base-images": [
+        {
+          "name": "n8n",
+          "image": "n8nio/n8n",
+          "tag": "stable",
+          "variable": "N8N_STABLE_DIGEST",
+          "description": "n8n workflow automation platform"
+        }
+      ],
+      "ecosystems": {
+        "node": {
+          "version": "22",
+          "package-manager": "npm",
+          "working-directory": ".",
+          "update-strategy": "safe"
+        }
+      },
+      "validation": {
+        "build-command": "npm run build",
+        "test-command": "npm test -- --passWithNoTests",
+        "typecheck-command": "npm run typecheck"
+      },
+      "release": {
+        "commit-prefix": "fix(deps)",
+        "trigger-workflow": "docker-release.yml",
+        "trigger-inputs": { "force-release": "true" }
+      }
+    }
+  ]
+}
