@@ -142,7 +142,11 @@ jobs:
 
           if [ "$HAS_BASE_IMAGES" = "true" ]; then
             BASE_IMAGES=$(jq -c '.["base-images"]' "$CONFIG_FILE")
-            echo "base-images=$BASE_IMAGES" >> $GITHUB_OUTPUT
+            {
+              echo "base-images<<BASE_IMAGES_EOF"
+              printf '%s\n' "$BASE_IMAGES"
+              echo "BASE_IMAGES_EOF"
+            } >> $GITHUB_OUTPUT
             echo "🐳 Base images: $(printf '%s' "$BASE_IMAGES" | jq 'length') configured"
           fi
 
@@ -408,14 +412,16 @@ jobs:
             [[ "$line" =~ ^[[:space:]]*# ]] && continue
             [[ -z "${line// }" ]] && continue
 
-            # Extract package name (handle ==, >=, ~=, etc.)
-            PKG_NAME=$(echo "$line" | sed -E 's/([a-zA-Z0-9_-]+).*/\1/' | tr '[:upper:]' '[:lower:]')
+            # Extract package name (handle ==, >=, ~=, etc. and dotted names like zope.interface)
+            PKG_NAME=$(echo "$line" | sed -E 's/([a-zA-Z0-9._-]+).*/\1/' | tr '[:upper:]' '[:lower:]')
             if [ -n "$PKG_NAME" ]; then
-              FROZEN_LINE=$(grep -i "^${PKG_NAME}==" "$TEMP_FREEZE" || echo "")
+              # Escape dots for use in grep/sed regex patterns
+              PKG_ESCAPED=$(printf '%s' "$PKG_NAME" | sed 's/[.]/[.]/g')
+              FROZEN_LINE=$(grep -i "^${PKG_ESCAPED}==" "$TEMP_FREEZE" || echo "")
               if [ -n "$FROZEN_LINE" ]; then
                 # Only update if original used pinned version (==)
                 if [[ "$line" =~ == ]]; then
-                  sed -i "s|^${PKG_NAME}==.*|${FROZEN_LINE}|i" "$REQUIREMENTS_FILE"
+                  sed -i "s|^${PKG_ESCAPED}==.*|${FROZEN_LINE}|i" "$REQUIREMENTS_FILE"
                 fi
               fi
             fi
