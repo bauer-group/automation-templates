@@ -803,7 +803,7 @@ jobs:
               echo ""
               if [ "$BASE_IMAGES_UPDATED" = "true" ]; then
                 echo "✅ **Updates found:**"
-                printf '%s' "$UPDATED_IMAGES_JSON" | jq -r '.[] | "- \`" + . + "\`"' 2>/dev/null || echo "- (unknown)"
+                printf '%s' "$UPDATED_IMAGES_JSON" | jq -r '.[] | "- \u0060" + . + "\u0060"' 2>/dev/null || echo "- (unknown)"
                 echo ""
                 echo "<details><summary>New digests</summary>"
                 echo ""
