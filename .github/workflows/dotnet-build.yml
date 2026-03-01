@@ -686,7 +686,7 @@ jobs:
       
       - name: 📤 Upload Build Artifacts
         if: inputs.upload-artifacts && inputs.publish
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact-name }}-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}-${{ steps.version.outputs.version }}
           path: |
@@ -696,7 +696,7 @@ jobs:
       
       - name: 📤 Upload Package Artifacts
         if: inputs.upload-artifacts && inputs.create-package
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: nuget-packages-${{ steps.version.outputs.version }}
           path: ${{ steps.package.outputs.package-path }}
@@ -704,7 +704,7 @@ jobs:
       
       - name: 📤 Upload Test Results
         if: always() && inputs.run-tests && inputs.upload-artifacts && steps.test.outputs.results-path != ''
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         continue-on-error: true
         with:
           name: test-results-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}
@@ -714,7 +714,7 @@ jobs:
       
       - name: 📤 Upload Coverage Report
         if: inputs.collect-coverage && inputs.upload-artifacts && steps.coverage.outputs.report-path != ''
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report-${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}
           path: ${{ steps.coverage.outputs.report-path }}

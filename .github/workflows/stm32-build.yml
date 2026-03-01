@@ -635,7 +635,7 @@ jobs:
       - name: Upload Build Artifacts
         id: upload
         if: inputs.upload-artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: stm32-${{ matrix.mcu }}-${{ matrix.build_type }}-${{ needs.prepare.outputs.version }}
           path: ${{ inputs.project-path }}/${{ steps.outputs.outputs.output-dir }}
