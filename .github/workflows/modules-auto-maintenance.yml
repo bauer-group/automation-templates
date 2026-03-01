@@ -481,7 +481,7 @@ jobs:
       # =====================================================================
       - name: "🔧 Setup Go"
         if: steps.config.outputs.has-go == 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ steps.config.outputs.go-version }}
 
