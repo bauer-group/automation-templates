@@ -262,7 +262,7 @@ jobs:
     
     steps:
       - name: 📥 Download Artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: zephyr-build-ubuntu-latest-${{ matrix.board }}-debug
           path: ./artifacts
