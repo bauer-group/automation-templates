@@ -505,7 +505,7 @@ jobs:
       
       - name: 📦 Upload Artifacts
         if: inputs.upload-artifacts == true
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact-name }}-${{ matrix.configuration }}-${{ matrix.platform }}
           path: ${{ steps.artifacts.outputs.path }}
@@ -513,7 +513,7 @@ jobs:
       
       - name: 📊 Upload Test Results
         if: always() && inputs.run-tests == true
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.configuration }}-${{ matrix.platform }}
           path: TestResults/
