@@ -177,7 +177,7 @@ jobs:
 
       - name: Run container security scan
         if: github.event_name != 'pull_request'
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: ghcr.io/${{ github.repository }}:${{ github.sha }}
           format: "sarif"
