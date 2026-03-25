@@ -1,3 +1,13 @@
+## [5.1.0](https://github.com/bauer-group/automation-templates/compare/v5.0.1...v5.1.0) (2026-03-25)
+
+### 🚀 Features
+
+* **.claude:** add /triage skill for automated PR & Issue management ([ac42237](https://github.com/bauer-group/automation-templates/commit/ac42237c1606e4bee2053f478f5569adac6f3770))
+
+### 🐛 Bug Fixes
+
+* **.claude:** set English as default language for GitHub comments in /triage ([beaf59e](https://github.com/bauer-group/automation-templates/commit/beaf59e0af9d25b0f602e30be817f84dae1a5e41))
+
 ## [5.0.1](https://github.com/bauer-group/automation-templates/compare/v5.0.0...v5.0.1) (2026-03-25)
 
 ### 🐛 Bug Fixes
