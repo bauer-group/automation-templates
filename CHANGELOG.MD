@@ -1,3 +1,10 @@
+## [5.0.1](https://github.com/bauer-group/automation-templates/compare/v5.0.0...v5.0.1) (2026-03-25)
+
+### 🐛 Bug Fixes
+
+* **dotnet-build:** validate test results before publish to prevent silent failures ([66c2373](https://github.com/bauer-group/automation-templates/commit/66c2373bb4fd4f3d2567dfeb6c536fa772f28f28)), closes [#56](https://github.com/bauer-group/automation-templates/issues/56)
+* **security:** align all trivy-action references to v0.35.0 ([1c98ddb](https://github.com/bauer-group/automation-templates/commit/1c98ddbb95ee3501999f88f8878ff2fb56a8054a))
+
 ## [5.0.0](https://github.com/bauer-group/automation-templates/compare/v4.17.1...v5.0.0) (2026-03-25)
 
 ### ⚠ BREAKING CHANGES
