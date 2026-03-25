@@ -100,7 +100,7 @@ Am Ende eine vollständige Zusammenfassung ausgeben:
 
 ## Wichtige Regeln
 
-- **Sprache:** Alle Kommentare auf GitHub auf Deutsch
+- **Sprache:** Kommentare auf GitHub standardmäßig auf Englisch. Wurde ein Issue/PR in einer anderen Sprache verfasst, antworte in der Sprache des Autors
 - **Ton:** Professionell, kompetent, freundlich
 - **Konsistenz prüfen:** Nach Dependency-Updates alle Referenzen im Repo auf die gleiche Version prüfen (z.B. Trivy in allen Workflows)
 - **Semantic Commits:** Alle Commits im Format `type(scope): description`
