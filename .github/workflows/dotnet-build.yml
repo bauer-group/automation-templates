@@ -566,6 +566,30 @@ jobs:
           fail_ci_if_error: false
           verbose: true
       
+      - name: ✅ Validate Test Results
+        if: inputs.run-tests
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ "${{ steps.test.outcome }}" = "failure" ]; then
+            echo "::error::Tests failed! Blocking downstream steps (publish, package, NuGet push)."
+
+            # Parse .trx files for detailed failure info
+            TRX_FILES=$(find TestResults -name "*.trx" 2>/dev/null)
+            if [ -n "$TRX_FILES" ]; then
+              echo ""
+              echo "Failed test result files:"
+              for f in $TRX_FILES; do
+                FAILED=$(grep -c 'outcome="Failed"' "$f" 2>/dev/null || echo "0")
+                PASSED=$(grep -c 'outcome="Passed"' "$f" 2>/dev/null || echo "0")
+                echo "  📄 $f — Passed: $PASSED, Failed: $FAILED"
+              done
+            fi
+
+            exit 1
+          fi
+          echo "✅ All tests passed successfully."
+
       - name: 🔍 Code Analysis
         if: inputs.run-code-analysis
         working-directory: ${{ inputs.working-directory }}
