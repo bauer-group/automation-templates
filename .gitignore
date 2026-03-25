@@ -140,3 +140,5 @@ github_token.txt
 
 # Exemptions
 !.claude/CLAUDE.md
+!.claude/commands/
+!.claude/commands/**
