@@ -144,9 +144,13 @@ type(scope): beschreibung im imperativ
 **Breaking Change:** `type!` oder Footer `BREAKING CHANGE:` → MAJOR
 
 **Commit-Regeln:**
+
 - Ein Commit = eine logische Änderung (atomic)
 - Jeder Commit muss standalone funktionieren
 - Keine WIP-Commits auf main/master
+
+**Auto-Commit erlaubt (Personalunion-Modus):**
+Nach Abschluss einer logischen Änderung darf Claude selbstständig committen via `/commit` — ohne vorher nachzufragen. Die Commit-Message wird automatisch als aussagekräftige Multiline-Message generiert (Semantic Commit Format). Es gelten weiterhin alle Commit-Regeln (atomic, CI grün, keine AI-Signaturen).
 
 ---
 
@@ -244,10 +248,12 @@ Try-Catch nur bei:
 
 Wenn nur **eine Person** alle Rollen übernimmt, gelten vereinfachte Regeln:
 
-**Entfällt:**
+**Default:** Direkt auf main committen (kein PR nötig)
+
+**Entfällt (im Default):**
 - PR/Approval vor Merge
 - Self-Merge-Verbot
-- PR für jeden Change (direkt auf main OK)
+- PR für jeden Change
 
 **Bleibt MUST:**
 - Keine Secrets im Code
@@ -256,6 +262,16 @@ Wenn nur **eine Person** alle Rollen übernimmt, gelten vereinfachte Regeln:
 - Tests für neue Features
 - Security Scan bestanden
 - Atomic Commits
+
+**PR-Flow auf Anweisung:**
+Wenn der Mensch explizit einen PR-basierten Flow anweist (z.B. "mach einen PR", "über PR"), dann:
+
+- Feature-Branch erstellen (`type/kurzbeschreibung`)
+- Änderungen committen und pushen
+- PR mit Beschreibung erstellen (via `gh pr create`)
+- Auf Review/Approval warten oder selbst mergen nach CI-Check
+
+> Der PR-Flow wird **nur aktiviert wenn explizit angewiesen** — nie eigenständig.
 
 **Gilt bei:** Persönliche Projekte, Prototypen, interne Tools, 1 Contributor
 
