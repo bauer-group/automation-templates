@@ -1,3 +1,29 @@
+## [5.0.0](https://github.com/bauer-group/automation-templates/compare/v4.17.1...v5.0.0) (2026-03-25)
+
+### ⚠ BREAKING CHANGES
+
+* Caller workflows using npm publishing must add
+id-token: write to their permissions for OIDC to work.
+
+* feat!(nodejs-build): add OIDC Trusted Publishing for npm registry ([9310e3b](https://github.com/bauer-group/automation-templates/commit/9310e3b80ce363c2f2455b09556f3547414518f9)), closes [#50](https://github.com/bauer-group/automation-templates/issues/50)
+
+### 🚀 Features
+
+* Add comprehensive auto maintenance workflow documentation with JSON configuration guide ([0b7fa46](https://github.com/bauer-group/automation-templates/commit/0b7fa46f4ecc3f88694518e2f4d9135e6505e36c))
+* **nodejs-build:** add Job Summary and improve audit reporting ([237fe95](https://github.com/bauer-group/automation-templates/commit/237fe95722aa0672a7321ec60dceba5da9d15ff4))
+* Update Node.js setup action to version 6 and enhance test coverage script handling ([8444e28](https://github.com/bauer-group/automation-templates/commit/8444e2845d532f7ece16cc29028b35b4b63d564f))
+
+### 🐛 Bug Fixes
+
+* **auto-maintenance:** correct formatting of updated images output in JSON ([a1a0c74](https://github.com/bauer-group/automation-templates/commit/a1a0c74ede7db8e2faf6c2869824638d8572dfc2))
+* **auto-maintenance:** improve base images output formatting and enhance package name extraction logic ([3af9a27](https://github.com/bauer-group/automation-templates/commit/3af9a270b8027960ea587bf82cf6db2b75326b64))
+* **nodejs-build:** add --allow-same-version to npm version command ([3c9ab32](https://github.com/bauer-group/automation-templates/commit/3c9ab329e3e527274bc69f270ee7737a2b28d397))
+* **nodejs-build:** fix GitHub Packages auth with GITHUB_TOKEN fallback ([b6c55cf](https://github.com/bauer-group/automation-templates/commit/b6c55cfcf603e13474b66fd7a5bdc03a02357d37))
+* **nodejs-build:** make security audit fail the build on vulnerabilities ([a547ce8](https://github.com/bauer-group/automation-templates/commit/a547ce84c9cb993a2b3d46727af71d12e763fb21))
+* **nodejs-build:** prevent artifact upload conflict with overwrite flag ([d1e932f](https://github.com/bauer-group/automation-templates/commit/d1e932f0d12405a2173755e3cef4a78e25cbe38f))
+* update tagFormat handling in semantic-release config generation ([a3f3a16](https://github.com/bauer-group/automation-templates/commit/a3f3a16eb1de5db39ce0db4ad16fe777043605f6))
+* update trivy-action from 0.33.1 to v0.35.0 (missing v-prefix caused CI failures) ([3ec8b97](https://github.com/bauer-group/automation-templates/commit/3ec8b9741dd1f2b0fbd4cb8ae3df405b217f2489))
+
 ## [4.17.1](https://github.com/bauer-group/automation-templates/compare/v4.17.0...v4.17.1) (2026-02-11)
 
 ### 🐛 Bug Fixes
