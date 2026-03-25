@@ -399,10 +399,9 @@ jobs:
     runs-on: ${{ inputs.enable-matrix && matrix.os || (startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on) }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
 
-    permissions:
-      contents: read
-      id-token: write
-      packages: write
+    # Permissions are inherited from the caller workflow.
+    # Callers that publish must grant: packages: write, id-token: write
+    # Callers that only build/test need: contents: read
 
     strategy:
       matrix:
