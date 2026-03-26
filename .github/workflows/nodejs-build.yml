@@ -143,7 +143,13 @@ on:
         type: string
         required: false
         default: 'moderate'
-      
+
+      audit-production-only:
+        description: 'Only audit production dependencies (--omit=dev)'
+        type: boolean
+        required: false
+        default: false
+
       # Bundle Analysis
       analyze-bundle:
         description: 'Analyze bundle size'
@@ -564,16 +570,20 @@ jobs:
           PM="${{ steps.detect-pm.outputs.package-manager }}"
           AUDIT_FILE="${{ runner.temp }}/audit-output.txt"
           AUDIT_EXIT=0
+          OMIT_FLAG=""
+          if [ "${{ inputs.audit-production-only }}" = "true" ]; then
+            OMIT_FLAG="--omit=dev"
+          fi
 
           case $PM in
             npm)
-              npm audit --audit-level=${{ inputs.audit-level }} > "$AUDIT_FILE" 2>&1 || AUDIT_EXIT=$?
+              npm audit --audit-level=${{ inputs.audit-level }} $OMIT_FLAG > "$AUDIT_FILE" 2>&1 || AUDIT_EXIT=$?
               ;;
             yarn)
               yarn audit --level ${{ inputs.audit-level }} > "$AUDIT_FILE" 2>&1 || AUDIT_EXIT=$?
               ;;
             pnpm)
-              pnpm audit --audit-level ${{ inputs.audit-level }} > "$AUDIT_FILE" 2>&1 || AUDIT_EXIT=$?
+              pnpm audit --audit-level ${{ inputs.audit-level }} ${{ inputs.audit-production-only == true && '--prod' || '' }} > "$AUDIT_FILE" 2>&1 || AUDIT_EXIT=$?
               ;;
             bun)
               echo "Bun doesn't support audit yet" > "$AUDIT_FILE"
