@@ -1,0 +1,111 @@
+# =============================================================================
+# SBOM Attestation (GitHub Native)
+# =============================================================================
+# Creates a cryptographic attestation for an SBOM file using GitHub's built-in
+# attestation infrastructure (Sigstore-based). This provides verifiable
+# provenance proving the SBOM was generated in this specific workflow run.
+#
+# Verification: gh attestation verify <file> --repo <owner/repo>
+#
+# Usage:
+#   - uses: bauer-group/automation-templates/.github/actions/sbom-attest@main
+#     with:
+#       sbom-path: sbom.cdx.json
+#
+# Prerequisites:
+#   - Workflow must have `permissions: attestations: write, id-token: write`
+#   - Only works in GitHub Actions (not locally)
+#
+# References:
+#   - https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations
+#   - CRA Art. 10 Abs. 12 (integrity of security updates)
+# =============================================================================
+
+name: 'SBOM Attestation'
+description: 'Create a GitHub attestation for an SBOM file, providing cryptographic provenance'
+author: 'BAUER GROUP'
+
+inputs:
+  sbom-path:
+    description: 'Path to the SBOM file to attest'
+    required: true
+  sbom-format:
+    description: 'SBOM format: cyclonedx-json, spdx-json'
+    required: false
+    default: 'cyclonedx-json'
+
+outputs:
+  attestation-id:
+    description: 'GitHub attestation ID (empty if skipped)'
+    value: ${{ steps.attest.outputs.attestation-id }}
+  attested:
+    description: 'Whether attestation was successfully created (true/false)'
+    value: ${{ steps.result.outputs.attested }}
+
+runs:
+  using: 'composite'
+  steps:
+    # ---- Validate ----
+
+    - name: 🔍 Validate SBOM file
+      id: validate
+      shell: bash
+      run: |
+        SBOM_PATH="${{ inputs.sbom-path }}"
+
+        if [ ! -f "$SBOM_PATH" ]; then
+          echo "❌ SBOM file not found: $SBOM_PATH"
+          echo "valid=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Basic JSON validation
+        if ! jq empty "$SBOM_PATH" 2>/dev/null; then
+          echo "❌ SBOM file is not valid JSON: $SBOM_PATH"
+          echo "valid=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "✅ SBOM file validated: $SBOM_PATH"
+        echo "valid=true" >> "$GITHUB_OUTPUT"
+
+    # ---- Attest ----
+
+    - name: 📜 Create SBOM attestation
+      id: attest
+      if: steps.validate.outputs.valid == 'true'
+      uses: actions/attest-sbom@v4
+      with:
+        subject-path: ${{ inputs.sbom-path }}
+        sbom-format: ${{ inputs.sbom-format }}
+
+    # ---- Result ----
+
+    - name: 📊 Attestation result
+      id: result
+      shell: bash
+      run: |
+        ATTESTATION_ID="${{ steps.attest.outputs.attestation-id }}"
+
+        if [ -n "$ATTESTATION_ID" ]; then
+          echo "✅ SBOM attestation created: $ATTESTATION_ID"
+          echo "attested=true" >> "$GITHUB_OUTPUT"
+
+          echo "### 📜 SBOM Attestation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Status** | ✅ Created |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Attestation ID** | \`$ATTESTATION_ID\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **SBOM File** | \`${{ inputs.sbom-path }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Format** | ${{ inputs.sbom-format }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Verify: \`gh attestation verify ${{ inputs.sbom-path }} --repo ${GITHUB_REPOSITORY}\`" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "⚠️ SBOM attestation was skipped or failed"
+          echo "attested=false" >> "$GITHUB_OUTPUT"
+
+          echo "### 📜 SBOM Attestation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "⚠️ Attestation skipped (SBOM validation failed or permissions missing)" >> "$GITHUB_STEP_SUMMARY"
+        fi

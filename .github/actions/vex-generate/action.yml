@@ -1,0 +1,231 @@
+# =============================================================================
+# OpenVEX Document Generation
+# =============================================================================
+# Generates an OpenVEX (Vulnerability Exploitability eXchange) document from
+# vulnerability scan results. Auto-creates "under_investigation" statements
+# for all discovered CVEs and merges optional manual triage overrides.
+#
+# OpenVEX Spec: https://github.com/openvex/spec (v0.2.0)
+#
+# Usage:
+#   - uses: bauer-group/automation-templates/.github/actions/vex-generate@main
+#     with:
+#       vulnerability-report: vulnerability-report.json
+#       product-id: 'pkg:github/bauer-group/my-product'
+#
+# Outputs:
+#   vex.openvex.json — OpenVEX document with all vulnerability statements
+#
+# References:
+#   - CISA VEX: https://www.cisa.gov/sbom
+#   - CRA Annex I Part II No. 2 (vulnerability handling)
+# =============================================================================
+
+name: 'OpenVEX Document Generation'
+description: 'Generate OpenVEX vulnerability exploitability document from scan results with optional manual triage overrides'
+author: 'BAUER GROUP'
+
+inputs:
+  vulnerability-report:
+    description: 'Path to Trivy JSON vulnerability report'
+    required: false
+    default: 'vulnerability-report.json'
+  vex-overrides:
+    description: 'Path to manual VEX triage overrides file (OpenVEX format)'
+    required: false
+    default: 'security/vex-overrides.json'
+  output-file:
+    description: 'Output filename for the generated VEX document'
+    required: false
+    default: 'vex.openvex.json'
+  product-id:
+    description: 'Product identifier for VEX statements (auto-detected from repo if empty)'
+    required: false
+    default: ''
+  author-name:
+    description: 'VEX document author name'
+    required: false
+    default: 'BAUER GROUP Automation'
+
+outputs:
+  vex-path:
+    description: 'Absolute path to the generated VEX document'
+    value: ${{ steps.generate.outputs.vex-path }}
+  total-statements:
+    description: 'Total number of VEX statements'
+    value: ${{ steps.generate.outputs.total-statements }}
+  override-count:
+    description: 'Number of manual override statements merged'
+    value: ${{ steps.generate.outputs.override-count }}
+  auto-generated-count:
+    description: 'Number of auto-generated under_investigation statements'
+    value: ${{ steps.generate.outputs.auto-generated-count }}
+
+runs:
+  using: 'composite'
+  steps:
+    # ---- Generate VEX Document ----
+
+    - name: 📋 Generate OpenVEX document
+      id: generate
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        REPORT_PATH="${{ inputs.vulnerability-report }}"
+        OVERRIDES_PATH="${{ inputs.vex-overrides }}"
+        OUTPUT_FILE="${{ inputs.output-file }}"
+        PRODUCT_ID="${{ inputs.product-id }}"
+        AUTHOR="${{ inputs.author-name }}"
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+        # ── Auto-detect product ID ──
+        if [ -z "$PRODUCT_ID" ]; then
+          PRODUCT_ID="pkg:github/${GITHUB_REPOSITORY}"
+        fi
+
+        echo "🔍 VEX Generation"
+        echo "  Report:    $REPORT_PATH"
+        echo "  Overrides: $OVERRIDES_PATH"
+        echo "  Product:   $PRODUCT_ID"
+        echo "  Output:    $OUTPUT_FILE"
+
+        # ── Validate vulnerability report ──
+        if [ ! -f "$REPORT_PATH" ]; then
+          echo "⚠️ Vulnerability report not found: $REPORT_PATH"
+          echo "   Generating empty VEX document."
+
+          jq -n \
+            --arg ctx "https://openvex.dev/ns/v0.2.0" \
+            --arg id "https://github.com/${GITHUB_REPOSITORY}/vex/${GITHUB_SHA:0:8}" \
+            --arg author "$AUTHOR" \
+            --arg ts "$TIMESTAMP" \
+            '{
+              "@context": $ctx,
+              "@id": $id,
+              "author": $author,
+              "role": "Document Author",
+              "timestamp": $ts,
+              "version": 1,
+              "statements": []
+            }' > "$OUTPUT_FILE"
+
+          echo "vex-path=$(realpath "$OUTPUT_FILE")" >> "$GITHUB_OUTPUT"
+          echo "total-statements=0" >> "$GITHUB_OUTPUT"
+          echo "override-count=0" >> "$GITHUB_OUTPUT"
+          echo "auto-generated-count=0" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # ── Extract unique CVE IDs from Trivy JSON ──
+        CVE_LIST=$(jq -r '
+          [.Results[]? // [] | .Vulnerabilities[]? // [] | .VulnerabilityID // empty]
+          | unique
+          | .[]
+        ' "$REPORT_PATH" 2>/dev/null || echo "")
+
+        CVE_COUNT=$(echo "$CVE_LIST" | grep -c "CVE" || echo "0")
+        echo "  Found $CVE_COUNT unique CVEs"
+
+        # ── Build auto-generated statements (all under_investigation) ──
+        AUTO_STATEMENTS="[]"
+        if [ "$CVE_COUNT" -gt 0 ]; then
+          AUTO_STATEMENTS=$(echo "$CVE_LIST" | jq -R -s --arg product "$PRODUCT_ID" --arg ts "$TIMESTAMP" '
+            split("\n") | map(select(length > 0)) | map({
+              "vulnerability": { "@id": . },
+              "products": [{ "@id": $product }],
+              "status": "under_investigation",
+              "timestamp": $ts
+            })
+          ')
+        fi
+
+        AUTO_COUNT=$(echo "$AUTO_STATEMENTS" | jq 'length')
+
+        # ── Load manual overrides (if present) ──
+        OVERRIDE_STATEMENTS="[]"
+        OVERRIDE_COUNT=0
+
+        if [ -f "$OVERRIDES_PATH" ]; then
+          echo "  Merging manual overrides from: $OVERRIDES_PATH"
+
+          # Validate override file is valid OpenVEX
+          if jq -e '.statements' "$OVERRIDES_PATH" > /dev/null 2>&1; then
+            OVERRIDE_STATEMENTS=$(jq '.statements // []' "$OVERRIDES_PATH")
+            OVERRIDE_COUNT=$(echo "$OVERRIDE_STATEMENTS" | jq 'length')
+            echo "  Found $OVERRIDE_COUNT manual overrides"
+          else
+            echo "  ⚠️ Invalid overrides file format, skipping"
+          fi
+        else
+          echo "  No manual overrides file found (optional)"
+        fi
+
+        # ── Merge: manual overrides take precedence ──
+        # For each override CVE, remove the auto-generated statement for that CVE
+        if [ "$OVERRIDE_COUNT" -gt 0 ]; then
+          OVERRIDE_CVE_IDS=$(echo "$OVERRIDE_STATEMENTS" | jq -r '.[].vulnerability["@id"]')
+
+          MERGED_AUTO=$(echo "$AUTO_STATEMENTS" | jq --argjson overrides "$OVERRIDE_STATEMENTS" '
+            ($overrides | map(.vulnerability["@id"])) as $override_ids |
+            map(select(.vulnerability["@id"] as $vid | $override_ids | index($vid) | not))
+          ')
+
+          # Combine: filtered auto + all overrides
+          FINAL_STATEMENTS=$(jq -n --argjson auto "$MERGED_AUTO" --argjson overrides "$OVERRIDE_STATEMENTS" '
+            $auto + $overrides
+          ')
+        else
+          FINAL_STATEMENTS="$AUTO_STATEMENTS"
+        fi
+
+        TOTAL_COUNT=$(echo "$FINAL_STATEMENTS" | jq 'length')
+        FINAL_AUTO_COUNT=$((TOTAL_COUNT - OVERRIDE_COUNT))
+
+        # ── Assemble OpenVEX document ──
+        jq -n \
+          --arg ctx "https://openvex.dev/ns/v0.2.0" \
+          --arg id "https://github.com/${GITHUB_REPOSITORY}/vex/${GITHUB_SHA:0:8}" \
+          --arg author "$AUTHOR" \
+          --arg ts "$TIMESTAMP" \
+          --argjson statements "$FINAL_STATEMENTS" \
+          '{
+            "@context": $ctx,
+            "@id": $id,
+            "author": $author,
+            "role": "Document Author",
+            "timestamp": $ts,
+            "version": 1,
+            "statements": $statements
+          }' > "$OUTPUT_FILE"
+
+        echo "✅ VEX document generated: $OUTPUT_FILE"
+        echo "   Total statements: $TOTAL_COUNT (auto: $FINAL_AUTO_COUNT, overrides: $OVERRIDE_COUNT)"
+
+        # ── Set outputs ──
+        echo "vex-path=$(realpath "$OUTPUT_FILE")" >> "$GITHUB_OUTPUT"
+        echo "total-statements=$TOTAL_COUNT" >> "$GITHUB_OUTPUT"
+        echo "override-count=$OVERRIDE_COUNT" >> "$GITHUB_OUTPUT"
+        echo "auto-generated-count=$FINAL_AUTO_COUNT" >> "$GITHUB_OUTPUT"
+
+    # ---- Summary ----
+
+    - name: 📊 VEX generation summary
+      shell: bash
+      run: |
+        TOTAL="${{ steps.generate.outputs.total-statements }}"
+        AUTO="${{ steps.generate.outputs.auto-generated-count }}"
+        OVERRIDES="${{ steps.generate.outputs.override-count }}"
+
+        echo "### 📋 OpenVEX Document" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+        echo "|--------|------:|" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Total Statements | $TOTAL |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Auto-generated (under_investigation) | $AUTO |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Manual Overrides | $OVERRIDES |" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+
+        if [ "$OVERRIDES" -gt 0 ]; then
+          echo "✅ Manual VEX triage overrides merged." >> "$GITHUB_STEP_SUMMARY"
+        fi
