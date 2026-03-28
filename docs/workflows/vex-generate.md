@@ -72,7 +72,7 @@ jobs:
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `vulnerability-report` | No | `vulnerability-report.json` | Path to Trivy JSON vulnerability report |
+| `vulnerability-report-path` | No | `vulnerability-report.json` | Path to Trivy JSON vulnerability report |
 | `vex-overrides` | No | `security/vex-overrides.json` | Path to manual VEX triage overrides file |
 | `output-file` | No | `vex.openvex.json` | Output filename for the VEX document |
 | `product-id` | No | Auto-detected | Product identifier (e.g., `pkg:github/owner/repo`) |

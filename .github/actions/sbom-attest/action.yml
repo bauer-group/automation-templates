@@ -54,16 +54,16 @@ runs:
         SBOM_PATH="${{ inputs.sbom-path }}"
 
         if [ ! -f "$SBOM_PATH" ]; then
-          echo "❌ SBOM file not found: $SBOM_PATH"
+          echo "::error::SBOM file not found: $SBOM_PATH — attestation requires a valid SBOM"
           echo "valid=false" >> "$GITHUB_OUTPUT"
-          exit 0
+          exit 1
         fi
 
         # Basic JSON validation
         if ! jq empty "$SBOM_PATH" 2>/dev/null; then
-          echo "❌ SBOM file is not valid JSON: $SBOM_PATH"
+          echo "::error::SBOM file is not valid JSON: $SBOM_PATH"
           echo "valid=false" >> "$GITHUB_OUTPUT"
-          exit 0
+          exit 1
         fi
 
         echo "✅ SBOM file validated: $SBOM_PATH"

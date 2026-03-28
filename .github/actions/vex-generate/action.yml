@@ -10,7 +10,7 @@
 # Usage:
 #   - uses: bauer-group/automation-templates/.github/actions/vex-generate@main
 #     with:
-#       vulnerability-report: vulnerability-report.json
+#       vulnerability-report-path: vulnerability-report.json
 #       product-id: 'pkg:github/bauer-group/my-product'
 #
 # Outputs:
@@ -26,7 +26,7 @@ description: 'Generate OpenVEX vulnerability exploitability document from scan r
 author: 'BAUER GROUP'
 
 inputs:
-  vulnerability-report:
+  vulnerability-report-path:
     description: 'Path to Trivy JSON vulnerability report'
     required: false
     default: 'vulnerability-report.json'
@@ -72,7 +72,7 @@ runs:
       run: |
         set -euo pipefail
 
-        REPORT_PATH="${{ inputs.vulnerability-report }}"
+        REPORT_PATH="${{ inputs.vulnerability-report-path }}"
         OVERRIDES_PATH="${{ inputs.vex-overrides }}"
         OUTPUT_FILE="${{ inputs.output-file }}"
         PRODUCT_ID="${{ inputs.product-id }}"
@@ -117,20 +117,23 @@ runs:
           exit 0
         fi
 
-        # ── Extract unique CVE IDs from Trivy JSON ──
-        CVE_LIST=$(jq -r '
+        # ── Extract unique vulnerability IDs from Trivy JSON ──
+        # Supports CVE, GHSA, OSV, and other ID formats
+        VULN_LIST=$(jq -r '
           [.Results[]? // [] | .Vulnerabilities[]? // [] | .VulnerabilityID // empty]
           | unique
           | .[]
         ' "$REPORT_PATH" 2>/dev/null || echo "")
 
-        CVE_COUNT=$(echo "$CVE_LIST" | grep -c "CVE" || echo "0")
-        echo "  Found $CVE_COUNT unique CVEs"
+        VULN_COUNT=$(echo "$VULN_LIST" | grep -c "." || echo "0")
+        # Subtract 1 if list ends with empty line
+        [ -z "$(echo "$VULN_LIST" | tail -1)" ] && VULN_COUNT=$((VULN_COUNT > 0 ? VULN_COUNT - 1 : 0))
+        echo "  Found $VULN_COUNT unique vulnerability IDs"
 
         # ── Build auto-generated statements (all under_investigation) ──
         AUTO_STATEMENTS="[]"
-        if [ "$CVE_COUNT" -gt 0 ]; then
-          AUTO_STATEMENTS=$(echo "$CVE_LIST" | jq -R -s --arg product "$PRODUCT_ID" --arg ts "$TIMESTAMP" '
+        if [ "$VULN_COUNT" -gt 0 ]; then
+          AUTO_STATEMENTS=$(echo "$VULN_LIST" | jq -R -s --arg product "$PRODUCT_ID" --arg ts "$TIMESTAMP" '
             split("\n") | map(select(length > 0)) | map({
               "vulnerability": { "@id": . },
               "products": [{ "@id": $product }],
