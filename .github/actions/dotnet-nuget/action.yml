@@ -310,23 +310,29 @@ runs:
     # =========================================================================
     - name: Setup SNK Signing
       id: snk-setup
-      if: inputs.sign-assembly == 'true' && inputs.snk-base64 != ''
+      if: inputs.sign-assembly == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
-        echo "Setting up SNK signing..."
+        if [ -n "${{ inputs.snk-base64 }}" ]; then
+          echo "Setting up SNK signing..."
 
-        # Create build directory if it doesn't exist
-        mkdir -p build
+          # Create build directory if it doesn't exist
+          mkdir -p build
 
-        # Decode base64 SNK to file
-        echo "${{ inputs.snk-base64 }}" | base64 -d > build/assembly.snk
+          # Decode base64 SNK to file
+          echo "${{ inputs.snk-base64 }}" | base64 -d > build/assembly.snk
 
-        SNK_PATH="$(pwd)/build/assembly.snk"
-        echo "snk-path=$SNK_PATH" >> $GITHUB_OUTPUT
+          SNK_PATH="$(pwd)/build/assembly.snk"
+          echo "snk-path=$SNK_PATH" >> $GITHUB_OUTPUT
+          echo "signing-available=true" >> $GITHUB_OUTPUT
 
-        echo "SNK file created at: $SNK_PATH"
-        echo "SNK_PATH=$SNK_PATH" >> $GITHUB_ENV
+          echo "SNK file created at: $SNK_PATH"
+          echo "SNK_PATH=$SNK_PATH" >> $GITHUB_ENV
+        else
+          echo "::warning title=Assembly Signing Skipped::DOTNET_SIGNKEY_BASE64 secret is not available. Assembly signing will be disabled for this build. This is expected for PR builds."
+          echo "signing-available=false" >> $GITHUB_OUTPUT
+        fi
 
     # =========================================================================
     # Restore Dependencies
@@ -381,10 +387,16 @@ runs:
         fi
 
         # Add signing parameters if enabled
-        if [ "${{ inputs.sign-assembly }}" = "true" ] && [ -n "$SNK_PATH" ]; then
-          BUILD_ARGS="$BUILD_ARGS -p:SignAssembly=true -p:AssemblyOriginatorKeyFile=$SNK_PATH"
-          if [ "${{ inputs.delay-sign }}" = "true" ]; then
-            BUILD_ARGS="$BUILD_ARGS -p:DelaySign=true"
+        if [ "${{ inputs.sign-assembly }}" = "true" ]; then
+          if [ "${{ steps.snk-setup.outputs.signing-available }}" = "true" ] && [ -n "$SNK_PATH" ]; then
+            BUILD_ARGS="$BUILD_ARGS -p:SignAssembly=true -p:AssemblyOriginatorKeyFile=$SNK_PATH"
+            if [ "${{ inputs.delay-sign }}" = "true" ]; then
+              BUILD_ARGS="$BUILD_ARGS -p:DelaySign=true"
+            fi
+          else
+            # Override csproj signing settings when key is unavailable (e.g. PR builds)
+            BUILD_ARGS="$BUILD_ARGS -p:SignAssembly=false -p:DelaySign=false"
+            echo "Assembly signing disabled (no signing key available)"
           fi
         fi
 
@@ -833,7 +845,13 @@ runs:
           else
             echo "| **Package** | \`${{ steps.pack.outputs.package-name }}\` |" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "| **Signed** | ${{ inputs.sign-assembly == 'true' && '✅ Yes' || '⚪ No' }} |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.sign-assembly }}" = "true" ] && [ "${{ steps.snk-setup.outputs.signing-available }}" = "false" ]; then
+            echo "| **Signed** | ⚠️ Skipped (no key available) |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ inputs.sign-assembly }}" = "true" ]; then
+            echo "| **Signed** | ✅ Yes |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Signed** | ⚪ No |" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "| **Symbols** | ${{ steps.pack.outputs.symbols-path != '' && '✅ Included' || '⚪ Not included' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
         fi

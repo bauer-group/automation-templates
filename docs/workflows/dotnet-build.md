@@ -128,6 +128,8 @@ jobs:
 
 The `snk-file-path` must match the `AssemblyOriginatorKeyFile` setting in your `.csproj` or `Directory.Build.props`. The workflow decodes `DOTNET_SIGNKEY_BASE64` secret and writes it to this path before building.
 
+> **PR Builds:** When `snk-file-path` is configured but the `DOTNET_SIGNKEY_BASE64` secret is not available (e.g. pull requests from forks), the workflow automatically disables assembly signing via MSBuild overrides (`-p:SignAssembly=false`). A warning annotation is emitted so reviewers can see that signing was skipped. The build will succeed but assemblies will not be strong-name signed.
+
 ### Runtime Configuration
 
 | Input | Description | Default | Examples |
@@ -300,7 +302,7 @@ jobs:
     secrets: inherit
 ```
 
-The workflow decodes `DOTNET_SIGNKEY_BASE64` and creates the SNK file at the specified path before building. Your project configuration should look like:
+The workflow decodes `DOTNET_SIGNKEY_BASE64` and creates the SNK file at the specified path before building. If the secret is not available (e.g. in PR builds), signing is automatically skipped with a warning annotation. Your project configuration should look like:
 
 ```xml
 <!-- Directory.Build.props -->

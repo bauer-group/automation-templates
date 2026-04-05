@@ -430,29 +430,37 @@ jobs:
           echo "Version: $VERSION"
 
       - name: 🔐 Setup SNK Signing Key
-        if: inputs.snk-file-path != '' && env.DOTNET_SIGNKEY_BASE64 != ''
+        id: snk-setup
+        if: inputs.snk-file-path != ''
         working-directory: ${{ inputs.working-directory }}
         env:
           DOTNET_SIGNKEY_BASE64: ${{ secrets.DOTNET_SIGNKEY_BASE64 }}
         run: |
           SNK_PATH="${{ inputs.snk-file-path }}"
-          SNK_DIR=$(dirname "$SNK_PATH")
 
-          # Create directory if needed
-          if [ -n "$SNK_DIR" ] && [ "$SNK_DIR" != "." ]; then
-            mkdir -p "$SNK_DIR"
-          fi
+          if [ -n "$DOTNET_SIGNKEY_BASE64" ]; then
+            SNK_DIR=$(dirname "$SNK_PATH")
 
-          # Decode base64 and write SNK file
-          echo "$DOTNET_SIGNKEY_BASE64" | base64 -d > "$SNK_PATH"
+            # Create directory if needed
+            if [ -n "$SNK_DIR" ] && [ "$SNK_DIR" != "." ]; then
+              mkdir -p "$SNK_DIR"
+            fi
 
-          # Verify file was created
-          if [ -f "$SNK_PATH" ]; then
-            FILE_SIZE=$(stat -f%z "$SNK_PATH" 2>/dev/null || stat -c%s "$SNK_PATH" 2>/dev/null || wc -c < "$SNK_PATH")
-            echo "✅ SNK key created: $SNK_PATH ($FILE_SIZE bytes)"
+            # Decode base64 and write SNK file
+            echo "$DOTNET_SIGNKEY_BASE64" | base64 -d > "$SNK_PATH"
+
+            # Verify file was created
+            if [ -f "$SNK_PATH" ]; then
+              FILE_SIZE=$(stat -f%z "$SNK_PATH" 2>/dev/null || stat -c%s "$SNK_PATH" 2>/dev/null || wc -c < "$SNK_PATH")
+              echo "✅ SNK key created: $SNK_PATH ($FILE_SIZE bytes)"
+              echo "signing-available=true" >> $GITHUB_OUTPUT
+            else
+              echo "❌ Failed to create SNK file"
+              exit 1
+            fi
           else
-            echo "❌ Failed to create SNK file"
-            exit 1
+            echo "::warning title=Assembly Signing Skipped::DOTNET_SIGNKEY_BASE64 secret is not available. Assembly signing will be disabled for this build. This is expected for PR builds."
+            echo "signing-available=false" >> $GITHUB_OUTPUT
           fi
 
       - name: 📚 Restore Dependencies
@@ -479,6 +487,13 @@ jobs:
             WINDOWS_TARGETING="-p:EnableWindowsTargeting=true"
           fi
 
+          # Override signing if SNK was requested but secret unavailable
+          SIGNING_OVERRIDE=""
+          if [ "${{ steps.snk-setup.outputs.signing-available }}" = "false" ]; then
+            SIGNING_OVERRIDE="-p:SignAssembly=false -p:DelaySign=false"
+            echo "Assembly signing disabled (no signing key available)"
+          fi
+
           dotnet build ${{ inputs.project-path }} \
             --configuration ${{ inputs.configuration }} \
             --no-restore \
@@ -488,6 +503,7 @@ jobs:
             ${{ inputs.runtime && format('--runtime {0}', inputs.runtime) || '' }} \
             ${{ inputs.self-contained && '--self-contained' || '' }} \
             -p:Version=${{ steps.version.outputs.version }} \
+            $SIGNING_OVERRIDE \
             ${{ inputs.build-args }}
       
       - name: 🧪 Run Tests
