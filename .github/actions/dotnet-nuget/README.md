@@ -175,7 +175,7 @@ base64 -w 0 MyProject.snk > MyProject.snk.base64
     snk-base64: ${{ secrets.DOTNET_SIGNKEY_BASE64 }}
 ```
 
-> **PR Builds:** When `sign-assembly: true` but `snk-base64` is empty (e.g. secret unavailable in fork PRs), the action automatically disables signing via `-p:SignAssembly=false` and emits a warning annotation. The build succeeds without signing.
+> **PR Builds:** When `sign-assembly: true` but `snk-base64` is empty (e.g. secret unavailable in fork PRs), the action automatically disables signing via `-p:SignAssembly=false` and emits a warning annotation. The build succeeds without signing. To suppress the warning, only enable signing on non-PR events: `sign-assembly: ${{ github.event_name != 'pull_request' }}`
 
 ## Version Detection
 

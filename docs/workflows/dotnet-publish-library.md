@@ -375,6 +375,12 @@ Your .csproj or Directory.Build.props should include:
 The workflow will override these settings with the decoded SNK file during build.
 
 > **PR Builds:** When `sign-assembly: true` is configured but the `DOTNET_SIGNKEY_BASE64` secret is not available (e.g. pull requests from forks), signing is automatically disabled via MSBuild overrides (`-p:SignAssembly=false`). A warning annotation is emitted in the GitHub Actions UI so reviewers can see that signing was skipped. The build will succeed but assemblies will not be strong-name signed.
+>
+> To suppress the warning entirely, only enable signing on non-PR events:
+>
+> ```yaml
+> sign-assembly: ${{ github.event_name != 'pull_request' }}
+> ```
 
 ## Version Detection
 
