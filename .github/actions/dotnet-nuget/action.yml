@@ -638,6 +638,12 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
+        # Prevent publishing unsigned packages when signing was explicitly requested
+        if [ "${{ inputs.sign-assembly }}" = "true" ] && [ "${{ steps.snk-setup.outputs.signing-available }}" != "true" ]; then
+          echo "::error title=Unsigned Package Blocked::sign-assembly was requested but the signing key was unavailable. Refusing to publish unsigned packages to NuGet.org."
+          exit 1
+        fi
+
         echo "Pushing to NuGet.org..."
 
         # Determine push arguments
@@ -717,6 +723,12 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
+        # Prevent publishing unsigned packages when signing was explicitly requested
+        if [ "${{ inputs.sign-assembly }}" = "true" ] && [ "${{ steps.snk-setup.outputs.signing-available }}" != "true" ]; then
+          echo "::error title=Unsigned Package Blocked::sign-assembly was requested but the signing key was unavailable. Refusing to publish unsigned packages to GitHub Packages."
+          exit 1
+        fi
+
         echo "Pushing to GitHub Packages..."
 
         # Configure GitHub Packages source
