@@ -205,25 +205,18 @@ gh secret set CODECOV_TOKEN --org your-org --body "your-token-value"
 gh secret set DOTNET_SIGNKEY_BASE64 --body "$(base64 -w 0 < MyKey.snk)"
 ```
 
-### Bulk-Sync via `.env` (Projekt-Pattern)
+### Bulk-Sync via `.env`
 
-Für Projekte mit vielen per-Repo Secrets lohnt sich ein `.env`-basiertes Sync-Pattern statt `gh secret set` pro Aufruf. Referenz-Implementierung: [bauer-group/COM-SharedLandingPages](https://github.com/bauer-group/COM-SharedLandingPages/tree/main/scripts/secrets).
+Für Bulk-Pflege vieler Secrets aus einem lokalen `.env` — push UND pruning obsoleter Einträge — steht das Tool `gh-secrets-sync` in [DeveloperTools](https://github.com/bauer-group/DeveloperTools) bereit:
 
 ```bash
-# .env lokal pflegen (gitignored) mit allen KEY=VALUE Paaren des Projekts
-cp .env.example .env
-# → Werte einfüllen
-
-# Modus 1: nur pushen (idempotent, nie löscht)
-npm run secrets:push            # gh secret set -f .env && gh secret list
-
-# Modus 2: echter Sync inkl. Löschen obsoleter Secrets
-npm run secrets:sync:dry        # Preview des Plans
-npm run secrets:sync            # Apply mit Bestätigung vor Deletes
-npm run secrets:sync -- --yes   # Apply ohne Prompt (CI-safe)
+devtools run gh-secrets-sync.py --dry-run   # Plan anzeigen
+devtools run gh-secrets-sync.py             # Apply mit Bestätigung vor Deletes
+devtools run gh-secrets-sync.py --yes       # CI-safe ohne Prompt
+devtools run gh-secrets-sync.py -R owner/repo   # anderes Ziel-Repo
 ```
 
-**Safety-Konvention:** `secrets:sync` löscht nur Secrets, die in `.env.example` (auch auskommentiert) aufgelistet sind — fremde Secrets wie `TEAMS_WEBHOOK_URL`, `CODECOV_TOKEN` oder `PAT_READONLY_ORGANISATION` sind unsichtbar für den Sync und werden nie angetastet. `.env.example` dient dadurch als Allowlist der vom Projekt verwalteten Secrets.
+**Safety-Konvention:** Das Tool löscht nur GitHub-Secrets, die im `.env.example` des jeweiligen Repos als Allowlist aufgelistet sind — externe Secrets wie `TEAMS_WEBHOOK_URL`, `CODECOV_TOKEN` oder `PAT_READONLY_ORGANISATION` bleiben unsichtbar für den Sync und werden nie angetastet.
 
 ## Workflow-spezifische Secrets
 
