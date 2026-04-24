@@ -90,6 +90,44 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 |--------|-----------|--------------|-------------|
 | `COOLIFY_API_TOKEN` | coolify-deploy | Coolify API Token | Coolify Dashboard → API Tokens |
 
+### CDN / Static Asset Deployment
+
+Secrets für Projekte, die statische Assets auf CDN-Zonen oder S3-kompatible Storages deployen (z.B. `bauer-group/COM-SharedLandingPages` via `scripts/deploy/`). Namen sind Konvention — die tatsächlichen Env-Var-Namen stehen in `deploy/zones.json` des jeweiligen Projekts unter `accessKeyEnv` / `accessKeyIdEnv` / `secretAccessKeyEnv` / `zoneIdEnv` / `apiTokenEnv`.
+
+#### BunnyCDN Storage
+
+| Secret | Beschreibung | Einrichtung |
+|--------|--------------|-------------|
+| `BUNNY_<ZONE>_ACCESS_KEY` | Pro-Storage-Zone Zugangsschlüssel (nicht der globale Account API Key) | [dash.bunny.net](https://dash.bunny.net/) → Storage → Zone → **FTP & API Access** → Feld "Password" |
+
+> Mehrere Bunny-Zonen im selben Repo: jeder Zone ihren eigenen Secret-Namen geben (`BUNNY_WIDGETS_ACCESS_KEY`, `BUNNY_DOCS_ACCESS_KEY`, …).
+
+#### Cloudflare R2 + CDN
+
+R2 nutzt S3-kompatible Credentials für Uploads; CDN-Cache-Purge benötigt zusätzlich einen Cloudflare API Token und die Zone-ID.
+
+| Secret | Beschreibung | Einrichtung |
+|--------|--------------|-------------|
+| `R2_ACCESS_KEY_ID` | S3-kompatibler Access Key für R2 | [dash.cloudflare.com](https://dash.cloudflare.com/) → R2 → **Manage R2 API Tokens** → Create (Object R/W, bucket-scoped) |
+| `R2_SECRET_ACCESS_KEY` | S3-kompatibler Secret Key | Wird mit Access Key ID einmalig zusammen angezeigt |
+| `CF_ZONE_ID` | Zone-ID der Cloudflare-Zone (32-Zeichen-Hex) | Zone-Übersicht → rechte Sidebar → API-Sektion → **Zone ID** (nicht die Account ID darunter) |
+| `CF_PURGE_TOKEN` | API Token mit `Zone.Cache Purge` Permission, zone-scoped | [dash.cloudflare.com](https://dash.cloudflare.com/) → My Profile → API Tokens → **Create Token** → Custom → Permission: `Zone → Cache Purge → Purge` → Zone Resources: Specific Zone |
+
+> **Jurisdiction-Pinning:** EU-Buckets benötigen den `.eu.r2.cloudflarestorage.com` Endpoint, FedRAMP den `.fedramp.` Endpoint. Der Endpoint gehört in `deploy/zones.json` (nicht in Secrets) und überschreibt den default-konstruierten Endpoint aus der Account-ID.
+>
+> **Zweite CF-Zone im selben Repo:** Shared Namen bleiben für die erste Zone (`R2_ACCESS_KEY_ID`, `CF_ZONE_ID`, …), weitere Zonen nutzen Zone-Präfixe (`R2_DOCS_ACCESS_KEY_ID`, `CF_DOCS_ZONE_ID`, …).
+
+#### S3-kompatible Storage (AWS, Hetzner, MinIO, Backblaze B2, Wasabi)
+
+Für R2-Buckets **ohne** gekoppelte CDN-Cache-Invalidierung siehe Cloudflare-R2-Sektion oben — der S3-Provider macht nur Upload, keinen Purge.
+
+| Secret | Beschreibung | Einrichtung |
+|--------|--------------|-------------|
+| `S3_ACCESS_KEY_ID` | Generischer S3 Access Key | Provider-Dashboard (AWS IAM, Hetzner Object-Storage UI, MinIO Console, …) |
+| `S3_SECRET_ACCESS_KEY` | Generischer S3 Secret | Wird mit Access Key ID einmalig zusammen angezeigt |
+
+> Mehrere Buckets im selben Repo: Bucket-Präfixe nutzen (`S3_DOCS_ACCESS_KEY_ID`, `S3_DOCS_SECRET_ACCESS_KEY`, …). Endpoint und Region stehen in `deploy/zones.json`, nicht in Secrets.
+
 ### AI / Claude Code
 
 | Secret | Workflows | Beschreibung | Einrichtung |
@@ -166,6 +204,26 @@ gh secret set CODECOV_TOKEN --org your-org --body "your-token-value"
 # Repository Secret
 gh secret set DOTNET_SIGNKEY_BASE64 --body "$(base64 -w 0 < MyKey.snk)"
 ```
+
+### Bulk-Sync via `.env` (Projekt-Pattern)
+
+Für Projekte mit vielen per-Repo Secrets lohnt sich ein `.env`-basiertes Sync-Pattern statt `gh secret set` pro Aufruf. Referenz-Implementierung: [bauer-group/COM-SharedLandingPages](https://github.com/bauer-group/COM-SharedLandingPages/tree/main/scripts/secrets).
+
+```bash
+# .env lokal pflegen (gitignored) mit allen KEY=VALUE Paaren des Projekts
+cp .env.example .env
+# → Werte einfüllen
+
+# Modus 1: nur pushen (idempotent, nie löscht)
+npm run secrets:push            # gh secret set -f .env && gh secret list
+
+# Modus 2: echter Sync inkl. Löschen obsoleter Secrets
+npm run secrets:sync:dry        # Preview des Plans
+npm run secrets:sync            # Apply mit Bestätigung vor Deletes
+npm run secrets:sync -- --yes   # Apply ohne Prompt (CI-safe)
+```
+
+**Safety-Konvention:** `secrets:sync` löscht nur Secrets, die in `.env.example` (auch auskommentiert) aufgelistet sind — fremde Secrets wie `TEAMS_WEBHOOK_URL`, `CODECOV_TOKEN` oder `PAT_READONLY_ORGANISATION` sind unsichtbar für den Sync und werden nie angetastet. `.env.example` dient dadurch als Allowlist der vom Projekt verwalteten Secrets.
 
 ## Workflow-spezifische Secrets
 
