@@ -333,7 +333,7 @@ jobs:
             echo "|--------|--------------|---------|--------|-------|"
             yq -r '
               .compatibility[]?
-              | "| \(.kernel // "-") | \(.rustc // "-") | \(.r4l_api // "-") | \(.status // "-") | \(.notes // "") |"
+              | "| " + (.kernel // "-") + " | " + (.rustc // "-") + " | " + (.r4l_api // "-") + " | " + (.status // "-") + " | " + (.notes // "") + " |"
             ' "$file"
           } >> "$GITHUB_STEP_SUMMARY"
 
