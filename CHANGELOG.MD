@@ -1,3 +1,18 @@
+## [5.2.0](https://github.com/bauer-group/automation-templates/compare/v5.1.0...v5.2.0) (2026-04-27)
+
+### 🚀 Features
+
+* **actions:** add OpenVEX generation and SBOM attestation actions ([359cd14](https://github.com/bauer-group/automation-templates/commit/359cd1497715068e565d88ffabb4cf0721d438a0))
+* **ci:** add audit-production-only input to nodejs-build workflow ([e6079ac](https://github.com/bauer-group/automation-templates/commit/e6079ac572316993394ae1abbdde4bc8fcc0aa5c))
+* **ci:** added containerized-embedded-build reusable workflow ([02933b3](https://github.com/bauer-group/automation-templates/commit/02933b3ba4714b425c33b0f4be7260c4770f0924))
+
+### 🐛 Bug Fixes
+
+* **actions:** block publishing unsigned packages when signing is required ([7287b9d](https://github.com/bauer-group/automation-templates/commit/7287b9dd2e9bde26ddd091f7f951aebb304a9d34))
+* **actions:** graceful SNK signing fallback when secret is unavailable ([8f30d9e](https://github.com/bauer-group/automation-templates/commit/8f30d9ec3baa522220077ca444294f7d4bc58b0c))
+* **actions:** resolve code review findings for vex-generate and sbom-attest ([1a0ac65](https://github.com/bauer-group/automation-templates/commit/1a0ac65a0f34150cde8b0bfc9d48cbf1179538da))
+* **ci:** remove job-level permissions from reusable nodejs-build workflow ([3f805f1](https://github.com/bauer-group/automation-templates/commit/3f805f115c5a417c73f4de88176cb9c0fe9f2750))
+
 ## [5.1.0](https://github.com/bauer-group/automation-templates/compare/v5.0.1...v5.1.0) (2026-03-25)
 
 ### 🚀 Features
