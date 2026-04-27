@@ -12,6 +12,7 @@ Drop-in workflow templates that consume the
 | [`basic.yml`](basic.yml) | Standard BAUER project: mkdocs config at `docs/mkdocs.yml`, deps in `docs/requirements.txt`, BAUER brand applied automatically. The minimal consumer — one job, no `with:` block. |
 | [`strict-and-self-hosted.yml`](strict-and-self-hosted.yml) | Run with `--strict` (warnings → errors) on a BAUER hardware runner, with the brand stylesheet opted out (e.g. project ships its own theme). |
 | [`custom-paths.yml`](custom-paths.yml) | Project layout that doesn't follow the reference defaults — alternate `mkdocs.yml`, requirements file, output dir, brand-target path. |
+| [`sync-brand-css.yml`](sync-brand-css.yml) | Scheduled sync of the BAUER brand stylesheet into the consumer's local committed copy. Daily cron, opens a PR when the upstream drifts. Pair with `basic.yml`. |
 
 ## Project requirements
 

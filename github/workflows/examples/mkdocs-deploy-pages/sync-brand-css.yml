@@ -1,0 +1,20 @@
+# Example: scheduled sync of the BAUER mkdocs brand stylesheet into
+# the consumer's local committed copy. Runs daily; opens a PR when
+# the upstream stylesheet has drifted from the local one.
+#
+# Pair with mkdocs-deploy-pages:
+#   • The deploy-pages workflow takes the brand from upstream on
+#     every CI run (always current at deploy time).
+#   • This sync workflow keeps the local docs/assets/_bauer-brand.css
+#     in step so `mkdocs serve` during dev shows the same colours.
+
+name: 🎨 Sync brand CSS
+
+on:
+  schedule:
+    - cron: '17 7 * * *'   # 07:17 UTC daily
+  workflow_dispatch:
+
+jobs:
+  sync:
+    uses: bauer-group/automation-templates/.github/workflows/sync-brand-css.yml@main

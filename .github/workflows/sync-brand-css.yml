@@ -1,0 +1,112 @@
+name: 🎨 Sync BAUER mkdocs Brand CSS
+
+# Reusable workflow that pulls the upstream BAUER mkdocs brand
+# stylesheet (.github/branding/mkdocs/bauer-group.css in this repo)
+# into a consumer's local committed copy and opens a PR if anything
+# changed.
+#
+# Why a sync + a committed local copy:
+#   • CI Pages builds get the brand from this repo via the
+#     mkdocs-deploy-pages reusable's apply-brand step (always current).
+#   • Local `mkdocs serve` during dev needs the file on disk.
+#   • Without this workflow, the local copy drifts every time the
+#     upstream stylesheet changes. With it, the drift becomes a PR
+#     for human review (one-button merge).
+#
+# Consumer calls this with one line:
+#   uses: bauer-group/automation-templates/.github/workflows/sync-brand-css.yml@main
+# (typically scheduled daily via the consumer's own `on: schedule:` block).
+
+on:
+  workflow_call:
+    inputs:
+      target-path:
+        description: >-
+          Path in the consumer repo where the brand stylesheet should
+          land. Must match the consumer's mkdocs.yml extra_css entry.
+        type: string
+        required: false
+        default: 'docs/assets/_bauer-brand.css'
+
+      ref:
+        description: >-
+          Upstream ref (branch / tag / SHA) to sync from. Default
+          tracks main. Pin to a tag for reproducibility.
+        type: string
+        required: false
+        default: 'main'
+
+      pr-branch:
+        description: 'Branch name for the auto-generated PR.'
+        type: string
+        required: false
+        default: 'chore/sync-brand-css'
+
+      pr-labels:
+        description: >-
+          Comma-separated labels to apply to the auto-generated PR.
+        type: string
+        required: false
+        default: 'branding,automated'
+
+      runs-on:
+        description: 'Runner.'
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-brand-css
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Pull upstream stylesheet
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: 5
+    steps:
+      - name: 📥 Checkout consumer
+        uses: actions/checkout@v6
+
+      - name: 🌐 Fetch upstream stylesheet
+        env:
+          REF:    ${{ inputs.ref }}
+          TARGET: ${{ inputs.target-path }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$TARGET")"
+          curl -fsSL \
+            "https://raw.githubusercontent.com/bauer-group/automation-templates/${REF}/.github/branding/mkdocs/bauer-group.css" \
+            -o "$TARGET"
+          ls -la "$TARGET"
+
+      - name: 🔁 Open PR if changed
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: |
+            chore(branding): synced BAUER mkdocs stylesheet from automation-templates
+
+            Pulled from bauer-group/automation-templates@${{ inputs.ref }}
+            (.github/branding/mkdocs/bauer-group.css). Auto-generated
+            by the sync-brand-css reusable.
+          title: 'chore(branding): sync BAUER mkdocs stylesheet'
+          body: |
+            Automated sync of the local BAUER brand stylesheet from
+            [`bauer-group/automation-templates@${{ inputs.ref }}`](https://github.com/bauer-group/automation-templates/blob/${{ inputs.ref }}/.github/branding/mkdocs/bauer-group.css).
+
+            The local copy lets `mkdocs serve` during development
+            render with the same colours as the deployed Pages site.
+            The CI build path applies the upstream version
+            independently via the `mkdocs-apply-brand` composite, so
+            this PR exists purely to keep the dev-time preview in
+            sync.
+
+            Review the diff, then merge.
+          branch: ${{ inputs.pr-branch }}
+          delete-branch: true
+          add-paths: ${{ inputs.target-path }}
+          labels: ${{ inputs.pr-labels }}
