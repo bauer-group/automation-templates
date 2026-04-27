@@ -22,10 +22,15 @@ concurrency:
 
 jobs:
   firmware:
+    name: 🔥 Firmware
     uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
     with:
       component: firmware
-      matrix-variants: '["rpbridge_rp2354b","rpbridge_pico2"]'
+      matrix-variants: |
+        [
+          { "args": "rpbridge_rp2354b", "id": "rp2354b", "label": "RP2354B" },
+          { "args": "rpbridge_pico2",   "id": "pico2",   "label": "Pico 2"  }
+        ]
       runs-on: '["self-hosted","linux","x64"]'
       cleanup-image: true   # spare local disk on the bench runner
       timeout-minutes: 60   # hardware-side runs can be slower

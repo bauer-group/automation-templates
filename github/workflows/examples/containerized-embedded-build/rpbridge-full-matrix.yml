@@ -35,29 +35,41 @@ concurrency:
 
 jobs:
   firmware:
+    name: 🔥 Firmware
     uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
     with:
       component: firmware
-      matrix-variants: '["rpbridge_rp2354b","rpbridge_pico2"]'
+      matrix-variants: |
+        [
+          { "args": "rpbridge_rp2354b", "id": "rp2354b", "label": "RP2354B" },
+          { "args": "rpbridge_pico2",   "id": "pico2",   "label": "Pico 2"  }
+        ]
 
   driver:
+    name: 🐧 Driver
     uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
     with:
       component: driver
-      # Default fmt-only run (no --full). Compatibility matrix gets
-      # rendered from docs/driver-compatibility.yml into the summary.
+      matrix-variants: '[{"args":"","id":"kmod","label":"kernel module"}]'
       emit-driver-compat-matrix: true
 
   userspace:
+    name: 💻 Userspace
     uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
     with:
       component: userspace
-      matrix-variants: '["--x86_64","--aarch64"]'
+      matrix-variants: |
+        [
+          { "args": "--x86_64",  "id": "x86_64",  "label": "x86_64"  },
+          { "args": "--aarch64", "id": "aarch64", "label": "AArch64" }
+        ]
 
   workspace-tests:
+    name: 🧪 Workspace tests
     uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
     with:
       component: test
+      matrix-variants: '[{"args":"","id":"all","label":"fmt + clippy + test"}]'
       attach-firmware-binaries: false
       attach-driver-binary: false
       attach-userspace-binaries: false

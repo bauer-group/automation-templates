@@ -17,21 +17,30 @@ Drop-in workflow templates that consume the
 
 ## Anatomy of a consumer
 
-Every example follows the same three-step shape:
+Every example follows the same shape:
 
 ```yaml
 on:        what triggers a run (push to main, tag, PR, …)
 jobs:
-  <name>:  uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
-           with:
-             component: firmware|driver|userspace|test|all
-             matrix-variants: '[...JSON array...]'
-             attach-driver-binary: false   # opt-in
-             …
+  <name>:
+    name: 🔥 Firmware           # consumer-side label + emoji
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: firmware       # firmware | driver | userspace | test | all
+      matrix-variants: |
+        [
+          { "args": "<build-flag>", "id": "<artefact-slug>", "label": "<UI display name>" },
+          …
+        ]
+      attach-driver-binary: false   # opt-in for binary kernel-module deliverables
 ```
 
-The reusable does the rest: buildx cache, image materialisation,
-build script invocation, artefact upload, summary rendering.
+Each matrix entry is an object with `args` (passed verbatim to the
+build command), `id` (used in artefact names — must be unique), and
+optional `label` (the human-friendly name shown in the GitHub UI;
+falls back to `id`). The reusable does the rest: buildx cache, image
+materialisation, build-script invocation, artefact upload, summary
+rendering.
 
 ## Project requirements
 
@@ -57,12 +66,14 @@ The schema is intentionally tiny:
 
 ```yaml
 compatibility:
-  - kernel:   '6.18.0-12-generic'
-    rustc:    '1.86.0'
-    r4l_api:  'usb::Driver v7.0'
-    status:   'fmt + module link'
-    notes:    ''
+  - kernel:    '7.0.0-14-generic'
+    rustc:     '—'
+    r4l_api:   '—'
+    status:    'builds + module link'
+    notes:     'C kernel module, auxiliary_bus parent.'
 ```
 
-Missing fields render as `—`. Add a row for every kernel/rustc combo
-you actively support.
+Missing fields render as `—`. The schema is generic — fill the columns
+that match your driver's reality (rustc/r4l_api are leftover from the
+Rust-for-Linux era; for a C driver, leave them as `—` or repurpose the
+fields by editing the renderer in the reusable workflow).

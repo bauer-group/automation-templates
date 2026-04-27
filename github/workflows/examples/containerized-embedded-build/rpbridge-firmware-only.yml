@@ -26,8 +26,13 @@ concurrency:
 
 jobs:
   firmware:
+    name: 🔥 Firmware
     uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
     with:
       component: firmware
-      matrix-variants: '["rpbridge_rp2354b","rpbridge_pico2"]'
+      matrix-variants: |
+        [
+          { "args": "rpbridge_rp2354b", "id": "rp2354b", "label": "RP2354B" },
+          { "args": "rpbridge_pico2",   "id": "pico2",   "label": "Pico 2"  }
+        ]
       # firmware artefacts default to attached — no extra config needed.

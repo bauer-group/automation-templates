@@ -7,39 +7,45 @@
 # ── firmware ─────────────────────────────────────────────────────
 firmware:
   component:        firmware
-  matrix-variants:  '["rpbridge_rp2354b","rpbridge_pico2"]'
+  matrix-variants: |
+    [
+      { "args": "rpbridge_rp2354b", "id": "rp2354b", "label": "RP2354B" },
+      { "args": "rpbridge_pico2",   "id": "pico2",   "label": "Pico 2"  }
+    ]
   attach-firmware-binaries: true     # always, for MCU flashing
 
 # ── driver ───────────────────────────────────────────────────────
-# Default driver build runs rustfmt-only (M12 in driver/TODO.md is the
-# kernel-module link). For an actual .ko, set matrix-variants to
-# '["--full"]' AND attach-driver-binary to true. Keep that opt-in until
-# the R4L API drift is settled — a green CI on rustfmt is more useful
-# than a chronically-red one on a shifting target.
+# Default driver build runs the C kernel module link against the
+# image's linux-headers. The .ko is produced reliably; whether to
+# attach it as an artefact depends on whether the deliverable is
+# the binary or a source-build on the target system.
 driver:
   component:        driver
-  matrix-variants:  '[""]'
+  matrix-variants:  '[{"args":"","id":"kmod","label":"kernel module"}]'
   attach-driver-binary: false
   emit-driver-compat-matrix: true
   driver-compat-file:   docs/driver-compatibility.yml
 
-# Opt-in variant for releases / preview builds:
-driver-full:
+# Release-time variant — flips the binary attach to true.
+driver-release:
   component:        driver
-  matrix-variants:  '["--full"]'
+  matrix-variants:  '[{"args":"","id":"kmod","label":"kernel module"}]'
   attach-driver-binary: true
 
 # ── userspace ────────────────────────────────────────────────────
 userspace:
   component:        userspace
-  matrix-variants:  '["--x86_64","--aarch64"]'
+  matrix-variants: |
+    [
+      { "args": "--x86_64",  "id": "x86_64",  "label": "x86_64"  },
+      { "args": "--aarch64", "id": "aarch64", "label": "AArch64" }
+    ]
   attach-userspace-binaries: true
 
 # ── workspace-wide test (cargo fmt + clippy + test) ─────────────
 test:
   component:        test
-  matrix-variants:  '[""]'
-  # tests don't produce artefacts worth uploading
+  matrix-variants:  '[{"args":"","id":"all","label":"fmt + clippy + test"}]'
   attach-firmware-binaries:  false
   attach-driver-binary:      false
   attach-userspace-binaries: false

@@ -10,7 +10,7 @@
 
 # ── what to build ─────────────────────────────────────────────────
 # component:           required, no default — caller must supply.
-# matrix-variants:     '[""]'      # single build, no per-variant fan-out
+# matrix-variants:     '[{"args":"","id":"default"}]'   # single build, no fan-out
 
 # ── toolchain image ──────────────────────────────────────────────
 build-command:         tools/build.sh

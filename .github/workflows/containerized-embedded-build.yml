@@ -21,13 +21,22 @@ on:
 
       matrix-variants:
         description: >-
-          JSON array of variant strings. Each entry becomes one matrix
-          job, passed verbatim as the second argument to the build
-          command. Use [""] for components that have no variant
-          (single build).
+          JSON array of matrix entries. Each entry is an object with:
+            args  (string, required) — passed verbatim as the second
+                  argument to the build command. May be empty for
+                  components with a single build.
+            id    (string, required) — short kebab-case slug used in
+                  artefact names. Must be unique per matrix.
+            label (string, optional) — human-friendly display name
+                  for the job in the GitHub UI. Falls back to id.
+          Example for a multi-board firmware build:
+            [
+              {"args":"rpbridge_rp2354b","id":"rp2354b","label":"RP2354B"},
+              {"args":"rpbridge_pico2","id":"pico2","label":"Pico 2"}
+            ]
         type: string
         required: false
-        default: '[""]'
+        default: '[{"args":"","id":"default"}]'
 
       # ── where the toolchain comes from ────────────────────────────
       build-command:
@@ -197,7 +206,7 @@ permissions:
 
 jobs:
   build:
-    name: 🔨 ${{ inputs.component }}${{ matrix.variant != '' && format(' / {0}', matrix.variant) || '' }}
+    name: ${{ matrix.variant.label || matrix.variant.id }}
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
 
@@ -216,27 +225,12 @@ jobs:
           fetch-depth: ${{ inputs.checkout-fetch-depth }}
           submodules: ${{ inputs.checkout-submodules }}
 
-      - name: 🆔 Derive variant id
-        # Sanitises the variant string for use in artefact names.
-        # Examples:
-        #   ""                  -> "default"
-        #   "rpbridge_rp2354b"  -> "rp2354b"
-        #   "--x86_64"          -> "x86_64"
-        id: variant
-        shell: bash
-        run: |
-          v='${{ matrix.variant }}'
-          id=${v##--}                # strip leading --
-          id=${id##rpbridge_}        # strip leading rpbridge_
-          id=${id:-default}
-          echo "id=$id" >> "$GITHUB_OUTPUT"
-
       - name: 🐳 Containerised build
         id: build
         uses: bauer-group/automation-templates/.github/actions/containerized-embedded-build@main
         with:
           component: ${{ inputs.component }}
-          build-args: ${{ matrix.variant }}
+          build-args: ${{ matrix.variant.args }}
           build-command: ${{ inputs.build-command }}
           dockerfile-path: ${{ inputs.dockerfile-path }}
           dockerfile-context: ${{ inputs.dockerfile-context }}
@@ -249,7 +243,7 @@ jobs:
         if: inputs.component == 'firmware' && inputs.attach-firmware-binaries
         uses: actions/upload-artifact@v7
         with:
-          name: firmware-${{ steps.variant.outputs.id }}
+          name: firmware-${{ matrix.variant.id }}
           path: ${{ inputs.firmware-artifact-paths }}
           if-no-files-found: error
           retention-days: ${{ inputs.retention-days }}
@@ -258,7 +252,7 @@ jobs:
         if: inputs.component == 'driver' && inputs.attach-driver-binary
         uses: actions/upload-artifact@v7
         with:
-          name: driver-${{ steps.variant.outputs.id }}
+          name: driver-${{ matrix.variant.id }}
           path: ${{ inputs.driver-artifact-paths }}
           if-no-files-found: error
           retention-days: ${{ inputs.retention-days }}
@@ -267,7 +261,7 @@ jobs:
         if: inputs.component == 'userspace' && inputs.attach-userspace-binaries
         uses: actions/upload-artifact@v7
         with:
-          name: userspace-${{ steps.variant.outputs.id }}
+          name: userspace-${{ matrix.variant.id }}
           path: ${{ inputs.userspace-artifact-paths }}
           if-no-files-found: warn
           retention-days: ${{ inputs.retention-days }}
@@ -277,11 +271,13 @@ jobs:
         shell: bash
         run: |
           {
-            echo "### 🔨 ${{ inputs.component }} / ${{ steps.variant.outputs.id }}"
+            echo "### ${{ matrix.variant.label || matrix.variant.id }}"
             echo ""
             echo "| Field | Value |"
-            echo "|-------|-------|"
-            echo "| Variant arg | \`${{ matrix.variant }}\` |"
+            echo "| ----- | ----- |"
+            echo "| Component | \`${{ inputs.component }}\` |"
+            echo "| Variant args | \`${{ matrix.variant.args }}\` |"
+            echo "| Variant id | \`${{ matrix.variant.id }}\` |"
             echo "| Build status | ${{ steps.build.outputs.build-status || 'unknown' }} |"
             echo "| Build duration | ${{ steps.build.outputs.build-duration || 'n/a' }} s |"
             echo "| Image digest | \`${{ steps.build.outputs.image-digest || 'n/a' }}\` |"

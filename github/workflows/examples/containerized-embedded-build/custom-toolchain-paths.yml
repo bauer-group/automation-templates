@@ -22,10 +22,15 @@ concurrency:
 
 jobs:
   firmware:
+    name: 🔥 Firmware
     uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
     with:
       component: firmware
-      matrix-variants: '["board-a","board-b"]'
+      matrix-variants: |
+        [
+          { "args": "board-a", "id": "board-a", "label": "Board A" },
+          { "args": "board-b", "id": "board-b", "label": "Board B" }
+        ]
 
       # Toolchain image lives outside the conventional tools/docker.
       dockerfile-path:    ci/Dockerfile.builder
