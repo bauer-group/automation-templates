@@ -93,14 +93,24 @@
 :root,
 [data-md-color-primary],
 [data-md-color-accent] {
-  /* Header / primary band — orange on white text */
-  --md-primary-fg-color:        var(--orange-500);
-  --md-primary-fg-color--light: var(--orange-400);
-  --md-primary-fg-color--dark:  var(--orange-700);
+  /* Header / primary band — dark warm-gray with white text.
+   *
+   * The brand-orange #FF8500 is *Brand Primary* — meant for UI
+   * accents (links, hover, active tabs), not flooded bands.
+   * White on #FF8500 only hits ~2.5:1 contrast, well below
+   * WCAG-AA's 4.5:1 floor. Warm-800 (#3A3430) is the brand's
+   * "Headlines, Brand Dark" token; white on it is ~12:1, passing
+   * AAA comfortably and matching how the BAUER brand site itself
+   * uses dark headers with orange CTAs.
+   */
+  --md-primary-fg-color:        var(--warm-800);
+  --md-primary-fg-color--light: var(--warm-700);
+  --md-primary-fg-color--dark:  var(--warm-900);
   --md-primary-bg-color:        var(--brand-white);
   --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
 
-  /* Accent — also orange (dark variant for AA contrast on body bg) */
+  /* Accent — orange-700 (Text AA token) for links, hover, active
+   * states on the white body background. Passes AA against white. */
   --md-accent-fg-color:             var(--orange-700);
   --md-accent-fg-color--transparent: rgba(194, 87, 10, 0.1);
   --md-accent-bg-color:             var(--brand-white);
