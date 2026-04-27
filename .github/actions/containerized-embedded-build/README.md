@@ -33,7 +33,7 @@ different concern.
 
 ## How it works
 
-```
+```text
 runner (ubuntu-latest)
 └── docker/setup-buildx-action     ← provisions buildx
 └── docker/build-push-action       ← pulls layers from GHA cache,
@@ -53,7 +53,7 @@ seconds instead of minutes.
 ## Inputs
 
 | Name | Description | Default |
-|------|-------------|---------|
+| ---- | ----------- | ------- |
 | `component` | Build target passed verbatim to the build command (e.g. `firmware`, `driver`, `userspace`). | **required** |
 | `build-args` | Extra arguments appended after the component (e.g. a board name or cross-build flag). | `''` |
 | `build-command` | Path to the project's build entrypoint. | `tools/build.sh` |
@@ -67,7 +67,7 @@ seconds instead of minutes.
 ## Outputs
 
 | Name | Description |
-|------|-------------|
+| ---- | ----------- |
 | `image-digest` | Digest of the materialised toolchain image. |
 | `build-duration` | Duration of the build command in seconds. |
 | `build-status` | `success` or `failure`. |

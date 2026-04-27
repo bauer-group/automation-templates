@@ -1,0 +1,55 @@
+# Example: project layout that doesn't follow the reference defaults.
+#
+# Use when your repo isn't structured like USB-Multi-Bus-Bridge — for
+# instance, the Dockerfile lives somewhere else, the build entrypoint
+# isn't `tools/build.sh`, or the toolchain image carries a different
+# tag locally.
+#
+# Every path-related input is overridable; the reusable doesn't
+# hardcode anything specific to RPBridge.
+
+name: 🔨 Firmware (custom layout)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: firmware-custom-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: firmware
+      matrix-variants: '["board-a","board-b"]'
+
+      # Toolchain image lives outside the conventional tools/docker.
+      dockerfile-path:    ci/Dockerfile.builder
+      dockerfile-context: ci
+
+      # Local image tag your build script expects (e.g. when the script
+      # honours the standard env-var as documented in the composite
+      # action's README).
+      image-tag:          myproject-builder:ci
+
+      # Custom build entrypoint at a non-default path.
+      build-command:      scripts/ci-build.sh
+
+      # Project-specific cache scope — keep all of *your* repo's jobs
+      # on this scope so they share warm layers; don't reuse another
+      # repo's scope.
+      cache-scope:        myproject-builder
+
+      # Override the artefact glob for projects whose dist/ layout
+      # doesn't match the rpbridge convention. Matrix variants are
+      # iterated *inside* the reusable, so the path glob must match
+      # *all* variants — use a wildcard component (out/*/firmware.bin)
+      # rather than a per-variant placeholder.
+      firmware-artifact-paths: |
+        out/*/firmware.bin
+        out/*/firmware.elf
+        out/*/manifest.json

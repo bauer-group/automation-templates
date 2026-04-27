@@ -8,16 +8,18 @@ Drop-in workflow templates that consume the
 ## When to pick what
 
 | Example | Use when |
-|---------|----------|
+| ------- | -------- |
 | [`rpbridge-firmware-only.yml`](rpbridge-firmware-only.yml) | Single component (firmware), multi-board matrix. The simplest possible consumer — one job, one reusable call. |
 | [`rpbridge-full-matrix.yml`](rpbridge-full-matrix.yml) | Multi-component embedded repo (firmware + driver + userspace + tests). Demonstrates one reusable call per component, sharing a warm toolchain cache. |
 | [`rpbridge-release.yml`](rpbridge-release.yml) | Tag-driven release pipeline that calls the reusable per component, downloads all artefacts, and publishes a GitHub Release with SBOM + checksums. |
+| [`self-hosted-runner.yml`](self-hosted-runner.yml) | Run on BAUER-internal hardware runners instead of `ubuntu-latest`. Demonstrates the runner-flex JSON-array form and `cleanup-image: true` to spare bench-runner disk. |
+| [`custom-toolchain-paths.yml`](custom-toolchain-paths.yml) | Project layout that doesn't follow the reference defaults (Dockerfile in `ci/`, build script at `scripts/ci-build.sh`, custom dist layout). Every path-related input is overridable. |
 
 ## Anatomy of a consumer
 
 Every example follows the same three-step shape:
 
-```
+```yaml
 on:        what triggers a run (push to main, tag, PR, …)
 jobs:
   <name>:  uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main

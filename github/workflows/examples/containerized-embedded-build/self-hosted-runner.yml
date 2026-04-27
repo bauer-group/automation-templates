@@ -1,0 +1,31 @@
+# Example: build on a self-hosted runner instead of ubuntu-latest.
+#
+# Use when your project needs hardware-attached runners (a board on a
+# USB hub, a CAN dongle, a network of devices under test) — or simply
+# faster baseline hardware than the GitHub-hosted pool.
+#
+# The reusable's runner-flex pattern parses the JSON-array form
+# transparently; pass labels as a JSON array in a string. Plain string
+# (e.g. 'ubuntu-latest') still works for GitHub-hosted runners.
+
+name: 🔥 Firmware (self-hosted)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: firmware-self-hosted-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: firmware
+      matrix-variants: '["rpbridge_rp2354b","rpbridge_pico2"]'
+      runs-on: '["self-hosted","linux","x64"]'
+      cleanup-image: true   # spare local disk on the bench runner
+      timeout-minutes: 60   # hardware-side runs can be slower

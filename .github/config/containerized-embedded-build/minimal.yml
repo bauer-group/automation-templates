@@ -1,0 +1,22 @@
+# Containerized Embedded Build — minimal profile
+#
+# CI without artefact attach. Use on branch / PR runs where only the
+# compile status matters; main / release branches should use the
+# default or rpbridge profile so binaries actually ship.
+#
+# Like default.yml, this is documentation — copy the relevant block
+# into your `with:` to use it.
+
+# Build only the compile path; no artefacts.
+attach-firmware-binaries:  false
+attach-driver-binary:      false
+attach-userspace-binaries: false
+
+# Tighter timeout — minimal profile is for fast feedback loops.
+timeout-minutes:  20
+
+# Fail fast across matrix variants — branch CI cares about "any red".
+fail-fast:        true
+
+# Default cache scope still applies, so even minimal-profile runs warm
+# the same layer cache that release builds use.
