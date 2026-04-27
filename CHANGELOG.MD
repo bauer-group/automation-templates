@@ -1,3 +1,14 @@
+## [6.2.0](https://github.com/bauer-group/automation-templates/compare/v6.1.0...v6.2.0) (2026-04-27)
+
+### 🚀 Features
+
+* **ci:** added sync-brand-css reusable workflow ([dd27af2](https://github.com/bauer-group/automation-templates/commit/dd27af2260c39b67d5345244ee3c299343bbeea2))
+
+### 🐛 Bug Fixes
+
+* **branding:** mkdocs primary band now warm-gray, orange demoted to accent ([ada0b61](https://github.com/bauer-group/automation-templates/commit/ada0b61f48673a958ff28ec4b96887b6dcf22397)), closes [#FF8500](https://github.com/bauer-group/automation-templates/issues/FF8500) [#3A3430](https://github.com/bauer-group/automation-templates/issues/3A3430)
+* **ci:** replaced Rust-era compat-matrix columns with kernel|distro|status|notes ([59c3cfc](https://github.com/bauer-group/automation-templates/commit/59c3cfc34c409e91fde57c736c0e6a7f2f822e3b))
+
 ## [6.1.0](https://github.com/bauer-group/automation-templates/compare/v6.0.0...v6.1.0) (2026-04-27)
 
 ### 🚀 Features
