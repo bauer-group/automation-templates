@@ -1,3 +1,9 @@
+## [6.2.1](https://github.com/bauer-group/automation-templates/compare/v6.2.0...v6.2.1) (2026-04-27)
+
+### ⏪ Reverts
+
+* **ci:** removed mkdocs/Pages doc-pipeline tooling from automation-templates ([aa4d955](https://github.com/bauer-group/automation-templates/commit/aa4d955eae37884fb02259f4d75aeb641c6131ef))
+
 ## [6.2.0](https://github.com/bauer-group/automation-templates/compare/v6.1.0...v6.2.0) (2026-04-27)
 
 ### 🚀 Features
