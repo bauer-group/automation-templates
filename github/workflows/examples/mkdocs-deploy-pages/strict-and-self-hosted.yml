@@ -1,0 +1,18 @@
+# Example: strict mkdocs build on a BAUER hardware runner, opting
+# out of the default brand styling (project ships its own theme).
+
+name: 📚 Deploy Docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  pages:
+    uses: bauer-group/automation-templates/.github/workflows/mkdocs-deploy-pages.yml@main
+    with:
+      strict: true
+      apply-brand: 'none'
+      runs-on: '["self-hosted","linux","x64"]'
+      timeout-minutes: 30

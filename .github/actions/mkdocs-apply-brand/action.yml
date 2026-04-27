@@ -1,0 +1,63 @@
+name: 'mkdocs Apply BAUER Brand'
+description: >-
+  Copy the BAUER GROUP mkdocs brand stylesheet into the consumer's
+  docs tree before mkdocs build runs. The consumer wires it up via
+  `extra_css: [<target-css-path-relative-to-docs_dir>]` in mkdocs.yml.
+author: 'BAUER GROUP'
+
+branding:
+  icon: 'droplet'
+  color: 'orange'
+
+inputs:
+  brand:
+    description: >-
+      Which brand stylesheet to apply. 'bauer-group' uses the
+      reference stylesheet at .github/branding/mkdocs/bauer-group.css.
+      'none' is a no-op (lets the same workflow input default to
+      enabled and let consumers opt out).
+    required: false
+    default: 'bauer-group'
+
+  target-css-path:
+    description: >-
+      Absolute or repo-relative path to copy the stylesheet to.
+      Defaults to docs/assets/_bauer-brand.css. Must match the
+      `extra_css:` entry in the consumer's mkdocs.yml (paths there
+      are relative to docs_dir, so 'assets/_bauer-brand.css' is the
+      typical mkdocs.yml entry).
+    required: false
+    default: 'docs/assets/_bauer-brand.css'
+
+outputs:
+  css-path:
+    description: 'Final path of the materialised brand stylesheet.'
+    value: ${{ steps.copy.outputs.path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🎨 Apply brand stylesheet
+      id: copy
+      shell: bash
+      run: |
+        set -euo pipefail
+        case "${{ inputs.brand }}" in
+          none|'')
+            echo "::notice title=mkdocs-brand::brand=none — no stylesheet copied"
+            echo "path=" >> "$GITHUB_OUTPUT"
+            exit 0
+            ;;
+          bauer-group)
+            src="${{ github.action_path }}/../../branding/mkdocs/bauer-group.css"
+            ;;
+          *)
+            echo "::error title=mkdocs-brand::unknown brand '${{ inputs.brand }}' (supported: bauer-group, none)"
+            exit 2
+            ;;
+        esac
+
+        dst="${{ inputs.target-css-path }}"
+        mkdir -p "$(dirname "$dst")"
+        cp -v "$src" "$dst"
+        echo "path=$dst" >> "$GITHUB_OUTPUT"

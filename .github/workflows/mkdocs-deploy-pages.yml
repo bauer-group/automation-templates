@@ -1,0 +1,146 @@
+name: 📚 mkdocs Deploy Pages
+
+# Reusable workflow that builds a mkdocs-material site (with the
+# BAUER GROUP brand stylesheet applied by default) and publishes it
+# to GitHub Pages via the OIDC-backed deploy-pages flow.
+#
+# Companion composite: ./actions/mkdocs-apply-brand
+# Companion stylesheet: ./branding/mkdocs/bauer-group.css
+
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: 'Path to mkdocs.yml.'
+        type: string
+        required: false
+        default: 'docs/mkdocs.yml'
+
+      requirements-file:
+        description: >-
+          Path to a pip requirements file pinning the mkdocs build
+          deps (mkdocs, mkdocs-material, plugins). Required for
+          setup-python pip cache fingerprinting.
+        type: string
+        required: false
+        default: 'docs/requirements.txt'
+
+      output-dir:
+        description: >-
+          Directory mkdocs builds into, relative to the repo root.
+          Must match site_dir in mkdocs.yml. Default works for
+          mkdocs.yml at docs/ with site_dir: ../site.
+        type: string
+        required: false
+        default: 'site'
+
+      python-version:
+        description: 'Python version for setup-python.'
+        type: string
+        required: false
+        default: '3.14'
+
+      strict:
+        description: >-
+          Pass --strict to mkdocs build (warnings become errors).
+          Off by default — turn on once your nav and links are clean.
+        type: boolean
+        required: false
+        default: false
+
+      apply-brand:
+        description: >-
+          Which brand stylesheet to inject before build.
+          'bauer-group' (default) | 'none'.
+        type: string
+        required: false
+        default: 'bauer-group'
+
+      brand-target-path:
+        description: >-
+          Where the brand stylesheet should be copied to. Must match
+          the extra_css entry in your mkdocs.yml.
+        type: string
+        required: false
+        default: 'docs/assets/_bauer-brand.css'
+
+      runs-on:
+        description: >-
+          Runner. Plain string for GitHub-hosted (e.g. "ubuntu-latest")
+          or JSON array for self-hosted (e.g. ["self-hosted","linux"]).
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+
+      timeout-minutes:
+        description: 'Per-job timeout.'
+        type: number
+        required: false
+        default: 15
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 🏗️ Build
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+          cache-dependency-path: ${{ inputs.requirements-file }}
+
+      - name: 📚 Install dependencies
+        run: pip install -r ${{ inputs.requirements-file }}
+
+      - name: 🎨 Apply brand stylesheet
+        if: inputs.apply-brand != 'none'
+        uses: bauer-group/automation-templates/.github/actions/mkdocs-apply-brand@main
+        with:
+          brand: ${{ inputs.apply-brand }}
+          target-css-path: ${{ inputs.brand-target-path }}
+
+      - name: 🏗️ Build mkdocs
+        shell: bash
+        run: |
+          if [ "${{ inputs.strict }}" = "true" ]; then
+            mkdocs build --strict --config-file '${{ inputs.config-file }}'
+          else
+            mkdocs build --config-file '${{ inputs.config-file }}'
+          fi
+
+      - name: ⚙️ Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: 📤 Upload Pages artefact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ inputs.output-dir }}
+
+  deploy:
+    name: 🚀 Deploy
+    needs: build
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 🚀 Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
