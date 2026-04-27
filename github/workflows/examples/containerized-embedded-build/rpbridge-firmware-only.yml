@@ -1,0 +1,33 @@
+# Example: build only the firmware for two MCU variants on every push.
+#
+# Place this in your repo at .github/workflows/firmware.yml (or any
+# name you like). Adjust paths/boards to your project. Submodules are
+# checked out recursively because pico-sdk is vendored that way.
+
+name: 🔥 Firmware
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firmware/**'
+      - 'tools/**'
+      - '.github/workflows/firmware.yml'
+  pull_request:
+    paths:
+      - 'firmware/**'
+      - 'tools/**'
+      - '.github/workflows/firmware.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: firmware
+      matrix-variants: '["rpbridge_rp2354b","rpbridge_pico2"]'
+      # firmware artefacts default to attached — no extra config needed.

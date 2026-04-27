@@ -1,0 +1,63 @@
+# Containerized Embedded Build — default profile
+#
+# This file documents the *defaults* baked into the reusable workflow
+# at ../../workflows/containerized-embedded-build.yml. It is **not**
+# loaded automatically — the workflow reads inputs, not config files.
+# Copy any override you need into the consumer workflow's `with:` block.
+#
+# Kept here so the team has one canonical place to look up "what would
+# happen if I called the reusable with no extra inputs".
+
+# ── what to build ─────────────────────────────────────────────────
+# component:           required, no default — caller must supply.
+# matrix-variants:     '[""]'      # single build, no per-variant fan-out
+
+# ── toolchain image ──────────────────────────────────────────────
+build-command:         tools/build.sh
+dockerfile-path:       tools/docker/builder.Dockerfile
+dockerfile-context:    tools/docker
+image-tag:             rpbridge-builder:local
+cache-scope:           containerized-embedded-build
+cleanup-image:         false
+
+# ── checkout ─────────────────────────────────────────────────────
+checkout-submodules:   recursive
+checkout-fetch-depth:  0
+working-directory:     '.'
+
+# ── artefacts ────────────────────────────────────────────────────
+# Firmware: always attached because MCU flashing needs the binaries.
+attach-firmware-binaries: true
+firmware-artifact-paths: |
+  dist/firmware/**/*.uf2
+  dist/firmware/**/*.elf
+  dist/firmware/**/*.bin
+  dist/firmware/**/*.hex
+  dist/firmware/**/*.elf.map
+  dist/firmware/**/size.txt
+  dist/firmware/**/CHECKSUMS.txt
+
+# Driver: NOT attached by default — out-of-tree kernel modules normally
+# build from source on the target system (kernel-version-bound binary
+# attachments are usually wrong). Flip to true only when an
+# exact-kernel binary is the deliverable.
+attach-driver-binary:  false
+driver-artifact-paths: |
+  dist/driver/*.ko
+
+# Userspace: attached by default. CLI binaries are platform-portable
+# enough that a release archive makes sense.
+attach-userspace-binaries: true
+userspace-artifact-paths: |
+  dist/userspace/rpbridge-*
+
+retention-days:        30
+
+# ── compatibility matrix ─────────────────────────────────────────
+emit-driver-compat-matrix: false
+driver-compat-file:    docs/driver-compatibility.yml
+
+# ── runner / scheduling ──────────────────────────────────────────
+runs-on:               ubuntu-latest
+timeout-minutes:       45
+fail-fast:             false

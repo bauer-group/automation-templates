@@ -1,0 +1,124 @@
+name: 'Containerized Embedded Build'
+description: >-
+  Build embedded artefacts (firmware, kernel module, userspace) inside a
+  project-provided Docker toolchain image. Buildx + GHA layer cache make
+  the image materialisation effectively free on warm runs; the actual
+  build delegates to the project's own build script so the local
+  developer path and the CI path stay byte-identical.
+author: 'BAUER GROUP'
+
+branding:
+  icon: 'box'
+  color: 'blue'
+
+inputs:
+  component:
+    description: >-
+      Build target passed verbatim to the build script
+      (e.g. firmware, driver, userspace, test, all).
+    required: true
+
+  build-args:
+    description: >-
+      Extra arguments appended after the component
+      (e.g. a board name like rpbridge_rp2354b, or a cross-build flag like --aarch64).
+    required: false
+    default: ''
+
+  build-command:
+    description: 'Path to the project build entrypoint inside the workspace.'
+    required: false
+    default: 'tools/build.sh'
+
+  dockerfile-path:
+    description: 'Path to the toolchain Dockerfile.'
+    required: false
+    default: 'tools/docker/builder.Dockerfile'
+
+  dockerfile-context:
+    description: 'Build context handed to docker build.'
+    required: false
+    default: 'tools/docker'
+
+  image-tag:
+    description: 'Local tag the materialised image is bound to.'
+    required: false
+    default: 'rpbridge-builder:local'
+
+  cache-scope:
+    description: >-
+      buildx GHA cache scope. Keep the same value across all jobs in a
+      project so they share a warm cache.
+    required: false
+    default: 'containerized-embedded-build'
+
+  cleanup-image:
+    description: >-
+      Remove the materialised image from the runner after the build
+      (the GHA layer cache survives). Useful on self-hosted runners
+      where local disk is precious.
+    required: false
+    default: 'false'
+
+  working-directory:
+    description: 'Repository-relative directory the build command runs in.'
+    required: false
+    default: '.'
+
+outputs:
+  image-digest:
+    description: 'Digest of the materialised toolchain image.'
+    value: ${{ steps.image.outputs.digest }}
+
+  build-duration:
+    description: 'Duration of the build command in seconds.'
+    value: ${{ steps.run.outputs.duration }}
+
+  build-status:
+    description: 'success | failure'
+    value: ${{ steps.run.outputs.status }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: 🏗️ Materialise toolchain image (cached)
+      id: image
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.dockerfile-context }}
+        file: ${{ inputs.dockerfile-path }}
+        tags: ${{ inputs.image-tag }}
+        load: true
+        cache-from: type=gha,scope=${{ inputs.cache-scope }}
+        cache-to: type=gha,scope=${{ inputs.cache-scope }},mode=max
+
+    - name: 🔨 Run containerised build
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        RPBRIDGE_IMAGE_TAG: ${{ inputs.image-tag }}
+      run: |
+        set -euo pipefail
+        START=$(date +%s)
+        # The build script auto-detects the pre-built image via the
+        # RPBRIDGE_IMAGE_TAG env-var (or its own default) and skips its
+        # internal docker build because the layer cache is hot.
+        if ! "${{ inputs.build-command }}" ${{ inputs.component }} ${{ inputs.build-args }}; then
+          echo "status=failure" >> "$GITHUB_OUTPUT"
+          echo "duration=$(( $(date +%s) - START ))" >> "$GITHUB_OUTPUT"
+          exit 1
+        fi
+        END=$(date +%s)
+        echo "status=success" >> "$GITHUB_OUTPUT"
+        echo "duration=$(( END - START ))" >> "$GITHUB_OUTPUT"
+
+    - name: 🧹 Remove local image
+      if: always() && inputs.cleanup-image == 'true'
+      shell: bash
+      run: |
+        # GHA cache survives — only the local materialised tag is dropped.
+        docker image rm --force "${{ inputs.image-tag }}" 2>/dev/null || true

@@ -1,0 +1,63 @@
+# Example: build everything (firmware × all boards, driver, userspace
+# × cross-targets, workspace tests) on push/PR. One workflow file
+# fans out into four reusable-workflow calls — exactly one call per
+# logical component.
+#
+# This is the recommended layout for a multi-component embedded repo.
+# Each call gets its own concurrency-friendly matrix and its own
+# artefact group. They all share the same toolchain image cache via
+# the default cache-scope, so the second call onwards in a run finds
+# every layer pre-warm.
+
+name: 🐳 CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firmware/**'
+      - 'driver/**'
+      - 'userspace/**'
+      - 'tools/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    paths:
+      - 'firmware/**'
+      - 'driver/**'
+      - 'userspace/**'
+      - 'tools/**'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: firmware
+      matrix-variants: '["rpbridge_rp2354b","rpbridge_pico2"]'
+
+  driver:
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: driver
+      # Default fmt-only run (no --full). Compatibility matrix gets
+      # rendered from docs/driver-compatibility.yml into the summary.
+      emit-driver-compat-matrix: true
+
+  userspace:
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: userspace
+      matrix-variants: '["--x86_64","--aarch64"]'
+
+  workspace-tests:
+    uses: bauer-group/automation-templates/.github/workflows/containerized-embedded-build.yml@main
+    with:
+      component: test
+      attach-firmware-binaries: false
+      attach-driver-binary: false
+      attach-userspace-binaries: false

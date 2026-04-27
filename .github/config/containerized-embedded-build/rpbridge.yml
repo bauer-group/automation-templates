@@ -1,0 +1,45 @@
+# Containerized Embedded Build — RPBridge profile
+#
+# Component-specific knobs for the USB-Multi-Bus-Bridge project. As
+# with `default.yml`, this is documentation — not auto-loaded. Copy
+# the relevant block into your `with:` when calling the reusable.
+
+# ── firmware ─────────────────────────────────────────────────────
+firmware:
+  component:        firmware
+  matrix-variants:  '["rpbridge_rp2354b","rpbridge_pico2"]'
+  attach-firmware-binaries: true     # always, for MCU flashing
+
+# ── driver ───────────────────────────────────────────────────────
+# Default driver build runs rustfmt-only (M12 in driver/TODO.md is the
+# kernel-module link). For an actual .ko, set matrix-variants to
+# '["--full"]' AND attach-driver-binary to true. Keep that opt-in until
+# the R4L API drift is settled — a green CI on rustfmt is more useful
+# than a chronically-red one on a shifting target.
+driver:
+  component:        driver
+  matrix-variants:  '[""]'
+  attach-driver-binary: false
+  emit-driver-compat-matrix: true
+  driver-compat-file:   docs/driver-compatibility.yml
+
+# Opt-in variant for releases / preview builds:
+driver-full:
+  component:        driver
+  matrix-variants:  '["--full"]'
+  attach-driver-binary: true
+
+# ── userspace ────────────────────────────────────────────────────
+userspace:
+  component:        userspace
+  matrix-variants:  '["--x86_64","--aarch64"]'
+  attach-userspace-binaries: true
+
+# ── workspace-wide test (cargo fmt + clippy + test) ─────────────
+test:
+  component:        test
+  matrix-variants:  '[""]'
+  # tests don't produce artefacts worth uploading
+  attach-firmware-binaries:  false
+  attach-driver-binary:      false
+  attach-userspace-binaries: false

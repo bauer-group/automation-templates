@@ -1,0 +1,349 @@
+name: 🐳 Containerized Embedded Build
+
+# Reusable workflow that drives an embedded build through a project's
+# own Docker-based toolchain. One call per logical component
+# (firmware, driver, userspace, …); the consumer composes a CI pipeline
+# by wiring several calls together.
+#
+# Companion composite action: ./actions/containerized-embedded-build
+# Companion examples: ../../github/workflows/examples/containerized-embedded-build
+
+on:
+  workflow_call:
+    inputs:
+      # ── what to build ──────────────────────────────────────────────
+      component:
+        description: >-
+          Build target passed verbatim to the build command
+          (e.g. firmware, driver, userspace, test, all).
+        type: string
+        required: true
+
+      matrix-variants:
+        description: >-
+          JSON array of variant strings. Each entry becomes one matrix
+          job, passed verbatim as the second argument to the build
+          command. Use [""] for components that have no variant
+          (single build).
+        type: string
+        required: false
+        default: '[""]'
+
+      # ── where the toolchain comes from ────────────────────────────
+      build-command:
+        description: 'Path to the project build entrypoint.'
+        type: string
+        required: false
+        default: 'tools/build.sh'
+
+      dockerfile-path:
+        description: 'Path to the toolchain Dockerfile.'
+        type: string
+        required: false
+        default: 'tools/docker/builder.Dockerfile'
+
+      dockerfile-context:
+        description: 'docker build context.'
+        type: string
+        required: false
+        default: 'tools/docker'
+
+      image-tag:
+        description: 'Local tag for the materialised image.'
+        type: string
+        required: false
+        default: 'rpbridge-builder:local'
+
+      cache-scope:
+        description: >-
+          buildx GHA cache scope. Keep identical across components in
+          a project so all jobs share a warm cache.
+        type: string
+        required: false
+        default: 'containerized-embedded-build'
+
+      cleanup-image:
+        description: 'Remove the materialised image after each job.'
+        type: boolean
+        required: false
+        default: false
+
+      # ── checkout ──────────────────────────────────────────────────
+      checkout-submodules:
+        description: >-
+          actions/checkout submodules input
+          ('true', 'false', or 'recursive').
+        type: string
+        required: false
+        default: 'recursive'
+
+      checkout-fetch-depth:
+        description: 'actions/checkout fetch-depth.'
+        type: number
+        required: false
+        default: 0
+
+      working-directory:
+        description: 'Working directory for the build command.'
+        type: string
+        required: false
+        default: '.'
+
+      # ── artefacts ─────────────────────────────────────────────────
+      attach-firmware-binaries:
+        description: >-
+          Upload firmware artefacts (uf2/elf/bin/hex/size). MCUs always
+          need these for flashing — defaults to true.
+        type: boolean
+        required: false
+        default: true
+
+      attach-driver-binary:
+        description: >-
+          Upload the kernel module .ko. Defaults to false because
+          out-of-tree kernel modules are normally built from source on
+          the target system; flip to true only when an exact-kernel
+          binary attachment is the deliverable.
+        type: boolean
+        required: false
+        default: false
+
+      attach-userspace-binaries:
+        description: 'Upload userspace artefacts (CLI binaries, …).'
+        type: boolean
+        required: false
+        default: true
+
+      firmware-artifact-paths:
+        description: 'Multi-line glob list for the firmware upload.'
+        type: string
+        required: false
+        default: |
+          dist/firmware/**/*.uf2
+          dist/firmware/**/*.elf
+          dist/firmware/**/*.bin
+          dist/firmware/**/*.hex
+          dist/firmware/**/*.elf.map
+          dist/firmware/**/size.txt
+          dist/firmware/**/CHECKSUMS.txt
+
+      driver-artifact-paths:
+        description: 'Multi-line glob list for the driver upload.'
+        type: string
+        required: false
+        default: |
+          dist/driver/*.ko
+
+      userspace-artifact-paths:
+        description: 'Multi-line glob list for the userspace upload.'
+        type: string
+        required: false
+        default: |
+          dist/userspace/rpbridge-*
+
+      retention-days:
+        description: 'Artefact retention.'
+        type: number
+        required: false
+        default: 30
+
+      # ── driver compatibility matrix (Punkt c) ─────────────────────
+      emit-driver-compat-matrix:
+        description: >-
+          Render docs/driver-compatibility.yml (or a custom path) into
+          the workflow summary as a markdown table.
+        type: boolean
+        required: false
+        default: false
+
+      driver-compat-file:
+        description: 'Path to the driver compatibility YAML file.'
+        type: string
+        required: false
+        default: 'docs/driver-compatibility.yml'
+
+      # ── runner / scheduling ───────────────────────────────────────
+      runs-on:
+        description: >-
+          Runner. Plain string for GitHub-hosted (e.g. "ubuntu-latest")
+          or JSON array for self-hosted (e.g. ["self-hosted","linux"]).
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+
+      timeout-minutes:
+        description: 'Per-job timeout.'
+        type: number
+        required: false
+        default: 45
+
+      fail-fast:
+        description: 'Cancel sibling matrix jobs on first failure.'
+        type: boolean
+        required: false
+        default: false
+
+    outputs:
+      build-status:
+        description: 'Aggregate build job result.'
+        value: ${{ jobs.build.result }}
+
+      image-digest:
+        description: 'Digest of the materialised toolchain image.'
+        value: ${{ jobs.build.outputs.image-digest }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 🔨 ${{ inputs.component }}${{ matrix.variant != '' && format(' / {0}', matrix.variant) || '' }}
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    strategy:
+      fail-fast: ${{ inputs.fail-fast }}
+      matrix:
+        variant: ${{ fromJSON(inputs.matrix-variants) }}
+
+    outputs:
+      image-digest: ${{ steps.build.outputs.image-digest }}
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: ${{ inputs.checkout-fetch-depth }}
+          submodules: ${{ inputs.checkout-submodules }}
+
+      - name: 🆔 Derive variant id
+        # Sanitises the variant string for use in artefact names.
+        # Examples:
+        #   ""                  -> "default"
+        #   "rpbridge_rp2354b"  -> "rp2354b"
+        #   "--x86_64"          -> "x86_64"
+        id: variant
+        shell: bash
+        run: |
+          v='${{ matrix.variant }}'
+          id=${v##--}                # strip leading --
+          id=${id##rpbridge_}        # strip leading rpbridge_
+          id=${id:-default}
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: 🐳 Containerised build
+        id: build
+        uses: bauer-group/automation-templates/.github/actions/containerized-embedded-build@main
+        with:
+          component: ${{ inputs.component }}
+          build-args: ${{ matrix.variant }}
+          build-command: ${{ inputs.build-command }}
+          dockerfile-path: ${{ inputs.dockerfile-path }}
+          dockerfile-context: ${{ inputs.dockerfile-context }}
+          image-tag: ${{ inputs.image-tag }}
+          cache-scope: ${{ inputs.cache-scope }}
+          cleanup-image: ${{ inputs.cleanup-image && 'true' || 'false' }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: 📤 Upload firmware artefacts
+        if: inputs.component == 'firmware' && inputs.attach-firmware-binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: firmware-${{ steps.variant.outputs.id }}
+          path: ${{ inputs.firmware-artifact-paths }}
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
+
+      - name: 📤 Upload driver artefacts
+        if: inputs.component == 'driver' && inputs.attach-driver-binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: driver-${{ steps.variant.outputs.id }}
+          path: ${{ inputs.driver-artifact-paths }}
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
+
+      - name: 📤 Upload userspace artefacts
+        if: inputs.component == 'userspace' && inputs.attach-userspace-binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: userspace-${{ steps.variant.outputs.id }}
+          path: ${{ inputs.userspace-artifact-paths }}
+          if-no-files-found: warn
+          retention-days: ${{ inputs.retention-days }}
+
+      - name: 📊 Per-job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### 🔨 ${{ inputs.component }} / ${{ steps.variant.outputs.id }}"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Variant arg | \`${{ matrix.variant }}\` |"
+            echo "| Build status | ${{ steps.build.outputs.build-status || 'unknown' }} |"
+            echo "| Build duration | ${{ steps.build.outputs.build-duration || 'n/a' }} s |"
+            echo "| Image digest | \`${{ steps.build.outputs.image-digest || 'n/a' }}\` |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  summary:
+    name: 📊 Build Summary
+    needs: build
+    if: always()
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: 5
+
+    steps:
+      - name: 📥 Checkout (compat-matrix only)
+        if: inputs.emit-driver-compat-matrix
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: 📊 Aggregate summary
+        shell: bash
+        run: |
+          {
+            echo "## 🐳 Containerised Embedded Build"
+            echo ""
+            echo "| Component | Result |"
+            echo "|-----------|--------|"
+            echo "| ${{ inputs.component }} | ${{ needs.build.result }} |"
+            echo ""
+            echo "_Toolchain image: \`${{ inputs.image-tag }}\`_"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 🧬 Render driver compatibility matrix
+        if: inputs.emit-driver-compat-matrix && inputs.component == 'driver'
+        shell: bash
+        run: |
+          set -euo pipefail
+          file='${{ inputs.driver-compat-file }}'
+          if [ ! -f "$file" ]; then
+            echo "::warning title=compat-matrix::file '$file' not found — skipping render"
+            exit 0
+          fi
+          # yq is preinstalled on ubuntu-latest. The schema is intentionally
+          # tiny: a `compatibility` list of objects with optional
+          # kernel/rustc/r4l_api/status/notes fields. Missing fields
+          # render as "—" so the YAML can grow without workflow churn.
+          {
+            echo ""
+            echo "## 🧬 Driver Compatibility Matrix"
+            echo ""
+            echo "| Kernel | Distro rustc | R4L API | Status | Notes |"
+            echo "|--------|--------------|---------|--------|-------|"
+            yq -r '
+              .compatibility[]?
+              | "| \(.kernel // "—") | \(.rustc // "—") | \(.r4l_api // "—") | \(.status // "—") | \(.notes // "") |"
+            ' "$file"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: ❌ Fail summary if build failed
+        if: needs.build.result != 'success'
+        shell: bash
+        run: |
+          echo "::error title=Containerised build::component '${{ inputs.component }}' did not succeed (result: ${{ needs.build.result }})"
+          exit 1
