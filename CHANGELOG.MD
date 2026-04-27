@@ -1,3 +1,14 @@
+## [6.1.0](https://github.com/bauer-group/automation-templates/compare/v6.0.0...v6.1.0) (2026-04-27)
+
+### 🚀 Features
+
+* **ci:** added mkdocs-deploy-pages reusable with BAUER brand styling ([276fe9f](https://github.com/bauer-group/automation-templates/commit/276fe9f1e26dc8cf7c8a12b33e8039396c18770d))
+
+### 🐛 Bug Fixes
+
+* **ci:** replaced em-dash with ASCII '-' in compat-matrix yq filter ([a6066dd](https://github.com/bauer-group/automation-templates/commit/a6066dd135c76526f729f403ef20a76362328e24))
+* **ci:** switched compat-matrix yq filter to + concatenation ([80377af](https://github.com/bauer-group/automation-templates/commit/80377afee4b7e9329a4534211f704705daf96a37))
+
 ## [6.0.0](https://github.com/bauer-group/automation-templates/compare/v5.2.0...v6.0.0) (2026-04-27)
 
 ### ⚠ BREAKING CHANGES
