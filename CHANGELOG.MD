@@ -1,3 +1,17 @@
+## [6.0.0](https://github.com/bauer-group/automation-templates/compare/v5.2.0...v6.0.0) (2026-04-27)
+
+### ⚠ BREAKING CHANGES
+
+* **ci:** consumers must update their matrix-variants input
+format. The only upstream consumer in tree (USB-Multi-Bus-Bridge) is
+updated in lock-step.
+* **ci:** matrix-variants input format changed from string
+array to object array. See the in-repo examples for the new shape.
+
+### 🚀 Features
+
+* **ci:** matrix-variants now takes objects with id/args/label ([b804aae](https://github.com/bauer-group/automation-templates/commit/b804aae76a947c0905cd84d99b72c59e5c3ca809))
+
 ## [5.2.0](https://github.com/bauer-group/automation-templates/compare/v5.1.0...v5.2.0) (2026-04-27)
 
 ### 🚀 Features
