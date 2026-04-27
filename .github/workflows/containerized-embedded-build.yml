@@ -324,7 +324,7 @@ jobs:
           # yq is preinstalled on ubuntu-latest. The schema is intentionally
           # tiny: a `compatibility` list of objects with optional
           # kernel/rustc/r4l_api/status/notes fields. Missing fields
-          # render as "—" so the YAML can grow without workflow churn.
+          # render as "-" so the YAML can grow without workflow churn.
           {
             echo ""
             echo "## 🧬 Driver Compatibility Matrix"
@@ -333,7 +333,7 @@ jobs:
             echo "|--------|--------------|---------|--------|-------|"
             yq -r '
               .compatibility[]?
-              | "| \(.kernel // "—") | \(.rustc // "—") | \(.r4l_api // "—") | \(.status // "—") | \(.notes // "") |"
+              | "| \(.kernel // "-") | \(.rustc // "-") | \(.r4l_api // "-") | \(.status // "-") | \(.notes // "") |"
             ' "$file"
           } >> "$GITHUB_STEP_SUMMARY"
 
