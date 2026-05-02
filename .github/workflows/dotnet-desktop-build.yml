@@ -236,7 +236,7 @@ jobs:
           msbuild-architecture: x64
       
       - name: 📦 Setup NuGet
-        uses: NuGet/setup-nuget@v2
+        uses: NuGet/setup-nuget@v3
       
       - name: 🔍 Find Solution/Project
         id: find-project
