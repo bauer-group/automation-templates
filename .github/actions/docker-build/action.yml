@@ -183,6 +183,11 @@ inputs:
     description: 'Build timeout in minutes'
     required: false
     default: '30'
+  # Output / Reporting
+  verbose-build-summary:
+    description: 'Enable docker/build-push-action v6 auto-summary and build-record artifact upload. Default false preserves the compact action-managed summary; set true for detailed buildkit info (cache hits, layer timings, annotations) at the cost of an extra build-record artifact (~50-200 KB, 90-day retention) per build.'
+    required: false
+    default: 'false'
 
 outputs:
   image-digest:
@@ -514,10 +519,10 @@ runs:
       uses: docker/build-push-action@v6
       env:
         # v6 introduced auto-injected build summaries and build-record artifact uploads.
-        # Both are disabled here to preserve v5 behavior for thousands of downstream
-        # callers and to avoid duplicate output alongside this action's own summary.
-        DOCKER_BUILD_SUMMARY: false
-        DOCKER_BUILD_RECORD_UPLOAD: false
+        # Both default to disabled to preserve v5 behavior; opt-in via verbose-build-summary
+        # exposes buildkit cache/timing info at the cost of an extra artifact per build.
+        DOCKER_BUILD_SUMMARY: ${{ inputs.verbose-build-summary == 'true' && 'true' || 'false' }}
+        DOCKER_BUILD_RECORD_UPLOAD: ${{ inputs.verbose-build-summary == 'true' && 'true' || 'false' }}
       with:
         context: ${{ inputs.docker-context }}
         file: ${{ inputs.dockerfile-path }}
@@ -649,9 +654,9 @@ runs:
       if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true')
       uses: docker/build-push-action@v6
       env:
-        # See build-local step above for rationale - both env vars preserve v5 behavior.
-        DOCKER_BUILD_SUMMARY: false
-        DOCKER_BUILD_RECORD_UPLOAD: false
+        # See build-local step above for rationale - opt-in via verbose-build-summary input.
+        DOCKER_BUILD_SUMMARY: ${{ inputs.verbose-build-summary == 'true' && 'true' || 'false' }}
+        DOCKER_BUILD_RECORD_UPLOAD: ${{ inputs.verbose-build-summary == 'true' && 'true' || 'false' }}
       with:
         context: ${{ inputs.docker-context }}
         file: ${{ inputs.dockerfile-path }}
