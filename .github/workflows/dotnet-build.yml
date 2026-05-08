@@ -716,7 +716,7 @@ jobs:
       
       - name: 📊 Test Report
         if: always() && inputs.run-tests && steps.test.outputs.results-path != ''
-        uses: dorny/test-reporter@v2
+        uses: dorny/test-reporter@v3
         continue-on-error: true
         with:
           name: 'Test Results - ${{ inputs.enable-matrix && matrix.os || inputs.runs-on }}'
