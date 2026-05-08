@@ -204,6 +204,12 @@ on:
         type: string
         required: false
         default: 'max'
+
+      cache-scope:
+        description: 'GHA cache scope identifier. Empty = default scope (backward-compatible). Set per-image (e.g. api, ui) when building multiple images in the same repository to prevent cache collisions across parallel builds.'
+        type: string
+        required: false
+        default: ''
       
       # Matrix Configuration
       enable-matrix:
@@ -431,6 +437,7 @@ jobs:
           push-on-pr: ${{ inputs.push-on-pr }}
           cache-enabled: ${{ inputs.cache-enabled }}
           cache-mode: ${{ inputs.cache-mode }}
+          cache-scope: ${{ inputs.cache-scope }}
           security-scan: ${{ inputs.security-scan }}
           security-scanner: ${{ inputs.security-scanner }}
           security-fail-on: ${{ inputs.security-fail-on }}

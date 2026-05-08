@@ -118,6 +118,10 @@ inputs:
     description: 'Cache mode (min, max, inline)'
     required: false
     default: 'max'
+  cache-scope:
+    description: 'GHA cache scope identifier. Empty = default scope (backward-compatible). Set per-image (e.g. api, ui) when building multiple images in the same repository to prevent cache collisions across parallel builds.'
+    required: false
+    default: ''
   cache-registry:
     description: 'Registry for cache'
     required: false
@@ -481,12 +485,24 @@ runs:
       run: |
         # Handle cache-enabled input - can be string 'true'/'false' or boolean
         CACHE_ENABLED="${{ inputs.cache-enabled }}"
+        CACHE_SCOPE="${{ inputs.cache-scope }}"
+
+        # Optional scope suffix - empty when input is unset, preserves byte-identical
+        # output for callers that do not set cache-scope (backward-compatible default).
+        SCOPE_SUFFIX=""
+        if [ -n "$CACHE_SCOPE" ]; then
+          SCOPE_SUFFIX=",scope=${CACHE_SCOPE}"
+        fi
 
         # Normalize to lowercase and check for truthy values
         if [[ "${CACHE_ENABLED,,}" == "true" || "${CACHE_ENABLED}" == "1" ]]; then
-          echo "cache-from=type=gha" >> $GITHUB_OUTPUT
-          echo "cache-to=type=gha,mode=${{ inputs.cache-mode }}" >> $GITHUB_OUTPUT
-          echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }})"
+          echo "cache-from=type=gha${SCOPE_SUFFIX}" >> $GITHUB_OUTPUT
+          echo "cache-to=type=gha${SCOPE_SUFFIX},mode=${{ inputs.cache-mode }}" >> $GITHUB_OUTPUT
+          if [ -n "$CACHE_SCOPE" ]; then
+            echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }}, scope=${CACHE_SCOPE})"
+          else
+            echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }})"
+          fi
         else
           echo "cache-from=" >> $GITHUB_OUTPUT
           echo "cache-to=" >> $GITHUB_OUTPUT
@@ -495,7 +511,13 @@ runs:
 
     - name: 🐳 Build Docker Image (Local)
       id: build-local
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
+      env:
+        # v6 introduced auto-injected build summaries and build-record artifact uploads.
+        # Both are disabled here to preserve v5 behavior for thousands of downstream
+        # callers and to avoid duplicate output alongside this action's own summary.
+        DOCKER_BUILD_SUMMARY: false
+        DOCKER_BUILD_RECORD_UPLOAD: false
       with:
         context: ${{ inputs.docker-context }}
         file: ${{ inputs.dockerfile-path }}
@@ -625,7 +647,11 @@ runs:
     - name: 🚀 Push Docker Image
       id: build
       if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true')
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
+      env:
+        # See build-local step above for rationale - both env vars preserve v5 behavior.
+        DOCKER_BUILD_SUMMARY: false
+        DOCKER_BUILD_RECORD_UPLOAD: false
       with:
         context: ${{ inputs.docker-context }}
         file: ${{ inputs.dockerfile-path }}
