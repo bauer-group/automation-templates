@@ -1,3 +1,60 @@
+## [6.2.1](https://github.com/bauer-group/automation-templates/compare/v6.2.0...v6.2.1) (2026-04-27)
+
+### ⏪ Reverts
+
+* **ci:** removed mkdocs/Pages doc-pipeline tooling from automation-templates ([aa4d955](https://github.com/bauer-group/automation-templates/commit/aa4d955eae37884fb02259f4d75aeb641c6131ef))
+
+## [6.2.0](https://github.com/bauer-group/automation-templates/compare/v6.1.0...v6.2.0) (2026-04-27)
+
+### 🚀 Features
+
+* **ci:** added sync-brand-css reusable workflow ([dd27af2](https://github.com/bauer-group/automation-templates/commit/dd27af2260c39b67d5345244ee3c299343bbeea2))
+
+### 🐛 Bug Fixes
+
+* **branding:** mkdocs primary band now warm-gray, orange demoted to accent ([ada0b61](https://github.com/bauer-group/automation-templates/commit/ada0b61f48673a958ff28ec4b96887b6dcf22397)), closes [#FF8500](https://github.com/bauer-group/automation-templates/issues/FF8500) [#3A3430](https://github.com/bauer-group/automation-templates/issues/3A3430)
+* **ci:** replaced Rust-era compat-matrix columns with kernel|distro|status|notes ([59c3cfc](https://github.com/bauer-group/automation-templates/commit/59c3cfc34c409e91fde57c736c0e6a7f2f822e3b))
+
+## [6.1.0](https://github.com/bauer-group/automation-templates/compare/v6.0.0...v6.1.0) (2026-04-27)
+
+### 🚀 Features
+
+* **ci:** added mkdocs-deploy-pages reusable with BAUER brand styling ([276fe9f](https://github.com/bauer-group/automation-templates/commit/276fe9f1e26dc8cf7c8a12b33e8039396c18770d))
+
+### 🐛 Bug Fixes
+
+* **ci:** replaced em-dash with ASCII '-' in compat-matrix yq filter ([a6066dd](https://github.com/bauer-group/automation-templates/commit/a6066dd135c76526f729f403ef20a76362328e24))
+* **ci:** switched compat-matrix yq filter to + concatenation ([80377af](https://github.com/bauer-group/automation-templates/commit/80377afee4b7e9329a4534211f704705daf96a37))
+
+## [6.0.0](https://github.com/bauer-group/automation-templates/compare/v5.2.0...v6.0.0) (2026-04-27)
+
+### ⚠ BREAKING CHANGES
+
+* **ci:** consumers must update their matrix-variants input
+format. The only upstream consumer in tree (USB-Multi-Bus-Bridge) is
+updated in lock-step.
+* **ci:** matrix-variants input format changed from string
+array to object array. See the in-repo examples for the new shape.
+
+### 🚀 Features
+
+* **ci:** matrix-variants now takes objects with id/args/label ([b804aae](https://github.com/bauer-group/automation-templates/commit/b804aae76a947c0905cd84d99b72c59e5c3ca809))
+
+## [5.2.0](https://github.com/bauer-group/automation-templates/compare/v5.1.0...v5.2.0) (2026-04-27)
+
+### 🚀 Features
+
+* **actions:** add OpenVEX generation and SBOM attestation actions ([359cd14](https://github.com/bauer-group/automation-templates/commit/359cd1497715068e565d88ffabb4cf0721d438a0))
+* **ci:** add audit-production-only input to nodejs-build workflow ([e6079ac](https://github.com/bauer-group/automation-templates/commit/e6079ac572316993394ae1abbdde4bc8fcc0aa5c))
+* **ci:** added containerized-embedded-build reusable workflow ([02933b3](https://github.com/bauer-group/automation-templates/commit/02933b3ba4714b425c33b0f4be7260c4770f0924))
+
+### 🐛 Bug Fixes
+
+* **actions:** block publishing unsigned packages when signing is required ([7287b9d](https://github.com/bauer-group/automation-templates/commit/7287b9dd2e9bde26ddd091f7f951aebb304a9d34))
+* **actions:** graceful SNK signing fallback when secret is unavailable ([8f30d9e](https://github.com/bauer-group/automation-templates/commit/8f30d9ec3baa522220077ca444294f7d4bc58b0c))
+* **actions:** resolve code review findings for vex-generate and sbom-attest ([1a0ac65](https://github.com/bauer-group/automation-templates/commit/1a0ac65a0f34150cde8b0bfc9d48cbf1179538da))
+* **ci:** remove job-level permissions from reusable nodejs-build workflow ([3f805f1](https://github.com/bauer-group/automation-templates/commit/3f805f115c5a417c73f4de88176cb9c0fe9f2750))
+
 ## [5.1.0](https://github.com/bauer-group/automation-templates/compare/v5.0.1...v5.1.0) (2026-03-25)
 
 ### 🚀 Features

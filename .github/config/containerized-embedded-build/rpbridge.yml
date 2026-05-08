@@ -1,0 +1,51 @@
+# Containerized Embedded Build — RPBridge profile
+#
+# Component-specific knobs for the USB-Multi-Bus-Bridge project. As
+# with `default.yml`, this is documentation — not auto-loaded. Copy
+# the relevant block into your `with:` when calling the reusable.
+
+# ── firmware ─────────────────────────────────────────────────────
+firmware:
+  component:        firmware
+  matrix-variants: |
+    [
+      { "args": "rpbridge_rp2354b", "id": "rp2354b", "label": "RP2354B" },
+      { "args": "rpbridge_pico2",   "id": "pico2",   "label": "Pico 2"  }
+    ]
+  attach-firmware-binaries: true     # always, for MCU flashing
+
+# ── driver ───────────────────────────────────────────────────────
+# Default driver build runs the C kernel module link against the
+# image's linux-headers. The .ko is produced reliably; whether to
+# attach it as an artefact depends on whether the deliverable is
+# the binary or a source-build on the target system.
+driver:
+  component:        driver
+  matrix-variants:  '[{"args":"","id":"kmod","label":"kernel module"}]'
+  attach-driver-binary: false
+  emit-driver-compat-matrix: true
+  driver-compat-file:   docs/driver-compatibility.yml
+
+# Release-time variant — flips the binary attach to true.
+driver-release:
+  component:        driver
+  matrix-variants:  '[{"args":"","id":"kmod","label":"kernel module"}]'
+  attach-driver-binary: true
+
+# ── userspace ────────────────────────────────────────────────────
+userspace:
+  component:        userspace
+  matrix-variants: |
+    [
+      { "args": "--x86_64",  "id": "x86_64",  "label": "x86_64"  },
+      { "args": "--aarch64", "id": "aarch64", "label": "AArch64" }
+    ]
+  attach-userspace-binaries: true
+
+# ── workspace-wide test (cargo fmt + clippy + test) ─────────────
+test:
+  component:        test
+  matrix-variants:  '[{"args":"","id":"all","label":"fmt + clippy + test"}]'
+  attach-firmware-binaries:  false
+  attach-driver-binary:      false
+  attach-userspace-binaries: false

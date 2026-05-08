@@ -1,0 +1,23 @@
+# Containerized Embedded Build — self-hosted runner profile
+#
+# Knobs tuned for self-hosted runners (BAUER-internal hardware,
+# bench-attached devices, custom Linux machines). Documentation
+# only — copy into your consumer workflow's `with:` block.
+
+# Self-hosted runner labelling. Adjust the labels to match your
+# runner-pool. The runner-flex pattern in the reusable parses this
+# JSON-array form transparently.
+runs-on:               '["self-hosted","linux","x64"]'
+
+# Disk on hardware runners is precious — drop the local image after
+# each job. The GHA layer cache survives so subsequent runs still
+# materialise quickly; only the multi-GB *materialised* tag goes.
+cleanup-image:         true
+
+# Self-hosted runners are usually faster than ubuntu-latest for our
+# loads, but stretch the timeout if hardware tests run long.
+timeout-minutes:       60
+
+# Self-hosted typically dedicates the runner to one job at a time —
+# fail-fast keeps the queue moving when a matrix variant breaks.
+fail-fast:             true
