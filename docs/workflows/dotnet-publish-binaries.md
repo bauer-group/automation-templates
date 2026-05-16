@@ -138,6 +138,8 @@ jobs:
 
 The project's `.csproj` must declare `<PackAsTool>true</PackAsTool>` for the tool path — see the [Project Configuration](#project-configuration) section.
 
+> **Tip — shared codegen artifact:** If the project uses build-time codegen (Kiota / OpenAPI / T4), both workflows accept the same `download-artifact-name` / `download-artifact-path` / `extra-msbuild-properties` inputs. Run the generator ONCE in an upstream `prepare-sources` job and fan its output out to both `publish-tool` and `publish-binaries` — see [With Pre-Generated Sources](#with-pre-generated-sources-kiota--openapi--t4) below for the prepare-sources job, then add the same `download-artifact-*` inputs to `publish-tool` as well.
+
 ### With Pre-Generated Sources (Kiota / OpenAPI / T4)
 
 When the project needs codegen at build time (e.g., a Kiota-generated API client), generating the sources once in an upstream job and fanning them out via an artifact is dramatically faster than re-running the generator in every RID job:

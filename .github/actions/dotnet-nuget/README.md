@@ -97,6 +97,12 @@ This composite action provides comprehensive .NET library build and packaging ca
 |-------|-------------|---------|
 | `generate-summary` | Generate GitHub step summary | `true` |
 
+### MSBuild Escape Hatch
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `extra-msbuild-properties` | Additional MSBuild properties appended to `dotnet restore/build/pack` (e.g., `-p:KiotaSkip=true -p:PackAsTool=false`). Use when the project needs flags not exposed by the standard inputs. | `''` |
+
 ## Outputs
 
 | Output | Description |

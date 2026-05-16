@@ -20,6 +20,12 @@
 #       </PropertyGroup>
 #   - The binary path passes `-p:PackAsTool=false` to deactivate tool-pack
 #     semantics for the per-RID publish (see extra-msbuild-properties below)
+#
+# Codegen variant: if the project uses build-time codegen (Kiota / OpenAPI /
+# T4), run the generator ONCE in an upstream `prepare-sources` job and pass
+# `download-artifact-name` + `download-artifact-path` to BOTH `publish-tool`
+# (dotnet-publish-library) AND `publish-binaries` (dotnet-publish-binaries).
+# See `with-generated-sources.yml` for the prepare-sources pattern.
 # =============================================================================
 
 name: "🚀 Release: tool + binaries"

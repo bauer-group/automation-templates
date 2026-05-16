@@ -9,6 +9,11 @@
 # For a 3-RID matrix with ~15s of Kiota work each, this saves ~30s per
 # release. For 6 RIDs and slower generators, the savings are minutes.
 #
+# The SAME artifact can also feed dotnet-publish-library.yml in parallel
+# (e.g., to ship both a `dotnet tool` and per-OS binaries) — both reusable
+# workflows accept identical `download-artifact-name` / `download-artifact-
+# path` / `extra-msbuild-properties` inputs.
+#
 # CRITICAL ordering (handled by the workflow internally — do NOT try to
 # replicate this in the caller):
 #   checkout -> setup-dotnet -> DOWNLOAD ARTIFACT -> restore -> publish
