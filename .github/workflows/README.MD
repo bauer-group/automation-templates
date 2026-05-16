@@ -57,6 +57,14 @@ Diese Workflows sind speziell für das `automation-templates` Repository entwick
 **Zweck:** Wiederverwendbarer .NET Desktop (WPF/WinForms/MAUI) Build Workflow  
 **Features:** Code Signing, MSIX Packaging, Multi-Platform
 
+#### 📚 [dotnet-publish-library.yml](./dotnet-publish-library.yml) - .NET Library / Tool Publish
+**Zweck:** Build, Test, Pack und Push von NuGet-Paketen (Libraries und `PackAsTool`-Tools)  
+**Features:** Trusted Publishing (OIDC), GitHub Packages, Multi-Package Support, optionales Strong-Name Signing
+
+#### 🚢 [dotnet-publish-binaries.yml](./dotnet-publish-binaries.yml) - .NET Binary Publish
+**Zweck:** Self-contained Single-File Binaries pro RID bauen und als Release-Assets hochladen  
+**Features:** Konfigurierbare RID-Matrix (Default: `linux-x64`, `linux-arm64`, `win-x64`; opt-in für macOS/win-arm64), SHA-256 Checksums, optionale Pre-Build-Artefakte (Kiota/Codegen), tar.gz + zip
+
 #### 📦 [nodejs-build.yml](./nodejs-build.yml) - Node.js Build & Publish
 **Zweck:** Wiederverwendbarer Node.js Build und Publish Workflow  
 **Features:** npm/yarn/pnpm/bun Support, Package Publishing, Docker
@@ -118,6 +126,8 @@ jobs:
 |----------|------|-----------------|-------------|
 | **dotnet-build.yml** | workflow_call | Build, Test, Package, Docker | Linux, Windows, macOS |
 | **dotnet-desktop-build.yml** | workflow_call | Desktop Build, Sign, MSIX | Windows |
+| **dotnet-publish-library.yml** | workflow_call | Pack & Push NuGet (Libs + Tools) | Linux, Windows, macOS |
+| **dotnet-publish-binaries.yml** | workflow_call | Self-contained Binaries pro RID + Release-Upload | Linux (x64+arm64), Windows (x64); macOS/win-arm64 opt-in |
 | **nodejs-build.yml** | workflow_call | Build, Test, Publish, Docker | Linux, Windows, macOS |
 
 ## 🚀 Verwendung für externe Repositories

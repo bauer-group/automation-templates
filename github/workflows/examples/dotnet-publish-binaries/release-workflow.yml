@@ -1,0 +1,91 @@
+# =============================================================================
+# Release Workflow with Semantic Versioning
+# =============================================================================
+# Complete CI/CD workflow for .NET CLI / app binaries with:
+# - PR validation (build + test)
+# - Semantic versioning (conventional commits) — creates the GitHub Release
+# - Self-contained single-file binaries published per RID to the Release
+#
+# Conventional commits drive the version bump:
+# - feat:    -> minor version bump
+# - fix:     -> patch version bump
+# - feat!: / BREAKING CHANGE: -> major version bump
+#
+# Two artifacts ship side-by-side from the release:
+#   myapp-<version>-linux-x64.tar.gz       (+ .sha256)
+#   myapp-<version>-linux-arm64.tar.gz     (+ .sha256)
+#   myapp-<version>-win-x64.zip            (+ .sha256)
+# =============================================================================
+
+name: 🚀 Release & Publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '*.sln'
+      - '*.slnx'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+      - 'global.json'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+  workflow_dispatch:
+    inputs:
+      force-release:
+        description: 'Force create release (even without conventional commits)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  # ==========================================================================
+  # Validation (runs on all triggers)
+  # ==========================================================================
+  validate:
+    name: Build & Test
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'MyApp.slnx'
+      dotnet-version: '10.0.x'
+      run-tests: true
+      collect-coverage: true
+    secrets: inherit
+
+  # ==========================================================================
+  # Semantic Release (only on main branch push or manual trigger)
+  # ==========================================================================
+  release:
+    name: Create Release
+    needs: validate
+    if: |
+      github.event_name == 'push' && github.ref == 'refs/heads/main' ||
+      github.event_name == 'workflow_dispatch'
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      target-branch: 'main'
+      force-release: ${{ inputs.force-release || false }}
+    secrets: inherit
+
+  # ==========================================================================
+  # Binary Publish (only when release is created)
+  # ==========================================================================
+  publish-binaries:
+    name: Publish Binaries
+    needs: release
+    if: needs.release.outputs.release-created == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-binaries.yml@main
+    with:
+      project-path: 'src/MyApp.CLI/MyApp.CLI.csproj'
+      assembly-name: 'myapp'
+      version: ${{ needs.release.outputs.version }}
+    secrets: inherit

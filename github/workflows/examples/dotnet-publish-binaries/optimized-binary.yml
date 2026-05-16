@@ -1,0 +1,61 @@
+# =============================================================================
+# Optimized Binary (Trimmed + ReadyToRun + Compression)
+# =============================================================================
+# Maximum-effort publishing: produces the smallest startup-fastest binary
+# the .NET toolchain can emit. The combination has trade-offs — read carefully
+# before enabling for production.
+#
+# Trade-offs:
+#   publish-trimmed: true
+#     + ~30-50% smaller binary
+#     - the trimmer strips types only reached via reflection (DI containers,
+#       JSON converters, plugin loaders). Test the trimmed output against
+#       a smoke suite before shipping.
+#   publish-ready-to-run: true
+#     + faster cold-start (native code is pre-compiled, no JIT on entry)
+#     - larger binary (R2R blocks take space)
+#   enable-compression-in-single-file: true (default)
+#     + smaller download
+#     - slower first launch (decompression to a temp directory)
+#
+# Don't combine all three blindly. The default (single-file + compression,
+# no trimming, no R2R) is the safe choice for most CLIs.
+# =============================================================================
+
+name: 🚢 Publish Optimized Binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to embed and tag to upload to'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish Binaries (optimized)
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-binaries.yml@main
+    with:
+      project-path: 'src/MyApp.CLI/MyApp.CLI.csproj'
+      assembly-name: 'myapp'
+      version: ${{ inputs.version }}
+
+      # Aggressive size + speed optimizations
+      publish-trimmed: true
+      publish-ready-to-run: true
+      enable-compression-in-single-file: true
+
+      # Ship .pdb alongside the binary so production stack traces resolve
+      # to source lines (useful when triaging customer crash reports)
+      include-pdb: true
+
+      # Add THIRD-PARTY-NOTICES.txt to the archive (legal compliance)
+      include-files: |
+        LICENSE
+        README.md
+        THIRD-PARTY-NOTICES.txt
+    secrets: inherit

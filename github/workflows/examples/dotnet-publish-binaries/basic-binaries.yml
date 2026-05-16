@@ -1,0 +1,38 @@
+# =============================================================================
+# Basic Self-Contained Binary Publish
+# =============================================================================
+# Minimal workflow for publishing a .NET CLI / app as self-contained single-file
+# binaries for the default 3 RIDs (linux-x64, linux-arm64, win-x64) and
+# uploading them as assets to a GitHub Release tagged v<version>.
+#
+# Prerequisites:
+# 1. A GitHub Release with tag "v<version>" already exists (e.g., created by
+#    semantic-release in a previous job — see release-workflow.yml for the
+#    end-to-end pattern)
+# 2. The project's .csproj sets <AssemblyName> matching `assembly-name` below
+# 3. No additional secrets required — the auto-provisioned GITHUB_TOKEN is
+#    sufficient to upload Release assets
+# =============================================================================
+
+name: 🚢 Publish Binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to embed and tag to upload to (e.g., 1.2.3)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # required for `gh release upload`
+
+jobs:
+  publish:
+    name: Publish Binaries
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-binaries.yml@main
+    with:
+      project-path: 'src/MyApp.CLI/MyApp.CLI.csproj'
+      assembly-name: 'myapp'
+      version: ${{ inputs.version }}
+    secrets: inherit

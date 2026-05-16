@@ -1,0 +1,51 @@
+# =============================================================================
+# Custom Platform Matrix
+# =============================================================================
+# Override the default 3-RID matrix to add macOS (Apple Silicon + Intel),
+# Windows ARM64, and Alpine Linux (musl). Useful when the target audience
+# spans more than the conservative Linux/Windows server default.
+#
+# Each platform entry has three keys:
+#   - rid:     .NET runtime identifier (see https://learn.microsoft.com/dotnet/core/rid-catalog)
+#   - os:      GitHub Actions runner image label
+#   - archive: "tar" -> .tar.gz, "zip" -> .zip
+#
+# Note: macOS runners cost ~10x as many Action minutes as Linux runners
+# on private repos — enable them with intent, not by default.
+# =============================================================================
+
+name: 🚢 Publish Binaries (extended matrix)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to embed and tag to upload to'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish Binaries
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-binaries.yml@main
+    with:
+      project-path: 'src/MyApp.CLI/MyApp.CLI.csproj'
+      assembly-name: 'myapp'
+      version: ${{ inputs.version }}
+
+      # 7-RID matrix: covers Linux (glibc + musl, x64 + arm64),
+      # Windows (x64 + arm64), and macOS (Apple Silicon + Intel)
+      platforms: |
+        [
+          { "rid": "linux-x64",       "os": "ubuntu-latest",  "archive": "tar" },
+          { "rid": "linux-arm64",     "os": "ubuntu-latest",  "archive": "tar" },
+          { "rid": "linux-musl-x64",  "os": "ubuntu-latest",  "archive": "tar" },
+          { "rid": "win-x64",         "os": "windows-latest", "archive": "zip" },
+          { "rid": "win-arm64",       "os": "windows-latest", "archive": "zip" },
+          { "rid": "osx-arm64",       "os": "macos-latest",   "archive": "tar" },
+          { "rid": "osx-x64",         "os": "macos-13",       "archive": "tar" }
+        ]
+    secrets: inherit

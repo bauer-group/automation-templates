@@ -1,0 +1,98 @@
+# =============================================================================
+# Combined: dotnet tool + Self-Contained Binaries
+# =============================================================================
+# Ship the CLI two ways from ONE release pipeline:
+#
+#   1. `dotnet tool install -g myapp`  (NuGet package via dotnet-publish-library)
+#   2. Standalone download per OS/arch (binaries via dotnet-publish-binaries)
+#
+# Both consume the same semantic-release version. Both attach assets to the
+# same vX.Y.Z tag. The user picks: "I have .NET installed" -> tool, "I don't"
+# -> binary download.
+#
+# Project requirements:
+#   - <PackAsTool>true</PackAsTool> in the .csproj (for the tool path)
+#   - <PublishSingleFile> set conditionally on RuntimeIdentifier (so the
+#     tool-pack doesn't try to single-file-bundle):
+#       <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+#         <PublishSingleFile>true</PublishSingleFile>
+#         <SelfContained>true</SelfContained>
+#       </PropertyGroup>
+#   - The binary path passes `-p:PackAsTool=false` to deactivate tool-pack
+#     semantics for the per-RID publish (see extra-msbuild-properties below)
+# =============================================================================
+
+name: "🚀 Release: tool + binaries"
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force-release:
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write   # for GitHub Packages (tool path)
+  id-token: write   # for NuGet Trusted Publishing (tool path)
+  issues: write
+  pull-requests: write
+
+jobs:
+  validate:
+    name: Build & Test
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'MyApp.slnx'
+      dotnet-version: '10.0.x'
+      run-tests: true
+    secrets: inherit
+
+  release:
+    name: Create Release
+    needs: validate
+    if: |
+      github.event_name == 'push' && github.ref == 'refs/heads/main' ||
+      github.event_name == 'workflow_dispatch'
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      target-branch: 'main'
+      force-release: ${{ inputs.force-release || false }}
+    secrets: inherit
+
+  # ==========================================================================
+  # Path 1: NuGet tool package (consumers: `dotnet tool install -g myapp`)
+  # ==========================================================================
+  publish-tool:
+    name: Publish Tool (NuGet)
+    needs: release
+    if: needs.release.outputs.release-created == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    with:
+      project-path: 'src/MyApp.CLI/MyApp.CLI.csproj'
+      release-version: ${{ needs.release.outputs.version }}
+      push-to-nuget: true
+      push-to-github: true
+    secrets: inherit
+
+  # ==========================================================================
+  # Path 2: Self-contained binaries (consumers: downloads from the Release)
+  # ==========================================================================
+  publish-binaries:
+    name: Publish Binaries
+    needs: release
+    if: needs.release.outputs.release-created == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-binaries.yml@main
+    with:
+      project-path: 'src/MyApp.CLI/MyApp.CLI.csproj'
+      assembly-name: 'myapp'
+      version: ${{ needs.release.outputs.version }}
+
+      # The csproj has <PackAsTool>true</PackAsTool> for the tool path —
+      # turn it off for the per-RID self-contained binary publish, otherwise
+      # MSBuild refuses (PackAsTool and PublishSingleFile are mutually
+      # exclusive in a single invocation).
+      extra-msbuild-properties: '-p:PackAsTool=false'
+    secrets: inherit

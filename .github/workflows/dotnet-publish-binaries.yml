@@ -1,0 +1,849 @@
+name: .NET Binary Publish
+
+# =============================================================================
+# Reusable workflow: publish .NET applications as self-contained binaries
+# for multiple platforms (RIDs) and attach the archives to a GitHub Release.
+#
+# Sibling of `dotnet-publish-library.yml`:
+#   - dotnet-publish-library.yml  -> packs and pushes .nupkg / .snupkg
+#                                    (libraries AND PackAsTool tool packages)
+#   - dotnet-publish-binaries.yml -> publishes self-contained native binaries
+#                                    per RID and uploads them to a Release
+#
+# Typical caller flow:
+#   1. semantic-release creates tag vX.Y.Z and a GitHub Release
+#   2. (optional) a "prepare-sources" job generates code once and uploads it
+#      as an artifact (Kiota client, T4 templates, etc.)
+#   3. this workflow runs after the release, checks out refs/tags/vX.Y.Z,
+#      builds N self-contained single-file binaries in parallel and attaches
+#      <assembly>-<version>-<rid>.{tar.gz|zip} + .sha256 to the Release
+#
+# All non-trivial behavior is configurable via inputs; defaults match the
+# common BAUER GROUP layout (6 RIDs, tar/zip, single-file, with LICENSE +
+# README packaged alongside the binary).
+# =============================================================================
+
+on:
+  workflow_call:
+    inputs:
+      # =======================================================================
+      # Project Configuration
+      # =======================================================================
+      project-path:
+        description: 'Path to .csproj to publish (single project, not solution)'
+        type: string
+        required: true
+
+      assembly-name:
+        description: 'Output binary name without extension (e.g., "bg-hwidalloc"). Must match <AssemblyName> in the csproj.'
+        type: string
+        required: true
+
+      working-directory:
+        description: 'Working directory for all commands'
+        type: string
+        required: false
+        default: '.'
+
+      configuration:
+        description: 'Build configuration (Debug/Release)'
+        type: string
+        required: false
+        default: 'Release'
+
+      dotnet-version:
+        description: '.NET SDK version (e.g., "10.0.x"). Ignored if global-json-file is set.'
+        type: string
+        required: false
+        default: '10.0.x'
+
+      global-json-file:
+        description: 'Path to global.json for pinning the SDK version'
+        type: string
+        required: false
+        default: ''
+
+      # =======================================================================
+      # Versioning & Release Target
+      # =======================================================================
+      version:
+        description: 'Explicit version to embed in the binary (e.g., "1.2.3"). Typically passed from semantic-release outputs.'
+        type: string
+        required: true
+
+      release-tag:
+        description: 'Git tag name to upload assets to. Defaults to "v<version>".'
+        type: string
+        required: false
+        default: ''
+
+      checkout-ref:
+        description: 'Git ref to checkout for the build. Defaults to "refs/tags/<release-tag>".'
+        type: string
+        required: false
+        default: ''
+
+      # =======================================================================
+      # Platform Matrix
+      # =======================================================================
+      # JSON array of platform objects with the following shape:
+      #   { "rid": "<dotnet-rid>", "os": "<gh-runner>", "archive": "tar|zip" }
+      #
+      # Defaults reflect actual market share for server / CLI tooling:
+      #   - Linux dominates server + container workloads (x64 still dominant,
+      #     arm64 growing fast via AWS Graviton / Ampere / Raspberry-Pi tooling)
+      #   - Windows desktop is overwhelmingly Intel/AMD x64 — win-arm64 is
+      #     a niche (Surface Pro X, Copilot+) and ships only on opt-in
+      #   - macOS is opt-in entirely — Apple Silicon dominates new dev
+      #     machines, but the binary audience is small enough that defaulting
+      #     to macOS runners (more expensive, slower NuGet cache) is wasteful
+      #
+      # Opt-in additions (callers override `platforms` to enable):
+      #   { "rid": "win-arm64",   "os": "windows-latest", "archive": "zip" }
+      #   { "rid": "osx-arm64",   "os": "macos-latest",   "archive": "tar" }
+      #   { "rid": "osx-x64",     "os": "macos-13",       "archive": "tar" }
+      #   { "rid": "linux-musl-x64", "os": "ubuntu-latest", "archive": "tar" }
+      platforms:
+        description: 'JSON array of platform objects: [{ "rid": "...", "os": "...", "archive": "tar|zip" }]'
+        type: string
+        required: false
+        default: |
+          [
+            { "rid": "linux-x64",   "os": "ubuntu-latest",  "archive": "tar" },
+            { "rid": "linux-arm64", "os": "ubuntu-latest",  "archive": "tar" },
+            { "rid": "win-x64",     "os": "windows-latest", "archive": "zip" }
+          ]
+
+      fail-fast:
+        description: 'Cancel sibling matrix jobs when one platform fails. Default false so a single bad RID does not block the others.'
+        type: boolean
+        required: false
+        default: false
+
+      # =======================================================================
+      # Publish Options
+      # =======================================================================
+      self-contained:
+        description: 'Produce self-contained binaries (no .NET runtime required on target)'
+        type: boolean
+        required: false
+        default: true
+
+      publish-single-file:
+        description: 'Bundle everything into one executable'
+        type: boolean
+        required: false
+        default: true
+
+      publish-trimmed:
+        description: 'Enable IL trimming to shrink the binary. Risk: may strip reflected-only types.'
+        type: boolean
+        required: false
+        default: false
+
+      publish-ready-to-run:
+        description: 'AOT-compile to native R2R code for faster startup at the cost of binary size'
+        type: boolean
+        required: false
+        default: false
+
+      include-native-libraries-for-self-extract:
+        description: 'When single-file is enabled, embed native libraries inside the bundle'
+        type: boolean
+        required: false
+        default: true
+
+      enable-compression-in-single-file:
+        description: 'Compress the single-file bundle (smaller download, slower first launch)'
+        type: boolean
+        required: false
+        default: true
+
+      extra-msbuild-properties:
+        description: 'Additional MSBuild properties appended to `dotnet publish` (e.g., "-p:KiotaSkip=true -p:PackAsTool=false")'
+        type: string
+        required: false
+        default: ''
+
+      extra-publish-args:
+        description: 'Raw additional arguments appended to `dotnet publish`'
+        type: string
+        required: false
+        default: ''
+
+      # =======================================================================
+      # Archive Contents
+      # =======================================================================
+      archive-name-template:
+        description: 'Archive base name. Tokens: {assembly}, {version}, {rid}. Default: "{assembly}-{version}-{rid}".'
+        type: string
+        required: false
+        default: '{assembly}-{version}-{rid}'
+
+      include-files:
+        description: 'Newline-separated list of extra files to stage into the archive (relative to working-directory). Missing files are silently skipped. Default: LICENSE + README.md.'
+        type: string
+        required: false
+        default: |
+          LICENSE
+          README.md
+
+      include-pdb:
+        description: 'Include the .pdb symbol file alongside the binary (useful for tooling that does post-mortem debugging)'
+        type: boolean
+        required: false
+        default: false
+
+      generate-checksums:
+        description: 'Compute SHA-256 for each archive and upload it as <archive>.sha256 (format: `<hex>  <filename>`, compatible with `sha256sum -c`)'
+        type: boolean
+        required: false
+        default: true
+
+      # =======================================================================
+      # Pre-Build Artifact (optional)
+      # =======================================================================
+      # Allows a single upstream "prepare" job to generate sources once
+      # (Kiota client, T4 templates, OpenAPI codegen) and feed every RID job
+      # via a shared artifact — instead of N parallel jobs each re-running
+      # the same expensive generation step.
+      download-artifact-name:
+        description: 'Name of an artifact produced by an upstream job to download before publish (e.g., "cli-generated-sources"). Empty to skip.'
+        type: string
+        required: false
+        default: ''
+
+      download-artifact-path:
+        description: 'Filesystem path the artifact is extracted into (relative to working-directory). Required if download-artifact-name is set.'
+        type: string
+        required: false
+        default: ''
+
+      # =======================================================================
+      # Release Upload
+      # =======================================================================
+      upload-to-release:
+        description: 'Upload archives to the GitHub Release identified by release-tag'
+        type: boolean
+        required: false
+        default: true
+
+      release-asset-clobber:
+        description: 'Overwrite existing assets on the Release (use --clobber). Set false to fail if an asset already exists.'
+        type: boolean
+        required: false
+        default: true
+
+      # =======================================================================
+      # Runner Configuration
+      # =======================================================================
+      timeout-minutes:
+        description: 'Per-platform job timeout in minutes'
+        type: number
+        required: false
+        default: 30
+
+      cache-enabled:
+        description: 'Enable NuGet package caching'
+        type: boolean
+        required: false
+        default: true
+
+    secrets:
+      DOTNET_SIGNKEY_BASE64:
+        description: 'Optional base64-encoded .snk file for strong-name signing. Caller must wire it into a project property via extra-msbuild-properties if used.'
+        required: false
+
+    outputs:
+      version:
+        description: 'Version that was embedded in the binaries'
+        value: ${{ inputs.version }}
+
+      release-tag:
+        description: 'Tag the assets were uploaded to'
+        value: ${{ jobs.publish.outputs.release-tag }}
+
+      published-count:
+        description: 'Number of platforms that successfully produced an archive'
+        value: ${{ jobs.summary.outputs.published-count }}
+
+      published-platforms:
+        description: 'JSON array of RIDs that succeeded'
+        value: ${{ jobs.summary.outputs.published-platforms }}
+
+permissions:
+  contents: write   # required for `gh release upload`
+
+jobs:
+  # ===========================================================================
+  # Per-platform publish
+  # ===========================================================================
+  publish:
+    name: Publish (${{ matrix.platform.rid }})
+    runs-on: ${{ matrix.platform.os }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: ${{ inputs.fail-fast }}
+      matrix:
+        platform: ${{ fromJson(inputs.platforms) }}
+
+    outputs:
+      release-tag: ${{ steps.resolve.outputs.release-tag }}
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Resolve release tag + checkout ref
+      # -----------------------------------------------------------------------
+      # Done in bash so we can default release-tag -> "v<version>" and
+      # checkout-ref -> "refs/tags/<release-tag>" without forcing every caller
+      # to compute both. Both inputs remain overridable for non-tag flows
+      # (e.g., publishing a pre-release from a branch head).
+      - name: Resolve release tag and checkout ref
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.release-tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="v${{ inputs.version }}"
+          fi
+          REF="${{ inputs.checkout-ref }}"
+          if [ -z "$REF" ]; then
+            REF="refs/tags/$TAG"
+          fi
+          echo "release-tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "checkout-ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "Release tag : $TAG"
+          echo "Checkout ref: $REF"
+
+      # -----------------------------------------------------------------------
+      # 2. Checkout the exact ref the release was cut from
+      # -----------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.resolve.outputs.checkout-ref }}
+          fetch-depth: 1
+          lfs: true
+
+      # -----------------------------------------------------------------------
+      # 3. Setup .NET SDK
+      # -----------------------------------------------------------------------
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ inputs.global-json-file == '' && inputs.dotnet-version || '' }}
+          global-json-file: ${{ inputs.global-json-file }}
+
+      # -----------------------------------------------------------------------
+      # 4. NuGet cache
+      # -----------------------------------------------------------------------
+      # Per-RID cache key: every RID restores a different set of native
+      # runtime packages (e.g., runtime.linux-arm64.Microsoft.NETCore.App.*),
+      # so a global key would thrash. The hash of csproj+props files
+      # keys the lockfile contents.
+      - name: Cache NuGet packages
+        if: inputs.cache-enabled
+        uses: actions/cache@v5
+        with:
+          # Per-runner OS cache paths — actions/cache silently ignores non-existent
+          # entries, so listing all of them unconditionally is safer than a runtime
+          # `if runner.os` conditional (which leaves an empty line and confuses
+          # path parsing). Same pattern as dotnet-build.yml.
+          path: |
+            ~/.nuget/packages
+            ~/.local/share/NuGet/Cache
+            ~/Library/Caches/NuGet
+            %LocalAppData%\NuGet\Cache
+          key: nuget-${{ matrix.platform.rid }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props', '**/Directory.Build.props', '**/packages.lock.json', '**/global.json') }}
+          restore-keys: |
+            nuget-${{ matrix.platform.rid }}-
+            nuget-
+
+      # -----------------------------------------------------------------------
+      # 5. (Optional) Download pre-generated sources artifact
+      # -----------------------------------------------------------------------
+      # CRITICAL: this MUST run before any `dotnet` invocation that walks
+      # the @(Compile) item group — MSBuild evaluates `<Compile Include="**/*.cs">`
+      # once at project load, and files appearing after that point are not
+      # in the compilation. Place this step strictly between checkout/setup
+      # and the restore.
+      - name: Download generated sources
+        if: inputs.download-artifact-name != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.download-artifact-name }}
+          path: ${{ inputs.working-directory }}/${{ inputs.download-artifact-path }}
+
+      # -----------------------------------------------------------------------
+      # 6. Restore for the target RID
+      # -----------------------------------------------------------------------
+      - name: Restore (${{ matrix.platform.rid }})
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          dotnet restore "${{ inputs.project-path }}" \
+            --runtime ${{ matrix.platform.rid }} \
+            --verbosity minimal
+
+      # -----------------------------------------------------------------------
+      # 7. Publish self-contained
+      # -----------------------------------------------------------------------
+      # All single-file knobs are passed as MSBuild properties rather than
+      # CLI flags so the project can override them per-target if needed
+      # (e.g., disable trimming for one TFM via a Condition= in the csproj).
+      # The publish output goes to publish/<rid>/ so the staging step has a
+      # predictable, RID-segregated location to copy from.
+      - name: Publish (${{ matrix.platform.rid }})
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          set -euo pipefail
+          dotnet publish "${{ inputs.project-path }}" \
+            --configuration ${{ inputs.configuration }} \
+            --runtime ${{ matrix.platform.rid }} \
+            --no-restore \
+            --output "publish/${{ matrix.platform.rid }}" \
+            -p:Version=${{ inputs.version }} \
+            -p:SelfContained=${{ inputs.self-contained }} \
+            -p:PublishSingleFile=${{ inputs.publish-single-file }} \
+            -p:PublishTrimmed=${{ inputs.publish-trimmed }} \
+            -p:PublishReadyToRun=${{ inputs.publish-ready-to-run }} \
+            -p:IncludeNativeLibrariesForSelfExtract=${{ inputs.include-native-libraries-for-self-extract }} \
+            -p:EnableCompressionInSingleFile=${{ inputs.enable-compression-in-single-file }} \
+            ${{ inputs.extra-msbuild-properties }} \
+            ${{ inputs.extra-publish-args }}
+
+      # -----------------------------------------------------------------------
+      # 8. Stage archive contents (binary + extras)
+      # -----------------------------------------------------------------------
+      # Bash on every runner (Windows uses Git-bash). Token-substituting the
+      # archive-name-template here keeps the convention in one place: the
+      # same name is reused by the archive, the checksum, and the upload step.
+      - name: Stage archive contents
+        id: stage
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          PLATFORM_RID: ${{ matrix.platform.rid }}
+          ASSEMBLY: ${{ inputs.assembly-name }}
+          VERSION: ${{ inputs.version }}
+          NAME_TEMPLATE: ${{ inputs.archive-name-template }}
+          INCLUDE_PDB: ${{ inputs.include-pdb }}
+          INCLUDE_FILES: ${{ inputs.include-files }}
+        run: |
+          set -euo pipefail
+
+          # Resolve archive base name from the template
+          ARCHIVE_BASE="${NAME_TEMPLATE//\{assembly\}/$ASSEMBLY}"
+          ARCHIVE_BASE="${ARCHIVE_BASE//\{version\}/$VERSION}"
+          ARCHIVE_BASE="${ARCHIVE_BASE//\{rid\}/$PLATFORM_RID}"
+
+          STAGE="staging/$ARCHIVE_BASE"
+          mkdir -p "$STAGE"
+
+          # Copy the produced binary (Windows: .exe extension)
+          if [[ "$PLATFORM_RID" == win-* ]]; then
+            cp "publish/$PLATFORM_RID/${ASSEMBLY}.exe" "$STAGE/"
+          else
+            cp "publish/$PLATFORM_RID/${ASSEMBLY}" "$STAGE/"
+            chmod +x "$STAGE/${ASSEMBLY}"
+          fi
+
+          # Optional .pdb (single-file publish emits it next to the bundle)
+          if [[ "$INCLUDE_PDB" == "true" ]]; then
+            if [[ -f "publish/$PLATFORM_RID/${ASSEMBLY}.pdb" ]]; then
+              cp "publish/$PLATFORM_RID/${ASSEMBLY}.pdb" "$STAGE/"
+            fi
+          fi
+
+          # Extra files (LICENSE, README, ...). Missing entries are non-fatal:
+          # release artefacts should not break when a repo legitimately ships
+          # without one of the conventional top-level files.
+          if [[ -n "$INCLUDE_FILES" ]]; then
+            while IFS= read -r EXTRA; do
+              EXTRA_TRIMMED="$(echo "$EXTRA" | xargs)"
+              if [[ -n "$EXTRA_TRIMMED" && -f "$EXTRA_TRIMMED" ]]; then
+                cp "$EXTRA_TRIMMED" "$STAGE/"
+              fi
+            done <<< "$INCLUDE_FILES"
+          fi
+
+          echo "archive-base=$ARCHIVE_BASE" >> "$GITHUB_OUTPUT"
+          echo "stage-dir=$STAGE" >> "$GITHUB_OUTPUT"
+          echo "Staged into: $STAGE"
+          ls -la "$STAGE"
+
+      # -----------------------------------------------------------------------
+      # 9a. Archive (tar.gz for unix-y RIDs)
+      # -----------------------------------------------------------------------
+      - name: Archive (tar.gz)
+        if: matrix.platform.archive == 'tar'
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          ARCHIVE_BASE: ${{ steps.stage.outputs.archive-base }}
+        run: |
+          set -euo pipefail
+          cd staging
+          tar -czf "../${ARCHIVE_BASE}.tar.gz" "$ARCHIVE_BASE"
+
+      # -----------------------------------------------------------------------
+      # 9b. Archive (zip for Windows RIDs)
+      # -----------------------------------------------------------------------
+      # pwsh is the cross-platform fallback for `Compress-Archive`. Always
+      # `-Force` so a re-run on the same runner overwrites the previous zip.
+      - name: Archive (zip)
+        if: matrix.platform.archive == 'zip'
+        shell: pwsh
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          ARCHIVE_BASE: ${{ steps.stage.outputs.archive-base }}
+        run: |
+          $base = $env:ARCHIVE_BASE
+          Compress-Archive -Path "staging/$base" -DestinationPath "$base.zip" -Force
+
+      # -----------------------------------------------------------------------
+      # 10. SHA-256 checksum (cross-platform via pwsh)
+      # -----------------------------------------------------------------------
+      # `Get-FileHash` exists on Linux/macOS/Windows via PowerShell Core. The
+      # output line matches `sha256sum -c` format: "<lowercase-hex>  <file>".
+      - name: Compute SHA-256
+        if: inputs.generate-checksums
+        shell: pwsh
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          ARCHIVE_BASE: ${{ steps.stage.outputs.archive-base }}
+          ARCHIVE_KIND: ${{ matrix.platform.archive }}
+        run: |
+          $ext = if ($env:ARCHIVE_KIND -eq 'zip') { 'zip' } else { 'tar.gz' }
+          $archive = "$($env:ARCHIVE_BASE).$ext"
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $archive).Hash.ToLower()
+          # Two-space separator -> consumers can verify with `sha256sum -c`
+          "$hash  $archive" | Out-File -FilePath "$archive.sha256" -Encoding ascii -NoNewline
+          # Trailing newline (Out-File with -NoNewline omits, sha256sum prefers it)
+          Add-Content -Path "$archive.sha256" -Value ''
+          Write-Host "SHA-256: $hash  $archive"
+
+      # -----------------------------------------------------------------------
+      # 11. Upload archive (+ checksum) to the GitHub Release
+      # -----------------------------------------------------------------------
+      - name: Upload to Release
+        id: upload-release
+        if: inputs.upload-to-release
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.resolve.outputs.release-tag }}
+          ARCHIVE_BASE: ${{ steps.stage.outputs.archive-base }}
+          ARCHIVE_KIND: ${{ matrix.platform.archive }}
+          CLOBBER: ${{ inputs.release-asset-clobber }}
+          WITH_CHECKSUM: ${{ inputs.generate-checksums }}
+        run: |
+          set -euo pipefail
+          if [[ "$ARCHIVE_KIND" == "zip" ]]; then
+            ARCHIVE="${ARCHIVE_BASE}.zip"
+          else
+            ARCHIVE="${ARCHIVE_BASE}.tar.gz"
+          fi
+
+          CLOBBER_FLAG=""
+          if [[ "$CLOBBER" == "true" ]]; then
+            CLOBBER_FLAG="--clobber"
+          fi
+
+          UPLOAD_ARGS=("$TAG" "$ARCHIVE")
+          if [[ "$WITH_CHECKSUM" == "true" ]]; then
+            UPLOAD_ARGS+=("$ARCHIVE.sha256")
+          fi
+
+          # `gh release upload` is idempotent with --clobber; without it,
+          # re-running a single failed RID would otherwise hit "asset exists".
+          gh release upload "${UPLOAD_ARGS[@]}" $CLOBBER_FLAG
+
+      # -----------------------------------------------------------------------
+      # 12. Always upload archive as a workflow artifact (debug/forensics)
+      # -----------------------------------------------------------------------
+      # Even when upload-to-release is enabled, keeping a workflow artifact
+      # makes after-the-fact inspection cheap: anyone with workflow read
+      # access can grab the binary without needing Release write permission.
+      - name: Upload archive as workflow artifact
+        if: always() && steps.stage.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.stage.outputs.archive-base }}
+          # Only one of tar.gz / zip exists per RID (depends on matrix.platform.archive);
+          # actions/upload-artifact only fires `if-no-files-found: error` when NO path
+          # pattern matches, so listing both is safe — exactly one matches per leg.
+          # The `.*.sha256` glob covers both `<base>.tar.gz.sha256` and `<base>.zip.sha256`.
+          path: |
+            ${{ inputs.working-directory }}/${{ steps.stage.outputs.archive-base }}.tar.gz
+            ${{ inputs.working-directory }}/${{ steps.stage.outputs.archive-base }}.zip
+            ${{ inputs.working-directory }}/${{ steps.stage.outputs.archive-base }}.*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      # -----------------------------------------------------------------------
+      # 13. Per-RID step summary (rendered inside this matrix leg's UI view)
+      # -----------------------------------------------------------------------
+      # PowerShell-Core for cross-platform `Get-Item .Length` and string
+      # building — the bash equivalent needs different `stat` flags on Linux
+      # / macOS / Windows git-bash. One implementation everywhere.
+      - name: Per-RID summary
+        if: always()
+        shell: pwsh
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          RID: ${{ matrix.platform.rid }}
+          RUNNER_OS_LABEL: ${{ matrix.platform.os }}
+          ARCHIVE_KIND: ${{ matrix.platform.archive }}
+          ARCHIVE_BASE: ${{ steps.stage.outputs.archive-base }}
+          ASSEMBLY: ${{ inputs.assembly-name }}
+          VERSION: ${{ inputs.version }}
+          TAG: ${{ steps.resolve.outputs.release-tag }}
+          STAGE_OUTCOME: ${{ steps.stage.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload-release.outcome }}
+          UPLOAD_ENABLED: ${{ inputs.upload-to-release }}
+          WITH_CHECKSUM: ${{ inputs.generate-checksums }}
+          SELF_CONTAINED: ${{ inputs.self-contained }}
+          SINGLE_FILE: ${{ inputs.publish-single-file }}
+          TRIMMED: ${{ inputs.publish-trimmed }}
+          READY_TO_RUN: ${{ inputs.publish-ready-to-run }}
+          COMPRESSED: ${{ inputs.enable-compression-in-single-file }}
+        run: |
+          $ext = if ($env:ARCHIVE_KIND -eq 'zip') { 'zip' } else { 'tar.gz' }
+          $archive = "$($env:ARCHIVE_BASE).$ext"
+          $checksum = "$archive.sha256"
+
+          function Icon([string]$v) { if ($v -eq 'true') { '[on]' } else { '[off]' } }
+          function ResultIcon([string]$o) {
+            switch ($o) {
+              'success'   { 'PASS' }
+              'skipped'   { 'SKIP' }
+              'failure'   { 'FAIL' }
+              'cancelled' { 'CANC' }
+              default     { '----' }
+            }
+          }
+
+          $lines = New-Object System.Collections.Generic.List[string]
+          $lines.Add("## Binary Publish — ``$($env:RID)``")
+          $lines.Add("")
+          $lines.Add("| Property | Value |")
+          $lines.Add("|----------|-------|")
+          $lines.Add("| **Assembly** | ``$($env:ASSEMBLY)`` |")
+          $lines.Add("| **Version** | ``$($env:VERSION)`` |")
+          $lines.Add("| **RID** | ``$($env:RID)`` |")
+          $lines.Add("| **Runner** | ``$($env:RUNNER_OS_LABEL)`` |")
+          $lines.Add("| **Archive Format** | ``$ext`` |")
+          $lines.Add("| **Stage Result** | $(ResultIcon $env:STAGE_OUTCOME) |")
+          if ($env:UPLOAD_ENABLED -eq 'true') {
+            $lines.Add("| **Release Upload** | $(ResultIcon $env:UPLOAD_OUTCOME) -> ``$($env:TAG)`` |")
+          } else {
+            $lines.Add("| **Release Upload** | disabled |")
+          }
+          $lines.Add("")
+
+          $lines.Add("### Publish Options")
+          $lines.Add("| Option | Enabled |")
+          $lines.Add("|--------|---------|")
+          $lines.Add("| Self-Contained | $(Icon $env:SELF_CONTAINED) |")
+          $lines.Add("| Single-File | $(Icon $env:SINGLE_FILE) |")
+          $lines.Add("| Trimmed | $(Icon $env:TRIMMED) |")
+          $lines.Add("| ReadyToRun | $(Icon $env:READY_TO_RUN) |")
+          $lines.Add("| Compressed | $(Icon $env:COMPRESSED) |")
+          $lines.Add("")
+
+          if (Test-Path $archive) {
+            $size = (Get-Item $archive).Length
+            $sizeMB = [math]::Round($size / 1MB, 2)
+            $lines.Add("### Artifact")
+            $lines.Add("| Property | Value |")
+            $lines.Add("|----------|-------|")
+            $lines.Add("| **File** | ``$archive`` |")
+            $lines.Add("| **Size** | $sizeMB MB ($size bytes) |")
+            if ($env:WITH_CHECKSUM -eq 'true' -and (Test-Path $checksum)) {
+              $hash = (Get-Content -Raw $checksum).Trim().Split(' ')[0]
+              $lines.Add("| **SHA-256** | ``$hash`` |")
+            }
+            $lines.Add("")
+          }
+
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($lines -join "`n")
+
+  # ===========================================================================
+  # Summary
+  # ===========================================================================
+  # Computes the published RIDs and renders a GH step summary. Runs even if
+  # some matrix legs failed (fail-fast: false by default) so users always get
+  # a per-RID success/failure overview in the workflow UI.
+  summary:
+    name: Summary
+    needs: publish
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    outputs:
+      published-count: ${{ steps.compute.outputs.count }}
+      published-platforms: ${{ steps.compute.outputs.platforms }}
+
+    steps:
+      - name: Compute publish results
+        id: compute
+        shell: bash
+        env:
+          PLATFORMS_JSON: ${{ inputs.platforms }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+        run: |
+          set -euo pipefail
+          # Matrix-level result is a single aggregate (success/failure/cancelled).
+          # Individual RID results are visible in the UI but not addressable here
+          # without the GH API. We surface the requested RIDs and the aggregate.
+          RIDS=$(echo "$PLATFORMS_JSON" | jq -c '[.[].rid]')
+          COUNT=$(echo "$PLATFORMS_JSON" | jq '. | length')
+          echo "platforms=$RIDS" >> "$GITHUB_OUTPUT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Render aggregate summary
+        shell: bash
+        env:
+          PROJECT_PATH: ${{ inputs.project-path }}
+          ASSEMBLY: ${{ inputs.assembly-name }}
+          VERSION: ${{ inputs.version }}
+          TAG: ${{ needs.publish.outputs.release-tag }}
+          CONFIG: ${{ inputs.configuration }}
+          SDK_VERSION: ${{ inputs.dotnet-version }}
+          GLOBAL_JSON: ${{ inputs.global-json-file }}
+          PLATFORMS_JSON: ${{ inputs.platforms }}
+          COUNT: ${{ steps.compute.outputs.count }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+          UPLOAD: ${{ inputs.upload-to-release }}
+          CLOBBER: ${{ inputs.release-asset-clobber }}
+          WITH_CHECKSUM: ${{ inputs.generate-checksums }}
+          SELF_CONTAINED: ${{ inputs.self-contained }}
+          SINGLE_FILE: ${{ inputs.publish-single-file }}
+          TRIMMED: ${{ inputs.publish-trimmed }}
+          READY_TO_RUN: ${{ inputs.publish-ready-to-run }}
+          COMPRESSED: ${{ inputs.enable-compression-in-single-file }}
+          INCLUDE_PDB: ${{ inputs.include-pdb }}
+          NATIVE_LIBS_SELF_EXTRACT: ${{ inputs.include-native-libraries-for-self-extract }}
+          EXTRA_PROPS: ${{ inputs.extra-msbuild-properties }}
+          INCLUDE_FILES: ${{ inputs.include-files }}
+          DOWNLOAD_ARTIFACT: ${{ inputs.download-artifact-name }}
+        run: |
+          icon() { if [[ "$1" == "true" ]]; then echo "[on]"; else echo "[off]"; fi }
+          result_icon() {
+            case "$1" in
+              success)   echo "PASS" ;;
+              skipped)   echo "SKIP" ;;
+              failure)   echo "FAIL" ;;
+              cancelled) echo "CANC" ;;
+              *)         echo "----" ;;
+            esac
+          }
+
+          {
+            echo "## .NET Binary Publish — Summary"
+            echo ""
+
+            # ------------------------------------------------------------
+            # Build Details
+            # ------------------------------------------------------------
+            echo "### Build Details"
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            echo "| **Project** | \`${PROJECT_PATH}\` |"
+            echo "| **Assembly** | \`${ASSEMBLY}\` |"
+            echo "| **Version** | \`${VERSION}\` |"
+            echo "| **Release Tag** | \`${TAG}\` |"
+            echo "| **Configuration** | \`${CONFIG}\` |"
+            if [[ -n "${GLOBAL_JSON}" ]]; then
+              echo "| **SDK** | pinned via \`${GLOBAL_JSON}\` |"
+            else
+              echo "| **SDK** | \`${SDK_VERSION}\` |"
+            fi
+            echo "| **Matrix Result** | $(result_icon "${PUBLISH_RESULT}") ${PUBLISH_RESULT} |"
+            echo ""
+
+            # ------------------------------------------------------------
+            # Publish Options
+            # ------------------------------------------------------------
+            echo "### Publish Options"
+            echo "| Option | Enabled |"
+            echo "|--------|---------|"
+            echo "| Self-Contained | $(icon "${SELF_CONTAINED}") |"
+            echo "| Single-File | $(icon "${SINGLE_FILE}") |"
+            echo "| Trimmed | $(icon "${TRIMMED}") |"
+            echo "| ReadyToRun | $(icon "${READY_TO_RUN}") |"
+            echo "| Compression | $(icon "${COMPRESSED}") |"
+            echo "| Native libs in self-extract | $(icon "${NATIVE_LIBS_SELF_EXTRACT}") |"
+            echo "| Include PDB | $(icon "${INCLUDE_PDB}") |"
+            if [[ -n "${EXTRA_PROPS}" ]]; then
+              echo "| Extra MSBuild properties | \`${EXTRA_PROPS}\` |"
+            fi
+            echo ""
+
+            # ------------------------------------------------------------
+            # Archive Contents
+            # ------------------------------------------------------------
+            echo "### Archive Contents"
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            echo "| **SHA-256 sidecar** | $(icon "${WITH_CHECKSUM}") |"
+            if [[ -n "${DOWNLOAD_ARTIFACT}" ]]; then
+              echo "| **Pre-built sources artifact** | \`${DOWNLOAD_ARTIFACT}\` |"
+            fi
+            if [[ -n "${INCLUDE_FILES}" ]]; then
+              # Render extras as a comma-separated list (strip blanks)
+              EXTRAS=$(echo "${INCLUDE_FILES}" | awk 'NF' | paste -sd, - | sed 's/,/, /g')
+              echo "| **Extra files staged** | ${EXTRAS:-none} |"
+            fi
+            echo ""
+
+            # ------------------------------------------------------------
+            # Platforms
+            # ------------------------------------------------------------
+            echo "### Platforms (${COUNT})"
+            echo "| RID | Runner | Archive |"
+            echo "|-----|--------|---------|"
+            echo "${PLATFORMS_JSON}" | jq -r '.[] | "| `\(.rid)` | `\(.os)` | `\(.archive)` |"'
+            echo ""
+
+            # ------------------------------------------------------------
+            # Release
+            # ------------------------------------------------------------
+            echo "### Release"
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            if [[ "${UPLOAD}" == "true" ]]; then
+              echo "| **Upload to Release** | [on] enabled |"
+              echo "| **Target Tag** | \`${TAG}\` |"
+              echo "| **Asset Overwrite (clobber)** | $(icon "${CLOBBER}") |"
+            else
+              echo "| **Upload to Release** | [off] disabled — workflow artifact only |"
+            fi
+            echo ""
+
+            # ------------------------------------------------------------
+            # Aggregate Outcome
+            # ------------------------------------------------------------
+            case "${PUBLISH_RESULT}" in
+              success)
+                echo "> **Result:** All ${COUNT} platform(s) published successfully."
+                ;;
+              failure)
+                echo "> **Result:** One or more platforms failed. Check the per-RID job summaries above for details."
+                ;;
+              cancelled)
+                echo "> **Result:** Workflow was cancelled before completion."
+                ;;
+              *)
+                echo "> **Result:** ${PUBLISH_RESULT}"
+                ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
