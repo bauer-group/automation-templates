@@ -138,6 +138,12 @@ inputs:
     required: false
     default: 'true'
 
+  # MSBuild Escape Hatch
+  extra-msbuild-properties:
+    description: 'Additional MSBuild properties appended to `dotnet restore/build/pack` (e.g., "-p:KiotaSkip=true -p:PackAsTool=false"). Use when the project needs flags that the standard inputs do not expose.'
+    required: false
+    default: ''
+
 outputs:
   version:
     description: 'Package version'
@@ -357,6 +363,12 @@ runs:
           echo "Enabled Windows targeting for non-Windows runner"
         fi
 
+        # Caller-supplied MSBuild properties (e.g., -p:KiotaSkip=true)
+        EXTRA_PROPS="${{ inputs.extra-msbuild-properties }}"
+        if [ -n "$EXTRA_PROPS" ]; then
+          RESTORE_ARGS="$RESTORE_ARGS $EXTRA_PROPS"
+        fi
+
         dotnet restore "${{ inputs.project-path }}" $RESTORE_ARGS
 
     # =========================================================================
@@ -403,6 +415,12 @@ runs:
         # Enable Windows targeting on non-Windows platforms
         if [ "$RUNNER_OS" != "Windows" ]; then
           BUILD_ARGS="$BUILD_ARGS -p:EnableWindowsTargeting=true"
+        fi
+
+        # Caller-supplied MSBuild properties (e.g., -p:KiotaSkip=true)
+        EXTRA_PROPS="${{ inputs.extra-msbuild-properties }}"
+        if [ -n "$EXTRA_PROPS" ]; then
+          BUILD_ARGS="$BUILD_ARGS $EXTRA_PROPS"
         fi
 
         echo "Build command: dotnet build ${{ inputs.project-path }} $BUILD_ARGS"
@@ -559,6 +577,12 @@ runs:
         # Enable Windows targeting on non-Windows platforms
         if [ "$RUNNER_OS" != "Windows" ]; then
           PACK_ARGS="$PACK_ARGS -p:EnableWindowsTargeting=true"
+        fi
+
+        # Caller-supplied MSBuild properties (e.g., -p:KiotaSkip=true, -p:PackAsTool=false)
+        EXTRA_PROPS="${{ inputs.extra-msbuild-properties }}"
+        if [ -n "$EXTRA_PROPS" ]; then
+          PACK_ARGS="$PACK_ARGS $EXTRA_PROPS"
         fi
 
         echo "Pack command: dotnet pack ${{ inputs.project-path }} $PACK_ARGS"

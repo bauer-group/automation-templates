@@ -200,6 +200,36 @@ on:
         required: false
         default: 30
 
+      # =======================================================================
+      # Pre-Build Artifact (optional)
+      # =======================================================================
+      # Allows an upstream job to generate sources once (Kiota OpenAPI client,
+      # T4 templates, codegen with external dependencies, ...) and feed this
+      # workflow via a shared artifact — instead of re-running the generator
+      # inside the pack step. Critical for build-time codegen patterns where
+      # MSBuild's @(Compile) glob must include the generated files at project
+      # load time.
+      download-artifact-name:
+        description: 'Name of an artifact from an upstream job to download before restore/build/pack. Empty to skip.'
+        type: string
+        required: false
+        default: ''
+
+      download-artifact-path:
+        description: 'Filesystem path the artifact is extracted into (relative to working-directory). Required if download-artifact-name is set.'
+        type: string
+        required: false
+        default: ''
+
+      # =======================================================================
+      # MSBuild Escape Hatch
+      # =======================================================================
+      extra-msbuild-properties:
+        description: 'Additional MSBuild properties appended to `dotnet restore/build/pack` (e.g., "-p:KiotaSkip=true -p:PackAsTool=false"). Use when the project needs flags the standard inputs do not expose.'
+        type: string
+        required: false
+        default: ''
+
     secrets:
       NUGET_API_KEY:
         description: 'NuGet.org API key (fallback if Trusted Publishing not configured)'
@@ -299,6 +329,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      # CRITICAL ordering: this download MUST happen before the composite
+      # action invokes `dotnet restore`. MSBuild's default
+      # <Compile Include="**/*.cs"> glob is evaluated ONCE at project load,
+      # so generated sources appearing on disk later are silently absent
+      # from @(Compile). Place strictly between checkout and the build step.
+      - name: Download pre-generated sources
+        if: inputs.download-artifact-name != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.download-artifact-name }}
+          path: ${{ inputs.working-directory }}/${{ inputs.download-artifact-path }}
+
       - name: .NET Build & Pack
         id: dotnet-build
         uses: bauer-group/automation-templates/.github/actions/dotnet-nuget@main
@@ -328,6 +370,7 @@ jobs:
           cache-enabled: ${{ inputs.cache-enabled }}
           cache-nuget-lockfile: ${{ inputs.cache-nuget-lockfile }}
           generate-summary: 'false'
+          extra-msbuild-properties: ${{ inputs.extra-msbuild-properties }}
 
       - name: Upload Coverage to Codecov
         if: inputs.run-tests == true && inputs.collect-coverage == true && steps.dotnet-build.outputs.test-skipped != 'true' && env.HAS_CODECOV_TOKEN == 'true'

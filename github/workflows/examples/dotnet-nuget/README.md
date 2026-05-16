@@ -34,6 +34,19 @@ Full CI/CD pipeline with semantic-release integration:
 
 Windows-specific builds for WPF/WinForms libraries using platform matrix.
 
+### [with-generated-sources.yml](with-generated-sources.yml)
+
+Full pipeline with build-time code generation (Kiota / OpenAPI / T4). An
+upstream `prepare-sources` job generates the client once and feeds the pack
+step via a shared artifact. Uses the workflow's `download-artifact-name` +
+`extra-msbuild-properties` inputs to wire it up.
+
+```yaml
+download-artifact-name: 'cli-generated-sources'
+download-artifact-path: 'src/MyApp.CLI/Generated'
+extra-msbuild-properties: '-p:KiotaSkip=true'
+```
+
 ## Features
 
 All examples support:

@@ -260,6 +260,21 @@ The .NET NuGet action provides:
 | `timeout-minutes` | Job timeout | `30` |
 | `cache-enabled` | Enable NuGet caching | `true` |
 
+### Pre-Build Artifact (Optional)
+
+For projects that use build-time codegen (Kiota / OpenAPI / T4 / source generators with external inputs), an upstream job can produce the generated sources once and feed this workflow via a shared artifact. The workflow downloads the artifact between `checkout` and `dotnet restore` — critical because MSBuild evaluates `<Compile Include="**/*.cs">` once at project load.
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `download-artifact-name` | Name of an artifact from an upstream job to download before restore/build/pack. Empty to skip. | `''` |
+| `download-artifact-path` | Filesystem path the artifact is extracted into (relative to working-directory). Required if `download-artifact-name` is set. | `''` |
+
+### MSBuild Escape Hatch
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `extra-msbuild-properties` | Additional MSBuild properties appended to `dotnet restore/build/pack` (e.g., `-p:KiotaSkip=true -p:PackAsTool=false`). Use when the project needs flags the standard inputs do not expose. | `''` |
+
 ## Secrets
 
 | Secret | Required When | Description |

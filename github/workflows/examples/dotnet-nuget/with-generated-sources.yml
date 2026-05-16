@@ -1,0 +1,132 @@
+# =============================================================================
+# Release Workflow with Pre-Generated Sources (Kiota / OpenAPI / T4)
+# =============================================================================
+# When the project uses build-time code generation (Kiota for OpenAPI
+# clients, T4 templates, source generators with external dependencies),
+# running the generator once in an upstream job and feeding the pack
+# step via a shared artifact is faster than re-running the generator
+# inside every consumer of the project.
+#
+# Also useful for CLI tools (PackAsTool=true projects): the same Kiota
+# artifact can feed both the tool-pack (via this workflow) AND a
+# self-contained binary publish (via dotnet-publish-binaries.yml), so
+# the generator runs exactly once per release.
+#
+# CRITICAL ordering (handled by the workflow internally):
+#   checkout -> DOWNLOAD ARTIFACT -> dotnet restore -> build -> pack
+# MSBuild evaluates <Compile Include="**/*.cs"> ONCE at project load.
+# Files appearing later are silently absent from the build.
+# =============================================================================
+
+name: 🚀 Release & Publish (with codegen)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force-release:
+        description: 'Force create release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  validate:
+    name: Build & Test
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      project-path: 'MyApp.slnx'
+      dotnet-version: '10.0.x'
+      run-tests: true
+    secrets: inherit
+
+  release:
+    name: Create Release
+    needs: validate
+    if: |
+      github.event_name == 'push' && github.ref == 'refs/heads/main' ||
+      github.event_name == 'workflow_dispatch'
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      target-branch: 'main'
+      force-release: ${{ inputs.force-release || false }}
+    secrets: inherit
+
+  # ==========================================================================
+  # Generate sources ONCE — feed via artifact
+  # ==========================================================================
+  # Runs after `release` to ensure we generate against the tagged commit.
+  # Uploads the Generated/ folder as an artifact; the downstream publish
+  # job downloads it via the workflow's `download-artifact-name` input.
+  prepare-sources:
+    name: Prepare Generated Sources
+    needs: release
+    if: needs.release.outputs.release-created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v6
+        with:
+          ref: refs/tags/v${{ needs.release.outputs.version }}
+          fetch-depth: 1
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Restore local tools (Kiota)
+        run: dotnet tool restore
+
+      - name: Generate CLI client from API contract
+        run: |
+          dotnet kiota generate \
+            --openapi contracts/openapi.json \
+            --language CSharp \
+            --output src/MyApp.CLI/Generated \
+            --namespace-name MyApp.CLI.Generated \
+            --class-name MyApiClient \
+            --clean-output \
+            --exclude-backward-compatible \
+            --log-level Warning
+
+      - name: Upload generated sources
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-generated-sources
+          path: src/MyApp.CLI/Generated/
+          retention-days: 1
+          if-no-files-found: error
+
+  # ==========================================================================
+  # Pack + publish — consumes the artifact
+  # ==========================================================================
+  # The library workflow downloads the artifact between checkout and the
+  # composite action's dotnet restore — `<Compile>` glob sees the generated
+  # files on time. `KiotaSkip=true` no-ops the in-csproj Kiota target.
+  publish:
+    name: Publish CLI Tool
+    needs: [release, prepare-sources]
+    if: needs.release.outputs.release-created == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    with:
+      project-path: 'src/MyApp.CLI/MyApp.CLI.csproj'
+      release-version: ${{ needs.release.outputs.version }}
+
+      # Pre-built sources artifact + matching MSBuild skip flag
+      download-artifact-name: 'cli-generated-sources'
+      download-artifact-path: 'src/MyApp.CLI/Generated'
+      extra-msbuild-properties: '-p:KiotaSkip=true'
+
+      # Publish
+      push-to-nuget: true
+      push-to-github: true
+    secrets: inherit
