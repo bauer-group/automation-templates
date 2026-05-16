@@ -1,3 +1,11 @@
+## [6.3.0](https://github.com/bauer-group/automation-templates/compare/v6.2.1...v6.3.0) (2026-05-16)
+
+### 🚀 Features
+
+* **actions:** added cache-scope and bumped build-push-action to v6 ([bf52e62](https://github.com/bauer-group/automation-templates/commit/bf52e621df8961b2c5093c6acfaedeab363cfae9))
+* **actions:** added verbose-build-summary input for buildkit details ([36144d8](https://github.com/bauer-group/automation-templates/commit/36144d8136c2b1f14e5f41d97d0f00e2ef630ae4))
+* **ci:** added dotnet-publish-binaries reusable workflow ([4649433](https://github.com/bauer-group/automation-templates/commit/4649433d5de736b715c913820173fbe4d5ae4c03))
+
 ## [6.2.1](https://github.com/bauer-group/automation-templates/compare/v6.2.0...v6.2.1) (2026-04-27)
 
 ### ⏪ Reverts
