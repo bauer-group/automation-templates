@@ -208,26 +208,43 @@ jobs:
           if [[ "${{ steps.upload.outcome }}" == "success" ]]; then
             echo "📤 Artifacts uploaded successfully"
           fi
-          
+
+          # Maps a sub-step status to the repo-standard status icon (see
+          # docs/workflow-icon-conventions.md). Composite action emits raw
+          # success/failed strings; map them to ✅/❌/⚪ for the summary.
+          status_icon() {
+            case "$1" in
+              success|passed|true) echo "✅ Success" ;;
+              skipped|disabled)    echo "⚪ Skipped" ;;
+              failed|failure|false) echo "❌ Failed" ;;
+              "")                  echo "⚪ N/A" ;;
+              *)                   echo "⚠️ $1" ;;
+            esac
+          }
+
+          BUILD_ICON=$(status_icon "${{ steps.build.outputs.build-status }}")
+          TEST_ICON=$(status_icon "${{ steps.build.outputs.test-status }}")
+          DIST_ICON=$(status_icon "${{ steps.build.outputs.distcheck-status }}")
+
           # Create job summary
           cat >> $GITHUB_STEP_SUMMARY << EOF
           # 🔨 Makefile Build Summary
-          
+
           ## 📊 Results
           | Component | Status | Details |
           |-----------|--------|---------|
-          | 🔨 Build | ${{ steps.build.outputs.build-status }} | Targets: ${{ inputs.make-targets }} |
-          | 🧪 Tests | ${{ steps.build.outputs.test-status }} | Targets: ${{ inputs.check-targets }} |
-          | 📦 Distcheck | ${{ steps.build.outputs.distcheck-status }} | Enabled: ${{ inputs.distcheck-enabled }} |
+          | 🔨 Build | $BUILD_ICON | Targets: ${{ inputs.make-targets }} |
+          | 🧪 Tests | $TEST_ICON | Targets: ${{ inputs.check-targets }} |
+          | 📦 Distcheck | $DIST_ICON | Enabled: ${{ inputs.distcheck-enabled }} |
           | ⏰ Duration | ${{ steps.build.outputs.build-time }}s | Parallel Jobs: ${{ inputs.parallel-jobs }} |
-          
+
           ## 🔧 Configuration
           - **Config File:** ${{ inputs.config-file }}
           - **Working Directory:** ${{ inputs.working-directory }}
           - **Configure Script:** ${{ inputs.configure-script }}
           - **Cache Enabled:** ${{ inputs.cache-enabled }}
           - **Fail on Warnings:** ${{ inputs.fail-on-warnings }}
-          
+
           EOF
 
   matrix-build:

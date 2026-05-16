@@ -1,4 +1,4 @@
-name: .NET Binary Publish
+name: 📦 .NET Binary Publish
 
 # =============================================================================
 # Reusable workflow: publish .NET applications as self-contained binaries
@@ -279,7 +279,7 @@ jobs:
   # Per-platform publish
   # ===========================================================================
   publish:
-    name: Publish (${{ matrix.platform.rid }})
+    name: 📦 Publish (${{ matrix.platform.rid }})
     runs-on: ${{ matrix.platform.os }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -301,7 +301,7 @@ jobs:
       # checkout-ref -> "refs/tags/<release-tag>" without forcing every caller
       # to compute both. Both inputs remain overridable for non-tag flows
       # (e.g., publishing a pre-release from a branch head).
-      - name: Resolve release tag and checkout ref
+      - name: 🔧 Resolve release tag and checkout ref
         id: resolve
         shell: bash
         run: |
@@ -322,7 +322,7 @@ jobs:
       # -----------------------------------------------------------------------
       # 2. Checkout the exact ref the release was cut from
       # -----------------------------------------------------------------------
-      - name: Checkout
+      - name: 📥 Checkout
         uses: actions/checkout@v6
         with:
           ref: ${{ steps.resolve.outputs.checkout-ref }}
@@ -332,7 +332,7 @@ jobs:
       # -----------------------------------------------------------------------
       # 3. Setup .NET SDK
       # -----------------------------------------------------------------------
-      - name: Setup .NET SDK
+      - name: 🔧 Setup .NET SDK
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ inputs.global-json-file == '' && inputs.dotnet-version || '' }}
@@ -345,7 +345,7 @@ jobs:
       # runtime packages (e.g., runtime.linux-arm64.Microsoft.NETCore.App.*),
       # so a global key would thrash. The hash of csproj+props files
       # keys the lockfile contents.
-      - name: Cache NuGet packages
+      - name: 📚 Cache NuGet packages
         if: inputs.cache-enabled
         uses: actions/cache@v5
         with:
@@ -371,7 +371,7 @@ jobs:
       # once at project load, and files appearing after that point are not
       # in the compilation. Place this step strictly between checkout/setup
       # and the restore.
-      - name: Download generated sources
+      - name: 📥 Download generated sources
         if: inputs.download-artifact-name != ''
         uses: actions/download-artifact@v8
         with:
@@ -381,7 +381,7 @@ jobs:
       # -----------------------------------------------------------------------
       # 6. Restore for the target RID
       # -----------------------------------------------------------------------
-      - name: Restore (${{ matrix.platform.rid }})
+      - name: 📚 Restore (${{ matrix.platform.rid }})
         shell: bash
         working-directory: ${{ inputs.working-directory }}
         run: |
@@ -397,7 +397,7 @@ jobs:
       # (e.g., disable trimming for one TFM via a Condition= in the csproj).
       # The publish output goes to publish/<rid>/ so the staging step has a
       # predictable, RID-segregated location to copy from.
-      - name: Publish (${{ matrix.platform.rid }})
+      - name: 🏗️ Publish (${{ matrix.platform.rid }})
         shell: bash
         working-directory: ${{ inputs.working-directory }}
         run: |
@@ -423,7 +423,7 @@ jobs:
       # Bash on every runner (Windows uses Git-bash). Token-substituting the
       # archive-name-template here keeps the convention in one place: the
       # same name is reused by the archive, the checksum, and the upload step.
-      - name: Stage archive contents
+      - name: 📋 Stage archive contents
         id: stage
         shell: bash
         working-directory: ${{ inputs.working-directory }}
@@ -480,7 +480,7 @@ jobs:
       # -----------------------------------------------------------------------
       # 9a. Archive (tar.gz for unix-y RIDs)
       # -----------------------------------------------------------------------
-      - name: Archive (tar.gz)
+      - name: 📦 Archive (tar.gz)
         if: matrix.platform.archive == 'tar'
         shell: bash
         working-directory: ${{ inputs.working-directory }}
@@ -496,7 +496,7 @@ jobs:
       # -----------------------------------------------------------------------
       # pwsh is the cross-platform fallback for `Compress-Archive`. Always
       # `-Force` so a re-run on the same runner overwrites the previous zip.
-      - name: Archive (zip)
+      - name: 📦 Archive (zip)
         if: matrix.platform.archive == 'zip'
         shell: pwsh
         working-directory: ${{ inputs.working-directory }}
@@ -511,7 +511,7 @@ jobs:
       # -----------------------------------------------------------------------
       # `Get-FileHash` exists on Linux/macOS/Windows via PowerShell Core. The
       # output line matches `sha256sum -c` format: "<lowercase-hex>  <file>".
-      - name: Compute SHA-256
+      - name: 🔐 Compute SHA-256
         if: inputs.generate-checksums
         shell: pwsh
         working-directory: ${{ inputs.working-directory }}
@@ -531,7 +531,7 @@ jobs:
       # -----------------------------------------------------------------------
       # 11. Upload archive (+ checksum) to the GitHub Release
       # -----------------------------------------------------------------------
-      - name: Upload to Release
+      - name: 📤 Upload to Release
         id: upload-release
         if: inputs.upload-to-release
         shell: bash
@@ -571,7 +571,7 @@ jobs:
       # Even when upload-to-release is enabled, keeping a workflow artifact
       # makes after-the-fact inspection cheap: anyone with workflow read
       # access can grab the binary without needing Release write permission.
-      - name: Upload archive as workflow artifact
+      - name: 📤 Upload archive as workflow artifact
         if: always() && steps.stage.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
@@ -593,7 +593,7 @@ jobs:
       # PowerShell-Core for cross-platform `Get-Item .Length` and string
       # building — the bash equivalent needs different `stat` flags on Linux
       # / macOS / Windows git-bash. One implementation everywhere.
-      - name: Per-RID summary
+      - name: 📊 Per-RID summary
         if: always()
         shell: pwsh
         working-directory: ${{ inputs.working-directory }}
@@ -682,7 +682,7 @@ jobs:
   # some matrix legs failed (fail-fast: false by default) so users always get
   # a per-RID success/failure overview in the workflow UI.
   summary:
-    name: Summary
+    name: 📊 Summary
     needs: publish
     if: always()
     runs-on: ubuntu-latest
@@ -693,7 +693,7 @@ jobs:
       published-platforms: ${{ steps.compute.outputs.platforms }}
 
     steps:
-      - name: Compute publish results
+      - name: 🔧 Compute publish results
         id: compute
         shell: bash
         env:
@@ -709,7 +709,7 @@ jobs:
           echo "platforms=$RIDS" >> "$GITHUB_OUTPUT"
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
 
-      - name: Render aggregate summary
+      - name: 📊 Render aggregate summary
         shell: bash
         env:
           PROJECT_PATH: ${{ inputs.project-path }}

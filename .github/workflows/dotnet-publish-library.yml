@@ -1,4 +1,4 @@
-name: .NET Library Publish
+name: 📚 .NET Library Publish
 
 on:
   workflow_call:
@@ -307,7 +307,7 @@ jobs:
   # Primary Build Job (produces the package)
   # ===========================================================================
   build:
-    name: Build & Pack
+    name: 🏗️ Build & Pack
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
 
@@ -324,7 +324,7 @@ jobs:
       coverage-percentage: ${{ steps.dotnet-build.outputs.coverage-percentage }}
 
     steps:
-      - name: Checkout Repository
+      - name: 📥 Checkout Repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -334,14 +334,14 @@ jobs:
       # <Compile Include="**/*.cs"> glob is evaluated ONCE at project load,
       # so generated sources appearing on disk later are silently absent
       # from @(Compile). Place strictly between checkout and the build step.
-      - name: Download pre-generated sources
+      - name: 📥 Download pre-generated sources
         if: inputs.download-artifact-name != ''
         uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.download-artifact-name }}
           path: ${{ inputs.working-directory }}/${{ inputs.download-artifact-path }}
 
-      - name: .NET Build & Pack
+      - name: 🏗️ .NET Build & Pack
         id: dotnet-build
         uses: bauer-group/automation-templates/.github/actions/dotnet-nuget@main
         with:
@@ -372,7 +372,7 @@ jobs:
           generate-summary: 'false'
           extra-msbuild-properties: ${{ inputs.extra-msbuild-properties }}
 
-      - name: Upload Coverage to Codecov
+      - name: 📊 Upload Coverage to Codecov
         if: inputs.run-tests == true && inputs.collect-coverage == true && steps.dotnet-build.outputs.test-skipped != 'true' && env.HAS_CODECOV_TOKEN == 'true'
         uses: codecov/codecov-action@v4
         env:
@@ -387,7 +387,7 @@ jobs:
   # Windows Validation Build (optional, for cross-platform verification)
   # ===========================================================================
   build-windows:
-    name: Build (Windows Validation)
+    name: 🏗️ Build (Windows Validation)
     if: inputs.enable-platform-matrix == true
     runs-on: ${{ startsWith(inputs.runs-on-windows, '[') && fromJSON(inputs.runs-on-windows) || inputs.runs-on-windows }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
@@ -397,12 +397,12 @@ jobs:
       test-passed: ${{ steps.dotnet-build.outputs.test-passed }}
 
     steps:
-      - name: Checkout Repository
+      - name: 📥 Checkout Repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: .NET Build (Validation Only)
+      - name: 🏗️ .NET Build (Validation Only)
         id: dotnet-build
         uses: bauer-group/automation-templates/.github/actions/dotnet-nuget@main
         with:
@@ -432,7 +432,7 @@ jobs:
   # Publish to NuGet.org
   # ===========================================================================
   publish-nuget:
-    name: Publish to NuGet.org
+    name: 📤 Publish to NuGet.org
     needs: [build, build-windows]
     if: |
       always() &&
@@ -448,18 +448,18 @@ jobs:
       pushed-count: ${{ steps.push.outputs.pushed-count }}
 
     steps:
-      - name: Download NuGet Packages
+      - name: 📥 Download NuGet Packages
         uses: actions/download-artifact@v8
         with:
           name: nuget-packages
           path: nupkg
 
-      - name: Setup .NET SDK
+      - name: 🔧 Setup .NET SDK
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
 
-      - name: Push to NuGet.org
+      - name: 📤 Push to NuGet.org
         id: push
         shell: bash
         env:
@@ -545,7 +545,7 @@ jobs:
   # Publish to GitHub Packages
   # ===========================================================================
   publish-github:
-    name: Publish to GitHub Packages
+    name: 📤 Publish to GitHub Packages
     needs: [build, build-windows]
     if: |
       always() &&
@@ -561,18 +561,18 @@ jobs:
       pushed-count: ${{ steps.push.outputs.pushed-count }}
 
     steps:
-      - name: Download NuGet Packages
+      - name: 📥 Download NuGet Packages
         uses: actions/download-artifact@v8
         with:
           name: nuget-packages
           path: nupkg
 
-      - name: Setup .NET SDK
+      - name: 🔧 Setup .NET SDK
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
 
-      - name: Push to GitHub Packages
+      - name: 📤 Push to GitHub Packages
         id: push
         shell: bash
         env:
@@ -635,7 +635,7 @@ jobs:
   # Commit Version Update
   # ===========================================================================
   commit-version:
-    name: Commit Version Update
+    name: 💾 Commit Version Update
     needs: [build, publish-nuget, publish-github]
     if: |
       always() &&
@@ -648,12 +648,12 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Checkout Repository
+      - name: 📥 Checkout Repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Commit Version Changes
+      - name: 💾 Commit Version Changes
         shell: bash
         env:
           PACKAGE_VERSION: ${{ needs.build.outputs.version }}
@@ -704,14 +704,14 @@ jobs:
   # Pipeline Summary
   # ===========================================================================
   summary:
-    name: Pipeline Summary
+    name: 📊 Pipeline Summary
     needs: [build, build-windows, publish-nuget, publish-github]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
-      - name: Generate Summary
+      - name: 📊 Generate Summary
         shell: bash
         env:
           PACKAGE_NAME: ${{ needs.build.outputs.package-name }}

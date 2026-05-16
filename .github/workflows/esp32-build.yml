@@ -679,38 +679,52 @@ jobs:
     if: always()
 
     steps:
-      - name: Generate Summary
+      - name: 📊 Generate Summary
         shell: bash
         run: |
-          echo "# ESP32 Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          # Maps a job result to the repo-standard status icon (see
+          # docs/workflow-icon-conventions.md).
+          result_icon() {
+            case "$1" in
+              success)   echo "✅ Success" ;;
+              skipped)   echo "⏭️ Skipped" ;;
+              failure)   echo "❌ Failed" ;;
+              cancelled) echo "⏹️ Cancelled" ;;
+              *)         echo "⚠️ $1" ;;
+            esac
+          }
 
-          echo "## Build Results" >> $GITHUB_STEP_SUMMARY
-          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Security Scan | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Release | ${{ needs.release.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "# 📦 ESP32 Build Summary"
+            echo ""
 
-          echo "## Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "- **Firmware Version**: ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **IDF Version**: ${{ inputs.idf-version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Target(s)**: ${{ inputs.targets || inputs.target }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Build Types**: ${{ inputs.build-types }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tests Enabled**: ${{ inputs.run-tests }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Secure Boot**: ${{ inputs.secure-boot }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## Build Results"
+            echo "| Component | Status |"
+            echo "|-----------|--------|"
+            echo "| Security Scan | $(result_icon "${{ needs.security.result }}") |"
+            echo "| Build | $(result_icon "${{ needs.build.result }}") |"
+            echo "| Release | $(result_icon "${{ needs.release.result }}") |"
+            echo ""
 
-          if [[ "${{ needs.release.result }}" == "success" ]]; then
-            echo "## Release" >> $GITHUB_STEP_SUMMARY
-            echo "Release created: ${{ needs.release.outputs.release-url }}" >> $GITHUB_STEP_SUMMARY
-          fi
+            echo "## Configuration"
+            echo "- **Firmware Version**: ${{ needs.prepare.outputs.version }}"
+            echo "- **IDF Version**: ${{ inputs.idf-version }}"
+            echo "- **Target(s)**: ${{ inputs.targets || inputs.target }}"
+            echo "- **Build Types**: ${{ inputs.build-types }}"
+            echo "- **Tests Enabled**: ${{ inputs.run-tests }}"
+            echo "- **Secure Boot**: ${{ inputs.secure-boot }}"
+            echo ""
+
+            if [[ "${{ needs.release.result }}" == "success" ]]; then
+              echo "## Release"
+              echo "🚀 Release created: ${{ needs.release.outputs.release-url }}"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
 
           # Set final status
           if [[ "${{ needs.build.result }}" == "success" ]]; then
-            echo "Build completed successfully"
+            echo "✅ Build completed successfully"
           else
-            echo "Build failed"
+            echo "❌ Build failed"
             exit 1
           fi
