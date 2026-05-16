@@ -619,14 +619,14 @@ jobs:
           $archive = "$($env:ARCHIVE_BASE).$ext"
           $checksum = "$archive.sha256"
 
-          function Icon([string]$v) { if ($v -eq 'true') { '[on]' } else { '[off]' } }
+          function Icon([string]$v) { if ($v -eq 'true') { '✅ Yes' } else { '⚪ No' } }
           function ResultIcon([string]$o) {
             switch ($o) {
-              'success'   { 'PASS' }
-              'skipped'   { 'SKIP' }
-              'failure'   { 'FAIL' }
-              'cancelled' { 'CANC' }
-              default     { '----' }
+              'success'   { '✅ Success' }
+              'skipped'   { '⏭️ Skipped' }
+              'failure'   { '❌ Failed' }
+              'cancelled' { '⏹️ Cancelled' }
+              default     { '⚠️ Unknown' }
             }
           }
 
@@ -642,9 +642,9 @@ jobs:
           $lines.Add("| **Archive Format** | ``$ext`` |")
           $lines.Add("| **Stage Result** | $(ResultIcon $env:STAGE_OUTCOME) |")
           if ($env:UPLOAD_ENABLED -eq 'true') {
-            $lines.Add("| **Release Upload** | $(ResultIcon $env:UPLOAD_OUTCOME) -> ``$($env:TAG)`` |")
+            $lines.Add("| **Release Upload** | $(ResultIcon $env:UPLOAD_OUTCOME) → ``$($env:TAG)`` |")
           } else {
-            $lines.Add("| **Release Upload** | disabled |")
+            $lines.Add("| **Release Upload** | ⚪ Disabled |")
           }
           $lines.Add("")
 
@@ -736,14 +736,14 @@ jobs:
           INCLUDE_FILES: ${{ inputs.include-files }}
           DOWNLOAD_ARTIFACT: ${{ inputs.download-artifact-name }}
         run: |
-          icon() { if [[ "$1" == "true" ]]; then echo "[on]"; else echo "[off]"; fi }
+          icon() { if [[ "$1" == "true" ]]; then echo "✅ Yes"; else echo "⚪ No"; fi }
           result_icon() {
             case "$1" in
-              success)   echo "PASS" ;;
-              skipped)   echo "SKIP" ;;
-              failure)   echo "FAIL" ;;
-              cancelled) echo "CANC" ;;
-              *)         echo "----" ;;
+              success)   echo "✅ Success" ;;
+              skipped)   echo "⏭️ Skipped" ;;
+              failure)   echo "❌ Failed" ;;
+              cancelled) echo "⏹️ Cancelled" ;;
+              *)         echo "⚠️ Unknown" ;;
             esac
           }
 
@@ -821,11 +821,11 @@ jobs:
             echo "| Property | Value |"
             echo "|----------|-------|"
             if [[ "${UPLOAD}" == "true" ]]; then
-              echo "| **Upload to Release** | [on] enabled |"
+              echo "| **Upload to Release** | ✅ Enabled |"
               echo "| **Target Tag** | \`${TAG}\` |"
               echo "| **Asset Overwrite (clobber)** | $(icon "${CLOBBER}") |"
             else
-              echo "| **Upload to Release** | [off] disabled — workflow artifact only |"
+              echo "| **Upload to Release** | ⚪ Disabled — workflow artifact only |"
             fi
             echo ""
 
@@ -834,16 +834,16 @@ jobs:
             # ------------------------------------------------------------
             case "${PUBLISH_RESULT}" in
               success)
-                echo "> **Result:** All ${COUNT} platform(s) published successfully."
+                echo "> ✅ **Result:** All ${COUNT} platform(s) published successfully."
                 ;;
               failure)
-                echo "> **Result:** One or more platforms failed. Check the per-RID job summaries above for details."
+                echo "> ❌ **Result:** One or more platforms failed. Check the per-RID job summaries above for details."
                 ;;
               cancelled)
-                echo "> **Result:** Workflow was cancelled before completion."
+                echo "> ⏹️ **Result:** Workflow was cancelled before completion."
                 ;;
               *)
-                echo "> **Result:** ${PUBLISH_RESULT}"
+                echo "> ⚠️ **Result:** ${PUBLISH_RESULT}"
                 ;;
             esac
           } >> "$GITHUB_STEP_SUMMARY"
