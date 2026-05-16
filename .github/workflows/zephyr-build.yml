@@ -237,7 +237,7 @@ jobs:
 
       - name: 📊 Upload Coverage to Codecov
         if: inputs.enable-coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: ${{ inputs.application-path }}/${{ steps.zephyr-build.outputs.coverage-report }}/coverage.xml
           flags: ${{ matrix.board }}-${{ matrix.build-type }}
