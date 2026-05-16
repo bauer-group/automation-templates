@@ -1,3 +1,9 @@
+## [6.4.0](https://github.com/bauer-group/automation-templates/compare/v6.3.0...v6.4.0) (2026-05-16)
+
+### 🚀 Features
+
+* **ci:** added codegen-artifact and msbuild-property hooks to dotnet-publish-library ([04966fa](https://github.com/bauer-group/automation-templates/commit/04966fa97b21f8d74d0f8c791a64c2a3b156d270))
+
 ## [6.3.0](https://github.com/bauer-group/automation-templates/compare/v6.2.1...v6.3.0) (2026-05-16)
 
 ### 🚀 Features
