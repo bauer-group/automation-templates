@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-05-16 19:19:19 UTC -->
+<!-- Generated on 2026-05-16 19:50:16 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -9,7 +9,7 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 
 **Repository Information:**
 
-- **Version:** 6.3.0 (2026-05-16)
+- **Version:** 6.4.0 (2026-05-16)
 - **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)
 - **Branch:** main
 - **Architecture:** Modular, Reusable, Enterprise-Ready
@@ -1213,5 +1213,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-05-16 19:19:19 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-05-16 19:50:16 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
