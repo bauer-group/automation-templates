@@ -111,7 +111,7 @@ runs:
     - name: 🛡️ SonarQube Scan
       id: scan
       if: steps.guard.outputs.executed == 'true'
-      uses: SonarSource/sonarqube-scan-action@v5
+      uses: SonarSource/sonarqube-scan-action@v8
       env:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
         SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
