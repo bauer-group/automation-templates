@@ -202,7 +202,12 @@ jobs:
           /d:sonar.token="$SONAR_TOKEN"
           /d:sonar.cs.opencover.reportsPaths='**/coverage.opencover.xml'
       - run: dotnet build --no-incremental
-      - run: dotnet test --collect:"XPlat Code Coverage;Format=opencover"
+      # OpenCover format requires the `coverlet.msbuild` package in the test project
+      - run: >
+          dotnet test
+          /p:CollectCoverage=true
+          /p:CoverletOutputFormat=opencover
+          /p:CoverletOutput=coverage.opencover.xml
       - name: End analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
