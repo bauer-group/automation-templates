@@ -71,8 +71,11 @@ runs:
     - name: 🔍 Guard — require host + token
       id: guard
       shell: bash
+      env:
+        SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
       run: |
-        if [ -z "${{ inputs.sonar-host-url }}" ] || [ -z "${{ inputs.sonar-token }}" ]; then
+        if [ -z "$SONAR_HOST_URL" ] || [ -z "$SONAR_TOKEN" ]; then
           echo "::warning title=SonarQube skipped::SonarQube analysis was enabled but SONARQUBE_HOST_URL and/or SONARQUBE_TOKEN are not set — skipping without failing the build."
           echo "executed=false" >> "$GITHUB_OUTPUT"
         else
@@ -94,10 +97,13 @@ runs:
       id: args
       if: steps.guard.outputs.executed == 'true'
       shell: bash
+      env:
+        RAW_ARGS: ${{ inputs.args }}
+        FAIL_QG: ${{ inputs.fail-on-quality-gate }}
       run: |
         # Flatten any multiline args into a single space-separated string
-        ARGS="$(printf '%s' "${{ inputs.args }}" | tr '\n' ' ')"
-        if [ "${{ inputs.fail-on-quality-gate }}" = "true" ]; then
+        ARGS="$(printf '%s' "$RAW_ARGS" | tr '\n' ' ')"
+        if [ "$FAIL_QG" = "true" ]; then
           ARGS="$ARGS -Dsonar.qualitygate.wait=true"
         fi
         echo "value=$ARGS" >> "$GITHUB_OUTPUT"
