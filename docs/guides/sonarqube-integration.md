@@ -323,6 +323,7 @@ To make a failing Quality Gate fail the workflow:
 ## 8. Reference
 
 - Module: [`docs/workflows/modules-code-quality.md`](../workflows/modules-code-quality.md)
+- Examples: [`sonarqube-self-hosted.yml`](../../github/workflows/examples/code-quality/sonarqube-self-hosted.yml) · [`sonarqube-cloud.yml`](../../github/workflows/examples/code-quality/sonarqube-cloud.yml)
 - Action: [`.github/actions/sonar-scan/action.yml`](../../.github/actions/sonar-scan/action.yml)
 - Secrets: [`docs/secrets-reference.md`](../secrets-reference.md)
 - SonarSource action: <https://github.com/SonarSource/sonarqube-scan-action>

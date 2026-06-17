@@ -1,0 +1,39 @@
+name: Code Quality (SonarQube Cloud)
+
+# Example: SonarQube Cloud (formerly SonarCloud) analysis via the reusable module.
+#
+# Prerequisites:
+#   1. Org-level secret SONARQUBE_TOKEN holds a SonarQube Cloud token and the
+#      repository is granted access to it.
+#      (SONARQUBE_HOST_URL is NOT needed for Cloud — it is ignored.)
+#   2. The project already exists in SonarQube Cloud, and a
+#      `sonar-project.properties` file is in the repo root, e.g.:
+#
+#        sonar.projectKey=my-org_my-service
+#        sonar.organization=my-org
+#        sonar.sources=src
+#        sonar.tests=test
+#
+#      (sonar.organization can also be passed via the sonar-organization input.)
+#
+# If the token is absent the job emits a warning and skips — it never fails.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  code-quality:
+    uses: bauer-group/automation-templates/.github/workflows/modules-code-quality.yml@main
+    with:
+      enable-sonar: true
+      sonar-edition: cloud
+      sonar-organization: my-org      # or set sonar.organization in sonar-project.properties
+      # fail-on-quality-gate: true     # uncomment to enforce the Quality Gate
+    secrets: inherit

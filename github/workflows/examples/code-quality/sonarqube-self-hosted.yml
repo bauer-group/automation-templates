@@ -1,6 +1,7 @@
 name: Code Quality (SonarQube)
 
-# Example: self-hosted SonarQube Server analysis via the reusable module.
+# Example: self-hosted SonarQube Server analysis via the reusable module
+# (default edition — for SonarQube Cloud see sonarqube-cloud.yml).
 #
 # Prerequisites:
 #   1. Org-level secrets SONARQUBE_TOKEN and SONARQUBE_HOST_URL are configured
