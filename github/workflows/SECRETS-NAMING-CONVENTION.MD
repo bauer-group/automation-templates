@@ -47,7 +47,8 @@ This document defines the naming convention for GitHub Secrets used in our workf
 | Secret Name | Description | Scope | Used In |
 |------------|-------------|-------|---------|
 | `CODECOV_TOKEN` | Token for uploading coverage reports to Codecov | Project | All build workflows |
-| `SONARCLOUD_ANALYSIS_TOKEN` | Token for SonarCloud code quality analysis | Project | All build workflows |
+| `SONARQUBE_TOKEN` | Self-hosted SonarQube Server API token for code quality analysis | Organization | dotnet/nodejs/python/php-build, modules-code-quality |
+| `SONARQUBE_HOST_URL` | Self-hosted SonarQube Server URL | Organization | dotnet/nodejs/python/php-build, modules-code-quality |
 
 ### 🔒 Security Scanning
 

@@ -29,6 +29,9 @@ jobs:
       run-tests: true
       coverage: 'pcov'
       test-coverage-threshold: 85
+
+      # SonarQube code-quality analysis (self-hosted)
+      enable-sonar: true
       
       # All code quality tools
       run-phpcs: true
@@ -57,28 +60,14 @@ jobs:
     secrets:
       COMPOSER_AUTH_JSON: ${{ secrets.COMPOSER_AUTH_JSON }}
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      SONARCLOUD_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
-
-  code-quality:
-    needs: matrix-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
-        with:
-          args: >
-            -Dsonar.projectKey=symfony-enterprise
-            -Dsonar.organization=your-org
-            -Dsonar.php.coverage.reportPaths=coverage.xml
+      # Self-hosted SonarQube Server (org-level secrets). Analysis runs inside
+      # php-build via `enable-sonar: true` above - no separate job needed.
+      SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+      SONARQUBE_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
 
   docker-build:
     if: github.ref == 'refs/heads/main'
-    needs: [matrix-test, code-quality]
+    needs: [matrix-test]
     uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
     with:
       php-version: '8.2'

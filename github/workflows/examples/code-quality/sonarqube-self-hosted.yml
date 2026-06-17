@@ -1,0 +1,33 @@
+name: Code Quality (SonarQube)
+
+# Example: self-hosted SonarQube Server analysis via the reusable module.
+#
+# Prerequisites:
+#   1. Org-level secrets SONARQUBE_TOKEN and SONARQUBE_HOST_URL are configured
+#      and the repository is granted access to them.
+#   2. A `sonar-project.properties` file exists in the repo root, e.g.:
+#
+#        sonar.projectKey=my-team_my-service
+#        sonar.sources=src
+#        sonar.tests=test
+#        sonar.javascript.lcov.reportPaths=coverage/lcov.info
+#
+# If the secrets are absent the job emits a warning and skips — it never fails.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  code-quality:
+    uses: bauer-group/automation-templates/.github/workflows/modules-code-quality.yml@main
+    with:
+      enable-sonar: true
+      # fail-on-quality-gate: true   # uncomment to enforce the Quality Gate
+    secrets: inherit

@@ -58,10 +58,9 @@ analysis:
   enable_net_analyzers: true
   enforce_code_style: true
   
-  # SonarCloud integration
-  sonarcloud_enabled: false
-  sonarcloud_organization: ''
-  sonarcloud_project: ''
+  # SonarQube integration (self-hosted) - enable via the `enable-sonar` workflow input
+  sonarqube_enabled: false
+  sonarqube_project: ''
 
 publish:
   # Publishing configuration

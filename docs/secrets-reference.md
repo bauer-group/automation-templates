@@ -33,6 +33,15 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 
 > **Tipp:** Verwende den **Global Upload Token** auf Organization-Ebene, damit der gleiche Token für alle Repositories funktioniert.
 
+### Code Quality (SonarQube)
+
+| Secret | Workflows | Beschreibung | Einrichtung |
+|--------|-----------|--------------|-------------|
+| `SONARQUBE_TOKEN` | dotnet-build, nodejs-build, python-build, php-build, modules-code-quality | API Token für den self-hosted SonarQube Server | SonarQube → My Account → Security → Token generieren |
+| `SONARQUBE_HOST_URL` | dotnet-build, nodejs-build, python-build, php-build, modules-code-quality | URL des self-hosted SonarQube Servers (z.B. `https://sonar.bauer-group.com`) | Eure Server-Adresse |
+
+> Beide sind **optional** und als **Organization Secrets** hinterlegt. Aktivierung pro Build über den Input `enable-sonar: true`; fehlen Token/URL, gibt der Job nur eine **Warnung** aus statt zu scheitern.
+
 ### Docker & Container
 
 | Secret | Workflows | Beschreibung | Einrichtung |
@@ -164,6 +173,7 @@ GitHub Organization → Settings → Secrets and variables → Actions → New o
 - `DOCKER_USERNAME` / `DOCKER_PASSWORD`
 - `GITGUARDIAN_API_KEY`
 - `GITLEAKS_LICENSE`
+- `SONARQUBE_TOKEN` / `SONARQUBE_HOST_URL`
 - `NUGET_API_KEY`
 - `PYPI_API_TOKEN`
 - `TEAMS_WEBHOOK_URL`

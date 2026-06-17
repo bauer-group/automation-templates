@@ -307,6 +307,12 @@ on:
         required: false
         default: '["8.0.x"]'
       
+      enable-sonar:
+        description: 'Run SonarQube code-quality analysis (auto-skips with a warning if no token/URL)'
+        type: boolean
+        required: false
+        default: false
+
     secrets:
       DOTNET_NUGET_PUBLISH_API_KEY:
         description: 'NuGet API key for publishing .NET packages to NuGet.org or private feeds'
@@ -324,8 +330,12 @@ on:
         description: 'Codecov token for uploading .NET test coverage reports'
         required: false
       
-      SONARCLOUD_ANALYSIS_TOKEN:
-        description: 'SonarCloud token for .NET code quality analysis'
+      SONARQUBE_TOKEN:
+        description: 'SonarQube Server API token (org-level secret). Optional - scan skips with a warning if absent.'
+        required: false
+
+      SONARQUBE_HOST_URL:
+        description: 'SonarQube Server URL (org-level secret). Optional - scan skips with a warning if absent.'
         required: false
 
       DOTNET_SIGNKEY_BASE64:
@@ -354,6 +364,14 @@ on:
         value: ${{ jobs.build.outputs.docker-image }}
 
 jobs:
+  code-quality:
+    name: 🛡️ Code Quality (SonarQube)
+    if: inputs.enable-sonar
+    uses: ./.github/workflows/modules-code-quality.yml
+    with:
+      enable-sonar: true
+    secrets: inherit
+
   build:
     name: Build .NET
     runs-on: ${{ inputs.enable-matrix && matrix.os || (startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on) }}

@@ -130,7 +130,8 @@ jobs:
 | `DOCKER_REGISTRY_USERNAME` | Docker registry username | No |
 | `DOCKER_REGISTRY_PASSWORD` | Docker registry password | No |
 | `CODECOV_TOKEN` | Codecov token | No |
-| `SONARCLOUD_TOKEN` | SonarCloud token | No |
+| `SONARQUBE_TOKEN` | Self-hosted SonarQube Server token | No (only with `enable-sonar`) |
+| `SONARQUBE_HOST_URL` | Self-hosted SonarQube Server URL | No (only with `enable-sonar`) |
 
 ### Platform Configuration
 

@@ -75,6 +75,23 @@ secrets:
 - `unknown-count`: Anzahl unbekannter Lizenzen
 - `sbom-generated`: Ob SBOM erstellt wurde
 
+### 🧪 [Code Quality (SonarQube)](./modules-code-quality.yml)
+**Zweck:** Statische Code-Analyse mit self-hosted SonarQube Server (opt-in, tolerant)
+
+```yaml
+uses: bauer-group/automation-templates/.github/workflows/modules-code-quality.yml@main
+with:
+  enable-sonar: true
+  # fail-on-quality-gate: true   # optional: Quality Gate erzwingen
+secrets: inherit   # liefert SONARQUBE_TOKEN + SONARQUBE_HOST_URL (Org-Secrets)
+```
+
+**Ausgaben:**
+- `executed`: Ob der Scan tatsächlich lief (true/false)
+- `quality-gate`: Quality-Gate-Status (PASSED/FAILED/unknown)
+
+> Auch direkt in `dotnet/nodejs/python/php-build.yml` via `enable-sonar: true` verfügbar. Fehlen Token/URL, gibt der Job nur eine Warnung aus statt zu scheitern. Projekt-Config (projectKey, Coverage-Pfade) gehört in `sonar-project.properties` im Consumer-Repo.
+
 ### 🚀 [Semantic Release](./modules-semantic-release.yml)
 **Zweck:** Automatisierte Release-Erstellung mit Semantic Release
 

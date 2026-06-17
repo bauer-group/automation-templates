@@ -1,0 +1,86 @@
+name: 🧪 Module | Code Quality (SonarQube)
+
+# Self-hosted SonarQube Server analysis as a reusable, opt-in module.
+#
+# Tolerant by design:
+#   * The whole job is gated by `enable-sonar` (default true for direct callers;
+#     language build workflows pass their own opt-in flag, default false).
+#   * When enabled but SONARQUBE_HOST_URL / SONARQUBE_TOKEN are missing, the scan
+#     emits a WARNING and skips — it never fails the build.
+#   * Quality Gate is non-blocking unless `fail-on-quality-gate` is set.
+#
+# Project config (projectKey, sources, coverage paths) belongs in the consumer
+# repo's `sonar-project.properties`, keeping this module fully generic.
+
+on:
+  workflow_call:
+    inputs:
+      enable-sonar:
+        description: 'Run SonarQube analysis (auto-skips with a warning if host/token are missing)'
+        required: false
+        type: boolean
+        default: true
+      project-base-dir:
+        description: 'Base directory to analyze'
+        required: false
+        type: string
+        default: '.'
+      args:
+        description: 'Additional -Dsonar.* arguments (one per line)'
+        required: false
+        type: string
+        default: ''
+      fail-on-quality-gate:
+        description: 'Fail the workflow if the SonarQube Quality Gate fails'
+        required: false
+        type: boolean
+        default: false
+      runs-on:
+        description: 'Runner to use. String for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"]).'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+    secrets:
+      SONARQUBE_TOKEN:
+        description: 'SonarQube Server API token (org-level secret). Optional — scan skips with a warning if absent.'
+        required: false
+      SONARQUBE_HOST_URL:
+        description: 'SonarQube Server URL (org-level secret). Optional — scan skips with a warning if absent.'
+        required: false
+    outputs:
+      executed:
+        description: 'Whether the Sonar scan actually ran'
+        value: ${{ jobs.code-quality.outputs.executed }}
+      quality-gate:
+        description: 'Quality Gate status (PASSED/FAILED/unknown)'
+        value: ${{ jobs.code-quality.outputs.quality-gate }}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  code-quality:
+    name: 🛡️ SonarQube
+    if: inputs.enable-sonar
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    outputs:
+      executed: ${{ steps.sonar.outputs.executed }}
+      quality-gate: ${{ steps.sonar.outputs.quality-gate }}
+
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          # Sonar needs full history for accurate new-code period & SCM blame
+          fetch-depth: 0
+
+      - name: 🛡️ SonarQube Scan
+        id: sonar
+        uses: bauer-group/automation-templates/.github/actions/sonar-scan@main
+        with:
+          sonar-host-url: ${{ secrets.SONARQUBE_HOST_URL }}
+          sonar-token: ${{ secrets.SONARQUBE_TOKEN }}
+          project-base-dir: ${{ inputs.project-base-dir }}
+          args: ${{ inputs.args }}
+          fail-on-quality-gate: ${{ inputs.fail-on-quality-gate }}

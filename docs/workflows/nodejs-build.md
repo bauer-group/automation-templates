@@ -241,7 +241,8 @@ See [Self-Hosted Runner Documentation](../self-hosted-runners.md) for details.
 | `DOCKER_USERNAME` | Docker username | For Docker push |
 | `DOCKER_PASSWORD` | Docker password | For Docker push |
 | `CODECOV_TOKEN` | Codecov token | For coverage upload |
-| `SONAR_TOKEN` | SonarCloud token | For code analysis |
+| `SONARQUBE_TOKEN` | Self-hosted SonarQube Server token | When `enable-sonar: true` |
+| `SONARQUBE_HOST_URL` | Self-hosted SonarQube Server URL | When `enable-sonar: true` |
 
 ## Outputs
 

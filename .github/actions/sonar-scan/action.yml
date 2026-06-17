@@ -1,0 +1,141 @@
+# =============================================================================
+# SonarQube Scan (Self-hosted Server)
+# =============================================================================
+# Thin, cached wrapper around SonarSource/sonarqube-scan-action for self-hosted
+# SonarQube Server. Designed to be 100% opt-in and non-breaking:
+#
+#   * Auto-skips (with a notice, not an error) when host URL or token is missing
+#   * Quality Gate is NON-blocking by default — adding this scan can never turn
+#     a previously-green build red unless the consumer opts in explicitly
+#   * Caches the scanner + analysis data between runs (SONAR_USER_HOME)
+#
+# Project configuration (projectKey, sources, coverage report paths, ...) lives
+# in the consumer repo's `sonar-project.properties` so this action stays generic.
+#
+# Usage:
+#   - uses: bauer-group/automation-templates/.github/actions/sonar-scan@main
+#     with:
+#       sonar-host-url: ${{ secrets.SONARQUBE_HOST_URL }}
+#       sonar-token:    ${{ secrets.SONARQUBE_TOKEN }}
+#
+# Note: SonarSource/sonarqube-scan-action is a Docker action and runs on Linux
+#       runners only. For .NET/C# with the MSBuild scanner on Windows runners,
+#       use the dotnet-sonarscanner begin/end flow inside the dotnet build job.
+#
+# References:
+#   - https://github.com/SonarSource/sonarqube-scan-action
+#   - https://docs.sonarsource.com/sonarqube-server/latest/analyzing-source-code/ci-integration/github-actions/
+# =============================================================================
+
+name: 'SonarQube Scan'
+description: 'Self-hosted SonarQube Server analysis with caching, opt-in auto-skip and non-blocking Quality Gate'
+author: 'BAUER GROUP'
+
+inputs:
+  sonar-host-url:
+    description: 'SonarQube Server URL (e.g. https://sonar.example.com). Empty = skip scan.'
+    required: false
+    default: ''
+  sonar-token:
+    description: 'SonarQube analysis token. Empty = skip scan.'
+    required: false
+    default: ''
+  project-base-dir:
+    description: 'Base directory to analyze'
+    required: false
+    default: '.'
+  args:
+    description: 'Additional -Dsonar.* arguments (one per line or space-separated)'
+    required: false
+    default: ''
+  fail-on-quality-gate:
+    description: 'Wait for and fail the step on a failing SonarQube Quality Gate'
+    required: false
+    default: 'false'
+  cache:
+    description: 'Cache the SonarQube scanner + analysis data between runs'
+    required: false
+    default: 'true'
+
+outputs:
+  executed:
+    description: 'Whether the Sonar scan actually ran (true/false)'
+    value: ${{ steps.guard.outputs.executed }}
+  quality-gate:
+    description: 'Quality Gate status when waited (PASSED/FAILED/unknown)'
+    value: ${{ steps.result.outputs.quality-gate }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🔍 Guard — require host + token
+      id: guard
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.sonar-host-url }}" ] || [ -z "${{ inputs.sonar-token }}" ]; then
+          echo "::warning title=SonarQube skipped::SonarQube analysis was enabled but SONARQUBE_HOST_URL and/or SONARQUBE_TOKEN are not set — skipping without failing the build."
+          echo "executed=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "✅ SonarQube host + token present — running analysis"
+          echo "executed=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: 💾 Cache SonarQube data
+      if: steps.guard.outputs.executed == 'true' && inputs.cache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.workspace }}/.sonar
+        key: sonar-${{ runner.os }}-${{ github.repository }}-${{ github.ref_name }}
+        restore-keys: |
+          sonar-${{ runner.os }}-${{ github.repository }}-
+          sonar-${{ runner.os }}-
+
+    - name: 🧮 Assemble scanner arguments
+      id: args
+      if: steps.guard.outputs.executed == 'true'
+      shell: bash
+      run: |
+        # Flatten any multiline args into a single space-separated string
+        ARGS="$(printf '%s' "${{ inputs.args }}" | tr '\n' ' ')"
+        if [ "${{ inputs.fail-on-quality-gate }}" = "true" ]; then
+          ARGS="$ARGS -Dsonar.qualitygate.wait=true"
+        fi
+        echo "value=$ARGS" >> "$GITHUB_OUTPUT"
+
+    - name: 🛡️ SonarQube Scan
+      id: scan
+      if: steps.guard.outputs.executed == 'true'
+      uses: SonarSource/sonarqube-scan-action@v5
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
+        SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
+        SONAR_USER_HOME: ${{ github.workspace }}/.sonar
+      with:
+        projectBaseDir: ${{ inputs.project-base-dir }}
+        args: ${{ steps.args.outputs.value }}
+
+    - name: 📊 Result summary
+      id: result
+      if: always() && steps.guard.outputs.executed == 'true'
+      shell: bash
+      run: |
+        QG="unknown"
+        if [ "${{ inputs.fail-on-quality-gate }}" = "true" ]; then
+          QG="${{ steps.scan.outcome == 'success' && 'PASSED' || 'FAILED' }}"
+        fi
+        echo "quality-gate=$QG" >> "$GITHUB_OUTPUT"
+
+        {
+          echo "### 🛡️ SonarQube Analysis"
+          echo ""
+          echo "| Field | Value |"
+          echo "|-------|-------|"
+          echo "| **Host** | ${{ inputs.sonar-host-url }} |"
+          echo "| **Base dir** | \`${{ inputs.project-base-dir }}\` |"
+          echo "| **Quality Gate wait** | ${{ inputs.fail-on-quality-gate }} |"
+          echo "| **Quality Gate** | $QG |"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+branding:
+  icon: 'check-circle'
+  color: 'blue'

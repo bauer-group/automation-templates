@@ -56,6 +56,9 @@ jobs:
       # Code Analysis
       run-code-analysis: true
       analysis-level: 'all'
+
+      # SonarQube code-quality analysis (self-hosted)
+      enable-sonar: true
       
       # Publishing
       publish: true
@@ -74,7 +77,8 @@ jobs:
     secrets:
       DOCKER_USERNAME: ${{ github.actor }}
       DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+      SONARQUBE_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
   
   integration-tests:
     needs: build-microservice
