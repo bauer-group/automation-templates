@@ -1,6 +1,7 @@
 # Module | Code Quality (SonarQube)
 
-Reusable workflow for **self-hosted SonarQube Server** static code analysis.
+Reusable workflow for **SonarQube** static code analysis — self-hosted
+**Server** or **SonarQube Cloud**, switchable via `sonar-edition`.
 
 It is **opt-in** and **tolerant by design**: it never breaks an existing build.
 
@@ -58,6 +59,8 @@ jobs:
 | Input | Description | Default |
 |-------|-------------|---------|
 | `enable-sonar` | Run the analysis (skips with a warning if host/token missing) | `true` |
+| `sonar-edition` | Target platform: `server` (self-hosted) or `cloud` (SonarQube Cloud) | `server` |
+| `sonar-organization` | SonarQube Cloud organization key (cloud edition; or set in `sonar-project.properties`) | `''` |
 | `project-base-dir` | Base directory to analyze | `.` |
 | `args` | Additional `-Dsonar.*` arguments (one per line) | `''` |
 | `fail-on-quality-gate` | Wait for and fail on a failing Quality Gate | `false` |

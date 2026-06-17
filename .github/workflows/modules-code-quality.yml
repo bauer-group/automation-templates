@@ -1,12 +1,13 @@
 name: 🧪 Module | Code Quality (SonarQube)
 
-# Self-hosted SonarQube Server analysis as a reusable, opt-in module.
+# SonarQube Server or Cloud analysis as a reusable, opt-in module.
 #
 # Tolerant by design:
 #   * The whole job is gated by `enable-sonar` (default true for direct callers;
 #     language build workflows pass their own opt-in flag, default false).
-#   * When enabled but SONARQUBE_HOST_URL / SONARQUBE_TOKEN are missing, the scan
-#     emits a WARNING and skips — it never fails the build.
+#   * sonar-edition switches between 'server' (self-hosted) and 'cloud'.
+#   * When enabled but the required token (and host URL for server) is missing,
+#     the scan emits a WARNING and skips — it never fails the build.
 #   * Quality Gate is non-blocking unless `fail-on-quality-gate` is set.
 #
 # Project config (projectKey, sources, coverage paths) belongs in the consumer
@@ -20,6 +21,16 @@ on:
         required: false
         type: boolean
         default: true
+      sonar-edition:
+        description: "Target platform: 'server' (self-hosted) or 'cloud' (SonarQube Cloud)"
+        required: false
+        type: string
+        default: 'server'
+      sonar-organization:
+        description: 'SonarQube Cloud organization key (cloud edition; or set it in sonar-project.properties)'
+        required: false
+        type: string
+        default: ''
       project-base-dir:
         description: 'Base directory to analyze'
         required: false
@@ -79,8 +90,10 @@ jobs:
         id: sonar
         uses: bauer-group/automation-templates/.github/actions/sonar-scan@main
         with:
+          sonar-edition: ${{ inputs.sonar-edition }}
           sonar-host-url: ${{ secrets.SONARQUBE_HOST_URL }}
           sonar-token: ${{ secrets.SONARQUBE_TOKEN }}
+          sonar-organization: ${{ inputs.sonar-organization }}
           project-base-dir: ${{ inputs.project-base-dir }}
           args: ${{ inputs.args }}
           fail-on-quality-gate: ${{ inputs.fail-on-quality-gate }}

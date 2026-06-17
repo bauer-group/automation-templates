@@ -331,6 +331,18 @@ on:
         required: false
         default: false
 
+      sonar-edition:
+        description: "SonarQube target: 'server' (self-hosted) or 'cloud' (SonarQube Cloud)"
+        type: string
+        required: false
+        default: 'server'
+
+      sonar-organization:
+        description: 'SonarQube Cloud organization key (cloud edition)'
+        type: string
+        required: false
+        default: ''
+
     secrets:
       DOTNET_NUGET_PUBLISH_API_KEY:
         description: 'NuGet API key for publishing .NET packages to NuGet.org or private feeds'
@@ -388,6 +400,8 @@ jobs:
     uses: ./.github/workflows/modules-code-quality.yml
     with:
       enable-sonar: true
+      sonar-edition: ${{ inputs.sonar-edition }}
+      sonar-organization: ${{ inputs.sonar-organization }}
       project-base-dir: ${{ inputs.sonar-project-base-dir }}
       args: ${{ inputs.sonar-args }}
       fail-on-quality-gate: ${{ inputs.sonar-fail-on-quality-gate }}

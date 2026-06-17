@@ -41,6 +41,8 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 | `SONARQUBE_HOST_URL` | dotnet-build, nodejs-build, python-build, php-build, modules-code-quality | URL des self-hosted SonarQube Servers (z.B. `https://sonar.bauer-group.com`) | Eure Server-Adresse |
 
 > Beide sind **optional** und als **Organization Secrets** hinterlegt. Aktivierung pro Build über den Input `enable-sonar: true`; fehlen Token/URL, gibt der Job nur eine **Warnung** aus statt zu scheitern.
+>
+> Für **SonarQube Cloud** (`sonar-edition: cloud`) wird nur `SONARQUBE_TOKEN` (ein Cloud-Token) plus die Organization benötigt — `SONARQUBE_HOST_URL` wird dann ignoriert.
 
 ### Docker & Container
 

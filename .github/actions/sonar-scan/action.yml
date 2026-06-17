@@ -1,47 +1,64 @@
 # =============================================================================
-# SonarQube Scan (Self-hosted Server)
+# SonarQube Scan (Server + Cloud)
 # =============================================================================
-# Thin, cached wrapper around SonarSource/sonarqube-scan-action for self-hosted
-# SonarQube Server. Designed to be 100% opt-in and non-breaking:
+# Thin, cached wrapper around SonarSource/sonarqube-scan-action supporting both
+# self-hosted SonarQube Server and SonarQube Cloud (formerly SonarCloud).
+# Designed to be opt-in and non-breaking:
 #
-#   * Auto-skips (with a notice, not an error) when host URL or token is missing
-#   * Quality Gate is NON-blocking by default — adding this scan can never turn
-#     a previously-green build red unless the consumer opts in explicitly
+#   * sonar-edition switches between 'server' (default) and 'cloud'
+#   * Auto-skips with a WARNING (never an error) when required inputs are missing
+#       - server: needs sonar-host-url + sonar-token
+#       - cloud:  needs sonar-token (+ sonar.organization)
+#   * Quality Gate is NON-blocking unless fail-on-quality-gate is set
 #   * Caches the scanner + analysis data between runs (SONAR_USER_HOME)
 #
-# Project configuration (projectKey, sources, coverage report paths, ...) lives
-# in the consumer repo's `sonar-project.properties` so this action stays generic.
+# Project configuration (projectKey, sources, coverage paths, sonar.organization)
+# lives in the consumer repo's `sonar-project.properties` so this action stays
+# generic; anything can also be passed via `args`.
 #
-# Usage:
+# Usage (Server):
 #   - uses: bauer-group/automation-templates/.github/actions/sonar-scan@main
 #     with:
 #       sonar-host-url: ${{ secrets.SONARQUBE_HOST_URL }}
 #       sonar-token:    ${{ secrets.SONARQUBE_TOKEN }}
 #
-# Note: SonarSource/sonarqube-scan-action is a Docker action and runs on Linux
-#       runners only. For .NET/C# with the MSBuild scanner on Windows runners,
-#       use the dotnet-sonarscanner begin/end flow inside the dotnet build job.
+# Usage (Cloud):
+#   - uses: bauer-group/automation-templates/.github/actions/sonar-scan@main
+#     with:
+#       sonar-edition:      cloud
+#       sonar-token:        ${{ secrets.SONARQUBE_TOKEN }}
+#       sonar-organization: my-org-key
+#
+# Note: SonarSource/sonarqube-scan-action runs on Linux runners only. For .NET/C#
+#       full coverage use the dotnet-sonarscanner begin/end flow instead.
 #
 # References:
 #   - https://github.com/SonarSource/sonarqube-scan-action
-#   - https://docs.sonarsource.com/sonarqube-server/latest/analyzing-source-code/ci-integration/github-actions/
 # =============================================================================
 
 name: 'SonarQube Scan'
-description: 'Self-hosted SonarQube Server analysis with caching, opt-in auto-skip and non-blocking Quality Gate'
+description: 'SonarQube Server or Cloud analysis with caching, opt-in auto-skip and non-blocking Quality Gate'
 author: 'BAUER GROUP'
 
 inputs:
+  sonar-edition:
+    description: "Target platform: 'server' (self-hosted) or 'cloud' (SonarQube Cloud)"
+    required: false
+    default: 'server'
   sonar-host-url:
-    description: 'SonarQube Server URL (e.g. https://sonar.example.com). Empty = skip scan.'
+    description: 'SonarQube Server URL (server edition). Leave empty for Cloud.'
     required: false
     default: ''
   sonar-token:
     description: 'SonarQube analysis token. Empty = skip scan.'
     required: false
     default: ''
+  sonar-organization:
+    description: 'SonarQube Cloud organization key (cloud edition; or set it in sonar-project.properties)'
+    required: false
+    default: ''
   project-base-dir:
-    description: 'Base directory to analyze'
+    description: 'Base directory to analyze (and where sonar-project.properties is read from)'
     required: false
     default: '.'
   args:
@@ -68,20 +85,31 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: 🔍 Guard — require host + token
+    - name: 🔍 Guard — validate required inputs per edition
       id: guard
       shell: bash
       env:
+        SONAR_EDITION: ${{ inputs.sonar-edition }}
         SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
         SONAR_TOKEN: ${{ inputs.sonar-token }}
       run: |
-        if [ -z "$SONAR_HOST_URL" ] || [ -z "$SONAR_TOKEN" ]; then
-          echo "::warning title=SonarQube skipped::SonarQube analysis was enabled but SONARQUBE_HOST_URL and/or SONARQUBE_TOKEN are not set — skipping without failing the build."
+        if [ -z "$SONAR_TOKEN" ]; then
+          echo "::warning title=SonarQube skipped::SonarQube analysis was enabled but SONARQUBE_TOKEN is not set — skipping without failing the build."
+          echo "executed=false" >> "$GITHUB_OUTPUT"
+        elif [ "$SONAR_EDITION" = "server" ] && [ -z "$SONAR_HOST_URL" ]; then
+          echo "::warning title=SonarQube skipped::server edition requires SONARQUBE_HOST_URL — skipping without failing the build."
           echo "executed=false" >> "$GITHUB_OUTPUT"
         else
-          echo "✅ SonarQube host + token present — running analysis"
+          echo "✅ SonarQube ($SONAR_EDITION) inputs present — running analysis"
           echo "executed=true" >> "$GITHUB_OUTPUT"
         fi
+
+    - name: 🌐 Configure host (server / explicit URL)
+      if: steps.guard.outputs.executed == 'true' && inputs.sonar-host-url != ''
+      shell: bash
+      env:
+        HOST: ${{ inputs.sonar-host-url }}
+      run: echo "SONAR_HOST_URL=$HOST" >> "$GITHUB_ENV"
 
     - name: 💾 Cache SonarQube data
       if: steps.guard.outputs.executed == 'true' && inputs.cache == 'true'
@@ -100,9 +128,14 @@ runs:
       env:
         RAW_ARGS: ${{ inputs.args }}
         FAIL_QG: ${{ inputs.fail-on-quality-gate }}
+        SONAR_EDITION: ${{ inputs.sonar-edition }}
+        SONAR_ORG: ${{ inputs.sonar-organization }}
       run: |
         # Flatten any multiline args into a single space-separated string
         ARGS="$(printf '%s' "$RAW_ARGS" | tr '\n' ' ')"
+        if [ "$SONAR_EDITION" = "cloud" ] && [ -n "$SONAR_ORG" ]; then
+          ARGS="$ARGS -Dsonar.organization=$SONAR_ORG"
+        fi
         if [ "$FAIL_QG" = "true" ]; then
           ARGS="$ARGS -Dsonar.qualitygate.wait=true"
         fi
@@ -113,8 +146,9 @@ runs:
       if: steps.guard.outputs.executed == 'true'
       uses: SonarSource/sonarqube-scan-action@v8
       env:
+        # SONAR_HOST_URL is exported via GITHUB_ENV for server / explicit URL;
+        # for cloud it stays unset so the scanner targets SonarQube Cloud.
         SONAR_TOKEN: ${{ inputs.sonar-token }}
-        SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
         SONAR_USER_HOME: ${{ github.workspace }}/.sonar
       with:
         projectBaseDir: ${{ inputs.project-base-dir }}
@@ -136,7 +170,8 @@ runs:
           echo ""
           echo "| Field | Value |"
           echo "|-------|-------|"
-          echo "| **Host** | ${{ inputs.sonar-host-url }} |"
+          echo "| **Edition** | ${{ inputs.sonar-edition }} |"
+          echo "| **Host** | ${{ inputs.sonar-host-url != '' && inputs.sonar-host-url || 'SonarQube Cloud' }} |"
           echo "| **Base dir** | \`${{ inputs.project-base-dir }}\` |"
           echo "| **Quality Gate wait** | ${{ inputs.fail-on-quality-gate }} |"
           echo "| **Quality Gate** | $QG |"

@@ -3,7 +3,8 @@
 A step-by-step guide for adding **automated, multi-language code analysis** to a
 repository using the reusable workflows from
 [`bauer-group/automation-templates`](https://github.com/bauer-group/automation-templates)
-and a **self-hosted SonarQube Server**.
+and **SonarQube** — either a self-hosted **Server** or **SonarQube Cloud**
+(switchable via `sonar-edition`).
 
 Copy the parts you need into your repository.
 
@@ -87,6 +88,8 @@ All four build workflows expose three optional Sonar inputs:
 
 | Input | Purpose | Default |
 |-------|---------|---------|
+| `sonar-edition` | Target platform: `server` (self-hosted) or `cloud` (SonarQube Cloud) | `server` |
+| `sonar-organization` | SonarQube Cloud organization key (cloud edition) | `''` |
 | `sonar-project-base-dir` | Directory SonarQube analyzes and where `sonar-project.properties` is read from | `.` |
 | `sonar-args` | Extra `-Dsonar.*` arguments (one per line) — relocate the config or pass settings inline | `''` |
 | `sonar-fail-on-quality-gate` | Fail the build on a failing Quality Gate | `false` |
@@ -114,6 +117,26 @@ jobs:
 > Note (scanner v6+): `sonar-args` are parsed as discrete tokens (not bash), so
 > use one `-Dkey=value` per line and avoid spaces inside a value — put anything
 > complex in `sonar-project.properties`.
+
+### SonarQube Cloud instead of self-hosted Server
+
+Set `sonar-edition: cloud` and provide the organization. Cloud needs **no host
+URL** — only the token (reuse the `SONARQUBE_TOKEN` secret, set to a SonarQube
+Cloud token) plus `sonar.organization`:
+
+```yaml
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    with:
+      enable-sonar: true
+      sonar-edition: cloud
+      sonar-organization: my-org-key   # or set sonar.organization in sonar-project.properties
+    secrets: inherit                   # SONARQUBE_TOKEN (a Cloud token); SONARQUBE_HOST_URL is ignored
+```
+
+The project must already exist in SonarQube Cloud — the scanner does not
+auto-provision Cloud projects.
 
 ---
 
