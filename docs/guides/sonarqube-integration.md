@@ -81,12 +81,47 @@ Swap `nodejs-build.yml` for `dotnet-build.yml`, `python-build.yml`, or
 `php-build.yml` as needed — the `enable-sonar` input and `secrets: inherit`
 pattern is identical for all four.
 
+### Custom `sonar-project.properties` location or inline settings
+
+All four build workflows expose three optional Sonar inputs:
+
+| Input | Purpose | Default |
+|-------|---------|---------|
+| `sonar-project-base-dir` | Directory SonarQube analyzes and where `sonar-project.properties` is read from | `.` |
+| `sonar-args` | Extra `-Dsonar.*` arguments (one per line) — relocate the config or pass settings inline | `''` |
+| `sonar-fail-on-quality-gate` | Fail the build on a failing Quality Gate | `false` |
+
+The SonarScanner has **no "settings-file path" flag** — it always reads
+`sonar-project.properties` from the analysis base directory. So to keep the file
+somewhere other than the repo root you have two supported options:
+
+```yaml
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    with:
+      enable-sonar: true
+      # Option 1 — properties file lives in a subdirectory:
+      sonar-project-base-dir: services/api
+      # Option 2 — no properties file at all, pass settings inline:
+      # sonar-args: |
+      #   -Dsonar.projectKey=my-team_my-service
+      #   -Dsonar.sources=src
+      # sonar-fail-on-quality-gate: true   # optional: enforce the gate
+    secrets: inherit
+```
+
+> Note (scanner v6+): `sonar-args` are parsed as discrete tokens (not bash), so
+> use one `-Dkey=value` per line and avoid spaces inside a value — put anything
+> complex in `sonar-project.properties`.
+
 ---
 
 ## 3. `sonar-project.properties` (per language)
 
-Place this in the repo root. The coverage report path must match what your test
-step produces (see §4).
+Place this in the analysis base directory — the repo root by default, or
+wherever `sonar-project-base-dir` points (see §2). The coverage report path must
+match what your test step produces (see §4).
 
 ```properties
 # Common

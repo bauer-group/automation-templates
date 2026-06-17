@@ -82,7 +82,9 @@ Both are intended as **organization-level secrets** and flow in via `secrets: in
 ## Project configuration
 
 Project-specific settings live in a `sonar-project.properties` file in the
-**consumer repository** (keeps this module generic):
+**consumer repository** (keeps this module generic). It is read from the analysis
+base directory, so to keep it outside the repo root set `project-base-dir`
+accordingly — or skip the file entirely and pass settings via `args`:
 
 ```properties
 sonar.projectKey=my-team_my-service

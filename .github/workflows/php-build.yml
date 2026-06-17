@@ -249,6 +249,24 @@ on:
         required: false
         default: false
 
+      sonar-project-base-dir:
+        description: 'Base directory SonarQube analyzes / where sonar-project.properties is read from'
+        type: string
+        required: false
+        default: '.'
+
+      sonar-args:
+        description: 'Additional -Dsonar.* scanner arguments (one per line). Point at a config elsewhere or pass settings inline.'
+        type: string
+        required: false
+        default: ''
+
+      sonar-fail-on-quality-gate:
+        description: 'Fail the build if the SonarQube Quality Gate fails'
+        type: boolean
+        required: false
+        default: false
+
     secrets:
       COMPOSER_AUTH_JSON:
         description: 'Composer auth.json content for private packages'
@@ -310,6 +328,9 @@ jobs:
     uses: ./.github/workflows/modules-code-quality.yml
     with:
       enable-sonar: true
+      project-base-dir: ${{ inputs.sonar-project-base-dir }}
+      args: ${{ inputs.sonar-args }}
+      fail-on-quality-gate: ${{ inputs.sonar-fail-on-quality-gate }}
     secrets: inherit
 
   build:
