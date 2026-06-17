@@ -1,3 +1,13 @@
+## [6.5.0](https://github.com/bauer-group/automation-templates/compare/v6.4.0...v6.5.0) (2026-06-17)
+
+### 🚀 Features
+
+* **ci:** added self-hosted SonarQube code-quality module ([73d0c52](https://github.com/bauer-group/automation-templates/commit/73d0c5238d4a963b0799a455a72bd74921a799ee))
+
+### 🐛 Bug Fixes
+
+* **ci:** replaced PR validation security and license stubs ([a05b6d5](https://github.com/bauer-group/automation-templates/commit/a05b6d566aa3af51d8ff19d72a2fbc01b534b98b))
+
 ## [6.4.0](https://github.com/bauer-group/automation-templates/compare/v6.3.0...v6.4.0) (2026-05-16)
 
 ### 🚀 Features
