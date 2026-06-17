@@ -87,23 +87,35 @@ jobs:
           configFile: .github/config/commitlint.config.js
           failOnWarnings: false
 
-      - name: 🛡️ Security Pre-Check
+      # Secrets-only scan keeps PRs fast; the full vuln/SCA sweep stays in the
+      # dedicated modules-security-scan / modules-vulnerability-scan workflows
+      # that run on main/release. Outputs (security-score) are preserved so the
+      # summary + PR comment below keep working unchanged.
+      - name: 🛡️ Security Scan (Secrets)
         id: security
         if: inputs.enable-security-scan == true
         continue-on-error: ${{ inputs.fail-on-security-issues == false }}
-        run: |
-          echo "security-score=95" >> $GITHUB_OUTPUT
-          echo "Security scan would be performed here with engine: ${{ inputs.security-scan-engine }}"
-          # Note: Actual security scan should be implemented as a separate job or action
+        uses: bauer-group/automation-templates/.github/actions/security-scan@main
+        with:
+          scan-engine: ${{ inputs.security-scan-engine }}
+          scan-type: 'secrets'
+          fail-on-findings: ${{ inputs.fail-on-security-issues }}
+          exclude-paths: '.git,node_modules,vendor'
+          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 📋 License Pre-Check
+      - name: 📋 License Compliance
         id: license
         if: inputs.enable-license-check == true
         continue-on-error: ${{ inputs.fail-on-license-issues == false }}
-        run: |
-          echo "compliance-status=compliant" >> $GITHUB_OUTPUT
-          echo "License compliance check would be performed here"
-          # Note: Actual license check should be implemented as a separate job or action
+        uses: bauer-group/automation-templates/.github/actions/license-compliance@main
+        with:
+          fail-on-forbidden: ${{ inputs.fail-on-license-issues }}
+          fail-on-unknown: false
+          scan-dependencies: true
+          generate-sbom: false
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📊 Validation Summary
         id: summary
