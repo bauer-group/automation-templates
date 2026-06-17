@@ -1,3 +1,15 @@
+## [6.6.0](https://github.com/bauer-group/automation-templates/compare/v6.5.0...v6.6.0) (2026-06-17)
+
+### 🚀 Features
+
+* **ci:** added SonarQube Cloud support via switchable sonar-edition ([d17370d](https://github.com/bauer-group/automation-templates/commit/d17370d186c64c98736a6efc2fd40d62863fcb88))
+* **ci:** exposed SonarQube project-base-dir and args in build workflows ([7505698](https://github.com/bauer-group/automation-templates/commit/7505698831b21dafae983156b01da4d292369b23))
+
+### 🐛 Bug Fixes
+
+* **ci:** hardened SonarQube action secret handling ([ce74812](https://github.com/bauer-group/automation-templates/commit/ce74812058b9ee3b8537b751c8919f4bfab42c09))
+* **ci:** upgraded SonarQube scan action from deprecated v5 to v8 ([f2bc4b8](https://github.com/bauer-group/automation-templates/commit/f2bc4b8630dc010808ba29ad53b32a4635041c15))
+
 ## [6.5.0](https://github.com/bauer-group/automation-templates/compare/v6.4.0...v6.5.0) (2026-06-17)
 
 ### 🚀 Features
