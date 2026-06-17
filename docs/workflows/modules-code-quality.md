@@ -11,6 +11,7 @@ It is **opt-in** and **tolerant by design**: it never breaks an existing build.
 
 > Reference: [`.github/workflows/modules-code-quality.yml`](../../.github/workflows/modules-code-quality.yml)
 > · Action: [`.github/actions/sonar-scan`](../../.github/actions/sonar-scan/action.yml)
+> · Consumer guide: [SonarQube integration](../guides/sonarqube-integration.md)
 
 ## Usage
 
