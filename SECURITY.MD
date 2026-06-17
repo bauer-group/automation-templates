@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/SECURITY.template.MD instead. -->
-<!-- Generated on 2026-05-16 19:50:30 UTC -->
+<!-- Generated on 2026-06-17 20:35:08 UTC -->
 
 # 🛡️ Security Policy
 
@@ -48,15 +48,15 @@ We actively maintain and provide security updates for supported versions:
 
 | Version | Support Status | Security Updates |
 |---------|---------------|------------------|
-| 6.4.0 (current) | ✅ Full Support | ✅ Yes |
+| 6.5.0 (current) | ✅ Full Support | ✅ Yes |
+| v6.4.0 | ❌ End of Life | ❌ No |
 | v6.3.0 | ❌ End of Life | ❌ No |
 | v6.2.1 | ❌ End of Life | ❌ No |
 | v6.2.0 | ❌ End of Life | ❌ No |
-| v6.1.0 | ❌ End of Life | ❌ No |
 
 ### Version Support Policy
 
-- **Current Version**: Full feature and security support for the latest release (6.4.0)
+- **Current Version**: Full feature and security support for the latest release (6.5.0)
 - **Previous Versions**: No support provided - users should upgrade to the current version
 - **Security Updates**: Only applied to the current version
 
@@ -318,10 +318,10 @@ We recognize security contributors through:
 
 This security policy is subject to BAUER GROUP's information security policies and applicable laws. By using this repository, you agree to follow these security guidelines and report any security issues responsibly.
 
-**Last Updated**: 2026-05-16 19:50:30 UTC  
-**Next Review**: May 2027  
+**Last Updated**: 2026-06-17 20:35:08 UTC  
+**Next Review**: June 2027  
 **Policy Version**: 1.0.0  
-**Repository Version**: 6.4.0
+**Repository Version**: 6.5.0
 
 ---
 
