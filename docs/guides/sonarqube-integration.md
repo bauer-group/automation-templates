@@ -290,7 +290,8 @@ To make a failing Quality Gate fail the workflow:
 |---------|-------------|
 | `SonarQube analysis was enabled but … not set` warning | Repo has no access to the org secrets — grant it (§1.1). |
 | Coverage shows 0% | Level A reports no coverage by design — use Level B (§4) and verify the report path in `sonar-project.properties`. |
-| `Project not found` | `sonar.projectKey` does not match the SonarQube project (§1.2). |
+| `You're not authorized to analyze this project … and you're not authorized to create it` | Token authenticated but has no rights for that project key. Either **create the project** in SonarQube first (Projects → Create Project → Manually, using the exact `sonar.projectKey`), **or** grant the token user the **Create Projects** global permission for auto-provisioning. Then ensure that user has **Execute Analysis** on the project. Server-side config — not a workflow issue. |
+| `Project not found` / key mismatch | `sonar.projectKey` must match the SonarQube project exactly (case-sensitive). |
 | New-code / blame inaccurate | Ensure `fetch-depth: 0` on checkout. |
 | PR not decorated | Caller must grant `pull-requests: write`. |
 
