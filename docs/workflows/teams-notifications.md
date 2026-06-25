@@ -100,16 +100,19 @@ See [Self-Hosted Runner Documentation](../self-hosted-runners.md) for details.
 
 ### Quick Setup (5 minutes)
 
-#### 1. Create Teams Webhook
+#### 1. Create Teams Webhook (Power Automate Workflows)
+
+> The legacy Office 365 "Incoming Webhook" connectors are retired. Use the
+> **Workflows** app, which issues a Power Automate URL of the form
+> `https://<env>.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/...`.
 
 1. **Open Microsoft Teams** and navigate to your target channel
-2. **Add Incoming Webhook**:
+2. **Add the Workflow**:
    - Click **⋯** (More options) next to the channel name
-   - Select **Connectors**
-   - Find **Incoming Webhook** and click **Configure**
+   - Select **Workflows**
+   - Choose the template **"Post to a channel when a webhook request is received"**
    - Provide a name: `GitHub Notifications`
-   - Optionally upload a custom image
-   - Click **Create**
+   - Confirm the team and channel, then click **Add workflow**
    - **Copy the webhook URL** (save this securely)
 
 #### 2. Configure GitHub Repository
@@ -472,7 +475,7 @@ card:
 webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
 
 # ❌ Bad: Hardcode webhook URLs
-webhook-url: "https://outlook.office.com/webhook/..."
+webhook-url: "https://prod-00.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/..."
 ```
 
 #### Multiple Environments

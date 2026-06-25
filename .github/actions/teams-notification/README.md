@@ -43,13 +43,21 @@ Send sophisticated Adaptive Card notifications to Microsoft Teams channels for a
 
 ## 🚀 Quick Start
 
-### 1. Setup Teams Webhook
+### 1. Setup Teams Webhook (Power Automate Workflows)
 
-1. In Microsoft Teams, navigate to your target channel
-2. Click **⋯** → **Connectors** → **Incoming Webhook**
-3. Configure the webhook with a name and optional image
-4. Copy the webhook URL
-5. Add the webhook URL as a GitHub repository secret named `TEAMS_WEBHOOK_URL`
+Microsoft retired the legacy Office 365 "Incoming Webhook" connectors. Create
+the webhook via the **Workflows** app instead:
+
+1. In Microsoft Teams, open the target channel → **⋯** → **Workflows**
+2. Pick the template **"Post to a channel when a webhook request is received"**
+3. Confirm the team and channel, then **Add workflow**
+4. Copy the generated URL — it looks like
+   `https://<env>.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/...`
+5. Add it as a GitHub repository secret named `TEAMS_WEBHOOK_URL`
+
+> The action accepts both the new Power Automate URL (responds `HTTP 202`) and
+> any still-active legacy connector URL (responds `HTTP 200`). If the secret is
+> absent the notification is **skipped with a warning**, not failed.
 
 ### 2. Basic Usage
 
@@ -69,7 +77,7 @@ Send sophisticated Adaptive Card notifications to Microsoft Teams channels for a
 
 | Parameter | Description | Required | Default |
 |-----------|-------------|----------|---------|
-| `webhook-url` | Microsoft Teams webhook URL | ✅ | - |
+| `webhook-url` | Microsoft Teams webhook URL (empty → skip with warning) | ➖ | - |
 | `event-type` | Type of event (see Event Types) | ✅ | - |
 | `title` | Notification title | ❌ | 'Repository Event' |
 | `summary` | Event summary text | ❌ | - |

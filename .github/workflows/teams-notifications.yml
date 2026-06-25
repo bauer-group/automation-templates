@@ -80,8 +80,6 @@ permissions:
 env:
   # Notification level: 'all' sends all notifications, 'errors-only' sends only failures
   NOTIFICATION_LEVEL: ${{ inputs.notification-level || github.event.inputs.notification-level || vars.TEAMS_NOTIFICATION_LEVEL || 'errors-only' }}
-  # Teams webhook URL from secret
-  TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_URL }}
 
 jobs:
   # Handle workflow completion notifications

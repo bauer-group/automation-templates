@@ -7,8 +7,8 @@ branding:
 
 inputs:
   webhook-url:
-    description: 'Microsoft Teams webhook URL'
-    required: true
+    description: 'Microsoft Teams webhook URL (Power Automate Workflows or legacy O365 connector). If empty, the notification is skipped with a warning instead of failing.'
+    required: false
   event-type:
     description: 'Type of event (workflow_failure, workflow_success, issue_opened, issue_closed, pr_opened, pr_closed, pr_merged, push, release)'
     required: true
@@ -105,11 +105,14 @@ inputs:
 
 outputs:
   status:
-    description: 'Notification delivery status'
+    description: 'Notification delivery status (success, skipped or failed)'
+    value: ${{ steps.send.outputs.status }}
   response:
     description: 'Teams webhook response'
+    value: ${{ steps.send.outputs.response }}
   card-payload:
     description: 'Generated Adaptive Card payload'
+    value: ${{ steps.card.outputs.payload }}
 
 runs:
   using: 'composite'
@@ -494,6 +497,16 @@ runs:
       id: send
       shell: bash
       run: |
+        # Opt-in notifier: if no webhook URL is configured (e.g. the
+        # TEAMS_WEBHOOK_URL secret is not set), skip cleanly instead of
+        # failing the job. A warning annotation keeps the gap visible.
+        if [[ -z "${{ inputs.webhook-url }}" ]]; then
+          echo "::warning title=Teams Notification Skipped::No webhook URL configured (TEAMS_WEBHOOK_URL secret missing) - skipping Teams notification"
+          echo "status=skipped" >> $GITHUB_OUTPUT
+          echo "response=No webhook URL configured" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
         # Retry logic
         RETRY_COUNT=0
         MAX_RETRIES=${{ inputs.retry-count }}
@@ -524,8 +537,10 @@ runs:
             
             echo "📊 Response Status: $STATUS_CODE"
             echo "⏱️ Response Time: ${TIME_TOTAL}s"
-            
-            if [[ "$STATUS_CODE" == "200" ]]; then
+
+            # Accept any 2xx: legacy O365 connectors reply 200, the new
+            # Power Automate Workflows endpoint replies 202 Accepted (async)
+            if [[ "$STATUS_CODE" =~ ^2[0-9][0-9]$ ]]; then
               echo "✅ Teams notification sent successfully"
               SUCCESS=true
               echo "status=success" >> $GITHUB_OUTPUT
