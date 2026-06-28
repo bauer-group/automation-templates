@@ -78,7 +78,7 @@ We implement multiple layers of automated security scanning:
 ```yaml
 # Gitleaks - Open Source Secrets Scanning
 - name: 🔍 Secrets Scan (Gitleaks)
-  uses: gitleaks/gitleaks-action@v2
+  uses: gitleaks/gitleaks-action@v3
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

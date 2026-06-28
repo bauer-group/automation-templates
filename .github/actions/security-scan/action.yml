@@ -96,7 +96,7 @@ runs:
     - name: 🔐 Gitleaks Secrets Detection
       id: gitleaks-scan
       if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both')
-      uses: gitleaks/gitleaks-action@v2
+      uses: gitleaks/gitleaks-action@v3
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
         GITLEAKS_LICENSE: ${{ inputs.gitleaks-license }}

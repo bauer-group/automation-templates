@@ -49,7 +49,7 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 
 ```yaml
 - name: ⚡ Fast Secrets Scan
-  uses: gitleaks/gitleaks-action@v2
+  uses: gitleaks/gitleaks-action@v3
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
