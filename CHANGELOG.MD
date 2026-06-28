@@ -1,3 +1,5 @@
+## [6.6.1](https://github.com/bauer-group/automation-templates/compare/v6.6.0...v6.6.1) (2026-06-28)
+
 ## [6.6.0](https://github.com/bauer-group/automation-templates/compare/v6.5.0...v6.6.0) (2026-06-17)
 
 ### 🚀 Features
