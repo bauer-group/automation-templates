@@ -108,7 +108,7 @@ All GitHub Actions are pinned to specific SHA hashes:
 uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
 
 # ❌ Insecure - Using mutable tag
-uses: actions/checkout@v4
+uses: actions/checkout@v6
 ```
 
 ##### Dependency Updates

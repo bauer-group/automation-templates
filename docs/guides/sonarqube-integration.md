@@ -180,9 +180,9 @@ jobs:
   sonar:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with: { node-version: '20' }
       - run: npm ci
       - run: npm test -- --coverage        # produces coverage/lcov.info
@@ -199,9 +199,9 @@ jobs:
   sonar:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with: { python-version: '3.12' }
       - run: pip install -r requirements.txt pytest pytest-cov
       - run: pytest --cov --cov-report=xml  # produces coverage.xml
@@ -218,7 +218,7 @@ jobs:
   sonar:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - uses: shivammathur/setup-php@v2
         with:
@@ -242,9 +242,9 @@ jobs:
   sonar:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with: { dotnet-version: '8.0.x' }
       - uses: actions/setup-java@v4        # scanner needs a JRE
         with: { distribution: 'temurin', java-version: '17' }

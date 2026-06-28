@@ -196,7 +196,7 @@ runs:
 
     - name: Setup NuGet Cache
       if: inputs.cache-enabled == 'true'
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ~/.nuget/packages
         key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/Directory.Build.props', '**/Directory.Packages.props') }}
@@ -809,7 +809,7 @@ runs:
     # =========================================================================
     - name: Upload NuGet Packages
       if: success() && inputs.create-package == 'true' && steps.pack.outputs.package-path != ''
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: nuget-packages${{ inputs.artifact-suffix }}
         path: ${{ inputs.working-directory }}/nupkg/
@@ -817,7 +817,7 @@ runs:
 
     - name: Upload Test Results
       if: always() && inputs.run-tests == 'true' && inputs.collect-coverage == 'true'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: test-results${{ inputs.artifact-suffix }}
         path: ${{ inputs.working-directory }}/TestResults/

@@ -75,7 +75,7 @@ jobs:
     
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: Generate Release Notes
         id: notes
@@ -84,7 +84,7 @@ jobs:
           # Add your release note generation logic
       
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           draft: false

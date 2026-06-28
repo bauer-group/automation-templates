@@ -61,7 +61,7 @@ jobs:
       coverage: ${{ steps.test.outputs.coverage }}
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: ⏱️ Start Timing
         id: timing
@@ -192,7 +192,7 @@ jobs:
     name: 🛡️ Security Scan
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🛡️ Run Security Scan
         id: security
@@ -270,7 +270,7 @@ jobs:
     environment: ${{ github.event.inputs.environment || 'development' }}
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🎯 Determine Target Environment
         id: env

@@ -39,7 +39,7 @@ jobs:
     name: 🔄 Simple Workflow Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🔔 Success Notification
         if: github.event.workflow_run.conclusion == 'success'
@@ -67,7 +67,7 @@ jobs:
     name: 🐛 Simple Issue Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🔔 Issue Opened
         if: github.event.action == 'opened'
@@ -98,7 +98,7 @@ jobs:
     name: 🔀 Simple PR Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🔔 PR Opened
         if: github.event.action == 'opened'
@@ -129,7 +129,7 @@ jobs:
     name: 🚀 Simple Push Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🔔 Push Notification
         uses: bauer-group/automation-templates/.github/actions/teams-notification@main

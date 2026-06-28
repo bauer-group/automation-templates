@@ -80,7 +80,7 @@ jobs:
     name: 🔄 Advanced Workflow Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 📊 Calculate Performance Metrics
         id: metrics
@@ -192,7 +192,7 @@ jobs:
     name: 🐛 Advanced Issue Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🏷️ Analyze Issue Priority
         id: priority
@@ -261,7 +261,7 @@ jobs:
     name: 🔀 Advanced PR Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 📊 Analyze PR Changes
         id: changes
@@ -350,7 +350,7 @@ jobs:
     name: 🧪 Test Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 🔔 Test Notification
         uses: bauer-group/automation-templates/.github/actions/teams-notification@main

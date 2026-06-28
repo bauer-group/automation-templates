@@ -350,7 +350,7 @@ with:
 
 # Access artifacts in subsequent steps
 - name: 📤 Upload Custom Artifacts
-  uses: actions/upload-artifact@v4
+  uses: actions/upload-artifact@v7
   with:
     name: my-build-artifacts
     path: ${{ steps.build.outputs.artifacts-path }}
@@ -447,7 +447,7 @@ Check the generated artifacts for detailed logs:
     config-file: 'autotools'
 
 - name: 🚀 Create Release
-  uses: softprops/action-gh-release@v1
+  uses: softprops/action-gh-release@v3
   with:
     files: '*.tar.gz'
 ```

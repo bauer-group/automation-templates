@@ -478,7 +478,7 @@ runs:
 
     - name: 📤 Upload GitGuardian Reports
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: gitguardian-security-reports
         path: security-reports/gitguardian/

@@ -537,7 +537,7 @@ jobs:
       
       - name: 📦 Cache Build Output
         if: inputs.cache-build
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ${{ inputs.working-directory }}/dist
@@ -781,7 +781,7 @@ jobs:
       
       - name: 📊 Upload Coverage
         if: inputs.test-coverage && env.HAS_CODECOV_TOKEN == 'true'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         env:
           HAS_CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN != '' }}
         with:

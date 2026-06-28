@@ -61,7 +61,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: 🔧 Test Installation
         uses: bauer-group/automation-templates/.github/actions/makefile-build@main
@@ -81,7 +81,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: 📚 Build Documentation
         uses: bauer-group/automation-templates/.github/actions/makefile-build@main
@@ -93,7 +93,7 @@ jobs:
           generate-reports: false
       
       - name: 📤 Upload Documentation
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: documentation
           path: |

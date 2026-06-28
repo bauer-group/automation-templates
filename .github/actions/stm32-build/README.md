@@ -112,7 +112,7 @@ jobs:
           build-type: Release
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: firmware
           path: ${{ steps.build.outputs.binary-path }}

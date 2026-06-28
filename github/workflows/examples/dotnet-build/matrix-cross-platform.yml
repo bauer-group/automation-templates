@@ -73,7 +73,7 @@ jobs:
     
     steps:
       - name: Download all test results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: 'test-results-*'
           path: all-test-results
@@ -93,10 +93,10 @@ jobs:
     
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: Download Release Builds
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: 'build-*-Release'
           path: builds
@@ -107,7 +107,7 @@ jobs:
           # Add your benchmark scripts here
       
       - name: Upload Benchmark Results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-results
           path: '*.benchmark'

@@ -103,7 +103,7 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
           pattern: stm32-*
@@ -168,7 +168,7 @@ jobs:
           EOF
 
       - name: Upload compliance report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: compliance-report
           path: compliance-report.md

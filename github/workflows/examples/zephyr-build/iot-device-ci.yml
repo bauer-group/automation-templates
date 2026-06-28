@@ -33,7 +33,7 @@ jobs:
     
     steps:
       - name: 📥 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
           fetch-depth: 0
@@ -70,7 +70,7 @@ jobs:
     
     steps:
       - name: 📥 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
       
@@ -92,7 +92,7 @@ jobs:
             -DCONFIG_BT=y
       
       - name: 📤 Upload Firmware
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: iot-firmware-${{ matrix.board }}
           path: ${{ steps.build.outputs.binary-path }}
@@ -100,7 +100,7 @@ jobs:
       
       - name: 📊 Upload Coverage
         if: matrix.board == 'esp32'  # Only upload once
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: ${{ steps.build.outputs.coverage-report }}/coverage.xml
           flags: iot-device
@@ -116,10 +116,10 @@ jobs:
     
     steps:
       - name: 📥 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: 📥 Download ESP32 Firmware
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: iot-firmware-esp32
           path: ./firmware
@@ -171,7 +171,7 @@ jobs:
     
     steps:
       - name: 📥 Download Firmware
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: iot-firmware-${{ matrix.board }}
           path: ./firmware
@@ -214,7 +214,7 @@ jobs:
     
     steps:
       - name: 📥 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: ⚡ Build Performance Test
         uses: bauer-group/automation-templates/.github/actions/zephyr-build@main
@@ -262,7 +262,7 @@ jobs:
     
     steps:
       - name: 📥 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       
@@ -296,12 +296,12 @@ jobs:
     
     steps:
       - name: 📥 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       
       - name: 📥 Download All Firmware
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: ./release-artifacts
       
@@ -355,7 +355,7 @@ jobs:
           echo "✅ Release package prepared"
       
       - name: 📤 Upload Release Package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: iot-device-release-${{ github.run_number }}
           path: release-artifacts/release-package

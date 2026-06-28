@@ -33,7 +33,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       
@@ -71,7 +71,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       
@@ -164,7 +164,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       
@@ -197,7 +197,7 @@ jobs:
           fail-on-warnings: ${{ matrix.config == 'release' }}
       
       - name: 📤 Upload Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-artifacts-${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.config }}
           path: |
@@ -214,7 +214,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: ⚡ Build Optimized Version
         uses: bauer-group/automation-templates/.github/actions/makefile-build@main
@@ -254,7 +254,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       
@@ -302,7 +302,7 @@ jobs:
           EOF
       
       - name: 📤 Upload Quality Reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: code-quality-reports
           path: |
@@ -321,7 +321,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: 📚 Install Documentation Tools
         run: |
@@ -342,7 +342,7 @@ jobs:
           generate-reports: false
       
       - name: 📤 Upload Documentation
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: project-documentation
           path: |
@@ -359,7 +359,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       
@@ -395,7 +395,7 @@ jobs:
           done
       
       - name: 📤 Upload Release Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-artifacts
           path: release-artifacts/

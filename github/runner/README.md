@@ -293,7 +293,7 @@ jobs:
   build:
     runs-on: [self-hosted, linux, docker]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: echo "Running on self-hosted runner!"
 ```
 
@@ -306,7 +306,7 @@ jobs:
       group: Self-Hosted (BAUER GROUP)
       labels: [linux, docker]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 ```
 
 ### With Automation-Templates Workflows

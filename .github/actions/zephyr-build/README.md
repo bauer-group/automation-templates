@@ -224,7 +224,7 @@ steps:
     test-pattern: 'tests/unit/*'
 
 - name: Upload Coverage
-  uses: codecov/codecov-action@v4
+  uses: codecov/codecov-action@v6
   with:
     files: ${{ steps.build.outputs.coverage-report }}/coverage.xml
     flags: zephyr-${{ matrix.board }}

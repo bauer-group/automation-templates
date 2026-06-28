@@ -134,7 +134,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: 🐛 New Issue Notification
         if: github.event.action == 'opened'
@@ -167,7 +167,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: 🔀 PR Ready for Review
         if: github.event.action == 'ready_for_review'
@@ -201,7 +201,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: 🏷️ New Release
         uses: bauer-group/automation-templates/.github/actions/teams-notification@main

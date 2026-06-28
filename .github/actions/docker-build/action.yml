@@ -246,7 +246,7 @@ runs:
         echo "✅ Docker build environment ready"
 
     - name: 🏗️ Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@v4
       with:
         driver: ${{ inputs.builder-driver }}
         platforms: ${{ inputs.platforms }}
@@ -378,7 +378,7 @@ runs:
 
     - name: 🔐 Log in to Primary Registry
       if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true')
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         registry: ${{ inputs.registry }}
         username: ${{ inputs.registry-username || github.actor }}
@@ -386,7 +386,7 @@ runs:
 
     - name: 🔐 Log in to Secondary Registry
       if: inputs.push == 'true' && inputs.secondary-registry != '' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true')
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         registry: ${{ inputs.secondary-registry }}
         username: ${{ inputs.secondary-registry-username }}
@@ -394,7 +394,7 @@ runs:
 
     - name: 🏷️ Extract Metadata for Primary Registry (GHCR)
       id: meta-primary
-      uses: docker/metadata-action@v5
+      uses: docker/metadata-action@v6
       with:
         images: |
           ${{ inputs.registry }}/${{ inputs.image-name || github.repository }}
@@ -426,7 +426,7 @@ runs:
       # Only run if secondary registry is set AND (release-version is set OR it's a tag push)
       # This prevents Docker Hub from receiving branch tags
       if: inputs.secondary-registry != '' && (inputs.release-version != '' || startsWith(github.ref, 'refs/tags/'))
-      uses: docker/metadata-action@v5
+      uses: docker/metadata-action@v6
       with:
         images: |
           ${{ inputs.secondary-registry }}/${{ inputs.secondary-image-name || inputs.image-name || github.repository }}
@@ -516,7 +516,7 @@ runs:
 
     - name: 🐳 Build Docker Image (Local)
       id: build-local
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       env:
         # v6 introduced auto-injected build summaries and build-record artifact uploads.
         # Both default to disabled to preserve v5 behavior; opt-in via verbose-build-summary
@@ -652,7 +652,7 @@ runs:
     - name: 🚀 Push Docker Image
       id: build
       if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true')
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       env:
         # See build-local step above for rationale - opt-in via verbose-build-summary input.
         DOCKER_BUILD_SUMMARY: ${{ inputs.verbose-build-summary == 'true' && 'true' || 'false' }}
@@ -763,7 +763,7 @@ runs:
 
     - name: 📤 Upload Security Reports
       if: always() && inputs.security-scan == 'true'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: docker-security-reports
         path: ${{ inputs.working-directory }}/docker-build-reports/

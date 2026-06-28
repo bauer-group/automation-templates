@@ -55,7 +55,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: all-firmware
           pattern: esp32-*
@@ -66,7 +66,7 @@ jobs:
           tar -czvf ../firmware-all-targets.tar.gz .
 
       - name: Upload combined archive
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-combined
           path: firmware-all-targets.tar.gz

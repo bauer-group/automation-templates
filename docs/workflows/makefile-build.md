@@ -467,7 +467,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup Compiler
         run: |
@@ -688,7 +688,7 @@ with:
 
 # Access artifacts in subsequent steps
 - name: Download Artifacts
-  uses: actions/download-artifact@v4
+  uses: actions/download-artifact@v8
   with:
     name: makefile-build-artifacts-${{ github.run_number }}
 ```
@@ -704,7 +704,7 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: bauer-group/automation-templates/.github/actions/gitleaks-scan@main
   
   build:
@@ -868,7 +868,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Deploy Documentation
         uses: peaceiris/actions-gh-pages@v3
         with:
@@ -892,7 +892,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Upload Release Assets
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             *.tar.gz
