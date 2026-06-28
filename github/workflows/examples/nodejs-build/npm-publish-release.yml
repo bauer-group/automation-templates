@@ -27,7 +27,7 @@ jobs:
   test-and-build:
     uses: ./.github/workflows/nodejs-build.yml
     with:
-      node-version: '20.x'
+      node-version: '22.x'
       package-manager: 'npm'
       frozen-lockfile: true
       build-command: 'npm run build'
@@ -43,7 +43,7 @@ jobs:
     needs: test-and-build
     uses: ./.github/workflows/nodejs-build.yml
     with:
-      node-version: '20.x'
+      node-version: '22.x'
       package-manager: 'npm'
       publish-package: true
       publish-registry: 'npm'
@@ -58,7 +58,7 @@ jobs:
     needs: test-and-build
     uses: ./.github/workflows/nodejs-build.yml
     with:
-      node-version: '20.x'
+      node-version: '22.x'
       package-manager: 'npm'
       publish-package: true
       publish-registry: 'github'

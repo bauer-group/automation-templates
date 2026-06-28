@@ -12,7 +12,7 @@ on:
 
 env:
   PYTHON_version: "3.12"
-  NODE_VERSION: "18"
+  NODE_VERSION: "22"
 
 permissions:
   contents: read

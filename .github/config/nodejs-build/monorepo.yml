@@ -4,7 +4,7 @@
 extends: default.yml
 
 node:
-  version: '20.x'
+  version: '22.x'
 
 package_manager:
   type: 'pnpm'  # pnpm is recommended for monorepos
@@ -268,8 +268,8 @@ docker:
   
   # Base images
   base:
-    builder: 'node:20-alpine'
-    runtime: 'node:20-alpine'
+    builder: 'node:22-alpine'
+    runtime: 'node:22-alpine'
     
   # Layer caching
   cache_mount: true

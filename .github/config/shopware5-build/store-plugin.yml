@@ -46,7 +46,7 @@ build:
 
   # Frontend build with production optimizations
   node_build: true
-  node_version: '18.x'
+  node_version: '20.x'
 
   # Optimized Composer install
   composer_install: true

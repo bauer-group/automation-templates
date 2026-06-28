@@ -4,7 +4,7 @@
 extends: default.yml
 
 node:
-  version: '20.x'
+  version: '22.x'
 
 package_manager:
   type: 'npm'

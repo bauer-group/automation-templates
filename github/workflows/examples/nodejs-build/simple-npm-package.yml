@@ -15,7 +15,7 @@ jobs:
   build:
     uses: ./.github/workflows/nodejs-build.yml
     with:
-      node-version: '20.x'
+      node-version: '22.x'
       package-manager: 'npm'
       build-command: 'npm run build'
       run-tests: true

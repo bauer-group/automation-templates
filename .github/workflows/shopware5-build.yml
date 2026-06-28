@@ -47,7 +47,7 @@ on:
         description: 'Node.js version for frontend build'
         type: string
         required: false
-        default: '18.x'
+        default: '20.x'
 
       # Testing Configuration
       run-tests:

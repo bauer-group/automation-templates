@@ -200,7 +200,7 @@ jobs:
   test-nodejs-build:
     uses: ./.github/workflows/nodejs-build.yml
     with:
-      node-versions: '["16", "18", "20"]'
+      node-versions: '["20", "22", "24"]'
       package-manager: 'npm'
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

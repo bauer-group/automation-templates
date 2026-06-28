@@ -7,7 +7,7 @@ The **`Node.js Build & Publish`** workflow is a comprehensive, reusable GitHub A
 ## Features
 
 ### Core Capabilities
-- ✅ **Node.js 20 LTS**: Optimized for Node.js 20 with support for 18.x, 20.x, 22.x
+- ✅ **Node.js 22 LTS**: Optimized for Node.js 22 with support for 20.x, 22.x, 24.x
 - ✅ **Multiple Package Managers**: npm, yarn, pnpm, bun (auto-detection)
 - ✅ **Project Types**: Libraries, React, Next.js, Express, Monorepos
 - ✅ **Matrix Builds**: Parallel builds across OS and Node.js versions
@@ -40,7 +40,7 @@ jobs:
   build:
     uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
     with:
-      node-version: '20.x'
+      node-version: '22.x'
       package-manager: 'npm'
       run-tests: true
       run-lint: true
@@ -55,7 +55,7 @@ jobs:
     uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
     with:
       # Node.js Configuration
-      node-version: '20.x'
+      node-version: '22.x'
       package-manager: 'pnpm'
       
       # Build Settings
@@ -297,7 +297,7 @@ jobs:
   publish:
     uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
     with:
-      node-version: '20.x'
+      node-version: '22.x'
       build-command: 'npm run build'
       run-tests: true
       test-coverage: true
@@ -314,7 +314,7 @@ jobs:
   build-react:
     uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
     with:
-      node-version: '20.x'
+      node-version: '22.x'
       build-command: 'npm run build'
       build-env: 'production'
       test-command: 'npm test -- --coverage --watchAll=false'
@@ -329,7 +329,7 @@ jobs:
   build-nextjs:
     uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
     with:
-      node-version: '20.x'
+      node-version: '22.x'
       build-command: 'npm run build'
       run-typecheck: true
       build-docker: true
@@ -359,7 +359,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node: ['18.x', '20.x', '22.x']
+        node: ['20.x', '22.x', '24.x']
         pm: [npm, yarn, pnpm]
     
     uses: your-org/automation-templates/.github/workflows/nodejs-build.yml@main
@@ -376,7 +376,7 @@ Location: `.github/config/nodejs-build/default.yml`
 
 ```yaml
 node:
-  version: '20.x'
+  version: '22.x'
 package_manager:
   type: 'npm'
   frozen_lockfile: true
@@ -517,7 +517,7 @@ secrets:
 
 ```dockerfile
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
@@ -525,7 +525,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules

@@ -14,14 +14,14 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node: ['18.x', '20.x', '22.x']
+        node: ['20.x', '22.x', '24.x']
         package-manager: [npm, yarn, pnpm]
         exclude:
           # Exclude some combinations to save time
           - os: windows-latest
             package-manager: pnpm
           - os: macos-latest
-            node: '18.x'
+            node: '20.x'
         include:
           # Add specific test cases
           - os: ubuntu-latest
@@ -46,7 +46,7 @@ jobs:
       run-audit: true
       
       # Coverage only for main combination
-      test-coverage: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '20.x' && matrix.package-manager == 'npm' }}
+      test-coverage: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.x' && matrix.package-manager == 'npm' }}
       
       # Artifacts
       upload-artifacts: true

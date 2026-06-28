@@ -8,7 +8,7 @@ on:
         description: 'Node.js version(s) - comma-separated for multiple'
         type: string
         required: false
-        default: '20.x'
+        default: '22.x'
       
       node-version-file:
         description: 'Path to .nvmrc or .node-version file'
@@ -355,7 +355,7 @@ on:
         description: 'Node.js version matrix (JSON array)'
         type: string
         required: false
-        default: '["20.x"]'
+        default: '["22.x"]'
       
       enable-sonar:
         description: 'Run SonarQube code-quality analysis (auto-skips with a warning if no token/URL)'

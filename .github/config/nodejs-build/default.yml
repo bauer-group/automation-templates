@@ -3,14 +3,14 @@
 
 node:
   # Node.js version configuration
-  version: '20.x'  # LTS version
+  version: '22.x'  # LTS version
   version_file: ''  # .nvmrc or .node-version
   
   # Additional versions for matrix builds
   additional_versions:
-    - '18.x'
     - '20.x'
     - '22.x'
+    - '24.x'
 
 package_manager:
   # Package manager settings
@@ -199,7 +199,7 @@ docker:
   
   # Build args
   build_args:
-    NODE_VERSION: '20-alpine'
+    NODE_VERSION: '22-alpine'
     APP_ENV: 'production'
   
   # Multi-stage build
@@ -267,9 +267,9 @@ matrix:
     - macos-latest
   
   node_version:
-    - '18.x'
     - '20.x'
     - '22.x'
+    - '24.x'
   
   # Exclusions
   exclude: []

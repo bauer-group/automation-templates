@@ -45,7 +45,7 @@ build:
 
   # Frontend asset build with Node.js
   node_build: false
-  node_version: '18.x'
+  node_version: '20.x'
 
   # Composer
   composer_install: true

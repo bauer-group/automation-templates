@@ -50,7 +50,7 @@ build:
 
   # Frontend assets with modern tooling (Webpack, etc.)
   node_build: true
-  node_version: '18.x'
+  node_version: '20.x'
 
   # Composer with optimization
   composer_install: true

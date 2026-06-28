@@ -57,7 +57,7 @@ jobs:
 
       # Frontend Build
       node-build: true
-      node-version: '18.x'
+      node-version: '20.x'
       build-command: 'npm run build:production'
 
       # Testing

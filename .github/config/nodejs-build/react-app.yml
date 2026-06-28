@@ -4,7 +4,7 @@
 extends: default.yml
 
 node:
-  version: '20.x'
+  version: '22.x'
 
 package_manager:
   type: 'npm'  # or yarn, pnpm
@@ -202,7 +202,7 @@ docker:
   # Multi-stage build for React
   stages:
     - name: 'build'
-      base_image: 'node:20-alpine'
+      base_image: 'node:22-alpine'
       command: 'npm run build'
     - name: 'production'
       base_image: 'nginx:alpine'
