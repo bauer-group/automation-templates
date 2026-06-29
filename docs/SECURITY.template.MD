@@ -16,7 +16,7 @@ If you discover a security vulnerability, please report it immediately through o
 - Provide detailed information using our template
 
 #### 2. Email Reporting
-- **Email**: support@bauer-group.com
+- **Email**: security@bauer-group.com
 - **Subject**: `[SECURITY] Automation Templates Vulnerability Report`
 
 ### What to Include
@@ -300,7 +300,7 @@ We recognize security contributors through:
 ## 📞 Emergency Contacts
 
 ### Incident Response Team
-- **Primary**: support@bauer-group.com
+- **Primary**: security@bauer-group.com
 - **Escalation**: Available through support portal
 
 ---
