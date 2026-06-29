@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/SECURITY.template.MD instead. -->
-<!-- Generated on 2026-06-28 17:11:14 UTC -->
+<!-- Generated on 2026-06-29 17:43:11 UTC -->
 
 # 🛡️ Security Policy
 
@@ -19,7 +19,7 @@ If you discover a security vulnerability, please report it immediately through o
 - Provide detailed information using our template
 
 #### 2. Email Reporting
-- **Email**: support@bauer-group.com
+- **Email**: security@bauer-group.com
 - **Subject**: `[SECURITY] Automation Templates Vulnerability Report`
 
 ### What to Include
@@ -309,7 +309,7 @@ We recognize security contributors through:
 ## 📞 Emergency Contacts
 
 ### Incident Response Team
-- **Primary**: support@bauer-group.com
+- **Primary**: security@bauer-group.com
 - **Escalation**: Available through support portal
 
 ---
@@ -318,7 +318,7 @@ We recognize security contributors through:
 
 This security policy is subject to BAUER GROUP's information security policies and applicable laws. By using this repository, you agree to follow these security guidelines and report any security issues responsibly.
 
-**Last Updated**: 2026-06-28 17:11:14 UTC  
+**Last Updated**: 2026-06-29 17:43:11 UTC  
 **Next Review**: June 2027  
 **Policy Version**: 1.0.0  
 **Repository Version**: v6.6.1
