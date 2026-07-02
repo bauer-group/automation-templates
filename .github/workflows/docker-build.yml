@@ -500,9 +500,10 @@ jobs:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0
-          lfs: true
-      
+          # README sync only needs the working-tree README; skip full history + LFS blobs.
+          fetch-depth: 1
+          lfs: false
+
       - name: 📄 Determine README File
         id: readme
         shell: bash
@@ -619,7 +620,11 @@ jobs:
         uses: actions/checkout@v6
 
       - name: 🛡️ Run Advanced Security Analysis
-        if: inputs.security-scan == true
+        # Guard on image-pushed: this scans the *registry* image, which does not exist on
+        # PRs / push:false runs (previously failed the job red). continue-on-error keeps this
+        # informational job non-fatal so the deploy gate (needs.security-analysis) is stable.
+        if: inputs.security-scan == true && needs.build.outputs.image-pushed == 'true'
+        continue-on-error: true
         shell: bash
         run: |
           echo "🛡️ Running advanced security analysis..."
@@ -665,23 +670,16 @@ jobs:
   deploy:
     name: 🚀 Deploy Image
     needs: [build, security-analysis]
-    if: always() && needs.build.result == 'success' && needs.security-analysis.result == 'success'
+    # Only run (and spin up a runner) when deployment is enabled. Previously an idle runner
+    # started on every default run just to echo a "disabled" notice. summary tolerates the
+    # resulting 'skipped' result.
+    if: always() && inputs.deploy-enabled == true && needs.build.result == 'success' && needs.security-analysis.result == 'success'
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     environment:
       name: ${{ inputs.deploy-environment }}
       url: ${{ steps.deploy.outputs.url }}
 
     steps:
-      - name: ⏭️ Deployment Disabled
-        if: inputs.deploy-enabled != true
-        run: |
-          echo "::notice title=Deployment Disabled::Deployment is disabled via inputs.deploy-enabled=false"
-          echo "## ⏭️ Deployment - Disabled" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Deployment is **disabled** in workflow configuration." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "To enable, set \`deploy-enabled: true\` in your workflow inputs." >> $GITHUB_STEP_SUMMARY
-
       - name: 📥 Checkout Repository
         if: inputs.deploy-enabled == true
         uses: actions/checkout@v6
@@ -740,6 +738,9 @@ jobs:
     needs: [build, dockerhub-readme, security-analysis, deploy]
     if: always()
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: 10 # Reporting only; caps 360-min default hang
+    permissions:
+      contents: read
 
     steps:
       - name: 📊 Generate Build Summary
