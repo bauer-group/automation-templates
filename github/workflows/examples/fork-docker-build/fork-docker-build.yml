@@ -1,0 +1,44 @@
+# Fork Docker Build - drop-in caller for a forked repository.
+#
+# Place this file at .github/workflows/fork-docker-build.yml on the fork's
+# integration branch (typically `workspace`). It rebuilds the fork's service
+# images on every push to the workspace branch and publishes them to GHCR.
+#
+# Adjust the `images` list to match the Dockerfiles in your fork.
+# Registry auth is automatic (GITHUB_TOKEN -> GHCR); no secret needed.
+
+name: 🐳 Fork Docker Build
+
+on:
+  push:
+    branches: [workspace, "workspace/**"]
+    paths-ignore:
+      - ".github/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: fork-docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+jobs:
+  build:
+    name: Build & Push Images
+    uses: bauer-group/automation-templates/.github/workflows/fork-docker-build.yml@main
+    with:
+      images: |
+        [
+          {"name": "relay", "dockerfile": "relay/Dockerfile"},
+          {"name": "ui",    "dockerfile": "ui/Dockerfile"},
+          {"name": "nginx", "dockerfile": "nginx/Dockerfile"}
+        ]
+      # Optional overrides:
+      # platforms: 'linux/amd64,linux/arm64'   # per-image override via images[].platforms
+      # security-fail-on: 'CRITICAL'           # CRITICAL | HIGH | MEDIUM
+      # latest-on-default: true
+    secrets: inherit

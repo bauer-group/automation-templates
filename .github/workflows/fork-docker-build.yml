@@ -1,0 +1,306 @@
+# =============================================================================
+# Fork Docker Build - Reusable Workflow
+# =============================================================================
+# Clean, self-contained image builder for forked repositories.
+#
+# Builds one or more service images (matrix over an `images` list) from the
+# fork's integration branch (typically `workspace`) and publishes them to a
+# container registry (GHCR by default). Each image is built locally first,
+# scanned with Trivy, and only pushed when the scan passes - so a vulnerable
+# image never reaches the registry.
+#
+# This is a lean, continuous-integration builder for forks. It intentionally
+# does NOT reuse `docker-build.yml` (which is release-oriented: it only tags
+# `latest` on Git tags, and carries Cosign / SBOM / Dockerfile-version
+# write-back machinery not needed for a fork's rebuild-on-every-push flow).
+#
+# Usage (see github/workflows/examples/fork-docker-build/):
+#   uses: bauer-group/automation-templates/.github/workflows/fork-docker-build.yml@main
+#   with:
+#     images: |
+#       [
+#         {"name": "relay", "dockerfile": "relay/Dockerfile"},
+#         {"name": "ui",    "dockerfile": "ui/Dockerfile"},
+#         {"name": "nginx", "dockerfile": "nginx/Dockerfile"}
+#       ]
+#   secrets: inherit
+#
+# Registry auth: GHCR uses the automatic GITHUB_TOKEN (no secret required).
+# =============================================================================
+
+name: "🐳 Fork Docker Build"
+
+on:
+  workflow_call:
+    inputs:
+      # -- Images -------------------------------------------------------------
+      images:
+        description: >-
+          JSON array of images to build. Each entry supports:
+          name (required), dockerfile (required), context, target,
+          platforms, build-args (newline-separated KEY=VALUE).
+          Example: '[{"name":"ui","dockerfile":"ui/Dockerfile"}]'
+        required: true
+        type: string
+
+      # -- Registry -----------------------------------------------------------
+      registry:
+        description: "Container registry to push to"
+        required: false
+        type: string
+        default: "ghcr.io"
+      image-namespace:
+        description: >-
+          Base path for image names (final ref: <registry>/<namespace>/<name>).
+          Defaults to the repository name (owner/repo).
+        required: false
+        type: string
+        default: ""
+
+      # -- Build --------------------------------------------------------------
+      platforms:
+        description: "Default target platform(s), comma-separated. Overridable per image."
+        required: false
+        type: string
+        default: "linux/amd64"
+      push:
+        description: "Push images to the registry (disabled automatically on pull_request)"
+        required: false
+        type: boolean
+        default: true
+      cache:
+        description: "Enable GitHub Actions build cache (scoped per image)"
+        required: false
+        type: boolean
+        default: true
+
+      # -- Tagging ------------------------------------------------------------
+      latest-on-default:
+        description: "Tag images as `latest` when building the repository's default branch"
+        required: false
+        type: boolean
+        default: true
+      extra-tags:
+        description: "Additional docker/metadata-action tag lines (newline-separated)"
+        required: false
+        type: string
+        default: ""
+
+      # -- Security -----------------------------------------------------------
+      security-scan:
+        description: "Scan the built image with Trivy before pushing"
+        required: false
+        type: boolean
+        default: true
+      security-fail-on:
+        description: "Severity threshold that blocks the push: CRITICAL, HIGH or MEDIUM"
+        required: false
+        type: string
+        default: "CRITICAL"
+
+      # -- Runner -------------------------------------------------------------
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: "ubuntu-latest"
+      build-timeout:
+        description: "Timeout in minutes for each image build job"
+        required: false
+        type: number
+        default: 30
+
+    outputs:
+      images-built:
+        description: "JSON array of image names that were processed"
+        value: ${{ inputs.images }}
+
+# Least-privilege permissions for a fork image build
+permissions:
+  contents: read # Checkout
+  packages: write # Push to GHCR
+  security-events: write # Upload Trivy SARIF to GitHub Security
+
+jobs:
+  build:
+    name: "🐳 Build (${{ matrix.image.name }})"
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: ${{ inputs.build-timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(inputs.images) }}
+
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v6
+
+      - name: "🔧 Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v4
+
+      - name: "🔐 Log in to ${{ inputs.registry }}"
+        if: inputs.push && github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "🏷️ Extract Docker Metadata"
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ inputs.registry }}/${{ inputs.image-namespace != '' && inputs.image-namespace || github.repository }}/${{ matrix.image.name }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value={{date 'YYYYMMDD-HHmmss'}}
+            ${{ inputs.latest-on-default && 'type=raw,value=latest,enable={{is_default_branch}}' || '' }}
+            ${{ inputs.extra-tags }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image.name }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      # Build locally (amd64, loaded into the daemon) so Trivy can scan a real
+      # image before anything is pushed. With GHA cache the later push build is
+      # a near-instant cache hit.
+      - name: "🐳 Build Image (local, for scan)"
+        id: build-local
+        if: inputs.security-scan
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.image.context || '.' }}
+          file: ${{ matrix.image.dockerfile }}
+          target: ${{ matrix.image.target || '' }}
+          build-args: ${{ matrix.image.build-args || '' }}
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: ${{ inputs.cache && format('type=gha,scope={0}', matrix.image.name) || '' }}
+          cache-to: ${{ inputs.cache && format('type=gha,scope={0},mode=max', matrix.image.name) || '' }}
+          provenance: false
+          sbom: false
+
+      - name: "🛡️ Security Scan (Trivy)"
+        id: security
+        if: inputs.security-scan
+        shell: bash
+        env:
+          FAIL_ON: ${{ inputs.security-fail-on }}
+          IMAGE_NAME: ${{ matrix.image.name }}
+          META_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -uo pipefail
+
+          # Scan the first (primary) tag - all tags point to the same local image.
+          IMAGE="$(printf '%s' "$META_TAGS" | head -n1)"
+          mkdir -p .trivy
+          REPORT=".trivy/${IMAGE_NAME}-report.json"
+          SARIF=".trivy/${IMAGE_NAME}-report.sarif"
+
+          if ! command -v trivy >/dev/null 2>&1; then
+            echo "::group::Installing Trivy"
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+            echo "::endgroup::"
+          fi
+
+          echo "🛡️ Scanning $IMAGE ..."
+          trivy image --format json   --output "$REPORT" --severity MEDIUM,HIGH,CRITICAL "$IMAGE" || echo "trivy (json) reported findings"
+          trivy image --format sarif  --output "$SARIF"  --severity MEDIUM,HIGH,CRITICAL "$IMAGE" || echo "trivy (sarif) reported findings"
+          echo "sarif-path=$SARIF" >> "$GITHUB_OUTPUT"
+
+          CRIT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' "$REPORT" 2>/dev/null || echo 0)
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")]     | length' "$REPORT" 2>/dev/null || echo 0)
+          MED=$( jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")]   | length' "$REPORT" 2>/dev/null || echo 0)
+          echo "critical=$CRIT" >> "$GITHUB_OUTPUT"
+          echo "high=$HIGH"     >> "$GITHUB_OUTPUT"
+          echo "medium=$MED"    >> "$GITHUB_OUTPUT"
+          echo "🛡️ Trivy results — CRITICAL: $CRIT | HIGH: $HIGH | MEDIUM: $MED"
+
+          FAIL=false
+          case "$FAIL_ON" in
+            CRITICAL) [ "$CRIT" -gt 0 ] && FAIL=true ;;
+            HIGH)     { [ "$CRIT" -gt 0 ] || [ "$HIGH" -gt 0 ]; } && FAIL=true ;;
+            MEDIUM)   { [ "$CRIT" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$MED" -gt 0 ]; } && FAIL=true ;;
+            *)        echo "::warning::Unknown security-fail-on '$FAIL_ON' - defaulting to CRITICAL"; [ "$CRIT" -gt 0 ] && FAIL=true ;;
+          esac
+
+          if [ "$FAIL" = "true" ]; then
+            echo "scan-passed=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Security scan failed for '${IMAGE_NAME}' - vulnerabilities at or above ${FAIL_ON}. Push blocked."
+            exit 1
+          fi
+          echo "scan-passed=true" >> "$GITHUB_OUTPUT"
+          echo "✅ Security scan passed for '${IMAGE_NAME}'"
+
+      - name: "📤 Upload Trivy Scan to GitHub Security"
+        if: always() && inputs.security-scan && steps.security.outputs.sarif-path != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.security.outputs.sarif-path }}
+          category: fork-docker-build-${{ matrix.image.name }}
+
+      - name: "🚀 Build & Push Image"
+        id: build-push
+        if: inputs.push && github.event_name != 'pull_request' && (inputs.security-scan != true || steps.security.outputs.scan-passed == 'true')
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.image.context || '.' }}
+          file: ${{ matrix.image.dockerfile }}
+          target: ${{ matrix.image.target || '' }}
+          build-args: ${{ matrix.image.build-args || '' }}
+          platforms: ${{ matrix.image.platforms || inputs.platforms }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: ${{ inputs.cache && format('type=gha,scope={0}', matrix.image.name) || '' }}
+          provenance: false
+          sbom: false
+
+      - name: "📊 Build Summary"
+        if: always()
+        shell: bash
+        env:
+          IMAGE_NAME: ${{ matrix.image.name }}
+          IMAGE_REF: ${{ inputs.registry }}/${{ inputs.image-namespace != '' && inputs.image-namespace || github.repository }}/${{ matrix.image.name }}
+          DOCKERFILE: ${{ matrix.image.dockerfile }}
+          PLATFORMS: ${{ matrix.image.platforms || inputs.platforms }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build-push.outputs.digest }}
+          PUSHED: ${{ steps.build-push.outcome }}
+          SCAN_ENABLED: ${{ inputs.security-scan }}
+          SCAN_PASSED: ${{ steps.security.outputs.scan-passed }}
+          CRIT: ${{ steps.security.outputs.critical }}
+          HIGH: ${{ steps.security.outputs.high }}
+          MED: ${{ steps.security.outputs.medium }}
+        run: |
+          if [ "$PUSHED" = "success" ]; then PUSH_TXT="✅ Yes"; else PUSH_TXT="❌ No"; fi
+
+          if [ "$SCAN_ENABLED" != "true" ]; then
+            SCAN_TXT="⚪ Disabled"
+          elif [ "$SCAN_PASSED" = "true" ]; then
+            SCAN_TXT="✅ Passed (C:${CRIT:-0} H:${HIGH:-0} M:${MED:-0})"
+          else
+            SCAN_TXT="❌ Blocked (C:${CRIT:-0} H:${HIGH:-0} M:${MED:-0})"
+          fi
+
+          {
+            echo "## 🐳 Fork Docker Build — \`${IMAGE_NAME}\`"
+            echo ""
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            echo "| **Image** | \`${IMAGE_REF}\` |"
+            echo "| **Dockerfile** | \`${DOCKERFILE}\` |"
+            echo "| **Platforms** | \`${PLATFORMS}\` |"
+            echo "| **Security Scan** | ${SCAN_TXT} |"
+            echo "| **Pushed** | ${PUSH_TXT} |"
+            if [ -n "${DIGEST:-}" ]; then echo "| **Digest** | \`${DIGEST}\` |"; fi
+            echo ""
+            echo "**Tags**"
+            echo '```'
+            printf '%s\n' "${TAGS}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

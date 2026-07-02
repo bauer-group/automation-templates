@@ -1,0 +1,44 @@
+# Sync Upstream - drop-in caller for a forked repository.
+#
+# Place this file at .github/workflows/sync-upstream.yml on the fork.
+# It syncs the mirror branch (e.g. main) from the upstream parent and then
+# merges it into the integration branch (e.g. workspace). A clean workspace
+# push triggers fork-docker-build.yml automatically.
+#
+# Requires a PAT secret (MAINTENANCE_TOKEN or PAT_READWRITE_ORGANISATION) so
+# the workspace push triggers the downstream build. See the workflow docs.
+
+name: 🔄 Sync Upstream
+
+on:
+  schedule:
+    - cron: "0 4 * * 1" # weekly, Monday 04:00 UTC
+  workflow_dispatch:
+    inputs:
+      mirror-branch:
+        description: "Fork branch to sync from upstream"
+        required: false
+        default: "main"
+      integrate-into:
+        description: "Integration branch to merge into (empty = skip)"
+        required: false
+        default: "workspace"
+      dry-run:
+        description: "Only verify the fork relationship; do not change anything"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync:
+    name: Sync with Upstream
+    uses: bauer-group/automation-templates/.github/workflows/sync-upstream.yml@main
+    with:
+      mirror-branch: ${{ github.event.inputs.mirror-branch || 'main' }}
+      integrate-into: ${{ github.event.inputs.integrate-into || 'workspace' }}
+      dry-run: ${{ github.event.inputs.dry-run == 'true' }}
+    secrets: inherit

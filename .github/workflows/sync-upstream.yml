@@ -1,0 +1,390 @@
+# =============================================================================
+# Sync Upstream - Reusable Workflow
+# =============================================================================
+# Keeps a fork in sync with its upstream and (optionally) integrates the update
+# into a working branch, so forks maintain themselves.
+#
+# Stage A - Sync mirror branch (the GitHub "Sync fork" button):
+#   Calls the native merge-upstream API to update the fork's mirror branch
+#   (e.g. `main`) from its upstream parent. A merge conflict raises a warning
+#   (and optionally opens a GitHub issue) instead of failing silently.
+#
+# Stage B - Integrate into workspace (optional, when `integrate-into` is set):
+#   Merges the freshly-synced mirror branch into the integration branch
+#   (e.g. `main` -> `workspace`). On a clean merge it pushes with a PAT, which
+#   triggers the downstream build (e.g. fork-docker-build.yml). On conflict it
+#   aborts and warns.
+#
+#        upstream/main --(A: merge-upstream API)--> origin/main
+#             origin/main --(B: git merge + push)--> origin/workspace --> build
+#
+# Token: uses MAINTENANCE_TOKEN / PAT_READWRITE_ORGANISATION so the workspace
+# push triggers downstream workflows (a GITHUB_TOKEN push does NOT). Falls back
+# to GITHUB_TOKEN (sync/merge still work, but the build won't auto-trigger).
+#
+# Usage (see github/workflows/examples/sync-upstream/):
+#   uses: bauer-group/automation-templates/.github/workflows/sync-upstream.yml@main
+#   with:
+#     mirror-branch: 'main'
+#     integrate-into: 'workspace'
+#   secrets: inherit
+# =============================================================================
+
+name: "🔄 Sync Upstream"
+
+on:
+  workflow_call:
+    inputs:
+      mirror-branch:
+        description: "Fork branch to sync from upstream (the 'Sync fork' target, e.g. main)"
+        required: false
+        type: string
+        default: "main"
+      integrate-into:
+        description: "Integration branch to merge the mirror into after sync (e.g. workspace). Empty = skip Stage B."
+        required: false
+        type: string
+        default: ""
+      create-issue-on-conflict:
+        description: "Open (or update) a GitHub issue when a merge conflict occurs"
+        required: false
+        type: boolean
+        default: true
+      dry-run:
+        description: "Only check the fork relationship; do not sync, merge or push"
+        required: false
+        type: boolean
+        default: false
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: "ubuntu-latest"
+      timeout-minutes:
+        description: "Timeout in minutes for each job"
+        required: false
+        type: number
+        default: 15
+
+    secrets:
+      MAINTENANCE_TOKEN:
+        description: "PAT (preferred) for merge-upstream + workspace push so the downstream build is triggered"
+        required: false
+      PAT_READWRITE_ORGANISATION:
+        description: "PAT (backward-compatible alias) - used if MAINTENANCE_TOKEN is absent"
+        required: false
+
+    outputs:
+      mirror-status:
+        description: "Result of the mirror sync: synced | up-to-date | conflict | not-a-fork | error | dry-run"
+        value: ${{ jobs.sync-mirror.outputs.status }}
+      mirror-merge-type:
+        description: "merge-upstream result: fast-forward | merge | none"
+        value: ${{ jobs.sync-mirror.outputs.merge-type }}
+      workspace-status:
+        description: "Result of the workspace integration: integrated | up-to-date | conflict | skipped"
+        value: ${{ jobs.integrate-workspace.outputs.status }}
+
+# Governs GITHUB_TOKEN; a provided PAT carries its own scopes.
+permissions:
+  contents: write # Sync mirror branch + push integration branch
+  issues: write # Open a conflict issue
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Stage A - Sync the mirror branch from upstream (the "Sync fork" button)
+  # ---------------------------------------------------------------------------
+  sync-mirror:
+    name: "🔄 Sync Mirror (${{ inputs.mirror-branch }})"
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    outputs:
+      status: ${{ steps.sync.outputs.status }}
+      merge-type: ${{ steps.sync.outputs.merge-type }}
+    steps:
+      - name: "🔐 Check token"
+        shell: bash
+        env:
+          HAS_PAT: ${{ (secrets.MAINTENANCE_TOKEN != '' || secrets.PAT_READWRITE_ORGANISATION != '') && 'true' || 'false' }}
+          INTEGRATE_INTO: ${{ inputs.integrate-into }}
+        run: |
+          if [ "$HAS_PAT" = "true" ]; then
+            echo "✅ PAT configured - the workspace push will trigger downstream workflows."
+          elif [ -n "$INTEGRATE_INTO" ]; then
+            echo "::warning::No PAT (MAINTENANCE_TOKEN / PAT_READWRITE_ORGANISATION) configured. The workspace push will use GITHUB_TOKEN and will NOT trigger the downstream build. Add a PAT secret to complete the self-maintaining chain."
+          else
+            echo "ℹ️ No PAT configured; Stage B is disabled anyway."
+          fi
+
+      - name: "🔄 Sync mirror branch from upstream"
+        id: sync
+        env:
+          GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          MIRROR_BRANCH: ${{ inputs.mirror-branch }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          REPO="${{ github.repository }}"
+
+          # Verify this is a GitHub-native fork (merge-upstream requires a parent).
+          PARENT=$(gh api "/repos/${REPO}" --jq '.parent.full_name // ""' 2>/dev/null || echo "")
+          if [ -z "$PARENT" ]; then
+            echo "::error::'${REPO}' is not a GitHub-native fork (no parent repository). The merge-upstream API requires a fork. Use a manual upstream-remote sync instead."
+            echo "status=not-a-fork" >> "$GITHUB_OUTPUT"
+            echo "merge-type=none" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "⬆️ Upstream parent: ${PARENT}"
+          echo "🎯 Mirror branch:   ${MIRROR_BRANCH}"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "🔍 DRY RUN: would sync '${MIRROR_BRANCH}' from '${PARENT}' via the merge-upstream API. No changes made."
+            echo "status=dry-run" >> "$GITHUB_OUTPUT"
+            echo "merge-type=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Call the "Sync fork" API. Capture body + any error text, plus exit code.
+          RESPONSE=$(gh api --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${REPO}/merge-upstream" \
+            -f branch="${MIRROR_BRANCH}" 2>&1)
+          RC=$?
+          printf '%s\n' "$RESPONSE"
+
+          if [ $RC -eq 0 ]; then
+            MERGE_TYPE=$(printf '%s' "$RESPONSE" | jq -r '.merge_type // "unknown"' 2>/dev/null || echo "unknown")
+            echo "merge-type=${MERGE_TYPE}" >> "$GITHUB_OUTPUT"
+            if [ "$MERGE_TYPE" = "none" ]; then
+              echo "status=up-to-date" >> "$GITHUB_OUTPUT"
+              echo "✅ '${MIRROR_BRANCH}' is already up to date with upstream."
+            else
+              echo "status=synced" >> "$GITHUB_OUTPUT"
+              echo "✅ Synced '${MIRROR_BRANCH}' from upstream (merge_type=${MERGE_TYPE})."
+            fi
+          elif printf '%s' "$RESPONSE" | grep -qiE 'HTTP 409|merge conflict'; then
+            echo "status=conflict" >> "$GITHUB_OUTPUT"
+            echo "merge-type=none" >> "$GITHUB_OUTPUT"
+            echo "::warning::Upstream sync for '${MIRROR_BRANCH}' hit a merge conflict - the fork branch has diverged from upstream and must be reconciled manually."
+          else
+            echo "status=error" >> "$GITHUB_OUTPUT"
+            echo "merge-type=none" >> "$GITHUB_OUTPUT"
+            echo "::error::Upstream sync failed for '${MIRROR_BRANCH}' (see API response above)."
+            exit 1
+          fi
+
+      - name: "⚠️ Report mirror conflict"
+        if: steps.sync.outputs.status == 'conflict' && inputs.create-issue-on-conflict
+        env:
+          GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          MIRROR_BRANCH: ${{ inputs.mirror-branch }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          TITLE="⚠️ Upstream-Sync-Konflikt: ${MIRROR_BRANCH}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          PARENT=$(gh api "/repos/${{ github.repository }}" --jq '.parent.full_name // "<upstream>"' 2>/dev/null || echo "<upstream>")
+
+          BODY=$(cat <<EOF
+          ## Automatischer Upstream-Sync fehlgeschlagen
+
+          Der Mirror-Branch \`${MIRROR_BRANCH}\` konnte nicht automatisch mit dem Upstream (\`${PARENT}\`) synchronisiert werden - er ist divergiert und erfordert eine manuelle Auflösung.
+
+          **Workflow-Run:** ${RUN_URL}
+
+          ### Manuelle Auflösung
+          \`\`\`bash
+          git checkout ${MIRROR_BRANCH}
+          git pull origin ${MIRROR_BRANCH}
+          git remote add upstream https://github.com/${PARENT}.git 2>/dev/null || true
+          git fetch upstream
+          git merge upstream/${MIRROR_BRANCH}
+          # Konflikte auflösen, dann:
+          git commit
+          git push origin ${MIRROR_BRANCH}
+          \`\`\`
+          EOF
+          )
+
+          # Ensure labels exist (best-effort), then upsert the issue.
+          gh label create sync      --color "1D76DB" --description "Upstream sync automation"      >/dev/null 2>&1 || true
+          gh label create conflict  --color "B60205" --description "Requires manual resolution"    >/dev/null 2>&1 || true
+          gh label create automated --color "0E8A16" --description "Created by automation"          >/dev/null 2>&1 || true
+
+          EXISTING=$(gh issue list --state open --label sync --label conflict --json number,title \
+            --jq '.[] | [.number, .title] | @tsv' 2>/dev/null | awk -F'\t' -v t="$TITLE" '$2==t {print $1; exit}')
+
+          if [ -n "${EXISTING:-}" ]; then
+            gh issue comment "$EXISTING" --body "Konflikt erneut aufgetreten - Run: ${RUN_URL}"
+            echo "🔁 Bestehendes Issue #${EXISTING} aktualisiert."
+          else
+            gh issue create --title "$TITLE" --body "$BODY" \
+              --label sync --label conflict --label automated \
+              || gh issue create --title "$TITLE" --body "$BODY"
+            echo "🆕 Konflikt-Issue erstellt."
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Stage B - Integrate the mirror branch into the workspace (optional)
+  # ---------------------------------------------------------------------------
+  integrate-workspace:
+    name: "🔀 Integrate (${{ inputs.mirror-branch }} → ${{ inputs.integrate-into }})"
+    needs: sync-mirror
+    # A custom if: replaces the implicit success() gate, so require success
+    # explicitly - otherwise a hard-failed sync (empty outputs) would fail open.
+    if: >-
+      inputs.integrate-into != '' &&
+      inputs.dry-run != true &&
+      needs.sync-mirror.result == 'success' &&
+      needs.sync-mirror.outputs.status != 'conflict'
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    outputs:
+      status: ${{ steps.merge.outputs.status }}
+    steps:
+      - name: "📥 Checkout ${{ inputs.integrate-into }}"
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.integrate-into }}
+          fetch-depth: 0
+          token: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+
+      - name: "🔧 Configure Git"
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: "🔀 Merge mirror into workspace"
+        id: merge
+        env:
+          MIRROR_BRANCH: ${{ inputs.mirror-branch }}
+          TARGET_BRANCH: ${{ inputs.integrate-into }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          git fetch origin "${MIRROR_BRANCH}"
+          BEFORE=$(git rev-parse HEAD)
+
+          if git merge "origin/${MIRROR_BRANCH}" -m "chore(sync): merged ${MIRROR_BRANCH} into ${TARGET_BRANCH}"; then
+            AFTER=$(git rev-parse HEAD)
+            if [ "$BEFORE" = "$AFTER" ]; then
+              echo "status=up-to-date" >> "$GITHUB_OUTPUT"
+              echo "ℹ️ '${TARGET_BRANCH}' is already up to date with '${MIRROR_BRANCH}'. Nothing to push."
+            else
+              git push origin "HEAD:${TARGET_BRANCH}"
+              echo "status=integrated" >> "$GITHUB_OUTPUT"
+              echo "✅ Merged '${MIRROR_BRANCH}' into '${TARGET_BRANCH}' and pushed - downstream build will run."
+            fi
+          else
+            git merge --abort || true
+            echo "status=conflict" >> "$GITHUB_OUTPUT"
+            echo "::warning::Merge '${MIRROR_BRANCH}' -> '${TARGET_BRANCH}' hit conflicts. Aborted; manual resolution required."
+          fi
+
+      - name: "⚠️ Report workspace conflict"
+        if: steps.merge.outputs.status == 'conflict' && inputs.create-issue-on-conflict
+        env:
+          GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          MIRROR_BRANCH: ${{ inputs.mirror-branch }}
+          TARGET_BRANCH: ${{ inputs.integrate-into }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          TITLE="⚠️ Merge-Konflikt: ${MIRROR_BRANCH} → ${TARGET_BRANCH}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          BODY=$(cat <<EOF
+          ## Automatische Workspace-Integration fehlgeschlagen
+
+          Der Merge von \`${MIRROR_BRANCH}\` nach \`${TARGET_BRANCH}\` konnte nicht automatisch abgeschlossen werden und wurde abgebrochen. Eine manuelle Auflösung ist erforderlich.
+
+          **Workflow-Run:** ${RUN_URL}
+
+          ### Manuelle Auflösung
+          \`\`\`bash
+          git checkout ${TARGET_BRANCH}
+          git fetch origin
+          git merge origin/${MIRROR_BRANCH}
+          # Konflikte auflösen, dann:
+          git commit
+          git push origin ${TARGET_BRANCH}
+          \`\`\`
+          EOF
+          )
+
+          gh label create sync      --color "1D76DB" --description "Upstream sync automation"   >/dev/null 2>&1 || true
+          gh label create conflict  --color "B60205" --description "Requires manual resolution" >/dev/null 2>&1 || true
+          gh label create automated --color "0E8A16" --description "Created by automation"       >/dev/null 2>&1 || true
+
+          EXISTING=$(gh issue list --state open --label sync --label conflict --json number,title \
+            --jq '.[] | [.number, .title] | @tsv' 2>/dev/null | awk -F'\t' -v t="$TITLE" '$2==t {print $1; exit}')
+
+          if [ -n "${EXISTING:-}" ]; then
+            gh issue comment "$EXISTING" --body "Konflikt erneut aufgetreten - Run: ${RUN_URL}"
+            echo "🔁 Bestehendes Issue #${EXISTING} aktualisiert."
+          else
+            gh issue create --title "$TITLE" --body "$BODY" \
+              --label sync --label conflict --label automated \
+              || gh issue create --title "$TITLE" --body "$BODY"
+            echo "🆕 Konflikt-Issue erstellt."
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Summary
+  # ---------------------------------------------------------------------------
+  summary:
+    name: "📊 Sync Summary"
+    needs: [sync-mirror, integrate-workspace]
+    if: always()
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: 5
+    steps:
+      - name: "📊 Write summary"
+        shell: bash
+        env:
+          MIRROR_BRANCH: ${{ inputs.mirror-branch }}
+          TARGET_BRANCH: ${{ inputs.integrate-into }}
+          MIRROR_STATUS: ${{ needs.sync-mirror.outputs.status }}
+          MERGE_TYPE: ${{ needs.sync-mirror.outputs.merge-type }}
+          WS_RESULT: ${{ needs.integrate-workspace.result }}
+          WS_STATUS: ${{ needs.integrate-workspace.outputs.status }}
+        run: |
+          mirror_icon() {
+            case "$1" in
+              synced)     echo "✅ Synced" ;;
+              up-to-date) echo "✅ Up to date" ;;
+              dry-run)    echo "🔍 Dry run" ;;
+              conflict)   echo "⚠️ Conflict" ;;
+              not-a-fork) echo "❌ Not a fork" ;;
+              *)          echo "❌ Error" ;;
+            esac
+          }
+          ws_row() {
+            if [ "$WS_RESULT" = "skipped" ] || [ -z "${TARGET_BRANCH}" ]; then
+              echo "⏭️ Skipped"
+            else
+              case "$WS_STATUS" in
+                integrated) echo "✅ Integrated + pushed" ;;
+                up-to-date) echo "✅ Up to date" ;;
+                conflict)   echo "⚠️ Conflict" ;;
+                *)          echo "❌ Error" ;;
+              esac
+            fi
+          }
+
+          {
+            echo "## 🔄 Upstream Sync Summary"
+            echo ""
+            echo "| Stage | Branch | Result |"
+            echo "|-------|--------|--------|"
+            echo "| **Mirror sync** | \`${MIRROR_BRANCH}\` | $(mirror_icon "$MIRROR_STATUS") (merge_type: \`${MERGE_TYPE:-none}\`) |"
+            echo "| **Workspace integrate** | \`${TARGET_BRANCH:-—}\` | $(ws_row) |"
+            echo ""
+            if [ "$MIRROR_STATUS" = "conflict" ] || [ "$WS_STATUS" = "conflict" ]; then
+              echo "> ⚠️ **Merge conflict detected.** See the linked issue for manual resolution steps."
+            elif [ "$WS_STATUS" = "integrated" ]; then
+              echo "> ✅ Fork updated end-to-end. The workspace push triggers the downstream build."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

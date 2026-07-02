@@ -69,6 +69,20 @@ Diese Workflows sind speziell für das `automation-templates` Repository entwick
 **Zweck:** Wiederverwendbarer Node.js Build und Publish Workflow  
 **Features:** npm/yarn/pnpm/bun Support, Package Publishing, Docker
 
+### Fork-Automation
+
+Für geforkte Repositories, die sich selbst warten (Mirror → Workspace → Build):
+
+#### 🐳 [fork-docker-build.yml](./fork-docker-build.yml) - Fork Docker Build
+**Zweck:** Schlanker Multi-Image-Builder für Forks (Build auf jedem `workspace`-Push)  
+**Features:** Image-Matrix, Trivy-Scan mit Push-Block bei CRITICAL, Workspace-Tags, GHCR  
+**Docs:** [docs/workflows/fork-docker-build.md](../../docs/workflows/fork-docker-build.md)
+
+#### 🔄 [sync-upstream.yml](./sync-upstream.yml) - Sync Upstream
+**Zweck:** Fork-Sync via nativer `merge-upstream`-API + optionaler `main → workspace`-Merge  
+**Features:** "Sync fork"-Button als API, konfigurierbare Branches, Konflikt-Warnung + Issue, PAT-getriggerter Folge-Build  
+**Docs:** [docs/workflows/sync-upstream.md](../../docs/workflows/sync-upstream.md)
+
 ## 🧩 Modulare Architektur
 
 Die Workflows nutzen modulare Komponenten für bessere Wiederverwendbarkeit:
@@ -129,6 +143,8 @@ jobs:
 | **dotnet-publish-library.yml** | workflow_call | Pack & Push NuGet (Libs + Tools) | Linux, Windows, macOS |
 | **dotnet-publish-binaries.yml** | workflow_call | Self-contained Binaries pro RID + Release-Upload | Linux (x64+arm64), Windows (x64); macOS/win-arm64 opt-in |
 | **nodejs-build.yml** | workflow_call | Build, Test, Publish, Docker | Linux, Windows, macOS |
+| **fork-docker-build.yml** | workflow_call | Multi-Image Build, Trivy-Scan, GHCR (Fork-CI) | Linux |
+| **sync-upstream.yml** | workflow_call | Fork-Sync (merge-upstream API) + Workspace-Merge | Linux |
 
 ## 🚀 Verwendung für externe Repositories
 
