@@ -245,6 +245,12 @@ runs:
         
         echo "✅ Docker build environment ready"
 
+    - name: 🔧 Set up QEMU
+      # Registers binfmt/QEMU so non-native arches (arm64, arm/v7) build reliably under
+      # emulation. Only needed for multi-platform builds; skipped otherwise (no-op cost).
+      if: inputs.multi-platform == 'true'
+      uses: docker/setup-qemu-action@v3
+
     - name: 🏗️ Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
       with:
@@ -501,16 +507,33 @@ runs:
 
         # Normalize to lowercase and check for truthy values
         if [[ "${CACHE_ENABLED,,}" == "true" || "${CACHE_ENABLED}" == "1" ]]; then
+          # Local (amd64 scan) build cache - unchanged, byte-identical for existing callers.
           echo "cache-from=type=gha${SCOPE_SUFFIX}" >> $GITHUB_OUTPUT
           echo "cache-to=type=gha${SCOPE_SUFFIX},mode=${{ inputs.cache-mode }}" >> $GITHUB_OUTPUT
+          # Push (multi-arch) build cache. Uses a DISTINCT '-push' scope so multi-arch
+          # layers - especially arm64, which is built ONLY in the push step - are exported
+          # and reused across runs. A shared scope cannot work: GHA cache keys are immutable,
+          # so the push export would 409 against the local build's manifest and arm64 would
+          # never be cached. cache-from reads BOTH scopes (amd64 from local, arm64 from a
+          # prior push run).
+          SCOPE_BASE="${CACHE_SCOPE:-buildkit}"
+          {
+            echo "cache-from-push<<CFPUSH"
+            echo "type=gha${SCOPE_SUFFIX}"
+            echo "type=gha,scope=${SCOPE_BASE}-push"
+            echo "CFPUSH"
+          } >> $GITHUB_OUTPUT
+          echo "cache-to-push=type=gha,scope=${SCOPE_BASE}-push,mode=${{ inputs.cache-mode }}" >> $GITHUB_OUTPUT
           if [ -n "$CACHE_SCOPE" ]; then
-            echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }}, scope=${CACHE_SCOPE})"
+            echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }}, scope=${CACHE_SCOPE}, push-scope=${SCOPE_BASE}-push)"
           else
-            echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }})"
+            echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }}, push-scope=${SCOPE_BASE}-push)"
           fi
         else
           echo "cache-from=" >> $GITHUB_OUTPUT
           echo "cache-to=" >> $GITHUB_OUTPUT
+          echo "cache-from-push=" >> $GITHUB_OUTPUT
+          echo "cache-to-push=" >> $GITHUB_OUTPUT
           echo "📦 Build cache: DISABLED"
         fi
 
@@ -667,8 +690,11 @@ runs:
         build-args: ${{ inputs.build-args }}
         secrets: ${{ inputs.build-secrets }}
         target: ${{ inputs.target }}
-        cache-from: ${{ steps.cache-settings.outputs.cache-from }}
-        # Note: cache-to is only used in local build step
+        # Multi-arch cache: read amd64 (from the local scan build) + arm64 (from a prior
+        # push run), and export everything to the '-push' scope so arm64 is not rebuilt
+        # from scratch under QEMU on every run.
+        cache-from: ${{ steps.cache-settings.outputs.cache-from-push }}
+        cache-to: ${{ steps.cache-settings.outputs.cache-to-push }}
         provenance: false
         sbom: false
 
@@ -770,7 +796,12 @@ runs:
         retention-days: 30
 
     - name: 📊 Upload Security Scan to GitHub Security
-      if: inputs.security-scan == 'true' && steps.security.outputs.sarif-path != ''
+      # always(): the scan step exit 1's when it blocks a push, but the SARIF file
+      # already exists and must still reach the Security tab (the case you most need it).
+      # continue-on-error: a reporting step must never fail the build (e.g. repos without
+      # code scanning / GHAS). Matches the fork-docker-build.yml behaviour.
+      if: always() && inputs.security-scan == 'true' && steps.security.outputs.sarif-path != ''
+      continue-on-error: true
       uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: ${{ inputs.working-directory }}/${{ steps.security.outputs.sarif-path }}
