@@ -18,9 +18,9 @@
 #        upstream/main --(A: merge-upstream API)--> origin/main
 #             origin/main --(B: git merge + push)--> origin/workspace --> build
 #
-# Token: uses MAINTENANCE_TOKEN / PAT_READWRITE_ORGANISATION so the workspace
-# push triggers downstream workflows (a GITHUB_TOKEN push does NOT). Falls back
-# to GITHUB_TOKEN (sync/merge still work, but the build won't auto-trigger).
+# Token: uses PAT_READWRITE_ORGANISATION so the workspace push triggers
+# downstream workflows (a GITHUB_TOKEN push does NOT). Falls back to
+# GITHUB_TOKEN (sync/merge still work, but the build won't auto-trigger).
 #
 # Usage (see github/workflows/examples/sync-upstream/):
 #   uses: bauer-group/automation-templates/.github/workflows/sync-upstream.yml@main
@@ -67,11 +67,8 @@ on:
         default: 15
 
     secrets:
-      MAINTENANCE_TOKEN:
-        description: "PAT (preferred) for merge-upstream + workspace push so the downstream build is triggered"
-        required: false
       PAT_READWRITE_ORGANISATION:
-        description: "PAT (backward-compatible alias) - used if MAINTENANCE_TOKEN is absent"
+        description: "PAT for merge-upstream + workspace push so the downstream build is triggered"
         required: false
 
     outputs:
@@ -105,13 +102,13 @@ jobs:
       - name: "🔐 Check token"
         shell: bash
         env:
-          HAS_PAT: ${{ (secrets.MAINTENANCE_TOKEN != '' || secrets.PAT_READWRITE_ORGANISATION != '') && 'true' || 'false' }}
+          HAS_PAT: ${{ secrets.PAT_READWRITE_ORGANISATION != '' && 'true' || 'false' }}
           INTEGRATE_INTO: ${{ inputs.integrate-into }}
         run: |
           if [ "$HAS_PAT" = "true" ]; then
             echo "✅ PAT configured - the workspace push will trigger downstream workflows."
           elif [ -n "$INTEGRATE_INTO" ]; then
-            echo "::warning::No PAT (MAINTENANCE_TOKEN / PAT_READWRITE_ORGANISATION) configured. The workspace push will use GITHUB_TOKEN and will NOT trigger the downstream build. Add a PAT secret to complete the self-maintaining chain."
+            echo "::warning::No PAT (PAT_READWRITE_ORGANISATION) configured. The workspace push will use GITHUB_TOKEN and will NOT trigger the downstream build. Add a PAT secret to complete the self-maintaining chain."
           else
             echo "ℹ️ No PAT configured; Stage B is disabled anyway."
           fi
@@ -119,7 +116,7 @@ jobs:
       - name: "🔄 Sync mirror branch from upstream"
         id: sync
         env:
-          GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION || github.token }}
           MIRROR_BRANCH: ${{ inputs.mirror-branch }}
           DRY_RUN: ${{ inputs.dry-run }}
         shell: bash
@@ -177,7 +174,7 @@ jobs:
       - name: "⚠️ Report mirror conflict"
         if: steps.sync.outputs.status == 'conflict' && inputs.create-issue-on-conflict
         env:
-          GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION || github.token }}
           MIRROR_BRANCH: ${{ inputs.mirror-branch }}
         shell: bash
         run: |
@@ -248,7 +245,7 @@ jobs:
         with:
           ref: ${{ inputs.integrate-into }}
           fetch-depth: 0
-          token: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          token: ${{ secrets.PAT_READWRITE_ORGANISATION || github.token }}
 
       - name: "🔧 Configure Git"
         shell: bash
@@ -286,7 +283,7 @@ jobs:
       - name: "⚠️ Report workspace conflict"
         if: steps.merge.outputs.status == 'conflict' && inputs.create-issue-on-conflict
         env:
-          GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION || github.token }}
           MIRROR_BRANCH: ${{ inputs.mirror-branch }}
           TARGET_BRANCH: ${{ inputs.integrate-into }}
         shell: bash

@@ -5,7 +5,7 @@
 # merges it into the integration branch (e.g. workspace). A clean workspace
 # push triggers fork-docker-build.yml automatically.
 #
-# Requires a PAT secret (MAINTENANCE_TOKEN or PAT_READWRITE_ORGANISATION) so
+# Requires a PAT secret (PAT_READWRITE_ORGANISATION) so
 # the workspace push triggers the downstream build. See the workflow docs.
 
 name: 🔄 Sync Upstream

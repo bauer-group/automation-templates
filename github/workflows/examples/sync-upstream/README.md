@@ -23,8 +23,8 @@ schedule / manual
 1. Copy [`sync-upstream.yml`](sync-upstream.yml) to `.github/workflows/sync-upstream.yml` on the fork.
 2. Add a **PAT** secret so the workspace push triggers the build:
    - Repository → Settings → Secrets and variables → Actions → **New repository secret**
-   - Name: `MAINTENANCE_TOKEN` (or `PAT_READWRITE_ORGANISATION`)
-   - Classic PAT: `repo` scope · Fine-grained: **Contents R/W** + **Issues R/W**
+   - Name: `PAT_READWRITE_ORGANISATION`
+   - Classic PAT: `repo` + `workflow` · Fine-grained: **Contents** + **Workflows** + **Issues** (R/W)
 3. Adjust the `mirror-branch` / `integrate-into` defaults if your branches differ.
 
 > Without a PAT the sync + merge still run, but the `workspace` push will **not** trigger the downstream build (GitHub does not let a `GITHUB_TOKEN` push start other workflows). The workflow warns when no PAT is present.

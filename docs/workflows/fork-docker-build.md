@@ -59,12 +59,25 @@ A JSON array. Each entry supports:
 
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `name` | ✅ | — | Image name (last path segment of the image ref, also the cache scope) |
+| `name` | ✅ | — | Matrix label and cache scope (also the last path segment of the default image ref) |
 | `dockerfile` | ✅ | — | Path to the Dockerfile |
 | `context` | | `.` | Build context |
 | `target` | | (final) | Dockerfile build stage to target |
 | `platforms` | | `inputs.platforms` | Comma-separated platforms for this image |
 | `build-args` | | — | Newline-separated `KEY=VALUE` build args |
+| `image` | | `<repo>/<name>` | Full image name **after** the registry. Overrides the default (`<namespace>/<name>`) — use it for single-image forks that publish to `<registry>/<owner>/<repo>` without a `/<name>` suffix |
+
+### Single-image forks
+
+By default each image is published to `<registry>/<owner>/<repo>/<name>`. A fork that builds one image and wants the bare `<registry>/<owner>/<repo>` (no name suffix) sets `image` to the repository:
+
+```yaml
+with:
+  images: |
+    [{"name": "app", "dockerfile": "Dockerfile", "image": "${{ github.repository }}"}]
+```
+
+→ publishes to `ghcr.io/<owner>/<repo>` with tags `workspace`, `<sha>`, `<timestamp>`, `latest`.
 
 ## Inputs
 
@@ -79,7 +92,7 @@ A JSON array. Each entry supports:
 | `latest-on-default` | boolean | `true` | Tag `latest` on the repository's default branch |
 | `extra-tags` | string | `''` | Additional `docker/metadata-action` tag lines |
 | `security-scan` | boolean | `true` | Scan with Trivy before pushing |
-| `security-fail-on` | string | `CRITICAL` | Severity that blocks the push: `CRITICAL`, `HIGH`, `MEDIUM` |
+| `security-fail-on` | string | `CRITICAL` | Severity that blocks the push: `CRITICAL`, `HIGH`, `MEDIUM`, or `NONE` (scan + report only) |
 | `runs-on` | string | `ubuntu-latest` | Runner (string or JSON array for self-hosted) |
 | `build-timeout` | number | `30` | Per-image job timeout (minutes) |
 

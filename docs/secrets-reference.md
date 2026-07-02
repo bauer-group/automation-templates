@@ -16,6 +16,7 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 | `NUGET_API_KEY` | Optional | NuGet.org API Key |
 | `PYPI_API_TOKEN` | Optional | PyPI Publishing Token |
 | `TEAMS_WEBHOOK_URL` | Optional | Microsoft Teams Notifications |
+| `PAT_READWRITE_ORGANISATION` | Optional | PAT für Fork-Sync & Auto-Wartung (triggert Folge-Workflows) |
 
 ## Secrets nach Kategorie
 
@@ -52,6 +53,16 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 | `DOCKER_PASSWORD` | docker-build, dotnet-build, nodejs-build | Docker Hub Access Token | Docker Hub → Account Settings → Security → Access Tokens |
 | `COSIGN_PRIVATE_KEY` | docker-build | Sigstore Cosign Private Key | `cosign generate-key-pair` |
 | `COSIGN_PASSWORD` | docker-build | Passwort für Cosign Key | Selbst festlegen |
+
+> **Fork Docker Build** (`fork-docker-build.yml`) benötigt **kein** konfiguriertes Secret — der GHCR-Login läuft über den automatischen `GITHUB_TOKEN`.
+
+### Fork-Automation & Wartung (PAT)
+
+| Secret | Workflows | Beschreibung | Einrichtung |
+|--------|-----------|--------------|-------------|
+| `PAT_READWRITE_ORGANISATION` | sync-upstream, modules-auto-maintenance, modules-docker-base-image-monitor | PAT für Pushes/Commits, die **Folge-Workflows triggern** (ein `GITHUB_TOKEN`-Push tut das nicht). Bei `sync-upstream` nötig, damit der `workspace`-Push den Build startet. | [github.com/settings/tokens](https://github.com/settings/tokens) → Classic: Scopes `repo` + `workflow` · Fine-grained: **Contents** + **Workflows** + **Issues** (Read/Write) |
+
+> Als **Organization Secret** hinterlegen (gilt dann für alle Repos) — oder als **Repository-Secret** pro Fork, falls dieser unter einem **persönlichen Account** liegt (dort gibt es keine Org-Secrets). Fehlt der PAT, laufen Sync & Merge weiterhin, aber der nachgelagerte Build wird **nicht** automatisch getriggert (Warnung im Log).
 
 ### .NET
 

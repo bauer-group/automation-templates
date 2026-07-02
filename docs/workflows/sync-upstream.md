@@ -70,8 +70,7 @@ jobs:
 
 | Secret | Required | Description |
 |--------|----------|-------------|
-| `MAINTENANCE_TOKEN` | recommended | PAT used for `merge-upstream` **and** the `workspace` push, so the downstream build is triggered |
-| `PAT_READWRITE_ORGANISATION` | fallback | Backward-compatible PAT alias, used if `MAINTENANCE_TOKEN` is absent |
+| `PAT_READWRITE_ORGANISATION` | recommended | PAT used for `merge-upstream` **and** the `workspace` push, so the downstream build is triggered |
 
 > **Why a PAT?** A push made with the default `GITHUB_TOKEN` does **not** trigger other workflows (GitHub's anti-recursion rule). Without a PAT, Stage B still merges and pushes, but the `workspace` push will **not** auto-trigger `fork-docker-build.yml`. The workflow warns when no PAT is configured. A classic PAT needs `repo` scope; a fine-grained PAT needs **Contents: Read/Write** (and **Issues: Read/Write** for conflict issues).
 

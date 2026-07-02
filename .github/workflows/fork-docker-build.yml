@@ -38,7 +38,10 @@ on:
         description: >-
           JSON array of images to build. Each entry supports:
           name (required), dockerfile (required), context, target,
-          platforms, build-args (newline-separated KEY=VALUE).
+          platforms, build-args (newline-separated KEY=VALUE), and
+          image (full name after the registry - overrides the default
+          <namespace|repo>/<name>; use it for single-image forks that
+          publish to <registry>/<owner>/<repo> without a name suffix).
           Example: '[{"name":"ui","dockerfile":"ui/Dockerfile"}]'
         required: true
         type: string
@@ -93,7 +96,7 @@ on:
         type: boolean
         default: true
       security-fail-on:
-        description: "Severity threshold that blocks the push: CRITICAL, HIGH or MEDIUM"
+        description: "Severity threshold that blocks the push: CRITICAL, HIGH, MEDIUM, or NONE (scan + report only, never block)"
         required: false
         type: string
         default: "CRITICAL"
@@ -150,7 +153,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ inputs.registry }}/${{ inputs.image-namespace != '' && inputs.image-namespace || github.repository }}/${{ matrix.image.name }}
+          images: ${{ inputs.registry }}/${{ matrix.image.image || format('{0}/{1}', inputs.image-namespace != '' && inputs.image-namespace || github.repository, matrix.image.name) }}
           tags: |
             type=ref,event=branch
             type=sha,prefix=
@@ -222,10 +225,11 @@ jobs:
 
           FAIL=false
           case "$FAIL_ON" in
-            CRITICAL) [ "$CRIT" -gt 0 ] && FAIL=true ;;
-            HIGH)     { [ "$CRIT" -gt 0 ] || [ "$HIGH" -gt 0 ]; } && FAIL=true ;;
-            MEDIUM)   { [ "$CRIT" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$MED" -gt 0 ]; } && FAIL=true ;;
-            *)        echo "::warning::Unknown security-fail-on '$FAIL_ON' - defaulting to CRITICAL"; [ "$CRIT" -gt 0 ] && FAIL=true ;;
+            CRITICAL)  [ "$CRIT" -gt 0 ] && FAIL=true ;;
+            HIGH)      { [ "$CRIT" -gt 0 ] || [ "$HIGH" -gt 0 ]; } && FAIL=true ;;
+            MEDIUM)    { [ "$CRIT" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$MED" -gt 0 ]; } && FAIL=true ;;
+            NONE|none) echo "ℹ️ security-fail-on=NONE - scan is report-only, push not blocked" ;;
+            *)         echo "::warning::Unknown security-fail-on '$FAIL_ON' - defaulting to CRITICAL"; [ "$CRIT" -gt 0 ] && FAIL=true ;;
           esac
 
           if [ "$FAIL" = "true" ]; then
@@ -237,7 +241,10 @@ jobs:
           echo "✅ Security scan passed for '${IMAGE_NAME}'"
 
       - name: "📤 Upload Trivy Scan to GitHub Security"
+        # Non-fatal: reporting only. The push gate is the scan step's exit code,
+        # so a repo without code scanning (private/no GHAS) must not fail here.
         if: always() && inputs.security-scan && steps.security.outputs.sarif-path != ''
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ steps.security.outputs.sarif-path }}
@@ -265,7 +272,7 @@ jobs:
         shell: bash
         env:
           IMAGE_NAME: ${{ matrix.image.name }}
-          IMAGE_REF: ${{ inputs.registry }}/${{ inputs.image-namespace != '' && inputs.image-namespace || github.repository }}/${{ matrix.image.name }}
+          IMAGE_REF: ${{ inputs.registry }}/${{ matrix.image.image || format('{0}/{1}', inputs.image-namespace != '' && inputs.image-namespace || github.repository, matrix.image.name) }}
           DOCKERFILE: ${{ matrix.image.dockerfile }}
           PLATFORMS: ${{ matrix.image.platforms || inputs.platforms }}
           TAGS: ${{ steps.meta.outputs.tags }}
