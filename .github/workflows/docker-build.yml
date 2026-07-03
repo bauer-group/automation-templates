@@ -9,7 +9,20 @@ on:
         type: string
         required: false
         default: '.'
-      
+
+      # Checkout Configuration
+      checkout-fetch-depth:
+        description: 'Git history depth for the build checkout. 0 (default) fetches full history — required for Dockerfile-version write-back and semver tag derivation. Set 1 for a faster shallow checkout when neither is used.'
+        type: number
+        required: false
+        default: 0
+
+      checkout-lfs:
+        description: 'Fetch Git LFS objects on the build checkout. Default true preserves current behaviour (repos storing build assets in LFS). Set false to skip LFS blobs for a faster checkout.'
+        type: boolean
+        required: false
+        default: true
+
       dockerfile-path:
         description: 'Path to Dockerfile'
         type: string
@@ -380,9 +393,9 @@ jobs:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0
-          lfs: true
-      
+          fetch-depth: ${{ inputs.checkout-fetch-depth }}
+          lfs: ${{ inputs.checkout-lfs }}
+
       - name: 🧪 Run Pre-Build Tests
         if: inputs.run-tests
         shell: bash
