@@ -518,8 +518,14 @@ jobs:
           echo "🎯 Applying priority label..."
 
           if [ -n "$PRIORITY" ]; then
-            gh issue edit "$ISSUE_NUMBER" --add-label "priority-$PRIORITY"
-            echo "Added priority label: priority-$PRIORITY"
+            # Best-effort, matching the "Apply Suggested Labels" step: never fail the
+            # workflow when the priority-* label does not exist in the repo (these are
+            # opt-in per repo, unlike the default label set).
+            if gh issue edit "$ISSUE_NUMBER" --add-label "priority-$PRIORITY"; then
+              echo "Added priority label: priority-$PRIORITY"
+            else
+              echo "::notice::Skipped priority label 'priority-$PRIORITY' (create it in the repo to enable priority labelling)"
+            fi
           fi
 
       - name: 📊 Summary Report
