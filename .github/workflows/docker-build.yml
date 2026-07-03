@@ -12,10 +12,10 @@ on:
 
       # Checkout Configuration
       checkout-fetch-depth:
-        description: 'Git history depth for the build checkout. 0 (default) fetches full history — required for Dockerfile-version write-back and semver tag derivation. Set 1 for a faster shallow checkout when neither is used.'
+        description: 'Git history depth for the build checkout. BREAKING: default changed from 0 (full history) to 1 (shallow) for a faster checkout. Set 0 when a build step needs full history or tags (e.g. git-describe based versioning).'
         type: number
         required: false
-        default: 0
+        default: 1
 
       checkout-lfs:
         description: 'Fetch Git LFS objects on the build checkout. Default true preserves current behaviour (repos storing build assets in LFS). Set false to skip LFS blobs for a faster checkout.'
