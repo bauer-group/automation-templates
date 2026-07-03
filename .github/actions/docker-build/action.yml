@@ -697,33 +697,32 @@ runs:
         # Initialize scan result
         SCAN_FAILED=false
 
-        # Resolve the severity threshold ONCE, here.
+        # Resolve the severity threshold ONCE, here, and validate it.
         #
-        # It drives two independent things - which severities the scanner reports, and
-        # which of them block the push - and those were previously derived separately and
-        # disagreed. Two concrete consequences of that:
-        #   * the gate `case` had no LOW branch and no default, so `security-fail-on: LOW`
-        #     (documented, and used by examples/docker/security-focused-build.yml) matched
-        #     nothing, left SCAN_FAILED=false and published the image whatever was found;
-        #   * `--severity <input>,HIGH,CRITICAL` is not cumulative, so LOW omitted MEDIUM
-        #     entirely, and a typo was passed straight through to the scanner.
+        # The gate `case` below previously had no LOW branch and no default, so
+        # `security-fail-on: LOW` - documented in the input description, in
+        # docs/workflows/docker-build.md, and used by
+        # examples/docker/security-focused-build.yml where it is advertised as
+        # "# Very strict" - matched nothing, left SCAN_FAILED=false and published the
+        # image whatever the scan found. The strictest documented setting was the only
+        # one that disabled the gate. Any lowercase value or typo hit the same hole.
         #
-        # Normalising and validating once removes both. An unrecognised value falls back
-        # to CRITICAL with a warning rather than to "no gate at all" - the same behaviour
-        # fork-docker-build.yml already implements for this input.
+        # Normalising and validating up front removes the whole class. An unrecognised
+        # value falls back to CRITICAL with a warning rather than to "no gate at all" -
+        # the behaviour fork-docker-build.yml already implements for this same input.
+        #
+        # The scanners deliberately report ALL severities regardless of this threshold,
+        # so the SARIF uploaded to the Security tab stays complete and the counts below
+        # are correct for whatever threshold is applied.
         FAIL_ON=$(printf '%s' "$SECURITY_FAIL_ON" | tr '[:lower:]' '[:upper:]')
         case "$FAIL_ON" in
-          CRITICAL) SCAN_SEVERITIES="CRITICAL" ;;
-          HIGH)     SCAN_SEVERITIES="HIGH,CRITICAL" ;;
-          MEDIUM)   SCAN_SEVERITIES="MEDIUM,HIGH,CRITICAL" ;;
-          LOW)      SCAN_SEVERITIES="LOW,MEDIUM,HIGH,CRITICAL" ;;
+          CRITICAL|HIGH|MEDIUM|LOW) ;;
           *)
             echo "::warning::Unknown security-fail-on '$SECURITY_FAIL_ON' - falling back to CRITICAL. Valid values: CRITICAL, HIGH, MEDIUM, LOW"
             FAIL_ON="CRITICAL"
-            SCAN_SEVERITIES="CRITICAL"
             ;;
         esac
-        echo "🎚️ Severity threshold: $FAIL_ON (scanning: $SCAN_SEVERITIES)"
+        echo "🎚️ Severity threshold: $FAIL_ON (scanning all severities)"
 
         case "${{ inputs.security-scanner }}" in
           trivy)
@@ -737,7 +736,7 @@ runs:
             trivy image \
               --format json \
               --output "$REPORT_PATH" \
-              --severity "$SCAN_SEVERITIES" \
+              --severity CRITICAL,HIGH,MEDIUM,LOW \
               ${{ inputs.security-ignore-unfixed == 'true' && '--ignore-unfixed' || '' }} \
               "$PRIMARY_TAG" || echo "Trivy scan completed with issues"
 
@@ -745,7 +744,7 @@ runs:
             trivy image \
               --format sarif \
               --output "$SARIF_PATH" \
-              --severity "$SCAN_SEVERITIES" \
+              --severity CRITICAL,HIGH,MEDIUM,LOW \
               "$PRIMARY_TAG" || echo "SARIF generation completed"
             ;;
 
@@ -756,7 +755,8 @@ runs:
               curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
             fi
 
-            grype "$PRIMARY_TAG" -o json --file "$REPORT_PATH" || echo "Grype scan completed"
+            # Emit JSON (for gating) and SARIF (for the Security tab) in one scan.
+            grype "$PRIMARY_TAG" -o json="$REPORT_PATH" -o sarif="$SARIF_PATH" || echo "Grype scan completed"
             ;;
         esac
 
@@ -777,19 +777,41 @@ runs:
           MEDIUM_COUNT=0
           LOW_COUNT=0
 
-          if [ "${{ inputs.security-scanner }}" = "trivy" ]; then
-            # A malformed report must not silently degrade to "0 vulnerabilities".
-            if ! jq -e '.' "$REPORT_PATH" >/dev/null 2>&1; then
-              echo "::error::Security report at $REPORT_PATH is not valid JSON - the scanner did not complete successfully"
-              echo "scan-passed=false" >> "$GITHUB_OUTPUT"
-              exit 1
-            fi
-
-            CRITICAL_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$REPORT_PATH")
-            HIGH_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$REPORT_PATH")
-            MEDIUM_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "$REPORT_PATH")
-            LOW_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW")] | length' "$REPORT_PATH")
+          # A malformed report must not silently degrade to "0 vulnerabilities".
+          # This gate is why v7.1.2 exists - an aborted scan used to be reported clean.
+          if ! jq -e '.' "$REPORT_PATH" >/dev/null 2>&1; then
+            echo "::error::Security report at $REPORT_PATH is not valid JSON - the scanner did not complete successfully"
+            echo "scan-passed=false" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
+
+          # Count per-scanner. grype JSON uses .matches[].vulnerability.severity with
+          # capitalised values (Critical/High/Medium/Low); trivy nests under .Results[].
+          #
+          # Deliberately NO `2>/dev/null || echo 0` fallback on these jq calls: the
+          # validity gate above has already run, and swallowing a jq failure here would
+          # reintroduce exactly the silent pass that v7.1.2 removed.
+          case "${{ inputs.security-scanner }}" in
+            trivy)
+              CRITICAL_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$REPORT_PATH")
+              HIGH_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$REPORT_PATH")
+              MEDIUM_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "$REPORT_PATH")
+              LOW_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW")] | length' "$REPORT_PATH")
+              ;;
+            grype)
+              CRITICAL_COUNT=$(jq '[.matches[]?.vulnerability.severity | select(. == "Critical")] | length' "$REPORT_PATH")
+              HIGH_COUNT=$(jq '[.matches[]?.vulnerability.severity | select(. == "High")] | length' "$REPORT_PATH")
+              MEDIUM_COUNT=$(jq '[.matches[]?.vulnerability.severity | select(. == "Medium")] | length' "$REPORT_PATH")
+              LOW_COUNT=$(jq '[.matches[]?.vulnerability.severity | select(. == "Low")] | length' "$REPORT_PATH")
+              ;;
+            *)
+              # snyk is an accepted input value but its report shape is not parsed here,
+              # so every count stays 0 and the gate below cannot block anything. Surfaced
+              # loudly rather than failing the build, because turning it into a hard error
+              # is a behaviour change beyond this commit. Tracked as follow-up work.
+              echo "::warning::Scanner '${{ inputs.security-scanner }}' produces no enforceable vulnerability counts - the security gate will not block this build"
+              ;;
+          esac
 
           echo "🛡️ Security scan results:"
           echo "  • Critical: $CRITICAL_COUNT"
