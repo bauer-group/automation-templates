@@ -194,10 +194,10 @@ on:
         default: false
       
       generate-sbom:
-        description: 'Generate Software Bill of Materials'
+        description: 'Generate Software Bill of Materials. BREAKING: default flipped to true (secure-by-default). Set false to skip.'
         type: boolean
         required: false
-        default: false
+        default: true
 
       sbom-format:
         description: 'SBOM format (cyclonedx, spdx)'
@@ -206,16 +206,16 @@ on:
         default: 'cyclonedx'
 
       attest-sbom:
-        description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true. Default false.'
+        description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true. BREAKING: default flipped to true (secure-by-default).'
         type: boolean
         required: false
-        default: false
+        default: true
 
       provenance:
-        description: 'SLSA build provenance for the pushed image (false, true, or mode=max). Default false preserves the current single-manifest form; enabling it attaches an attestation manifest (opt-in).'
+        description: 'SLSA build provenance for the pushed image (false, true, or mode=max). BREAKING: default flipped to mode=max, which attaches an attestation manifest (image becomes an index). Set false to keep the single-manifest form.'
         type: string
         required: false
-        default: 'false'
+        default: 'mode=max'
 
       generate-vex:
         description: 'Generate an OpenVEX document from the Trivy scan report (requires security-scan=true with the trivy scanner). Default false.'

@@ -158,22 +158,22 @@ inputs:
     default: ''
   # SBOM Generation
   generate-sbom:
-    description: 'Generate Software Bill of Materials'
+    description: 'Generate Software Bill of Materials. BREAKING: default flipped to true (secure-by-default). Set false to skip SBOM generation.'
     required: false
-    default: 'false'
+    default: 'true'
   sbom-format:
     description: 'SBOM format (cyclonedx, spdx)'
     required: false
     default: 'cyclonedx'
   attest-sbom:
-    description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true and the caller job to grant attestations:write + id-token:write. Default false = no attestation (current behaviour).'
+    description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true and the caller job to grant attestations:write + id-token:write. BREAKING: default flipped to true (secure-by-default). A direct-action caller without those permissions must set attest-sbom=false.'
     required: false
-    default: 'false'
+    default: 'true'
   # Provenance
   provenance:
-    description: 'SLSA build provenance for the PUSHED image. Passed to docker/build-push-action (false, true, or mode=max). Default false preserves the current single-manifest form; enabling it attaches an attestation manifest (changes the observable manifest/index) - opt-in only.'
+    description: 'SLSA build provenance for the PUSHED image. Passed to docker/build-push-action (false, true, or mode=max). BREAKING: default flipped to mode=max, which attaches an attestation manifest and changes the pushed image to an index. Set false to keep the single-manifest form.'
     required: false
-    default: 'false'
+    default: 'mode=max'
   # VEX (Vulnerability Exploitability eXchange)
   generate-vex:
     description: 'Generate an OpenVEX document from the Trivy scan report (all CVEs under_investigation, merged with optional security/vex-overrides.json). Requires security-scan=true with the trivy scanner. Default false.'
