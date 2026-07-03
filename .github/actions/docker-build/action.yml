@@ -174,6 +174,11 @@ inputs:
     description: 'SLSA build provenance for the PUSHED image. Passed to docker/build-push-action (false, true, or mode=max). Default false preserves the current single-manifest form; enabling it attaches an attestation manifest (changes the observable manifest/index) - opt-in only.'
     required: false
     default: 'false'
+  # VEX (Vulnerability Exploitability eXchange)
+  generate-vex:
+    description: 'Generate an OpenVEX document from the Trivy scan report (all CVEs under_investigation, merged with optional security/vex-overrides.json). Requires security-scan=true with the trivy scanner. Default false.'
+    required: false
+    default: 'false'
   # Metadata & Labels
   add-git-labels:
     description: 'Add Git metadata as labels'
@@ -230,6 +235,9 @@ outputs:
   sbom-attested:
     description: 'Whether the SBOM was cryptographically attested (true/false)'
     value: ${{ steps.attest-sbom.outputs.attested }}
+  vex-path:
+    description: 'Path to the generated OpenVEX document (empty when generate-vex is false)'
+    value: ${{ steps.vex.outputs.vex-path }}
   build-duration:
     description: 'Build duration in seconds'
     value: ${{ steps.build-info.outputs.duration }}
@@ -814,6 +822,18 @@ runs:
         sbom-path: ${{ inputs.working-directory }}/${{ steps.sbom.outputs.path }}
         # Map the syft format (cyclonedx|spdx) to the attest action's expected value.
         sbom-format: ${{ inputs.sbom-format == 'spdx' && 'spdx-json' || 'cyclonedx-json' }}
+
+    - name: 📋 Generate OpenVEX Document
+      id: vex
+      # always(): document vulnerabilities even when the scan blocked the push (exit 1) -
+      # that is exactly when a VEX triage record is most useful. Requires the Trivy JSON
+      # report; a non-trivy scanner or missing report yields an empty VEX (handled inside).
+      if: always() && inputs.security-scan == 'true' && inputs.generate-vex == 'true' && steps.security.outputs.report-path != ''
+      uses: bauer-group/automation-templates/.github/actions/vex-generate@main
+      with:
+        vulnerability-report-path: ${{ inputs.working-directory }}/${{ steps.security.outputs.report-path }}
+        # Write into docker-build-reports so it rides the existing security-reports artifact.
+        output-file: ${{ inputs.working-directory }}/docker-build-reports/vex.openvex.json
 
     - name: 📤 Upload Security Reports
       if: always() && inputs.security-scan == 'true'

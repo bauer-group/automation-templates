@@ -216,6 +216,12 @@ on:
         type: string
         required: false
         default: 'false'
+
+      generate-vex:
+        description: 'Generate an OpenVEX document from the Trivy scan report (requires security-scan=true with the trivy scanner). Default false.'
+        type: boolean
+        required: false
+        default: false
       
       # Caching
       cache-enabled:
@@ -376,6 +382,10 @@ on:
         description: 'Whether the SBOM was cryptographically attested (true/false)'
         value: ${{ jobs.build.outputs.sbom-attested }}
 
+      vex-path:
+        description: 'Path to the generated OpenVEX document (empty when generate-vex is false)'
+        value: ${{ jobs.build.outputs.vex-path }}
+
       build-duration:
         description: 'Build duration in seconds'
         value: ${{ jobs.build.outputs.build-duration }}
@@ -411,6 +421,7 @@ jobs:
       security-report: ${{ steps.docker-build.outputs.security-report }}
       sbom-path: ${{ steps.docker-build.outputs.sbom-path }}
       sbom-attested: ${{ steps.docker-build.outputs.sbom-attested }}
+      vex-path: ${{ steps.docker-build.outputs.vex-path }}
       build-duration: ${{ steps.docker-build.outputs.build-duration }}
     
     steps:
@@ -492,6 +503,7 @@ jobs:
           sbom-format: ${{ inputs.sbom-format }}
           attest-sbom: ${{ inputs.attest-sbom }}
           provenance: ${{ inputs.provenance }}
+          generate-vex: ${{ inputs.generate-vex }}
           builder-driver: ${{ inputs.builder-driver }}
           build-timeout: ${{ inputs.build-timeout }}
           verbose-build-summary: ${{ inputs.verbose-build-summary }}
