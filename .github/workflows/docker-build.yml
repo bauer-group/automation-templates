@@ -198,12 +198,24 @@ on:
         type: boolean
         required: false
         default: false
-      
+
       sbom-format:
         description: 'SBOM format (cyclonedx, spdx)'
         type: string
         required: false
         default: 'cyclonedx'
+
+      attest-sbom:
+        description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true. Default false.'
+        type: boolean
+        required: false
+        default: false
+
+      provenance:
+        description: 'SLSA build provenance for the pushed image (false, true, or mode=max). Default false preserves the current single-manifest form; enabling it attaches an attestation manifest (opt-in).'
+        type: string
+        required: false
+        default: 'false'
       
       # Caching
       cache-enabled:
@@ -356,6 +368,14 @@ on:
         description: 'Security scan report path'
         value: ${{ jobs.build.outputs.security-report }}
 
+      sbom-path:
+        description: 'Path to the generated SBOM (empty when generate-sbom is false)'
+        value: ${{ jobs.build.outputs.sbom-path }}
+
+      sbom-attested:
+        description: 'Whether the SBOM was cryptographically attested (true/false)'
+        value: ${{ jobs.build.outputs.sbom-attested }}
+
       build-duration:
         description: 'Build duration in seconds'
         value: ${{ jobs.build.outputs.build-duration }}
@@ -365,6 +385,8 @@ permissions:
   contents: write        # For committing Dockerfile version updates
   packages: write        # For pushing to GHCR
   security-events: write # For uploading SARIF reports to GitHub Security
+  attestations: write    # For SBOM attestation (opt-in via attest-sbom; no effect otherwise)
+  id-token: write        # OIDC token required by Sigstore-based SBOM attestation
 
 jobs:
   build:
@@ -387,6 +409,8 @@ jobs:
       image-pushed: ${{ steps.docker-build.outputs.image-pushed }}
       security-scan-passed: ${{ steps.docker-build.outputs.security-scan-passed }}
       security-report: ${{ steps.docker-build.outputs.security-report }}
+      sbom-path: ${{ steps.docker-build.outputs.sbom-path }}
+      sbom-attested: ${{ steps.docker-build.outputs.sbom-attested }}
       build-duration: ${{ steps.docker-build.outputs.build-duration }}
     
     steps:
@@ -466,6 +490,8 @@ jobs:
           cosign-password: ${{ secrets.COSIGN_PASSWORD }}
           generate-sbom: ${{ inputs.generate-sbom }}
           sbom-format: ${{ inputs.sbom-format }}
+          attest-sbom: ${{ inputs.attest-sbom }}
+          provenance: ${{ inputs.provenance }}
           builder-driver: ${{ inputs.builder-driver }}
           build-timeout: ${{ inputs.build-timeout }}
           verbose-build-summary: ${{ inputs.verbose-build-summary }}

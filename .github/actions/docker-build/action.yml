@@ -165,6 +165,15 @@ inputs:
     description: 'SBOM format (cyclonedx, spdx)'
     required: false
     default: 'cyclonedx'
+  attest-sbom:
+    description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true and the caller job to grant attestations:write + id-token:write. Default false = no attestation (current behaviour).'
+    required: false
+    default: 'false'
+  # Provenance
+  provenance:
+    description: 'SLSA build provenance for the PUSHED image. Passed to docker/build-push-action (false, true, or mode=max). Default false preserves the current single-manifest form; enabling it attaches an attestation manifest (changes the observable manifest/index) - opt-in only.'
+    required: false
+    default: 'false'
   # Metadata & Labels
   add-git-labels:
     description: 'Add Git metadata as labels'
@@ -218,6 +227,9 @@ outputs:
   sbom-path:
     description: 'Path to generated SBOM'
     value: ${{ steps.sbom.outputs.path }}
+  sbom-attested:
+    description: 'Whether the SBOM was cryptographically attested (true/false)'
+    value: ${{ steps.attest-sbom.outputs.attested }}
   build-duration:
     description: 'Build duration in seconds'
     value: ${{ steps.build-info.outputs.duration }}
@@ -695,7 +707,10 @@ runs:
         # from scratch under QEMU on every run.
         cache-from: ${{ steps.cache-settings.outputs.cache-from-push }}
         cache-to: ${{ steps.cache-settings.outputs.cache-to-push }}
-        provenance: false
+        # provenance: opt-in via the 'provenance' input (default 'false' = unchanged
+        # single-manifest push). Only the push build carries provenance - the local
+        # scan build uses load:true (docker exporter), which cannot hold attestations.
+        provenance: ${{ inputs.provenance }}
         sbom: false
 
     - name: 📊 Collect Build Information
@@ -786,6 +801,19 @@ runs:
         
         echo "path=$SBOM_PATH" >> $GITHUB_OUTPUT
         echo "📋 SBOM generated: $SBOM_PATH"
+
+    - name: 📜 Attest SBOM
+      id: attest-sbom
+      # Opt-in: only when an SBOM was generated AND attestation was requested. The
+      # sibling action wraps actions/attest-sbom (Sigstore); the caller job must grant
+      # attestations:write + id-token:write or the attestation step fails.
+      if: inputs.generate-sbom == 'true' && inputs.attest-sbom == 'true' && steps.sbom.outputs.path != ''
+      uses: bauer-group/automation-templates/.github/actions/sbom-attest@main
+      with:
+        # sbom step writes under working-directory; steps.sbom.outputs.path is relative to it.
+        sbom-path: ${{ inputs.working-directory }}/${{ steps.sbom.outputs.path }}
+        # Map the syft format (cyclonedx|spdx) to the attest action's expected value.
+        sbom-format: ${{ inputs.sbom-format == 'spdx' && 'spdx-json' || 'cyclonedx-json' }}
 
     - name: 📤 Upload Security Reports
       if: always() && inputs.security-scan == 'true'
