@@ -647,84 +647,44 @@ jobs:
           echo ""
           echo "🔗 View on Docker Hub: https://hub.docker.com/r/${{ steps.docker-repo.outputs.repository }}"
 
-  # Image vulnerability analysis (separate job for comprehensive scanning)
+  # Image vulnerability analysis — delegated to the shared modules-vulnerability-scan
+  # workflow for unified SARIF categories + scoring (replaces the previous inline Trivy
+  # block). Runs only when scanning is enabled AND an image actually reached the registry
+  # (this pulls & scans the pushed image; nothing exists to scan on PRs / push:false).
+  # Skipped otherwise — deploy/summary tolerate the skipped result. Advisory only:
+  # fail-on-findings:false so it never blocks the build or the deploy gate.
+  # NOTE: the container scan (Anchore/Grype) pulls the image without a registry login, so
+  # for PRIVATE GHCR images this advisory job may report a pull failure. The build, tags,
+  # digests, outputs and deploy gate are unaffected.
   security-analysis:
     name: 🛡️ Advanced Security Analysis
     needs: build
-    if: always() && needs.build.result == 'success'
-    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
-    timeout-minutes: 15
-
-    steps:
-      - name: ⏭️ Security Scan Disabled
-        if: inputs.security-scan != true
-        run: |
-          echo "::notice title=Security Scan Disabled::Advanced security scanning is disabled via inputs.security-scan=false"
-          echo "## ⏭️ Advanced Security Scan - Disabled" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Advanced security scanning is **disabled** in workflow configuration." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "To enable, set \`security-scan: true\` in your workflow inputs." >> $GITHUB_STEP_SUMMARY
-
-      - name: 📥 Checkout Repository
-        if: inputs.security-scan == true
-        uses: actions/checkout@v6
-
-      - name: 🛡️ Run Advanced Security Analysis
-        # Guard on image-pushed: this scans the *registry* image, which does not exist on
-        # PRs / push:false runs (previously failed the job red). continue-on-error keeps this
-        # informational job non-fatal so the deploy gate (needs.security-analysis) is stable.
-        if: inputs.security-scan == true && needs.build.outputs.image-pushed == 'true'
-        continue-on-error: true
-        shell: bash
-        run: |
-          echo "🛡️ Running advanced security analysis..."
-
-          IMAGE_URL="${{ needs.build.outputs.image-url }}"
-
-          # Multiple scanner approach for comprehensive coverage
-          echo "Image: $IMAGE_URL"
-
-          # Install additional security tools
-          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-
-          # Comprehensive Trivy scan
-          trivy image \
-            --format table \
-            --severity HIGH,CRITICAL \
-            "$IMAGE_URL"
-
-          # Check for secrets in image
-          trivy image \
-            --scanners secret \
-            --format table \
-            "$IMAGE_URL"
-
-          # Configuration scanning
-          trivy image \
-            --scanners config \
-            --format table \
-            "$IMAGE_URL"
-
-          echo "✅ Advanced security analysis completed"
-
-          # Add to summary
-          echo "## 🛡️ Advanced Security Analysis - Completed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Vulnerability Scan | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
-          echo "| Secret Detection | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
-          echo "| Config Analysis | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
+    if: inputs.security-scan == true && needs.build.result == 'success' && needs.build.outputs.image-pushed == 'true'
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+      actions: read
+    uses: bauer-group/automation-templates/.github/workflows/modules-vulnerability-scan.yml@main
+    with:
+      scan-engine: trivy
+      container-images: ${{ needs.build.outputs.image-url }}
+      container-severity: high
+      fail-on-findings: false
+      upload-sarif: true
+      runs-on: ${{ inputs.runs-on }}
+    secrets: inherit
 
   # Deployment job (if enabled)
   deploy:
     name: 🚀 Deploy Image
     needs: [build, security-analysis]
-    # Only run (and spin up a runner) when deployment is enabled. Previously an idle runner
-    # started on every default run just to echo a "disabled" notice. summary tolerates the
-    # resulting 'skipped' result.
-    if: always() && inputs.deploy-enabled == true && needs.build.result == 'success' && needs.security-analysis.result == 'success'
+    # Only run (and spin up a runner) when deployment is enabled AND the image was actually
+    # pushed. The advisory security-analysis job no longer gates deploy (it was previously
+    # continue-on-error, so it never truly gated); the real block is the in-build scan, which
+    # withholds the push (image-pushed=false) on failure. always() tolerates a skipped
+    # security-analysis (security-scan:false / PR builds).
+    if: always() && inputs.deploy-enabled == true && needs.build.result == 'success' && needs.build.outputs.image-pushed == 'true'
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     environment:
       name: ${{ inputs.deploy-environment }}
