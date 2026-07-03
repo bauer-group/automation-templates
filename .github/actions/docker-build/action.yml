@@ -611,7 +611,7 @@ runs:
             trivy image \
               --format json \
               --output "$REPORT_PATH" \
-              --severity ${{ inputs.security-fail-on }},HIGH,CRITICAL \
+              --severity CRITICAL,HIGH,MEDIUM,LOW \
               ${{ inputs.security-ignore-unfixed == 'true' && '--ignore-unfixed' || '' }} \
               "$PRIMARY_TAG" || echo "Trivy scan completed with issues"
 
@@ -619,7 +619,7 @@ runs:
             trivy image \
               --format sarif \
               --output "$SARIF_PATH" \
-              --severity ${{ inputs.security-fail-on }},HIGH,CRITICAL \
+              --severity CRITICAL,HIGH,MEDIUM,LOW \
               "$PRIMARY_TAG" || echo "SARIF generation completed"
             ;;
 
@@ -630,7 +630,8 @@ runs:
               curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
             fi
 
-            grype "$PRIMARY_TAG" -o json --file "$REPORT_PATH" || echo "Grype scan completed"
+            # Emit JSON (for gating) and SARIF (for the Security tab) in one scan.
+            grype "$PRIMARY_TAG" -o json="$REPORT_PATH" -o sarif="$SARIF_PATH" || echo "Grype scan completed"
             ;;
         esac
 
@@ -642,19 +643,33 @@ runs:
           CRITICAL_COUNT=0
           HIGH_COUNT=0
           MEDIUM_COUNT=0
+          LOW_COUNT=0
 
-          if [ "${{ inputs.security-scanner }}" = "trivy" ]; then
-            CRITICAL_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
-            HIGH_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
-            MEDIUM_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
-          fi
+          # Count per-scanner. grype JSON uses .matches[].vulnerability.severity with
+          # capitalised values (Critical/High/Medium/Low); trivy nests under .Results[].
+          case "${{ inputs.security-scanner }}" in
+            trivy)
+              CRITICAL_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
+              HIGH_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
+              MEDIUM_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
+              LOW_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
+              ;;
+            grype)
+              CRITICAL_COUNT=$(jq '[.matches[]?.vulnerability.severity | select(. == "Critical")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
+              HIGH_COUNT=$(jq '[.matches[]?.vulnerability.severity | select(. == "High")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
+              MEDIUM_COUNT=$(jq '[.matches[]?.vulnerability.severity | select(. == "Medium")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
+              LOW_COUNT=$(jq '[.matches[]?.vulnerability.severity | select(. == "Low")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
+              ;;
+          esac
 
           echo "🛡️ Security scan results:"
           echo "  • Critical: $CRITICAL_COUNT"
           echo "  • High: $HIGH_COUNT"
           echo "  • Medium: $MEDIUM_COUNT"
+          echo "  • Low: $LOW_COUNT"
 
-          # Determine if we should fail based on security-fail-on threshold
+          # Determine if we should fail based on security-fail-on threshold (fail when any
+          # vulnerability is AT OR ABOVE the configured severity).
           case "${{ inputs.security-fail-on }}" in
             CRITICAL)
               if [ "$CRITICAL_COUNT" -gt 0 ]; then
@@ -671,6 +686,12 @@ runs:
             MEDIUM)
               if [ "$CRITICAL_COUNT" -gt 0 ] || [ "$HIGH_COUNT" -gt 0 ] || [ "$MEDIUM_COUNT" -gt 0 ]; then
                 echo "❌ Found vulnerabilities at or above MEDIUM severity - blocking push"
+                SCAN_FAILED=true
+              fi
+              ;;
+            LOW)
+              if [ "$CRITICAL_COUNT" -gt 0 ] || [ "$HIGH_COUNT" -gt 0 ] || [ "$MEDIUM_COUNT" -gt 0 ] || [ "$LOW_COUNT" -gt 0 ]; then
+                echo "❌ Found vulnerabilities at or above LOW severity - blocking push"
                 SCAN_FAILED=true
               fi
               ;;
