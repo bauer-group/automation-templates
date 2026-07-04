@@ -1,8 +1,25 @@
 ## [6.8.0](https://github.com/bauer-group/automation-templates/compare/v6.7.0...v6.8.0) (2026-07-02)
 
+### 🚀 Features
+
+* **ci:** added single-image support to fork build ([13d6da9](https://github.com/bauer-group/automation-templates/commit/13d6da9d588c570836b5e5827a1f4167bfda3aef))
+
 ## [6.7.0](https://github.com/bauer-group/automation-templates/compare/v6.6.1...v6.7.0) (2026-07-02)
 
+### 🚀 Features
+
+* **ci:** added fork docker-build & upstream sync ([4002fa7](https://github.com/bauer-group/automation-templates/commit/4002fa7617dab09608b77ce6280bf1c20af25211))
+
+### 🐛 Bug Fixes
+
+* **ci:** made security-policy auto-commit resilient to push races ([f317f05](https://github.com/bauer-group/automation-templates/commit/f317f05bad1688c7bcd68db49f42af3a1adc2e93))
+* **security:** use security@ for vulnerability reports in template ([ee664be](https://github.com/bauer-group/automation-templates/commit/ee664be55f3d7e45927034e34886815dfe5dd43c))
+
 ## [6.6.1](https://github.com/bauer-group/automation-templates/compare/v6.6.0...v6.6.1) (2026-06-28)
+
+### 🐛 Bug Fixes
+
+* **teams:** supported Power Automate Workflows webhook and missing secret ([fe78908](https://github.com/bauer-group/automation-templates/commit/fe789088e49534e37d7a582cb3feb92a4a43877c))
 
 ## [6.6.0](https://github.com/bauer-group/automation-templates/compare/v6.5.0...v6.6.0) (2026-06-17)
 
