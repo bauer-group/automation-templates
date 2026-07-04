@@ -14,10 +14,10 @@ on:
         type: boolean
         default: false
       node-version:
-        description: 'Node.js version to use'
+        description: 'Node.js version to use (semantic-release v25 requires >= 22.14 / >= 24.10)'
         required: false
         type: string
-        default: '22'
+        default: '24'
       force-release:
         description: 'Force create release even without conventional commits'
         required: false
@@ -25,6 +25,11 @@ on:
         default: false
       extra-plugins:
         description: 'Additional semantic-release plugins to install (space-separated)'
+        required: false
+        type: string
+        default: ''
+      changelog-title:
+        description: 'Preamble kept at the top of the changelog (empty = built-in default; an existing file preamble is always preserved)'
         required: false
         type: string
         default: ''
@@ -82,9 +87,11 @@ jobs:
         with:
           dry-run: ${{ inputs.dry-run }}
           branches: ${{ inputs.target-branch }}
+          node-version: ${{ inputs.node-version }}
           token: ${{ secrets.GITHUB_TOKEN }}
           force-release: ${{ inputs.force-release }}
           extra-plugins: ${{ inputs.extra-plugins }}
+          changelog-title: ${{ inputs.changelog-title }}
           
       - name: 📊 Process Results
         id: release

@@ -1,0 +1,13 @@
+{
+  "name": "bg-changelog-notes",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Decoupled changelog notes generator for the shared semantic-release action. Pinned independently of semantic-release's bundled release-notes-generator so the release toolchain and the changelog toolchain can move on their own current versions without silently breaking each other.",
+  "license": "MIT",
+  "dependencies": {
+    "conventional-changelog-conventionalcommits": "10.2.0",
+    "conventional-changelog-writer": "9.1.0",
+    "conventional-commits-parser": "6.4.0"
+  }
+}
