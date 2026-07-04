@@ -1,0 +1,30 @@
+name: 🛡️ CodeQL Analysis
+
+# First-class CodeQL SAST analysis.
+# Adjust `languages` to match your codebase.
+# Copy this file to .github/workflows/ in your repository.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 4 * * 1'   # Monday 04:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  packages: read
+
+jobs:
+  codeql:
+    name: CodeQL
+    uses: bauer-group/automation-templates/.github/workflows/modules-codeql.yml@main
+    with:
+      # Comma-separated: actions, cpp, csharp, go, java-kotlin,
+      # javascript-typescript, python, ruby, rust, swift
+      languages: 'javascript-typescript,python'
+      queries: 'security-extended'
+      # build-mode: 'autobuild'   # required for compiled languages (java-kotlin, csharp, cpp, ...)

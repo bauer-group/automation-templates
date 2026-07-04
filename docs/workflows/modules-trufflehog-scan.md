@@ -17,6 +17,8 @@ A *verified* finding is a confirmed live exposure — not a maybe.
 
 ## Quick Start
 
+> **Copy-paste example:** [`github/workflows/examples/security/trufflehog-secret-scan.yml`](../../github/workflows/examples/security/trufflehog-secret-scan.yml)
+
 ```yaml
 name: Secret Scan
 on: [push, pull_request]

@@ -20,6 +20,8 @@ hundreds of other source-level vulnerabilities.
 
 ## Quick Start
 
+> **Copy-paste example:** [`github/workflows/examples/security/codeql-analysis.yml`](../../github/workflows/examples/security/codeql-analysis.yml)
+
 ```yaml
 name: CodeQL
 on:

@@ -19,6 +19,8 @@ base vs. head dependency graph, so a risky dependency is caught **before merge**
 
 ## Quick Start
 
+> **Copy-paste example:** [`github/workflows/examples/security/dependency-review.yml`](../../github/workflows/examples/security/dependency-review.yml)
+
 ```yaml
 name: Dependency Review
 on: pull_request

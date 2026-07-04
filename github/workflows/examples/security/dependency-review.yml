@@ -1,0 +1,22 @@
+name: 🛡️ Dependency Review
+
+# Pre-merge gate: blocks PRs that introduce known-vulnerable or
+# disallowed-license dependencies. Must be triggered by pull_request.
+# Copy this file to .github/workflows/ in your repository.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    uses: bauer-group/automation-templates/.github/workflows/modules-dependency-review.yml@main
+    with:
+      fail-on-severity: 'high'
+      comment-summary-in-pr: 'on-failure'
+      # deny-licenses: 'GPL-3.0, AGPL-3.0'   # optional SPDX license policy
