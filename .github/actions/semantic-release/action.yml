@@ -216,12 +216,20 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
       with:
+        # Pin the semantic-release line so cycjimmy@v6 (which otherwise floats to
+        # semantic-release@latest) stays on release-notes-generator v14, matching
+        # the pinned conventionalcommits preset below. Prevents silent drift.
+        semantic_version: '24'
         dry_run: ${{ inputs.dry-run }}
         branches: ${{ inputs.branches }}
+        # conventionalcommits MUST be pinned to the v9 line: release-notes-generator
+        # v14 is built/tested against conventional-changelog-conventionalcommits@9.3.1
+        # (writer ^8). The unpinned package floats to v10 (a @conventional-changelog/
+        # template rewrite) whose writer templates emit no sections -> empty changelog.
         extra_plugins: |
           @semantic-release/changelog
           @semantic-release/git
-          conventional-changelog-conventionalcommits
+          conventional-changelog-conventionalcommits@9.3.1
           ${{ inputs.extra-plugins }}
 
     - name: Set Tag Output
