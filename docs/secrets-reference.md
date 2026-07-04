@@ -96,6 +96,8 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 | `GITLEAKS_LICENSE` | gitleaks-scan | Gitleaks Enterprise License Key | Gitleaks Enterprise Subscription |
 | `FOSSA_API_KEY` | license-compliance | FOSSA License Scanning | [fossa.com](https://fossa.com) → Account Settings |
 
+> **Kein Secret nötig:** `modules-trufflehog-scan`, `modules-codeql` und `modules-dependency-review` benötigen **kein** zusätzliches Secret — sie laufen mit dem automatischen `GITHUB_TOKEN`. (TruffleHog verifiziert nur die *gefundenen* Credentials, es gibt keinen TruffleHog-Service-Key.)
+
 ### Notifications
 
 | Secret | Workflows | Beschreibung | Einrichtung |

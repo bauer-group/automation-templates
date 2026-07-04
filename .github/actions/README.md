@@ -20,6 +20,7 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 | [`security-scan-meta`](./security-scan-meta/) | Advanced multi-engine scanning | Gitleaks + GitGuardian | ⚡⚡⚡ | Erweiterte Sicherheitsanalyse |
 | [`gitguardian-scan`](./gitguardian-scan/) | ML-based policy enforcement | GitGuardian | ⚡⚡ | GitGuardian-spezifisch |
 | [`gitleaks-scan`](./gitleaks-scan/) | Fast secrets detection | Gitleaks | ⚡⚡⚡ | Gitleaks-spezifisch |
+| [`trufflehog-scan`](./trufflehog-scan/) | Verified-first secrets detection | TruffleHog | ⚡⚡ | [modules-trufflehog-scan.yml](../workflows/modules-trufflehog-scan.yml) |
 | [`license-compliance`](./license-compliance/) | SPDX license validation | FOSSA + SPDX | ⚡⚡⚡ | [modules-license-compliance.yml](../workflows/modules-license-compliance.yml) |
 | [`labeler-triage`](./labeler-triage/) | PR labeling & triage | GitHub API | ⚡⚡⚡ | [modules-pr-labeler.yml](../workflows/modules-pr-labeler.yml) |
 

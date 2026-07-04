@@ -55,6 +55,60 @@ with:
 - `security-score`: Kombinierte Sicherheitsbewertung (0-100)
 - `scan-results`: Zusammenfassung der Ergebnisse
 
+### 🐷 [TruffleHog Secret Scan](./modules-trufflehog-scan.yml)
+**Zweck:** Verified-first Secret-Scanning mit TruffleHog (800+ Detektoren mit Live-Verifizierung)
+
+Ergänzt Gitleaks + GitGuardian um **Verifizierung**: TruffleHog prüft per Provider-API, ob ein gefundenes Secret tatsächlich *live* ist. Standalone-Modul (nicht im Meta-Orchestrator), aber output-kompatibel.
+
+```yaml
+uses: bauer-group/automation-templates/.github/workflows/modules-trufflehog-scan.yml@main
+with:
+  scan-mode: 'filesystem'        # oder 'git-history'
+  only-verified: true
+  fail-on-findings: true
+```
+
+**Ausgaben:**
+- `secrets-found`: Ob Secrets gefunden wurden
+- `secrets-count`: Gesamtzahl gefundener Secrets
+- `verified-count`: Anzahl **verifizierter (live)** Secrets
+- `security-score`: Sicherheitsbewertung (0-100)
+- `scan-status`: pass/warning/fail
+
+### 🛡️ [CodeQL Analysis](./modules-codeql.yml)
+**Zweck:** Statische Code-Analyse (SAST) mit GitHub CodeQL — für Downstream-Produkt-Repos
+
+```yaml
+uses: bauer-group/automation-templates/.github/workflows/modules-codeql.yml@main
+with:
+  languages: 'javascript-typescript,python'
+  queries: 'security-extended'
+  # build-mode: 'autobuild'   # für kompilierte Sprachen
+```
+
+**Ausgaben:**
+- `analysis-complete`: Ob die Analyse für alle Sprachen abgeschlossen wurde
+
+> Ergebnisse erscheinen im **Security-Tab → Code Scanning**.
+
+### 🛡️ [Dependency Review](./modules-dependency-review.yml)
+**Zweck:** Pre-Merge-Gate — blockiert PRs mit neuen verwundbaren oder lizenzwidrigen Dependencies
+
+> **Trigger:** Caller-Workflow muss von `pull_request` ausgelöst werden.
+
+```yaml
+on: pull_request
+jobs:
+  dependency-review:
+    uses: bauer-group/automation-templates/.github/workflows/modules-dependency-review.yml@main
+    with:
+      fail-on-severity: 'high'
+      deny-licenses: 'GPL-3.0, AGPL-3.0'
+```
+
+**Ausgaben:**
+- `review-result`: success/failure
+
 ### 📋 [License Compliance](./modules-license-compliance.yml)
 **Zweck:** Lizenz-Compliance-Prüfung und SBOM-Generierung
 
