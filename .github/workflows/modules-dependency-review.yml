@@ -1,0 +1,87 @@
+name: 🛡️ Module | Dependency Review
+
+# Blocks pull requests that introduce known-vulnerable or disallowed-license
+# dependencies - the pre-merge gate that Trivy/OSV (which scan the merged tree)
+# only catch after the fact. Requires a pull_request-triggered caller.
+
+on:
+  workflow_call:
+    inputs:
+      fail-on-severity:
+        description: 'Minimum severity that fails the check (low, moderate, high, critical)'
+        required: false
+        type: string
+        default: 'high'
+      comment-summary-in-pr:
+        description: 'Post a summary comment on the PR (always, on-failure, never)'
+        required: false
+        type: string
+        default: 'on-failure'
+      allow-licenses:
+        description: 'Comma-separated SPDX allow-list (mutually exclusive with deny-licenses)'
+        required: false
+        type: string
+        default: ''
+      deny-licenses:
+        description: 'Comma-separated SPDX deny-list (mutually exclusive with allow-licenses)'
+        required: false
+        type: string
+        default: ''
+      fail-on-scopes:
+        description: 'Dependency scopes to check (comma-separated: runtime, development, unknown)'
+        required: false
+        type: string
+        default: 'runtime'
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+    outputs:
+      review-result:
+        description: 'Result of the dependency review (success/failure)'
+        value: ${{ jobs.dependency-review.outputs.review-result }}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    name: 🔍 Dependency Review
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    outputs:
+      review-result: ${{ steps.review.outcome }}
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: 🔍 Dependency Review
+        id: review
+        uses: actions/dependency-review-action@v5.0.0
+        with:
+          fail-on-severity: ${{ inputs.fail-on-severity }}
+          comment-summary-in-pr: ${{ inputs.comment-summary-in-pr }}
+          allow-licenses: ${{ inputs.allow-licenses }}
+          deny-licenses: ${{ inputs.deny-licenses }}
+          fail-on-scopes: ${{ inputs.fail-on-scopes }}
+
+      - name: 📊 Dependency Review Summary
+        if: always()
+        shell: bash
+        run: |
+          RESULT="${{ steps.review.outcome }}"
+          ICON=$([ "$RESULT" = "success" ] && echo "✅" || echo "❌")
+          {
+            echo "### 🛡️ Dependency Review"
+            echo ""
+            echo "| Setting | Value |"
+            echo "|---------|-------|"
+            echo "| **Result** | $ICON $RESULT |"
+            echo "| **Fail on severity** | ${{ inputs.fail-on-severity }} |"
+            echo "| **Scopes** | ${{ inputs.fail-on-scopes }} |"
+            echo ""
+            if [ "$RESULT" != "success" ]; then
+              echo "Newly introduced dependencies violate the vulnerability or license policy. See the PR comment and job log."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
