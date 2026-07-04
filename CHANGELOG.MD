@@ -1,3 +1,16 @@
+## [6.9.0](https://github.com/bauer-group/automation-templates/compare/v6.8.0...v6.9.0) (2026-07-04)
+
+### 🚀 Features
+
+* **ci:** added dependency-review pre-merge gate ([eff503b](https://github.com/bauer-group/automation-templates/commit/eff503bd2b800f7772bce7c88e3dd6c16a25b1e4))
+* **ci:** added first-class CodeQL analysis module ([d902d52](https://github.com/bauer-group/automation-templates/commit/d902d52d9ed170cb216f679cc64d67fa71551701))
+* **security:** added TruffleHog verified-first secret scan ([4ebdf0e](https://github.com/bauer-group/automation-templates/commit/4ebdf0e636918d91df8d451152a589ddcc6c2dd4))
+
+### 🐛 Bug Fixes
+
+* **ci:** pinned semantic-release toolchain to restore changelog notes ([47b79af](https://github.com/bauer-group/automation-templates/commit/47b79af28dbc1251675b0723933034823b5317de))
+* **ci:** stopped priority label from failing AI summary ([#69](https://github.com/bauer-group/automation-templates/issues/69)) ([f99a9bf](https://github.com/bauer-group/automation-templates/commit/f99a9bf4647d35efebbc6a1ca4244b34a646b8d0))
+
 ## [6.8.0](https://github.com/bauer-group/automation-templates/compare/v6.7.0...v6.8.0) (2026-07-02)
 
 ### 🚀 Features
