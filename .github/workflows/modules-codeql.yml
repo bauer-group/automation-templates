@@ -1,0 +1,159 @@
+name: 🛡️ Module | CodeQL Analysis
+
+# First-class CodeQL static analysis (SAST) as a reusable module.
+# Intended for downstream product repositories - the automation-templates repo
+# itself is mostly YAML/shell and gains little from CodeQL.
+
+on:
+  workflow_call:
+    inputs:
+      languages:
+        description: >-
+          Comma-separated CodeQL languages to analyze
+          (e.g. javascript-typescript,python,go,java-kotlin,csharp,cpp,ruby,swift,actions)
+        required: true
+        type: string
+      build-mode:
+        description: 'Build mode for compiled languages (none, autobuild, manual)'
+        required: false
+        type: string
+        default: 'none'
+      queries:
+        description: 'CodeQL query suite (default, security-extended, security-and-quality)'
+        required: false
+        type: string
+        default: 'security-extended'
+      config-file:
+        description: 'Path to a custom CodeQL config file (optional)'
+        required: false
+        type: string
+        default: ''
+      fail-on-findings:
+        description: 'Fail the workflow when CodeQL uploads results (gate on Security tab alerts)'
+        required: false
+        type: boolean
+        default: false
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+    outputs:
+      analysis-complete:
+        description: 'Whether CodeQL analysis completed for all languages'
+        value: ${{ jobs.summary.outputs.analysis-complete }}
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  packages: read
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Job 1: Parse languages into a matrix
+  # ──────────────────────────────────────────────
+  prepare-matrix:
+    name: 📋 Prepare Language Matrix
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    outputs:
+      matrix: ${{ steps.parse.outputs.matrix }}
+      has-languages: ${{ steps.parse.outputs.has-languages }}
+    steps:
+      - name: 📋 Parse Languages
+        id: parse
+        shell: bash
+        run: |
+          LANGS='${{ inputs.languages }}'
+          JSON_ARRAY=$(echo "$LANGS" \
+            | tr ',' '\n' \
+            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          COUNT=$(echo "$JSON_ARRAY" | jq 'length')
+
+          if [ "$COUNT" -gt 0 ]; then
+            echo "matrix={\"language\":$JSON_ARRAY}" >> "$GITHUB_OUTPUT"
+            echo "has-languages=true" >> "$GITHUB_OUTPUT"
+            echo "📋 Languages to analyze: $(echo "$JSON_ARRAY" | jq -r 'join(", ")')"
+          else
+            echo "matrix={\"language\":[]}" >> "$GITHUB_OUTPUT"
+            echo "has-languages=false" >> "$GITHUB_OUTPUT"
+            echo "❌ No languages provided"
+            exit 1
+          fi
+
+  # ──────────────────────────────────────────────
+  # Job 2: CodeQL analysis (per language)
+  # ──────────────────────────────────────────────
+  analyze:
+    name: 🔬 Analyze ${{ matrix.language }}
+    needs: prepare-matrix
+    if: needs.prepare-matrix.outputs.has-languages == 'true'
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
+
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: 🔧 Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ inputs.build-mode }}
+          queries: ${{ inputs.queries }}
+          config-file: ${{ inputs.config-file }}
+
+      - name: 🏗️ Autobuild
+        if: inputs.build-mode == 'autobuild'
+        uses: github/codeql-action/autobuild@v4
+
+      - name: 🔬 Perform CodeQL Analysis
+        id: analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
+          upload: always
+
+  # ──────────────────────────────────────────────
+  # Job 3: Summary
+  # ──────────────────────────────────────────────
+  summary:
+    name: 📊 CodeQL Summary
+    if: always()
+    needs: [prepare-matrix, analyze]
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    outputs:
+      analysis-complete: ${{ steps.evaluate.outputs.analysis-complete }}
+    steps:
+      - name: 📊 Evaluate
+        id: evaluate
+        shell: bash
+        run: |
+          RESULT="${{ needs.analyze.result }}"
+          COMPLETE="false"
+          [ "$RESULT" = "success" ] && COMPLETE="true"
+          echo "analysis-complete=$COMPLETE" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## 🛡️ CodeQL Analysis Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| **Languages** | ${{ inputs.languages }} |"
+            echo "| **Query Suite** | ${{ inputs.queries }} |"
+            echo "| **Build Mode** | ${{ inputs.build-mode }} |"
+            echo "| **Analysis Result** | $RESULT |"
+            echo ""
+            echo "Findings are published to the **Security tab → Code scanning**."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 🚨 Fail on Incomplete Analysis
+        if: inputs.fail-on-findings && needs.analyze.result != 'success'
+        shell: bash
+        run: |
+          echo "❌ CodeQL analysis did not complete successfully for all languages."
+          echo "Review the Security tab and job logs."
+          exit 1
