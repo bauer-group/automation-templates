@@ -1,0 +1,352 @@
+name: 'TruffleHog Secret Scan'
+description: 'Verified-first secrets detection using TruffleHog (800+ detectors with live credential verification)'
+author: 'BAUER GROUP'
+
+inputs:
+  scan-mode:
+    description: 'Scan mode (filesystem, git-history)'
+    required: false
+    default: 'filesystem'
+  only-verified:
+    description: 'Report only verified (live) secrets - dramatically reduces false positives'
+    required: false
+    default: 'true'
+  include-unverified:
+    description: 'Include unverified and unknown results (overrides only-verified when true)'
+    required: false
+    default: 'false'
+  exclude-paths:
+    description: 'Paths to exclude from scanning (comma-separated globs/regexes)'
+    required: false
+    default: '.git,node_modules,vendor,target,dist,build'
+  fail-on-findings:
+    description: 'Fail the workflow if secrets are found'
+    required: false
+    default: 'true'
+  config-path:
+    description: 'Path to a custom TruffleHog exclude-paths file (one regex per line). Overrides exclude-paths when set.'
+    required: false
+    default: ''
+  format:
+    description: 'Primary report format (json)'
+    required: false
+    default: 'json'
+  trufflehog-version:
+    description: 'TruffleHog version to install (pinned - do not use latest)'
+    required: false
+    default: '3.95.8'
+  github-token:
+    description: 'GitHub Token (optional, raises API rate limits for the installer)'
+    required: false
+    default: ''
+
+outputs:
+  secrets-found:
+    description: 'Whether secrets were found (true/false)'
+    value: ${{ steps.trufflehog-scan.outputs.secrets-found }}
+  secrets-count:
+    description: 'Total number of secrets found'
+    value: ${{ steps.trufflehog-scan.outputs.secrets-count }}
+  verified-count:
+    description: 'Number of verified (live) secrets found'
+    value: ${{ steps.trufflehog-scan.outputs.verified-count }}
+  scan-status:
+    description: 'Overall scan status (pass, warning, fail)'
+    value: ${{ steps.summary.outputs.scan-status }}
+  security-score:
+    description: 'Security score based on findings (0-100)'
+    value: ${{ steps.summary.outputs.security-score }}
+  report-path:
+    description: 'Path to the detailed scan report directory'
+    value: ${{ steps.summary.outputs.report-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🐷 Setup TruffleHog Scan
+      shell: bash
+      run: |
+        echo "🐷 Initializing TruffleHog Secret Scan"
+        echo "Version: ${{ inputs.trufflehog-version }}"
+        echo "Scan Mode: ${{ inputs.scan-mode }}"
+        echo "Only Verified: ${{ inputs.only-verified }}"
+        echo "Include Unverified: ${{ inputs.include-unverified }}"
+        echo "Fail on Findings: ${{ inputs.fail-on-findings }}"
+        echo "Exclude Paths: ${{ inputs.exclude-paths }}"
+
+        mkdir -p trufflehog-reports
+
+    - name: 🔧 Install TruffleHog
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        echo "🔧 Installing TruffleHog v${{ inputs.trufflehog-version }}..."
+
+        INSTALL_DIR="$HOME/.local/bin"
+        mkdir -p "$INSTALL_DIR"
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+        export PATH="$INSTALL_DIR:$PATH"
+
+        # Primary: official pinned installer (retry x3)
+        INSTALLED="false"
+        for i in 1 2 3; do
+          if curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
+            | sh -s -- -b "$INSTALL_DIR" "v${{ inputs.trufflehog-version }}"; then
+            INSTALLED="true"
+            echo "✅ Installer succeeded on attempt $i"
+            break
+          fi
+          echo "⚠️ Install attempt $i failed"
+          sleep 2
+        done
+
+        # Fallback: direct release binary download
+        if [ "$INSTALLED" != "true" ]; then
+          echo "↩️ Falling back to direct binary download..."
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m)
+          case "$ARCH" in
+            x86_64|amd64) ARCH="amd64" ;;
+            aarch64|arm64) ARCH="arm64" ;;
+            *) echo "❌ Unsupported architecture: $ARCH"; exit 1 ;;
+          esac
+          VER="${{ inputs.trufflehog-version }}"
+          URL="https://github.com/trufflesecurity/trufflehog/releases/download/v${VER}/trufflehog_${VER}_${OS}_${ARCH}.tar.gz"
+          echo "Downloading: $URL"
+          if curl -fSL "$URL" -o th.tar.gz && tar -xzf th.tar.gz trufflehog; then
+            chmod +x trufflehog
+            mv trufflehog "$INSTALL_DIR/"
+            rm -f th.tar.gz
+          else
+            echo "❌ TruffleHog installation failed"
+            exit 1
+          fi
+        fi
+
+        if command -v trufflehog >/dev/null 2>&1; then
+          echo "✅ TruffleHog installed: $(trufflehog --version 2>&1 | head -1)"
+        else
+          echo "❌ TruffleHog not found on PATH after install"
+          exit 1
+        fi
+
+    - name: 📝 Configure Exclusions
+      id: exclusions
+      shell: bash
+      run: |
+        echo "📝 Preparing exclude-paths file..."
+        EXCLUDE_FILE=""
+
+        if [ -n "${{ inputs.config-path }}" ] && [ -f "${{ inputs.config-path }}" ]; then
+          EXCLUDE_FILE="${{ inputs.config-path }}"
+          echo "ℹ️ Using custom exclude-paths file: $EXCLUDE_FILE"
+        elif [ -n "${{ inputs.exclude-paths }}" ]; then
+          EXCLUDE_FILE="trufflehog-reports/exclude-paths.txt"
+          : > "$EXCLUDE_FILE"
+          IFS=',' read -ra ITEMS <<< "${{ inputs.exclude-paths }}"
+          for item in "${ITEMS[@]}"; do
+            trimmed="$(echo "$item" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            [ -n "$trimmed" ] && echo "$trimmed" >> "$EXCLUDE_FILE"
+          done
+          echo "ℹ️ Generated exclude-paths file with $(wc -l < "$EXCLUDE_FILE") entries"
+        fi
+
+        echo "exclude-file=$EXCLUDE_FILE" >> "$GITHUB_OUTPUT"
+
+    - name: 🔍 Run TruffleHog Scan
+      id: trufflehog-scan
+      shell: bash
+      run: |
+        echo "🔍 Running TruffleHog secret scan..."
+
+        RESULTS_FILE="trufflehog-reports/trufflehog-results.json"
+        LOG_FILE="trufflehog-reports/trufflehog.log"
+
+        # Determine results filter (verification level)
+        if [ "${{ inputs.include-unverified }}" == "true" ]; then
+          RESULTS_FLAG="--results=verified,unknown,unverified"
+        elif [ "${{ inputs.only-verified }}" == "true" ]; then
+          RESULTS_FLAG="--results=verified"
+        else
+          RESULTS_FLAG="--results=verified,unknown"
+        fi
+
+        # Exclude paths flag (if any)
+        EXCLUDE_FLAG=""
+        if [ -n "${{ steps.exclusions.outputs.exclude-file }}" ]; then
+          EXCLUDE_FLAG="--exclude-paths=${{ steps.exclusions.outputs.exclude-file }}"
+        fi
+
+        # Build target by scan mode
+        case "${{ inputs.scan-mode }}" in
+          git-history)
+            SCAN_CMD=(trufflehog git "file://$(pwd)")
+            echo "🕒 Scanning full git history..."
+            ;;
+          filesystem|*)
+            SCAN_CMD=(trufflehog filesystem .)
+            echo "📁 Scanning working directory (current state)..."
+            ;;
+        esac
+
+        # Execute - NDJSON to stdout, logs to stderr. Do NOT use --fail; we score from the JSON.
+        set +e
+        "${SCAN_CMD[@]}" --json --no-update $RESULTS_FLAG $EXCLUDE_FLAG > "$RESULTS_FILE" 2> "$LOG_FILE"
+        SCAN_EXIT=$?
+        set -e
+        echo "TruffleHog exit code: $SCAN_EXIT"
+
+        # Keep only well-formed result objects (drop any stray non-JSON lines)
+        VALID_FILE="trufflehog-reports/trufflehog-valid.ndjson"
+        : > "$VALID_FILE"
+        while IFS= read -r line; do
+          echo "$line" | jq -e 'select(.DetectorName)' >/dev/null 2>&1 && echo "$line" >> "$VALID_FILE"
+        done < "$RESULTS_FILE"
+
+        SECRETS_COUNT=$(jq -s 'length' "$VALID_FILE" 2>/dev/null || echo "0")
+        VERIFIED_COUNT=$(jq -s '[.[] | select(.Verified == true)] | length' "$VALID_FILE" 2>/dev/null || echo "0")
+        [ -z "$SECRETS_COUNT" ] && SECRETS_COUNT=0
+        [ -z "$VERIFIED_COUNT" ] && VERIFIED_COUNT=0
+
+        SECRETS_FOUND="false"
+        [ "$SECRETS_COUNT" -gt 0 ] && SECRETS_FOUND="true"
+
+        # Human-readable summary of detectors
+        if [ "$SECRETS_COUNT" -gt 0 ]; then
+          jq -rs '.[] | "• \(.DetectorName) [\(if .Verified then "VERIFIED" else "unverified" end)] in \(.SourceMetadata.Data.Filesystem.file // .SourceMetadata.Data.Git.file // "unknown")"' \
+            "$VALID_FILE" > trufflehog-reports/secrets-summary.txt 2>/dev/null || true
+          echo "📋 Findings:"; cat trufflehog-reports/secrets-summary.txt || true
+        fi
+
+        # Convert to SARIF 2.1.0 (TruffleHog has no native SARIF exporter)
+        jq -s '{
+          "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+          version: "2.1.0",
+          runs: [{
+            tool: { driver: {
+              name: "TruffleHog",
+              informationUri: "https://github.com/trufflesecurity/trufflehog",
+              version: "${{ inputs.trufflehog-version }}",
+              rules: []
+            }},
+            results: [ .[] | {
+              ruleId: (.DetectorName // "UnknownDetector"),
+              level: (if .Verified then "error" else "warning" end),
+              message: { text: ((.DetectorName // "Secret") + (if .Verified then " (verified/live)" else " (unverified)" end) + " detected by TruffleHog") },
+              locations: [{
+                physicalLocation: {
+                  artifactLocation: { uri: (.SourceMetadata.Data.Filesystem.file // .SourceMetadata.Data.Git.file // "unknown") },
+                  region: { startLine: (((.SourceMetadata.Data.Filesystem.line // .SourceMetadata.Data.Git.line // 1) | if . < 1 then 1 else . end)) }
+                }
+              }]
+            }]
+          }]
+        }' "$VALID_FILE" > trufflehog-reports/trufflehog.sarif 2>/dev/null || \
+          echo '{"$schema":"https://json.schemastore.org/sarif-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"TruffleHog","rules":[]}},"results":[]}]}' > trufflehog-reports/trufflehog.sarif
+
+        echo "secrets-found=$SECRETS_FOUND" >> "$GITHUB_OUTPUT"
+        echo "secrets-count=$SECRETS_COUNT" >> "$GITHUB_OUTPUT"
+        echo "verified-count=$VERIFIED_COUNT" >> "$GITHUB_OUTPUT"
+
+        echo "📊 TruffleHog Scan Results:"
+        echo "  • Secrets Found: $SECRETS_FOUND"
+        echo "  • Total Count:   $SECRETS_COUNT"
+        echo "  • Verified/Live: $VERIFIED_COUNT"
+
+    - name: 📤 Upload SARIF to Security Tab
+      if: always()
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: trufflehog-reports/trufflehog.sarif
+        category: trufflehog
+      continue-on-error: true
+
+    - name: 📊 Generate Security Summary
+      id: summary
+      shell: bash
+      run: |
+        SECRETS_FOUND="${{ steps.trufflehog-scan.outputs.secrets-found }}"
+        SECRETS_COUNT="${{ steps.trufflehog-scan.outputs.secrets-count }}"
+        VERIFIED_COUNT="${{ steps.trufflehog-scan.outputs.verified-count }}"
+
+        # Score: verified secrets are the real risk (heavier penalty than unverified)
+        SECURITY_SCORE=100
+        UNVERIFIED_COUNT=$((SECRETS_COUNT - VERIFIED_COUNT))
+        [ "$UNVERIFIED_COUNT" -lt 0 ] && UNVERIFIED_COUNT=0
+
+        VERIFIED_PENALTY=$((VERIFIED_COUNT * 40))
+        [ $VERIFIED_PENALTY -gt 80 ] && VERIFIED_PENALTY=80
+        UNVERIFIED_PENALTY=$((UNVERIFIED_COUNT * 10))
+        [ $UNVERIFIED_PENALTY -gt 40 ] && UNVERIFIED_PENALTY=40
+
+        SECURITY_SCORE=$((SECURITY_SCORE - VERIFIED_PENALTY - UNVERIFIED_PENALTY))
+        [ $SECURITY_SCORE -lt 0 ] && SECURITY_SCORE=0
+
+        SCAN_STATUS="pass"
+        if [ "$SECRETS_FOUND" == "true" ] && [ "${{ inputs.fail-on-findings }}" == "true" ]; then
+          SCAN_STATUS="fail"
+        elif [ "$SECRETS_FOUND" == "true" ]; then
+          SCAN_STATUS="warning"
+        fi
+
+        echo "security-score=$SECURITY_SCORE" >> "$GITHUB_OUTPUT"
+        echo "scan-status=$SCAN_STATUS" >> "$GITHUB_OUTPUT"
+        echo "report-path=trufflehog-reports/" >> "$GITHUB_OUTPUT"
+
+        cat > trufflehog-reports/security-summary.md << EOF
+        # 🐷 TruffleHog Secret Scan Summary
+
+        **Scan Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        **Security Score:** $SECURITY_SCORE/100
+        **Status:** $SCAN_STATUS
+
+        ## 📊 Findings Overview
+
+        | Category | Count | Status |
+        |----------|-------|--------|
+        | 🔴 Verified (live) secrets | $VERIFIED_COUNT | $([ "$VERIFIED_COUNT" -gt 0 ] && echo "❌ Rotate immediately" || echo "✅ None") |
+        | 🟡 Unverified secrets | $UNVERIFIED_COUNT | $([ "$UNVERIFIED_COUNT" -gt 0 ] && echo "⚠️ Review" || echo "✅ None") |
+
+        ## 🔧 Scan Configuration
+
+        - **TruffleHog Version:** ${{ inputs.trufflehog-version }}
+        - **Scan Mode:** ${{ inputs.scan-mode }}
+        - **Only Verified:** ${{ inputs.only-verified }}
+        - **Include Unverified:** ${{ inputs.include-unverified }}
+        - **Excluded Paths:** ${{ inputs.exclude-paths }}
+
+        > TruffleHog's strength is **verification**: it actively confirms whether a detected
+        > credential is live. Verified findings are confirmed exposures - rotate them now.
+        EOF
+
+        echo ""
+        echo "🐷 TruffleHog Security Summary: Score $SECURITY_SCORE/100 | Status $SCAN_STATUS | Verified $VERIFIED_COUNT"
+
+    - name: 📤 Upload TruffleHog Reports
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: trufflehog-security-reports
+        path: trufflehog-reports/
+        retention-days: 30
+
+    - name: 🚨 Fail on Security Findings
+      if: inputs.fail-on-findings == 'true' && steps.trufflehog-scan.outputs.secrets-found == 'true'
+      shell: bash
+      run: |
+        echo "❌ TruffleHog scan failed - secrets detected"
+        echo "  • Total: ${{ steps.trufflehog-scan.outputs.secrets-count }}"
+        echo "  • Verified/live: ${{ steps.trufflehog-scan.outputs.verified-count }}"
+        echo "  • Security Score: ${{ steps.summary.outputs.security-score }}/100"
+        echo ""
+        echo "⚡ Quick Actions:"
+        echo "  1. Download the trufflehog-security-reports artifact"
+        echo "  2. Rotate any VERIFIED credentials immediately"
+        echo "  3. Remove secrets from code and history; use a secret manager"
+        echo "  4. Re-run the scan after remediation"
+        exit 1
+
+branding:
+  icon: 'search'
+  color: 'orange'

@@ -1,0 +1,127 @@
+name: 📦 Module | TruffleHog Secret Scan
+
+on:
+  workflow_call:
+    inputs:
+      scan-mode:
+        description: 'Scan mode (filesystem, git-history)'
+        required: false
+        type: string
+        default: 'filesystem'
+      only-verified:
+        description: 'Report only verified (live) secrets - reduces false positives'
+        required: false
+        type: boolean
+        default: true
+      include-unverified:
+        description: 'Include unverified and unknown results (overrides only-verified)'
+        required: false
+        type: boolean
+        default: false
+      exclude-paths:
+        description: 'Paths to exclude from scanning (comma-separated)'
+        required: false
+        type: string
+        default: '.git,node_modules,vendor,target,dist,build'
+      fail-on-findings:
+        description: 'Fail the workflow if secrets are found'
+        required: false
+        type: boolean
+        default: true
+      config-path:
+        description: 'Path to a custom TruffleHog exclude-paths file (one regex per line)'
+        required: false
+        type: string
+        default: ''
+      trufflehog-version:
+        description: 'TruffleHog version to install (pinned)'
+        required: false
+        type: string
+        default: '3.95.8'
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+    outputs:
+      secrets-found:
+        description: 'Whether secrets were found'
+        value: ${{ jobs.trufflehog-scan.outputs.secrets-found }}
+      secrets-count:
+        description: 'Total number of secrets found'
+        value: ${{ jobs.trufflehog-scan.outputs.secrets-count }}
+      verified-count:
+        description: 'Number of verified (live) secrets found'
+        value: ${{ jobs.trufflehog-scan.outputs.verified-count }}
+      security-score:
+        description: 'Security score (0-100)'
+        value: ${{ jobs.trufflehog-scan.outputs.security-score }}
+      scan-status:
+        description: 'Overall scan status (pass/warning/fail)'
+        value: ${{ jobs.trufflehog-scan.outputs.scan-status }}
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  trufflehog-scan:
+    name: 🐷 TruffleHog Secret Scan
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    outputs:
+      secrets-found: ${{ steps.scan.outputs.secrets-found }}
+      secrets-count: ${{ steps.scan.outputs.secrets-count }}
+      verified-count: ${{ steps.scan.outputs.verified-count }}
+      security-score: ${{ steps.scan.outputs.security-score }}
+      scan-status: ${{ steps.scan.outputs.scan-status }}
+
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # Full history required only for git-history mode; filesystem mode ignores it
+          fetch-depth: ${{ inputs.scan-mode == 'git-history' && 0 || 1 }}
+
+      - name: 🐷 Run TruffleHog Scan
+        id: scan
+        uses: bauer-group/automation-templates/.github/actions/trufflehog-scan@main
+        with:
+          scan-mode: ${{ inputs.scan-mode }}
+          only-verified: ${{ inputs.only-verified }}
+          include-unverified: ${{ inputs.include-unverified }}
+          exclude-paths: ${{ inputs.exclude-paths }}
+          fail-on-findings: ${{ inputs.fail-on-findings }}
+          config-path: ${{ inputs.config-path }}
+          trufflehog-version: ${{ inputs.trufflehog-version }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📊 TruffleHog Report Summary
+        if: always()
+        shell: bash
+        run: |
+          SCORE="${{ steps.scan.outputs.security-score || '100' }}"
+          VERIFIED="${{ steps.scan.outputs.verified-count || '0' }}"
+          COUNT="${{ steps.scan.outputs.secrets-count || '0' }}"
+          STATUS="${{ steps.scan.outputs.scan-status || 'pass' }}"
+
+          {
+            echo "### 🐷 TruffleHog Secret Scan"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|--------|-------|"
+            echo "| **Scan Mode** | ${{ inputs.scan-mode }} |"
+            echo "| **Security Score** | $SCORE/100 |"
+            echo "| **Verified (live) secrets** | $VERIFIED |"
+            echo "| **Total secrets** | $COUNT |"
+            echo "| **Status** | $STATUS |"
+            echo ""
+            if [ "$VERIFIED" != "0" ]; then
+              echo "🔴 **Verified live credentials detected - rotate immediately.** See the Security tab (category \`trufflehog\`) and the \`trufflehog-security-reports\` artifact."
+            elif [ "$COUNT" != "0" ]; then
+              echo "⚠️ **Unverified secrets detected.** Review the findings in the artifact."
+            else
+              echo "✅ **No secrets detected.**"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
