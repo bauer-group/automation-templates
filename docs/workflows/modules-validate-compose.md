@@ -10,6 +10,7 @@ This reusable workflow module provides:
 - **Service Discovery**: Extracts and reports all defined services
 - **Environment Handling**: Auto-generates dummy `.env` files for validation when originals contain secrets
 - **Multiple File Support**: Validates single or multiple compose files
+- **Profile Support**: Optionally activates Compose profiles so profile-gated services are validated
 - **Image Reference Checking**: Optional verification that referenced images exist
 
 ## Quick Start
@@ -65,6 +66,7 @@ jobs:
 |-----------|-------------|---------|
 | `compose-file` | Path to Docker Compose file | `'docker-compose.yml'` |
 | `compose-files` | Multiple compose files as JSON array | `''` |
+| `compose-profiles` | Compose profiles to activate so profile-gated services are rendered. `'*'`/`'all'` auto-detects and enables every declared profile; or a comma-separated list (e.g. `'backup,debug'`). Empty = no profiles | `''` |
 | `working-directory` | Working directory for validation | `'.'` |
 
 ### Environment Configuration
@@ -217,6 +219,25 @@ jobs:
         run: echo "Database service is configured"
 ```
 
+### Example 7: Validating Profile-Gated Services
+
+By default `docker compose config` hides services behind a Compose
+[profile](https://docs.docker.com/compose/how-tos/profiles/), so
+`validate-services` cannot see them. Activate the profile(s) to include
+those services in validation:
+
+```yaml
+jobs:
+  validate:
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-compose.yml@main
+    with:
+      compose-file: 'docker-compose.yml'
+      # Enable every declared profile (or list them: 'backup,debug')
+      compose-profiles: '*'
+      # Now a profiles:[backup] service can be required
+      validate-services: '["database", "backup"]'
+```
+
 ## Environment Variable Handling
 
 The module intelligently handles environment variables required by your compose files:
@@ -304,6 +325,17 @@ Ensure files are specified in the correct order (base first):
 
 ```yaml
 compose-files: '["docker-compose.yml", "docker-compose.prod.yml"]'
+```
+
+### Required Service "not found" for a Profiled Service
+
+If `validate-services` reports a service as not found even though it is
+defined, the service is likely gated behind a Compose `profiles:` key.
+`docker compose config` omits profiled services unless the profile is
+active. Activate it during validation:
+
+```yaml
+compose-profiles: '*'   # or a comma-separated list, e.g. 'backup'
 ```
 
 ### Image Reference Check Failures

@@ -15,6 +15,12 @@ on:
         type: string
         default: ''
 
+      compose-profiles:
+        description: 'Compose profiles to activate during validation so profile-gated services are rendered. Use "*" (or "all") to auto-detect and enable every declared profile, or a comma-separated list (e.g. "backup,debug"). Empty = no profiles (default, backward compatible).'
+        required: false
+        type: string
+        default: ''
+
       working-directory:
         description: 'Working directory for validation'
         required: false
@@ -237,6 +243,27 @@ jobs:
 
           echo "📋 Compose files: $COMPOSE_FILES"
 
+          # Activate Compose profiles so profile-gated services are rendered.
+          # `docker compose config` omits profiled services unless their profile
+          # is active; without this, validate-services can never see them.
+          PROFILES_INPUT='${{ inputs.compose-profiles }}'
+          if [ -n "$PROFILES_INPUT" ]; then
+            case "$PROFILES_INPUT" in
+              '*'|all|ALL)
+                # Auto-detect every profile declared across the compose file(s)
+                COMPOSE_PROFILES=$(docker compose $COMPOSE_FILES $ENV_OPT config --profiles 2>/dev/null | sort -u | tr '\n' ',' | sed 's/,$//')
+                ;;
+              *)
+                # Literal comma-separated profile list
+                COMPOSE_PROFILES="$PROFILES_INPUT"
+                ;;
+            esac
+            export COMPOSE_PROFILES
+            # Propagate to later steps (e.g. image-reference check)
+            echo "COMPOSE_PROFILES=$COMPOSE_PROFILES" >> "$GITHUB_ENV"
+            echo "🎚️ Activated Compose profiles: ${COMPOSE_PROFILES:-<none declared>}"
+          fi
+
           # Run validation
           echo "::group::Docker Compose Config Output"
           if docker compose $COMPOSE_FILES $ENV_OPT config 2>&1 | tee /tmp/compose-output.txt; then
@@ -398,6 +425,11 @@ jobs:
           echo "| **Services Found** | ${{ steps.validate.outputs.service-count }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Service Names** | ${{ steps.validate.outputs.services }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Working Directory** | \`${{ inputs.working-directory }}\` |" >> $GITHUB_STEP_SUMMARY
+
+          # COMPOSE_PROFILES is propagated via $GITHUB_ENV from the validate step
+          if [ -n "$COMPOSE_PROFILES" ]; then
+            echo "| **Profiles Activated** | \`$COMPOSE_PROFILES\` |" >> $GITHUB_STEP_SUMMARY
+          fi
 
           WARNINGS_OUTPUT="${{ steps.validate.outputs.warnings }}"
           if [ -n "$WARNINGS_OUTPUT" ] && [ "$WARNINGS_OUTPUT" != "" ]; then
