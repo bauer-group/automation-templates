@@ -9,7 +9,20 @@ on:
         type: string
         required: false
         default: '.'
-      
+
+      # Checkout Configuration
+      checkout-fetch-depth:
+        description: 'Git history depth for the build checkout. 0 (default) fetches full history — required for Dockerfile-version write-back and semver tag derivation. Set 1 for a faster shallow checkout when neither is used.'
+        type: number
+        required: false
+        default: 0
+
+      checkout-lfs:
+        description: 'Fetch Git LFS objects on the build checkout. Default true preserves current behaviour (repos storing build assets in LFS). Set false to skip LFS blobs for a faster checkout.'
+        type: boolean
+        required: false
+        default: true
+
       dockerfile-path:
         description: 'Path to Dockerfile'
         type: string
@@ -185,12 +198,30 @@ on:
         type: boolean
         required: false
         default: false
-      
+
       sbom-format:
         description: 'SBOM format (cyclonedx, spdx)'
         type: string
         required: false
         default: 'cyclonedx'
+
+      attest-sbom:
+        description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true. Default false.'
+        type: boolean
+        required: false
+        default: false
+
+      provenance:
+        description: 'SLSA build provenance for the pushed image (false, true, or mode=max). Default false preserves the current single-manifest form; enabling it attaches an attestation manifest (opt-in).'
+        type: string
+        required: false
+        default: 'false'
+
+      generate-vex:
+        description: 'Generate an OpenVEX document from the Trivy scan report (requires security-scan=true with the trivy scanner). Default false.'
+        type: boolean
+        required: false
+        default: false
       
       # Caching
       cache-enabled:
@@ -343,6 +374,18 @@ on:
         description: 'Security scan report path'
         value: ${{ jobs.build.outputs.security-report }}
 
+      sbom-path:
+        description: 'Path to the generated SBOM (empty when generate-sbom is false)'
+        value: ${{ jobs.build.outputs.sbom-path }}
+
+      sbom-attested:
+        description: 'Whether the SBOM was cryptographically attested (true/false)'
+        value: ${{ jobs.build.outputs.sbom-attested }}
+
+      vex-path:
+        description: 'Path to the generated OpenVEX document (empty when generate-vex is false)'
+        value: ${{ jobs.build.outputs.vex-path }}
+
       build-duration:
         description: 'Build duration in seconds'
         value: ${{ jobs.build.outputs.build-duration }}
@@ -352,6 +395,8 @@ permissions:
   contents: write        # For committing Dockerfile version updates
   packages: write        # For pushing to GHCR
   security-events: write # For uploading SARIF reports to GitHub Security
+  attestations: write    # For SBOM attestation (opt-in via attest-sbom; no effect otherwise)
+  id-token: write        # OIDC token required by Sigstore-based SBOM attestation
 
 jobs:
   build:
@@ -374,15 +419,18 @@ jobs:
       image-pushed: ${{ steps.docker-build.outputs.image-pushed }}
       security-scan-passed: ${{ steps.docker-build.outputs.security-scan-passed }}
       security-report: ${{ steps.docker-build.outputs.security-report }}
+      sbom-path: ${{ steps.docker-build.outputs.sbom-path }}
+      sbom-attested: ${{ steps.docker-build.outputs.sbom-attested }}
+      vex-path: ${{ steps.docker-build.outputs.vex-path }}
       build-duration: ${{ steps.docker-build.outputs.build-duration }}
     
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0
-          lfs: true
-      
+          fetch-depth: ${{ inputs.checkout-fetch-depth }}
+          lfs: ${{ inputs.checkout-lfs }}
+
       - name: 🧪 Run Pre-Build Tests
         if: inputs.run-tests
         shell: bash
@@ -453,6 +501,9 @@ jobs:
           cosign-password: ${{ secrets.COSIGN_PASSWORD }}
           generate-sbom: ${{ inputs.generate-sbom }}
           sbom-format: ${{ inputs.sbom-format }}
+          attest-sbom: ${{ inputs.attest-sbom }}
+          provenance: ${{ inputs.provenance }}
+          generate-vex: ${{ inputs.generate-vex }}
           builder-driver: ${{ inputs.builder-driver }}
           build-timeout: ${{ inputs.build-timeout }}
           verbose-build-summary: ${{ inputs.verbose-build-summary }}
@@ -500,9 +551,10 @@ jobs:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0
-          lfs: true
-      
+          # README sync only needs the working-tree README; skip full history + LFS blobs.
+          fetch-depth: 1
+          lfs: false
+
       - name: 📄 Determine README File
         id: readme
         shell: bash
@@ -595,93 +647,50 @@ jobs:
           echo ""
           echo "🔗 View on Docker Hub: https://hub.docker.com/r/${{ steps.docker-repo.outputs.repository }}"
 
-  # Image vulnerability analysis (separate job for comprehensive scanning)
+  # Image vulnerability analysis — delegated to the shared modules-vulnerability-scan
+  # workflow for unified SARIF categories + scoring (replaces the previous inline Trivy
+  # block). Runs only when scanning is enabled AND an image actually reached the registry
+  # (this pulls & scans the pushed image; nothing exists to scan on PRs / push:false).
+  # Skipped otherwise — deploy/summary tolerate the skipped result. Advisory only:
+  # fail-on-findings:false so it never blocks the build or the deploy gate.
+  # NOTE: the container scan (Anchore/Grype) pulls the image without a registry login, so
+  # for PRIVATE GHCR images this advisory job may report a pull failure. The build, tags,
+  # digests, outputs and deploy gate are unaffected.
   security-analysis:
     name: 🛡️ Advanced Security Analysis
     needs: build
-    if: always() && needs.build.result == 'success'
-    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
-    timeout-minutes: 15
-
-    steps:
-      - name: ⏭️ Security Scan Disabled
-        if: inputs.security-scan != true
-        run: |
-          echo "::notice title=Security Scan Disabled::Advanced security scanning is disabled via inputs.security-scan=false"
-          echo "## ⏭️ Advanced Security Scan - Disabled" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Advanced security scanning is **disabled** in workflow configuration." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "To enable, set \`security-scan: true\` in your workflow inputs." >> $GITHUB_STEP_SUMMARY
-
-      - name: 📥 Checkout Repository
-        if: inputs.security-scan == true
-        uses: actions/checkout@v6
-
-      - name: 🛡️ Run Advanced Security Analysis
-        if: inputs.security-scan == true
-        shell: bash
-        run: |
-          echo "🛡️ Running advanced security analysis..."
-
-          IMAGE_URL="${{ needs.build.outputs.image-url }}"
-
-          # Multiple scanner approach for comprehensive coverage
-          echo "Image: $IMAGE_URL"
-
-          # Install additional security tools
-          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-
-          # Comprehensive Trivy scan
-          trivy image \
-            --format table \
-            --severity HIGH,CRITICAL \
-            "$IMAGE_URL"
-
-          # Check for secrets in image
-          trivy image \
-            --scanners secret \
-            --format table \
-            "$IMAGE_URL"
-
-          # Configuration scanning
-          trivy image \
-            --scanners config \
-            --format table \
-            "$IMAGE_URL"
-
-          echo "✅ Advanced security analysis completed"
-
-          # Add to summary
-          echo "## 🛡️ Advanced Security Analysis - Completed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Vulnerability Scan | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
-          echo "| Secret Detection | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
-          echo "| Config Analysis | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
+    if: inputs.security-scan == true && needs.build.result == 'success' && needs.build.outputs.image-pushed == 'true'
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+      actions: read
+    uses: bauer-group/automation-templates/.github/workflows/modules-vulnerability-scan.yml@main
+    with:
+      scan-engine: trivy
+      container-images: ${{ needs.build.outputs.image-url }}
+      container-severity: high
+      fail-on-findings: false
+      upload-sarif: true
+      runs-on: ${{ inputs.runs-on }}
+    secrets: inherit
 
   # Deployment job (if enabled)
   deploy:
     name: 🚀 Deploy Image
     needs: [build, security-analysis]
-    if: always() && needs.build.result == 'success' && needs.security-analysis.result == 'success'
+    # Only run (and spin up a runner) when deployment is enabled AND the image was actually
+    # pushed. The advisory security-analysis job no longer gates deploy (it was previously
+    # continue-on-error, so it never truly gated); the real block is the in-build scan, which
+    # withholds the push (image-pushed=false) on failure. always() tolerates a skipped
+    # security-analysis (security-scan:false / PR builds).
+    if: always() && inputs.deploy-enabled == true && needs.build.result == 'success' && needs.build.outputs.image-pushed == 'true'
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     environment:
       name: ${{ inputs.deploy-environment }}
       url: ${{ steps.deploy.outputs.url }}
 
     steps:
-      - name: ⏭️ Deployment Disabled
-        if: inputs.deploy-enabled != true
-        run: |
-          echo "::notice title=Deployment Disabled::Deployment is disabled via inputs.deploy-enabled=false"
-          echo "## ⏭️ Deployment - Disabled" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Deployment is **disabled** in workflow configuration." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "To enable, set \`deploy-enabled: true\` in your workflow inputs." >> $GITHUB_STEP_SUMMARY
-
       - name: 📥 Checkout Repository
         if: inputs.deploy-enabled == true
         uses: actions/checkout@v6
@@ -740,6 +749,9 @@ jobs:
     needs: [build, dockerhub-readme, security-analysis, deploy]
     if: always()
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: 10 # Reporting only; caps 360-min default hang
+    permissions:
+      contents: read
 
     steps:
       - name: 📊 Generate Build Summary

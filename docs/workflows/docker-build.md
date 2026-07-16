@@ -157,6 +157,8 @@ The Docker build action provides:
 | `build-args` | Build arguments as JSON object | `'{}'` |
 | `platforms` | Target platforms (comma-separated) | `'linux/amd64'` |
 | `multi-platform` | Enable multi-platform builds | `false` |
+| `checkout-fetch-depth` | Git history depth for the build checkout. `0` = full history (required for Dockerfile-version write-back and semver derivation); set `1` for a faster shallow checkout when neither is used | `0` |
+| `checkout-lfs` | Fetch Git LFS objects on the build checkout; set `false` to skip LFS blobs for a faster checkout | `true` |
 
 ### Push Configuration
 
@@ -176,6 +178,9 @@ The Docker build action provides:
 | `sign-image` | Sign image with Cosign | `false` |
 | `generate-sbom` | Generate Software Bill of Materials | `false` |
 | `sbom-format` | SBOM format: `'cyclonedx'`, `'spdx'` | `'cyclonedx'` |
+| `attest-sbom` | Create a GitHub (Sigstore) attestation for the SBOM. Requires `generate-sbom: true` | `false` |
+| `provenance` | SLSA build provenance for the pushed image: `'false'`, `'true'`, or `'mode=max'`. Enabling it attaches an attestation manifest | `'false'` |
+| `generate-vex` | Generate an OpenVEX document from the Trivy scan report (requires `security-scan: true` with the `trivy` scanner) | `false` |
 
 ### Docker Hub README Sync
 
@@ -332,6 +337,69 @@ sign-image: true
 generate-sbom: true
 sbom-format: 'cyclonedx'  # or 'spdx'
 ```
+
+### SBOM Attestation & Build Provenance (opt-in)
+
+Create a cryptographic, verifiable trail for the published image. Both default to
+today's behaviour (off) and require no changes for existing callers:
+
+```yaml
+generate-sbom: true
+attest-sbom: true      # Sigstore attestation for the SBOM (verifiable provenance)
+provenance: 'mode=max' # SLSA build provenance attached to the pushed image
+```
+
+The workflow already requests `attestations: write` and `id-token: write`; a caller
+using `secrets: inherit` and the default `GITHUB_TOKEN` needs no extra setup. Verify with:
+
+```bash
+gh attestation verify <sbom-file> --repo <owner>/<repo>
+```
+
+> **Note:** `provenance` attaches an attestation manifest, which changes the pushed
+> image from a single manifest to an image index. Leave it `'false'` (default) if you
+> depend on the exact single-manifest form.
+
+### OpenVEX Document (opt-in)
+
+Emit an [OpenVEX](https://github.com/openvex/spec) document from the Trivy scan report,
+marking every discovered CVE `under_investigation` and merging manual triage from
+`security/vex-overrides.json` when present:
+
+```yaml
+security-scan: true       # trivy scanner (default)
+generate-vex: true
+```
+
+The document is written into the security-reports artifact and exposed via the
+`vex-path` output.
+
+### Advanced Security Analysis
+
+When `security-scan: true` and the image is pushed, a separate advisory job runs the
+shared `modules-vulnerability-scan` workflow against the image, producing unified SARIF
+categories and a security score in the **Security** tab. It is advisory only
+(`fail-on-findings: false`) and never blocks the build or deploy.
+
+> **Note:** the container scan pulls the image without a registry login, so for **private
+> GHCR** images this advisory job may report a pull failure. The build, tags, digests,
+> outputs and deploy gate are unaffected.
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| `image-digest` | Built image digest |
+| `image-tags` | Generated image tags |
+| `image-url` | Full image URL with tag |
+| `image-size` / `image-size-display` | Image size (bytes / human-readable) |
+| `image-pushed` | Whether the image was pushed (`false` if the scan blocked it) |
+| `security-scan-passed` | Whether the in-build security scan passed |
+| `security-report` | Path to the security scan report |
+| `sbom-path` | Path to the generated SBOM (empty when `generate-sbom: false`) |
+| `sbom-attested` | Whether the SBOM was cryptographically attested |
+| `vex-path` | Path to the generated OpenVEX document (empty when `generate-vex: false`) |
+| `build-duration` | Build duration in seconds |
 
 ## Multi-Platform Builds
 

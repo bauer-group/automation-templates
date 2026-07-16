@@ -165,6 +165,20 @@ inputs:
     description: 'SBOM format (cyclonedx, spdx)'
     required: false
     default: 'cyclonedx'
+  attest-sbom:
+    description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true and the caller job to grant attestations:write + id-token:write. Default false = no attestation (current behaviour).'
+    required: false
+    default: 'false'
+  # Provenance
+  provenance:
+    description: 'SLSA build provenance for the PUSHED image. Passed to docker/build-push-action (false, true, or mode=max). Default false preserves the current single-manifest form; enabling it attaches an attestation manifest (changes the observable manifest/index) - opt-in only.'
+    required: false
+    default: 'false'
+  # VEX (Vulnerability Exploitability eXchange)
+  generate-vex:
+    description: 'Generate an OpenVEX document from the Trivy scan report (all CVEs under_investigation, merged with optional security/vex-overrides.json). Requires security-scan=true with the trivy scanner. Default false.'
+    required: false
+    default: 'false'
   # Metadata & Labels
   add-git-labels:
     description: 'Add Git metadata as labels'
@@ -218,6 +232,12 @@ outputs:
   sbom-path:
     description: 'Path to generated SBOM'
     value: ${{ steps.sbom.outputs.path }}
+  sbom-attested:
+    description: 'Whether the SBOM was cryptographically attested (true/false)'
+    value: ${{ steps.attest-sbom.outputs.attested }}
+  vex-path:
+    description: 'Path to the generated OpenVEX document (empty when generate-vex is false)'
+    value: ${{ steps.vex.outputs.vex-path }}
   build-duration:
     description: 'Build duration in seconds'
     value: ${{ steps.build-info.outputs.duration }}
@@ -244,6 +264,12 @@ runs:
         echo "BUILD_START_TIME=$(date +%s)" >> $GITHUB_ENV
         
         echo "✅ Docker build environment ready"
+
+    - name: 🔧 Set up QEMU
+      # Registers binfmt/QEMU so non-native arches (arm64, arm/v7) build reliably under
+      # emulation. Only needed for multi-platform builds; skipped otherwise (no-op cost).
+      if: inputs.multi-platform == 'true'
+      uses: docker/setup-qemu-action@v3
 
     - name: 🏗️ Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
@@ -501,16 +527,33 @@ runs:
 
         # Normalize to lowercase and check for truthy values
         if [[ "${CACHE_ENABLED,,}" == "true" || "${CACHE_ENABLED}" == "1" ]]; then
+          # Local (amd64 scan) build cache - unchanged, byte-identical for existing callers.
           echo "cache-from=type=gha${SCOPE_SUFFIX}" >> $GITHUB_OUTPUT
           echo "cache-to=type=gha${SCOPE_SUFFIX},mode=${{ inputs.cache-mode }}" >> $GITHUB_OUTPUT
+          # Push (multi-arch) build cache. Uses a DISTINCT '-push' scope so multi-arch
+          # layers - especially arm64, which is built ONLY in the push step - are exported
+          # and reused across runs. A shared scope cannot work: GHA cache keys are immutable,
+          # so the push export would 409 against the local build's manifest and arm64 would
+          # never be cached. cache-from reads BOTH scopes (amd64 from local, arm64 from a
+          # prior push run).
+          SCOPE_BASE="${CACHE_SCOPE:-buildkit}"
+          {
+            echo "cache-from-push<<CFPUSH"
+            echo "type=gha${SCOPE_SUFFIX}"
+            echo "type=gha,scope=${SCOPE_BASE}-push"
+            echo "CFPUSH"
+          } >> $GITHUB_OUTPUT
+          echo "cache-to-push=type=gha,scope=${SCOPE_BASE}-push,mode=${{ inputs.cache-mode }}" >> $GITHUB_OUTPUT
           if [ -n "$CACHE_SCOPE" ]; then
-            echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }}, scope=${CACHE_SCOPE})"
+            echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }}, scope=${CACHE_SCOPE}, push-scope=${SCOPE_BASE}-push)"
           else
-            echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }})"
+            echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }}, push-scope=${SCOPE_BASE}-push)"
           fi
         else
           echo "cache-from=" >> $GITHUB_OUTPUT
           echo "cache-to=" >> $GITHUB_OUTPUT
+          echo "cache-from-push=" >> $GITHUB_OUTPUT
+          echo "cache-to-push=" >> $GITHUB_OUTPUT
           echo "📦 Build cache: DISABLED"
         fi
 
@@ -667,9 +710,15 @@ runs:
         build-args: ${{ inputs.build-args }}
         secrets: ${{ inputs.build-secrets }}
         target: ${{ inputs.target }}
-        cache-from: ${{ steps.cache-settings.outputs.cache-from }}
-        # Note: cache-to is only used in local build step
-        provenance: false
+        # Multi-arch cache: read amd64 (from the local scan build) + arm64 (from a prior
+        # push run), and export everything to the '-push' scope so arm64 is not rebuilt
+        # from scratch under QEMU on every run.
+        cache-from: ${{ steps.cache-settings.outputs.cache-from-push }}
+        cache-to: ${{ steps.cache-settings.outputs.cache-to-push }}
+        # provenance: opt-in via the 'provenance' input (default 'false' = unchanged
+        # single-manifest push). Only the push build carries provenance - the local
+        # scan build uses load:true (docker exporter), which cannot hold attestations.
+        provenance: ${{ inputs.provenance }}
         sbom: false
 
     - name: 📊 Collect Build Information
@@ -761,6 +810,31 @@ runs:
         echo "path=$SBOM_PATH" >> $GITHUB_OUTPUT
         echo "📋 SBOM generated: $SBOM_PATH"
 
+    - name: 📜 Attest SBOM
+      id: attest-sbom
+      # Opt-in: only when an SBOM was generated AND attestation was requested. The
+      # sibling action wraps actions/attest-sbom (Sigstore); the caller job must grant
+      # attestations:write + id-token:write or the attestation step fails.
+      if: inputs.generate-sbom == 'true' && inputs.attest-sbom == 'true' && steps.sbom.outputs.path != ''
+      uses: bauer-group/automation-templates/.github/actions/sbom-attest@main
+      with:
+        # sbom step writes under working-directory; steps.sbom.outputs.path is relative to it.
+        sbom-path: ${{ inputs.working-directory }}/${{ steps.sbom.outputs.path }}
+        # Map the syft format (cyclonedx|spdx) to the attest action's expected value.
+        sbom-format: ${{ inputs.sbom-format == 'spdx' && 'spdx-json' || 'cyclonedx-json' }}
+
+    - name: 📋 Generate OpenVEX Document
+      id: vex
+      # always(): document vulnerabilities even when the scan blocked the push (exit 1) -
+      # that is exactly when a VEX triage record is most useful. Requires the Trivy JSON
+      # report; a non-trivy scanner or missing report yields an empty VEX (handled inside).
+      if: always() && inputs.security-scan == 'true' && inputs.generate-vex == 'true' && steps.security.outputs.report-path != ''
+      uses: bauer-group/automation-templates/.github/actions/vex-generate@main
+      with:
+        vulnerability-report-path: ${{ inputs.working-directory }}/${{ steps.security.outputs.report-path }}
+        # Write into docker-build-reports so it rides the existing security-reports artifact.
+        output-file: ${{ inputs.working-directory }}/docker-build-reports/vex.openvex.json
+
     - name: 📤 Upload Security Reports
       if: always() && inputs.security-scan == 'true'
       uses: actions/upload-artifact@v7
@@ -770,7 +844,12 @@ runs:
         retention-days: 30
 
     - name: 📊 Upload Security Scan to GitHub Security
-      if: inputs.security-scan == 'true' && steps.security.outputs.sarif-path != ''
+      # always(): the scan step exit 1's when it blocks a push, but the SARIF file
+      # already exists and must still reach the Security tab (the case you most need it).
+      # continue-on-error: a reporting step must never fail the build (e.g. repos without
+      # code scanning / GHAS). Matches the fork-docker-build.yml behaviour.
+      if: always() && inputs.security-scan == 'true' && steps.security.outputs.sarif-path != ''
+      continue-on-error: true
       uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: ${{ inputs.working-directory }}/${{ steps.security.outputs.sarif-path }}
