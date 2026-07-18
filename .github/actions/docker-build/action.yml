@@ -109,6 +109,17 @@ inputs:
     description: 'Push images on pull requests'
     required: false
     default: 'false'
+  single-build-scan:
+    description: >-
+      Close the scan->push TOCTOU window: build the image ONCE, scan it, then push the
+      EXACT scanned artifact (docker push, no rebuild) instead of building a second time.
+      Currently applies to single-platform builds only; multi-platform (multi-platform=true)
+      falls back to the standard two-build flow. Default false preserves current behaviour.
+      NOTE: the fast path uses `docker push`, which does NOT attach SLSA build provenance to
+      the manifest (unlike the buildx push). SBOM file attestation (attest-sbom) still works;
+      set provenance:'false' if you enable this to avoid expecting provenance that isn't there.
+    required: false
+    default: 'false'
   # Caching
   cache-enabled:
     description: 'Enable build caching'
@@ -206,8 +217,9 @@ inputs:
 outputs:
   image-digest:
     description: 'Image digest'
-    # Use push digest if available, otherwise local build digest
-    value: ${{ steps.build.outputs.digest || steps.build-local.outputs.digest }}
+    # Prefer the standard push digest, then the single-build fast-path push digest,
+    # otherwise the local build digest.
+    value: ${{ steps.build.outputs.digest || steps.push-scanned.outputs.digest || steps.build-local.outputs.digest }}
   image-tags:
     description: 'Generated image tags'
     value: ${{ steps.meta.outputs.tags }}
@@ -876,7 +888,10 @@ runs:
 
     - name: 🚀 Push Docker Image
       id: build
-      if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true')
+      # Standard two-build push. Skipped when the single-build fast path is active
+      # (single-build-scan=true AND single-platform) - the Push Scanned Image step below
+      # pushes the already-scanned image instead, closing the scan->push TOCTOU window.
+      if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true') && (inputs.single-build-scan != 'true' || inputs.multi-platform == 'true')
       uses: docker/build-push-action@v7
       env:
         # See build-local step above for rationale - opt-in via verbose-build-summary input.
@@ -902,6 +917,37 @@ runs:
         # scan build uses load:true (docker exporter), which cannot hold attestations.
         provenance: ${{ inputs.provenance }}
         sbom: false
+
+    - name: 🚀 Push Scanned Image (single-build, no rebuild)
+      id: push-scanned
+      # Fast path: push the EXACT image that build-local built and the scan verified, with
+      # no second build - closing the scan->push TOCTOU window. Only for single-platform
+      # builds (docker load/push handle one arch); the standard push step covers the rest.
+      # Same push gate as the standard step (respects push / push-on-pr / scan-passed).
+      if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true') && inputs.single-build-scan == 'true' && inputs.multi-platform != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "🚀 Pushing the exact scanned image (no rebuild)..."
+
+        # Push every tag build-local loaded (primary + any secondary-registry tags). All
+        # tags reference the same local image, so this uploads the scanned bytes verbatim.
+        pushed_any=false
+        while IFS= read -r TAG; do
+          [ -z "$TAG" ] && continue
+          echo "  → $TAG"
+          docker push "$TAG"
+          pushed_any=true
+        done <<< "${{ steps.meta.outputs.tags }}"
+
+        # Resolve the registry manifest digest from the first tag's RepoDigests.
+        DIGEST=""
+        if [ "$pushed_any" = "true" ]; then
+          FIRST_TAG=$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n1)
+          DIGEST=$(docker inspect --format='{{range .RepoDigests}}{{println .}}{{end}}' "$FIRST_TAG" 2>/dev/null | head -n1 | sed 's/.*@//' || true)
+        fi
+        echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+        echo "✅ Pushed scanned image (digest: ${DIGEST:-unknown})"
 
     - name: 📊 Collect Build Information
       id: build-info
@@ -957,14 +1003,15 @@ runs:
           go install github.com/sigstore/cosign/v2/cmd/cosign@latest
         fi
 
-        # Sign all tags using the push digest
+        # Sign all tags using the push digest (standard push, or the single-build fast-path push).
+        PUSH_DIGEST="${{ steps.build.outputs.digest || steps.push-scanned.outputs.digest }}"
         echo "${{ steps.meta.outputs.tags }}" | while read -r tag; do
           if [ -n "$tag" ]; then
-            echo "Signing: $tag@${{ steps.build.outputs.digest }}"
+            echo "Signing: $tag@${PUSH_DIGEST}"
             if [ -n "$COSIGN_PRIVATE_KEY" ]; then
-              echo "$COSIGN_PRIVATE_KEY" | cosign sign --key env://COSIGN_PRIVATE_KEY --yes "$tag@${{ steps.build.outputs.digest }}"
+              echo "$COSIGN_PRIVATE_KEY" | cosign sign --key env://COSIGN_PRIVATE_KEY --yes "$tag@${PUSH_DIGEST}"
             else
-              cosign sign --yes "$tag@${{ steps.build.outputs.digest }}"
+              cosign sign --yes "$tag@${PUSH_DIGEST}"
             fi
           fi
         done

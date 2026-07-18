@@ -147,7 +147,13 @@ on:
         type: boolean
         required: false
         default: false
-      
+
+      single-build-scan:
+        description: 'Close the scan->push TOCTOU window: build once, scan, then push the exact scanned image (no rebuild). Single-platform only; multi-platform falls back to the standard flow. Note: the fast path uses docker push and does not attach SLSA provenance. Default false.'
+        type: boolean
+        required: false
+        default: false
+
       # Testing Configuration
       run-tests:
         description: 'Run tests before building'
@@ -490,6 +496,7 @@ jobs:
           release-version: ${{ inputs.release-version }}
           push: ${{ inputs.push }}
           push-on-pr: ${{ inputs.push-on-pr }}
+          single-build-scan: ${{ inputs.single-build-scan }}
           cache-enabled: ${{ inputs.cache-enabled }}
           cache-mode: ${{ inputs.cache-mode }}
           cache-scope: ${{ inputs.cache-scope }}
