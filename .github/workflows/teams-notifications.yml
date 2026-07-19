@@ -187,10 +187,15 @@ jobs:
           issue-number: ${{ github.event.issue.number }}
           issue-url: ${{ github.event.issue.html_url }}
           config-file: 'issue'
+          # custom-facts is hand-written JSON, so every interpolated value must be
+          # escaped. toJSON emits a correctly quoted JSON string - do NOT wrap it in
+          # literal quotes again. An issue label like `needs "triage"` produced invalid
+          # JSON before this. format('{0}', ...) coerces first so numbers and booleans
+          # stay strings, which is what the Adaptive Card FactSet expects.
           custom-facts: >-
             [
-              {"title": "Labels", "value": "${{ join(github.event.issue.labels.*.name, ', ') }}"},
-              {"title": "Assignees", "value": "${{ join(github.event.issue.assignees.*.login, ', ') }}"}
+              {"title": "Labels", "value": ${{ toJSON(format('{0}', join(github.event.issue.labels.*.name, ', '))) }}},
+              {"title": "Assignees", "value": ${{ toJSON(format('{0}', join(github.event.issue.assignees.*.login, ', '))) }}}
             ]
 
       - name: 🔔 Send Issue Closed Notification
@@ -238,8 +243,8 @@ jobs:
           config-file: 'pull-request'
           custom-facts: >-
             [
-              {"title": "Base Branch", "value": "${{ github.event.pull_request.base.ref }}"},
-              {"title": "Head Branch", "value": "${{ github.event.pull_request.head.ref }}"},
+              {"title": "Base Branch", "value": ${{ toJSON(format('{0}', github.event.pull_request.base.ref)) }}},
+              {"title": "Head Branch", "value": ${{ toJSON(format('{0}', github.event.pull_request.head.ref)) }}},
               {"title": "Changes", "value": "+${{ github.event.pull_request.additions }} -${{ github.event.pull_request.deletions }}"}
             ]
 
@@ -277,9 +282,9 @@ jobs:
           config-file: 'pull-request'
           custom-facts: >-
             [
-              {"title": "Merged into", "value": "${{ github.event.pull_request.base.ref }}"},
-              {"title": "Commits", "value": "${{ github.event.pull_request.commits }}"},
-              {"title": "Files Changed", "value": "${{ github.event.pull_request.changed_files }}"}
+              {"title": "Merged into", "value": ${{ toJSON(format('{0}', github.event.pull_request.base.ref)) }}},
+              {"title": "Commits", "value": ${{ toJSON(format('{0}', github.event.pull_request.commits)) }}},
+              {"title": "Files Changed", "value": ${{ toJSON(format('{0}', github.event.pull_request.changed_files)) }}}
             ]
 
       - name: 🔔 Send PR Ready for Review Notification
@@ -325,8 +330,8 @@ jobs:
           config-file: 'push'
           custom-facts: >-
             [
-              {"title": "Branch", "value": "${{ github.ref_name }}"},
-              {"title": "Commit SHA", "value": "${{ github.sha }}"}
+              {"title": "Branch", "value": ${{ toJSON(format('{0}', github.ref_name)) }}},
+              {"title": "Commit SHA", "value": ${{ toJSON(format('{0}', github.sha)) }}}
             ]
 
   # Handle release notifications
@@ -354,9 +359,9 @@ jobs:
           config-file: 'release'
           custom-facts: >-
             [
-              {"title": "Tag", "value": "${{ github.event.release.tag_name }}"},
-              {"title": "Prerelease", "value": "${{ github.event.release.prerelease }}"},
-              {"title": "Draft", "value": "${{ github.event.release.draft }}"}
+              {"title": "Tag", "value": ${{ toJSON(format('{0}', github.event.release.tag_name)) }}},
+              {"title": "Prerelease", "value": ${{ toJSON(format('{0}', github.event.release.prerelease)) }}},
+              {"title": "Draft", "value": ${{ toJSON(format('{0}', github.event.release.draft)) }}}
             ]
 
   # Handle manual test notifications

@@ -596,29 +596,27 @@ jobs:
             echo "📖 Using template: $TEMPLATE_FILE"
             cp "$TEMPLATE_FILE" README.md
 
-            # Save variables to temp files to avoid shell interpretation
-            echo "$TITLE" > /tmp/var_title.txt
-            echo "$DESCRIPTION" > /tmp/var_desc.txt
-            echo "$ORG" > /tmp/var_org.txt
-            echo "$DATE" > /tmp/var_date.txt
-
-            # Replace template variables using Python for safe handling
+            # Values reach Python through the environment. The quoted heredoc already
+            # prevents shell interpretation, and passing them this way removes four
+            # fixed /tmp paths that two runs on the same self-hosted host would have
+            # written to simultaneously.
+            TPL_TITLE="$TITLE" \
+            TPL_DESC="$DESCRIPTION" \
+            TPL_ORG="$ORG" \
+            TPL_DATE="$DATE" \
             python3 <<'PYSCRIPT'
-          import re
+          import os
 
           # Read the template
           with open('README.md', 'r', encoding='utf-8') as f:
               content = f.read()
 
-          # Read variables from temp files
-          with open('/tmp/var_title.txt', 'r', encoding='utf-8') as f:
-              title = f.read().strip()
-          with open('/tmp/var_desc.txt', 'r', encoding='utf-8') as f:
-              desc = f.read().strip()
-          with open('/tmp/var_org.txt', 'r', encoding='utf-8') as f:
-              org = f.read().strip()
-          with open('/tmp/var_date.txt', 'r', encoding='utf-8') as f:
-              date = f.read().strip()
+          # Read variables from the environment. .strip() keeps the previous behaviour,
+          # which stripped the trailing newline that `echo` added to each temp file.
+          title = os.environ.get('TPL_TITLE', '').strip()
+          desc = os.environ.get('TPL_DESC', '').strip()
+          org = os.environ.get('TPL_ORG', '').strip()
+          date = os.environ.get('TPL_DATE', '').strip()
 
           # Replace placeholders
           content = content.replace('{{TITLE}}', title)
@@ -630,9 +628,6 @@ jobs:
           with open('README.md', 'w', encoding='utf-8') as f:
               f.write(content)
           PYSCRIPT
-
-            # Clean up temp files
-            rm -f /tmp/var_*.txt
           else
             echo "📝 Creating README from configuration..."
             # Use jq to safely generate README with special characters
@@ -643,10 +638,13 @@ jobs:
                   '"# " + $title + "\n\n" + $desc + "\n\n**Organization:** `" + $org + "`\n**Last Updated:** " + $date + "\n\n---\n\n__GROUPS_PLACEHOLDER__\n\n---\n\n*This repository is automatically maintained. Changes are synchronized periodically.*"' -r > README.md
           fi
 
-          # Generate groups section
-          # Start from an empty file: the loop below only appends, so a leftover
-          # /tmp/groups.md from a previous run (self-hosted runners) would be duplicated
-          : > /tmp/groups.md
+          # Generate groups section.
+          # A private temp file rather than a fixed /tmp path: the loop only appends, so
+          # a leftover file duplicated the section, and two runs sharing a self-hosted
+          # host wrote to the same path at the same time. mktemp gives each run its own
+          # and removes both problems.
+          GROUPS_FILE=$(mktemp)
+          trap 'rm -f "$GROUPS_FILE"' EXIT
           jq -c '.groups[]' "$CONFIG_FILE" | while read -r group; do
             TOPIC=$(echo "$group" | jq -r '.topic')
             NAME=$(echo "$group" | jq -r '.name')
@@ -654,39 +652,42 @@ jobs:
             PREFIX_REGEX=$(echo "$group" | jq -r '.remove_prefix // ""')
 
             # Start group section
-            echo "## ${NAME}" >> /tmp/groups.md
-            echo "" >> /tmp/groups.md
-            echo "${DESC}" >> /tmp/groups.md
-            echo "" >> /tmp/groups.md
-            echo "| Repository | Description | Link |" >> /tmp/groups.md
-            echo "|------------|-------------|------|" >> /tmp/groups.md
+            echo "## ${NAME}" >> "$GROUPS_FILE"
+            echo "" >> "$GROUPS_FILE"
+            echo "${DESC}" >> "$GROUPS_FILE"
+            echo "" >> "$GROUPS_FILE"
+            echo "| Repository | Description | Link |" >> "$GROUPS_FILE"
+            echo "|------------|-------------|------|" >> "$GROUPS_FILE"
 
             # Add repositories (use topic-specific prefix)
             if [ -n "$PREFIX_REGEX" ]; then
               jq -r --arg prefix "$PREFIX_REGEX" \
                 '.[] | "| **\(.name | sub($prefix; ""))** | \(.description // "_No description_") | [View](\(.html_url)) |"' \
-                "${OUTPUT_DIR}/${TOPIC}.json" >> /tmp/groups.md
+                "${OUTPUT_DIR}/${TOPIC}.json" >> "$GROUPS_FILE"
             else
               jq -r '.[] | "| **\(.name)** | \(.description // "_No description_") | [View](\(.html_url)) |"' \
-                "${OUTPUT_DIR}/${TOPIC}.json" >> /tmp/groups.md
+                "${OUTPUT_DIR}/${TOPIC}.json" >> "$GROUPS_FILE"
             fi
 
-            echo "" >> /tmp/groups.md
-            echo "" >> /tmp/groups.md
+            echo "" >> "$GROUPS_FILE"
+            echo "" >> "$GROUPS_FILE"
           done
 
           # Replace groups placeholder (supports both {{GROUPS}} and __GROUPS_PLACEHOLDER__)
+          # The path is handed to awk as a variable (-v) rather than baked into the
+          # program text, so a temp path containing awk-special characters cannot
+          # alter the program.
           if grep -q "{{GROUPS}}" README.md; then
             # Use awk to replace {{GROUPS}} with file content
-            awk '/\{\{GROUPS\}\}/ {system("cat /tmp/groups.md"); next} 1' README.md > README.md.tmp
+            awk -v gf="$GROUPS_FILE" '/\{\{GROUPS\}\}/ {while ((getline line < gf) > 0) print line; close(gf); next} 1' README.md > README.md.tmp
             mv README.md.tmp README.md
           elif grep -q "__GROUPS_PLACEHOLDER__" README.md; then
             # Use awk to replace __GROUPS_PLACEHOLDER__ with file content
-            awk '/__GROUPS_PLACEHOLDER__/ {system("cat /tmp/groups.md"); next} 1' README.md > README.md.tmp
+            awk -v gf="$GROUPS_FILE" '/__GROUPS_PLACEHOLDER__/ {while ((getline line < gf) > 0) print line; close(gf); next} 1' README.md > README.md.tmp
             mv README.md.tmp README.md
           else
             # Append if placeholder not found
-            cat /tmp/groups.md >> README.md
+            cat "$GROUPS_FILE" >> README.md
           fi
 
           echo "✅ README.md generated"
