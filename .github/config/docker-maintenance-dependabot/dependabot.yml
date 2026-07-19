@@ -8,13 +8,39 @@
 #
 # Combine with the docker-maintenance-dependabot workflow for auto-merge:
 #   uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
+#
+# INTERNAL OR PRIVATE BASE IMAGES (e.g. ghcr.io/bauer-group/*):
+#   Dependabot does NOT use the workflow GITHUB_TOKEN. It reads its own secret
+#   store under Settings -> Secrets and variables -> Dependabot, where
+#   GITHUB_TOKEN is not available. Without credentials Dependabot queries the
+#   registry anonymously, is denied, and reports NO UPDATES - silently, with no
+#   error anywhere.
+#
+#   To enable it, create these two Dependabot secrets and uncomment both the
+#   `registries:` block and the `registries:` entry under the docker update:
+#     DEPENDABOT_GHCR_USER   - any GitHub username the token belongs to
+#     DEPENDABOT_GHCR_TOKEN  - PAT with `read:packages`
+#
+#   See docs/ghcr-internal-visibility.md.
 # =============================================================================
 
 version: 2
+
+# registries:
+#   ghcr:
+#     type: docker-registry
+#     url: ghcr.io
+#     username: ${{secrets.DEPENDABOT_GHCR_USER}}
+#     password: ${{secrets.DEPENDABOT_GHCR_TOKEN}}
+
 updates:
   # Docker base image updates
   - package-ecosystem: "docker"
     directory: "/"
+    # Uncomment together with the `registries:` block above when the base image
+    # is an internal or private package.
+    # registries:
+    #   - ghcr
     schedule:
       interval: "weekly"
       day: "sunday"

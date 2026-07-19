@@ -68,6 +68,19 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 
 > Als **Organization Secret** hinterlegen (gilt dann für alle Repos) — oder als **Repository-Secret** pro Fork, falls dieser unter einem **persönlichen Account** liegt (dort gibt es keine Org-Secrets). Fehlt der PAT, laufen Sync & Merge weiterhin, aber der nachgelagerte Build wird **nicht** automatisch getriggert (Warnung im Log).
 
+### Dependabot (eigener Secret-Store!)
+
+Nur nötig, wenn Dependabot **interne oder private** Base-Images aktualisieren soll.
+
+| Secret | Workflows | Beschreibung | Einrichtung |
+|--------|-----------|--------------|-------------|
+| `DEPENDABOT_GHCR_USER` | — (Dependabot selbst) | GitHub-Benutzername, zu dem der Token gehört | Settings → Secrets and variables → **Dependabot** |
+| `DEPENDABOT_GHCR_TOKEN` | — (Dependabot selbst) | PAT mit `read:packages` | [github.com/settings/tokens](https://github.com/settings/tokens) → Classic: `read:packages` |
+
+> **Achtung, häufige Fehlerquelle:** Dependabot liest **nicht** aus den Actions-Secrets, sondern aus einem **separaten Store** (*Settings → Secrets and variables → **Dependabot***). Der automatische `GITHUB_TOKEN` steht dort nicht zur Verfügung. Ohne diese Secrets fragt Dependabot die Registry anonym ab, wird abgewiesen und meldet **"keine Updates"** — still und dauerhaft. Template und Anleitung: [`.github/config/docker-maintenance-dependabot/dependabot.yml`](../.github/config/docker-maintenance-dependabot/dependabot.yml), Hintergrund: [GHCR Internal Visibility](./ghcr-internal-visibility.md).
+>
+> Für **Renovate** gilt dasselbe mit einer eigenen Einrichtung — siehe [`.github/config/docker-maintenance-renovate/README.md`](../.github/config/docker-maintenance-renovate/README.md).
+
 ### .NET
 
 | Secret | Workflows | Beschreibung | Einrichtung |

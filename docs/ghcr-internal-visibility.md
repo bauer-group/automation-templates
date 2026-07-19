@@ -144,9 +144,20 @@ Deshalb sind die Änderungen dieses Themas bewusst in kleine, einzeln revertierb
 
 ### Dependabot und Renovate
 
-Beide brauchen **eigene** Credentials. Dependabot liest **nicht** aus den Actions-Secrets, sondern aus dem separaten Dependabot-Store (*Settings → Secrets and variables → Dependabot*). Der `GITHUB_TOKEN` steht dort nicht zur Verfügung — hier ist ein PAT mit `read:packages` tatsächlich nötig.
+Beide laufen **außerhalb** eurer Workflows und haben deshalb keinen Zugriff auf den automatischen `GITHUB_TOKEN`. Hier ist ein PAT mit `read:packages` tatsächlich nötig — anders als bei allen Workflows dieses Repos.
 
-Ohne diese Konfiguration melden beide Tools für interne Base-Images dauerhaft **"keine Updates"** — still, ohne Fehlermeldung. Siehe die Templates unter [`.github/config/docker-maintenance-dependabot/`](../.github/config/docker-maintenance-dependabot/) und [`.github/config/docker-maintenance-renovate/`](../.github/config/docker-maintenance-renovate/).
+Ohne diese Konfiguration melden beide Tools für interne Base-Images dauerhaft **"keine Updates"** — still, ohne Fehlermeldung. Das ist dieselbe Blindheit, die der Base-Image-Monitor jetzt laut meldet, nur in den Tools, die die meisten Consumer tatsächlich als Drift-Erkennung nutzen.
+
+**Dependabot** liest aus einem eigenen Secret-Store: *Settings → Secrets and variables → **Dependabot*** — nicht aus den Actions-Secrets. Benötigt werden dort:
+
+| Secret | Inhalt |
+|--------|--------|
+| `DEPENDABOT_GHCR_USER` | GitHub-Benutzername, zu dem der Token gehört |
+| `DEPENDABOT_GHCR_TOKEN` | PAT mit `read:packages` |
+
+Im Template [`.github/config/docker-maintenance-dependabot/dependabot.yml`](../.github/config/docker-maintenance-dependabot/dependabot.yml) sind der `registries:`-Block und der zugehörige Verweis auskommentiert vorbereitet — bewusst, damit ein `registries:`-Eintrag, der auf ein nie gesetztes Secret zeigt, nicht auf neue und verwirrendere Weise scheitert als das heutige Schweigen.
+
+**Renovate** braucht eine `hostRules`-Regel für `ghcr.io`. Je nach Betriebsart (Mend-App mit verschlüsseltem Token oder self-hosted mit Environment-Variable) unterscheidet sich die Einrichtung — siehe [`.github/config/docker-maintenance-renovate/README.md`](../.github/config/docker-maintenance-renovate/README.md) und die dort liegende Variante `docker-maintenance-internal-ghcr.json`.
 
 ### Nicht abschließend verifiziert
 
