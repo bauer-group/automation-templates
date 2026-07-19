@@ -1,3 +1,9 @@
+## [7.0.2](https://github.com/bauer-group/automation-templates/compare/v7.0.1...v7.0.2) (2026-07-19)
+
+### 🐛 Bug Fixes
+
+* **ci:** closed the three remaining workflow defects ([7ff1a6f](https://github.com/bauer-group/automation-templates/commit/7ff1a6f2a6e8cf000edcf22936e7f93f064be2a1))
+
 ## [7.0.1](https://github.com/bauer-group/automation-templates/compare/v7.0.0...v7.0.1) (2026-07-19)
 
 ### 🐛 Bug Fixes
