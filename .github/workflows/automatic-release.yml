@@ -36,11 +36,26 @@ on:
         default: 'source'
         options: ['source', 'binaries', 'docker', 'all']
 
+# Permissions are granted per job rather than workflow-wide, so no job holds a scope
+# it does not need. Each block mirrors exactly what the called module declares.
+#
+# This is mandatory, not cosmetic: with the repository default set to
+# "Read repository contents and package permissions", an omitted block leaves every
+# other scope at `none`, and GitHub refuses to START the run - a called workflow can
+# only restrict the caller's permissions, never extend them. Note that this is checked
+# for ALL called workflows before any `if:` is evaluated, so even a job that would be
+# skipped must have its permissions satisfied. See docs/ghcr-internal-visibility.md.
+
 jobs:
   # PR validation for pull requests
   pr-validation:
     name: PR Quality Gate
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+      checks: write
     uses: ./.github/workflows/modules-pr-validation.yml
     with:
       enable-security-scan: true
@@ -55,6 +70,10 @@ jobs:
   security-scan:
     name: Security Analysis
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     uses: ./.github/workflows/modules-security-scan.yml
     with:
       scan-engine: ${{ inputs.security-engine || 'both' }}
@@ -67,6 +86,9 @@ jobs:
   license-compliance:
     name: License Compliance
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/modules-license-compliance.yml
     with:
       fail-on-forbidden: false
@@ -80,6 +102,10 @@ jobs:
     name: Release Management
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: [security-scan, license-compliance]
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     uses: ./.github/workflows/modules-semantic-release.yml
     with:
       target-branch: 'main'
@@ -92,6 +118,10 @@ jobs:
     name: Generate Artifacts
     if: needs.release-management.outputs.release-created == 'true'
     needs: release-management
+    permissions:
+      contents: write
+      packages: write
+      actions: read
     uses: ./.github/workflows/modules-artifact-generation.yml
     with:
       artifact-types: ${{ inputs.artifact-types || 'source' }}
@@ -103,6 +133,9 @@ jobs:
     name: Update Documentation
     if: needs.release-management.outputs.release-created == 'true'
     needs: [release-management, artifact-generation]
+    permissions:
+      contents: write
+      pull-requests: write
     uses: ./.github/workflows/documentation.yml
     with:
       force-update: true
@@ -114,6 +147,9 @@ jobs:
     name: Update Security Policy
     if: needs.release-management.outputs.release-created == 'true'
     needs: [release-management, artifact-generation, update-documentation]
+    permissions:
+      contents: write
+      pull-requests: write
     uses: ./.github/workflows/security-management.yml
     with:
       force-update: true
@@ -125,6 +161,8 @@ jobs:
     name: Pipeline Summary
     if: always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch')
     needs: [security-scan, license-compliance, release-management, artifact-generation, update-documentation, update-security]
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     
     steps:
