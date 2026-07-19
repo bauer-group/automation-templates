@@ -217,9 +217,9 @@ jobs:
           EOF
           
           # Build for target architecture
-          docker buildx build \\
-            --platform ${{ matrix.platform }} \\
-            --tag build-${{ matrix.arch }} \\
+          docker buildx build \
+            --platform ${{ matrix.platform }} \
+            --tag build-${{ matrix.arch }} \
             --load .
 
   # Compatibility test

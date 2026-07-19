@@ -573,8 +573,6 @@ jobs:
           echo "### 📋 Future Usage Recommendations" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          PROFILE="${{ needs.validate-inputs.outputs.effective-profile }}"
-          
           echo "**🔗 Related Workflows:**" >> $GITHUB_STEP_SUMMARY
           echo "- [Scheduled Maintenance](./examples/repository-cleanup/scheduled-maintenance.yml)" >> $GITHUB_STEP_SUMMARY
           echo "- [Conservative Cleanup](./examples/repository-cleanup/conservative-cleanup.yml)" >> $GITHUB_STEP_SUMMARY

@@ -369,7 +369,7 @@ jobs:
           fi
 
           # Build with make
-          make -j$(nproc) \
+          make -j"$(nproc)" \
             BUILD_TYPE="$BUILD_TYPE" \
             OPT="$OPT" \
             ${{ inputs.extra-build-args }}
@@ -394,7 +394,7 @@ jobs:
             ${{ inputs.extra-build-args }}
 
           # Build
-          cmake --build . --parallel $(nproc)
+          cmake --build . --parallel "$(nproc)"
 
       - name: Build with STM32CubeIDE
         if: inputs.build-system == 'cubeide'
@@ -667,8 +667,6 @@ jobs:
       - name: Prepare Release Assets
         shell: bash
         run: |
-          VERSION="${{ needs.prepare.outputs.version }}"
-
           mkdir -p release
 
           # Consolidate artifacts

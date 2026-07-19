@@ -249,10 +249,23 @@ runs:
     - name: 🎨 Generate Adaptive Card
       id: card
       shell: bash
+      env:
+        # Free-form values arrive through env rather than being interpolated into the
+        # script body. Interpolated, a value containing a quote, a newline or a
+        # backslash produced invalid JSON and the notification failed - and multi-line
+        # `details` is an advertised feature, so this triggered in normal use.
+        NOTIFY_TITLE: ${{ inputs.title || steps.event-data.outputs.status-text }}
+        NOTIFY_SUMMARY: ${{ inputs.summary }}
+        NOTIFY_DETAILS: ${{ inputs.details }}
       run: |
+        # Emit a value as a correctly escaped JSON string, quotes included.
+        json_string() {
+          printf '%s' "${1-}" | jq -Rs .
+        }
+
         # Create temporary file for card payload
         CARD_FILE=$(mktemp)
-        
+
         # Build adaptive card JSON
         cat > "$CARD_FILE" << 'EOF'
         {
@@ -300,7 +313,12 @@ runs:
                             "items": [
                               {
                                 "type": "TextBlock",
-                                "text": "**${{ inputs.title || steps.event-data.outputs.status-text }}**",
+        EOF
+        # The heredoc is split here so the title can be emitted as escaped JSON.
+        # Keeping the surrounding blocks quoted means nothing else in the card is
+        # exposed to shell expansion.
+        printf '                                "text": %s,\n' "$(json_string "**${NOTIFY_TITLE}**")" >> "$CARD_FILE"
+        cat >> "$CARD_FILE" << 'EOF'
                                 "weight": "Bolder",
                                 "size": "Medium",
                                 "wrap": true,
@@ -323,30 +341,28 @@ runs:
         EOF
         
         # Add summary if provided
-        SUMMARY="${{ inputs.summary }}"
-        if [[ -n "$SUMMARY" ]]; then
-          cat >> "$CARD_FILE" << 'EOF'
-                  {
-                    "type": "TextBlock",
-                    "text": "${{ inputs.summary }}",
-                    "wrap": true,
-                    "spacing": "Medium"
-                  },
-        EOF
+        if [[ -n "$NOTIFY_SUMMARY" ]]; then
+          {
+            echo '                  {'
+            echo '                    "type": "TextBlock",'
+            printf '                    "text": %s,\n' "$(json_string "$NOTIFY_SUMMARY")"
+            echo '                    "wrap": true,'
+            echo '                    "spacing": "Medium"'
+            echo '                  },'
+          } >> "$CARD_FILE"
         fi
-        
+
         # Add details if provided
-        DETAILS="${{ inputs.details }}"
-        if [[ -n "$DETAILS" ]]; then
-          cat >> "$CARD_FILE" << 'EOF'
-                  {
-                    "type": "TextBlock",
-                    "text": "${{ inputs.details }}",
-                    "wrap": true,
-                    "size": "Medium",
-                    "color": "Default"
-                  },
-        EOF
+        if [[ -n "$NOTIFY_DETAILS" ]]; then
+          {
+            echo '                  {'
+            echo '                    "type": "TextBlock",'
+            printf '                    "text": %s,\n' "$(json_string "$NOTIFY_DETAILS")"
+            echo '                    "wrap": true,'
+            echo '                    "size": "Medium",'
+            echo '                    "color": "Default"'
+            echo '                  },'
+          } >> "$CARD_FILE"
         fi
         
         # Add facts section

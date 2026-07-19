@@ -391,6 +391,22 @@ on:
         description: 'Path to built package'
         value: ${{ jobs.build.outputs.package-path }}
 
+# Permissions are inherited from the caller workflow. A called workflow can only restrict
+# them, never extend them, so the CALLING job must grant:
+#
+#   pull-requests: write   # required by the code-quality job (modules-code-quality.yml)
+#
+# Required even with `enable-sonar: false` (the default): GitHub validates the permissions
+# of every called workflow when the run is created, before any job `if:` is evaluated. A
+# caller that cannot satisfy it gets a startup_failure - no job, no log:
+#
+#   The workflow is requesting 'pull-requests: write', but is only allowed 'pull-requests: none'.
+#
+# Declare it explicitly. Omitting the block is not safe here: a partial block sets every
+# scope it does not name to `none`, and the "Read repository contents and package
+# permissions" repo default is already `pull-requests: none`.
+# See docs/ghcr-internal-visibility.md for the full ceiling rule.
+
 jobs:
   code-quality:
     name: 🛡️ Code Quality (SonarQube)
@@ -623,7 +639,13 @@ jobs:
             ruff check . --output-format=json --output-file=ruff-report.json || true
           elif [ "${{ inputs.linter }}" = "pylint" ]; then
             pip install pylint
-            pylint --output-format=json --reports=no $(find . -name "*.py") > pylint-report.json || true
+            # Collect files into an array: paths with spaces stay intact and a
+            # single pylint invocation still produces one valid JSON report.
+            PYTHON_FILES=()
+            while IFS= read -r -d '' file; do
+              PYTHON_FILES+=("$file")
+            done < <(find . -name "*.py" -print0)
+            pylint --output-format=json --reports=no "${PYTHON_FILES[@]}" > pylint-report.json || true
           else
             # Default: flake8
             pip install flake8
@@ -703,13 +725,38 @@ jobs:
             # 2. pyproject.toml testpaths
             if [ -z "$TEST_PATH" ] && [ -f "pyproject.toml" ]; then
               TEMP_FILE="/tmp/testpath_${{ github.run_id }}_$$"
-              python3 -c "import sys; exec('try: import tomllib\\nexcept ImportError: import tomli as tomllib\\ntry:\\n  with open(\\"pyproject.toml\\", \\"rb\\") as f: config = tomllib.load(f)\\n  testpaths = config.get(\\"tool\\", {}).get(\\"pytest\\", {}).get(\\"ini_options\\", {}).get(\\"testpaths\\", [])\\n  if testpaths and isinstance(testpaths, list) and len(testpaths) > 0: print(testpaths[0])\\n  elif testpaths and isinstance(testpaths, str): print(testpaths.strip())\\nexcept: pass')" 2>/dev/null > "$TEMP_FILE" || true
+              python3 - <<'PYEOF' 2>/dev/null > "$TEMP_FILE" || true
+          try:
+              import tomllib
+          except ImportError:
+              import tomli as tomllib
+          try:
+              with open("pyproject.toml", "rb") as f:
+                  config = tomllib.load(f)
+              testpaths = config.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("testpaths", [])
+              if testpaths and isinstance(testpaths, list) and len(testpaths) > 0:
+                  print(testpaths[0])
+              elif testpaths and isinstance(testpaths, str):
+                  print(testpaths.strip())
+          except Exception:
+              pass
+          PYEOF
               if [ -s "$TEMP_FILE" ]; then
-                TEST_PATH=$(cat "$TEMP_FILE")
-                rm -f "$TEMP_FILE"
+                CANDIDATE=$(cat "$TEMP_FILE")
+                # Existence check, matching the input branch above and the standard-path
+                # branch below. Until the heredoc fix this reader never produced a value
+                # at all, so a declared-but-absent testpaths entry could not surface;
+                # without the guard it would now be handed to pytest and fail the run
+                # instead of falling through to the fallbacks.
+                if [ -d "$CANDIDATE" ] || [ -f "$CANDIDATE" ]; then
+                  TEST_PATH="$CANDIDATE"
+                else
+                  echo "::notice::pyproject.toml declares testpaths '$CANDIDATE', which does not exist in the checkout - falling back to standard paths"
+                fi
               fi
+              rm -f "$TEMP_FILE"
             fi
-            
+
             # 3. Standard-Pfade
             if [ -z "$TEST_PATH" ]; then
               for path in "tests" "test"; do
@@ -756,11 +803,34 @@ jobs:
               # 1. pyproject.toml coverage.run.source
               if [ -f "pyproject.toml" ]; then
                 TEMP_FILE="/tmp/coverage_source_${{ github.run_id }}_$$"
-                python3 -c "import sys; exec('try: import tomllib\\nexcept ImportError: import tomli as tomllib\\ntry:\\n  with open(\\"pyproject.toml\\", \\"rb\\") as f: config = tomllib.load(f)\\n  sources = config.get(\\"tool\\", {}).get(\\"coverage\\", {}).get(\\"run\\", {}).get(\\"source\\", [])\\n  if sources and isinstance(sources, list) and len(sources) > 0: print(sources[0])\\n  elif sources and isinstance(sources, str): print(sources.strip())\\nexcept: pass')" 2>/dev/null > "$TEMP_FILE" || true
+                python3 - <<'PYEOF' 2>/dev/null > "$TEMP_FILE" || true
+          try:
+              import tomllib
+          except ImportError:
+              import tomli as tomllib
+          try:
+              with open("pyproject.toml", "rb") as f:
+                  config = tomllib.load(f)
+              sources = config.get("tool", {}).get("coverage", {}).get("run", {}).get("source", [])
+              if sources and isinstance(sources, list) and len(sources) > 0:
+                  print(sources[0])
+              elif sources and isinstance(sources, str):
+                  print(sources.strip())
+          except Exception:
+              pass
+          PYEOF
                 if [ -s "$TEMP_FILE" ]; then
-                  COVERAGE_SOURCE=$(cat "$TEMP_FILE")
-                  rm -f "$TEMP_FILE"
+                  CANDIDATE=$(cat "$TEMP_FILE")
+                  # Same guard as the package-source-path branch below. This reader was
+                  # dead until the heredoc fix, so a declared-but-absent source would
+                  # now silently narrow coverage to a directory that is not there.
+                  if [ -d "$CANDIDATE" ]; then
+                    COVERAGE_SOURCE="$CANDIDATE"
+                  else
+                    echo "::notice::pyproject.toml declares coverage source '$CANDIDATE', which does not exist in the checkout - falling back"
+                  fi
                 fi
+                rm -f "$TEMP_FILE"
               fi
               
               # 2. Expliziter package-source-path

@@ -47,6 +47,34 @@ jobs:
       upload-artifacts: true
 ```
 
+### Required Caller Permissions
+
+This workflow calls `modules-code-quality.yml`, which declares `pull-requests: write`. A called workflow can only **restrict** the caller's permissions, never extend them, so the scope has to come from your calling job:
+
+```yaml
+jobs:
+  build:
+    permissions:
+      contents: read
+      pull-requests: write    # required by modules-code-quality.yml
+    uses: your-org/automation-templates/.github/workflows/dotnet-build.yml@main
+    with:
+      dotnet-version: '8.0.x'
+    secrets: inherit
+```
+
+This applies **even with `enable-sonar` left at its default `false`**. GitHub validates the permissions of every called workflow when the run is created, before any job `if:` is evaluated — the opt-in gate does not spare you the scope.
+
+Without it the run never starts. There is no job and no log, only `startup_failure`:
+
+```text
+The workflow is requesting 'pull-requests: write', but is only allowed 'pull-requests: none'.
+```
+
+Declare the scope explicitly instead of relying on the default. A **partial** `permissions:` block sets every scope it does not name to `none`, and the `Read repository contents and package permissions` repository default is already `pull-requests: none`. Only the `Read and write permissions` default covers it implicitly.
+
+See [GHCR internal visibility](../ghcr-internal-visibility.md) for the full ceiling rule and the same trap applied to `packages: read`.
+
 ### Advanced Configuration
 
 ```yaml

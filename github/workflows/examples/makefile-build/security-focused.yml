@@ -194,7 +194,7 @@ jobs:
           
           # Ubuntu/Debian specific
           if command -v debsecan >/dev/null 2>&1; then
-            debsecan --suite $(lsb_release -cs) || true
+            debsecan --suite "$(lsb_release -cs)" || true
           fi
           
           # List installed packages

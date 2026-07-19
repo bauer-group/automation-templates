@@ -27,3 +27,12 @@ paths:
       # `skipped` for a skipped job. Scoped narrowly so genuine missing-property
       # errors still surface.
       - 'property "result" is not defined in object type \{outputs: .+\}'
+
+      # SC2193 "The arguments to this comparison can never be equal" is unusable in
+      # workflow scripts. actionlint substitutes a fixed-width placeholder for
+      # ${{ ... }} before handing the script to shellcheck, so shellcheck sees an
+      # opaque literal on the left and concludes it can never match the pattern on
+      # the right. Verified across all 13 occurrences in this repository - every one
+      # is of the form `[[ "${{ github.<x> }}" == <pattern> ]]`, which matches
+      # correctly at runtime once the expression expands.
+      - 'SC2193'

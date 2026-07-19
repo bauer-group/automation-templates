@@ -791,13 +791,13 @@ jobs:
       - name: ✅ Validate Plugin Zip
         if: inputs.validate-plugin
         run: |
-          shopware-cli extension validate $(pwd)/${{ steps.zip.outputs.filename }}
+          shopware-cli extension validate "$(pwd)/${{ steps.zip.outputs.filename }}"
 
       - name: 📝 Extract Changelog
         id: changelog
         if: inputs.generate-changelog
         run: |
-          shopware-cli extension get-changelog $(pwd)/${{ steps.zip.outputs.filename }} > /tmp/changelog.txt
+          shopware-cli extension get-changelog "$(pwd)/${{ steps.zip.outputs.filename }}" > /tmp/changelog.txt
 
           # Display changelog
           echo "📝 Generated Changelog:"
@@ -816,7 +816,7 @@ jobs:
         continue-on-error: true
         run: |
           if [ -n "$SHOPWARE_CLI_ACCOUNT_EMAIL" ] && [ -n "$SHOPWARE_CLI_ACCOUNT_PASSWORD" ]; then
-            shopware-cli account producer extension info push $(pwd)/
+            shopware-cli account producer extension info push "$(pwd)/"
             echo "✅ Store page updated"
           else
             echo "⚠️ Store credentials not configured, skipping store page update"
@@ -828,7 +828,7 @@ jobs:
         continue-on-error: true
         run: |
           if [ -n "$SHOPWARE_CLI_ACCOUNT_EMAIL" ] && [ -n "$SHOPWARE_CLI_ACCOUNT_PASSWORD" ]; then
-            shopware-cli account producer extension upload $(pwd)/${{ steps.zip.outputs.filename }}
+            shopware-cli account producer extension upload "$(pwd)/${{ steps.zip.outputs.filename }}"
             echo "uploaded=true" >> $GITHUB_OUTPUT
             echo "✅ Plugin uploaded to Shopware Store"
           else

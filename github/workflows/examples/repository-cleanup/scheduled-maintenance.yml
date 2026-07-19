@@ -89,8 +89,9 @@ jobs:
           esac
           
           # Override with custom age if provided
-          if [[ -n "${{ github.event.inputs.custom-age-days }}" ]] && [[ "${{ github.event.inputs.custom-age-days }}" -gt 0 ]]; then
-            AGE_DAYS=${{ github.event.inputs.custom-age-days }}
+          CUSTOM_AGE_DAYS="${{ github.event.inputs.custom-age-days }}"
+          if [[ -n "$CUSTOM_AGE_DAYS" ]] && [[ "${CUSTOM_AGE_DAYS:-0}" -gt 0 ]]; then
+            AGE_DAYS="$CUSTOM_AGE_DAYS"
             echo "🎯 Using custom age threshold: $AGE_DAYS days"
           fi
           
@@ -274,7 +275,6 @@ jobs:
           
           # Maintenance effectiveness analysis
           ITEMS_DELETED=${{ needs.execute-maintenance.outputs.items-deleted || '0' }}
-          MAINTENANCE_TYPE="${{ needs.pre-maintenance-check.outputs.maintenance-type }}"
           
           echo "**🎯 Maintenance Effectiveness:**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

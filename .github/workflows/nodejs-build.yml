@@ -439,6 +439,22 @@ on:
         description: 'Docker image tag'
         value: ${{ jobs.build.outputs.docker-image }}
 
+# Permissions are inherited from the caller workflow. A called workflow can only restrict
+# them, never extend them, so the CALLING job must grant:
+#
+#   pull-requests: write   # required by the code-quality job (modules-code-quality.yml)
+#
+# Required even with `enable-sonar: false` (the default): GitHub validates the permissions
+# of every called workflow when the run is created, before any job `if:` is evaluated. A
+# caller that cannot satisfy it gets a startup_failure - no job, no log:
+#
+#   The workflow is requesting 'pull-requests: write', but is only allowed 'pull-requests: none'.
+#
+# Declare it explicitly. Omitting the block is not safe here: a partial block sets every
+# scope it does not name to `none`, and the "Read repository contents and package
+# permissions" repo default is already `pull-requests: none`.
+# See docs/ghcr-internal-visibility.md for the full ceiling rule.
+
 jobs:
   code-quality:
     name: 🛡️ Code Quality (SonarQube)

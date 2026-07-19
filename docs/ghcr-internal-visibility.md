@@ -59,6 +59,8 @@ jobs:
 
 Hat er keinen Block, ist nichts zu tun.
 
+> **Gilt nur für `packages: read`.** Beide Repository-Defaults enthalten diesen Scope, deshalb rettet hier das Weglassen des Blocks. Bei anderen Scopes tut es das nicht: `pull-requests: write` — von `modules-code-quality.yml` deklariert und damit von `dotnet-build.yml`, `nodejs-build.yml`, `php-build.yml` und `python-build.yml` gefordert — fehlt im Default `Read repository contents and package permissions` ebenfalls. Dort muss der Scope explizit gewährt werden, auch ganz ohne `permissions:`-Block. Details in den jeweiligen Workflow-Docs unter `docs/workflows/`.
+
 ### Warum das Modul das nicht für euch erledigen kann
 
 Ein reusable Workflow kann die Permissions des Callers nur **einschränken**, nie erweitern:

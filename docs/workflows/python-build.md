@@ -11,6 +11,34 @@ Das Python Build System bietet mehrere vorgefertigte Workflows für unterschiedl
 - **Python Docker** - Containerisierte Anwendungen
 - **Python Publish** - Publishing zu PyPI/TestPyPI
 
+## Erforderliche Caller-Permissions
+
+`python-build.yml` ruft `modules-code-quality.yml` auf, das `pull-requests: write` deklariert. Ein aufgerufener Workflow kann die Permissions des Callers nur **einschränken**, nie erweitern — der Scope muss also aus dem **aufrufenden** Job kommen:
+
+```yaml
+jobs:
+  build:
+    permissions:
+      contents: read
+      pull-requests: write    # Pflicht: von modules-code-quality.yml deklariert
+    uses: bauer-group/automation-templates/.github/workflows/python-build.yml@main
+    with:
+      python-version: '3.12'
+    secrets: inherit
+```
+
+Das gilt **auch bei `enable-sonar: false`** (dem Default). GitHub prüft die Permissions aller aufgerufenen Workflows beim Erzeugen des Runs, **bevor** irgendein `if:` eines Jobs ausgewertet wird — das Opt-in erspart den Scope also nicht.
+
+Fehlt er, startet der Run gar nicht. Es gibt keinen Job und kein Log, nur `startup_failure`:
+
+```text
+The workflow is requesting 'pull-requests: write', but is only allowed 'pull-requests: none'.
+```
+
+Den Scope explizit deklarieren, nicht auf den Default verlassen: Ein **partieller** `permissions:`-Block setzt jeden nicht genannten Scope auf `none`, und der Repository-Default `Read repository contents and package permissions` steht ohnehin schon auf `pull-requests: none`. Nur der Default `Read and write permissions` deckt ihn implizit ab.
+
+Die vollständige Obergrenzen-Regel — und dieselbe Falle für `packages: read` — steht in [GHCR internal visibility](../ghcr-internal-visibility.md).
+
 ## Verfügbare Workflows
 
 ### 1. Python Application (`python-app.yml`)

@@ -270,7 +270,6 @@ jobs:
           
           # Impact assessment
           ITEMS_DELETED=${{ needs.aggressive-cleanup.outputs.items-deleted || '0' }}
-          ITEMS_PROCESSED=${{ needs.aggressive-cleanup.outputs.items-processed || '0' }}
           
           echo "**🎯 Impact Assessment:**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

@@ -305,9 +305,7 @@ jobs:
           # Use process substitution to avoid subshell variable scope issues
           while read -r group; do
             TOPIC=$(echo "$group" | jq -r '.topic')
-            FOLDER=$(echo "$group" | jq -r '.folder')
             NAME=$(echo "$group" | jq -r '.name')
-            DESC=$(echo "$group" | jq -r '.description')
 
             echo "📂 Processing group: $NAME (topic: $TOPIC)"
 
@@ -646,10 +644,11 @@ jobs:
           fi
 
           # Generate groups section
-          GROUPS_CONTENT=""
+          # Start from an empty file: the loop below only appends, so a leftover
+          # /tmp/groups.md from a previous run (self-hosted runners) would be duplicated
+          : > /tmp/groups.md
           jq -c '.groups[]' "$CONFIG_FILE" | while read -r group; do
             TOPIC=$(echo "$group" | jq -r '.topic')
-            FOLDER=$(echo "$group" | jq -r '.folder')
             NAME=$(echo "$group" | jq -r '.name')
             DESC=$(echo "$group" | jq -r '.description')
             PREFIX_REGEX=$(echo "$group" | jq -r '.remove_prefix // ""')

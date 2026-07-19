@@ -77,7 +77,7 @@ jobs:
           
           # Show kernel version info
           uname -r
-          ls -la /lib/modules/$(uname -r)/build
+          ls -la "/lib/modules/$(uname -r)/build"
       
       - name: 🔨 Build Module
         uses: bauer-group/automation-templates/.github/actions/makefile-build@main
@@ -154,7 +154,7 @@ jobs:
           
           # Simulate module loading (without actually loading)
           echo "Module would be loaded with: insmod $(ls *.ko | head -1)"
-          echo "Module would be unloaded with: rmmod $(basename $(ls *.ko | head -1) .ko)"
+          echo "Module would be unloaded with: rmmod $(basename "$(ls *.ko | head -1)" .ko)"
           
           # Check module symbols
           if command -v nm >/dev/null 2>&1; then

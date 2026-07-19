@@ -161,12 +161,13 @@ jobs:
           fi
 
           # Validate timeout
-          if [[ "${{ inputs.wait-timeout }}" -lt 10 ]]; then
-            echo "::warning::wait-timeout is very low (${{ inputs.wait-timeout }}s), minimum recommended is 60s"
+          WAIT_TIMEOUT="${{ inputs.wait-timeout }}"
+          if [[ "${WAIT_TIMEOUT:-0}" -lt 10 ]]; then
+            echo "::warning::wait-timeout is very low (${WAIT_TIMEOUT}s), minimum recommended is 60s"
           fi
 
-          if [[ "${{ inputs.wait-timeout }}" -gt 3600 ]]; then
-            echo "::warning::wait-timeout is very high (${{ inputs.wait-timeout }}s), maximum recommended is 3600s"
+          if [[ "${WAIT_TIMEOUT:-0}" -gt 3600 ]]; then
+            echo "::warning::wait-timeout is very high (${WAIT_TIMEOUT}s), maximum recommended is 3600s"
           fi
 
           if [[ $ERRORS -gt 0 ]]; then
