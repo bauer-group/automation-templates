@@ -1,0 +1,43 @@
+name: "✅ Workflow Validation"
+
+# Validates this repository's own workflow files and the example workflows we ship
+# for consumers to copy.
+#
+# Deliberately uses `paths:` (not `paths-ignore:`) so that changing a workflow is
+# exactly what triggers this. The main release pipeline ignores `.github/**`, which
+# is why a broken workflow could previously sit unnoticed for weeks.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - '.github/actions/**'
+      - '.github/actionlint.yaml'
+      - 'github/workflows/examples/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - '.github/actions/**'
+      - '.github/actionlint.yaml'
+      - 'github/workflows/examples/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: "✅ Validate"
+    permissions:
+      contents: read
+    uses: ./.github/workflows/modules-validate-workflows.yml
+    with:
+      # Example workflows are shipped for consumers to copy, so they are held to the
+      # same standard as the workflows we run ourselves.
+      lint-paths: |
+        .github/workflows/*.yml
+        .github/workflows/*.yaml
+        github/workflows/examples/*/*.yml
+        github/workflows/examples/*/*.yaml

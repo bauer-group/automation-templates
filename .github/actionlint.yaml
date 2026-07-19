@@ -1,0 +1,29 @@
+# actionlint configuration
+# https://github.com/rhysd/actionlint/blob/main/docs/config.md
+#
+# Everything suppressed here is a KNOWN actionlint limitation, never a real defect
+# that was inconvenient to fix. Each entry states why it is safe to ignore.
+
+self-hosted-runner:
+  # Labels of self-hosted runners used by embedded build workflows. actionlint only
+  # knows GitHub-hosted labels and flags anything else as unknown.
+  labels:
+    - esp32
+    - zephyr-hardware
+
+paths:
+  "**/*.yml":
+    ignore:
+      # `models: read` is a real permission scope (GitHub Models). actionlint 1.7.7
+      # predates it and reports it as unknown. Remove this entry once actionlint
+      # ships support for it.
+      - 'unknown permission scope "models"'
+
+      # `jobs.<job_id>.result` IS valid inside on.workflow_call.outputs.*.value -
+      # the documented `jobs` context there exposes both `outputs` and `result`.
+      # actionlint models only `outputs` (rhysd/actionlint#343, open since 2023 and
+      # still present in 1.7.12), so it reports the object type as `{outputs: ...}`.
+      # Verified against a live run: the value resolves correctly, including
+      # `skipped` for a skipped job. Scoped narrowly so genuine missing-property
+      # errors still surface.
+      - 'property "result" is not defined in object type \{outputs: .+\}'

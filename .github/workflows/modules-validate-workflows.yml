@@ -1,0 +1,250 @@
+name: "✅ Module | Workflow Validation"
+
+# =============================================================================
+# Validates GitHub Actions workflow files themselves.
+#
+# Two independent checks:
+#   1. actionlint - syntax, expression and schema errors
+#   2. permission ceiling - a reusable workflow requesting a scope its caller
+#      does not grant makes GitHub refuse to START the run. actionlint does not
+#      check this, and it is the failure mode that is hardest to notice, because
+#      it produces no job and no log.
+#
+# Usage:
+#   jobs:
+#     validate:
+#       uses: bauer-group/automation-templates/.github/workflows/modules-validate-workflows.yml@main
+# =============================================================================
+
+on:
+  workflow_call:
+    inputs:
+      lint-paths:
+        description: "Newline-separated globs to lint. Defaults to workflows plus any example workflows shipped for consumers."
+        required: false
+        type: string
+        default: |
+          .github/workflows/*.yml
+          .github/workflows/*.yaml
+      actionlint-version:
+        description: "Pinned actionlint release to use"
+        required: false
+        type: string
+        default: "1.7.7"
+      check-permission-ceiling:
+        description: "Verify that every locally called reusable workflow gets the permissions it declares"
+        required: false
+        type: boolean
+        default: true
+      assume-restricted-default:
+        description: "Treat the repository default GITHUB_TOKEN as 'contents: read, packages: read'. Keep true unless the repository is deliberately set to permissive defaults."
+        required: false
+        type: boolean
+        default: true
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: "ubuntu-latest"
+    outputs:
+      actionlint-findings:
+        description: "Number of actionlint findings"
+        value: ${{ jobs.validate.outputs.actionlint-findings }}
+      ceiling-violations:
+        description: "Number of permission ceiling violations"
+        value: ${{ jobs.validate.outputs.ceiling-violations }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: "✅ Validate Workflows"
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: 10
+    outputs:
+      actionlint-findings: ${{ steps.actionlint.outputs.findings }}
+      ceiling-violations: ${{ steps.ceiling.outputs.violations }}
+
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v6
+
+      - name: "🔧 Install actionlint"
+        env:
+          ACTIONLINT_VERSION: ${{ inputs.actionlint-version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "Downloading $URL"
+          curl -sSfL "$URL" | tar xz actionlint
+          sudo mv actionlint /usr/local/bin/
+          actionlint -version
+
+      - name: "🔍 actionlint"
+        id: actionlint
+        env:
+          LINT_PATHS: ${{ inputs.lint-paths }}
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          # Expand the globs; skip patterns that match nothing so a repo without
+          # example workflows is not a failure.
+          FILES=()
+          while IFS= read -r pattern; do
+            [ -n "$pattern" ] || continue
+            for f in $pattern; do
+              [ -f "$f" ] && FILES+=("$f")
+            done
+          done <<< "$LINT_PATHS"
+
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "::warning::No workflow files matched the configured lint paths"
+            echo "findings=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Linting ${#FILES[@]} file(s)"
+          set +e
+          actionlint -oneline "${FILES[@]}" > actionlint-output.txt 2>&1
+          set -e
+
+          COUNT=$(grep -c . actionlint-output.txt || true)
+          echo "findings=$COUNT" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## ✅ Workflow Validation"
+            echo ""
+            echo "**actionlint:** $COUNT finding(s) across ${#FILES[@]} file(s)"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$COUNT" -gt 0 ]; then
+            while IFS= read -r line; do
+              [ -n "$line" ] || continue
+              echo "::error::$line"
+            done < actionlint-output.txt
+            {
+              echo '```'
+              cat actionlint-output.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "✅ actionlint reported no findings"
+
+      - name: "🔐 Permission ceiling"
+        id: ceiling
+        if: always() && inputs.check-permission-ceiling
+        env:
+          ASSUME_RESTRICTED: ${{ inputs.assume-restricted-default }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import os, sys, glob, yaml
+
+          # A called workflow can only RESTRICT the caller's permissions, never extend
+          # them. If it declares a scope the caller does not hold, GitHub refuses to
+          # start the run - before any `if:` is evaluated, so even a job that would be
+          # skipped counts. This check reproduces that rule statically.
+          RANK = {"none": 0, "read": 1, "write": 2}
+          restricted = os.environ.get("ASSUME_RESTRICTED", "true") == "true"
+          # Both repository default settings grant these two; everything else is `none`
+          # once ANY permissions block is present.
+          DEFAULT = {"contents": "read", "packages": "read"} if restricted else None
+
+          def load(path):
+              with open(path, encoding="utf-8") as fh:
+                  return yaml.safe_load(fh)
+
+          def perms_of(doc):
+              p = doc.get("permissions")
+              if isinstance(p, str):
+                  return {"__all__": "write" if p == "write-all" else "read"}
+              return p if isinstance(p, dict) else None
+
+          def is_reusable(doc):
+              # `on:` parses as the boolean True in YAML 1.1
+              on = doc.get(True, doc.get("on"))
+              return isinstance(on, dict) and "workflow_call" in on
+
+          violations = []   # hard errors: this repo cannot start the run
+          requirements = [] # informational: the CONSUMER must grant these
+          for wf in sorted(glob.glob(".github/workflows/*.yml") + glob.glob(".github/workflows/*.yaml")):
+              try:
+                  doc = load(wf)
+              except Exception as exc:
+                  print("::warning::could not parse %s: %s" % (wf, exc))
+                  continue
+              if not isinstance(doc, dict) or not isinstance(doc.get("jobs"), dict):
+                  continue
+              # A reusable workflow inherits its permissions from whoever calls it, so a
+              # missing scope is a requirement on the consumer, not a defect here.
+              reusable = is_reusable(doc)
+              top = perms_of(doc)
+              for jid, job in doc["jobs"].items():
+                  if not isinstance(job, dict):
+                      continue
+                  uses = job.get("uses")
+                  if not isinstance(uses, str) or not uses.startswith("./"):
+                      continue  # remote refs cannot be resolved here
+                  target = uses[2:].split("@")[0]
+                  if not os.path.exists(target):
+                      violations.append((wf, jid, target, "called workflow does not exist"))
+                      continue
+                  try:
+                      needed = perms_of(load(target)) or {}
+                  except Exception as exc:
+                      print("::warning::could not parse %s: %s" % (target, exc))
+                      continue
+                  if "__all__" in needed:
+                      continue
+                  granted = job.get("permissions")
+                  if not isinstance(granted, dict):
+                      granted = top if isinstance(top, dict) else DEFAULT
+                  if granted is None:
+                      continue  # permissive default assumed: nothing to prove
+                  if "__all__" in granted:
+                      continue
+                  for scope, level in needed.items():
+                      have = granted.get(scope, "none")
+                      if RANK.get(str(level), 0) > RANK.get(str(have), 0):
+                          entry = (wf, jid, target,
+                                   "requests %s: %s but caller grants %s" % (scope, level, have))
+                          (requirements if reusable else violations).append(entry)
+
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          lines = ["", "**Permission ceiling:** %d violation(s)" % len(violations), ""]
+          for wf, jid, target, why in violations:
+              msg = "%s / job '%s' -> %s: %s" % (wf, jid, target, why)
+              print("::error file=%s::%s" % (wf, msg))
+              lines.append("- `%s`" % msg)
+
+          if requirements:
+              lines += ["", "**Caller requirements** (reusable workflows - consumers must grant these):", ""]
+              for wf, jid, target, why in requirements:
+                  msg = "%s / job '%s' -> %s: %s" % (wf, jid, target, why)
+                  print("::warning file=%s::%s" % (wf, msg))
+                  lines.append("- `%s`" % msg)
+
+          if summary:
+              with open(summary, "a", encoding="utf-8") as fh:
+                  fh.write("\n".join(lines) + "\n")
+
+          out = os.environ.get("GITHUB_OUTPUT")
+          if out:
+              with open(out, "a", encoding="utf-8") as fh:
+                  fh.write("violations=%d\n" % len(violations))
+                  fh.write("caller-requirements=%d\n" % len(requirements))
+
+          if violations:
+              print("")
+              print("A called workflow can only restrict the caller's permissions, never")
+              print("extend them. Declare the missing scopes on the CALLING job.")
+              sys.exit(1)
+          print("✅ No ceiling violations (%d caller requirement(s) reported)" % len(requirements))
+          PYEOF
