@@ -203,6 +203,7 @@ on:
 
 permissions:
   contents: read
+  packages: read # Pull the toolchain base image (internal/private packages)
 
 jobs:
   build:

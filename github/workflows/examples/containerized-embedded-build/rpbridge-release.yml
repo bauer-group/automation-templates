@@ -15,6 +15,7 @@ concurrency:
 
 permissions:
   contents: write   # publish Release + attach artefacts
+  packages: read    # pull the toolchain base image (internal/private packages)
 
 jobs:
   firmware:

@@ -88,6 +88,7 @@ on:
 
 permissions:
   contents: read
+  packages: read # Verify image references against internal/private packages
 
 jobs:
   validate:
@@ -391,8 +392,17 @@ jobs:
           done
 
           if [ "$FAILED" = "true" ]; then
-            echo "⚠️ Some image references could not be verified"
-            echo "   This may be expected for private registries or build-time images"
+            echo "::warning::Some image references could not be verified"
+            echo "   For internal or private GHCR packages, the CALLING workflow must grant 'packages: read'."
+            echo "   See docs/ghcr-internal-visibility.md. This can also be expected for third-party"
+            echo "   private registries or images that only exist at build time."
+            # Reuses the established fail-on-warning input rather than inventing a
+            # new policy - unverifiable references are exactly the warning class it
+            # already governs.
+            if [ "${{ inputs.fail-on-warning }}" = "true" ]; then
+              echo "::error::Failing due to unverifiable image references (fail-on-warning: true)"
+              exit 1
+            fi
           fi
 
       - name: 🧹 Cleanup
