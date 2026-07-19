@@ -305,7 +305,7 @@ jobs:
     steps:
       - name: 📊 Generate Security Summary
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << EOF
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
           # 🛡️ Security Analysis Summary
           
           ## Results Overview

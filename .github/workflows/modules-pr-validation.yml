@@ -142,59 +142,59 @@ jobs:
             VALIDATION_PASSED="false"
           fi
           
-          echo "validation-passed=$VALIDATION_PASSED" >> $GITHUB_OUTPUT
+          echo "validation-passed=$VALIDATION_PASSED" >> "$GITHUB_OUTPUT"
           
           # Generate PR comment with validation results
-          echo "### 🔍 PR Validation Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Validation Check | Enabled | Status | Details |" >> $GITHUB_STEP_SUMMARY
-          echo "|------------------|---------|---------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 PR Validation Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Validation Check | Enabled | Status | Details |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------------------|---------|---------|---------|" >> "$GITHUB_STEP_SUMMARY"
           
           # Conventional Commits
           if [ "${{ inputs.enable-commit-lint }}" = "true" ]; then
             COMMIT_ICON="${{ steps.commits.outcome == 'success' && '✅' || '❌' }}"
-            echo "| **Conventional Commits** | ✅ | $COMMIT_ICON | ${{ steps.commits.outcome }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Conventional Commits** | ✅ | $COMMIT_ICON | ${{ steps.commits.outcome }} |" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "| **Conventional Commits** | ⏭️ | ⏭️ | Disabled |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Conventional Commits** | ⏭️ | ⏭️ | Disabled |" >> "$GITHUB_STEP_SUMMARY"
           fi
           
           # Security Scan
           if [ "${{ inputs.enable-security-scan }}" = "true" ]; then
             SECURITY_ICON="${{ steps.security.outcome == 'success' && '✅' || '❌' }}"
             SECURITY_SCORE="${{ steps.security.outputs.security-score || 'N/A' }}"
-            echo "| **Security Scan** | ✅ | $SECURITY_ICON | Score: $SECURITY_SCORE/100 |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Security Scan** | ✅ | $SECURITY_ICON | Score: $SECURITY_SCORE/100 |" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "| **Security Scan** | ⏭️ | ⏭️ | Disabled |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Security Scan** | ⏭️ | ⏭️ | Disabled |" >> "$GITHUB_STEP_SUMMARY"
           fi
           
           # License Check
           if [ "${{ inputs.enable-license-check }}" = "true" ]; then
             LICENSE_ICON="${{ steps.license.outcome == 'success' && '✅' || '❌' }}"
             LICENSE_STATUS="${{ steps.license.outputs.compliance-status || 'N/A' }}"
-            echo "| **License Compliance** | ✅ | $LICENSE_ICON | Status: $LICENSE_STATUS |" >> $GITHUB_STEP_SUMMARY
+            echo "| **License Compliance** | ✅ | $LICENSE_ICON | Status: $LICENSE_STATUS |" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "| **License Compliance** | ⏭️ | ⏭️ | Disabled |" >> $GITHUB_STEP_SUMMARY
+            echo "| **License Compliance** | ⏭️ | ⏭️ | Disabled |" >> "$GITHUB_STEP_SUMMARY"
           fi
           
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [ "$VALIDATION_PASSED" = "true" ]; then
-            echo "🎉 **All validation checks passed!** This PR is ready for review." >> $GITHUB_STEP_SUMMARY
+            echo "🎉 **All validation checks passed!** This PR is ready for review." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "⚠️ **Some validation checks failed.** Please address the issues before merging." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Common fixes:**" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Some validation checks failed.** Please address the issues before merging." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Common fixes:**" >> "$GITHUB_STEP_SUMMARY"
             
             if [ "$COMMIT_STATUS" = "failure" ]; then
-              echo "- Use conventional commit format (feat:, fix:, docs:, etc.)" >> $GITHUB_STEP_SUMMARY
+              echo "- Use conventional commit format (feat:, fix:, docs:, etc.)" >> "$GITHUB_STEP_SUMMARY"
             fi
             
             if [ "$SECURITY_STATUS" = "failure" ]; then
-              echo "- Review and address security findings" >> $GITHUB_STEP_SUMMARY
+              echo "- Review and address security findings" >> "$GITHUB_STEP_SUMMARY"
             fi
             
             if [ "$LICENSE_STATUS" = "failure" ]; then
-              echo "- Review license compliance issues" >> $GITHUB_STEP_SUMMARY
+              echo "- Review license compliance issues" >> "$GITHUB_STEP_SUMMARY"
             fi
           fi
 

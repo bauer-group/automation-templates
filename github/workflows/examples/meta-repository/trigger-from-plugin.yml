@@ -50,15 +50,15 @@ jobs:
       - name: Report
         if: always()
         run: |
-          echo "### 🔔 Meta Repository Notification" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Sent trigger to meta repository for synchronization." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Source Repository | ${{ github.repository }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Ref | ${{ github.ref }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Event | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔔 Meta Repository Notification" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Sent trigger to meta repository for synchronization." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Source Repository | ${{ github.repository }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Ref | ${{ github.ref }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Event | ${{ github.event_name }} |" >> "$GITHUB_STEP_SUMMARY"
 
 # Alternative: Using workflow_run instead of repository_dispatch
 # This version doesn't require a PAT, but needs workflow permissions

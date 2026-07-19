@@ -58,41 +58,41 @@ jobs:
     steps:
       - name: 📊 Generate Summary
         run: |
-          echo "## 🐳 Docker Validation Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🐳 Docker Validation Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           # Hadolint
           if [ "${{ needs.dockerfile-lint.outputs.passed }}" = "true" ]; then
-            echo "✅ **Hadolint** - ${{ needs.dockerfile-lint.outputs.files-checked }} files checked" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Hadolint** - ${{ needs.dockerfile-lint.outputs.files-checked }} files checked" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ **Hadolint** - ${{ needs.dockerfile-lint.outputs.issues-found }} issues found" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Hadolint** - ${{ needs.dockerfile-lint.outputs.issues-found }} issues found" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           # Compose
           if [ "${{ needs.compose-validate.outputs.valid }}" = "true" ]; then
-            echo "✅ **Docker Compose** - ${{ needs.compose-validate.outputs.service-count }} services validated" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Docker Compose** - ${{ needs.compose-validate.outputs.service-count }} services validated" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ **Docker Compose** - Invalid configuration" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Docker Compose** - Invalid configuration" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           # ShellCheck
           if [ "${{ needs.shellcheck.outputs.passed }}" = "true" ]; then
-            echo "✅ **ShellCheck** - ${{ needs.shellcheck.outputs.files-checked }} scripts checked" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **ShellCheck** - ${{ needs.shellcheck.outputs.files-checked }} scripts checked" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ **ShellCheck** - ${{ needs.shellcheck.outputs.issues-found }} issues found" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **ShellCheck** - ${{ needs.shellcheck.outputs.issues-found }} issues found" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "---" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           # Overall Status
           if [ "${{ needs.dockerfile-lint.outputs.passed }}" = "true" ] && \
              [ "${{ needs.compose-validate.outputs.valid }}" = "true" ] && \
              [ "${{ needs.shellcheck.outputs.passed }}" = "true" ]; then
-            echo "### ✅ All validations passed!" >> $GITHUB_STEP_SUMMARY
+            echo "### ✅ All validations passed!" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "### ⚠️ Some validations failed - please review above" >> $GITHUB_STEP_SUMMARY
+            echo "### ⚠️ Some validations failed - please review above" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: ❌ Fail if any validation failed

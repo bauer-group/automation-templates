@@ -236,7 +236,7 @@ jobs:
           fi
 
           # Save commit-prefix for later steps
-          echo "commit-prefix=$COMMIT_PREFIX" >> $GITHUB_OUTPUT
+          echo "commit-prefix=$COMMIT_PREFIX" >> "$GITHUB_OUTPUT"
           echo "::endgroup::"
 
           echo "::group::📋 Image Configuration"
@@ -357,19 +357,19 @@ jobs:
           # substitution above, not a pipe - a pipe would run the loop in a subshell
           # and discard everything accumulated in it.
           UNREACHABLE_COUNT=$(printf '%s' "$UNREACHABLE_IMAGES" | jq 'length')
-          echo "updates-found=$UPDATES_FOUND" >> $GITHUB_OUTPUT
-          echo "updated-images=$UPDATED_IMAGES" >> $GITHUB_OUTPUT
-          echo "new-digests=$NEW_DIGESTS" >> $GITHUB_OUTPUT
-          echo "images-configured=$CONFIGURED_COUNT" >> $GITHUB_OUTPUT
-          echo "images-checked=$CHECKED_COUNT" >> $GITHUB_OUTPUT
-          echo "unreachable-images=$UNREACHABLE_IMAGES" >> $GITHUB_OUTPUT
+          echo "updates-found=$UPDATES_FOUND" >> "$GITHUB_OUTPUT"
+          echo "updated-images=$UPDATED_IMAGES" >> "$GITHUB_OUTPUT"
+          echo "new-digests=$NEW_DIGESTS" >> "$GITHUB_OUTPUT"
+          echo "images-configured=$CONFIGURED_COUNT" >> "$GITHUB_OUTPUT"
+          echo "images-checked=$CHECKED_COUNT" >> "$GITHUB_OUTPUT"
+          echo "unreachable-images=$UNREACHABLE_IMAGES" >> "$GITHUB_OUTPUT"
 
           # Store update details for commit message (using delimiter for multiline)
           {
             echo "UPDATE_DETAILS<<DETAILS_EOF"
             echo "$UPDATE_DETAILS"
             echo "DETAILS_EOF"
-          } >> $GITHUB_ENV
+          } >> "$GITHUB_ENV"
 
           echo ""
           echo "═══════════════════════════════════════════"
@@ -428,8 +428,8 @@ jobs:
 
           # Get commit SHA
           COMMIT_SHA=$(git rev-parse HEAD)
-          echo "commit-sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
-          echo "triggered=true" >> $GITHUB_OUTPUT
+          echo "commit-sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+          echo "triggered=true" >> "$GITHUB_OUTPUT"
 
           echo ""
           echo "✅ Created commit: $COMMIT_SHA"
@@ -459,7 +459,7 @@ jobs:
           fi
 
           "${ARGS[@]}"
-          echo "triggered=true" >> $GITHUB_OUTPUT
+          echo "triggered=true" >> "$GITHUB_OUTPUT"
           echo "✅ Workflow triggered successfully"
 
       - name: "📋 Summary"
@@ -549,4 +549,4 @@ jobs:
               echo ""
               echo "All base images are up to date."
             fi
-          } >> $GITHUB_STEP_SUMMARY
+          } >> "$GITHUB_STEP_SUMMARY"

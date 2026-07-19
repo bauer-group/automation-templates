@@ -86,8 +86,8 @@ jobs:
           # Always run if force-update is true (from manual trigger)
           if [[ "${{ inputs.force-update }}" == "true" ]]; then
             echo "🔄 ✅ FORCE UPDATE ENABLED - will run regardless of other conditions"
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "skip_reason=" >> $GITHUB_OUTPUT
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           
@@ -95,46 +95,46 @@ jobs:
           if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
             echo "🏷️ ✅ RUNNING FOR TAG: ${{ github.ref_name }}"
             echo "🏷️ Updating README with new version information"
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "skip_reason=" >> $GITHUB_OUTPUT
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           
           # Always run for workflow_call (called by other workflows)
           if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
             echo "✅ Running for workflow call"
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "skip_reason=" >> $GITHUB_OUTPUT
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           
           # Always run for workflow_dispatch (manual trigger)
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "✅ Running for manual trigger"
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "skip_reason=" >> $GITHUB_OUTPUT
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           
           # Always run for pull requests
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             echo "✅ Running for pull request"
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "skip_reason=" >> $GITHUB_OUTPUT
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           
           # For push events to main, workflow should trigger based on paths filter
           if [[ "${{ github.event_name }}" == "push" ]]; then
             echo "✅ Running for push to main (paths filter applies automatically)"
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "skip_reason=" >> $GITHUB_OUTPUT
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           
           # Default fallback
-          echo "should_run=true" >> $GITHUB_OUTPUT
-          echo "skip_reason=" >> $GITHUB_OUTPUT
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
+          echo "skip_reason=" >> "$GITHUB_OUTPUT"
 
       - name: 🔍 Validate Prerequisites
         if: steps.should-run.outputs.should_run == 'true'
@@ -312,44 +312,44 @@ jobs:
 
       - name: 📊 Documentation Summary
         run: |
-          echo "### 📄 Documentation Validation Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📄 Documentation Validation Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           # Check if workflow should have run
           if [ "${{ needs.generate-documentation.outputs.should_run }}" = "false" ]; then
-            echo "ℹ️ **Workflow skipped - no relevant files changed**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "No documentation-related files were modified in this push." >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **Workflow skipped - no relevant files changed**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No documentation-related files were modified in this push." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
-            echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-            echo "| **README Generated** | ${{ needs.generate-documentation.outputs.readme_updated == 'true' && '✅ Updated' || '⏭️ No changes' }} |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Template Validation** | ${{ needs.generate-documentation.outputs.validation_passed == 'true' && '✅ Passed' || needs.generate-documentation.outputs.validation_passed == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Link Validation** | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Structure Check** | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Check | Status |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **README Generated** | ${{ needs.generate-documentation.outputs.readme_updated == 'true' && '✅ Updated' || '⏭️ No changes' }} |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Template Validation** | ${{ needs.generate-documentation.outputs.validation_passed == 'true' && '✅ Passed' || needs.generate-documentation.outputs.validation_passed == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Link Validation** | ✅ Completed |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Structure Check** | ✅ Passed |" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
           fi
           
           if [ "${{ needs.generate-documentation.outputs.readme_updated }}" = "true" ]; then
-            echo "📝 **Documentation updated successfully!**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Changes include:**" >> $GITHUB_STEP_SUMMARY
-            echo "- Updated version and date information" >> $GITHUB_STEP_SUMMARY
-            echo "- Current repository metadata" >> $GITHUB_STEP_SUMMARY
-            echo "- Modular workflow architecture documentation" >> $GITHUB_STEP_SUMMARY
+            echo "📝 **Documentation updated successfully!**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Changes include:**" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Updated version and date information" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Current repository metadata" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Modular workflow architecture documentation" >> "$GITHUB_STEP_SUMMARY"
             
             if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "🏷️ **Tag Details:**" >> $GITHUB_STEP_SUMMARY
-              echo "- Tag: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-              echo "- Ref: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
-              echo "- Triggered by: Tag push" >> $GITHUB_STEP_SUMMARY
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "🏷️ **Tag Details:**" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Tag: ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Ref: ${{ github.ref }}" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Triggered by: Tag push" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "ℹ️ **No documentation updates required**" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **No documentation updates required**" >> "$GITHUB_STEP_SUMMARY"
           fi
           
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "🧩 **Modular Components Used:**" >> $GITHUB_STEP_SUMMARY
-          echo "- README Generator Workflow: [examples/readme.yml](github/workflows/examples/readme.yml)" >> $GITHUB_STEP_SUMMARY
-          echo "- README Generator Action: [actions/readme-generate](.github/actions/readme-generate/)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "🧩 **Modular Components Used:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- README Generator Workflow: [examples/readme.yml](github/workflows/examples/readme.yml)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- README Generator Action: [actions/readme-generate](.github/actions/readme-generate/)" >> "$GITHUB_STEP_SUMMARY"

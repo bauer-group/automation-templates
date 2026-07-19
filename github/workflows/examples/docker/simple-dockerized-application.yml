@@ -101,22 +101,22 @@ jobs:
     steps:
       - name: Generate Summary
         run: |
-          echo "## 🐳 Docker Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🐳 Docker Build Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ needs.docker-build.outputs.image-pushed }}" = "true" ]; then
-            echo "✅ **Image pushed successfully**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| Image | \`${{ needs.docker-build.outputs.image-url }}\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| Digest | \`${{ needs.docker-build.outputs.image-digest }}\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| Security Scan | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Image pushed successfully**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Image | \`${{ needs.docker-build.outputs.image-url }}\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Digest | \`${{ needs.docker-build.outputs.image-digest }}\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Security Scan | ✅ Passed |" >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ needs.docker-build.outputs.security-scan-passed }}" = "false" ]; then
-            echo "❌ **Image NOT pushed - Security scan failed**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Vulnerabilities above the threshold were found." >> $GITHUB_STEP_SUMMARY
-            echo "Check the security report in workflow artifacts." >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Image NOT pushed - Security scan failed**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Vulnerabilities above the threshold were found." >> "$GITHUB_STEP_SUMMARY"
+            echo "Check the security report in workflow artifacts." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "ℹ️ **Build completed** (push skipped - likely a PR)" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **Build completed** (push skipped - likely a PR)" >> "$GITHUB_STEP_SUMMARY"
           fi

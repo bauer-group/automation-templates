@@ -475,7 +475,7 @@ jobs:
 
           if [ -z "$NUPKG_FILES" ] || [ "$PACKAGE_COUNT" -eq 0 ]; then
             echo "No .nupkg files found!"
-            echo "pushed=false" >> $GITHUB_OUTPUT
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
@@ -534,10 +534,10 @@ jobs:
           fi
 
           if [ "$PUSHED_COUNT" -gt 0 ]; then
-            echo "pushed=true" >> $GITHUB_OUTPUT
-            echo "pushed-count=$PUSHED_COUNT" >> $GITHUB_OUTPUT
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+            echo "pushed-count=$PUSHED_COUNT" >> "$GITHUB_OUTPUT"
           else
-            echo "pushed=false" >> $GITHUB_OUTPUT
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
@@ -586,7 +586,7 @@ jobs:
 
           if [ -z "$NUPKG_FILES" ] || [ "$PACKAGE_COUNT" -eq 0 ]; then
             echo "No .nupkg files found!"
-            echo "pushed=false" >> $GITHUB_OUTPUT
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
@@ -624,10 +624,10 @@ jobs:
           echo "Push summary: $PUSHED_COUNT succeeded, $FAILED_COUNT failed"
 
           if [ "$PUSHED_COUNT" -gt 0 ]; then
-            echo "pushed=true" >> $GITHUB_OUTPUT
-            echo "pushed-count=$PUSHED_COUNT" >> $GITHUB_OUTPUT
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+            echo "pushed-count=$PUSHED_COUNT" >> "$GITHUB_OUTPUT"
           else
-            echo "pushed=false" >> $GITHUB_OUTPUT
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
@@ -724,103 +724,103 @@ jobs:
           BUILD_SUCCEEDED: ${{ needs.build.outputs.build-succeeded }}
           SYMBOLS_PATH: ${{ needs.build.outputs.symbols-path }}
         run: |
-          echo "## .NET Library Publishing Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## .NET Library Publishing Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           # Build Details section (like action summary)
-          echo "### Build Details" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Project** | \`${{ inputs.project-path }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Configuration** | \`${{ inputs.configuration }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Version** | \`$PACKAGE_VERSION\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Build Status** | ${{ needs.build.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Details" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Project** | \`${{ inputs.project-path }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Configuration** | \`${{ inputs.configuration }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Version** | \`$PACKAGE_VERSION\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Build Status** | ${{ needs.build.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           # Test Results section (if tests were run)
           if [ "${{ inputs.run-tests }}" = "true" ]; then
-            echo "### Test Results" >> $GITHUB_STEP_SUMMARY
-            echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "### Test Results" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
             if [ "$TEST_SKIPPED" = "true" ]; then
-              echo "| **Status** | ⏭️ Skipped (no test projects found) |" >> $GITHUB_STEP_SUMMARY
+              echo "| **Status** | ⏭️ Skipped (no test projects found) |" >> "$GITHUB_STEP_SUMMARY"
             else
               if [ "$TEST_PASSED" = "true" ]; then
-                echo "| **Status** | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+                echo "| **Status** | ✅ Passed |" >> "$GITHUB_STEP_SUMMARY"
               else
-                echo "| **Status** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+                echo "| **Status** | ❌ Failed |" >> "$GITHUB_STEP_SUMMARY"
               fi
               if [ "${{ inputs.collect-coverage }}" = "true" ] && [ -n "$COVERAGE" ]; then
-                echo "| **Coverage** | ${COVERAGE}% |" >> $GITHUB_STEP_SUMMARY
+                echo "| **Coverage** | ${COVERAGE}% |" >> "$GITHUB_STEP_SUMMARY"
               fi
             fi
-            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           # Package section
           if [ "${{ inputs.create-package }}" = "true" ]; then
-            echo "### Packages" >> $GITHUB_STEP_SUMMARY
-            echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "### Packages" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
             if [ -n "$PACKAGE_COUNT" ] && [ "$PACKAGE_COUNT" -gt 1 ] 2>/dev/null; then
-              echo "| **Package Count** | $PACKAGE_COUNT |" >> $GITHUB_STEP_SUMMARY
+              echo "| **Package Count** | $PACKAGE_COUNT |" >> "$GITHUB_STEP_SUMMARY"
               # List all packages from JSON array
               if [ -n "$PACKAGE_NAMES" ] && [ "$PACKAGE_NAMES" != "null" ]; then
-                echo "" >> $GITHUB_STEP_SUMMARY
-                echo "**Packages:**" >> $GITHUB_STEP_SUMMARY
+                echo "" >> "$GITHUB_STEP_SUMMARY"
+                echo "**Packages:**" >> "$GITHUB_STEP_SUMMARY"
                 echo "$PACKAGE_NAMES" | jq -r '.[]' | while read -r pkg; do
-                  echo "- \`$pkg\`" >> $GITHUB_STEP_SUMMARY
+                  echo "- \`$pkg\`" >> "$GITHUB_STEP_SUMMARY"
                 done
-                echo "" >> $GITHUB_STEP_SUMMARY
-                echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-                echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+                echo "" >> "$GITHUB_STEP_SUMMARY"
+                echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+                echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
               fi
             else
-              echo "| **Package** | \`$PACKAGE_NAME\` |" >> $GITHUB_STEP_SUMMARY
+              echo "| **Package** | \`$PACKAGE_NAME\` |" >> "$GITHUB_STEP_SUMMARY"
             fi
-            echo "| **Signed** | ${{ inputs.sign-assembly && '✅ Yes' || '⚪ No' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Signed** | ${{ inputs.sign-assembly && '✅ Yes' || '⚪ No' }} |" >> "$GITHUB_STEP_SUMMARY"
             if [ -n "$SYMBOLS_PATH" ]; then
-              echo "| **Symbols** | ✅ Included |" >> $GITHUB_STEP_SUMMARY
+              echo "| **Symbols** | ✅ Included |" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "| **Symbols** | ${{ inputs.include-symbols && '✅ Included' || '⚪ Not included' }} |" >> $GITHUB_STEP_SUMMARY
+              echo "| **Symbols** | ${{ inputs.include-symbols && '✅ Included' || '⚪ Not included' }} |" >> "$GITHUB_STEP_SUMMARY"
             fi
-            echo "| **Deterministic** | ${{ inputs.deterministic-build && '✅ Yes' || '⚪ No' }} |" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| **Deterministic** | ${{ inputs.deterministic-build && '✅ Yes' || '⚪ No' }} |" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           # Pipeline Status section
-          echo "### Publishing" >> $GITHUB_STEP_SUMMARY
-          echo "| Target | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "### Publishing" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Target | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ inputs.enable-platform-matrix }}" = "true" ]; then
-            echo "| **Build (Windows Validation)** | ${{ needs.build-windows.result == 'success' && '✅ Success' || needs.build-windows.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Build (Windows Validation)** | ${{ needs.build-windows.result == 'success' && '✅ Success' || needs.build-windows.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           # NuGet.org status
           NUGET_COUNT="${{ needs.publish-nuget.outputs.pushed-count }}"
           if [ "${{ inputs.push-to-nuget }}" != "true" ]; then
-            echo "| **NuGet.org** | ⚪ Disabled |" >> $GITHUB_STEP_SUMMARY
+            echo "| **NuGet.org** | ⚪ Disabled |" >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ needs.publish-nuget.result }}" = "success" ]; then
             if [ -n "$NUGET_COUNT" ] && [ "$NUGET_COUNT" -gt 1 ] 2>/dev/null; then
-              echo "| **NuGet.org** | ✅ Published ($NUGET_COUNT packages) |" >> $GITHUB_STEP_SUMMARY
+              echo "| **NuGet.org** | ✅ Published ($NUGET_COUNT packages) |" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "| **NuGet.org** | ✅ Published |" >> $GITHUB_STEP_SUMMARY
+              echo "| **NuGet.org** | ✅ Published |" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "| **NuGet.org** | ❌ Failed/Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "| **NuGet.org** | ❌ Failed/Skipped |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           # GitHub Packages status
           GITHUB_COUNT="${{ needs.publish-github.outputs.pushed-count }}"
           if [ "${{ inputs.push-to-github }}" != "true" ]; then
-            echo "| **GitHub Packages** | ⚪ Disabled |" >> $GITHUB_STEP_SUMMARY
+            echo "| **GitHub Packages** | ⚪ Disabled |" >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ needs.publish-github.result }}" = "success" ]; then
             if [ -n "$GITHUB_COUNT" ] && [ "$GITHUB_COUNT" -gt 1 ] 2>/dev/null; then
-              echo "| **GitHub Packages** | ✅ Published ($GITHUB_COUNT packages) |" >> $GITHUB_STEP_SUMMARY
+              echo "| **GitHub Packages** | ✅ Published ($GITHUB_COUNT packages) |" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "| **GitHub Packages** | ✅ Published |" >> $GITHUB_STEP_SUMMARY
+              echo "| **GitHub Packages** | ✅ Published |" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "| **GitHub Packages** | ❌ Failed/Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "| **GitHub Packages** | ❌ Failed/Skipped |" >> "$GITHUB_STEP_SUMMARY"
           fi

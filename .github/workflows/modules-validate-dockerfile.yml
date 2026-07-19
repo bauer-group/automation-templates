@@ -216,14 +216,14 @@ jobs:
 
           # Save to file for next step
           echo "$DOCKERFILE_FILES" > /tmp/dockerfile-files.txt
-          echo "file-count=$FILE_COUNT" >> $GITHUB_OUTPUT
+          echo "file-count=$FILE_COUNT" >> "$GITHUB_OUTPUT"
 
           # Handle no files found
           if [ "$FILE_COUNT" -eq 0 ]; then
             echo "ℹ️ No Dockerfiles found - skipping validation"
-            echo "no-files=true" >> $GITHUB_OUTPUT
+            echo "no-files=true" >> "$GITHUB_OUTPUT"
           else
-            echo "no-files=false" >> $GITHUB_OUTPUT
+            echo "no-files=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 🐳 Run Hadolint
@@ -417,13 +417,13 @@ jobs:
           echo "   Style:         $TOTAL_STYLE"
 
           # Set outputs
-          echo "passed=$PASSED" >> $GITHUB_OUTPUT
-          echo "files-checked=$FILE_COUNT" >> $GITHUB_OUTPUT
-          echo "issues-found=$TOTAL_ISSUES" >> $GITHUB_OUTPUT
-          echo "error-count=$TOTAL_ERRORS" >> $GITHUB_OUTPUT
-          echo "warning-count=$TOTAL_WARNINGS" >> $GITHUB_OUTPUT
-          echo "info-count=$TOTAL_INFO" >> $GITHUB_OUTPUT
-          echo "style-count=$TOTAL_STYLE" >> $GITHUB_OUTPUT
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "files-checked=$FILE_COUNT" >> "$GITHUB_OUTPUT"
+          echo "issues-found=$TOTAL_ISSUES" >> "$GITHUB_OUTPUT"
+          echo "error-count=$TOTAL_ERRORS" >> "$GITHUB_OUTPUT"
+          echo "warning-count=$TOTAL_WARNINGS" >> "$GITHUB_OUTPUT"
+          echo "info-count=$TOTAL_INFO" >> "$GITHUB_OUTPUT"
+          echo "style-count=$TOTAL_STYLE" >> "$GITHUB_OUTPUT"
 
           # Determine exit status
           if [ "$PASSED" = "false" ] && [ "${{ inputs.fail-on-findings }}" = "true" ]; then
@@ -443,21 +443,21 @@ jobs:
         id: no-files
         shell: bash
         run: |
-          echo "passed=true" >> $GITHUB_OUTPUT
-          echo "files-checked=0" >> $GITHUB_OUTPUT
-          echo "issues-found=0" >> $GITHUB_OUTPUT
-          echo "error-count=0" >> $GITHUB_OUTPUT
-          echo "warning-count=0" >> $GITHUB_OUTPUT
-          echo "info-count=0" >> $GITHUB_OUTPUT
-          echo "style-count=0" >> $GITHUB_OUTPUT
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+          echo "files-checked=0" >> "$GITHUB_OUTPUT"
+          echo "issues-found=0" >> "$GITHUB_OUTPUT"
+          echo "error-count=0" >> "$GITHUB_OUTPUT"
+          echo "warning-count=0" >> "$GITHUB_OUTPUT"
+          echo "info-count=0" >> "$GITHUB_OUTPUT"
+          echo "style-count=0" >> "$GITHUB_OUTPUT"
           echo "ℹ️ No Dockerfiles found - validation passed"
 
       - name: 📊 Summary
         if: always()
         shell: bash
         run: |
-          echo "### 🐳 Dockerfile Validation Results (Hadolint)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🐳 Dockerfile Validation Results (Hadolint)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           PASSED="${{ steps.hadolint.outputs.passed || steps.no-files.outputs.passed || 'true' }}"
           FILES="${{ steps.hadolint.outputs.files-checked || steps.no-files.outputs.files-checked || '0' }}"
@@ -468,52 +468,52 @@ jobs:
           STYLE="${{ steps.hadolint.outputs.style-count || steps.no-files.outputs.style-count || '0' }}"
 
           if [ "$PASSED" = "true" ]; then
-            echo "✅ **Validation Passed**" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Validation Passed**" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ **Validation Failed**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Validation Failed**" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Files Checked** | $FILES |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Total Issues** | $ISSUES |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Errors** | $ERRORS |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Warnings** | $WARNINGS |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Info** | $INFO |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Style** | $STYLE |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Count |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Files Checked** | $FILES |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Total Issues** | $ISSUES |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Errors** | $ERRORS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Warnings** | $WARNINGS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Info** | $INFO |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Style** | $STYLE |" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### ⚙️ Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Failure Threshold** | \`${{ inputs.failure-threshold }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Scan Directory** | \`${{ inputs.scan-directory }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Recursive** | \`${{ inputs.recursive }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Fail on Findings** | \`${{ inputs.fail-on-findings }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "#### ⚙️ Configuration" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Setting | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Failure Threshold** | \`${{ inputs.failure-threshold }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Scan Directory** | \`${{ inputs.scan-directory }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Recursive** | \`${{ inputs.recursive }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Fail on Findings** | \`${{ inputs.fail-on-findings }}\` |" >> "$GITHUB_STEP_SUMMARY"
 
           # Show ignored rules if any
           IGNORED='${{ inputs.ignore-rules }}'
           if [ -n "$IGNORED" ] && [ "$IGNORED" != '' ]; then
             IGNORED_LIST=$(echo "$IGNORED" | python3 -c "import sys, json; print(', '.join(json.load(sys.stdin)))" 2>/dev/null || echo "$IGNORED")
-            echo "| **Ignored Rules** | \`$IGNORED_LIST\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Ignored Rules** | \`$IGNORED_LIST\` |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### 📚 Common Hadolint Rules" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Rule | Description |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------------|" >> $GITHUB_STEP_SUMMARY
-          echo "| DL3000 | Use absolute WORKDIR |" >> $GITHUB_STEP_SUMMARY
-          echo "| DL3001 | Use WORKDIR instead of RUN cd |" >> $GITHUB_STEP_SUMMARY
-          echo "| DL3002 | Do not switch to root USER |" >> $GITHUB_STEP_SUMMARY
-          echo "| DL3003 | Use WORKDIR to switch to directory |" >> $GITHUB_STEP_SUMMARY
-          echo "| DL3006 | Always tag image version |" >> $GITHUB_STEP_SUMMARY
-          echo "| DL3007 | Avoid using latest tag |" >> $GITHUB_STEP_SUMMARY
-          echo "| DL3008 | Pin versions in apt-get install |" >> $GITHUB_STEP_SUMMARY
-          echo "| DL3013 | Pin versions in pip install |" >> $GITHUB_STEP_SUMMARY
-          echo "| DL3018 | Pin versions in apk add |" >> $GITHUB_STEP_SUMMARY
-          echo "| DL3025 | Use JSON notation for CMD |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "[📖 Full Hadolint Rules Reference](https://github.com/hadolint/hadolint#rules)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "#### 📚 Common Hadolint Rules" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Rule | Description |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-------------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| DL3000 | Use absolute WORKDIR |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| DL3001 | Use WORKDIR instead of RUN cd |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| DL3002 | Do not switch to root USER |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| DL3003 | Use WORKDIR to switch to directory |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| DL3006 | Always tag image version |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| DL3007 | Avoid using latest tag |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| DL3008 | Pin versions in apt-get install |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| DL3013 | Pin versions in pip install |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| DL3018 | Pin versions in apk add |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| DL3025 | Use JSON notation for CMD |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "[📖 Full Hadolint Rules Reference](https://github.com/hadolint/hadolint#rules)" >> "$GITHUB_STEP_SUMMARY"

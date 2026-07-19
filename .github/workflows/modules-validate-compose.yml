@@ -116,14 +116,14 @@ jobs:
           if [ -n "${{ inputs.env-file }}" ] && [ -f "${{ inputs.env-file }}" ]; then
             echo "📄 Using provided .env file: ${{ inputs.env-file }}"
             cp "${{ inputs.env-file }}" .env.validation
-            echo "env-file=.env.validation" >> $GITHUB_OUTPUT
+            echo "env-file=.env.validation" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           # Check if .env already exists
           if [ -f ".env" ]; then
             echo "📄 Using existing .env file"
-            echo "env-file=.env" >> $GITHUB_OUTPUT
+            echo "env-file=.env" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -205,10 +205,10 @@ jobs:
             fi
 
             echo "📄 Created .env.validation with $(wc -l < .env.validation) entries"
-            echo "env-file=.env.validation" >> $GITHUB_OUTPUT
+            echo "env-file=.env.validation" >> "$GITHUB_OUTPUT"
           else
             echo "⚠️ No .env file available and create-dummy-env is disabled"
-            echo "env-file=" >> $GITHUB_OUTPUT
+            echo "env-file=" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 🐳 Validate Docker Compose
@@ -314,9 +314,9 @@ jobs:
           fi
 
           # Set outputs
-          echo "valid=$VALID" >> $GITHUB_OUTPUT
-          echo "services=$ALL_SERVICES" >> $GITHUB_OUTPUT
-          echo "service-count=$SERVICE_COUNT" >> $GITHUB_OUTPUT
+          echo "valid=$VALID" >> "$GITHUB_OUTPUT"
+          echo "services=$ALL_SERVICES" >> "$GITHUB_OUTPUT"
+          echo "service-count=$SERVICE_COUNT" >> "$GITHUB_OUTPUT"
 
           # Handle warnings output (only if not empty)
           if [ -n "$WARNINGS" ]; then
@@ -324,9 +324,9 @@ jobs:
               echo 'warnings<<EOF'
               echo "$WARNINGS"
               echo 'EOF'
-            } >> $GITHUB_OUTPUT
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "warnings=" >> $GITHUB_OUTPUT
+            echo "warnings=" >> "$GITHUB_OUTPUT"
           fi
 
           # Final status
@@ -417,18 +417,18 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo "### 🐳 Docker Compose Validation Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🐳 Docker Compose Validation Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ steps.validate.outputs.valid }}" = "true" ]; then
-            echo "✅ **Validation Passed**" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Validation Passed**" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ **Validation Failed**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Validation Failed**" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
 
           # Show compose files (multiple or single)
           COMPOSE_FILES_INPUT='${{ inputs.compose-files }}'
@@ -439,25 +439,25 @@ jobs:
           files = json.load(sys.stdin)
           print(', '.join([f'\`{f}\`' for f in files]))
           " 2>/dev/null || echo "$COMPOSE_FILES_INPUT")
-            echo "| **Compose Files** | $FILES_LIST |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Compose Files** | $FILES_LIST |" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "| **Compose File** | \`${{ inputs.compose-file }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Compose File** | \`${{ inputs.compose-file }}\` |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          echo "| **Services Found** | ${{ steps.validate.outputs.service-count }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Service Names** | ${{ steps.validate.outputs.services }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Working Directory** | \`${{ inputs.working-directory }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Services Found** | ${{ steps.validate.outputs.service-count }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Service Names** | ${{ steps.validate.outputs.services }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Working Directory** | \`${{ inputs.working-directory }}\` |" >> "$GITHUB_STEP_SUMMARY"
 
           # COMPOSE_PROFILES is propagated via $GITHUB_ENV from the validate step
           if [ -n "$COMPOSE_PROFILES" ]; then
-            echo "| **Profiles Activated** | \`$COMPOSE_PROFILES\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Profiles Activated** | \`$COMPOSE_PROFILES\` |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           WARNINGS_OUTPUT="${{ steps.validate.outputs.warnings }}"
           if [ -n "$WARNINGS_OUTPUT" ] && [ "$WARNINGS_OUTPUT" != "" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "#### ⚠️ Warnings" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "$WARNINGS_OUTPUT" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "#### ⚠️ Warnings" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "$WARNINGS_OUTPUT" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
           fi

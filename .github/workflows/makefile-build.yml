@@ -227,7 +227,7 @@ jobs:
           DIST_ICON=$(status_icon "${{ steps.build.outputs.distcheck-status }}")
 
           # Create job summary
-          cat >> $GITHUB_STEP_SUMMARY << EOF
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
           # 🔨 Makefile Build Summary
 
           ## 📊 Results

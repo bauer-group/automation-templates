@@ -113,31 +113,31 @@ jobs:
     steps:
       - name: Generate Summary
         run: |
-          echo "## Pipeline Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Pipeline Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "### Build" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Status | \`${{ needs.build.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Image | \`${{ needs.build.outputs.image-url }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Security | \`${{ needs.build.outputs.security-scan-passed == 'true' && 'Passed' || 'Failed' }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Status | \`${{ needs.build.result }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image | \`${{ needs.build.outputs.image-url }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Security | \`${{ needs.build.outputs.security-scan-passed == 'true' && 'Passed' || 'Failed' }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "${{ needs.deploy.result }}" != "skipped" ]]; then
-            echo "### Deployment (main)" >> $GITHUB_STEP_SUMMARY
-            echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| Status | \`${{ needs.deploy.outputs.deployment-status }}\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| Deployment ID | \`${{ needs.deploy.outputs.deployment-id }}\` |" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Deployment (main)" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Status | \`${{ needs.deploy.outputs.deployment-status }}\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Deployment ID | \`${{ needs.deploy.outputs.deployment-id }}\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           if [[ "${{ needs.deploy-release.result }}" != "skipped" ]]; then
-            echo "### Deployment (Release)" >> $GITHUB_STEP_SUMMARY
-            echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| Version | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
-            echo "| Status | \`${{ needs.deploy-release.outputs.deployment-status }}\` |" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Deployment (Release)" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Version | \`${{ github.ref_name }}\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Status | \`${{ needs.deploy-release.outputs.deployment-status }}\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
           fi

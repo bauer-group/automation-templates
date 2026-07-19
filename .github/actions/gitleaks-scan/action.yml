@@ -167,7 +167,7 @@ runs:
         sudo mv gitleaks /usr/local/bin/ 2>/dev/null || mv gitleaks $HOME/.local/bin/ 2>/dev/null || {
           mkdir -p $HOME/bin
           mv gitleaks $HOME/bin/
-          echo "$HOME/bin" >> $GITHUB_PATH
+          echo "$HOME/bin" >> "$GITHUB_PATH"
         }
         
         # Verify installation
@@ -417,8 +417,8 @@ runs:
         fi
         
         # Output results
-        echo "secrets-found=$SECRETS_FOUND" >> $GITHUB_OUTPUT
-        echo "secrets-count=$SECRETS_COUNT" >> $GITHUB_OUTPUT
+        echo "secrets-found=$SECRETS_FOUND" >> "$GITHUB_OUTPUT"
+        echo "secrets-count=$SECRETS_COUNT" >> "$GITHUB_OUTPUT"
         
         echo "📊 Gitleaks Scan Results:"
         echo "  • Secrets Found: $SECRETS_FOUND"
@@ -461,9 +461,9 @@ runs:
           SCAN_STATUS="warning"
         fi
         
-        echo "security-score=$SECURITY_SCORE" >> $GITHUB_OUTPUT
-        echo "scan-status=$SCAN_STATUS" >> $GITHUB_OUTPUT
-        echo "report-path=gitleaks-reports/" >> $GITHUB_OUTPUT
+        echo "security-score=$SECURITY_SCORE" >> "$GITHUB_OUTPUT"
+        echo "scan-status=$SCAN_STATUS" >> "$GITHUB_OUTPUT"
+        echo "report-path=gitleaks-reports/" >> "$GITHUB_OUTPUT"
         
         # Create comprehensive summary report
         cat > gitleaks-reports/security-summary.md << EOF

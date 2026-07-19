@@ -151,7 +151,7 @@ jobs:
 
           # Remove trailing slash if present
           COOLIFY_URL="${COOLIFY_URL%/}"
-          echo "coolify-url=$COOLIFY_URL" >> $GITHUB_OUTPUT
+          echo "coolify-url=$COOLIFY_URL" >> "$GITHUB_OUTPUT"
 
           # Validate UUID format (basic check)
           APP_UUID="${{ inputs.app-uuid }}"
@@ -292,15 +292,15 @@ jobs:
           MESSAGE=$(echo "$RESPONSE" | jq -r '.message // empty' 2>/dev/null)
 
           if [[ -n "$DEPLOYMENT_ID" && "$DEPLOYMENT_ID" != "null" ]]; then
-            echo "deployment-id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
-            echo "deployment-url=${COOLIFY_URL}/project/*/application/${APP_UUID}/deployment/${DEPLOYMENT_ID}" >> $GITHUB_OUTPUT
+            echo "deployment-id=$DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
+            echo "deployment-url=${COOLIFY_URL}/project/*/application/${APP_UUID}/deployment/${DEPLOYMENT_ID}" >> "$GITHUB_OUTPUT"
             echo ""
             echo "📋 Deployment Details:"
             echo "   Deployment ID: $DEPLOYMENT_ID"
             echo "   Message: ${MESSAGE:-Deployment started}"
           else
-            echo "deployment-id=" >> $GITHUB_OUTPUT
-            echo "deployment-url=${COOLIFY_URL}/project/*/application/${APP_UUID}" >> $GITHUB_OUTPUT
+            echo "deployment-id=" >> "$GITHUB_OUTPUT"
+            echo "deployment-url=${COOLIFY_URL}/project/*/application/${APP_UUID}" >> "$GITHUB_OUTPUT"
             echo ""
             echo "📋 Deployment triggered (no deployment ID returned)"
             echo "   Message: ${MESSAGE:-Deployment started}"
@@ -377,7 +377,7 @@ jobs:
                   echo "   Finished at: $FINISHED_AT"
                 fi
 
-                echo "status=success" >> $GITHUB_OUTPUT
+                echo "status=success" >> "$GITHUB_OUTPUT"
                 exit 0
                 ;;
               "failed"|"error"|"cancelled")
@@ -390,7 +390,7 @@ jobs:
                   echo "   Error: $ERROR_MSG"
                 fi
 
-                echo "status=failed" >> $GITHUB_OUTPUT
+                echo "status=failed" >> "$GITHUB_OUTPUT"
 
                 if [[ "${{ inputs.fail-on-error }}" == "true" ]]; then
                   exit 1
@@ -417,7 +417,7 @@ jobs:
           echo ""
           echo "::error::Deployment timed out after ${TIMEOUT}s"
           echo "   Last known status: ${LAST_STATUS:-unknown}"
-          echo "status=timeout" >> $GITHUB_OUTPUT
+          echo "status=timeout" >> "$GITHUB_OUTPUT"
 
           if [[ "${{ inputs.fail-on-error }}" == "true" ]]; then
             exit 1
@@ -444,7 +444,7 @@ jobs:
             FINAL_STATUS="failed"
           fi
 
-          echo "status=$FINAL_STATUS" >> $GITHUB_OUTPUT
+          echo "status=$FINAL_STATUS" >> "$GITHUB_OUTPUT"
           echo ""
           echo "📊 Final Status: $FINAL_STATUS"
 
@@ -452,72 +452,72 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo "## 🚀 Coolify Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Coolify Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           # Status badge
           STATUS="${{ steps.status.outputs.status }}"
           case "$STATUS" in
             "success")
-              echo "> ✅ **Deployment completed successfully**" >> $GITHUB_STEP_SUMMARY
+              echo "> ✅ **Deployment completed successfully**" >> "$GITHUB_STEP_SUMMARY"
               ;;
             "started")
-              echo "> 🚀 **Deployment triggered successfully**" >> $GITHUB_STEP_SUMMARY
+              echo "> 🚀 **Deployment triggered successfully**" >> "$GITHUB_STEP_SUMMARY"
               ;;
             "failed")
-              echo "> ❌ **Deployment failed**" >> $GITHUB_STEP_SUMMARY
+              echo "> ❌ **Deployment failed**" >> "$GITHUB_STEP_SUMMARY"
               ;;
             "timeout")
-              echo "> ⏱️ **Deployment timed out**" >> $GITHUB_STEP_SUMMARY
+              echo "> ⏱️ **Deployment timed out**" >> "$GITHUB_STEP_SUMMARY"
               ;;
             *)
-              echo "> ⚠️ **Deployment status: $STATUS**" >> $GITHUB_STEP_SUMMARY
+              echo "> ⚠️ **Deployment status: $STATUS**" >> "$GITHUB_STEP_SUMMARY"
               ;;
           esac
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           # Configuration table
-          echo "### ⚙️ Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Coolify URL | \`${{ steps.validate.outputs.coolify-url }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| App UUID | \`${{ inputs.app-uuid }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Force Rebuild | \`${{ inputs.force }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Tag | \`${{ inputs.tag || 'latest' }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Wait for Completion | \`${{ inputs.wait-for-completion }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "### ⚙️ Configuration" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Coolify URL | \`${{ steps.validate.outputs.coolify-url }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| App UUID | \`${{ inputs.app-uuid }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Force Rebuild | \`${{ inputs.force }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tag | \`${{ inputs.tag || 'latest' }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Wait for Completion | \`${{ inputs.wait-for-completion }}\` |" >> "$GITHUB_STEP_SUMMARY"
           if [[ "${{ inputs.wait-for-completion }}" == "true" ]]; then
-            echo "| Wait Timeout | \`${{ inputs.wait-timeout }}s\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Wait Timeout | \`${{ inputs.wait-timeout }}s\` |" >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           # Deployment details
-          echo "### 📋 Deployment Details" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Deployment Details" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
 
           DEPLOYMENT_ID="${{ steps.trigger.outputs.deployment-id }}"
           if [[ -n "$DEPLOYMENT_ID" ]]; then
-            echo "| Deployment ID | \`$DEPLOYMENT_ID\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Deployment ID | \`$DEPLOYMENT_ID\` |" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "| Deployment ID | N/A |" >> $GITHUB_STEP_SUMMARY
+            echo "| Deployment ID | N/A |" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          echo "| Status | \`$STATUS\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Triggered At | \`$(date -u +"%Y-%m-%dT%H:%M:%SZ")\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | \`$STATUS\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Triggered At | \`$(date -u +"%Y-%m-%dT%H:%M:%SZ")\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           # Link to Coolify
           DEPLOYMENT_URL="${{ steps.trigger.outputs.deployment-url }}"
           if [[ -n "$DEPLOYMENT_URL" ]]; then
-            echo "### 🔗 Links" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "- [View in Coolify]($DEPLOYMENT_URL)" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🔗 Links" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- [View in Coolify]($DEPLOYMENT_URL)" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           # Workflow info
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "*Triggered by: ${{ github.actor }} • Workflow: ${{ github.workflow }} • Run: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "*Triggered by: ${{ github.actor }} • Workflow: ${{ github.workflow }} • Run: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*" >> "$GITHUB_STEP_SUMMARY"

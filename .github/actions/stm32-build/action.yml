@@ -105,7 +105,7 @@ runs:
           SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9]/-/g' | head -c 20)
           VERSION="0.0.0-${SAFE_BRANCH}+${SHORT_SHA}"
         fi
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
     - name: Install ARM GCC Toolchain
       shell: bash
@@ -118,7 +118,7 @@ runs:
         TOOLCHAIN_BIN=$(find "$TOOLCHAIN_PATH" -name "bin" -type d 2>/dev/null | head -1)
 
         if [[ -n "$TOOLCHAIN_BIN" ]]; then
-          echo "$TOOLCHAIN_BIN" >> $GITHUB_PATH
+          echo "$TOOLCHAIN_BIN" >> "$GITHUB_PATH"
         fi
 
         arm-none-eabi-gcc --version
@@ -155,7 +155,7 @@ runs:
 
         make -j$(nproc) BUILD_TYPE="$BUILD_TYPE" OPT="$OPT" ${{ inputs.extra-build-args }}
 
-        echo "status=success" >> $GITHUB_OUTPUT
+        echo "status=success" >> "$GITHUB_OUTPUT"
 
     - name: Build with CMake
       if: inputs.build-system == 'cmake'
@@ -186,8 +186,8 @@ runs:
           DATA=$(echo "$SIZES" | awk '{print $2}')
           BSS=$(echo "$SIZES" | awk '{print $3}')
 
-          echo "flash-size=$((TEXT + DATA))" >> $GITHUB_OUTPUT
-          echo "ram-size=$((DATA + BSS))" >> $GITHUB_OUTPUT
+          echo "flash-size=$((TEXT + DATA))" >> "$GITHUB_OUTPUT"
+          echo "ram-size=$((DATA + BSS))" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Generate Output Files
@@ -219,7 +219,7 @@ runs:
           sha256sum *.bin *.hex *.elf 2>/dev/null > checksums.sha256 || true
         fi
 
-        echo "output-dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
+        echo "output-dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
 
     - name: Static Analysis
       if: inputs.enable-analysis == 'true'

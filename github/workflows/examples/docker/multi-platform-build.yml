@@ -65,13 +65,13 @@ jobs:
     steps:
       - name: Verify Manifest
         run: |
-          echo "## Multi-Platform Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Platforms Built" >> $GITHUB_STEP_SUMMARY
-          echo "- linux/amd64" >> $GITHUB_STEP_SUMMARY
-          echo "- linux/arm64" >> $GITHUB_STEP_SUMMARY
-          echo "- linux/arm/v7" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Image" >> $GITHUB_STEP_SUMMARY
-          echo "- **URL:** \`${{ needs.docker-build.outputs.image-url }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Digest:** \`${{ needs.docker-build.outputs.image-digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "## Multi-Platform Build Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Platforms Built" >> "$GITHUB_STEP_SUMMARY"
+          echo "- linux/amd64" >> "$GITHUB_STEP_SUMMARY"
+          echo "- linux/arm64" >> "$GITHUB_STEP_SUMMARY"
+          echo "- linux/arm/v7" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Image" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **URL:** \`${{ needs.docker-build.outputs.image-url }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Digest:** \`${{ needs.docker-build.outputs.image-digest }}\`" >> "$GITHUB_STEP_SUMMARY"

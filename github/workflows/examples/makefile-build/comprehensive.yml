@@ -57,9 +57,9 @@ jobs:
         id: version
         run: |
           if [ "${{ github.event_name }}" = "release" ]; then
-            echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            echo "version=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
           else
-            echo "version=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "version=${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
 
   # Security and compliance scan
@@ -172,16 +172,16 @@ jobs:
         run: |
           export CC=${{ matrix.cc }}
           export CXX=${{ matrix.cxx }}
-          echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
-          echo "CXX=${{ matrix.cxx }}" >> $GITHUB_ENV
+          echo "CC=${{ matrix.cc }}" >> "$GITHUB_ENV"
+          echo "CXX=${{ matrix.cxx }}" >> "$GITHUB_ENV"
           
           # Set build-specific flags
           if [ "${{ matrix.config }}" = "debug" ]; then
-            echo "CFLAGS=-O0 -g3 -Wall -Wextra -DDEBUG" >> $GITHUB_ENV
-            echo "CXXFLAGS=-O0 -g3 -Wall -Wextra -DDEBUG" >> $GITHUB_ENV
+            echo "CFLAGS=-O0 -g3 -Wall -Wextra -DDEBUG" >> "$GITHUB_ENV"
+            echo "CXXFLAGS=-O0 -g3 -Wall -Wextra -DDEBUG" >> "$GITHUB_ENV"
           else
-            echo "CFLAGS=-O3 -DNDEBUG -Wall -Wextra" >> $GITHUB_ENV
-            echo "CXXFLAGS=-O3 -DNDEBUG -Wall -Wextra" >> $GITHUB_ENV
+            echo "CFLAGS=-O3 -DNDEBUG -Wall -Wextra" >> "$GITHUB_ENV"
+            echo "CXXFLAGS=-O3 -DNDEBUG -Wall -Wextra" >> "$GITHUB_ENV"
           fi
       
       - name: 🔨 Build & Test
@@ -410,7 +410,7 @@ jobs:
     steps:
       - name: 📊 Generate Build Summary
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << EOF
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
           # 🚀 Comprehensive Build Summary
           
           ## Build Information

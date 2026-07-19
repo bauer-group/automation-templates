@@ -52,10 +52,10 @@ runs:
         
         # Check for releasable changes
         if echo "$COMMITS" | grep -qE "^(feat|fix|perf|revert|BREAKING CHANGE)"; then
-          echo "has-changes=true" >> $GITHUB_OUTPUT
+          echo "has-changes=true" >> "$GITHUB_OUTPUT"
           echo "✅ Found releasable changes"
         else
-          echo "has-changes=false" >> $GITHUB_OUTPUT
+          echo "has-changes=false" >> "$GITHUB_OUTPUT"
           echo "ℹ️ No releasable changes found"
         fi
         
@@ -143,9 +143,9 @@ runs:
         
         # Set output
         CHANGELOG_CONTENT=$(cat "$OUTPUT_FILE")
-        echo "changelog<<EOF" >> $GITHUB_OUTPUT
-        echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        echo "changelog<<EOF" >> "$GITHUB_OUTPUT"
+        echo "$CHANGELOG_CONTENT" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
         
         echo "📝 Changelog generated to $OUTPUT_FILE"
 

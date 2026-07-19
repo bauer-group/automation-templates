@@ -57,8 +57,8 @@ jobs:
           
       - name: 📊 Build Summary
         run: |
-          echo "### Build Results 📊" >> $GITHUB_STEP_SUMMARY
-          echo "- **Board**: ${{ matrix.board }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Build Type**: ${{ matrix.build-type }}" >> $GITHUB_STEP_SUMMARY  
-          echo "- **Status**: ${{ steps.build.outputs.build-status }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Build Time**: ${{ steps.build.outputs.build-time }}s" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Results 📊" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Board**: ${{ matrix.board }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Build Type**: ${{ matrix.build-type }}" >> "$GITHUB_STEP_SUMMARY"  
+          echo "- **Status**: ${{ steps.build.outputs.build-status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Build Time**: ${{ steps.build.outputs.build-time }}s" >> "$GITHUB_STEP_SUMMARY"

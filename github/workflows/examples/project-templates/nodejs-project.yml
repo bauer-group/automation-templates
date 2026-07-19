@@ -166,43 +166,43 @@ jobs:
     steps:
       - name: 📊 Generate Node.js Summary
         run: |
-          echo "### 📦 Node.js Project Pipeline Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Project Type:** Node.js Application/Package" >> $GITHUB_STEP_SUMMARY
-          echo "**Node.js Versions Tested:** 18, 20, 22" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Node.js Project Pipeline Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Project Type:** Node.js Application/Package" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Node.js Versions Tested:** 18, 20, 22" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
-          echo "| Stage | Status | Details |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|---------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Tests** | ${{ needs.test.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Multi-version testing |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Dependencies & code |" >> $GITHUB_STEP_SUMMARY
-          echo "| **License Check** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | NPM packages |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Release** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Created: ${{ needs.release.outputs.release-created }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Build & Publish** | ${{ needs.build-and-publish.result == 'success' && '✅ PASS' || needs.build-and-publish.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | NPM: ${{ inputs.npm-publish && 'Published' || 'Skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Artifacts** | ${{ needs.artifacts.result == 'success' && '✅ PASS' || needs.artifacts.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Release assets |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status | Details |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|---------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Tests** | ${{ needs.test.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Multi-version testing |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Dependencies & code |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **License Check** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | NPM packages |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Release** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Created: ${{ needs.release.outputs.release-created }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Build & Publish** | ${{ needs.build-and-publish.result == 'success' && '✅ PASS' || needs.build-and-publish.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | NPM: ${{ inputs.npm-publish && 'Published' || 'Skipped' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Artifacts** | ${{ needs.artifacts.result == 'success' && '✅ PASS' || needs.artifacts.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Release assets |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [ "${{ needs.release.outputs.release-created }}" = "true" ]; then
-            echo "🎉 **Node.js Release ${{ needs.release.outputs.version }} Successfully Created!**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Release Information:**" >> $GITHUB_STEP_SUMMARY
-            echo "- **Version:** ${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **GitHub Release:** ${{ needs.release.outputs.release-url }}" >> $GITHUB_STEP_SUMMARY
+            echo "🎉 **Node.js Release ${{ needs.release.outputs.version }} Successfully Created!**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Release Information:**" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Version:** ${{ needs.release.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **GitHub Release:** ${{ needs.release.outputs.release-url }}" >> "$GITHUB_STEP_SUMMARY"
             
             if [ "${{ inputs.npm-publish }}" = "true" ]; then
-              echo "- **NPM Package:** \`npm install ${{ github.event.repository.name }}@${{ needs.release.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+              echo "- **NPM Package:** \`npm install ${{ github.event.repository.name }}@${{ needs.release.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "- **NPM Publishing:** Skipped (enable with workflow_dispatch input)" >> $GITHUB_STEP_SUMMARY
+              echo "- **NPM Publishing:** Skipped (enable with workflow_dispatch input)" >> "$GITHUB_STEP_SUMMARY"
             fi
             
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
-            echo "- 📖 Update documentation if needed" >> $GITHUB_STEP_SUMMARY
-            echo "- 🔄 Test the published package" >> $GITHUB_STEP_SUMMARY
-            echo "- 📢 Announce the release to users" >> $GITHUB_STEP_SUMMARY
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Next Steps:**" >> "$GITHUB_STEP_SUMMARY"
+            echo "- 📖 Update documentation if needed" >> "$GITHUB_STEP_SUMMARY"
+            echo "- 🔄 Test the published package" >> "$GITHUB_STEP_SUMMARY"
+            echo "- 📢 Announce the release to users" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "ℹ️ **No release created.** Common reasons:" >> $GITHUB_STEP_SUMMARY
-            echo "- No conventional commits since last release" >> $GITHUB_STEP_SUMMARY
-            echo "- Only documentation or configuration changes" >> $GITHUB_STEP_SUMMARY
-            echo "- Release PR already exists and pending review" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **No release created.** Common reasons:" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No conventional commits since last release" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Only documentation or configuration changes" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Release PR already exists and pending review" >> "$GITHUB_STEP_SUMMARY"
           fi

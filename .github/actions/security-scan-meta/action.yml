@@ -122,7 +122,7 @@ runs:
           exit 1
         fi
         
-        echo "ENGINES_TO_USE=$ENGINES_TO_USE" >> $GITHUB_ENV
+        echo "ENGINES_TO_USE=$ENGINES_TO_USE" >> "$GITHUB_ENV"
 
     - name: 🔍 Run Gitleaks Security Scan
       id: gitleaks-scan
@@ -194,10 +194,10 @@ runs:
           echo "ℹ️ No Trivy report found, skipping evaluation"
         fi
 
-        echo "vulnerabilities-found=$VULNS_FOUND" >> $GITHUB_OUTPUT
-        echo "trivy-critical=$CRITICAL" >> $GITHUB_OUTPUT
-        echo "trivy-high=$HIGH" >> $GITHUB_OUTPUT
-        echo "trivy-medium=$MEDIUM" >> $GITHUB_OUTPUT
+        echo "vulnerabilities-found=$VULNS_FOUND" >> "$GITHUB_OUTPUT"
+        echo "trivy-critical=$CRITICAL" >> "$GITHUB_OUTPUT"
+        echo "trivy-high=$HIGH" >> "$GITHUB_OUTPUT"
+        echo "trivy-medium=$MEDIUM" >> "$GITHUB_OUTPUT"
         echo "Vulnerabilities found: $VULNS_FOUND"
 
     - name: 📊 Generate Dual Security Summary
@@ -311,10 +311,10 @@ runs:
           SUMMARY="Security Issues Found"
         fi
         
-        echo "security-score=$COMBINED_SCORE" >> $GITHUB_OUTPUT
-        echo "best-engine-score=$BEST_SCORE" >> $GITHUB_OUTPUT
-        echo "scan-results=$SUMMARY" >> $GITHUB_OUTPUT
-        echo "engines-used=$ENGINES_USED" >> $GITHUB_OUTPUT
+        echo "security-score=$COMBINED_SCORE" >> "$GITHUB_OUTPUT"
+        echo "best-engine-score=$BEST_SCORE" >> "$GITHUB_OUTPUT"
+        echo "scan-results=$SUMMARY" >> "$GITHUB_OUTPUT"
+        echo "engines-used=$ENGINES_USED" >> "$GITHUB_OUTPUT"
         
         # Create comprehensive summary report
         cat > security-reports/dual-security-summary.md << EOF

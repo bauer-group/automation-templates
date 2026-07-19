@@ -190,7 +190,7 @@ jobs:
             fi
           fi
 
-          echo "branch=$BASE_BRANCH" >> $GITHUB_OUTPUT
+          echo "branch=$BASE_BRANCH" >> "$GITHUB_OUTPUT"
           echo ""
           echo "📋 Using branch: $BASE_BRANCH"
 
@@ -236,9 +236,9 @@ jobs:
           DESCRIPTION=$(jq -r '.description // "Automated repository collection"' "$CONFIG_FILE")
           GROUP_COUNT=$(jq '.groups | length' "$CONFIG_FILE")
 
-          echo "title=$TITLE" >> $GITHUB_OUTPUT
-          echo "description=$DESCRIPTION" >> $GITHUB_OUTPUT
-          echo "group-count=$GROUP_COUNT" >> $GITHUB_OUTPUT
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
+          echo "description=$DESCRIPTION" >> "$GITHUB_OUTPUT"
+          echo "group-count=$GROUP_COUNT" >> "$GITHUB_OUTPUT"
 
           echo "✅ Configuration loaded:"
           echo "   Title: $TITLE"
@@ -343,7 +343,7 @@ jobs:
             echo ""
           done < <(jq -c '.groups[]' "$CONFIG_FILE")
 
-          echo "total-repos=$TOTAL_REPOS" >> $GITHUB_OUTPUT
+          echo "total-repos=$TOTAL_REPOS" >> "$GITHUB_OUTPUT"
           echo ""
           echo "✅ Total repositories found: $TOTAL_REPOS"
 
@@ -537,9 +537,9 @@ jobs:
           done < <(jq -c '.groups[]' "$CONFIG_FILE")
 
           # Save statistics
-          echo "added=$ADDED" >> $GITHUB_OUTPUT
-          echo "updated=$UPDATED" >> $GITHUB_OUTPUT
-          echo "removed=$REMOVED" >> $GITHUB_OUTPUT
+          echo "added=$ADDED" >> "$GITHUB_OUTPUT"
+          echo "updated=$UPDATED" >> "$GITHUB_OUTPUT"
+          echo "removed=$REMOVED" >> "$GITHUB_OUTPUT"
 
           echo "✅ Submodule sync complete:"
           echo "   Added: $ADDED"
@@ -701,23 +701,23 @@ jobs:
           REMOVED="${{ steps.sync-submodules.outputs.removed }}"
 
           SUMMARY="Synced ${TOTAL_REPOS} repositories: ${ADDED} added, ${UPDATED} updated, ${REMOVED} removed"
-          echo "result=${SUMMARY}" >> $GITHUB_OUTPUT
+          echo "result=${SUMMARY}" >> "$GITHUB_OUTPUT"
 
-          echo "### 🔄 Meta Repository Sync Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Total Repositories** | ${TOTAL_REPOS} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Submodules Added** | ${ADDED} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Submodules Updated** | ${UPDATED} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Submodules Removed** | ${REMOVED} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Topic Groups** | ${{ steps.load-config.outputs.group-count }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔄 Meta Repository Sync Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Total Repositories** | ${TOTAL_REPOS} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Submodules Added** | ${ADDED} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Submodules Updated** | ${UPDATED} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Submodules Removed** | ${REMOVED} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Topic Groups** | ${{ steps.load-config.outputs.group-count }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           # List groups
-          echo "#### 📋 Topic Groups" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          jq -r '.groups[] | "- **\(.name)** (`\(.topic)`) - \(.description)"' "${{ inputs.config-file }}" >> $GITHUB_STEP_SUMMARY
+          echo "#### 📋 Topic Groups" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.groups[] | "- **\(.name)** (`\(.topic)`) - \(.description)"' "${{ inputs.config-file }}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 💾 Commit and Push Changes
         if: inputs.auto-commit
@@ -746,4 +746,4 @@ jobs:
       - name: 📊 Set Output Count
         id: count
         run: |
-          echo "total=${{ steps.fetch-repos.outputs.total-repos }}" >> $GITHUB_OUTPUT
+          echo "total=${{ steps.fetch-repos.outputs.total-repos }}" >> "$GITHUB_OUTPUT"

@@ -121,23 +121,23 @@ jobs:
     steps:
       - name: 📊 Generate Summary
         run: |
-          echo "## 🚀 Release Pipeline Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Release Pipeline Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "### Validation Results" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Status | Details |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|---------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Docker Compose | ${{ needs.validate-compose.outputs.valid == 'true' && '✅ Valid' || '❌ Invalid' }} | ${{ needs.validate-compose.outputs.service-count }} services |" >> $GITHUB_STEP_SUMMARY
-          echo "| Shell Scripts | ${{ needs.validate-scripts.outputs.passed == 'true' && '✅ Passed' || '❌ Failed' }} | ${{ needs.validate-scripts.outputs.files-checked }} files, ${{ needs.validate-scripts.outputs.issues-found }} issues |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Validation Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Status | Details |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|---------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Docker Compose | ${{ needs.validate-compose.outputs.valid == 'true' && '✅ Valid' || '❌ Invalid' }} | ${{ needs.validate-compose.outputs.service-count }} services |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Shell Scripts | ${{ needs.validate-scripts.outputs.passed == 'true' && '✅ Passed' || '❌ Failed' }} | ${{ needs.validate-scripts.outputs.files-checked }} files, ${{ needs.validate-scripts.outputs.issues-found }} issues |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ needs.release.result }}" = "success" ]; then
-            echo "### Release" >> $GITHUB_STEP_SUMMARY
-            echo "✅ Release created successfully" >> $GITHUB_STEP_SUMMARY
+            echo "### Release" >> "$GITHUB_STEP_SUMMARY"
+            echo "✅ Release created successfully" >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ needs.release.result }}" = "skipped" ]; then
-            echo "### Release" >> $GITHUB_STEP_SUMMARY
-            echo "⏭️ Release skipped (validation failed or no releasable changes)" >> $GITHUB_STEP_SUMMARY
+            echo "### Release" >> "$GITHUB_STEP_SUMMARY"
+            echo "⏭️ Release skipped (validation failed or no releasable changes)" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "### Release" >> $GITHUB_STEP_SUMMARY
-            echo "❌ Release failed" >> $GITHUB_STEP_SUMMARY
+            echo "### Release" >> "$GITHUB_STEP_SUMMARY"
+            echo "❌ Release failed" >> "$GITHUB_STEP_SUMMARY"
           fi

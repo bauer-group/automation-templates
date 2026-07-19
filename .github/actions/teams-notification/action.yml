@@ -151,16 +151,16 @@ runs:
           ENABLE_FACTS=$(yq eval '.features.facts // true' "$CONFIG_FILE")
           CARD_STYLE=$(yq eval '.card.style // "default"' "$CONFIG_FILE")
           
-          echo "theme-color=$THEME_COLOR" >> $GITHUB_OUTPUT
-          echo "enable-mentions=$ENABLE_MENTIONS" >> $GITHUB_OUTPUT
-          echo "enable-facts=$ENABLE_FACTS" >> $GITHUB_OUTPUT
-          echo "card-style=$CARD_STYLE" >> $GITHUB_OUTPUT
+          echo "theme-color=$THEME_COLOR" >> "$GITHUB_OUTPUT"
+          echo "enable-mentions=$ENABLE_MENTIONS" >> "$GITHUB_OUTPUT"
+          echo "enable-facts=$ENABLE_FACTS" >> "$GITHUB_OUTPUT"
+          echo "card-style=$CARD_STYLE" >> "$GITHUB_OUTPUT"
         else
           echo "⚠️ Configuration file not found, using defaults"
-          echo "theme-color=0078d4" >> $GITHUB_OUTPUT
-          echo "enable-mentions=true" >> $GITHUB_OUTPUT
-          echo "enable-facts=true" >> $GITHUB_OUTPUT
-          echo "card-style=default" >> $GITHUB_OUTPUT
+          echo "theme-color=0078d4" >> "$GITHUB_OUTPUT"
+          echo "enable-mentions=true" >> "$GITHUB_OUTPUT"
+          echo "enable-facts=true" >> "$GITHUB_OUTPUT"
+          echo "card-style=default" >> "$GITHUB_OUTPUT"
         fi
 
     - name: 📊 Prepare Event Data
@@ -245,22 +245,22 @@ runs:
             ;;
         esac
         
-        echo "theme-color=$THEME_COLOR" >> $GITHUB_OUTPUT
-        echo "status-icon=$STATUS_ICON" >> $GITHUB_OUTPUT
-        echo "status-text=$STATUS_TEXT" >> $GITHUB_OUTPUT
+        echo "theme-color=$THEME_COLOR" >> "$GITHUB_OUTPUT"
+        echo "status-icon=$STATUS_ICON" >> "$GITHUB_OUTPUT"
+        echo "status-text=$STATUS_TEXT" >> "$GITHUB_OUTPUT"
         
         # Format branch/ref name
         REF_NAME="${INPUT_REF#refs/heads/}"
         REF_NAME="${REF_NAME#refs/tags/}"
-        echo "ref-name=$REF_NAME" >> $GITHUB_OUTPUT
+        echo "ref-name=$REF_NAME" >> "$GITHUB_OUTPUT"
         
         # Short SHA
         SHORT_SHA="${INPUT_SHA:0:8}"
-        echo "short-sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+        echo "short-sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
         
         # Current timestamp in ISO 8601 format for Teams locale support
         TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+        echo "timestamp=$TIMESTAMP" >> "$GITHUB_OUTPUT"
         
         # Format timestamp for display (German locale format)
         # Use current timestamp or event timestamp
@@ -276,7 +276,7 @@ runs:
         
         # Format as German date/time: DD.MM.YYYY HH:MM UTC
         DISPLAY_TIMESTAMP=$(date -u -d "$SOURCE_TIME" +"%d.%m.%Y %H:%M UTC" 2>/dev/null || date -u +"%d.%m.%Y %H:%M UTC")
-        echo "display-timestamp=$DISPLAY_TIMESTAMP" >> $GITHUB_OUTPUT
+        echo "display-timestamp=$DISPLAY_TIMESTAMP" >> "$GITHUB_OUTPUT"
 
     - name: 🎨 Generate Adaptive Card
       id: card
@@ -549,9 +549,9 @@ runs:
         
         # Output card payload
         CARD_PAYLOAD=$(cat "$CARD_FILE")
-        echo "payload<<EOF" >> $GITHUB_OUTPUT
-        echo "$CARD_PAYLOAD" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        echo "payload<<EOF" >> "$GITHUB_OUTPUT"
+        echo "$CARD_PAYLOAD" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
         
         # Clean up
         rm "$CARD_FILE"
@@ -575,8 +575,8 @@ runs:
         # failing the job. A warning annotation keeps the gap visible.
         if [[ -z "$WEBHOOK_URL" ]]; then
           echo "::warning title=Teams Notification Skipped::No webhook URL configured (TEAMS_WEBHOOK_URL secret missing) - skipping Teams notification"
-          echo "status=skipped" >> $GITHUB_OUTPUT
-          echo "response=No webhook URL configured" >> $GITHUB_OUTPUT
+          echo "status=skipped" >> "$GITHUB_OUTPUT"
+          echo "response=No webhook URL configured" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
@@ -620,8 +620,8 @@ runs:
             if [[ "$STATUS_CODE" =~ ^2[0-9][0-9]$ ]]; then
               echo "✅ Teams notification sent successfully"
               SUCCESS=true
-              echo "status=success" >> $GITHUB_OUTPUT
-              echo "response=$BODY" >> $GITHUB_OUTPUT
+              echo "status=success" >> "$GITHUB_OUTPUT"
+              echo "response=$BODY" >> "$GITHUB_OUTPUT"
             else
               echo "❌ Teams notification failed with status $STATUS_CODE"
               echo "📝 Response: $BODY"
@@ -636,8 +636,8 @@ runs:
         done
         
         if [[ "$SUCCESS" != "true" ]]; then
-          echo "status=failed" >> $GITHUB_OUTPUT
-          echo "response=Failed after $RETRY_COUNT attempts" >> $GITHUB_OUTPUT
+          echo "status=failed" >> "$GITHUB_OUTPUT"
+          echo "response=Failed after $RETRY_COUNT attempts" >> "$GITHUB_OUTPUT"
           exit 1
         fi
 

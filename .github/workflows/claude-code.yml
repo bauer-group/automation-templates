@@ -261,8 +261,8 @@ jobs:
               ;;
           esac
 
-          echo "trigger-type=$TRIGGER_TYPE" >> $GITHUB_OUTPUT
-          echo "trigger-user=$TRIGGER_USER" >> $GITHUB_OUTPUT
+          echo "trigger-type=$TRIGGER_TYPE" >> "$GITHUB_OUTPUT"
+          echo "trigger-user=$TRIGGER_USER" >> "$GITHUB_OUTPUT"
 
           # Check if trigger phrase is present
           if echo "$TRIGGER_BODY" | grep -qi "$TRIGGER_PHRASE"; then
@@ -299,7 +299,7 @@ jobs:
             fi
           fi
 
-          echo "should-respond=$SHOULD_RESPOND" >> $GITHUB_OUTPUT
+          echo "should-respond=$SHOULD_RESPOND" >> "$GITHUB_OUTPUT"
 
           # Store trigger body (escape for multiline).
           # The delimiter is randomised because the body is attacker-controlled:
@@ -310,7 +310,7 @@ jobs:
             echo "trigger-body<<$DELIMITER"
             echo "$TRIGGER_BODY"
             echo "$DELIMITER"
-          } >> $GITHUB_OUTPUT
+          } >> "$GITHUB_OUTPUT"
 
           echo "📊 Should respond: $SHOULD_RESPOND"
 
@@ -361,15 +361,15 @@ jobs:
 
           if [[ -f "$CONFIG_FILE" ]]; then
             echo "✅ Configuration file found: $CONFIG_FILE"
-            echo "config-exists=true" >> $GITHUB_OUTPUT
+            echo "config-exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "ℹ️ Using default configuration"
-            echo "config-exists=false" >> $GITHUB_OUTPUT
+            echo "config-exists=false" >> "$GITHUB_OUTPUT"
           fi
 
           # Determine final model
           MODEL="${{ inputs.model }}"
-          echo "model=$MODEL" >> $GITHUB_OUTPUT
+          echo "model=$MODEL" >> "$GITHUB_OUTPUT"
 
       - name: 🤖 Run Claude Code
         id: claude
@@ -393,7 +393,7 @@ jobs:
             echo "| Model | ${{ steps.config.outputs.model }} |"
             echo "| Config File | ${{ inputs.config-file }} |"
             echo "| Dry Run | ${{ inputs.dry-run }} |"
-          } >> $GITHUB_STEP_SUMMARY
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # Notification job (optional)
   notify:

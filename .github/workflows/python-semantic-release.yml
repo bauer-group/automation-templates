@@ -164,9 +164,9 @@ jobs:
           
           # Extract test results and coverage
           if [ $TEST_EXIT_CODE -eq 0 ]; then
-            echo "tests-passed=true" >> $GITHUB_OUTPUT
+            echo "tests-passed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "tests-passed=false" >> $GITHUB_OUTPUT
+            echo "tests-passed=false" >> "$GITHUB_OUTPUT"
             echo "❌ Tests failed with exit code $TEST_EXIT_CODE"
           fi
           
@@ -185,9 +185,9 @@ jobs:
                 print('N/A', file=sys.stderr)
                 print('N/A')
             " 2>/dev/null || echo "N/A")
-            echo "coverage-percentage=$COVERAGE" >> $GITHUB_OUTPUT
+            echo "coverage-percentage=$COVERAGE" >> "$GITHUB_OUTPUT"
           else
-            echo "coverage-percentage=N/A" >> $GITHUB_OUTPUT
+            echo "coverage-percentage=N/A" >> "$GITHUB_OUTPUT"
           fi
           
           # Fail the step if tests failed (after extracting all information)
@@ -248,13 +248,13 @@ jobs:
           BANDIT_ISSUES=${BANDIT_ISSUES:-0}
           VULN_ISSUES=${VULN_ISSUES:-0}
           TOTAL_SECURITY_ISSUES=$((BANDIT_ISSUES + VULN_ISSUES))
-          echo "security-issues-found=$TOTAL_SECURITY_ISSUES" >> $GITHUB_OUTPUT
+          echo "security-issues-found=$TOTAL_SECURITY_ISSUES" >> "$GITHUB_OUTPUT"
           
       - name: 🔐 Security Scan Fallback
         id: security-scan-fallback
         if: inputs.run-security-scan != true
         run: |
-          echo "security-issues-found=0" >> $GITHUB_OUTPUT
+          echo "security-issues-found=0" >> "$GITHUB_OUTPUT"
           
       - name: 🧹 Lint Code
         id: lint-code
@@ -285,7 +285,7 @@ jobs:
           
           # Ensure numeric value
           LINT_ISSUES=${LINT_ISSUES:-0}
-          echo "linting-issues-found=$LINT_ISSUES" >> $GITHUB_OUTPUT
+          echo "linting-issues-found=$LINT_ISSUES" >> "$GITHUB_OUTPUT"
           
       - name: 📊 Upload Coverage
         uses: codecov/codecov-action@v6
@@ -369,14 +369,14 @@ jobs:
           
           # Check if release was created and extract build information
           if git describe --exact-match --tags HEAD 2>/dev/null; then
-            echo "released=true" >> $GITHUB_OUTPUT
+            echo "released=true" >> "$GITHUB_OUTPUT"
             VERSION=$(git describe --tags --abbrev=0)
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "tag=$VERSION" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
             
             # Check if wheel was built
             if ls dist/*.whl >/dev/null 2>&1; then
-              echo "wheel-built=true" >> $GITHUB_OUTPUT
+              echo "wheel-built=true" >> "$GITHUB_OUTPUT"
               WHEEL_FILE=$(ls dist/*.whl | head -n1)
               echo "✅ Wheel built successfully: $WHEEL_FILE"
               
@@ -394,34 +394,34 @@ jobs:
                 " 2>/dev/null || echo "unknown")
                 
                 if [ "$PACKAGE_NAME" != "unknown" ]; then
-                  echo "package-name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+                  echo "package-name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
                   if python -c "import $PACKAGE_NAME; print('✅ Package import test successful')" 2>/dev/null; then
-                    echo "wheel-tested=true" >> $GITHUB_OUTPUT
+                    echo "wheel-tested=true" >> "$GITHUB_OUTPUT"
                   else
-                    echo "wheel-tested=false" >> $GITHUB_OUTPUT
+                    echo "wheel-tested=false" >> "$GITHUB_OUTPUT"
                     echo "⚠️ Package import test failed"
                   fi
                 else
-                  echo "package-name=unknown" >> $GITHUB_OUTPUT
-                  echo "wheel-tested=unknown" >> $GITHUB_OUTPUT
+                  echo "package-name=unknown" >> "$GITHUB_OUTPUT"
+                  echo "wheel-tested=unknown" >> "$GITHUB_OUTPUT"
                 fi
               else
-                echo "package-name=unknown" >> $GITHUB_OUTPUT
-                echo "wheel-tested=unknown" >> $GITHUB_OUTPUT
+                echo "package-name=unknown" >> "$GITHUB_OUTPUT"
+                echo "wheel-tested=unknown" >> "$GITHUB_OUTPUT"
               fi
             else
-              echo "wheel-built=false" >> $GITHUB_OUTPUT
-              echo "package-name=unknown" >> $GITHUB_OUTPUT
-              echo "wheel-tested=false" >> $GITHUB_OUTPUT
+              echo "wheel-built=false" >> "$GITHUB_OUTPUT"
+              echo "package-name=unknown" >> "$GITHUB_OUTPUT"
+              echo "wheel-tested=false" >> "$GITHUB_OUTPUT"
               echo "⚠️ No wheel file found in dist/"
             fi
           else
-            echo "released=false" >> $GITHUB_OUTPUT
-            echo "version=" >> $GITHUB_OUTPUT
-            echo "tag=" >> $GITHUB_OUTPUT
-            echo "wheel-built=false" >> $GITHUB_OUTPUT
-            echo "package-name=unknown" >> $GITHUB_OUTPUT
-            echo "wheel-tested=false" >> $GITHUB_OUTPUT
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "wheel-built=false" >> "$GITHUB_OUTPUT"
+            echo "package-name=unknown" >> "$GITHUB_OUTPUT"
+            echo "wheel-tested=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 📤 Upload Build Artifacts
@@ -511,17 +511,17 @@ jobs:
     steps:
       - name: 📊 Generate Pipeline Summary
         run: |
-          echo "### 🐍 Python Semantic Release Pipeline Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Pipeline:** Modern Python Semantic Release" >> $GITHUB_STEP_SUMMARY
-          echo "**Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Python Version:** ${{ inputs.python-version }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🐍 Python Semantic Release Pipeline Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Repository:** ${{ github.repository }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Pipeline:** Modern Python Semantic Release" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Event:** ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Branch:** ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Python Version:** ${{ inputs.python-version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
-          echo "| Stage | Status | Details |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status | Details |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|---------|" >> "$GITHUB_STEP_SUMMARY"
           # Test & Quality details (with safe fallbacks for skipped jobs)
           TEST_DETAILS="Python ${{ inputs.python-version }}"
           
@@ -543,7 +543,7 @@ jobs:
             TEST_DETAILS="$TEST_DETAILS (tests disabled)"
           fi
           
-          echo "| **Tests & Quality** | ${{ needs.test-and-quality.result == 'success' && '✅ PASS' || needs.test-and-quality.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | $TEST_DETAILS |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Tests & Quality** | ${{ needs.test-and-quality.result == 'success' && '✅ PASS' || needs.test-and-quality.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | $TEST_DETAILS |" >> "$GITHUB_STEP_SUMMARY"
           # Build Wheel details (now integrated in semantic-release)
           BUILD_DETAILS="Integrated with release"
           
@@ -569,10 +569,10 @@ jobs:
             BUILD_DETAILS="$BUILD_DETAILS (no release created)"
           fi
           
-          echo "| **Build Wheel** | ${{ needs.release.outputs.wheel-built == 'true' && '✅ PASS' || needs.release.outputs.released != 'true' && '⏭️ SKIP' || '❌ FAIL' }} | $BUILD_DETAILS |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || needs.security-scan.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Engine: ${{ inputs.security-engine }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || needs.license-compliance.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | SBOM generated |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Semantic Release** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Released: ${{ needs.release.outputs.released || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build Wheel** | ${{ needs.release.outputs.wheel-built == 'true' && '✅ PASS' || needs.release.outputs.released != 'true' && '⏭️ SKIP' || '❌ FAIL' }} | $BUILD_DETAILS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || needs.security-scan.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Engine: ${{ inputs.security-engine }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || needs.license-compliance.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | SBOM generated |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Semantic Release** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Released: ${{ needs.release.outputs.released || 'false' }} |" >> "$GITHUB_STEP_SUMMARY"
           # PyPI Publishing details with proper skip handling
           PYPI_STATUS="❌ FAIL"
           PYPI_DETAILS="Package upload"
@@ -602,32 +602,32 @@ jobs:
             PYPI_DETAILS="PyPI upload not triggered"
           fi
           
-          echo "| **PyPI Publishing** | $PYPI_STATUS | $PYPI_DETAILS |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Documentation** | ${{ needs.update-documentation.result == 'success' && '✅ UPDATED' || needs.update-documentation.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Auto-generated docs |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Security Policy** | ${{ needs.update-security.result == 'success' && '✅ UPDATED' || needs.update-security.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Auto-updated |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| **PyPI Publishing** | $PYPI_STATUS | $PYPI_DETAILS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Documentation** | ${{ needs.update-documentation.result == 'success' && '✅ UPDATED' || needs.update-documentation.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Auto-generated docs |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Security Policy** | ${{ needs.update-security.result == 'success' && '✅ UPDATED' || needs.update-security.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Auto-updated |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [ "${{ needs.release.outputs.released }}" = "true" ]; then
-            echo "🎉 **Python Release ${{ needs.release.outputs.version }} created successfully!**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Installation:**" >> $GITHUB_STEP_SUMMARY
+            echo "🎉 **Python Release ${{ needs.release.outputs.version }} created successfully!**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Installation:**" >> "$GITHUB_STEP_SUMMARY"
             
             if [ "${{ inputs.skip-pypi }}" != "true" ]; then
-              echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-              echo "pip install <package-name>==${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`bash" >> "$GITHUB_STEP_SUMMARY"
+              echo "pip install <package-name>==${{ needs.release.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+              echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-              echo "pip install git+https://github.com/${{ github.repository }}@${{ needs.release.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+              echo "\`\`\`bash" >> "$GITHUB_STEP_SUMMARY"
+              echo "pip install git+https://github.com/${{ github.repository }}@${{ needs.release.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+              echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
             fi
             
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Release:** [View on GitHub](https://github.com/${{ github.repository }}/releases/tag/${{ needs.release.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Release:** [View on GitHub](https://github.com/${{ github.repository }}/releases/tag/${{ needs.release.outputs.tag }})" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "ℹ️ **No release created.** Pipeline completed successfully." >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **No release created.** Pipeline completed successfully." >> "$GITHUB_STEP_SUMMARY"
           fi
           
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "*Powered by **python-semantic-release** and **BAUER GROUP** automation* 🐍" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "---" >> "$GITHUB_STEP_SUMMARY"
+          echo "*Powered by **python-semantic-release** and **BAUER GROUP** automation* 🐍" >> "$GITHUB_STEP_SUMMARY"

@@ -66,8 +66,8 @@ jobs:
       - name: ⏱️ Start Timing
         id: timing
         run: |
-          echo "build-start=$(date +%s)" >> $GITHUB_OUTPUT
-          echo "test-start=" >> $GITHUB_OUTPUT
+          echo "build-start=$(date +%s)" >> "$GITHUB_OUTPUT"
+          echo "test-start=" >> "$GITHUB_OUTPUT"
 
       - name: 🔔 Build Started Notification
         uses: bauer-group/automation-templates/.github/actions/teams-notification@main
@@ -98,15 +98,15 @@ jobs:
           fi
           
           echo "✅ Build completed successfully"
-          echo "build-artifact=app-${{ github.sha }}.tar.gz" >> $GITHUB_OUTPUT
+          echo "build-artifact=app-${{ github.sha }}.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: ⏱️ Record Build Time
         run: |
           BUILD_END=$(date +%s)
           BUILD_START=${{ steps.timing.outputs.build-start }}
           BUILD_TIME=$((BUILD_END - BUILD_START))
-          echo "build-time=${BUILD_TIME}s" >> $GITHUB_OUTPUT
-          echo "test-start=$(date +%s)" >> $GITHUB_OUTPUT
+          echo "build-time=${BUILD_TIME}s" >> "$GITHUB_OUTPUT"
+          echo "test-start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: 🔔 Build Success Notification
         if: steps.build.outcome == 'success'
@@ -168,8 +168,8 @@ jobs:
           FAILED_TESTS=$((TOTAL_TESTS - PASSED_TESTS))
           COVERAGE=87.5
           
-          echo "test-results=Passed: $PASSED_TESTS, Failed: $FAILED_TESTS" >> $GITHUB_OUTPUT
-          echo "coverage=$COVERAGE%" >> $GITHUB_OUTPUT
+          echo "test-results=Passed: $PASSED_TESTS, Failed: $FAILED_TESTS" >> "$GITHUB_OUTPUT"
+          echo "coverage=$COVERAGE%" >> "$GITHUB_OUTPUT"
           
           if [ $FAILED_TESTS -gt 0 ]; then
             echo "⚠️ Some tests failed"
@@ -184,7 +184,7 @@ jobs:
           TEST_END=$(date +%s)
           TEST_START=${{ steps.timing.outputs.test-start }}
           TEST_TIME=$((TEST_END - TEST_START))
-          echo "test-time=${TEST_TIME}s" >> $GITHUB_OUTPUT
+          echo "test-time=${TEST_TIME}s" >> "$GITHUB_OUTPUT"
 
   # Security scanning with notifications
   security-scan:
@@ -207,23 +207,23 @@ jobs:
           MEDIUM=5
           LOW=12
           
-          echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
-          echo "high=$HIGH" >> $GITHUB_OUTPUT
-          echo "medium=$MEDIUM" >> $GITHUB_OUTPUT
-          echo "low=$LOW" >> $GITHUB_OUTPUT
+          echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
+          echo "high=$HIGH" >> "$GITHUB_OUTPUT"
+          echo "medium=$MEDIUM" >> "$GITHUB_OUTPUT"
+          echo "low=$LOW" >> "$GITHUB_OUTPUT"
           
           TOTAL=$((CRITICAL + HIGH + MEDIUM + LOW))
-          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
           
           if [ $CRITICAL -gt 0 ] || [ $HIGH -gt 5 ]; then
-            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "status=failed" >> "$GITHUB_OUTPUT"
             echo "❌ Security scan failed - critical vulnerabilities found"
             exit 1
           elif [ $HIGH -gt 0 ]; then
-            echo "status=warning" >> $GITHUB_OUTPUT
+            echo "status=warning" >> "$GITHUB_OUTPUT"
             echo "⚠️ Security scan completed with warnings"
           else
-            echo "status=passed" >> $GITHUB_OUTPUT
+            echo "status=passed" >> "$GITHUB_OUTPUT"
             echo "✅ Security scan passed"
           fi
 
@@ -283,21 +283,21 @@ jobs:
             ENV="development"
           fi
           
-          echo "target=$ENV" >> $GITHUB_OUTPUT
+          echo "target=$ENV" >> "$GITHUB_OUTPUT"
           
           # Set webhook based on environment
           case $ENV in
             production)
-              echo "webhook=${{ env.PROD_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
-              echo "mentions=devops-team,stakeholders" >> $GITHUB_OUTPUT
+              echo "webhook=${{ env.PROD_TEAMS_WEBHOOK }}" >> "$GITHUB_OUTPUT"
+              echo "mentions=devops-team,stakeholders" >> "$GITHUB_OUTPUT"
               ;;
             staging)
-              echo "webhook=${{ env.STAGING_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
-              echo "mentions=qa-team,devops-team" >> $GITHUB_OUTPUT
+              echo "webhook=${{ env.STAGING_TEAMS_WEBHOOK }}" >> "$GITHUB_OUTPUT"
+              echo "mentions=qa-team,devops-team" >> "$GITHUB_OUTPUT"
               ;;
             *)
-              echo "webhook=${{ env.DEV_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
-              echo "mentions=" >> $GITHUB_OUTPUT
+              echo "webhook=${{ env.DEV_TEAMS_WEBHOOK }}" >> "$GITHUB_OUTPUT"
+              echo "mentions=" >> "$GITHUB_OUTPUT"
               ;;
           esac
 
@@ -330,8 +330,8 @@ jobs:
           
           # Simulate deployment success
           echo "✅ Deployment completed successfully"
-          echo "deployment-url=https://${{ steps.env.outputs.target }}.example.com" >> $GITHUB_OUTPUT
-          echo "version=${{ github.ref_name }}-${{ github.run_number }}" >> $GITHUB_OUTPUT
+          echo "deployment-url=https://${{ steps.env.outputs.target }}.example.com" >> "$GITHUB_OUTPUT"
+          echo "version=${{ github.ref_name }}-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: 🔔 Deployment Success
         if: steps.deploy.outcome == 'success'

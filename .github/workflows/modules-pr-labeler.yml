@@ -97,23 +97,23 @@ jobs:
       - name: 📊 Label Summary
         if: always()
         run: |
-          echo "### 🏷️ Pull Request Labeling Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Category | Labels |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Size** | ${{ steps.triage.outputs.size-label || 'Not determined' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Priority** | ${{ steps.triage.outputs.priority-label || 'Not set' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **All Labels** | ${{ steps.triage.outputs.all-labels || 'None' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🏷️ Pull Request Labeling Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Category | Labels |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Size** | ${{ steps.triage.outputs.size-label || 'Not determined' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Priority** | ${{ steps.triage.outputs.priority-label || 'Not set' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **All Labels** | ${{ steps.triage.outputs.all-labels || 'None' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           # Add label statistics
           if [ -n "${{ steps.triage.outputs.all-labels }}" ]; then
             LABEL_COUNT=$(echo "${{ steps.triage.outputs.all-labels }}" | tr ',' '\n' | wc -l)
-            echo "**Total Labels:** $LABEL_COUNT" >> $GITHUB_STEP_SUMMARY
+            echo "**Total Labels:** $LABEL_COUNT" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "**Total Labels:** 0" >> $GITHUB_STEP_SUMMARY
+            echo "**Total Labels:** 0" >> "$GITHUB_STEP_SUMMARY"
           fi
           
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "*Automated labeling powered by PR Labeler & Triage* 🤖" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "---" >> "$GITHUB_STEP_SUMMARY"
+          echo "*Automated labeling powered by PR Labeler & Triage* 🤖" >> "$GITHUB_STEP_SUMMARY"

@@ -121,7 +121,7 @@ runs:
           fi
         fi
         
-        echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
 
     - name: 📊 Get Repository Information
       id: repo-info
@@ -162,11 +162,11 @@ runs:
           CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
         fi
         
-        echo "repo_full_name=$REPO_FULL_NAME" >> $GITHUB_OUTPUT
-        echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
-        echo "repo_owner=$REPO_OWNER" >> $GITHUB_OUTPUT
-        echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
-        echo "current_branch=$CURRENT_BRANCH" >> $GITHUB_OUTPUT
+        echo "repo_full_name=$REPO_FULL_NAME" >> "$GITHUB_OUTPUT"
+        echo "repo_url=$REPO_URL" >> "$GITHUB_OUTPUT"
+        echo "repo_owner=$REPO_OWNER" >> "$GITHUB_OUTPUT"
+        echo "repo_name=$REPO_NAME" >> "$GITHUB_OUTPUT"
+        echo "current_branch=$CURRENT_BRANCH" >> "$GITHUB_OUTPUT"
         
         echo "Repository: $REPO_FULL_NAME"
         echo "URL: $REPO_URL"
@@ -181,9 +181,9 @@ runs:
         CURRENT_DATETIME=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
         CURRENT_YEAR=$(date -u '+%Y')
         
-        echo "date=$CURRENT_DATE" >> $GITHUB_OUTPUT
-        echo "datetime=$CURRENT_DATETIME" >> $GITHUB_OUTPUT
-        echo "year=$CURRENT_YEAR" >> $GITHUB_OUTPUT
+        echo "date=$CURRENT_DATE" >> "$GITHUB_OUTPUT"
+        echo "datetime=$CURRENT_DATETIME" >> "$GITHUB_OUTPUT"
+        echo "year=$CURRENT_YEAR" >> "$GITHUB_OUTPUT"
         
         echo "📅 Date: $CURRENT_DATE"
         echo "📅 DateTime: $CURRENT_DATETIME"
@@ -282,10 +282,10 @@ runs:
           } > "$OUTPUT_PATH"
           
           echo "✅ README updated: $OUTPUT_PATH"
-          echo "readme_updated=true" >> $GITHUB_OUTPUT
+          echo "readme_updated=true" >> "$GITHUB_OUTPUT"
         else
           echo "⏭️ README unchanged: $OUTPUT_PATH"
-          echo "readme_updated=false" >> $GITHUB_OUTPUT
+          echo "readme_updated=false" >> "$GITHUB_OUTPUT"
         fi
         
         # Check for unresolved placeholders (optional warning)
@@ -298,10 +298,10 @@ runs:
         fi
         
         # Set outputs
-        echo "changes_detected=$CHANGES_DETECTED" >> $GITHUB_OUTPUT
-        echo "validation_passed=true" >> $GITHUB_OUTPUT
-        echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-        echo "unresolved_found=$UNRESOLVED_FOUND" >> $GITHUB_OUTPUT
+        echo "changes_detected=$CHANGES_DETECTED" >> "$GITHUB_OUTPUT"
+        echo "validation_passed=true" >> "$GITHUB_OUTPUT"
+        echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+        echo "unresolved_found=$UNRESOLVED_FOUND" >> "$GITHUB_OUTPUT"
         
         # Cleanup
         rm -f "$TEMP_FILE"

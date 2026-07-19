@@ -94,7 +94,7 @@ runs:
           SHORT_SHA="${SHA:0:7}"
           VERSION="0.0.0-dev+${SHORT_SHA}"
         fi
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
     - name: Setup Python
       uses: actions/setup-python@v6
@@ -154,7 +154,7 @@ runs:
           pio run ${{ inputs.extra-build-flags }}
         fi
 
-        echo "status=success" >> $GITHUB_OUTPUT
+        echo "status=success" >> "$GITHUB_OUTPUT"
 
     - name: Run Static Analysis
       if: inputs.enable-check == 'true'
@@ -195,7 +195,7 @@ runs:
 
         if [[ -f "$BUILD_DIR/firmware.bin" ]]; then
           SIZE=$(stat -c%s "$BUILD_DIR/firmware.bin" 2>/dev/null || stat -f%z "$BUILD_DIR/firmware.bin")
-          echo "size=$SIZE" >> $GITHUB_OUTPUT
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
           echo "Firmware size: $SIZE bytes"
         fi
 
@@ -229,5 +229,5 @@ runs:
         cd "$OUTPUT_DIR"
         sha256sum *.bin *.hex 2>/dev/null > checksums.sha256 || true
 
-        echo "output-dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
+        echo "output-dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
         ls -la

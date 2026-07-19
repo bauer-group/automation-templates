@@ -178,39 +178,39 @@ runs:
             SYSTEM_PROMPT=$(yq eval '.prompts.system // ""' "$CONFIG_FILE")
             APPEND_PROMPT=$(yq eval '.prompts.append // "${{ inputs.append-system-prompt }}"' "$CONFIG_FILE")
 
-            echo "model=$MODEL" >> $GITHUB_OUTPUT
-            echo "max-tokens=$MAX_TOKENS" >> $GITHUB_OUTPUT
-            echo "trigger-phrase=$TRIGGER_PHRASE" >> $GITHUB_OUTPUT
-            echo "response-mode=$RESPONSE_MODE" >> $GITHUB_OUTPUT
-            echo "add-reaction=$ADD_REACTION" >> $GITHUB_OUTPUT
-            echo "allowed-users=$ALLOWED_USERS" >> $GITHUB_OUTPUT
-            echo "allowed-teams=$ALLOWED_TEAMS" >> $GITHUB_OUTPUT
-            echo "config-loaded=true" >> $GITHUB_OUTPUT
+            echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+            echo "max-tokens=$MAX_TOKENS" >> "$GITHUB_OUTPUT"
+            echo "trigger-phrase=$TRIGGER_PHRASE" >> "$GITHUB_OUTPUT"
+            echo "response-mode=$RESPONSE_MODE" >> "$GITHUB_OUTPUT"
+            echo "add-reaction=$ADD_REACTION" >> "$GITHUB_OUTPUT"
+            echo "allowed-users=$ALLOWED_USERS" >> "$GITHUB_OUTPUT"
+            echo "allowed-teams=$ALLOWED_TEAMS" >> "$GITHUB_OUTPUT"
+            echo "config-loaded=true" >> "$GITHUB_OUTPUT"
 
             # Handle multiline system prompt
             if [[ -n "$SYSTEM_PROMPT" ]]; then
-              echo "system-prompt<<EOF" >> $GITHUB_OUTPUT
-              echo "$SYSTEM_PROMPT" >> $GITHUB_OUTPUT
-              echo "EOF" >> $GITHUB_OUTPUT
+              echo "system-prompt<<EOF" >> "$GITHUB_OUTPUT"
+              echo "$SYSTEM_PROMPT" >> "$GITHUB_OUTPUT"
+              echo "EOF" >> "$GITHUB_OUTPUT"
             fi
 
             if [[ -n "$APPEND_PROMPT" ]]; then
-              echo "append-prompt<<EOF" >> $GITHUB_OUTPUT
-              echo "$APPEND_PROMPT" >> $GITHUB_OUTPUT
-              echo "EOF" >> $GITHUB_OUTPUT
+              echo "append-prompt<<EOF" >> "$GITHUB_OUTPUT"
+              echo "$APPEND_PROMPT" >> "$GITHUB_OUTPUT"
+              echo "EOF" >> "$GITHUB_OUTPUT"
             fi
           else
             echo "⚠️ yq not found, using input defaults"
-            echo "config-loaded=false" >> $GITHUB_OUTPUT
+            echo "config-loaded=false" >> "$GITHUB_OUTPUT"
           fi
         else
           echo "ℹ️ No configuration file found at $CONFIG_FILE, using defaults"
-          echo "config-loaded=false" >> $GITHUB_OUTPUT
+          echo "config-loaded=false" >> "$GITHUB_OUTPUT"
         fi
 
         # Set final values (prefer config, fall back to inputs)
-        echo "final-model=${{ inputs.model }}" >> $GITHUB_OUTPUT
-        echo "final-max-tokens=${{ inputs.max-tokens }}" >> $GITHUB_OUTPUT
+        echo "final-model=${{ inputs.model }}" >> "$GITHUB_OUTPUT"
+        echo "final-max-tokens=${{ inputs.max-tokens }}" >> "$GITHUB_OUTPUT"
 
     - name: 🔍 Detect Trigger Context
       id: trigger
@@ -263,15 +263,15 @@ runs:
             ;;
         esac
 
-        echo "trigger-type=$TRIGGER_TYPE" >> $GITHUB_OUTPUT
-        echo "trigger-user=$TRIGGER_USER" >> $GITHUB_OUTPUT
-        echo "issue-number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
-        echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
+        echo "trigger-type=$TRIGGER_TYPE" >> "$GITHUB_OUTPUT"
+        echo "trigger-user=$TRIGGER_USER" >> "$GITHUB_OUTPUT"
+        echo "issue-number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+        echo "pr-number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
         # Store trigger body for later use
-        echo "trigger-body<<EOF" >> $GITHUB_OUTPUT
-        echo "$TRIGGER_BODY" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        echo "trigger-body<<EOF" >> "$GITHUB_OUTPUT"
+        echo "$TRIGGER_BODY" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
 
     - name: 🛡️ Validate Permissions
       id: permissions
@@ -298,7 +298,7 @@ runs:
         # Note: Team membership check would require additional API calls
         # For now, we trust the allowed_users list or allow all if empty
 
-        echo "allowed=$ALLOWED" >> $GITHUB_OUTPUT
+        echo "allowed=$ALLOWED" >> "$GITHUB_OUTPUT"
 
         if [[ "$ALLOWED" == "false" ]]; then
           echo "::warning::User $TRIGGER_USER is not authorized to trigger Claude"
@@ -398,9 +398,9 @@ runs:
         fi
 
         # Save context
-        echo "context<<EOF" >> $GITHUB_OUTPUT
-        echo -e "$CONTEXT" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        echo "context<<EOF" >> "$GITHUB_OUTPUT"
+        echo -e "$CONTEXT" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
 
     - name: 🤖 Run Claude Code
       id: claude
@@ -420,25 +420,25 @@ runs:
       shell: bash
       run: |
         echo "✅ Claude response processed"
-        echo "trigger-type=${{ steps.trigger.outputs.trigger-type }}" >> $GITHUB_OUTPUT
+        echo "trigger-type=${{ steps.trigger.outputs.trigger-type }}" >> "$GITHUB_OUTPUT"
 
     - name: 📊 Output Summary
       if: always()
       shell: bash
       run: |
-        echo "## 🤖 Claude Code Assistant Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-        echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-        echo "| Trigger Type | ${{ steps.trigger.outputs.trigger-type }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Trigger User | ${{ steps.trigger.outputs.trigger-user }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Model | ${{ steps.config.outputs.model || inputs.model }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Permissions | ${{ steps.permissions.outputs.allowed }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Dry Run | ${{ inputs.dry-run }} |" >> $GITHUB_STEP_SUMMARY
+        echo "## 🤖 Claude Code Assistant Summary" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+        echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Trigger Type | ${{ steps.trigger.outputs.trigger-type }} |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Trigger User | ${{ steps.trigger.outputs.trigger-user }} |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Model | ${{ steps.config.outputs.model || inputs.model }} |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Permissions | ${{ steps.permissions.outputs.allowed }} |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Dry Run | ${{ inputs.dry-run }} |" >> "$GITHUB_STEP_SUMMARY"
 
         if [[ -n '${{ steps.trigger.outputs.pr-number }}' ]]; then
-          echo "| PR Number | #${{ steps.trigger.outputs.pr-number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| PR Number | #${{ steps.trigger.outputs.pr-number }} |" >> "$GITHUB_STEP_SUMMARY"
         fi
         if [[ -n '${{ steps.trigger.outputs.issue-number }}' ]]; then
-          echo "| Issue Number | #${{ steps.trigger.outputs.issue-number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Issue Number | #${{ steps.trigger.outputs.issue-number }} |" >> "$GITHUB_STEP_SUMMARY"
         fi

@@ -96,13 +96,13 @@ jobs:
           set -euo pipefail
 
           if [ -n "$MAINTENANCE_TOKEN" ]; then
-            echo "token-source=MAINTENANCE_TOKEN" >> $GITHUB_OUTPUT
+            echo "token-source=MAINTENANCE_TOKEN" >> "$GITHUB_OUTPUT"
             echo "✅ Using MAINTENANCE_TOKEN"
           elif [ -n "$PAT_READWRITE" ]; then
-            echo "token-source=PAT_READWRITE_ORGANISATION" >> $GITHUB_OUTPUT
+            echo "token-source=PAT_READWRITE_ORGANISATION" >> "$GITHUB_OUTPUT"
             echo "✅ Using PAT_READWRITE_ORGANISATION (legacy)"
           else
-            echo "token-source=GITHUB_TOKEN" >> $GITHUB_OUTPUT
+            echo "token-source=GITHUB_TOKEN" >> "$GITHUB_OUTPUT"
             echo "⚠️ Using GITHUB_TOKEN (limited: no variable write, no cross-repo dispatch)"
           fi
 
@@ -143,7 +143,7 @@ jobs:
 
           # --- Base Images ---
           HAS_BASE_IMAGES=$(jq 'has("base-images") and (.["base-images"] | length > 0)' "$CONFIG_FILE")
-          echo "has-base-images=$HAS_BASE_IMAGES" >> $GITHUB_OUTPUT
+          echo "has-base-images=$HAS_BASE_IMAGES" >> "$GITHUB_OUTPUT"
 
           if [ "$HAS_BASE_IMAGES" = "true" ]; then
             BASE_IMAGES=$(jq -c '.["base-images"]' "$CONFIG_FILE")
@@ -151,66 +151,66 @@ jobs:
               echo "base-images<<BASE_IMAGES_EOF"
               printf '%s\n' "$BASE_IMAGES"
               echo "BASE_IMAGES_EOF"
-            } >> $GITHUB_OUTPUT
+            } >> "$GITHUB_OUTPUT"
             echo "🐳 Base images: $(printf '%s' "$BASE_IMAGES" | jq 'length') configured"
           fi
 
           # --- Node.js ---
           HAS_NODE=$(jq '.ecosystems.node != null' "$CONFIG_FILE")
-          echo "has-node=$HAS_NODE" >> $GITHUB_OUTPUT
+          echo "has-node=$HAS_NODE" >> "$GITHUB_OUTPUT"
 
           if [ "$HAS_NODE" = "true" ]; then
-            echo "node-version=$(jq -r '.ecosystems.node.version // "22"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
-            echo "node-pm=$(jq -r '.ecosystems.node."package-manager" // "npm"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
-            echo "node-workdir=$(jq -r '.ecosystems.node."working-directory" // "."' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "node-version=$(jq -r '.ecosystems.node.version // "22"' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
+            echo "node-pm=$(jq -r '.ecosystems.node."package-manager" // "npm"' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
+            echo "node-workdir=$(jq -r '.ecosystems.node."working-directory" // "."' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
             echo "📦 Node.js: $(jq -r '.ecosystems.node."package-manager" // "npm"' "$CONFIG_FILE") v$(jq -r '.ecosystems.node.version // "22"' "$CONFIG_FILE")"
           fi
 
           # --- Python ---
           HAS_PYTHON=$(jq '.ecosystems.python != null' "$CONFIG_FILE")
-          echo "has-python=$HAS_PYTHON" >> $GITHUB_OUTPUT
+          echo "has-python=$HAS_PYTHON" >> "$GITHUB_OUTPUT"
 
           if [ "$HAS_PYTHON" = "true" ]; then
-            echo "python-version=$(jq -r '.ecosystems.python.version // "3.13"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
-            echo "python-requirements=$(jq -r '.ecosystems.python."requirements-file" // "requirements.txt"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
-            echo "python-workdir=$(jq -r '.ecosystems.python."working-directory" // "."' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "python-version=$(jq -r '.ecosystems.python.version // "3.13"' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
+            echo "python-requirements=$(jq -r '.ecosystems.python."requirements-file" // "requirements.txt"' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
+            echo "python-workdir=$(jq -r '.ecosystems.python."working-directory" // "."' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
             echo "🐍 Python: v$(jq -r '.ecosystems.python.version // "3.13"' "$CONFIG_FILE")"
           fi
 
           # --- .NET ---
           HAS_DOTNET=$(jq '.ecosystems.dotnet != null' "$CONFIG_FILE")
-          echo "has-dotnet=$HAS_DOTNET" >> $GITHUB_OUTPUT
+          echo "has-dotnet=$HAS_DOTNET" >> "$GITHUB_OUTPUT"
 
           if [ "$HAS_DOTNET" = "true" ]; then
-            echo "dotnet-version=$(jq -r '.ecosystems.dotnet.version // "8.0.x"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
-            echo "dotnet-project=$(jq -r '.ecosystems.dotnet."project-path" // "."' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
-            echo "dotnet-workdir=$(jq -r '.ecosystems.dotnet."working-directory" // "."' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
-            echo "dotnet-strategy=$(jq -r '.ecosystems.dotnet."update-strategy" // "minor"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "dotnet-version=$(jq -r '.ecosystems.dotnet.version // "8.0.x"' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
+            echo "dotnet-project=$(jq -r '.ecosystems.dotnet."project-path" // "."' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
+            echo "dotnet-workdir=$(jq -r '.ecosystems.dotnet."working-directory" // "."' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
+            echo "dotnet-strategy=$(jq -r '.ecosystems.dotnet."update-strategy" // "minor"' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
             echo "🔵 .NET: v$(jq -r '.ecosystems.dotnet.version // "8.0.x"' "$CONFIG_FILE")"
           fi
 
           # --- Go ---
           HAS_GO=$(jq '.ecosystems.go != null' "$CONFIG_FILE")
-          echo "has-go=$HAS_GO" >> $GITHUB_OUTPUT
+          echo "has-go=$HAS_GO" >> "$GITHUB_OUTPUT"
 
           if [ "$HAS_GO" = "true" ]; then
-            echo "go-version=$(jq -r '.ecosystems.go.version // "stable"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
-            echo "go-workdir=$(jq -r '.ecosystems.go."working-directory" // "."' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+            echo "go-version=$(jq -r '.ecosystems.go.version // "stable"' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
+            echo "go-workdir=$(jq -r '.ecosystems.go."working-directory" // "."' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
             echo "🔵 Go: v$(jq -r '.ecosystems.go.version // "stable"' "$CONFIG_FILE")"
           fi
 
           # --- Validation ---
           HAS_VALIDATION=$(jq '.validation != null' "$CONFIG_FILE")
-          echo "has-validation=$HAS_VALIDATION" >> $GITHUB_OUTPUT
-          echo "build-command=$(jq -r '.validation."build-command" // ""' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
-          echo "test-command=$(jq -r '.validation."test-command" // ""' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
-          echo "typecheck-command=$(jq -r '.validation."typecheck-command" // ""' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+          echo "has-validation=$HAS_VALIDATION" >> "$GITHUB_OUTPUT"
+          echo "build-command=$(jq -r '.validation."build-command" // ""' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
+          echo "test-command=$(jq -r '.validation."test-command" // ""' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
+          echo "typecheck-command=$(jq -r '.validation."typecheck-command" // ""' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
 
           # --- Release ---
-          echo "commit-prefix=$(jq -r '.release."commit-prefix" // "fix(deps)"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
-          echo "target-branch=$(jq -r '.release."target-branch" // "main"' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
-          echo "trigger-workflow=$(jq -r '.release."trigger-workflow" // ""' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
-          echo "trigger-inputs=$(jq -c '.release."trigger-inputs" // {}' "$CONFIG_FILE")" >> $GITHUB_OUTPUT
+          echo "commit-prefix=$(jq -r '.release."commit-prefix" // "fix(deps)"' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
+          echo "target-branch=$(jq -r '.release."target-branch" // "main"' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
+          echo "trigger-workflow=$(jq -r '.release."trigger-workflow" // ""' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
+          echo "trigger-inputs=$(jq -c '.release."trigger-inputs" // {}' "$CONFIG_FILE")" >> "$GITHUB_OUTPUT"
 
       # =====================================================================
       # Step 4: Check base images
@@ -345,19 +345,19 @@ jobs:
           # substitution above, not a pipe - a pipe would run the loop in a subshell
           # and discard everything accumulated in it.
           UNREACHABLE_COUNT=$(printf '%s' "$UNREACHABLE_IMAGES" | jq 'length')
-          echo "updates-found=$UPDATES_FOUND" >> $GITHUB_OUTPUT
-          echo "updated-images=$UPDATED_IMAGES" >> $GITHUB_OUTPUT
-          echo "new-digests=$NEW_DIGESTS" >> $GITHUB_OUTPUT
-          echo "images-configured=$CONFIGURED_COUNT" >> $GITHUB_OUTPUT
-          echo "images-checked=$CHECKED_COUNT" >> $GITHUB_OUTPUT
-          echo "unreachable-images=$UNREACHABLE_IMAGES" >> $GITHUB_OUTPUT
+          echo "updates-found=$UPDATES_FOUND" >> "$GITHUB_OUTPUT"
+          echo "updated-images=$UPDATED_IMAGES" >> "$GITHUB_OUTPUT"
+          echo "new-digests=$NEW_DIGESTS" >> "$GITHUB_OUTPUT"
+          echo "images-configured=$CONFIGURED_COUNT" >> "$GITHUB_OUTPUT"
+          echo "images-checked=$CHECKED_COUNT" >> "$GITHUB_OUTPUT"
+          echo "unreachable-images=$UNREACHABLE_IMAGES" >> "$GITHUB_OUTPUT"
 
           # Store update details for commit message
           {
             echo "UPDATE_DETAILS<<DETAILS_EOF"
             echo "$UPDATE_DETAILS"
             echo "DETAILS_EOF"
-          } >> $GITHUB_ENV
+          } >> "$GITHUB_ENV"
 
           echo ""
           echo "📊 Base images checked: $CHECKED_COUNT of $CONFIGURED_COUNT configured"
@@ -599,8 +599,8 @@ jobs:
 
           # Combine: file changes OR base image digest updates
           if [ "$FILE_CHANGES" = "true" ] || [ "$BASE_IMAGES_UPDATED" = "true" ]; then
-            echo "updates-found=true" >> $GITHUB_OUTPUT
-            echo "has-file-changes=$FILE_CHANGES" >> $GITHUB_OUTPUT
+            echo "updates-found=true" >> "$GITHUB_OUTPUT"
+            echo "has-file-changes=$FILE_CHANGES" >> "$GITHUB_OUTPUT"
 
             # Build summary
             SUMMARY_PARTS=""
@@ -611,12 +611,12 @@ jobs:
               [ -n "$SUMMARY_PARTS" ] && SUMMARY_PARTS="$SUMMARY_PARTS + "
               SUMMARY_PARTS="${SUMMARY_PARTS}dependencies"
             fi
-            echo "summary=Updates found: $SUMMARY_PARTS" >> $GITHUB_OUTPUT
+            echo "summary=Updates found: $SUMMARY_PARTS" >> "$GITHUB_OUTPUT"
             echo "✅ Updates found: $SUMMARY_PARTS"
           else
-            echo "updates-found=false" >> $GITHUB_OUTPUT
-            echo "has-file-changes=false" >> $GITHUB_OUTPUT
-            echo "summary=No updates found" >> $GITHUB_OUTPUT
+            echo "updates-found=false" >> "$GITHUB_OUTPUT"
+            echo "has-file-changes=false" >> "$GITHUB_OUTPUT"
+            echo "summary=No updates found" >> "$GITHUB_OUTPUT"
             echo "ℹ️ No updates found"
           fi
 
@@ -692,7 +692,7 @@ jobs:
             echo "🔄 All changes reverted"
           fi
 
-          echo "validation-passed=$VALIDATION_PASSED" >> $GITHUB_OUTPUT
+          echo "validation-passed=$VALIDATION_PASSED" >> "$GITHUB_OUTPUT"
 
       # =====================================================================
       # Step 15: Commit and push
@@ -767,11 +767,11 @@ jobs:
             echo "🚀 Pushing to $TARGET_BRANCH..."
             git push origin HEAD:"$TARGET_BRANCH"
             COMMIT_SHA=$(git rev-parse HEAD)
-            echo "committed=true" >> $GITHUB_OUTPUT
-            echo "commit-sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+            echo "committed=true" >> "$GITHUB_OUTPUT"
+            echo "commit-sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
             echo "✅ Pushed: $COMMIT_SHA"
           else
-            echo "committed=false" >> $GITHUB_OUTPUT
+            echo "committed=false" >> "$GITHUB_OUTPUT"
             echo "ℹ️ Nothing to commit"
           fi
 
@@ -801,7 +801,7 @@ jobs:
           fi
 
           "${ARGS[@]}"
-          echo "triggered=true" >> $GITHUB_OUTPUT
+          echo "triggered=true" >> "$GITHUB_OUTPUT"
           echo "✅ Workflow triggered successfully"
 
       # =====================================================================
@@ -940,4 +940,4 @@ jobs:
             elif [ "$VALIDATION_PASSED" = "false" ]; then
               echo "⚠️ **Maintenance aborted.** Validation failed, changes reverted."
             fi
-          } >> $GITHUB_STEP_SUMMARY
+          } >> "$GITHUB_STEP_SUMMARY"

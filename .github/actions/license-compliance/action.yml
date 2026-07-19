@@ -82,7 +82,7 @@ runs:
               echo "✅ Licensee installed for user"
               # Add user gem bin to PATH
               export PATH="$(ruby -e 'puts Gem.user_dir')/bin:$PATH"
-              echo "$(ruby -e 'puts Gem.user_dir')/bin" >> $GITHUB_PATH
+              echo "$(ruby -e 'puts Gem.user_dir')/bin" >> "$GITHUB_PATH"
             else
               echo "⚠️ Failed to install licensee, license detection may be limited"
             fi
@@ -105,7 +105,7 @@ runs:
             echo "✅ SPDX tools installed successfully"
             # Add user bin to PATH
             export PATH="$HOME/.local/bin:$PATH"
-            echo "$HOME/.local/bin" >> $GITHUB_PATH
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           else
             echo "⚠️ Failed to install SPDX tools, some features may be limited"
           fi
@@ -126,7 +126,7 @@ runs:
             if curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b "$HOME/.local/bin" 2>/dev/null; then
               echo "✅ Syft installed to user directory"
               export PATH="$HOME/.local/bin:$PATH"
-              echo "$HOME/.local/bin" >> $GITHUB_PATH
+              echo "$HOME/.local/bin" >> "$GITHUB_PATH"
             else
               echo "⚠️ Syft installation failed, SBOM generation may be limited"
             fi
@@ -280,10 +280,10 @@ runs:
           UNKNOWN_COUNT=1
         fi
         
-        echo "forbidden-found=$FORBIDDEN_FOUND" >> $GITHUB_OUTPUT
-        echo "unknown-found=$UNKNOWN_FOUND" >> $GITHUB_OUTPUT
-        echo "forbidden-count=$FORBIDDEN_COUNT" >> $GITHUB_OUTPUT
-        echo "unknown-count=$UNKNOWN_COUNT" >> $GITHUB_OUTPUT
+        echo "forbidden-found=$FORBIDDEN_FOUND" >> "$GITHUB_OUTPUT"
+        echo "unknown-found=$UNKNOWN_FOUND" >> "$GITHUB_OUTPUT"
+        echo "forbidden-count=$FORBIDDEN_COUNT" >> "$GITHUB_OUTPUT"
+        echo "unknown-count=$UNKNOWN_COUNT" >> "$GITHUB_OUTPUT"
         
         # Ensure license scan step always succeeds
         echo "✅ License scan completed successfully"
@@ -404,7 +404,7 @@ runs:
           echo "⚠️ syft not available for SBOM generation"
         fi
         
-        echo "sbom-generated=$SBOM_GENERATED" >> $GITHUB_OUTPUT
+        echo "sbom-generated=$SBOM_GENERATED" >> "$GITHUB_OUTPUT"
         
         # Ensure SBOM generation step always succeeds
         echo "✅ SBOM generation completed"
@@ -445,10 +445,10 @@ runs:
         FORBIDDEN_COUNT="${{ steps.license-scan.outputs.forbidden-count || '0' }}"
         UNKNOWN_COUNT="${{ steps.license-scan.outputs.unknown-count || '0' }}"
         
-        echo "compliance-status=$COMPLIANCE_STATUS" >> $GITHUB_OUTPUT
-        echo "license-summary=$LICENSE_SUMMARY" >> $GITHUB_OUTPUT
-        echo "forbidden-count=$FORBIDDEN_COUNT" >> $GITHUB_OUTPUT
-        echo "unknown-count=$UNKNOWN_COUNT" >> $GITHUB_OUTPUT
+        echo "compliance-status=$COMPLIANCE_STATUS" >> "$GITHUB_OUTPUT"
+        echo "license-summary=$LICENSE_SUMMARY" >> "$GITHUB_OUTPUT"
+        echo "forbidden-count=$FORBIDDEN_COUNT" >> "$GITHUB_OUTPUT"
+        echo "unknown-count=$UNKNOWN_COUNT" >> "$GITHUB_OUTPUT"
         
         # Create comprehensive report
         cat > license-reports/compliance-summary.md << EOF

@@ -101,7 +101,7 @@ runs:
         fi
         
         echo "PR Number: $PR_NUMBER"
-        echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
+        echo "pr-number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
         
         # Get PR details using curl instead of gh
         PR_DATA=$(curl -s \
@@ -118,18 +118,18 @@ runs:
         PR_HEAD_REF=$(echo "$PR_DATA" | jq -r '.head.ref')
         PR_BASE_REF=$(echo "$PR_DATA" | jq -r '.base.ref')
         
-        echo "pr-author=$PR_AUTHOR" >> $GITHUB_OUTPUT
-        echo "pr-state=$PR_STATE" >> $GITHUB_OUTPUT
-        echo "pr-draft=$PR_DRAFT" >> $GITHUB_OUTPUT
-        echo "pr-mergeable=$PR_MERGEABLE" >> $GITHUB_OUTPUT
-        echo "pr-title=$PR_TITLE" >> $GITHUB_OUTPUT
-        echo "pr-head-sha=$PR_HEAD_SHA" >> $GITHUB_OUTPUT
-        echo "pr-head-ref=$PR_HEAD_REF" >> $GITHUB_OUTPUT
-        echo "pr-base-ref=$PR_BASE_REF" >> $GITHUB_OUTPUT
+        echo "pr-author=$PR_AUTHOR" >> "$GITHUB_OUTPUT"
+        echo "pr-state=$PR_STATE" >> "$GITHUB_OUTPUT"
+        echo "pr-draft=$PR_DRAFT" >> "$GITHUB_OUTPUT"
+        echo "pr-mergeable=$PR_MERGEABLE" >> "$GITHUB_OUTPUT"
+        echo "pr-title=$PR_TITLE" >> "$GITHUB_OUTPUT"
+        echo "pr-head-sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+        echo "pr-head-ref=$PR_HEAD_REF" >> "$GITHUB_OUTPUT"
+        echo "pr-base-ref=$PR_BASE_REF" >> "$GITHUB_OUTPUT"
         
         # Get PR labels
         PR_LABELS=$(echo "$PR_DATA" | jq -r '.labels[].name' | tr '\n' ',' | sed 's/,$//')
-        echo "pr-labels=$PR_LABELS" >> $GITHUB_OUTPUT
+        echo "pr-labels=$PR_LABELS" >> "$GITHUB_OUTPUT"
         
         echo "📋 PR Information:"
         echo "  • Author: $PR_AUTHOR"
@@ -213,8 +213,8 @@ runs:
           done
         fi
         
-        echo "auto-merge-allowed=$AUTO_MERGE_ALLOWED" >> $GITHUB_OUTPUT
-        echo "rejection-reasons=$REJECTION_REASONS" >> $GITHUB_OUTPUT
+        echo "auto-merge-allowed=$AUTO_MERGE_ALLOWED" >> "$GITHUB_OUTPUT"
+        echo "rejection-reasons=$REJECTION_REASONS" >> "$GITHUB_OUTPUT"
         
         if [ "$AUTO_MERGE_ALLOWED" == "true" ]; then
           echo "✅ Auto merge conditions satisfied"
@@ -282,7 +282,7 @@ runs:
           sleep 30
         done
         
-        echo "checks-passed=$CHECKS_PASSED" >> $GITHUB_OUTPUT
+        echo "checks-passed=$CHECKS_PASSED" >> "$GITHUB_OUTPUT"
         
         if [ "$CHECKS_PASSED" == "true" ]; then
           echo "✅ All required checks passed"
@@ -315,10 +315,10 @@ runs:
         echo "Approving reviews: $APPROVING_REVIEWS"
         
         if [ "$APPROVING_REVIEWS" -ge "$REQUIRED_REVIEWS" ]; then
-          echo "reviews-satisfied=true" >> $GITHUB_OUTPUT
+          echo "reviews-satisfied=true" >> "$GITHUB_OUTPUT"
           echo "✅ Required reviews satisfied"
         else
-          echo "reviews-satisfied=false" >> $GITHUB_OUTPUT
+          echo "reviews-satisfied=false" >> "$GITHUB_OUTPUT"
           echo "❌ Insufficient approving reviews ($APPROVING_REVIEWS/$REQUIRED_REVIEWS)"
         fi
 
@@ -358,17 +358,17 @@ runs:
           echo "✅ PR merged successfully"
           echo "Merge commit SHA: $MERGE_SHA"
           
-          echo "merged=true" >> $GITHUB_OUTPUT
-          echo "merge-commit-sha=$MERGE_SHA" >> $GITHUB_OUTPUT
-          echo "merge-method-used=$MERGE_METHOD" >> $GITHUB_OUTPUT
+          echo "merged=true" >> "$GITHUB_OUTPUT"
+          echo "merge-commit-sha=$MERGE_SHA" >> "$GITHUB_OUTPUT"
+          echo "merge-method-used=$MERGE_METHOD" >> "$GITHUB_OUTPUT"
         else
           echo "❌ Failed to merge PR"
           ERROR_MESSAGE=$(echo "$MERGE_RESULT" | jq -r '.message // "Unknown error"')
           echo "Error: $ERROR_MESSAGE"
           
-          echo "merged=false" >> $GITHUB_OUTPUT
-          echo "merge-commit-sha=" >> $GITHUB_OUTPUT
-          echo "merge-method-used=" >> $GITHUB_OUTPUT
+          echo "merged=false" >> "$GITHUB_OUTPUT"
+          echo "merge-commit-sha=" >> "$GITHUB_OUTPUT"
+          echo "merge-method-used=" >> "$GITHUB_OUTPUT"
         fi
 
     - name: 🧹 Cleanup Branch
@@ -403,11 +403,11 @@ runs:
         
         if [ "$HTTP_STATUS" == "204" ]; then
           echo "✅ Branch deleted successfully"
-          echo "branch-deleted=true" >> $GITHUB_OUTPUT
+          echo "branch-deleted=true" >> "$GITHUB_OUTPUT"
         else
           echo "⚠️ Failed to delete branch (HTTP $HTTP_STATUS)"
           echo "May be protected or already deleted"
-          echo "branch-deleted=false" >> $GITHUB_OUTPUT
+          echo "branch-deleted=false" >> "$GITHUB_OUTPUT"
         fi
 
     - name: 📊 Generate Merge Summary

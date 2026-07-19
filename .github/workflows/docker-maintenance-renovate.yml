@@ -88,13 +88,13 @@ jobs:
       - name: 📊 Summary
         shell: bash
         run: |
-          echo "## 🤖 Renovate Auto-Merge" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **PR** | #${{ github.event.pull_request.number }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Actor** | \`${{ github.actor }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Merge Method** | ${{ inputs.merge-method }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Auto-Approve** | ${{ inputs.auto-approve && '✅ Yes' || '❌ No' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Auto-merge enabled. GitHub will merge once all required checks pass." >> $GITHUB_STEP_SUMMARY
+          echo "## 🤖 Renovate Auto-Merge" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **PR** | #${{ github.event.pull_request.number }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Actor** | \`${{ github.actor }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Merge Method** | ${{ inputs.merge-method }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Auto-Approve** | ${{ inputs.auto-approve && '✅ Yes' || '❌ No' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ Auto-merge enabled. GitHub will merge once all required checks pass." >> "$GITHUB_STEP_SUMMARY"

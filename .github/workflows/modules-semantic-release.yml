@@ -91,31 +91,31 @@ jobs:
         run: |
           # Map outputs from action
           if [ "${{ steps.semantic.outputs.release-created }}" = "true" ]; then
-            echo "release-created=true" >> $GITHUB_OUTPUT
-            echo "version=${{ steps.semantic.outputs.version }}" >> $GITHUB_OUTPUT
-            echo "tag=${{ steps.semantic.outputs.tag }}" >> $GITHUB_OUTPUT
+            echo "release-created=true" >> "$GITHUB_OUTPUT"
+            echo "version=${{ steps.semantic.outputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "tag=${{ steps.semantic.outputs.tag }}" >> "$GITHUB_OUTPUT"
             echo "✅ Released version: ${{ steps.semantic.outputs.tag }}"
           else
-            echo "release-created=false" >> $GITHUB_OUTPUT
+            echo "release-created=false" >> "$GITHUB_OUTPUT"
             echo "ℹ️ No release created (no releasable changes)"
           fi
           
       - name: 📊 Summary
         if: always()
         run: |
-          echo "### 🚀 Semantic Release Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 Semantic Release Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [ "${{ steps.release.outputs.release-created }}" = "true" ]; then
-            echo "✅ **Release Created Successfully**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-            echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| **Version** | ${{ steps.release.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Tag** | ${{ steps.release.outputs.tag }} |" >> $GITHUB_STEP_SUMMARY
-            echo "| **Branch** | ${{ inputs.target-branch }} |" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Release Created Successfully**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Version** | ${{ steps.release.outputs.version }} |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Tag** | ${{ steps.release.outputs.tag }} |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Branch** | ${{ inputs.target-branch }} |" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "ℹ️ **No Release Created**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "No releasable changes found since the last release." >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **No Release Created**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No releasable changes found since the last release." >> "$GITHUB_STEP_SUMMARY"
           fi

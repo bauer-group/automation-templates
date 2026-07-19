@@ -93,27 +93,27 @@ jobs:
       - name: 📊 License Compliance Report
         if: always()
         run: |
-          echo "### 📋 License Compliance Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Compliance Status** | ${{ steps.license.outputs.compliance-status || 'Compliant' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Dependencies Scanned** | ${{ inputs.scan-dependencies }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Forbidden Licenses** | ${{ steps.license.outputs.forbidden-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Unknown Licenses** | ${{ steps.license.outputs.unknown-count || '0' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **SBOM Generated** | ${{ steps.license.outputs.sbom-generated || inputs.generate-sbom }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 License Compliance Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Compliance Status** | ${{ steps.license.outputs.compliance-status || 'Compliant' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Dependencies Scanned** | ${{ inputs.scan-dependencies }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Forbidden Licenses** | ${{ steps.license.outputs.forbidden-count || '0' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Unknown Licenses** | ${{ steps.license.outputs.unknown-count || '0' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **SBOM Generated** | ${{ steps.license.outputs.sbom-generated || inputs.generate-sbom }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           COMPLIANCE_STATUS="${{ steps.license.outputs.compliance-status }}"
           if [ "$COMPLIANCE_STATUS" = "pass" ] || [ "$COMPLIANCE_STATUS" = "Compliant" ] || [ -z "$COMPLIANCE_STATUS" ]; then
-            echo "✅ **All licenses are compliant!**" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **All licenses are compliant!**" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ **License compliance issues found.**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Action Required:**" >> $GITHUB_STEP_SUMMARY
-            echo "- Review license reports in artifacts" >> $GITHUB_STEP_SUMMARY
-            echo "- Update dependencies with non-compliant licenses" >> $GITHUB_STEP_SUMMARY
-            echo "- Add exceptions to allowed licenses if needed" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **License compliance issues found.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Action Required:**" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Review license reports in artifacts" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Update dependencies with non-compliant licenses" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Add exceptions to allowed licenses if needed" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: 📤 Upload License Reports

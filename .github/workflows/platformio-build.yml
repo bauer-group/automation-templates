@@ -202,11 +202,11 @@ jobs:
             fi
           fi
 
-          echo "environments=$ENVS" >> $GITHUB_OUTPUT
+          echo "environments=$ENVS" >> "$GITHUB_OUTPUT"
 
           # Create matrix
           MATRIX=$(jq -n --argjson envs "$ENVS" '{environment: $envs}')
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "Build Matrix: $MATRIX"
 
       - name: Determine Version
@@ -229,7 +229,7 @@ jobs:
             fi
           fi
 
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Firmware Version: $VERSION"
 
   # Security Scan
@@ -410,7 +410,7 @@ jobs:
           cd "$ARTIFACT_DIR"
           sha256sum *.bin *.hex 2>/dev/null > checksums.sha256 || true
 
-          echo "output-dir=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
+          echo "output-dir=$ARTIFACT_DIR" >> "$GITHUB_OUTPUT"
           ls -la
 
       - name: Upload Build Artifacts
@@ -639,7 +639,7 @@ jobs:
             echo "- **Tests Enabled**: ${{ inputs.run-tests }}"
             echo "- **Static Analysis**: ${{ inputs.enable-check }}"
             echo ""
-          } >> $GITHUB_STEP_SUMMARY
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "${{ needs.build.result }}" == "success" ]]; then
             echo "✅ Build completed successfully"

@@ -110,9 +110,9 @@ jobs:
 
       - name: Set up environment variables
         run: |
-          echo "DATABASE_URL=postgresql://testuser:testpass@localhost:5432/testdb" >> $GITHUB_ENV
-          echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
-          echo "SECRET_KEY=test-secret-key-for-ci" >> $GITHUB_ENV
+          echo "DATABASE_URL=postgresql://testuser:testpass@localhost:5432/testdb" >> "$GITHUB_ENV"
+          echo "REDIS_URL=redis://localhost:6379" >> "$GITHUB_ENV"
+          echo "SECRET_KEY=test-secret-key-for-ci" >> "$GITHUB_ENV"
 
       - name: Run database migrations
         run: |

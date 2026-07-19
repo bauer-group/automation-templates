@@ -88,13 +88,13 @@ jobs:
       - name: Generate Summary
         if: always()
         run: |
-          echo "## Deployment Result" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Status | \`${{ needs.deploy.outputs.deployment-status }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Deployment ID | \`${{ needs.deploy.outputs.deployment-id }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Result" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Status | \`${{ needs.deploy.outputs.deployment-status }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Deployment ID | \`${{ needs.deploy.outputs.deployment-id }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           if [[ -n "${{ needs.deploy.outputs.deployment-url }}" ]]; then
-            echo "[View in Coolify](${{ needs.deploy.outputs.deployment-url }})" >> $GITHUB_STEP_SUMMARY
+            echo "[View in Coolify](${{ needs.deploy.outputs.deployment-url }})" >> "$GITHUB_STEP_SUMMARY"
           fi

@@ -93,17 +93,17 @@ jobs:
     steps:
       - name: Generate Security Report
         run: |
-          echo "## Security Scan Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Build Status: ${{ needs.docker-build.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Security Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "- **Fail Threshold:** LOW (strict)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image Signed:** Yes" >> $GITHUB_STEP_SUMMARY
-          echo "- **SBOM Generated:** Yes (CycloneDX)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Image Details" >> $GITHUB_STEP_SUMMARY
-          echo "- **Digest:** \`${{ needs.docker-build.outputs.image-digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "## Security Scan Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Build Status: ${{ needs.docker-build.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Security Configuration" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Fail Threshold:** LOW (strict)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image Signed:** Yes" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **SBOM Generated:** Yes (CycloneDX)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Image Details" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Digest:** \`${{ needs.docker-build.outputs.image-digest }}\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Notify Security Team
         if: failure()

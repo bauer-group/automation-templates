@@ -76,11 +76,11 @@ jobs:
 
       - name: Set up environment variables
         run: |
-          echo "DATABASE_URL=postgres://django_user:django_pass@localhost:5432/django_test" >> $GITHUB_ENV
-          echo "REDIS_URL=redis://localhost:6379/0" >> $GITHUB_ENV
-          echo "SECRET_KEY=test-secret-key-for-ci-cd-pipeline" >> $GITHUB_ENV
-          echo "DEBUG=False" >> $GITHUB_ENV
-          echo "ALLOWED_HOSTS=localhost,127.0.0.1" >> $GITHUB_ENV
+          echo "DATABASE_URL=postgres://django_user:django_pass@localhost:5432/django_test" >> "$GITHUB_ENV"
+          echo "REDIS_URL=redis://localhost:6379/0" >> "$GITHUB_ENV"
+          echo "SECRET_KEY=test-secret-key-for-ci-cd-pipeline" >> "$GITHUB_ENV"
+          echo "DEBUG=False" >> "$GITHUB_ENV"
+          echo "ALLOWED_HOSTS=localhost,127.0.0.1" >> "$GITHUB_ENV"
 
       - name: Build frontend assets
         run: |

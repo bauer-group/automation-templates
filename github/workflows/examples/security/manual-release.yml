@@ -88,7 +88,7 @@ jobs:
           fi
           
           echo "Current version: $CURRENT_VERSION"
-          echo "current-version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "current-version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
           
           # Calculate target version
           if [[ -n "${{ inputs.custom-version }}" ]]; then
@@ -113,21 +113,21 @@ jobs:
             echo "Calculated version (${{ inputs.version-bump }} bump): $CALCULATED_VERSION"
           fi
           
-          echo "calculated-version=$CALCULATED_VERSION" >> $GITHUB_OUTPUT
+          echo "calculated-version=$CALCULATED_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: 📊 Input Validation Summary
         run: |
-          echo "### 📦 Manual Release Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Release Type** | ${{ inputs.release-type }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Current Version** | ${{ steps.version.outputs.current-version }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Target Version** | ${{ steps.version.outputs.calculated-version }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Version Method** | ${{ inputs.custom-version && 'Custom' || inputs.version-bump }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Artifact Types** | ${{ inputs.artifact-types }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Skip Security** | ${{ inputs.skip-security-scan }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Skip License Check** | ${{ inputs.skip-license-check }} |" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Manual Release Configuration" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Parameter | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Release Type** | ${{ inputs.release-type }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Current Version** | ${{ steps.version.outputs.current-version }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Target Version** | ${{ steps.version.outputs.calculated-version }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Version Method** | ${{ inputs.custom-version && 'Custom' || inputs.version-bump }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Artifact Types** | ${{ inputs.artifact-types }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Skip Security** | ${{ inputs.skip-security-scan }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Skip License Check** | ${{ inputs.skip-license-check }} |" >> "$GITHUB_STEP_SUMMARY"
 
   # Security scan (conditional)
   security-scan:
@@ -258,7 +258,7 @@ jobs:
           
           # Get release URL
           RELEASE_URL=$(gh release view "v${TARGET_VERSION}" --json url --jq '.url')
-          echo "html_url=${RELEASE_URL}" >> $GITHUB_OUTPUT
+          echo "html_url=${RELEASE_URL}" >> "$GITHUB_OUTPUT"
     
   # Generate artifacts
   generate-artifacts:
@@ -282,32 +282,32 @@ jobs:
     steps:
       - name: 📊 Generate Release Summary
         run: |
-          echo "### 📦 Manual Release Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Release Configuration:**" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Component | Status | Details |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Input Validation** | ${{ needs.validate-inputs.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Version: ${{ needs.validate-inputs.outputs.calculated-version || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || needs.security-scan.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | ${{ inputs.skip-security-scan && 'Skipped by user' || 'Completed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || needs.license-compliance.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | ${{ inputs.skip-license-check && 'Skipped by user' || 'Completed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Release Creation** | ${{ needs.create-release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Manual process |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Artifact Generation** | ${{ needs.generate-artifacts.result == 'success' && '✅ PASS' || needs.generate-artifacts.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Type: ${{ inputs.artifact-types }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Manual Release Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Release Configuration:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | Status | Details |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|--------|---------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Input Validation** | ${{ needs.validate-inputs.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Version: ${{ needs.validate-inputs.outputs.calculated-version || 'N/A' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || needs.security-scan.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | ${{ inputs.skip-security-scan && 'Skipped by user' || 'Completed' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || needs.license-compliance.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | ${{ inputs.skip-license-check && 'Skipped by user' || 'Completed' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Release Creation** | ${{ needs.create-release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Manual process |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Artifact Generation** | ${{ needs.generate-artifacts.result == 'success' && '✅ PASS' || needs.generate-artifacts.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Type: ${{ inputs.artifact-types }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [ "${{ needs.create-release.result }}" = "success" ]; then
-            echo "🎉 **Manual Release v${{ needs.validate-inputs.outputs.calculated-version }} Created Successfully!**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Release Details:**" >> $GITHUB_STEP_SUMMARY
-            echo "- **Version:** ${{ needs.validate-inputs.outputs.calculated-version }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **Tag:** ${{ needs.create-release.outputs.tag-name }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **Type:** ${{ inputs.release-type }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **URL:** ${{ needs.create-release.outputs.release-url }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **Artifacts:** ${{ inputs.artifact-types }}" >> $GITHUB_STEP_SUMMARY
+            echo "🎉 **Manual Release v${{ needs.validate-inputs.outputs.calculated-version }} Created Successfully!**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Release Details:**" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Version:** ${{ needs.validate-inputs.outputs.calculated-version }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Tag:** ${{ needs.create-release.outputs.tag-name }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Type:** ${{ inputs.release-type }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **URL:** ${{ needs.create-release.outputs.release-url }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Artifacts:** ${{ inputs.artifact-types }}" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ **Manual release failed.** Check the logs for details." >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Manual release failed.** Check the logs for details." >> "$GITHUB_STEP_SUMMARY"
           fi
           
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "*Created using modular workflow components* 🧩" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "---" >> "$GITHUB_STEP_SUMMARY"
+          echo "*Created using modular workflow components* 🧩" >> "$GITHUB_STEP_SUMMARY"

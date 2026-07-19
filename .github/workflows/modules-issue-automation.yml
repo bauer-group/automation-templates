@@ -59,25 +59,25 @@ jobs:
 
           # Determine if this is an issue or PR
           if [ -n "${{ github.event.issue }}" ]; then
-            echo "type=issue" >> $GITHUB_OUTPUT
-            echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "type=issue" >> "$GITHUB_OUTPUT"
+            echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
             # Use heredoc for multiline JSON to avoid format errors
             {
               echo 'labels<<EOF'
               echo '${{ toJson(github.event.issue.labels.*.name) }}'
               echo 'EOF'
-            } >> $GITHUB_OUTPUT
-            echo "title=$ISSUE_TITLE" >> $GITHUB_OUTPUT
+            } >> "$GITHUB_OUTPUT"
+            echo "title=$ISSUE_TITLE" >> "$GITHUB_OUTPUT"
           elif [ -n "${{ github.event.pull_request }}" ]; then
-            echo "type=pull_request" >> $GITHUB_OUTPUT
-            echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "type=pull_request" >> "$GITHUB_OUTPUT"
+            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
             # Use heredoc for multiline JSON to avoid format errors
             {
               echo 'labels<<EOF'
               echo '${{ toJson(github.event.pull_request.labels.*.name) }}'
               echo 'EOF'
-            } >> $GITHUB_OUTPUT
-            echo "title=$PR_TITLE" >> $GITHUB_OUTPUT
+            } >> "$GITHUB_OUTPUT"
+            echo "title=$PR_TITLE" >> "$GITHUB_OUTPUT"
           fi
       
       - name: 📖 Load Label Configuration
@@ -204,7 +204,7 @@ jobs:
             CONFIG_PATH="/tmp/label-config.yml"
           fi
           
-          echo "config-path=$CONFIG_PATH" >> $GITHUB_OUTPUT
+          echo "config-path=$CONFIG_PATH" >> "$GITHUB_OUTPUT"
       
       - name: 🏷️ Process Labels
         id: process
@@ -353,19 +353,19 @@ jobs:
           ISSUE_TITLE: ${{ steps.issue.outputs.title }}
           ISSUE_LABELS: ${{ steps.issue.outputs.labels }}
         run: |
-          echo "### 🤖 Issue Automation Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Type** | ${{ steps.issue.outputs.type }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Number** | #${{ steps.issue.outputs.number }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Title** | $ISSUE_TITLE |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Labels** | $ISSUE_LABELS |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Dry Run** | ${{ inputs.dry-run }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🤖 Issue Automation Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Type** | ${{ steps.issue.outputs.type }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Number** | #${{ steps.issue.outputs.number }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Title** | $ISSUE_TITLE |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Labels** | $ISSUE_LABELS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Dry Run** | ${{ inputs.dry-run }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [ "${{ inputs.dry-run }}" = "true" ]; then
-            echo "🔍 **This was a dry run - no actual changes were made**" >> $GITHUB_STEP_SUMMARY
+            echo "🔍 **This was a dry run - no actual changes were made**" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "✅ **Automation completed successfully**" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Automation completed successfully**" >> "$GITHUB_STEP_SUMMARY"
           fi

@@ -100,7 +100,7 @@ runs:
           SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9]/-/g' | head -c 20)
           VERSION="0.0.0-${SAFE_BRANCH}+${SHORT_SHA}"
         fi
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
         echo "Firmware version: $VERSION"
 
     - name: Setup ccache
@@ -145,7 +145,7 @@ runs:
           CMAKE_ARGS="$CMAKE_ARGS ${{ inputs.extra-cmake-args }}"
         fi
 
-        echo "cmake-args=$CMAKE_ARGS" >> $GITHUB_OUTPUT
+        echo "cmake-args=$CMAKE_ARGS" >> "$GITHUB_OUTPUT"
 
     - name: Build Firmware
       id: build
@@ -178,8 +178,8 @@ runs:
           END_TIME=$(date +%s)
           BUILD_TIME=$((END_TIME - START_TIME))
 
-          echo "status=success" >> $GITHUB_OUTPUT
-          echo "build-time=$BUILD_TIME" >> $GITHUB_OUTPUT
+          echo "status=success" >> "$GITHUB_OUTPUT"
+          echo "build-time=$BUILD_TIME" >> "$GITHUB_OUTPUT"
 
           # Show ccache stats
           if [[ "${{ inputs.enable-ccache }}" == "true" ]]; then
@@ -200,7 +200,7 @@ runs:
 
           # Extract size
           APP_SIZE=$(grep -oP 'Total image size.*?(\d+)' build/size-report.txt | grep -oP '\d+$' || echo "0")
-          echo "size=$APP_SIZE" >> $GITHUB_OUTPUT
+          echo "size=$APP_SIZE" >> "$GITHUB_OUTPUT"
 
           cat build/size-report.txt
 
@@ -255,5 +255,5 @@ runs:
         sha256sum *.bin > checksums.sha256 2>/dev/null || true
         cd -
 
-        echo "binary-path=build/artifacts" >> $GITHUB_OUTPUT
+        echo "binary-path=build/artifacts" >> "$GITHUB_OUTPUT"
         ls -la "$ARTIFACT_DIR"

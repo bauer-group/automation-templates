@@ -113,8 +113,8 @@ jobs:
 
           # Determine if this is an issue or PR
           if [ -n "${{ github.event.issue }}" ]; then
-            echo "type=issue" >> $GITHUB_OUTPUT
-            echo "number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+            echo "type=issue" >> "$GITHUB_OUTPUT"
+            echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
 
             # Generate safe delimiters for each field
             DELIM_TITLE=$(generate_safe_delimiter "$ISSUE_TITLE" "GHEOF_TITLE")
@@ -126,27 +126,27 @@ jobs:
               echo "title<<${DELIM_TITLE}"
               printf '%s\n' "$ISSUE_TITLE"
               echo "${DELIM_TITLE}"
-            } >> $GITHUB_OUTPUT
+            } >> "$GITHUB_OUTPUT"
 
             # Use heredoc for body to handle special characters
             {
               echo "body<<${DELIM_BODY}"
               printf '%s\n' "$ISSUE_BODY"
               echo "${DELIM_BODY}"
-            } >> $GITHUB_OUTPUT
+            } >> "$GITHUB_OUTPUT"
 
-            echo "author=${{ github.event.issue.user.login }}" >> $GITHUB_OUTPUT
+            echo "author=${{ github.event.issue.user.login }}" >> "$GITHUB_OUTPUT"
 
             # Use heredoc for labels JSON
             {
               echo "labels<<${DELIM_LABELS}"
               echo '${{ toJson(github.event.issue.labels.*.name) }}'
               echo "${DELIM_LABELS}"
-            } >> $GITHUB_OUTPUT
+            } >> "$GITHUB_OUTPUT"
 
           elif [ -n "${{ github.event.pull_request }}" ]; then
-            echo "type=pull_request" >> $GITHUB_OUTPUT
-            echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "type=pull_request" >> "$GITHUB_OUTPUT"
+            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
 
             # Generate safe delimiters for each field
             DELIM_TITLE=$(generate_safe_delimiter "$PR_TITLE" "GHEOF_TITLE")
@@ -158,23 +158,23 @@ jobs:
               echo "title<<${DELIM_TITLE}"
               printf '%s\n' "$PR_TITLE"
               echo "${DELIM_TITLE}"
-            } >> $GITHUB_OUTPUT
+            } >> "$GITHUB_OUTPUT"
 
             # Use heredoc for body to handle special characters
             {
               echo "body<<${DELIM_BODY}"
               printf '%s\n' "$PR_BODY"
               echo "${DELIM_BODY}"
-            } >> $GITHUB_OUTPUT
+            } >> "$GITHUB_OUTPUT"
 
-            echo "author=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
+            echo "author=${{ github.event.pull_request.user.login }}" >> "$GITHUB_OUTPUT"
 
             # Use heredoc for labels JSON
             {
               echo "labels<<${DELIM_LABELS}"
               echo '${{ toJson(github.event.pull_request.labels.*.name) }}'
               echo "${DELIM_LABELS}"
-            } >> $GITHUB_OUTPUT
+            } >> "$GITHUB_OUTPUT"
           fi
       
       - name: 🎯 Prepare Prompt
@@ -272,7 +272,7 @@ jobs:
           fi
 
           # Set output
-          echo "prompt-file=/tmp/prompt.txt" >> $GITHUB_OUTPUT
+          echo "prompt-file=/tmp/prompt.txt" >> "$GITHUB_OUTPUT"
       
       - name: 🧠 Run AI Inference (GitHub Models)
         id: inference-github
@@ -348,7 +348,7 @@ jobs:
             cat /tmp/openai_response.txt
             echo ""  # Ensure newline before delimiter
             echo "${DELIMITER}"
-          } >> $GITHUB_OUTPUT
+          } >> "$GITHUB_OUTPUT"
 
       - name: 🧠 Fallback Summary (No AI)
         id: fallback
@@ -392,7 +392,7 @@ jobs:
             cat /tmp/fallback_response.txt
             echo ""  # Ensure newline before delimiter
             echo "${DELIMITER}"
-          } >> $GITHUB_OUTPUT
+          } >> "$GITHUB_OUTPUT"
 
       - name: 📝 Process AI Response
         id: process
@@ -420,13 +420,13 @@ jobs:
           # Extract labels if suggested (read from file, not variable)
           if [ "$ADD_LABELS" = "true" ]; then
             SUGGESTED_LABELS=$(grep -oE "(bug|enhancement|documentation|question|help-wanted|good-first-issue|breaking-change|performance|security|test)" /tmp/ai_response.txt 2>/dev/null | sort -u | tr '\n' ' ' | xargs || true)
-            echo "suggested-labels=$SUGGESTED_LABELS" >> $GITHUB_OUTPUT
+            echo "suggested-labels=$SUGGESTED_LABELS" >> "$GITHUB_OUTPUT"
           fi
 
           # Extract priority if suggested (read from file, not variable)
           if [ "$ADD_PRIORITY" = "true" ]; then
             SUGGESTED_PRIORITY=$(grep -oiE "priority:?\s*(low|medium|high|critical)|(low|medium|high|critical)\s*priority" /tmp/ai_response.txt 2>/dev/null | grep -oiE "(low|medium|high|critical)" | head -1 || true)
-            echo "suggested-priority=$SUGGESTED_PRIORITY" >> $GITHUB_OUTPUT
+            echo "suggested-priority=$SUGGESTED_PRIORITY" >> "$GITHUB_OUTPUT"
           fi
 
           # Clean up the summary (remove label/priority suggestions)
@@ -461,7 +461,7 @@ jobs:
             cat /tmp/clean_summary.txt
             echo ""  # Ensure newline before delimiter
             echo "${DELIMITER}"
-          } >> $GITHUB_OUTPUT
+          } >> "$GITHUB_OUTPUT"
       
       - name: 💬 Post Summary Comment
         env:
@@ -574,4 +574,4 @@ jobs:
 
             echo ""
             echo "✅ **Summary posted successfully**"
-          } >> $GITHUB_STEP_SUMMARY
+          } >> "$GITHUB_STEP_SUMMARY"

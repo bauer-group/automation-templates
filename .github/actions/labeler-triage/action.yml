@@ -132,7 +132,7 @@ runs:
         else
           gh pr edit ${PR_NUMBER} --add-label "$SIZE_LABEL" 2>/dev/null || echo "⚠️ Failed to add label '$SIZE_LABEL'"
         fi
-        echo "size=$SIZE_LABEL" >> $GITHUB_OUTPUT
+        echo "size=$SIZE_LABEL" >> "$GITHUB_OUTPUT"
 
     - name: 🎯 Apply Priority Labels
       id: priority-label
@@ -194,7 +194,7 @@ runs:
         else
           gh pr edit ${PR_NUMBER} --add-label "$PRIORITY" 2>/dev/null || echo "⚠️ Failed to add label '$PRIORITY'"
         fi
-        echo "priority=$PRIORITY" >> $GITHUB_OUTPUT
+        echo "priority=$PRIORITY" >> "$GITHUB_OUTPUT"
 
     - name: 🔖 Apply Type Labels
       id: type-label
@@ -283,7 +283,7 @@ runs:
           done
         fi
         
-        echo "types=$TYPE_LABELS" >> $GITHUB_OUTPUT
+        echo "types=$TYPE_LABELS" >> "$GITHUB_OUTPUT"
 
     - name: 👥 Auto-assign Reviewers
       id: assign-reviewers
@@ -315,14 +315,14 @@ runs:
           
           if [ -n "$SUGGESTED" ]; then
             echo "👥 Suggested reviewers: $SUGGESTED"
-            echo "reviewers=$SUGGESTED" >> $GITHUB_OUTPUT
+            echo "reviewers=$SUGGESTED" >> "$GITHUB_OUTPUT"
           else
             echo "ℹ️ No suggested reviewers found"
-            echo "reviewers=" >> $GITHUB_OUTPUT
+            echo "reviewers=" >> "$GITHUB_OUTPUT"
           fi
         else
           echo "ℹ️ No CODEOWNERS file found"
-          echo "reviewers=" >> $GITHUB_OUTPUT
+          echo "reviewers=" >> "$GITHUB_OUTPUT"
         fi
 
     - name: 🎨 Apply Custom Rules
@@ -380,12 +380,12 @@ runs:
         ALL_LABELS=$(gh pr view ${PR_NUMBER} --json labels --jq '.labels[].name' | tr '\n' ',' | sed 's/,$//')
         
         echo "🏷️ Current labels: $ALL_LABELS"
-        echo "all-labels=$ALL_LABELS" >> $GITHUB_OUTPUT
+        echo "all-labels=$ALL_LABELS" >> "$GITHUB_OUTPUT"
         
         # Note: labels-added and labels-removed would need to track state
         # For now, we'll output the current state
-        echo "labels-added=$ALL_LABELS" >> $GITHUB_OUTPUT
-        echo "labels-removed=" >> $GITHUB_OUTPUT
+        echo "labels-added=$ALL_LABELS" >> "$GITHUB_OUTPUT"
+        echo "labels-removed=" >> "$GITHUB_OUTPUT"
 
 branding:
   icon: 'tag'

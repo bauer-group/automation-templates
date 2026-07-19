@@ -197,14 +197,14 @@ jobs:
 
           # Save to file for next step
           echo "$SCRIPT_FILES" > /tmp/script-files.txt
-          echo "file-count=$FILE_COUNT" >> $GITHUB_OUTPUT
+          echo "file-count=$FILE_COUNT" >> "$GITHUB_OUTPUT"
 
           # Handle no files found
           if [ "$FILE_COUNT" -eq 0 ]; then
             echo "ℹ️ No shell scripts found - skipping validation"
-            echo "no-files=true" >> $GITHUB_OUTPUT
+            echo "no-files=true" >> "$GITHUB_OUTPUT"
           else
-            echo "no-files=false" >> $GITHUB_OUTPUT
+            echo "no-files=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 🐚 Run ShellCheck
@@ -297,11 +297,11 @@ jobs:
           echo "   Warnings:      $WARNING_COUNT"
 
           # Set outputs
-          echo "passed=$PASSED" >> $GITHUB_OUTPUT
-          echo "files-checked=$FILE_COUNT" >> $GITHUB_OUTPUT
-          echo "issues-found=$ISSUES_FOUND" >> $GITHUB_OUTPUT
-          echo "error-count=$ERROR_COUNT" >> $GITHUB_OUTPUT
-          echo "warning-count=$WARNING_COUNT" >> $GITHUB_OUTPUT
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "files-checked=$FILE_COUNT" >> "$GITHUB_OUTPUT"
+          echo "issues-found=$ISSUES_FOUND" >> "$GITHUB_OUTPUT"
+          echo "error-count=$ERROR_COUNT" >> "$GITHUB_OUTPUT"
+          echo "warning-count=$WARNING_COUNT" >> "$GITHUB_OUTPUT"
 
           # Determine exit status
           if [ "$PASSED" = "false" ] && [ "${{ inputs.fail-on-findings }}" = "true" ]; then
@@ -321,19 +321,19 @@ jobs:
         id: no-files
         shell: bash
         run: |
-          echo "passed=true" >> $GITHUB_OUTPUT
-          echo "files-checked=0" >> $GITHUB_OUTPUT
-          echo "issues-found=0" >> $GITHUB_OUTPUT
-          echo "error-count=0" >> $GITHUB_OUTPUT
-          echo "warning-count=0" >> $GITHUB_OUTPUT
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+          echo "files-checked=0" >> "$GITHUB_OUTPUT"
+          echo "issues-found=0" >> "$GITHUB_OUTPUT"
+          echo "error-count=0" >> "$GITHUB_OUTPUT"
+          echo "warning-count=0" >> "$GITHUB_OUTPUT"
           echo "ℹ️ No shell scripts found - validation passed"
 
       - name: 📊 Summary
         if: always()
         shell: bash
         run: |
-          echo "### 🐚 ShellCheck Validation Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🐚 ShellCheck Validation Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           PASSED="${{ steps.shellcheck.outputs.passed || steps.no-files.outputs.passed || 'true' }}"
           FILES="${{ steps.shellcheck.outputs.files-checked || steps.no-files.outputs.files-checked || '0' }}"
@@ -342,25 +342,25 @@ jobs:
           WARNINGS="${{ steps.shellcheck.outputs.warning-count || steps.no-files.outputs.warning-count || '0' }}"
 
           if [ "$PASSED" = "true" ]; then
-            echo "✅ **Validation Passed**" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Validation Passed**" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ **Validation Failed**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Validation Failed**" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Files Checked** | $FILES |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Total Issues** | $ISSUES |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Errors** | $ERRORS |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Warnings** | $WARNINGS |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Count |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Files Checked** | $FILES |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Total Issues** | $ISSUES |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Errors** | $ERRORS |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Warnings** | $WARNINGS |" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### ⚙️ Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Severity** | \`${{ inputs.severity }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Shell Dialect** | \`${{ inputs.shell-dialect }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Scan Directory** | \`${{ inputs.scan-directory }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Fail on Findings** | \`${{ inputs.fail-on-findings }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "#### ⚙️ Configuration" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Setting | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Severity** | \`${{ inputs.severity }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Shell Dialect** | \`${{ inputs.shell-dialect }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Scan Directory** | \`${{ inputs.scan-directory }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Fail on Findings** | \`${{ inputs.fail-on-findings }}\` |" >> "$GITHUB_STEP_SUMMARY"

@@ -519,7 +519,7 @@ jobs:
             PM="npm"
           fi
           
-          echo "package-manager=$PM" >> $GITHUB_OUTPUT
+          echo "package-manager=$PM" >> "$GITHUB_OUTPUT"
           echo "Using package manager: $PM"
           
           # Determine lockfile
@@ -529,7 +529,7 @@ jobs:
             pnpm) LOCKFILE="pnpm-lock.yaml" ;;
             bun) LOCKFILE="bun.lockb" ;;
           esac
-          echo "lockfile=$LOCKFILE" >> $GITHUB_OUTPUT
+          echo "lockfile=$LOCKFILE" >> "$GITHUB_OUTPUT"
       
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v6
@@ -593,7 +593,7 @@ jobs:
             VERSION="$VERSION-${{ inputs.prerelease-identifier }}.${{ github.run_number }}"
           fi
           
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Version: $VERSION"
       
       - name: 📚 Install Dependencies
@@ -670,7 +670,7 @@ jobs:
           # Parse vulnerability summary for job summary
           SUMMARY=$(grep -oE '[0-9]+ (low|moderate|high|critical) severity' "$AUDIT_FILE" | tr '\n' ', ' | sed 's/, $//' || echo "")
           [ -z "$SUMMARY" ] && SUMMARY="No issues above threshold"
-          echo "audit-summary=$SUMMARY" >> $GITHUB_OUTPUT
+          echo "audit-summary=$SUMMARY" >> "$GITHUB_OUTPUT"
 
           exit $AUDIT_EXIT
       
@@ -905,9 +905,9 @@ jobs:
           $PUBLISH_CMD
           
           if [ "${{ inputs.dry-run }}" != "true" ]; then
-            echo "published=true" >> $GITHUB_OUTPUT
+            echo "published=true" >> "$GITHUB_OUTPUT"
           else
-            echo "published=false" >> $GITHUB_OUTPUT
+            echo "published=false" >> "$GITHUB_OUTPUT"
           fi
       
       # Two distinct needs, two logins - both BEFORE the build, because `docker build`
@@ -953,7 +953,7 @@ jobs:
             --build-arg NODE_ENV=${{ inputs.build-env }} \
             ${{ inputs.working-directory }}
           
-          echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "image=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
       
       - name: 🐳 Push Docker Image
         if: inputs.build-docker && inputs.docker-registry != ''
@@ -993,7 +993,7 @@ jobs:
             cp -r ${{ inputs.artifact-path }} "$ARTIFACT_DIR/"
           fi
           
-          echo "path=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
+          echo "path=$ARTIFACT_DIR" >> "$GITHUB_OUTPUT"
       
       - name: 📤 Upload Artifacts
         if: inputs.upload-artifacts
@@ -1028,7 +1028,7 @@ jobs:
             echo "| **Package Manager** | \`${{ steps.detect-pm.outputs.package-manager }}\` |"
             echo "| **Version** | \`${{ steps.version.outputs.version }}\` |"
             echo "| **Runner** | \`${{ matrix.os }}\` |"
-          } >> $GITHUB_STEP_SUMMARY
+          } >> "$GITHUB_STEP_SUMMARY"
 
           # --- Quality Checks ---
           {
@@ -1078,7 +1078,7 @@ jobs:
             else
               echo "| 📊 Coverage | ➖ Disabled | |"
             fi
-          } >> $GITHUB_STEP_SUMMARY
+          } >> "$GITHUB_STEP_SUMMARY"
 
           # --- Build & Publish ---
           {
@@ -1105,4 +1105,4 @@ jobs:
             if [ "${{ inputs.upload-artifacts }}" = "true" ]; then
               echo "| 📦 Artifacts | ✅ Uploaded | \`${{ inputs.artifact-name }}-${{ matrix.os }}-${{ steps.version.outputs.version }}\` |"
             fi
-          } >> $GITHUB_STEP_SUMMARY
+          } >> "$GITHUB_STEP_SUMMARY"

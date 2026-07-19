@@ -112,39 +112,39 @@ jobs:
           SECURITY_SCORE="${{ needs.security-analysis.outputs.security-score }}"
           COMPLIANCE_STATUS="${{ needs.compliance-check.outputs.compliance-status }}"
           
-          echo "### 🛡️ Security Monitoring Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Scan Date:** $(date -u)" >> $GITHUB_STEP_SUMMARY
-          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🛡️ Security Monitoring Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Scan Date:** $(date -u)" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Trigger:** ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Branch:** ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
-          echo "| Security Metric | Value | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------------|--------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Security Score** | $SECURITY_SCORE/100 | $([[ $SECURITY_SCORE -ge 95 ]] && echo "🟢 Excellent" || [[ $SECURITY_SCORE -ge 80 ]] && echo "🟡 Good" || echo "🔴 Needs Attention") |" >> $GITHUB_STEP_SUMMARY
-          echo "| **License Compliance** | $COMPLIANCE_STATUS | $([[ '$COMPLIANCE_STATUS' == 'pass' ]] && echo "🟢 Compliant" || echo "🔴 Issues Found") |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Secrets Found** | ${{ needs.security-analysis.outputs.secrets-found }} | $([[ '${{ needs.security-analysis.outputs.secrets-found }}' == 'false' ]] && echo "🟢 Clean" || echo "🔴 Found") |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Vulnerabilities** | ${{ needs.security-analysis.outputs.vulnerabilities-found }} | $([[ '${{ needs.security-analysis.outputs.vulnerabilities-found }}' == 'false' ]] && echo "🟢 Clean" || echo "🔴 Found") |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Metric | Value | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------------|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Security Score** | $SECURITY_SCORE/100 | $([[ $SECURITY_SCORE -ge 95 ]] && echo "🟢 Excellent" || [[ $SECURITY_SCORE -ge 80 ]] && echo "🟡 Good" || echo "🔴 Needs Attention") |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **License Compliance** | $COMPLIANCE_STATUS | $([[ '$COMPLIANCE_STATUS' == 'pass' ]] && echo "🟢 Compliant" || echo "🔴 Issues Found") |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Secrets Found** | ${{ needs.security-analysis.outputs.secrets-found }} | $([[ '${{ needs.security-analysis.outputs.secrets-found }}' == 'false' ]] && echo "🟢 Clean" || echo "🔴 Found") |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Vulnerabilities** | ${{ needs.security-analysis.outputs.vulnerabilities-found }} | $([[ '${{ needs.security-analysis.outputs.vulnerabilities-found }}' == 'false' ]] && echo "🟢 Clean" || echo "🔴 Found") |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           # Generate security recommendations
-          echo "### 🔧 Security Recommendations" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔧 Security Recommendations" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [[ $SECURITY_SCORE -lt 95 ]]; then
-            echo "- 🔍 **Review security scan results** and address findings" >> $GITHUB_STEP_SUMMARY
+            echo "- 🔍 **Review security scan results** and address findings" >> "$GITHUB_STEP_SUMMARY"
           fi
           
           if [[ '${{ needs.security-analysis.outputs.secrets-found }}' == 'true' ]]; then
-            echo "- 🚨 **Immediate Action:** Secrets detected - rotate credentials immediately" >> $GITHUB_STEP_SUMMARY
+            echo "- 🚨 **Immediate Action:** Secrets detected - rotate credentials immediately" >> "$GITHUB_STEP_SUMMARY"
           fi
           
           if [[ '$COMPLIANCE_STATUS' != 'pass' ]]; then
-            echo "- 📋 **License Review:** Address license compliance issues" >> $GITHUB_STEP_SUMMARY
+            echo "- 📋 **License Review:** Address license compliance issues" >> "$GITHUB_STEP_SUMMARY"
           fi
           
-          echo "- 🔄 **Regular Scans:** Security scans run daily at 2 AM UTC" >> $GITHUB_STEP_SUMMARY
-          echo "- 📊 **Monitoring:** Review security trends in GitHub Security tab" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 **Regular Scans:** Security scans run daily at 2 AM UTC" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 📊 **Monitoring:** Review security trends in GitHub Security tab" >> "$GITHUB_STEP_SUMMARY"
 
       - name: 📢 Security Alert Notification
         if: needs.security-analysis.outputs.secrets-found == 'true' || needs.security-analysis.outputs.security-score < 80

@@ -44,7 +44,7 @@ jobs:
         id: compliance
         run: |
           # Validate compliance requirements
-          echo "approved=true" >> $GITHUB_OUTPUT
+          echo "approved=true" >> "$GITHUB_OUTPUT"
 
   docker-build:
     name: Enterprise Docker Build
@@ -126,14 +126,14 @@ jobs:
     steps:
       - name: Generate Security Report
         run: |
-          echo "## Enterprise Security Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Build Status: ${{ needs.docker-build.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Image Details" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image URL:** \`${{ needs.docker-build.outputs.image-url }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Digest:** \`${{ needs.docker-build.outputs.image-digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Security Report:** ${{ needs.docker-build.outputs.security-report }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Enterprise Security Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Build Status: ${{ needs.docker-build.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Image Details" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image URL:** \`${{ needs.docker-build.outputs.image-url }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Digest:** \`${{ needs.docker-build.outputs.image-digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Security Report:** ${{ needs.docker-build.outputs.security-report }}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Notify Security Team
         if: failure()

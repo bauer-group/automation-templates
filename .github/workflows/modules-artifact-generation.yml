@@ -128,75 +128,75 @@ jobs:
               ;;
           esac
           
-          echo "artifacts-generated=$ARTIFACTS_GENERATED" >> $GITHUB_OUTPUT
+          echo "artifacts-generated=$ARTIFACTS_GENERATED" >> "$GITHUB_OUTPUT"
           
           # Generate summary report
-          echo "### 🔨 Artifact Generation Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Configuration | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Artifact Types** | ${{ inputs.artifact-types }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Version** | ${{ inputs.version }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Tag** | ${{ inputs.tag-name }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Docker Registry** | ${{ inputs.docker-registry }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### 📋 Generation Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Artifact Type | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔨 Artifact Generation Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Configuration | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Artifact Types** | ${{ inputs.artifact-types }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Version** | ${{ inputs.version }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Tag** | ${{ inputs.tag-name }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Docker Registry** | ${{ inputs.docker-registry }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "#### 📋 Generation Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Artifact Type | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------------|--------|" >> "$GITHUB_STEP_SUMMARY"
           # Source Archive Status
           if [[ '${{ inputs.artifact-types }}' =~ (source|all) ]]; then
             if [ "$SOURCE_OK" = "true" ]; then
-              echo "| **Source Archive** | ✅ Created |" >> $GITHUB_STEP_SUMMARY
+              echo "| **Source Archive** | ✅ Created |" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "| **Source Archive** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+              echo "| **Source Archive** | ❌ Failed |" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "| **Source Archive** | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Source Archive** | ⏭️ Skipped |" >> "$GITHUB_STEP_SUMMARY"
           fi
           
           # Binaries Status
           if [[ '${{ inputs.artifact-types }}' =~ (binaries|all) ]]; then
             if [ "$BINARIES_OK" = "true" ]; then
-              echo "| **Binaries** | ✅ Created |" >> $GITHUB_STEP_SUMMARY
+              echo "| **Binaries** | ✅ Created |" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "| **Binaries** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+              echo "| **Binaries** | ❌ Failed |" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "| **Binaries** | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Binaries** | ⏭️ Skipped |" >> "$GITHUB_STEP_SUMMARY"
           fi
           
           # Docker Image Status
           if [[ '${{ inputs.artifact-types }}' =~ (docker|all) ]]; then
             if [ "$DOCKER_OK" = "true" ]; then
-              echo "| **Docker Image** | ✅ Pushed |" >> $GITHUB_STEP_SUMMARY
+              echo "| **Docker Image** | ✅ Pushed |" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "| **Docker Image** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+              echo "| **Docker Image** | ❌ Failed |" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "| **Docker Image** | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Docker Image** | ⏭️ Skipped |" >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [ "$ARTIFACTS_GENERATED" = "true" ]; then
-            echo "✅ **Artifact generation completed successfully!**" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Artifact generation completed successfully!**" >> "$GITHUB_STEP_SUMMARY"
             
             if [ "${{ inputs.release-url }}" != "" ]; then
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "📦 **Artifacts uploaded to release:** [View Release](${{ inputs.release-url }})" >> $GITHUB_STEP_SUMMARY
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "📦 **Artifacts uploaded to release:** [View Release](${{ inputs.release-url }})" >> "$GITHUB_STEP_SUMMARY"
             fi
             
             if [[ "${{ inputs.artifact-types }}" =~ (docker|all) ]] && [ "$DOCKER_OK" = "true" ]; then
               IMAGE_NAME="${{ github.repository }}"
-              echo "🐳 **Docker Image:** \`${{ inputs.docker-registry }}/${IMAGE_NAME}:${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+              echo "🐳 **Docker Image:** \`${{ inputs.docker-registry }}/${IMAGE_NAME}:${{ inputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "❌ **Artifact generation failed or no artifacts were created.**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Troubleshooting:**" >> $GITHUB_STEP_SUMMARY
-            echo "- Check build commands and dependencies" >> $GITHUB_STEP_SUMMARY
-            echo "- Verify Docker registry credentials" >> $GITHUB_STEP_SUMMARY
-            echo "- Review artifact generation logs" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Artifact generation failed or no artifacts were created.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Troubleshooting:**" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Check build commands and dependencies" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Verify Docker registry credentials" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Review artifact generation logs" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: 📤 Upload Additional Build Artifacts

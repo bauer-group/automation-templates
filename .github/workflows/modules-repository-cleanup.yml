@@ -271,7 +271,7 @@ jobs:
           esac
           
           echo "✅ Configuration validation completed"
-          echo "config-validated=true" >> $GITHUB_OUTPUT
+          echo "config-validated=true" >> "$GITHUB_OUTPUT"
       
       - name: ⚙️ Load Configuration Profile
         id: config-loader
@@ -326,7 +326,7 @@ jobs:
           EOF
           
           EFFECTIVE_CONFIG=$(cat effective_config.json | jq -c .)
-          echo "effective-config=$EFFECTIVE_CONFIG" >> $GITHUB_OUTPUT
+          echo "effective-config=$EFFECTIVE_CONFIG" >> "$GITHUB_OUTPUT"
           
           echo "✅ Configuration loaded successfully"
 
@@ -443,7 +443,7 @@ jobs:
           EOF
           
           # Add to job summary
-          cat cleanup_report.md >> $GITHUB_STEP_SUMMARY
+          cat cleanup_report.md >> "$GITHUB_STEP_SUMMARY"
           
           # Create artifact
           echo "📄 Creating cleanup report artifact..."

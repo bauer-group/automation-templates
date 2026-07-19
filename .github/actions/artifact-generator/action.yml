@@ -143,7 +143,7 @@ runs:
         
         # Remove leading comma
         GENERATED_ARCHIVES="${GENERATED_ARCHIVES#,}"
-        echo "source-archives=$GENERATED_ARCHIVES" >> $GITHUB_OUTPUT
+        echo "source-archives=$GENERATED_ARCHIVES" >> "$GITHUB_OUTPUT"
         echo "📦 Source archives: $GENERATED_ARCHIVES"
 
     - name: 🔨 Build Binaries
@@ -159,10 +159,10 @@ runs:
         
         if eval "$BUILD_CMD"; then
           echo "✅ Build completed successfully"
-          echo "build-success=true" >> $GITHUB_OUTPUT
+          echo "build-success=true" >> "$GITHUB_OUTPUT"
         else
           echo "❌ Build failed"
-          echo "build-success=false" >> $GITHUB_OUTPUT
+          echo "build-success=false" >> "$GITHUB_OUTPUT"
           exit 1
         fi
 
@@ -239,7 +239,7 @@ runs:
         
         # Remove leading comma
         GENERATED_BINARIES="${GENERATED_BINARIES#,}"
-        echo "binary-archives=$GENERATED_BINARIES" >> $GITHUB_OUTPUT
+        echo "binary-archives=$GENERATED_BINARIES" >> "$GITHUB_OUTPUT"
         echo "📦 Binary archives: $GENERATED_BINARIES"
 
     - name: 🐳 Build Docker Images
@@ -258,7 +258,7 @@ runs:
 
         if ! command -v docker &> /dev/null; then
           echo "::error::Docker is not available on this runner but docker artifacts were requested"
-          echo "docker-images=" >> $GITHUB_OUTPUT
+          echo "docker-images=" >> "$GITHUB_OUTPUT"
           exit 1
         fi
 
@@ -272,7 +272,7 @@ runs:
           echo "Logging into $REGISTRY..."
           if ! printf '%s' "$DOCKER_PASSWORD" | docker login "$REGISTRY" -u "$USERNAME" --password-stdin; then
             echo "::error::docker login to $REGISTRY failed - cannot build or push images"
-            echo "docker-images=" >> $GITHUB_OUTPUT
+            echo "docker-images=" >> "$GITHUB_OUTPUT"
             exit 1
           fi
         fi
@@ -285,7 +285,7 @@ runs:
 
         if [ -z "$DOCKERFILES" ]; then
           echo "⚠️ No Dockerfile found"
-          echo "docker-images=" >> $GITHUB_OUTPUT
+          echo "docker-images=" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
@@ -330,7 +330,7 @@ runs:
 
         # Remove leading comma
         DOCKER_IMAGES="${DOCKER_IMAGES#,}"
-        echo "docker-images=$DOCKER_IMAGES" >> $GITHUB_OUTPUT
+        echo "docker-images=$DOCKER_IMAGES" >> "$GITHUB_OUTPUT"
         echo "🐳 Docker images: $DOCKER_IMAGES"
 
         if [ "$BUILD_FAILED" = "true" ]; then
@@ -378,7 +378,7 @@ runs:
           touch "$CHECKSUMS_FILE"
         fi
         
-        echo "checksums-file=$CHECKSUMS_FILE" >> $GITHUB_OUTPUT
+        echo "checksums-file=$CHECKSUMS_FILE" >> "$GITHUB_OUTPUT"
 
     - name: 📤 Upload to GitHub Release
       id: upload-release
@@ -429,25 +429,25 @@ runs:
         # Remove leading comma
         ALL_ARTIFACTS="${ALL_ARTIFACTS#,}"
         
-        echo "artifacts-generated=$ALL_ARTIFACTS" >> $GITHUB_OUTPUT
+        echo "artifacts-generated=$ALL_ARTIFACTS" >> "$GITHUB_OUTPUT"
         
         # Set status outputs
         if [ -n "$SOURCE_ARCHIVES" ]; then
-          echo "source-archive-created=true" >> $GITHUB_OUTPUT
+          echo "source-archive-created=true" >> "$GITHUB_OUTPUT"
         else
-          echo "source-archive-created=false" >> $GITHUB_OUTPUT
+          echo "source-archive-created=false" >> "$GITHUB_OUTPUT"
         fi
         
         if [ -n "$BINARY_ARCHIVES" ]; then
-          echo "binaries-created=true" >> $GITHUB_OUTPUT
+          echo "binaries-created=true" >> "$GITHUB_OUTPUT"
         else
-          echo "binaries-created=false" >> $GITHUB_OUTPUT
+          echo "binaries-created=false" >> "$GITHUB_OUTPUT"
         fi
         
         if [ -n "$DOCKER_IMAGES" ]; then
-          echo "docker-image-pushed=true" >> $GITHUB_OUTPUT
+          echo "docker-image-pushed=true" >> "$GITHUB_OUTPUT"
         else
-          echo "docker-image-pushed=false" >> $GITHUB_OUTPUT
+          echo "docker-image-pushed=false" >> "$GITHUB_OUTPUT"
         fi
         
         # Create detailed summary

@@ -179,36 +179,36 @@ jobs:
 
       - name: 📊 Documentation Summary
         run: |
-          echo "### 📄 Documentation Validation Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **README Generated** | ${{ needs.generate-documentation.outputs.readme_updated && '✅ Updated' || '⏭️ No changes' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Template Validation** | ${{ needs.generate-documentation.outputs.validation_passed && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Link Validation** | ✅ Completed |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Structure Check** | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📄 Documentation Validation Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **README Generated** | ${{ needs.generate-documentation.outputs.readme_updated && '✅ Updated' || '⏭️ No changes' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Template Validation** | ${{ needs.generate-documentation.outputs.validation_passed && '✅ Passed' || '❌ Failed' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Link Validation** | ✅ Completed |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Structure Check** | ✅ Passed |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [ "${{ needs.generate-documentation.outputs.readme_updated }}" = "true" ]; then
-            echo "📝 **Documentation updated successfully!**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Changes include:**" >> $GITHUB_STEP_SUMMARY
-            echo "- Updated version and date information" >> $GITHUB_STEP_SUMMARY
-            echo "- Current repository metadata" >> $GITHUB_STEP_SUMMARY
-            echo "- Modular workflow architecture documentation" >> $GITHUB_STEP_SUMMARY
+            echo "📝 **Documentation updated successfully!**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Changes include:**" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Updated version and date information" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Current repository metadata" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Modular workflow architecture documentation" >> "$GITHUB_STEP_SUMMARY"
             
             if [ "${{ github.event_name }}" = "create" ] && [[ "${{ github.ref }}" == refs/tags/* ]]; then
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "🎉 **Release Details:**" >> $GITHUB_STEP_SUMMARY
-              echo "- Version: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-              echo "- Tag: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
-              echo "- Triggered by: Tag creation" >> $GITHUB_STEP_SUMMARY
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "🎉 **Release Details:**" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Version: ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Tag: ${{ github.ref }}" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Triggered by: Tag creation" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "ℹ️ **No documentation updates required**" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **No documentation updates required**" >> "$GITHUB_STEP_SUMMARY"
           fi
           
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "🧩 **Modular Components Used:**" >> $GITHUB_STEP_SUMMARY
-          echo "- README Generator Workflow: [examples/readme.yml](github/workflows/examples/readme.yml)" >> $GITHUB_STEP_SUMMARY
-          echo "- README Generator Action: [actions/readme-generate](.github/actions/readme-generate/)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "🧩 **Modular Components Used:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- README Generator Workflow: [examples/readme.yml](github/workflows/examples/readme.yml)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- README Generator Action: [actions/readme-generate](.github/actions/readme-generate/)" >> "$GITHUB_STEP_SUMMARY"

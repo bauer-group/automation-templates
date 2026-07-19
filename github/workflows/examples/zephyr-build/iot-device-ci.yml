@@ -371,26 +371,26 @@ jobs:
     steps:
       - name: 📊 Generate Summary Report
         run: |
-          echo "# IoT Device CI/CD Summary 📋" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# IoT Device CI/CD Summary 📋" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
-          echo "## Build Results 🔨" >> $GITHUB_STEP_SUMMARY
-          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Quick Validation | ${{ needs.quick-validation.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| IoT Build | ${{ needs.iot-build.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Connectivity Test | ${{ needs.connectivity-test.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Hardware Test | ${{ needs.hardware-test.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Performance Test | ${{ needs.performance-test.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Security Analysis | ${{ needs.security-analysis.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Release Preparation | ${{ needs.prepare-release.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Build Results 🔨" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Quick Validation | ${{ needs.quick-validation.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| IoT Build | ${{ needs.iot-build.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Connectivity Test | ${{ needs.connectivity-test.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Hardware Test | ${{ needs.hardware-test.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Performance Test | ${{ needs.performance-test.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Security Analysis | ${{ needs.security-analysis.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Release Preparation | ${{ needs.prepare-release.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
-          echo "## Configuration ⚙️" >> $GITHUB_STEP_SUMMARY
-          echo "- **Zephyr Version**: ${{ env.ZEPHYR_VERSION }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Configuration ⚙️" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Zephyr Version**: ${{ env.ZEPHYR_VERSION }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Trigger**: ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Branch**: ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Commit**: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
       
       - name: 🔔 Teams Notification
         if: always() && (github.ref == 'refs/heads/main' || failure())

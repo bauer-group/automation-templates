@@ -464,7 +464,7 @@ jobs:
         run: |
           if [ "${{ inputs.package-manager }}" = "poetry" ]; then
             curl -sSL https://install.python-poetry.org | python3 -
-            echo "$HOME/.local/bin" >> $GITHUB_PATH
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           elif [ "${{ inputs.package-manager }}" = "pipenv" ]; then
             pip install pipenv
           fi
@@ -500,7 +500,7 @@ jobs:
             VERSION="0.1.0-dev.${{ github.run_number }}"
           fi
           
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Package version: $VERSION"
       
       - name: 🔧 Create Virtual Environment
@@ -510,11 +510,11 @@ jobs:
         run: |
           python -m venv venv
           if [ "$RUNNER_OS" = "Windows" ]; then
-            echo "$(pwd)/venv/Scripts" >> $GITHUB_PATH
-            echo "VIRTUAL_ENV=$(pwd)/venv" >> $GITHUB_ENV
+            echo "$(pwd)/venv/Scripts" >> "$GITHUB_PATH"
+            echo "VIRTUAL_ENV=$(pwd)/venv" >> "$GITHUB_ENV"
           else
-            echo "$(pwd)/venv/bin" >> $GITHUB_PATH
-            echo "VIRTUAL_ENV=$(pwd)/venv" >> $GITHUB_ENV
+            echo "$(pwd)/venv/bin" >> "$GITHUB_PATH"
+            echo "VIRTUAL_ENV=$(pwd)/venv" >> "$GITHUB_ENV"
           fi
       
       - name: ⬆️ Upgrade pip
@@ -910,7 +910,7 @@ jobs:
             python -c "import sys, os, unittest, xmlrunner; sys.path.insert(0, '${{ inputs.test-path }}'); loader = unittest.TestLoader(); suite = loader.discover('${{ inputs.test-path }}', pattern='test*.py'); output = open('\$TEST_RESULTS_DIR/unittest-report.xml', 'wb'); runner = xmlrunner.XMLTestRunner(output=output); result = runner.run(suite); output.close(); sys.exit(0 if result.wasSuccessful() else 1)"
           fi
           
-          echo "results=success" >> $GITHUB_OUTPUT
+          echo "results=success" >> "$GITHUB_OUTPUT"
       
       - name: 📊 Process Coverage
         id: coverage
@@ -921,7 +921,7 @@ jobs:
           if [ -f "coverage.xml" ]; then
             # Extract coverage percentage (simplified)
             COVERAGE_PCT=$(grep -o 'line-rate="[0-9.]*"' coverage.xml | head -1 | grep -o '[0-9.]*' | awk '{print $1*100}')
-            echo "percentage=$COVERAGE_PCT" >> $GITHUB_OUTPUT
+            echo "percentage=$COVERAGE_PCT" >> "$GITHUB_OUTPUT"
             echo "Coverage: $COVERAGE_PCT%"
           fi
       
@@ -965,7 +965,7 @@ jobs:
           fi
           
           PACKAGE_FILE=$(find "$PACKAGE_OUTPUT_DIR" -name "*.whl" -type f | head -1)
-          echo "path=$PACKAGE_FILE" >> $GITHUB_OUTPUT
+          echo "path=$PACKAGE_FILE" >> "$GITHUB_OUTPUT"
           echo "Package built: $PACKAGE_FILE"
       
       - name: 📊 Check Test Report Files
@@ -974,10 +974,10 @@ jobs:
         shell: bash
         run: |
           if ls ${{ runner.temp }}/test-results/*.xml 1> /dev/null 2>&1; then
-            echo "reports-exist=true" >> $GITHUB_OUTPUT
+            echo "reports-exist=true" >> "$GITHUB_OUTPUT"
             echo "✅ Test report files found"
           else
-            echo "reports-exist=false" >> $GITHUB_OUTPUT
+            echo "reports-exist=false" >> "$GITHUB_OUTPUT"
             echo "⚠️ No test report files found"
           fi
 

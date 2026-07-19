@@ -406,7 +406,7 @@ jobs:
         id: composer-cache-dir
         working-directory: ${{ inputs.working-directory }}
         run: |
-          echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+          echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
       
       - name: 📦 Cache Composer Dependencies
         if: inputs.cache-dependencies
@@ -498,9 +498,9 @@ jobs:
           
           # Output results
           if [ -z "$TEST_RESULT" ] || [ "$TEST_RESULT" = "0" ]; then
-            echo "status=success" >> $GITHUB_OUTPUT
+            echo "status=success" >> "$GITHUB_OUTPUT"
           else
-            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "status=failure" >> "$GITHUB_OUTPUT"
             exit 1
           fi
       
@@ -513,7 +513,7 @@ jobs:
             # Extract coverage percentage
             COVERAGE=$(grep -oP 'line-rate="\K[0-9.]+' coverage.xml | head -1)
             COVERAGE_PCT=$(echo "$COVERAGE * 100" | bc)
-            echo "percentage=$COVERAGE_PCT" >> $GITHUB_OUTPUT
+            echo "percentage=$COVERAGE_PCT" >> "$GITHUB_OUTPUT"
             
             # Check threshold
             COVERAGE_THRESHOLD="${{ inputs.test-coverage-threshold }}"
@@ -615,7 +615,7 @@ jobs:
             [ -n "$ERRORS" ] && SCORE=$((SCORE - ERRORS))
           fi
           
-          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "score=$SCORE" >> "$GITHUB_OUTPUT"
           echo "Code Quality Score: $SCORE/100"
       
       # Two distinct needs, two logins - both BEFORE the build, because `docker build`
@@ -660,7 +660,7 @@ jobs:
             --build-arg PHP_VERSION=${{ matrix.php-version }} \
             ${{ inputs.working-directory }}
           
-          echo "image=$IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "image=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
       
       - name: 🐳 Push Docker Image
         if: inputs.build-docker && inputs.docker-registry != ''
@@ -712,7 +712,7 @@ jobs:
             cp -r ${{ inputs.artifact-path }} "$ARTIFACT_DIR/"
           fi
           
-          echo "path=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
+          echo "path=$ARTIFACT_DIR" >> "$GITHUB_OUTPUT"
       
       - name: 📤 Upload Artifacts
         if: inputs.upload-artifacts
@@ -727,18 +727,18 @@ jobs:
         if: always()
         run: |
           if [ "${{ steps.phpunit.outputs.status }}" = "success" ] || [ -z "${{ steps.phpunit.outputs.status }}" ]; then
-            echo "build-status=success" >> $GITHUB_OUTPUT
+            echo "build-status=success" >> "$GITHUB_OUTPUT"
           else
-            echo "build-status=failure" >> $GITHUB_OUTPUT
+            echo "build-status=failure" >> "$GITHUB_OUTPUT"
           fi
           
-          echo "### 🐘 PHP Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **PHP Version** | ${{ matrix.php-version }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Dependencies** | ${{ matrix.dependency-versions }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Tests** | ${{ steps.phpunit.outputs.status == 'success' && '✅ Passed' || steps.phpunit.outputs.status == 'failure' && '❌ Failed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Coverage** | ${{ steps.coverage.outputs.percentage || 'N/A' }}% |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Quality Score** | ${{ steps.quality.outputs.score || 'N/A' }}/100 |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Security** | ${{ inputs.run-security-check && '✅ Checked' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "### 🐘 PHP Build Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **PHP Version** | ${{ matrix.php-version }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Dependencies** | ${{ matrix.dependency-versions }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Tests** | ${{ steps.phpunit.outputs.status == 'success' && '✅ Passed' || steps.phpunit.outputs.status == 'failure' && '❌ Failed' || '⏭️ Skipped' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Coverage** | ${{ steps.coverage.outputs.percentage || 'N/A' }}% |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Quality Score** | ${{ steps.quality.outputs.score || 'N/A' }}/100 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Security** | ${{ inputs.run-security-check && '✅ Checked' || '⏭️ Skipped' }} |" >> "$GITHUB_STEP_SUMMARY"

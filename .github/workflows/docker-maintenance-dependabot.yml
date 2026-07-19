@@ -90,16 +90,16 @@ jobs:
       - name: 📊 Summary
         shell: bash
         run: |
-          echo "## 🐳 Docker Maintenance (Dependabot)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **PR** | #${{ github.event.pull_request.number }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Dependency** | \`${{ steps.metadata.outputs.dependency-names }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Update Type** | ${{ steps.metadata.outputs.update-type }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **From** | \`${{ steps.metadata.outputs.previous-version }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **To** | \`${{ steps.metadata.outputs.new-version }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Merge Method** | ${{ inputs.merge-method }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Auto-Approve** | ${{ inputs.auto-approve && '✅ Yes' || '❌ No' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Auto-merge enabled. GitHub will merge once all required checks pass." >> $GITHUB_STEP_SUMMARY
+          echo "## 🐳 Docker Maintenance (Dependabot)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **PR** | #${{ github.event.pull_request.number }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Dependency** | \`${{ steps.metadata.outputs.dependency-names }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Update Type** | ${{ steps.metadata.outputs.update-type }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **From** | \`${{ steps.metadata.outputs.previous-version }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **To** | \`${{ steps.metadata.outputs.new-version }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Merge Method** | ${{ inputs.merge-method }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Auto-Approve** | ${{ inputs.auto-approve && '✅ Yes' || '❌ No' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ Auto-merge enabled. GitHub will merge once all required checks pass." >> "$GITHUB_STEP_SUMMARY"

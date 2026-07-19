@@ -216,7 +216,7 @@ jobs:
             --argjson buildTypes "$BUILD_TYPES" \
             '{target: $targets, build_type: $buildTypes}')
 
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "Build Matrix: $MATRIX"
 
       - name: Determine Version
@@ -241,7 +241,7 @@ jobs:
             fi
           fi
 
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Firmware Version: $VERSION"
 
   # Security Scan
@@ -341,7 +341,7 @@ jobs:
             CMAKE_ARGS="$CMAKE_ARGS ${{ inputs.extra-cmake-args }}"
           fi
 
-          echo "cmake-args=$CMAKE_ARGS" >> $GITHUB_OUTPUT
+          echo "cmake-args=$CMAKE_ARGS" >> "$GITHUB_OUTPUT"
 
       - name: Build with ESP-IDF
         uses: espressif/esp-idf-ci-action@v1
@@ -449,7 +449,7 @@ jobs:
 
             # Extract app size for output
             APP_SIZE=$(grep "Total image size" build/size-report.txt | awk '{print $NF}' || echo "unknown")
-            echo "app-size=$APP_SIZE" >> $GITHUB_OUTPUT
+            echo "app-size=$APP_SIZE" >> "$GITHUB_OUTPUT"
 
             # Create size summary
             cat build/size-report.txt
@@ -555,7 +555,7 @@ jobs:
           sha256sum *.bin > checksums.sha256 2>/dev/null || true
           cd ..
 
-          echo "artifact-dir=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
+          echo "artifact-dir=$ARTIFACT_DIR" >> "$GITHUB_OUTPUT"
           ls -la "$ARTIFACT_DIR"
 
       - name: Upload Build Artifacts
@@ -719,7 +719,7 @@ jobs:
               echo "## Release"
               echo "🚀 Release created: ${{ needs.release.outputs.release-url }}"
             fi
-          } >> $GITHUB_STEP_SUMMARY
+          } >> "$GITHUB_STEP_SUMMARY"
 
           # Set final status
           if [[ "${{ needs.build.result }}" == "success" ]]; then

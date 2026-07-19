@@ -239,10 +239,10 @@ runs:
       run: |
         ACTUAL_TAG="${{ steps.release.outputs.new_release_git_tag }}"
         if [ -n "$ACTUAL_TAG" ]; then
-          echo "tag=$ACTUAL_TAG" >> $GITHUB_OUTPUT
+          echo "tag=$ACTUAL_TAG" >> "$GITHUB_OUTPUT"
         else
           # Fallback to v-prefix if output is empty (backwards-compatible)
-          echo "tag=v${{ steps.release.outputs.new_release_version }}" >> $GITHUB_OUTPUT
+          echo "tag=v${{ steps.release.outputs.new_release_version }}" >> "$GITHUB_OUTPUT"
         fi
 
 branding:

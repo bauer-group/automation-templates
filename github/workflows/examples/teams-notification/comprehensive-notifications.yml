@@ -96,16 +96,16 @@ jobs:
           DURATION_MIN=$((DURATION / 60))
           DURATION_SEC=$((DURATION % 60))
           
-          echo "duration=${DURATION_MIN}m ${DURATION_SEC}s" >> $GITHUB_OUTPUT
-          echo "duration-seconds=$DURATION" >> $GITHUB_OUTPUT
+          echo "duration=${DURATION_MIN}m ${DURATION_SEC}s" >> "$GITHUB_OUTPUT"
+          echo "duration-seconds=$DURATION" >> "$GITHUB_OUTPUT"
           
           # Determine performance rating
           if [ $DURATION -lt 300 ]; then
-            echo "performance=🚀 Fast" >> $GITHUB_OUTPUT
+            echo "performance=🚀 Fast" >> "$GITHUB_OUTPUT"
           elif [ $DURATION -lt 900 ]; then
-            echo "performance=⚡ Normal" >> $GITHUB_OUTPUT
+            echo "performance=⚡ Normal" >> "$GITHUB_OUTPUT"
           else
-            echo "performance=🐌 Slow" >> $GITHUB_OUTPUT
+            echo "performance=🐌 Slow" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 🔔 Advanced Success Notification
@@ -200,17 +200,17 @@ jobs:
           LABELS="${{ join(github.event.issue.labels.*.name, ',') }}"
           
           if [[ "$LABELS" == *"priority:critical"* ]] || [[ "$LABELS" == *"security"* ]]; then
-            echo "level=critical" >> $GITHUB_OUTPUT
-            echo "webhook=${{ env.SECURITY_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
-            echo "mentions=security-team,team-leads,maintainers" >> $GITHUB_OUTPUT
+            echo "level=critical" >> "$GITHUB_OUTPUT"
+            echo "webhook=${{ env.SECURITY_TEAMS_WEBHOOK }}" >> "$GITHUB_OUTPUT"
+            echo "mentions=security-team,team-leads,maintainers" >> "$GITHUB_OUTPUT"
           elif [[ "$LABELS" == *"priority:high"* ]] || [[ "$LABELS" == *"bug"* ]]; then
-            echo "level=high" >> $GITHUB_OUTPUT
-            echo "webhook=${{ env.PROD_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
-            echo "mentions=maintainers,qa-team" >> $GITHUB_OUTPUT
+            echo "level=high" >> "$GITHUB_OUTPUT"
+            echo "webhook=${{ env.PROD_TEAMS_WEBHOOK }}" >> "$GITHUB_OUTPUT"
+            echo "mentions=maintainers,qa-team" >> "$GITHUB_OUTPUT"
           else
-            echo "level=normal" >> $GITHUB_OUTPUT
-            echo "webhook=${{ env.DEV_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
-            echo "mentions=" >> $GITHUB_OUTPUT
+            echo "level=normal" >> "$GITHUB_OUTPUT"
+            echo "webhook=${{ env.DEV_TEAMS_WEBHOOK }}" >> "$GITHUB_OUTPUT"
+            echo "mentions=" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 🔔 Advanced Issue Opened
@@ -269,29 +269,29 @@ jobs:
           ADDITIONS=${{ github.event.pull_request.additions }}
           DELETIONS=${{ github.event.pull_request.deletions }}
           TOTAL_CHANGES=$((ADDITIONS + DELETIONS))
-          echo "total-changes=$TOTAL_CHANGES" >> $GITHUB_OUTPUT
+          echo "total-changes=$TOTAL_CHANGES" >> "$GITHUB_OUTPUT"
 
           if [ $TOTAL_CHANGES -lt 50 ]; then
-            echo "size=Small (< 50 lines)" >> $GITHUB_OUTPUT
-            echo "complexity=🟢 Simple" >> $GITHUB_OUTPUT
+            echo "size=Small (< 50 lines)" >> "$GITHUB_OUTPUT"
+            echo "complexity=🟢 Simple" >> "$GITHUB_OUTPUT"
           elif [ $TOTAL_CHANGES -lt 200 ]; then
-            echo "size=Medium (50-200 lines)" >> $GITHUB_OUTPUT
-            echo "complexity=🟡 Moderate" >> $GITHUB_OUTPUT
+            echo "size=Medium (50-200 lines)" >> "$GITHUB_OUTPUT"
+            echo "complexity=🟡 Moderate" >> "$GITHUB_OUTPUT"
           elif [ $TOTAL_CHANGES -lt 500 ]; then
-            echo "size=Large (200-500 lines)" >> $GITHUB_OUTPUT
-            echo "complexity=🟠 Complex" >> $GITHUB_OUTPUT
+            echo "size=Large (200-500 lines)" >> "$GITHUB_OUTPUT"
+            echo "complexity=🟠 Complex" >> "$GITHUB_OUTPUT"
           else
-            echo "size=Extra Large (500+ lines)" >> $GITHUB_OUTPUT
-            echo "complexity=🔴 Very Complex" >> $GITHUB_OUTPUT
+            echo "size=Extra Large (500+ lines)" >> "$GITHUB_OUTPUT"
+            echo "complexity=🔴 Very Complex" >> "$GITHUB_OUTPUT"
           fi
           
           # Determine if targeting protected branch
           if [[ "${{ github.event.pull_request.base.ref }}" == "main" ]] || [[ "${{ github.event.pull_request.base.ref }}" == "master" ]]; then
-            echo "protected=true" >> $GITHUB_OUTPUT
-            echo "webhook=${{ env.PROD_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
+            echo "protected=true" >> "$GITHUB_OUTPUT"
+            echo "webhook=${{ env.PROD_TEAMS_WEBHOOK }}" >> "$GITHUB_OUTPUT"
           else
-            echo "protected=false" >> $GITHUB_OUTPUT
-            echo "webhook=${{ env.DEV_TEAMS_WEBHOOK }}" >> $GITHUB_OUTPUT
+            echo "protected=false" >> "$GITHUB_OUTPUT"
+            echo "webhook=${{ env.DEV_TEAMS_WEBHOOK }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 🔔 Advanced PR Opened

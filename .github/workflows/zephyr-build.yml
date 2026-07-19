@@ -214,7 +214,7 @@ jobs:
           SUMMARY="$SUMMARY, Build Type: ${{ matrix.build-type }}"
           SUMMARY="$SUMMARY, Time: ${{ steps.zephyr-build.outputs.build-time }}s"
           
-          echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+          echo "summary=$SUMMARY" >> "$GITHUB_OUTPUT"
           echo "📊 $SUMMARY"
 
       - name: 📤 Upload Build Artifacts
@@ -308,32 +308,32 @@ jobs:
         id: summary
         shell: bash
         run: |
-          echo "# Zephyr Build Summary 📋" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Zephyr Build Summary 📋" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
-          echo "## Build Results 🔨" >> $GITHUB_STEP_SUMMARY
-          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Security & Compliance | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build & Test | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Hardware Testing | ${{ needs.hardware-test.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Build Results 🔨" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Security & Compliance | ${{ needs.security.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Build & Test | ${{ needs.build.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Hardware Testing | ${{ needs.hardware-test.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
-          echo "## Configuration ⚙️" >> $GITHUB_STEP_SUMMARY
-          echo "- **Boards**: ${{ inputs.boards }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Build Types**: ${{ inputs.build-types }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Zephyr Version**: ${{ inputs.zephyr-version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tests Enabled**: ${{ inputs.run-tests }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Coverage Enabled**: ${{ inputs.enable-coverage }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Static Analysis**: ${{ inputs.static-analysis }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Configuration ⚙️" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Boards**: ${{ inputs.boards }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Build Types**: ${{ inputs.build-types }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Zephyr Version**: ${{ inputs.zephyr-version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Tests Enabled**: ${{ inputs.run-tests }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Coverage Enabled**: ${{ inputs.enable-coverage }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Static Analysis**: ${{ inputs.static-analysis }}" >> "$GITHUB_STEP_SUMMARY"
           
           # Set final status
           if [[ "${{ needs.build.result }}" == "success" ]]; then
             echo "✅ All builds completed successfully!"
-            echo "status=success" >> $GITHUB_OUTPUT
+            echo "status=success" >> "$GITHUB_OUTPUT"
           else
             echo "❌ Some builds failed!"
-            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "status=failure" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 

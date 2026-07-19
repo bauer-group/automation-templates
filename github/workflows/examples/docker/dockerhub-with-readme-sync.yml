@@ -85,31 +85,31 @@ jobs:
     steps:
       - name: Build Results Summary
         run: |
-          echo "## Docker Hub Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Image Information" >> $GITHUB_STEP_SUMMARY
-          echo "- **Registry:** Docker Hub (docker.io)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image URL:** \`${{ needs.docker-build.outputs.image-url }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Digest:** \`${{ needs.docker-build.outputs.image-digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Hub Build Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Image Information" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Registry:** Docker Hub (docker.io)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image URL:** \`${{ needs.docker-build.outputs.image-url }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Digest:** \`${{ needs.docker-build.outputs.image-digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "### Security Status" >> $GITHUB_STEP_SUMMARY
+          echo "### Security Status" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ needs.docker-build.outputs.security-scan-passed }}" = "true" ]; then
-            echo "✅ Security scan passed" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Security scan passed" >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ needs.docker-build.outputs.security-scan-passed }}" = "false" ]; then
-            echo "❌ Security scan failed - vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Security scan failed - vulnerabilities found" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "⏭️ Security scan skipped" >> $GITHUB_STEP_SUMMARY
+            echo "⏭️ Security scan skipped" >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "### Build Result" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Result" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ needs.docker-build.outputs.image-pushed }}" = "true" ]; then
-            echo "✅ Image pushed successfully!" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Image pushed successfully!" >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ needs.docker-build.outputs.security-scan-passed }}" = "false" ]; then
-            echo "❌ Image NOT pushed due to security vulnerabilities" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Image NOT pushed due to security vulnerabilities" >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ needs.docker-build.result }}" = "success" ]; then
-            echo "ℹ️ Build completed (push skipped)" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ Build completed (push skipped)" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ Build failed! Please check the logs." >> $GITHUB_STEP_SUMMARY
+            echo "❌ Build failed! Please check the logs." >> "$GITHUB_STEP_SUMMARY"
           fi

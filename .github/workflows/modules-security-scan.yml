@@ -92,23 +92,23 @@ jobs:
       - name: 📊 Security Report Summary
         if: always()
         run: |
-          echo "### 🛡️ Security Scan Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Engine Used** | ${{ inputs.scan-engine }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Scan Type** | ${{ inputs.scan-type }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Security Score** | ${{ steps.security.outputs.security-score || '100' }}/100 |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Secrets Found** | ${{ steps.security.outputs.secrets-found || 'false' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Vulnerabilities (Trivy)** | ${{ steps.security.outputs.vulnerabilities-found || 'false' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Status** | ${{ steps.security.outputs.scan-results || 'Complete' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🛡️ Security Scan Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Engine Used** | ${{ inputs.scan-engine }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Scan Type** | ${{ inputs.scan-type }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Security Score** | ${{ steps.security.outputs.security-score || '100' }}/100 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Secrets Found** | ${{ steps.security.outputs.secrets-found || 'false' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Vulnerabilities (Trivy)** | ${{ steps.security.outputs.vulnerabilities-found || 'false' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Status** | ${{ steps.security.outputs.scan-results || 'Complete' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           SCORE="${{ steps.security.outputs.security-score }}"
           if [ "$SCORE" -ge 95 ]; then
-            echo "✅ **Excellent security posture!**" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Excellent security posture!**" >> "$GITHUB_STEP_SUMMARY"
           elif [ "$SCORE" -ge 80 ]; then
-            echo "⚠️ **Good security with room for improvement.**" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Good security with room for improvement.**" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ **Security issues require attention.**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Security issues require attention.**" >> "$GITHUB_STEP_SUMMARY"
           fi

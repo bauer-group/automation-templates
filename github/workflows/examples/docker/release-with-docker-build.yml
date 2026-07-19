@@ -163,24 +163,24 @@ jobs:
     steps:
       - name: Generate Summary
         run: |
-          echo "### 🚀 Release & Docker Build Pipeline" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 Release & Docker Build Pipeline" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ needs.release.outputs.release-created }}" = "true" ]; then
-            echo "✅ **Release ${{ needs.release.outputs.version }} created successfully!**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Release ${{ needs.release.outputs.version }} created successfully!**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
 
             # Check if image was pushed
             if [ "${{ needs.docker-build-release.outputs.image-pushed }}" = "true" ]; then
-              echo "| Registry | Tags |" >> $GITHUB_STEP_SUMMARY
-              echo "|----------|------|" >> $GITHUB_STEP_SUMMARY
-              echo "| GHCR | \`${{ needs.release.outputs.version }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
-              echo "| Docker Hub | \`${{ needs.release.outputs.version }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
+              echo "| Registry | Tags |" >> "$GITHUB_STEP_SUMMARY"
+              echo "|----------|------|" >> "$GITHUB_STEP_SUMMARY"
+              echo "| GHCR | \`${{ needs.release.outputs.version }}\`, \`latest\` |" >> "$GITHUB_STEP_SUMMARY"
+              echo "| Docker Hub | \`${{ needs.release.outputs.version }}\`, \`latest\` |" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "⚠️ **Image was NOT pushed** (security scan may have failed)" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "Check the security scan results in the workflow artifacts." >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ **Image was NOT pushed** (security scan may have failed)" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "Check the security scan results in the workflow artifacts." >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "ℹ️ **No release created** (no releasable changes)" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **No release created** (no releasable changes)" >> "$GITHUB_STEP_SUMMARY"
           fi

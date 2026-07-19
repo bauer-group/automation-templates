@@ -168,35 +168,35 @@ jobs:
     steps:
       - name: 📊 Generate Pipeline Summary
         run: |
-          echo "### 🔄 Modular CI/CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Repository:** automation-templates" >> $GITHUB_STEP_SUMMARY
-          echo "**Architecture:** Modular Workflow Components" >> $GITHUB_STEP_SUMMARY
-          echo "**Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔄 Modular CI/CD Pipeline Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Repository:** automation-templates" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Architecture:** Modular Workflow Components" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Event:** ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Branch:** ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
-          echo "| Module | Status | Details |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|--------|---------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Score: ${{ needs.security-scan.outputs.security-score || 'N/A' }}/100 |" >> $GITHUB_STEP_SUMMARY
-          echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Status: ${{ needs.license-compliance.outputs.compliance-status || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Release Management** | ${{ needs.release-management.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Created: ${{ needs.release-management.outputs.release-created || 'false' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Artifact Generation** | ${{ needs.artifact-generation.result == 'success' && '✅ PASS' || needs.artifact-generation.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Generated: ${{ needs.artifact-generation.outputs.artifacts-generated || 'false' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Module | Status | Details |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|--------|---------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Score: ${{ needs.security-scan.outputs.security-score || 'N/A' }}/100 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Status: ${{ needs.license-compliance.outputs.compliance-status || 'N/A' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Release Management** | ${{ needs.release-management.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Created: ${{ needs.release-management.outputs.release-created || 'false' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Artifact Generation** | ${{ needs.artifact-generation.result == 'success' && '✅ PASS' || needs.artifact-generation.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Generated: ${{ needs.artifact-generation.outputs.artifacts-generated || 'false' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [ "${{ needs.release-management.outputs.release-created }}" = "true" ]; then
-            echo "🎉 **Release ${{ needs.release-management.outputs.version }} created successfully!**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Release Information:**" >> $GITHUB_STEP_SUMMARY
-            echo "- Version: ${{ needs.release-management.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-            echo "- Tag: ${{ needs.release-management.outputs.tag-name }}" >> $GITHUB_STEP_SUMMARY
-            echo "- URL: https://github.com/${{ github.repository }}/releases/tag/${{ needs.release-management.outputs.tag-name }}" >> $GITHUB_STEP_SUMMARY
+            echo "🎉 **Release ${{ needs.release-management.outputs.version }} created successfully!**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Release Information:**" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Version: ${{ needs.release-management.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Tag: ${{ needs.release-management.outputs.tag-name }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- URL: https://github.com/${{ github.repository }}/releases/tag/${{ needs.release-management.outputs.tag-name }}" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "ℹ️ **No release created.** Pipeline completed successfully." >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **No release created.** Pipeline completed successfully." >> "$GITHUB_STEP_SUMMARY"
           fi
           
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "*Powered by **BAUER GROUP** modular workflow components* 🧩" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "---" >> "$GITHUB_STEP_SUMMARY"
+          echo "*Powered by **BAUER GROUP** modular workflow components* 🧩" >> "$GITHUB_STEP_SUMMARY"
 
   

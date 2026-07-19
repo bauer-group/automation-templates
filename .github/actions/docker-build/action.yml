@@ -261,7 +261,7 @@ runs:
         mkdir -p docker-build-reports
         
         # Record build start time
-        echo "BUILD_START_TIME=$(date +%s)" >> $GITHUB_ENV
+        echo "BUILD_START_TIME=$(date +%s)" >> "$GITHUB_ENV"
         
         echo "✅ Docker build environment ready"
 
@@ -311,7 +311,7 @@ runs:
           echo "⚠️ No org.opencontainers.image.version label found in Dockerfile"
         fi
 
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
     - name: 🏷️ Extract Version from Dockerfile
       id: dockerfile-version
@@ -331,14 +331,14 @@ runs:
         if [ -z "$VERSION" ]; then
           echo "⚠️ No version found in Dockerfile LABEL, falling back to 'latest'"
           VERSION="latest"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "version-tag=type=raw,value=$VERSION" >> $GITHUB_OUTPUT
-          echo "version-major-minor-tag=" >> $GITHUB_OUTPUT
-          echo "version-major-tag=" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version-tag=type=raw,value=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version-major-minor-tag=" >> "$GITHUB_OUTPUT"
+          echo "version-major-tag=" >> "$GITHUB_OUTPUT"
         else
           echo "✅ Found version in Dockerfile: $VERSION"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "version-tag=type=raw,value=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version-tag=type=raw,value=$VERSION" >> "$GITHUB_OUTPUT"
 
           # Generate semver variants if enabled and not a tag push (semver patterns work on tag pushes)
           if [ "${{ inputs.semver-from-dockerfile }}" = "true" ] && ! [[ "$GITHUB_REF" == refs/tags/* ]]; then
@@ -351,18 +351,18 @@ runs:
             echo "   • Major.Minor: $MAJOR_MINOR"
             echo "   • Major: $MAJOR"
 
-            echo "version-major-minor-tag=type=raw,value=$MAJOR_MINOR" >> $GITHUB_OUTPUT
+            echo "version-major-minor-tag=type=raw,value=$MAJOR_MINOR" >> "$GITHUB_OUTPUT"
 
             # Only add major version tag if not v0.x.x (following semver convention)
             if [ "$MAJOR" != "0" ]; then
-              echo "version-major-tag=type=raw,value=$MAJOR" >> $GITHUB_OUTPUT
+              echo "version-major-tag=type=raw,value=$MAJOR" >> "$GITHUB_OUTPUT"
             else
-              echo "version-major-tag=" >> $GITHUB_OUTPUT
+              echo "version-major-tag=" >> "$GITHUB_OUTPUT"
               echo "   ℹ️ Skipping major version tag (v0.x.x)"
             fi
           else
-            echo "version-major-minor-tag=" >> $GITHUB_OUTPUT
-            echo "version-major-tag=" >> $GITHUB_OUTPUT
+            echo "version-major-minor-tag=" >> "$GITHUB_OUTPUT"
+            echo "version-major-tag=" >> "$GITHUB_OUTPUT"
           fi
         fi
 
@@ -380,21 +380,21 @@ runs:
         MAJOR_MINOR="${MAJOR}.${MINOR}"
 
         # Full version tag
-        echo "version-tag=type=raw,value=$VERSION" >> $GITHUB_OUTPUT
+        echo "version-tag=type=raw,value=$VERSION" >> "$GITHUB_OUTPUT"
 
         # Major.Minor tag
-        echo "major-minor-tag=type=raw,value=$MAJOR_MINOR" >> $GITHUB_OUTPUT
+        echo "major-minor-tag=type=raw,value=$MAJOR_MINOR" >> "$GITHUB_OUTPUT"
 
         # Major tag (only if not v0.x.x)
         if [ "$MAJOR" != "0" ]; then
-          echo "major-tag=type=raw,value=$MAJOR" >> $GITHUB_OUTPUT
+          echo "major-tag=type=raw,value=$MAJOR" >> "$GITHUB_OUTPUT"
         else
-          echo "major-tag=" >> $GITHUB_OUTPUT
+          echo "major-tag=" >> "$GITHUB_OUTPUT"
           echo "ℹ️ Skipping major version tag (v0.x.x)"
         fi
 
         # Latest tag
-        echo "latest-tag=type=raw,value=latest" >> $GITHUB_OUTPUT
+        echo "latest-tag=type=raw,value=latest" >> "$GITHUB_OUTPUT"
 
         echo "✅ Release tags prepared:"
         echo "   • Version: $VERSION"
@@ -505,14 +505,14 @@ runs:
         # Remove any remaining empty lines
         COMBINED_TAGS=$(echo "$COMBINED_TAGS" | grep -v '^[[:space:]]*$' || echo "$COMBINED_TAGS")
 
-        echo "tags<<EOF" >> $GITHUB_OUTPUT
-        echo "$COMBINED_TAGS" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        echo "tags<<EOF" >> "$GITHUB_OUTPUT"
+        echo "$COMBINED_TAGS" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
 
         # Use primary labels
-        echo "labels<<EOF" >> $GITHUB_OUTPUT
-        echo "${{ steps.meta-primary.outputs.labels }}" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        echo "labels<<EOF" >> "$GITHUB_OUTPUT"
+        echo "${{ steps.meta-primary.outputs.labels }}" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
 
         echo "📋 Combined tags:"
         echo "$COMBINED_TAGS"
@@ -535,8 +535,8 @@ runs:
         # Normalize to lowercase and check for truthy values
         if [[ "${CACHE_ENABLED,,}" == "true" || "${CACHE_ENABLED}" == "1" ]]; then
           # Local (amd64 scan) build cache - unchanged, byte-identical for existing callers.
-          echo "cache-from=type=gha${SCOPE_SUFFIX}" >> $GITHUB_OUTPUT
-          echo "cache-to=type=gha${SCOPE_SUFFIX},mode=${{ inputs.cache-mode }}" >> $GITHUB_OUTPUT
+          echo "cache-from=type=gha${SCOPE_SUFFIX}" >> "$GITHUB_OUTPUT"
+          echo "cache-to=type=gha${SCOPE_SUFFIX},mode=${{ inputs.cache-mode }}" >> "$GITHUB_OUTPUT"
           # Push (multi-arch) build cache. Uses a DISTINCT '-push' scope so multi-arch
           # layers - especially arm64, which is built ONLY in the push step - are exported
           # and reused across runs. A shared scope cannot work: GHA cache keys are immutable,
@@ -549,18 +549,18 @@ runs:
             echo "type=gha${SCOPE_SUFFIX}"
             echo "type=gha,scope=${SCOPE_BASE}-push"
             echo "CFPUSH"
-          } >> $GITHUB_OUTPUT
-          echo "cache-to-push=type=gha,scope=${SCOPE_BASE}-push,mode=${{ inputs.cache-mode }}" >> $GITHUB_OUTPUT
+          } >> "$GITHUB_OUTPUT"
+          echo "cache-to-push=type=gha,scope=${SCOPE_BASE}-push,mode=${{ inputs.cache-mode }}" >> "$GITHUB_OUTPUT"
           if [ -n "$CACHE_SCOPE" ]; then
             echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }}, scope=${CACHE_SCOPE}, push-scope=${SCOPE_BASE}-push)"
           else
             echo "📦 Build cache: ENABLED (mode=${{ inputs.cache-mode }}, push-scope=${SCOPE_BASE}-push)"
           fi
         else
-          echo "cache-from=" >> $GITHUB_OUTPUT
-          echo "cache-to=" >> $GITHUB_OUTPUT
-          echo "cache-from-push=" >> $GITHUB_OUTPUT
-          echo "cache-to-push=" >> $GITHUB_OUTPUT
+          echo "cache-from=" >> "$GITHUB_OUTPUT"
+          echo "cache-to=" >> "$GITHUB_OUTPUT"
+          echo "cache-from-push=" >> "$GITHUB_OUTPUT"
+          echo "cache-to-push=" >> "$GITHUB_OUTPUT"
           echo "📦 Build cache: DISABLED"
         fi
 
@@ -641,8 +641,8 @@ runs:
             ;;
         esac
 
-        echo "report-path=$REPORT_PATH" >> $GITHUB_OUTPUT
-        echo "sarif-path=$SARIF_PATH" >> $GITHUB_OUTPUT
+        echo "report-path=$REPORT_PATH" >> "$GITHUB_OUTPUT"
+        echo "sarif-path=$SARIF_PATH" >> "$GITHUB_OUTPUT"
 
         # Check for vulnerabilities based on configured severity threshold
         #
@@ -661,7 +661,7 @@ runs:
             # A malformed report must not silently degrade to "0 vulnerabilities".
             if ! jq -e '.' "$REPORT_PATH" >/dev/null 2>&1; then
               echo "::error::Security report at $REPORT_PATH is not valid JSON - the scanner did not complete successfully"
-              echo "scan-passed=false" >> $GITHUB_OUTPUT
+              echo "scan-passed=false" >> "$GITHUB_OUTPUT"
               exit 1
             fi
 
@@ -698,7 +698,7 @@ runs:
           esac
 
           # Set output for conditional push
-          echo "scan-passed=$( [ "$SCAN_FAILED" = "false" ] && echo "true" || echo "false" )" >> $GITHUB_OUTPUT
+          echo "scan-passed=$( [ "$SCAN_FAILED" = "false" ] && echo "true" || echo "false" )" >> "$GITHUB_OUTPUT"
 
           if [ "$SCAN_FAILED" = "true" ]; then
             echo ""
@@ -712,7 +712,7 @@ runs:
           echo "::error::Security report not found at $REPORT_PATH - the ${{ inputs.security-scanner }} scan did not produce a report"
           echo "::error::  This usually means the scanner failed to run (e.g. vulnerability DB download or registry rate limit)."
           echo "::error::  Refusing to report a pass for a scan that did not happen. Set security-scan: false to build without scanning."
-          echo "scan-passed=false" >> $GITHUB_OUTPUT
+          echo "scan-passed=false" >> "$GITHUB_OUTPUT"
           exit 1
         fi
 
@@ -771,11 +771,11 @@ runs:
           IMAGE_SIZE_DISPLAY="unknown"
         fi
 
-        echo "image-url=$PRIMARY_TAG" >> $GITHUB_OUTPUT
-        echo "image-size=$IMAGE_SIZE_BYTES" >> $GITHUB_OUTPUT
-        echo "image-size-display=$IMAGE_SIZE_DISPLAY" >> $GITHUB_OUTPUT
-        echo "duration=$BUILD_DURATION" >> $GITHUB_OUTPUT
-        echo "pushed=$IMAGE_PUSHED" >> $GITHUB_OUTPUT
+        echo "image-url=$PRIMARY_TAG" >> "$GITHUB_OUTPUT"
+        echo "image-size=$IMAGE_SIZE_BYTES" >> "$GITHUB_OUTPUT"
+        echo "image-size-display=$IMAGE_SIZE_DISPLAY" >> "$GITHUB_OUTPUT"
+        echo "duration=$BUILD_DURATION" >> "$GITHUB_OUTPUT"
+        echo "pushed=$IMAGE_PUSHED" >> "$GITHUB_OUTPUT"
 
         echo "📊 Build Information:"
         echo "  • Duration: ${BUILD_DURATION}s"
@@ -831,7 +831,7 @@ runs:
         # Generate SBOM
         syft "$PRIMARY_TAG" -o "${{ inputs.sbom-format }}-json" --file "$SBOM_PATH"
         
-        echo "path=$SBOM_PATH" >> $GITHUB_OUTPUT
+        echo "path=$SBOM_PATH" >> "$GITHUB_OUTPUT"
         echo "📋 SBOM generated: $SBOM_PATH"
 
     - name: 📜 Attest SBOM
@@ -883,58 +883,58 @@ runs:
       if: always()
       shell: bash
       run: |
-        echo "## 🐳 Docker Build Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🐳 Docker Build Summary" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
 
         # Determine push status
         IMAGE_PUSHED="${{ steps.build-info.outputs.pushed }}"
         SECURITY_PASSED="${{ steps.security.outputs.scan-passed }}"
 
-        echo "### 🏗️ Build Details" >> $GITHUB_STEP_SUMMARY
-        echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-        echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-        echo "| **Dockerfile** | \`${{ inputs.dockerfile-path }}\` |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Context** | \`${{ inputs.docker-context }}\` |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Platforms** | \`${{ inputs.multi-platform == 'true' && inputs.platforms || 'linux/amd64' }}\` |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Registry** | \`${{ inputs.registry }}\` |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Duration** | ${{ steps.build-info.outputs.duration }}s |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Image Size** | ${{ steps.build-info.outputs.image-size-display }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| **Pushed to Registry** | $( [ \"$IMAGE_PUSHED\" = \"true\" ] && echo '✅ Yes' || echo '❌ No' ) |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🏗️ Build Details" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+        echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+        echo "| **Dockerfile** | \`${{ inputs.dockerfile-path }}\` |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| **Context** | \`${{ inputs.docker-context }}\` |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| **Platforms** | \`${{ inputs.multi-platform == 'true' && inputs.platforms || 'linux/amd64' }}\` |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| **Registry** | \`${{ inputs.registry }}\` |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| **Duration** | ${{ steps.build-info.outputs.duration }}s |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| **Image Size** | ${{ steps.build-info.outputs.image-size-display }} |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| **Pushed to Registry** | $( [ \"$IMAGE_PUSHED\" = \"true\" ] && echo '✅ Yes' || echo '❌ No' ) |" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
 
-        echo "### 🏷️ Generated Tags" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🏷️ Generated Tags" >> "$GITHUB_STEP_SUMMARY"
+        echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+        echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+        echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
 
         if [ "${{ inputs.security-scan }}" = "true" ]; then
-          echo "### 🛡️ Security Scan" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Scanner** | ${{ inputs.security-scanner }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Fail Threshold** | ${{ inputs.security-fail-on }} |" >> $GITHUB_STEP_SUMMARY
+          echo "### 🛡️ Security Scan" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Scanner** | ${{ inputs.security-scanner }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Fail Threshold** | ${{ inputs.security-fail-on }} |" >> "$GITHUB_STEP_SUMMARY"
           if [ "$SECURITY_PASSED" = "true" ]; then
-            echo "| **Result** | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Result** | ✅ Passed |" >> "$GITHUB_STEP_SUMMARY"
           elif [ "$SECURITY_PASSED" = "false" ]; then
-            echo "| **Result** | ❌ Failed - Vulnerabilities found |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Result** | ❌ Failed - Vulnerabilities found |" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "| **Result** | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Result** | ⏭️ Skipped |" >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "| **Report** | Available in artifacts |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| **Report** | Available in artifacts |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$SECURITY_PASSED" = "false" ]; then
-            echo "> ⚠️ **Security scan blocked the push.** The image was built but NOT pushed to the registry due to vulnerabilities above the \`${{ inputs.security-fail-on }}\` threshold." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> ⚠️ **Security scan blocked the push.** The image was built but NOT pushed to the registry due to vulnerabilities above the \`${{ inputs.security-fail-on }}\` threshold." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
           fi
         fi
 
         if [ "${{ inputs.sign-image }}" = "true" ]; then
-          echo "### 🔐 Image Signing" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tool:** Cosign" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status:** ${{ github.event_name != 'pull_request' && 'Signed' || 'Skipped (PR)' }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔐 Image Signing" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Tool:** Cosign" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Status:** ${{ github.event_name != 'pull_request' && 'Signed' || 'Skipped (PR)' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
         fi
 
     - name: 📝 Commit Dockerfile Version Update

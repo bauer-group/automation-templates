@@ -101,14 +101,14 @@ runs:
         echo "Loading configuration from: $CONFIG_PATH"
         
         if [[ -f "$CONFIG_PATH" ]]; then
-          echo "config-exists=true" >> $GITHUB_OUTPUT
-          echo "config-path=$CONFIG_PATH" >> $GITHUB_OUTPUT
+          echo "config-exists=true" >> "$GITHUB_OUTPUT"
+          echo "config-path=$CONFIG_PATH" >> "$GITHUB_OUTPUT"
         else
-          echo "config-exists=false" >> $GITHUB_OUTPUT
+          echo "config-exists=false" >> "$GITHUB_OUTPUT"
           echo "Using default configuration"
         fi
         
-        echo "working-directory=${{ inputs.working-directory }}" >> $GITHUB_OUTPUT
+        echo "working-directory=${{ inputs.working-directory }}" >> "$GITHUB_OUTPUT"
 
     - name: 🔧 Setup Build Environment
       shell: bash
@@ -140,7 +140,7 @@ runs:
           PARALLEL_JOBS="${{ inputs.parallel-jobs }}"
         fi
         
-        echo "MAKEFLAGS=-j${PARALLEL_JOBS}" >> $GITHUB_ENV
+        echo "MAKEFLAGS=-j${PARALLEL_JOBS}" >> "$GITHUB_ENV"
         echo "🔧 Using ${PARALLEL_JOBS} parallel jobs"
 
     - name: 📂 Setup Cache
@@ -159,7 +159,7 @@ runs:
     - name: ⏰ Start Timing
       id: start-time
       shell: bash
-      run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+      run: echo "start-time=$(date +%s)" >> "$GITHUB_OUTPUT"
 
     - name: 🎯 Run Configure
       id: configure
@@ -270,7 +270,7 @@ runs:
         Parallel Jobs: ${MAKEFLAGS}
         EOF
         
-        echo "path=$ARTIFACTS_DIR" >> $GITHUB_OUTPUT
+        echo "path=$ARTIFACTS_DIR" >> "$GITHUB_OUTPUT"
 
     - name: ⏰ Calculate Build Time
       id: timing
@@ -280,7 +280,7 @@ runs:
         END_TIME=$(date +%s)
         BUILD_TIME=$((END_TIME - START_TIME))
         
-        echo "build-time=$BUILD_TIME" >> $GITHUB_OUTPUT
+        echo "build-time=$BUILD_TIME" >> "$GITHUB_OUTPUT"
         echo "🕐 Total build time: ${BUILD_TIME} seconds"
 
     - name: 🎯 Build Summary

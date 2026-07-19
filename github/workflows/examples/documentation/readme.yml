@@ -165,24 +165,24 @@ jobs:
       - name: 📊 Summary Report
         if: always()
         run: |
-          echo "### 📄 README Generation Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Generation** | ${{ needs.generate-readme.outputs.readme_updated && '✅ Updated' || '⏭️ No changes' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Validation** | ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Auto-commit** | ${{ github.event_name != 'pull_request' && needs.generate-readme.outputs.changes_detected == 'true' && '✅ Committed' || '⏭️ Skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📄 README Generation Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Generation** | ${{ needs.generate-readme.outputs.readme_updated && '✅ Updated' || '⏭️ No changes' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Validation** | ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Auto-commit** | ${{ github.event_name != 'pull_request' && needs.generate-readme.outputs.changes_detected == 'true' && '✅ Committed' || '⏭️ Skipped' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [ "${{ needs.generate-readme.outputs.readme_updated }}" = "true" ]; then
-            echo "🎉 **README successfully generated and updated!**" >> $GITHUB_STEP_SUMMARY
+            echo "🎉 **README successfully generated and updated!**" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "ℹ️ **No updates needed - README is up to date**" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **No updates needed - README is up to date**" >> "$GITHUB_STEP_SUMMARY"
           fi
           
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Configuration used:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Template: \`${{ inputs.template-path || 'docs/README.template.MD' }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Output: \`${{ inputs.output-path || 'README.MD' }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Force Update: \`${{ inputs.force-update || false }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Custom Version: \`${{ inputs.custom-version || 'auto' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Configuration used:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Template: \`${{ inputs.template-path || 'docs/README.template.MD' }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Output: \`${{ inputs.output-path || 'README.MD' }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Force Update: \`${{ inputs.force-update || false }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Custom Version: \`${{ inputs.custom-version || 'auto' }}\`" >> "$GITHUB_STEP_SUMMARY"

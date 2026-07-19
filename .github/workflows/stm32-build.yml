@@ -229,7 +229,7 @@ jobs:
             --argjson buildTypes "$BUILD_TYPES" \
             '{mcu: $mcus, build_type: $buildTypes}')
 
-          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "Build Matrix: $MATRIX"
 
       - name: Determine Version
@@ -252,7 +252,7 @@ jobs:
             fi
           fi
 
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Firmware Version: $VERSION"
 
   # Security Scan
@@ -312,8 +312,8 @@ jobs:
           TOOLCHAIN_BIN=$(find "$TOOLCHAIN_PATH" -name "bin" -type d 2>/dev/null | head -1)
 
           if [[ -n "$TOOLCHAIN_BIN" ]]; then
-            echo "$TOOLCHAIN_BIN" >> $GITHUB_PATH
-            echo "toolchain-path=$TOOLCHAIN_BIN" >> $GITHUB_OUTPUT
+            echo "$TOOLCHAIN_BIN" >> "$GITHUB_PATH"
+            echo "toolchain-path=$TOOLCHAIN_BIN" >> "$GITHUB_OUTPUT"
           fi
 
           # Verify installation
@@ -505,8 +505,8 @@ jobs:
           " 2>/dev/null || echo "DFU generation skipped (intelhex not available)"
           fi
 
-          echo "output-dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
-          echo "artifact-name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "output-dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+          echo "artifact-name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
 
           ls -la "$OUTPUT_DIR"
 
@@ -534,8 +534,8 @@ jobs:
             FLASH_SIZE=$((TEXT + DATA))
             RAM_SIZE=$((DATA + BSS))
 
-            echo "flash-size=$FLASH_SIZE" >> $GITHUB_OUTPUT
-            echo "ram-size=$RAM_SIZE" >> $GITHUB_OUTPUT
+            echo "flash-size=$FLASH_SIZE" >> "$GITHUB_OUTPUT"
+            echo "ram-size=$RAM_SIZE" >> "$GITHUB_OUTPUT"
 
             echo ""
             echo "Flash usage: $FLASH_SIZE bytes"
@@ -758,7 +758,7 @@ jobs:
             echo "- **Target(s)**: ${{ inputs.target-mcus || inputs.target-mcu || 'default' }}"
             echo "- **Build Types**: ${{ inputs.build-types }}"
             echo ""
-          } >> $GITHUB_STEP_SUMMARY
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "${{ needs.build.result }}" == "success" ]]; then
             echo "✅ Build completed successfully"

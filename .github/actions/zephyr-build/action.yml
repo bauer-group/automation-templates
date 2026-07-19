@@ -120,26 +120,26 @@ runs:
         echo "Loading Zephyr configuration from: $CONFIG_PATH"
         
         if [[ -f "$CONFIG_PATH" ]]; then
-          echo "config-exists=true" >> $GITHUB_OUTPUT
-          echo "config-path=$CONFIG_PATH" >> $GITHUB_OUTPUT
+          echo "config-exists=true" >> "$GITHUB_OUTPUT"
+          echo "config-path=$CONFIG_PATH" >> "$GITHUB_OUTPUT"
         else
-          echo "config-exists=false" >> $GITHUB_OUTPUT
+          echo "config-exists=false" >> "$GITHUB_OUTPUT"
           echo "Using default Zephyr configuration"
         fi
         
         # Determine OS-specific settings
         case "${{ runner.os }}" in
           Linux)
-            echo "platform=linux" >> $GITHUB_OUTPUT
-            echo "sdk-arch=linux-x86_64" >> $GITHUB_OUTPUT
+            echo "platform=linux" >> "$GITHUB_OUTPUT"
+            echo "sdk-arch=linux-x86_64" >> "$GITHUB_OUTPUT"
             ;;
           macOS)
-            echo "platform=macos" >> $GITHUB_OUTPUT
-            echo "sdk-arch=macos-x86_64" >> $GITHUB_OUTPUT
+            echo "platform=macos" >> "$GITHUB_OUTPUT"
+            echo "sdk-arch=macos-x86_64" >> "$GITHUB_OUTPUT"
             ;;
           Windows)
-            echo "platform=windows" >> $GITHUB_OUTPUT
-            echo "sdk-arch=windows-x86_64" >> $GITHUB_OUTPUT
+            echo "platform=windows" >> "$GITHUB_OUTPUT"
+            echo "sdk-arch=windows-x86_64" >> "$GITHUB_OUTPUT"
             ;;
         esac
 
@@ -167,7 +167,7 @@ runs:
     - name: ⏰ Start Timing
       id: start-time
       shell: bash
-      run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+      run: echo "start-time=$(date +%s)" >> "$GITHUB_OUTPUT"
 
     - name: 🔧 Install System Dependencies
       shell: bash
@@ -234,9 +234,9 @@ runs:
         SDK_ARCH="${{ steps.config.outputs.sdk-arch }}"
         SDK_DIR="$HOME/zephyr-sdk-${SDK_VERSION}"
         
-        echo "SDK_VERSION=$SDK_VERSION" >> $GITHUB_ENV
-        echo "SDK_DIR=$SDK_DIR" >> $GITHUB_ENV
-        echo "ZEPHYR_SDK_INSTALL_DIR=$SDK_DIR" >> $GITHUB_ENV
+        echo "SDK_VERSION=$SDK_VERSION" >> "$GITHUB_ENV"
+        echo "SDK_DIR=$SDK_DIR" >> "$GITHUB_ENV"
+        echo "ZEPHYR_SDK_INSTALL_DIR=$SDK_DIR" >> "$GITHUB_ENV"
         
         # Download and install SDK if not cached
         if [[ ! -d "$SDK_DIR" ]]; then
@@ -293,7 +293,7 @@ runs:
         west zephyr-export
         
         # Set environment variables
-        echo "ZEPHYR_BASE=$(west list -f '{abspath}' zephyr)" >> $GITHUB_ENV
+        echo "ZEPHYR_BASE=$(west list -f '{abspath}' zephyr)" >> "$GITHUB_ENV"
 
     - name: 🔍 Compliance Checks
       id: compliance
@@ -403,7 +403,7 @@ runs:
               --json "$COVERAGE_DIR/coverage.json" \
               build/
         
-        echo "report-path=$COVERAGE_DIR" >> $GITHUB_OUTPUT
+        echo "report-path=$COVERAGE_DIR" >> "$GITHUB_OUTPUT"
         echo "✅ Coverage report generated in $COVERAGE_DIR"
 
     - name: 🔍 Static Analysis
@@ -470,7 +470,7 @@ runs:
         Static Analysis: ${{ inputs.static-analysis }}
         EOF
         
-        echo "binary-path=$ARTIFACTS_DIR" >> $GITHUB_OUTPUT
+        echo "binary-path=$ARTIFACTS_DIR" >> "$GITHUB_OUTPUT"
         echo "✅ Artifacts generated in $ARTIFACTS_DIR"
 
     - name: ⏰ Calculate Build Time
@@ -481,7 +481,7 @@ runs:
         END_TIME=$(date +%s)
         BUILD_TIME=$((END_TIME - START_TIME))
         
-        echo "build-time=$BUILD_TIME" >> $GITHUB_OUTPUT
+        echo "build-time=$BUILD_TIME" >> "$GITHUB_OUTPUT"
         echo "🕐 Total build time: ${BUILD_TIME} seconds"
 
     - name: 🎯 Build Summary

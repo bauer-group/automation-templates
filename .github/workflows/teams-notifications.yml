@@ -96,12 +96,12 @@ jobs:
         continue-on-error: true
         run: |
           # Get the last few lines of the workflow logs
-          echo "logs<<EOF" >> $GITHUB_OUTPUT
-          echo "${{ github.event.workflow_run.name }}" >> $GITHUB_OUTPUT
-          echo "🔄 Run #${{ github.event.workflow_run.run_number }}" >> $GITHUB_OUTPUT
-          echo "⏱️ Duration: ${{ github.event.workflow_run.created_at }} - ${{ github.event.workflow_run.updated_at }}" >> $GITHUB_OUTPUT
-          echo "🎯 Conclusion: ${{ github.event.workflow_run.conclusion }}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "logs<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${{ github.event.workflow_run.name }}" >> "$GITHUB_OUTPUT"
+          echo "🔄 Run #${{ github.event.workflow_run.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "⏱️ Duration: ${{ github.event.workflow_run.created_at }} - ${{ github.event.workflow_run.updated_at }}" >> "$GITHUB_OUTPUT"
+          echo "🎯 Conclusion: ${{ github.event.workflow_run.conclusion }}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: 🔔 Send Workflow Success Notification
         if: github.event.workflow_run.conclusion == 'success' && env.NOTIFICATION_LEVEL == 'all'
@@ -131,13 +131,13 @@ jobs:
         continue-on-error: true
         run: |
           # Get failure information
-          echo "logs<<EOF" >> $GITHUB_OUTPUT
-          echo "${{ github.event.workflow_run.name }}" >> $GITHUB_OUTPUT
-          echo "🔄 Run #${{ github.event.workflow_run.run_number }}" >> $GITHUB_OUTPUT
-          echo "⏱️ Failed at: ${{ github.event.workflow_run.updated_at }}" >> $GITHUB_OUTPUT
-          echo "🎯 Conclusion: ${{ github.event.workflow_run.conclusion }}" >> $GITHUB_OUTPUT
-          echo "🔗 View full logs: ${{ github.event.workflow_run.html_url }}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "logs<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${{ github.event.workflow_run.name }}" >> "$GITHUB_OUTPUT"
+          echo "🔄 Run #${{ github.event.workflow_run.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "⏱️ Failed at: ${{ github.event.workflow_run.updated_at }}" >> "$GITHUB_OUTPUT"
+          echo "🎯 Conclusion: ${{ github.event.workflow_run.conclusion }}" >> "$GITHUB_OUTPUT"
+          echo "🔗 View full logs: ${{ github.event.workflow_run.html_url }}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: 🔔 Send Workflow Failure Notification
         if: github.event.workflow_run.conclusion == 'failure'

@@ -84,11 +84,11 @@ runs:
           pip3 install --user ggshield
           # Add to PATH
           export PATH="$HOME/.local/bin:$PATH"
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
         elif command -v pip &> /dev/null; then
           pip install --user ggshield
           export PATH="$HOME/.local/bin:$PATH"
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
         else
           echo "❌ Python/pip not available for ggshield installation"
           exit 1
@@ -289,8 +289,8 @@ runs:
         fi
         
         # Output results
-        echo "secrets-found=$SECRETS_FOUND" >> $GITHUB_OUTPUT
-        echo "policy-violations=$POLICY_VIOLATIONS" >> $GITHUB_OUTPUT
+        echo "secrets-found=$SECRETS_FOUND" >> "$GITHUB_OUTPUT"
+        echo "policy-violations=$POLICY_VIOLATIONS" >> "$GITHUB_OUTPUT"
         
         # Copy scan output for artifact upload (only if different paths)
         if [ -f security-reports/gitguardian/scan-output.json ]; then
@@ -380,9 +380,9 @@ runs:
           SCAN_STATUS="warning"
         fi
         
-        echo "security-score=$SECURITY_SCORE" >> $GITHUB_OUTPUT
-        echo "scan-status=$SCAN_STATUS" >> $GITHUB_OUTPUT
-        echo "report-path=security-reports/gitguardian/" >> $GITHUB_OUTPUT
+        echo "security-score=$SECURITY_SCORE" >> "$GITHUB_OUTPUT"
+        echo "scan-status=$SCAN_STATUS" >> "$GITHUB_OUTPUT"
+        echo "report-path=security-reports/gitguardian/" >> "$GITHUB_OUTPUT"
         
         # Create comprehensive summary report
         mkdir -p security-reports/gitguardian

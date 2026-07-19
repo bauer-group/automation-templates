@@ -95,8 +95,8 @@ jobs:
             echo "🎯 Using custom age threshold: $AGE_DAYS days"
           fi
           
-          echo "maintenance-type=$MAINTENANCE_TYPE" >> $GITHUB_OUTPUT
-          echo "age-threshold=$AGE_DAYS" >> $GITHUB_OUTPUT
+          echo "maintenance-type=$MAINTENANCE_TYPE" >> "$GITHUB_OUTPUT"
+          echo "age-threshold=$AGE_DAYS" >> "$GITHUB_OUTPUT"
       
       - name: 🔍 System Health Check
         id: system-check
@@ -137,38 +137,38 @@ jobs:
           fi
           
           echo "✅ System health check completed"
-          echo "approved=true" >> $GITHUB_OUTPUT
+          echo "approved=true" >> "$GITHUB_OUTPUT"
       
       - name: 📋 Display Maintenance Plan
         run: |
-          echo "### 🔄 Scheduled Maintenance Plan" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Execution Details:**" >> $GITHUB_STEP_SUMMARY
-          echo "- 🗓️ **Schedule**: ${{ github.event_name == 'schedule' && 'Automated (Monthly)' || 'Manual Trigger' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- ⚙️ **Type**: ${{ steps.config.outputs.maintenance-type }} maintenance" >> $GITHUB_STEP_SUMMARY
-          echo "- 📅 **Age Threshold**: ${{ steps.config.outputs.age-threshold }} days" >> $GITHUB_STEP_SUMMARY
-          echo "- 🔧 **Mode**: ${{ github.event.inputs.dry-run == 'true' && 'Dry Run' || 'Live Execution' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 📊 **Timestamp**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔄 Scheduled Maintenance Plan" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Execution Details:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 🗓️ **Schedule**: ${{ github.event_name == 'schedule' && 'Automated (Monthly)' || 'Manual Trigger' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ⚙️ **Type**: ${{ steps.config.outputs.maintenance-type }} maintenance" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 📅 **Age Threshold**: ${{ steps.config.outputs.age-threshold }} days" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 🔧 **Mode**: ${{ github.event.inputs.dry-run == 'true' && 'Dry Run' || 'Live Execution' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 📊 **Timestamp**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           case "${{ steps.config.outputs.maintenance-type }}" in
             light)
-              echo "**🌙 Light Maintenance Operations:**" >> $GITHUB_STEP_SUMMARY
-              echo "- ⚙️ Workflow runs cleanup (2+ years old)" >> $GITHUB_STEP_SUMMARY
-              echo "- 🔀 Closed PR cleanup (2+ years old)" >> $GITHUB_STEP_SUMMARY
+              echo "**🌙 Light Maintenance Operations:**" >> "$GITHUB_STEP_SUMMARY"
+              echo "- ⚙️ Workflow runs cleanup (2+ years old)" >> "$GITHUB_STEP_SUMMARY"
+              echo "- 🔀 Closed PR cleanup (2+ years old)" >> "$GITHUB_STEP_SUMMARY"
               ;;
             standard)
-              echo "**🔄 Standard Maintenance Operations:**" >> $GITHUB_STEP_SUMMARY
-              echo "- ⚙️ Workflow runs cleanup (1+ year old)" >> $GITHUB_STEP_SUMMARY
-              echo "- 🔀 Pull request cleanup (1+ year old)" >> $GITHUB_STEP_SUMMARY
-              echo "- 🌿 Stale branch cleanup (1+ year old)" >> $GITHUB_STEP_SUMMARY
+              echo "**🔄 Standard Maintenance Operations:**" >> "$GITHUB_STEP_SUMMARY"
+              echo "- ⚙️ Workflow runs cleanup (1+ year old)" >> "$GITHUB_STEP_SUMMARY"
+              echo "- 🔀 Pull request cleanup (1+ year old)" >> "$GITHUB_STEP_SUMMARY"
+              echo "- 🌿 Stale branch cleanup (1+ year old)" >> "$GITHUB_STEP_SUMMARY"
               ;;
             comprehensive)
-              echo "**🧹 Comprehensive Maintenance Operations:**" >> $GITHUB_STEP_SUMMARY
-              echo "- ⚙️ Workflow runs cleanup (6+ months old)" >> $GITHUB_STEP_SUMMARY
-              echo "- 🔀 Pull request cleanup (6+ months old)" >> $GITHUB_STEP_SUMMARY
-              echo "- 🌿 Branch cleanup (6+ months old)" >> $GITHUB_STEP_SUMMARY
-              echo "- 🚀 Old release cleanup (6+ months old)" >> $GITHUB_STEP_SUMMARY
+              echo "**🧹 Comprehensive Maintenance Operations:**" >> "$GITHUB_STEP_SUMMARY"
+              echo "- ⚙️ Workflow runs cleanup (6+ months old)" >> "$GITHUB_STEP_SUMMARY"
+              echo "- 🔀 Pull request cleanup (6+ months old)" >> "$GITHUB_STEP_SUMMARY"
+              echo "- 🌿 Branch cleanup (6+ months old)" >> "$GITHUB_STEP_SUMMARY"
+              echo "- 🚀 Old release cleanup (6+ months old)" >> "$GITHUB_STEP_SUMMARY"
               ;;
           esac
 
@@ -256,76 +256,76 @@ jobs:
     steps:
       - name: 📊 Generate Maintenance Report
         run: |
-          echo "### 📊 Maintenance Completion Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Maintenance Session:**" >> $GITHUB_STEP_SUMMARY
-          echo "- 🗓️ **Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-          echo "- ⚙️ **Type**: ${{ needs.pre-maintenance-check.outputs.maintenance-type }} maintenance" >> $GITHUB_STEP_SUMMARY
-          echo "- 📅 **Age Threshold**: ${{ needs.pre-maintenance-check.outputs.age-threshold }} days" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ **Status**: ${{ needs.execute-maintenance.outputs.cleanup-success == 'true' && 'Completed Successfully' || 'Completed with Issues' }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Maintenance Completion Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Maintenance Session:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 🗓️ **Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ⚙️ **Type**: ${{ needs.pre-maintenance-check.outputs.maintenance-type }} maintenance" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 📅 **Age Threshold**: ${{ needs.pre-maintenance-check.outputs.age-threshold }} days" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ✅ **Status**: ${{ needs.execute-maintenance.outputs.cleanup-success == 'true' && 'Completed Successfully' || 'Completed with Issues' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
-          echo "**📈 Maintenance Statistics:**" >> $GITHUB_STEP_SUMMARY
-          echo "- 📊 Items Processed: ${{ needs.execute-maintenance.outputs.items-processed || '0' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- 🗑️ Items Cleaned: ${{ needs.execute-maintenance.outputs.items-deleted || '0' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- ⏭️ Items Skipped: ${{ needs.execute-maintenance.outputs.items-skipped || '0' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- ❌ Errors: ${{ needs.execute-maintenance.outputs.errors-count || '0' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- ⏱️ Duration: ${{ needs.execute-maintenance.outputs.execution-time || '0' }} seconds" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**📈 Maintenance Statistics:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 📊 Items Processed: ${{ needs.execute-maintenance.outputs.items-processed || '0' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 🗑️ Items Cleaned: ${{ needs.execute-maintenance.outputs.items-deleted || '0' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ⏭️ Items Skipped: ${{ needs.execute-maintenance.outputs.items-skipped || '0' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ❌ Errors: ${{ needs.execute-maintenance.outputs.errors-count || '0' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ⏱️ Duration: ${{ needs.execute-maintenance.outputs.execution-time || '0' }} seconds" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           # Maintenance effectiveness analysis
           ITEMS_DELETED=${{ needs.execute-maintenance.outputs.items-deleted || '0' }}
           
-          echo "**🎯 Maintenance Effectiveness:**" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**🎯 Maintenance Effectiveness:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [[ "$ITEMS_DELETED" -gt 100 ]]; then
-            echo "✅ **Highly Effective**: Significant cleanup achieved ($ITEMS_DELETED items)" >> $GITHUB_STEP_SUMMARY
-            echo "- Repository storage optimized" >> $GITHUB_STEP_SUMMARY
-            echo "- Maintenance schedule is appropriate" >> $GITHUB_STEP_SUMMARY
-            echo "- Continue current maintenance frequency" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Highly Effective**: Significant cleanup achieved ($ITEMS_DELETED items)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Repository storage optimized" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Maintenance schedule is appropriate" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Continue current maintenance frequency" >> "$GITHUB_STEP_SUMMARY"
           elif [[ "$ITEMS_DELETED" -gt 10 ]]; then
-            echo "✅ **Moderately Effective**: Good maintenance results ($ITEMS_DELETED items)" >> $GITHUB_STEP_SUMMARY
-            echo "- Regular cleanup preventing buildup" >> $GITHUB_STEP_SUMMARY
-            echo "- Current schedule working well" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Moderately Effective**: Good maintenance results ($ITEMS_DELETED items)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Regular cleanup preventing buildup" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Current schedule working well" >> "$GITHUB_STEP_SUMMARY"
           elif [[ "$ITEMS_DELETED" -gt 0 ]]; then
-            echo "✅ **Well Maintained**: Minimal cleanup needed ($ITEMS_DELETED items)" >> $GITHUB_STEP_SUMMARY
-            echo "- Repository is well-maintained" >> $GITHUB_STEP_SUMMARY
-            echo "- Consider reducing maintenance frequency" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Well Maintained**: Minimal cleanup needed ($ITEMS_DELETED items)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Repository is well-maintained" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Consider reducing maintenance frequency" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "✅ **Excellently Maintained**: No cleanup required" >> $GITHUB_STEP_SUMMARY
-            echo "- Repository maintenance is excellent" >> $GITHUB_STEP_SUMMARY
-            echo "- Consider extending maintenance intervals" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Excellently Maintained**: No cleanup required" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Repository maintenance is excellent" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Consider extending maintenance intervals" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: 📅 Schedule Next Maintenance
         run: |
-          echo "### 📅 Next Maintenance Schedule" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📅 Next Maintenance Schedule" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           # Calculate next scheduled maintenance
           NEXT_MONTH=$(date -d "next month" "+%Y-%m")
           FIRST_SUNDAY=$(date -d "$NEXT_MONTH-01 +$(( (7 - $(date -d "$NEXT_MONTH-01" +%u)) % 7 )) days" "+%Y-%m-%d")
           
-          echo "**Scheduled Maintenance:**" >> $GITHUB_STEP_SUMMARY
-          echo "- 🗓️ **Next Run**: $FIRST_SUNDAY at 02:00 UTC" >> $GITHUB_STEP_SUMMARY
-          echo "- ⚙️ **Type**: Standard maintenance" >> $GITHUB_STEP_SUMMARY
-          echo "- 🔄 **Frequency**: Monthly (First Sunday)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Scheduled Maintenance:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 🗓️ **Next Run**: $FIRST_SUNDAY at 02:00 UTC" >> "$GITHUB_STEP_SUMMARY"
+          echo "- ⚙️ **Type**: Standard maintenance" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 🔄 **Frequency**: Monthly (First Sunday)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
-          echo "**Maintenance Recommendations:**" >> $GITHUB_STEP_SUMMARY
+          echo "**Maintenance Recommendations:**" >> "$GITHUB_STEP_SUMMARY"
           
           ITEMS_DELETED=${{ needs.execute-maintenance.outputs.items-deleted || '0' }}
           
           if [[ "$ITEMS_DELETED" -gt 500 ]]; then
-            echo "- 📈 Consider increasing maintenance frequency to bi-weekly" >> $GITHUB_STEP_SUMMARY
-            echo "- 🔧 Repository has high activity - more frequent cleanup beneficial" >> $GITHUB_STEP_SUMMARY
+            echo "- 📈 Consider increasing maintenance frequency to bi-weekly" >> "$GITHUB_STEP_SUMMARY"
+            echo "- 🔧 Repository has high activity - more frequent cleanup beneficial" >> "$GITHUB_STEP_SUMMARY"
           elif [[ "$ITEMS_DELETED" -lt 10 ]]; then
-            echo "- 📉 Consider reducing maintenance frequency to quarterly" >> $GITHUB_STEP_SUMMARY
-            echo "- ✅ Repository is well-maintained with current practices" >> $GITHUB_STEP_SUMMARY
+            echo "- 📉 Consider reducing maintenance frequency to quarterly" >> "$GITHUB_STEP_SUMMARY"
+            echo "- ✅ Repository is well-maintained with current practices" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "- ✅ Current monthly schedule is optimal" >> $GITHUB_STEP_SUMMARY
-            echo "- 🔄 Continue with current maintenance approach" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Current monthly schedule is optimal" >> "$GITHUB_STEP_SUMMARY"
+            echo "- 🔄 Continue with current maintenance approach" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: 🔔 Send Maintenance Notification

@@ -110,23 +110,23 @@ jobs:
     steps:
       - name: 📊 Generate Pipeline Summary
         run: |
-          echo "### 🔄 CI/CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Component | Status | Details |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Score: ${{ needs.security-scan.outputs.security-score || 'N/A' }}/100 |" >> $GITHUB_STEP_SUMMARY
-          echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Status: ${{ needs.license-compliance.outputs.compliance-status || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Release Management** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Created: ${{ needs.release.outputs.release-created || 'false' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Artifact Generation** | ${{ needs.artifacts.result == 'success' && '✅ PASS' || needs.artifacts.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Generated: ${{ needs.artifacts.outputs.artifacts-generated || 'false' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔄 CI/CD Pipeline Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Component | Status | Details |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----------|--------|---------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Score: ${{ needs.security-scan.outputs.security-score || 'N/A' }}/100 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Status: ${{ needs.license-compliance.outputs.compliance-status || 'N/A' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Release Management** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Created: ${{ needs.release.outputs.release-created || 'false' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Artifact Generation** | ${{ needs.artifacts.result == 'success' && '✅ PASS' || needs.artifacts.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Generated: ${{ needs.artifacts.outputs.artifacts-generated || 'false' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
           
           if [ "${{ needs.release.outputs.release-created }}" = "true" ]; then
-            echo "🎉 **Release ${{ needs.release.outputs.version }} created successfully!**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Release Details:**" >> $GITHUB_STEP_SUMMARY
-            echo "- Version: ${{ needs.release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-            echo "- Tag: ${{ needs.release.outputs.tag-name }}" >> $GITHUB_STEP_SUMMARY
-            echo "- URL: ${{ needs.release.outputs.release-url }}" >> $GITHUB_STEP_SUMMARY
+            echo "🎉 **Release ${{ needs.release.outputs.version }} created successfully!**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Release Details:**" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Version: ${{ needs.release.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Tag: ${{ needs.release.outputs.tag-name }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- URL: ${{ needs.release.outputs.release-url }}" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "ℹ️ **No release created.** This usually means no releasable changes were found." >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ **No release created.** This usually means no releasable changes were found." >> "$GITHUB_STEP_SUMMARY"
           fi
