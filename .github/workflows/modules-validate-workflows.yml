@@ -35,7 +35,7 @@ on:
         description: "Minimum shellcheck severity that blocks the run: error, warning, info or style."
         required: false
         type: string
-        default: "error"
+        default: "warning"
       check-permission-ceiling:
         description: "Verify that every locally called reusable workflow gets the permissions it declares"
         required: false
@@ -97,9 +97,11 @@ jobs:
           # style, not breakage. A gate that demands two thousand cosmetic edits
           # gets switched off, and then it catches nothing at all.
           #
-          # `error` is the severity at which shellcheck reports things that
-          # genuinely break: a numeric comparison against a non-number, `-f` with a
-          # glob. Raise this to `warning` once the ~50 warnings are worked through.
+          # `warning` is where shellcheck stops reporting style and starts reporting
+          # things that bite: unquoted expansions that word-split, dead assignments
+          # that mean a later line reads the wrong name, arithmetic contexts fed a
+          # non-number. `info` and `style` below it are dominated by "quote your
+          # variables", which is worth doing but is not what a merge gate is for.
           SHELLCHECK_OPTS: --severity=${{ inputs.shellcheck-severity }}
         shell: bash
         run: |
