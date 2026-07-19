@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-07-04 23:41:14 UTC -->
+<!-- Generated on 2026-07-19 19:55:34 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -9,7 +9,7 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 
 **Repository Information:**
 
-- **Version:** 6.9.0 (2026-07-04)
+- **Version:** 6.9.0 (2026-07-19)
 - **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)
 - **Branch:** main
 - **Architecture:** Modular, Reusable, Enterprise-Ready
@@ -1090,9 +1090,11 @@ gh auth status --show-token
 - [🔄 **Meta Repository Sync**](docs/workflows/meta-repository-sync.md) - Automated submodule synchronization
 - [🔔 **Teams Notifications**](docs/workflows/teams-notifications.md) - Microsoft Teams integration
 - [🏃 **Self-Hosted Runners**](docs/self-hosted-runners.md) - Self-hosted runner configuration guide
+- [🔐 **GHCR Internal Visibility**](docs/ghcr-internal-visibility.md) - Registry authentication for internal/private container packages
 
 #### 🔍 Validation Modules
 
+- [🔍 **Docker Base Image Monitor**](docs/workflows/modules-docker-base-image-monitor.md) - Base image digest drift detection
 - [🐳 **Dockerfile Validation**](docs/workflows/modules-validate-dockerfile.md) - Dockerfile linting with Hadolint
 - [📋 **Docker Compose Validation**](docs/workflows/modules-validate-compose.md) - Docker Compose validation
 - [🐚 **Shell Script Validation**](docs/workflows/modules-validate-shellscript.md) - Shell script linting with ShellCheck
@@ -1213,5 +1215,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-07-04 23:41:14 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-07-19 19:55:34 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
