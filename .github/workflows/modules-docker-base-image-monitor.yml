@@ -26,11 +26,15 @@
 #   secrets: inherit
 #
 # Required Secret: PAT_READWRITE_ORGANISATION
-#   - Classic PAT: 'repo' scope OR
+#   - Classic PAT: 'repo' scope + 'read:packages' OR
 #   - Fine-grained PAT:
 #       - Contents (Read/Write)  - checkout + commit/push
 #       - Variables (Read/Write) - digest storage
 #       - Actions (Read/Write)   - workflow_dispatch (only if target-workflow is used)
+#       - Packages (Read)        - reading manifests of internal/private images
+#
+# Monitoring internal or private GHCR packages additionally requires the CALLING
+# workflow to grant 'packages: read'. See docs/ghcr-internal-visibility.md.
 # =============================================================================
 
 name: "🔍 Module | Docker Base Image Monitor"
@@ -78,6 +82,11 @@ on:
         required: false
         type: boolean
         default: false
+      fail-on-unreachable-image:
+        description: "Fail the job if an image manifest cannot be read (auth, network or a wrong tag). Set to false to downgrade to a warning - the run then reports success while some images were never verified."
+        required: false
+        type: boolean
+        default: true
       runs-on:
         description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         required: false
@@ -105,6 +114,15 @@ on:
       new-digests:
         description: "JSON object with new digests per image"
         value: ${{ jobs.monitor.outputs.new-digests }}
+      images-configured:
+        description: "Number of images declared in the configuration"
+        value: ${{ jobs.monitor.outputs.images-configured }}
+      images-checked:
+        description: "Number of images whose digest was actually read. Lower than images-configured means the result is incomplete."
+        value: ${{ jobs.monitor.outputs.images-checked }}
+      unreachable-images:
+        description: "JSON array of image references that could not be read"
+        value: ${{ jobs.monitor.outputs.unreachable-images }}
 
 jobs:
   monitor:
@@ -116,6 +134,9 @@ jobs:
       triggered: ${{ steps.release.outputs.triggered || steps.dispatch.outputs.triggered || 'false' }}
       commit-sha: ${{ steps.release.outputs.commit-sha }}
       new-digests: ${{ steps.check.outputs.new-digests }}
+      images-configured: ${{ steps.check.outputs.images-configured }}
+      images-checked: ${{ steps.check.outputs.images-checked }}
+      unreachable-images: ${{ steps.check.outputs.unreachable-images }}
 
     steps:
       - name: "🔐 Validate PAT_READWRITE_ORGANISATION secret"
@@ -179,6 +200,7 @@ jobs:
           INLINE_IMAGES: ${{ inputs.images }}
           COMMIT_PREFIX_INPUT: ${{ inputs.commit-prefix }}
           DRY_RUN: ${{ inputs.dry-run }}
+          FAIL_ON_UNREACHABLE: ${{ inputs.fail-on-unreachable-image }}
         shell: bash
         run: |
           set -euo pipefail
@@ -226,6 +248,12 @@ jobs:
           NEW_DIGESTS="{}"
           UPDATE_DETAILS=""
 
+          # Must be initialised before first read: `set -euo pipefail` above enables
+          # -u, which aborts on an unset variable.
+          CONFIGURED_COUNT=$(printf '%s' "$IMAGES" | jq 'length')
+          CHECKED_COUNT=0
+          UNREACHABLE_IMAGES="[]"
+
           # Process each image (using process substitution to preserve variables)
           while IFS= read -r img; do
             NAME=$(printf '%s' "$img" | jq -r '.name')
@@ -236,15 +264,28 @@ jobs:
             echo "::group::🐳 Checking $NAME ($IMAGE:$TAG)"
 
             # Get current digest from registry
-            echo "📡 Fetching current digest from Docker Hub..."
+            echo "📡 Fetching current digest from registry..."
 
             # Try to get digest, handling multi-arch manifests
             CURRENT_DIGEST=""
-            MANIFEST_OUTPUT=$(docker manifest inspect "$IMAGE:$TAG" 2>&1) || {
-              echo "::warning::Could not fetch manifest for $IMAGE:$TAG"
+            if ! MANIFEST_OUTPUT=$(docker manifest inspect "$IMAGE:$TAG" 2>&1); then
+              # The case split only picks the message; the failure itself is always
+              # recorded. Registry error strings vary between implementations and
+              # versions, so a grep that silently stops matching must never be what
+              # decides whether we report a problem.
+              case "$MANIFEST_OUTPUT" in
+                *unauthorized*|*denied*|*forbidden*|*401*|*403*)
+                  echo "::error::Access denied for $IMAGE:$TAG - if this package is internal or private, the calling workflow must grant 'packages: read' and the token used for the registry login must carry read access to packages. See docs/ghcr-internal-visibility.md"
+                  ;;
+                *)
+                  echo "::error::Could not fetch manifest for $IMAGE:$TAG"
+                  ;;
+              esac
+              echo "$MANIFEST_OUTPUT"
+              UNREACHABLE_IMAGES=$(printf '%s' "$UNREACHABLE_IMAGES" | jq -c --arg i "$IMAGE:$TAG" '. + [$i]')
               echo "::endgroup::"
               continue
-            }
+            fi
 
             # Try to extract digest (handles both single and multi-arch)
             CURRENT_DIGEST=$(echo "$MANIFEST_OUTPUT" | jq -r '
@@ -258,10 +299,13 @@ jobs:
             ' 2>/dev/null || echo "")
 
             if [ -z "$CURRENT_DIGEST" ]; then
-              echo "::warning::Could not extract digest for $IMAGE:$TAG"
+              echo "::error::Could not extract digest for $IMAGE:$TAG"
+              UNREACHABLE_IMAGES=$(printf '%s' "$UNREACHABLE_IMAGES" | jq -c --arg i "$IMAGE:$TAG" '. + [$i]')
               echo "::endgroup::"
               continue
             fi
+
+            CHECKED_COUNT=$((CHECKED_COUNT + 1))
 
             echo "📦 Current digest: ${CURRENT_DIGEST:0:20}..."
 
@@ -309,9 +353,16 @@ jobs:
           done < <(printf '%s' "$IMAGES" | jq -c '.[]')
 
           # Write outputs
+          # UNREACHABLE_IMAGES survives the loop because it is fed by process
+          # substitution above, not a pipe - a pipe would run the loop in a subshell
+          # and discard everything accumulated in it.
+          UNREACHABLE_COUNT=$(printf '%s' "$UNREACHABLE_IMAGES" | jq 'length')
           echo "updates-found=$UPDATES_FOUND" >> $GITHUB_OUTPUT
           echo "updated-images=$UPDATED_IMAGES" >> $GITHUB_OUTPUT
           echo "new-digests=$NEW_DIGESTS" >> $GITHUB_OUTPUT
+          echo "images-configured=$CONFIGURED_COUNT" >> $GITHUB_OUTPUT
+          echo "images-checked=$CHECKED_COUNT" >> $GITHUB_OUTPUT
+          echo "unreachable-images=$UNREACHABLE_IMAGES" >> $GITHUB_OUTPUT
 
           # Store update details for commit message (using delimiter for multiline)
           {
@@ -324,9 +375,20 @@ jobs:
           echo "═══════════════════════════════════════════"
           echo "📊 Summary"
           echo "═══════════════════════════════════════════"
+          echo "Images checked: $CHECKED_COUNT of $CONFIGURED_COUNT configured"
           echo "Updates found: $UPDATES_FOUND"
           if [ "$UPDATES_FOUND" = "true" ]; then
             echo "Updated images: $(echo "$UPDATED_IMAGES" | jq -r 'join(", ")')"
+          fi
+
+          if [ "$UNREACHABLE_COUNT" -gt 0 ]; then
+            echo "Unreachable: $(printf '%s' "$UNREACHABLE_IMAGES" | jq -r 'join(", ")')"
+            echo ""
+            if [ "$FAIL_ON_UNREACHABLE" = "true" ]; then
+              echo "::error::$UNREACHABLE_COUNT of $CONFIGURED_COUNT base image(s) could not be checked. Failing rather than reporting a clean result for images that were never read. Set 'fail-on-unreachable-image: false' to downgrade this to a warning."
+              exit 1
+            fi
+            echo "::warning::$UNREACHABLE_COUNT of $CONFIGURED_COUNT base image(s) could not be checked (fail-on-unreachable-image is false). This run did NOT verify them."
           fi
 
       - name: "📝 Create release commit"
@@ -412,6 +474,9 @@ jobs:
           RELEASE_PREFIX: ${{ steps.check.outputs.commit-prefix }}
           DISPATCH_TRIGGERED: ${{ steps.dispatch.outputs.triggered }}
           TARGET_WORKFLOW: ${{ inputs.target-workflow }}
+          IMAGES_CONFIGURED: ${{ steps.check.outputs.images-configured }}
+          IMAGES_CHECKED: ${{ steps.check.outputs.images-checked }}
+          UNREACHABLE_JSON: ${{ steps.check.outputs.unreachable-images }}
         shell: bash
         run: |
           {
@@ -420,6 +485,31 @@ jobs:
 
             if [ "$DRY_RUN" = "true" ]; then
               echo "> ⚠️ **Dry run mode** - No changes were made"
+              echo ""
+            fi
+
+            # Coverage first: the difference between configured and checked is the
+            # single number that reveals a partially blind run. Reporting "up to
+            # date" without it is what let two unreadable images go unnoticed.
+            if [ -n "$IMAGES_CONFIGURED" ]; then
+              echo "**Coverage:** $IMAGES_CHECKED of $IMAGES_CONFIGURED configured image(s) verified"
+              echo ""
+            fi
+
+            UNREACHABLE_COUNT=0
+            if [ -n "$UNREACHABLE_JSON" ]; then
+              UNREACHABLE_COUNT=$(printf '%s' "$UNREACHABLE_JSON" | jq 'length')
+            fi
+
+            if [ "$UNREACHABLE_COUNT" -gt 0 ]; then
+              echo "### ⚠️ Incomplete check"
+              echo ""
+              echo "The following image(s) could not be read and were **not** verified:"
+              echo ""
+              printf '%s' "$UNREACHABLE_JSON" | jq -r '.[] | "- `" + . + "`"'
+              echo ""
+              echo "A common cause is an internal or private package: the calling workflow must grant \`packages: read\`."
+              echo "See [GHCR Internal Visibility](https://github.com/bauer-group/automation-templates/blob/main/docs/ghcr-internal-visibility.md)."
               echo ""
             fi
 
@@ -450,6 +540,10 @@ jobs:
                 echo ""
                 echo "Target workflow \`$TARGET_WORKFLOW\` was triggered via \`workflow_dispatch\`."
               fi
+            elif [ "$UNREACHABLE_COUNT" -gt 0 ]; then
+              echo "### ℹ️ No updates among the images that could be read"
+              echo ""
+              echo "This is **not** a clean result - $UNREACHABLE_COUNT image(s) were never checked."
             else
               echo "### ℹ️ No updates found"
               echo ""

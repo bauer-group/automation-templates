@@ -62,7 +62,9 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
-| `PAT_READWRITE_ORGANISATION` | sync-upstream, modules-auto-maintenance, modules-docker-base-image-monitor | PAT für Pushes/Commits, die **Folge-Workflows triggern** (ein `GITHUB_TOKEN`-Push tut das nicht). Bei `sync-upstream` nötig, damit der `workspace`-Push den Build startet. | [github.com/settings/tokens](https://github.com/settings/tokens) → Classic: Scopes `repo` + `workflow` · Fine-grained: **Contents** + **Workflows** + **Issues** (Read/Write) |
+| `PAT_READWRITE_ORGANISATION` | sync-upstream, modules-auto-maintenance, modules-docker-base-image-monitor | PAT für Pushes/Commits, die **Folge-Workflows triggern** (ein `GITHUB_TOKEN`-Push tut das nicht). Bei `sync-upstream` nötig, damit der `workspace`-Push den Build startet. Bei den Base-Image-Monitoren zusätzlich für den GHCR-Login. | [github.com/settings/tokens](https://github.com/settings/tokens) → Classic: Scopes `repo` + `workflow` + `read:packages` · Fine-grained: **Contents** + **Workflows** + **Issues** (Read/Write) + **Packages** (Read) |
+
+> **`read:packages` / Packages (Read)** wird nur für die Base-Image-Monitore benötigt, und dort nur, wenn **interne oder private** Images überwacht werden. Fehlt der Scope, gelingt der Login und der anschließende Manifest-Zugriff wird abgelehnt — ein lauter, aber leicht fehlzudeutender Fehler. Siehe [GHCR Internal Visibility](./ghcr-internal-visibility.md).
 
 > Als **Organization Secret** hinterlegen (gilt dann für alle Repos) — oder als **Repository-Secret** pro Fork, falls dieser unter einem **persönlichen Account** liegt (dort gibt es keine Org-Secrets). Fehlt der PAT, laufen Sync & Merge weiterhin, aber der nachgelagerte Build wird **nicht** automatisch getriggert (Warnung im Log).
 

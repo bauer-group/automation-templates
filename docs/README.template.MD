@@ -1091,6 +1091,7 @@ gh auth status --show-token
 
 #### 🔍 Validation Modules
 
+- [🔍 **Docker Base Image Monitor**](docs/workflows/modules-docker-base-image-monitor.md) - Base image digest drift detection
 - [🐳 **Dockerfile Validation**](docs/workflows/modules-validate-dockerfile.md) - Dockerfile linting with Hadolint
 - [📋 **Docker Compose Validation**](docs/workflows/modules-validate-compose.md) - Docker Compose validation
 - [🐚 **Shell Script Validation**](docs/workflows/modules-validate-shellscript.md) - Shell script linting with ShellCheck

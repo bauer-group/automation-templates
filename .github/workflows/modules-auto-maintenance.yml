@@ -47,6 +47,11 @@ on:
         required: false
         type: boolean
         default: false
+      fail-on-unreachable-image:
+        description: "Fail the job if a base image manifest cannot be read (auth, network or a wrong tag). Set to false to downgrade to a warning - the run then reports success while some images were never verified."
+        required: false
+        type: boolean
+        default: true
       runs-on:
         description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         required: false
@@ -231,6 +236,7 @@ jobs:
           GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
           BASE_IMAGES: ${{ steps.config.outputs.base-images }}
           DRY_RUN: ${{ inputs.dry-run }}
+          FAIL_ON_UNREACHABLE: ${{ inputs.fail-on-unreachable-image }}
         shell: bash
         run: |
           set -euo pipefail
@@ -239,6 +245,11 @@ jobs:
           UPDATED_IMAGES="[]"
           NEW_DIGESTS="{}"
           UPDATE_DETAILS=""
+
+          # Must be initialised before first read: -u aborts on an unset variable.
+          CONFIGURED_COUNT=$(printf '%s' "$BASE_IMAGES" | jq 'length')
+          CHECKED_COUNT=0
+          UNREACHABLE_IMAGES="[]"
 
           while IFS= read -r img; do
             NAME=$(printf '%s' "$img" | jq -r '.name')
@@ -251,11 +262,24 @@ jobs:
             # Get current digest from registry
             echo "📡 Fetching current digest from registry..."
 
-            MANIFEST_OUTPUT=$(docker manifest inspect "$IMAGE:$TAG" 2>&1) || {
-              echo "::warning::Could not fetch manifest for $IMAGE:$TAG"
+            if ! MANIFEST_OUTPUT=$(docker manifest inspect "$IMAGE:$TAG" 2>&1); then
+              # The case split only picks the message; the failure itself is always
+              # recorded. Registry error strings vary between implementations and
+              # versions, so a grep that silently stops matching must never be what
+              # decides whether we report a problem.
+              case "$MANIFEST_OUTPUT" in
+                *unauthorized*|*denied*|*forbidden*|*401*|*403*)
+                  echo "::error::Access denied for $IMAGE:$TAG - if this package is internal or private, the calling workflow must grant 'packages: read' and the token used for the registry login must carry read access to packages. See docs/ghcr-internal-visibility.md"
+                  ;;
+                *)
+                  echo "::error::Could not fetch manifest for $IMAGE:$TAG"
+                  ;;
+              esac
+              echo "$MANIFEST_OUTPUT"
+              UNREACHABLE_IMAGES=$(printf '%s' "$UNREACHABLE_IMAGES" | jq -c --arg i "$IMAGE:$TAG" '. + [$i]')
               echo "::endgroup::"
               continue
-            }
+            fi
 
             CURRENT_DIGEST=$(echo "$MANIFEST_OUTPUT" | jq -r '
               if .config.digest then
@@ -268,10 +292,13 @@ jobs:
             ' 2>/dev/null || echo "")
 
             if [ -z "$CURRENT_DIGEST" ]; then
-              echo "::warning::Could not extract digest for $IMAGE:$TAG"
+              echo "::error::Could not extract digest for $IMAGE:$TAG"
+              UNREACHABLE_IMAGES=$(printf '%s' "$UNREACHABLE_IMAGES" | jq -c --arg i "$IMAGE:$TAG" '. + [$i]')
               echo "::endgroup::"
               continue
             fi
+
+            CHECKED_COUNT=$((CHECKED_COUNT + 1))
 
             echo "📦 Current digest: ${CURRENT_DIGEST:0:20}..."
 
@@ -314,9 +341,16 @@ jobs:
             echo "::endgroup::"
           done < <(printf '%s' "$BASE_IMAGES" | jq -c '.[]')
 
+          # UNREACHABLE_IMAGES survives the loop because it is fed by process
+          # substitution above, not a pipe - a pipe would run the loop in a subshell
+          # and discard everything accumulated in it.
+          UNREACHABLE_COUNT=$(printf '%s' "$UNREACHABLE_IMAGES" | jq 'length')
           echo "updates-found=$UPDATES_FOUND" >> $GITHUB_OUTPUT
           echo "updated-images=$UPDATED_IMAGES" >> $GITHUB_OUTPUT
           echo "new-digests=$NEW_DIGESTS" >> $GITHUB_OUTPUT
+          echo "images-configured=$CONFIGURED_COUNT" >> $GITHUB_OUTPUT
+          echo "images-checked=$CHECKED_COUNT" >> $GITHUB_OUTPUT
+          echo "unreachable-images=$UNREACHABLE_IMAGES" >> $GITHUB_OUTPUT
 
           # Store update details for commit message
           {
@@ -324,6 +358,18 @@ jobs:
             echo "$UPDATE_DETAILS"
             echo "DETAILS_EOF"
           } >> $GITHUB_ENV
+
+          echo ""
+          echo "📊 Base images checked: $CHECKED_COUNT of $CONFIGURED_COUNT configured"
+
+          if [ "$UNREACHABLE_COUNT" -gt 0 ]; then
+            echo "Unreachable: $(printf '%s' "$UNREACHABLE_IMAGES" | jq -r 'join(", ")')"
+            if [ "$FAIL_ON_UNREACHABLE" = "true" ]; then
+              echo "::error::$UNREACHABLE_COUNT of $CONFIGURED_COUNT base image(s) could not be checked. Failing rather than reporting a clean result for images that were never read. Set 'fail-on-unreachable-image: false' to downgrade this to a warning."
+              exit 1
+            fi
+            echo "::warning::$UNREACHABLE_COUNT of $CONFIGURED_COUNT base image(s) could not be checked (fail-on-unreachable-image is false). This run did NOT verify them."
+          fi
 
       # =====================================================================
       # Step 5: Setup Node.js
