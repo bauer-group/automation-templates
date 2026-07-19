@@ -120,14 +120,33 @@ runs:
     - name: 📋 Load Configuration
       id: config
       shell: bash
+      env:
+        CONFIG_NAME: ${{ inputs.config-file }}
+        EVENT_TYPE: ${{ inputs.event-type }}
       run: |
-        CONFIG_FILE=".github/config/teams-notification/${{ inputs.config-file }}.yml"
-        
+        # Both values select a file path and a yq expression, so neither may be
+        # interpolated into the script body. Restrict them to a safe character set
+        # rather than trusting the caller: `../` in config-file would read an
+        # arbitrary YAML file, and a crafted event-type would be evaluated as a yq
+        # expression rather than looked up as a key.
+        if [[ ! "$CONFIG_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          echo "::error::Invalid config-file '$CONFIG_NAME' - only letters, digits, dot, underscore and hyphen are allowed"
+          exit 1
+        fi
+        if [[ ! "$EVENT_TYPE" =~ ^[A-Za-z0-9._-]*$ ]]; then
+          echo "::error::Invalid event-type '$EVENT_TYPE' - only letters, digits, dot, underscore and hyphen are allowed"
+          exit 1
+        fi
+
+        CONFIG_FILE=".github/config/teams-notification/${CONFIG_NAME}.yml"
+
         if [[ -f "$CONFIG_FILE" ]]; then
           echo "✅ Loading configuration from $CONFIG_FILE"
-          
-          # Parse YAML configuration
-          THEME_COLOR=$(yq eval '.theme.colors.${{ inputs.event-type }} // .theme.colors.default // "0078d4"' "$CONFIG_FILE")
+
+          # Parse YAML configuration. The event type is read from the environment via
+          # strenv() and indexed with [], so it is treated as a key rather than
+          # evaluated as part of the expression.
+          THEME_COLOR=$(yq eval '.theme.colors[strenv(EVENT_TYPE)] // .theme.colors.default // "0078d4"' "$CONFIG_FILE")
           ENABLE_MENTIONS=$(yq eval '.features.mentions // true' "$CONFIG_FILE")
           ENABLE_FACTS=$(yq eval '.features.facts // true' "$CONFIG_FILE")
           CARD_STYLE=$(yq eval '.card.style // "default"' "$CONFIG_FILE")
@@ -147,11 +166,23 @@ runs:
     - name: 📊 Prepare Event Data
       id: event-data
       shell: bash
+      env:
+        # Caller-controlled values reach shell commands here (case patterns, sed
+        # pipelines), so they are passed through the environment rather than pasted
+        # into the script body. `ref` is the sharpest one: a branch name is
+        # attacker-chosen on a fork pull request.
+        EVENT_TYPE: ${{ inputs.event-type }}
+        INPUT_THEME_COLOR: ${{ inputs.theme-color }}
+        CONFIG_THEME_COLOR: ${{ steps.config.outputs.theme-color }}
+        INPUT_REF: ${{ inputs.ref }}
+        INPUT_SHA: ${{ inputs.sha }}
+        EVENT_CREATED_AT: ${{ github.event.created_at }}
+        EVENT_UPDATED_AT: ${{ github.event.updated_at }}
       run: |
         # Determine theme color based on event type
-        THEME_COLOR="${{ inputs.theme-color }}"
+        THEME_COLOR="$INPUT_THEME_COLOR"
         if [[ -z "$THEME_COLOR" ]]; then
-          case "${{ inputs.event-type }}" in
+          case "$EVENT_TYPE" in
             "workflow_success"|"pr_merged"|"release")
               THEME_COLOR="28a745" # Green
               ;;
@@ -165,13 +196,13 @@ runs:
               THEME_COLOR="6f42c1" # Purple
               ;;
             *)
-              THEME_COLOR="${{ steps.config.outputs.theme-color }}"
+              THEME_COLOR="$CONFIG_THEME_COLOR"
               ;;
           esac
         fi
         
         # Prepare status icon
-        case "${{ inputs.event-type }}" in
+        case "$EVENT_TYPE" in
           "workflow_success")
             STATUS_ICON="✅"
             STATUS_TEXT="Success"
@@ -219,11 +250,12 @@ runs:
         echo "status-text=$STATUS_TEXT" >> $GITHUB_OUTPUT
         
         # Format branch/ref name
-        REF_NAME=$(echo "${{ inputs.ref }}" | sed 's|refs/heads/||' | sed 's|refs/tags/||')
+        REF_NAME="${INPUT_REF#refs/heads/}"
+        REF_NAME="${REF_NAME#refs/tags/}"
         echo "ref-name=$REF_NAME" >> $GITHUB_OUTPUT
         
         # Short SHA
-        SHORT_SHA=$(echo "${{ inputs.sha }}" | head -c 8)
+        SHORT_SHA="${INPUT_SHA:0:8}"
         echo "short-sha=$SHORT_SHA" >> $GITHUB_OUTPUT
         
         # Current timestamp in ISO 8601 format for Teams locale support
@@ -233,8 +265,8 @@ runs:
         # Format timestamp for display (German locale format)
         # Use current timestamp or event timestamp
         SOURCE_TIME="$TIMESTAMP"
-        EVENT_CREATED="${{ github.event.created_at }}"
-        EVENT_UPDATED="${{ github.event.updated_at }}"
+        EVENT_CREATED="$EVENT_CREATED_AT"
+        EVENT_UPDATED="$EVENT_UPDATED_AT"
         
         if [[ -n "$EVENT_CREATED" ]]; then
           SOURCE_TIME="$EVENT_CREATED"
@@ -257,6 +289,12 @@ runs:
         NOTIFY_TITLE: ${{ inputs.title || steps.event-data.outputs.status-text }}
         NOTIFY_SUMMARY: ${{ inputs.summary }}
         NOTIFY_DETAILS: ${{ inputs.details }}
+        NOTIFY_ACTOR: ${{ inputs.actor }}
+        NOTIFY_REF_NAME: ${{ steps.event-data.outputs.ref-name }}
+        NOTIFY_TIMESTAMP: ${{ steps.event-data.outputs.display-timestamp }}
+        NOTIFY_LOGS_TITLE: ${{ inputs.logs-title }}
+        NOTIFY_WORKFLOW_LOGS: ${{ inputs.workflow-logs }}
+        NOTIFY_SHOW_LOGS: ${{ inputs.show-logs }}
       run: |
         # Emit a value as a correctly escaped JSON string, quotes included.
         json_string() {
@@ -326,7 +364,12 @@ runs:
                               },
                               {
                                 "type": "TextBlock",
-                                "text": "👤 ${{ inputs.actor }} • 🌿 ${{ steps.event-data.outputs.ref-name }} • 📅 ${{ steps.event-data.outputs.display-timestamp }}",
+        EOF
+        # The branch name is attacker-chosen on a fork pull request, so this line is
+        # escaped rather than pasted into the JSON literal.
+        printf '                                "text": %s,\n' \
+          "$(json_string "👤 ${NOTIFY_ACTOR} • 🌿 ${NOTIFY_REF_NAME} • 📅 ${NOTIFY_TIMESTAMP}")" >> "$CARD_FILE"
+        cat >> "$CARD_FILE" << 'EOF'
                                 "size": "Small",
                                 "color": "Default",
                                 "wrap": true,
@@ -406,9 +449,7 @@ runs:
         fi
         
         # Add workflow logs section if enabled
-        SHOW_LOGS="${{ inputs.show-logs }}"
-        WORKFLOW_LOGS="${{ inputs.workflow-logs }}"
-        if [[ "$SHOW_LOGS" == "true" ]] && [[ -n "$WORKFLOW_LOGS" ]]; then
+        if [[ "$NOTIFY_SHOW_LOGS" == "true" ]] && [[ -n "$NOTIFY_WORKFLOW_LOGS" ]]; then
           cat >> "$CARD_FILE" << 'EOF'
                   {
                     "type": "Container",
@@ -416,14 +457,20 @@ runs:
                     "items": [
                       {
                         "type": "TextBlock",
-                        "text": "📋 **${{ inputs.logs-title }}**",
+        EOF
+        printf '                        "text": %s,\n' "$(json_string "📋 **${NOTIFY_LOGS_TITLE}**")" >> "$CARD_FILE"
+        cat >> "$CARD_FILE" << 'EOF'
                         "weight": "Bolder",
                         "size": "Medium",
                         "spacing": "Medium"
                       },
                       {
                         "type": "TextBlock",
-                        "text": "```\n${{ inputs.workflow-logs }}\n```",
+        EOF
+        # Raw workflow output: newlines and quotes are the norm here, not the exception.
+        printf '                        "text": %s,\n' \
+          "$(json_string "$(printf '```\n%s\n```' "$NOTIFY_WORKFLOW_LOGS")")" >> "$CARD_FILE"
+        cat >> "$CARD_FILE" << 'EOF'
                         "wrap": true,
                         "fontType": "Monospace",
                         "size": "Medium",
@@ -512,20 +559,34 @@ runs:
     - name: 🚀 Send Teams Notification
       id: send
       shell: bash
+      env:
+        # Everything here reaches a shell command, so none of it may be
+        # interpolated into the script body. The card payload in particular
+        # carries free-form user text: a single apostrophe in it would close the
+        # -d '...' argument below and hand the rest to the shell.
+        WEBHOOK_URL: ${{ inputs.webhook-url }}
+        CARD_PAYLOAD: ${{ steps.card.outputs.payload }}
+        RETRY_COUNT_INPUT: ${{ inputs.retry-count }}
+        TIMEOUT_INPUT: ${{ inputs.timeout }}
+        ENABLE_RETRY: ${{ inputs.enable-retry }}
       run: |
         # Opt-in notifier: if no webhook URL is configured (e.g. the
         # TEAMS_WEBHOOK_URL secret is not set), skip cleanly instead of
         # failing the job. A warning annotation keeps the gap visible.
-        if [[ -z "${{ inputs.webhook-url }}" ]]; then
+        if [[ -z "$WEBHOOK_URL" ]]; then
           echo "::warning title=Teams Notification Skipped::No webhook URL configured (TEAMS_WEBHOOK_URL secret missing) - skipping Teams notification"
           echo "status=skipped" >> $GITHUB_OUTPUT
           echo "response=No webhook URL configured" >> $GITHUB_OUTPUT
           exit 0
         fi
 
-        # Retry logic
+        # Retry logic. Both values are declared `type: number`, but validate anyway:
+        # they end up in an arithmetic context and as a curl argument.
         RETRY_COUNT=0
-        MAX_RETRIES=${{ inputs.retry-count }}
+        MAX_RETRIES="${RETRY_COUNT_INPUT:-3}"
+        REQUEST_TIMEOUT="${TIMEOUT_INPUT:-30}"
+        [[ "$MAX_RETRIES" =~ ^[0-9]+$ ]] || MAX_RETRIES=3
+        [[ "$REQUEST_TIMEOUT" =~ ^[0-9]+$ ]] || REQUEST_TIMEOUT=30
         SUCCESS=false
         
         while [[ $RETRY_COUNT -le $MAX_RETRIES ]] && [[ "$SUCCESS" != "true" ]]; do
@@ -538,9 +599,9 @@ runs:
           RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\nTIME_TOTAL:%{time_total}" \
             -X POST \
             -H "Content-Type: application/json" \
-            --max-time ${{ inputs.timeout }} \
-            -d '${{ steps.card.outputs.payload }}' \
-            "${{ inputs.webhook-url }}" || echo "CURL_ERROR")
+            --max-time "$REQUEST_TIMEOUT" \
+            -d "$CARD_PAYLOAD" \
+            "$WEBHOOK_URL" || echo "CURL_ERROR")
           
           # Parse response
           if [[ "$RESPONSE" == "CURL_ERROR" ]]; then
@@ -567,7 +628,7 @@ runs:
             fi
           fi
           
-          if [[ "$SUCCESS" != "true" ]] && [[ "${{ inputs.enable-retry }}" == "true" ]]; then
+          if [[ "$SUCCESS" != "true" ]] && [[ "$ENABLE_RETRY" == "true" ]]; then
             ((RETRY_COUNT++))
           else
             break
@@ -580,9 +641,3 @@ runs:
           exit 1
         fi
 
-    - name: 📋 Output Card Payload
-      shell: bash
-      run: |
-        echo "card-payload<<EOF" >> $GITHUB_OUTPUT
-        echo '${{ steps.card.outputs.payload }}' >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
