@@ -1,3 +1,35 @@
+## [7.0.0](https://github.com/bauer-group/automation-templates/compare/v6.9.0...v7.0.0) (2026-07-19)
+
+### ⚠ BREAKING CHANGES
+
+* **ci:** callers of modules-vulnerability-scan,
+modules-validate-compose or containerized-embedded-build that declare a
+permissions block must add `packages: read`, otherwise the run will not
+start. Callers without a permissions block need no change.
+* **ci:** modules-docker-base-image-monitor and
+modules-auto-maintenance now fail when a configured base image cannot be
+read. Runs that were silently partial will turn red. Set
+fail-on-unreachable-image: false to restore the previous behaviour.
+
+### 🚀 Features
+
+* **ci:** made unreadable base images fail the monitor ([d92cfee](https://github.com/bauer-group/automation-templates/commit/d92cfeef354172084b4f520d63fc29b153d0c212))
+* **validate-compose:** added compose-profiles input for profiled services ([#72](https://github.com/bauer-group/automation-templates/issues/72)) ([72e1a5c](https://github.com/bauer-group/automation-templates/commit/72e1a5c7ed8731231e34ddde9b4c2ae4cb0afa72))
+
+### 🐛 Bug Fixes
+
+* **ci:** added GHCR credentials to maintenance templates ([fc21d04](https://github.com/bauer-group/automation-templates/commit/fc21d04b684572c8ce9a3efde56136fd949ec7e1))
+* **ci:** added packages read to registry-using modules ([dd1564e](https://github.com/bauer-group/automation-templates/commit/dd1564eea72bd4415b51a2096935d8e34c16f889))
+* **ci:** added registry logins for internal GHCR images ([a2a5ace](https://github.com/bauer-group/automation-templates/commit/a2a5ace72c7ef26356443e9a6738e5510ce762e7))
+* **ci:** granted per-job permissions in the release pipeline ([73d2460](https://github.com/bauer-group/automation-templates/commit/73d2460dee0f8b7dfa71348ccc6f95535e3ae8a4))
+* **ci:** repaired dead references in reusable workflows ([c14ef26](https://github.com/bauer-group/automation-templates/commit/c14ef267728298b91de5c9dfd341035c6fcb9fd2))
+* **examples:** made shipped example workflows valid ([e123686](https://github.com/bauer-group/automation-templates/commit/e123686ce294a7933c591d02d577b421358f62cf))
+* **security:** closed fail-open security scan gates ([a55beff](https://github.com/bauer-group/automation-templates/commit/a55beff20e96f2024e6871b0866af087800f8bfa))
+
+### ⚡ Performance
+
+* **ci:** non-breaking docker-build perf & security ([#67](https://github.com/bauer-group/automation-templates/issues/67)) ([9c7133d](https://github.com/bauer-group/automation-templates/commit/9c7133dd41e4e66c3e11c0ed69bad2ce3f3d4411))
+
 ## [6.9.0](https://github.com/bauer-group/automation-templates/compare/v6.8.0...v6.9.0) (2026-07-04)
 
 ### 🚀 Features
