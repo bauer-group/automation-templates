@@ -856,13 +856,18 @@ jobs:
           fi
       
       - name: 📊 Upload Coverage to Codecov
-        if: inputs.collect-coverage == 'true' && env.HAS_CODECOV_TOKEN == 'true'
+        # `collect-coverage` is type: boolean. Comparing it to the STRING 'true'
+        # coerces both to numbers - true becomes 1, 'true' becomes NaN - so the
+        # comparison was always false and this step never ran. Bare truthiness is
+        # correct for a boolean input.
+        if: inputs.collect-coverage && env.HAS_CODECOV_TOKEN == 'true'
         uses: codecov/codecov-action@v6
         env:
           HAS_CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN != '' }}
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ${{ inputs.working-directory }}/coverage.xml
+          # `files` (plural) since codecov-action v4; `file` is silently ignored.
+          files: ${{ inputs.working-directory }}/coverage.xml
           flags: unittests
           fail_ci_if_error: false
       

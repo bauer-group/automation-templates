@@ -209,7 +209,7 @@ jobs:
     outputs:
       plugin-version: ${{ steps.version.outputs.version }}
       zip-filename: ${{ steps.zip.outputs.filename }}
-      release-created: ${{ steps.release.outputs.created }}
+      release-created: ${{ steps.release.outputs.id != '' }}
       store-uploaded: ${{ steps.store-upload.outputs.uploaded }}
 
     env:

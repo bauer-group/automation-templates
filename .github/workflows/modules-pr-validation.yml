@@ -131,13 +131,13 @@ jobs:
           fi
           
           # Check security validation
-          SECURITY_STATUS="${{ steps.security.result }}"
+          SECURITY_STATUS="${{ steps.security.outcome }}"
           if [ "${{ inputs.enable-security-scan }}" = "true" ] && [ "${{ inputs.fail-on-security-issues }}" = "true" ] && [ "$SECURITY_STATUS" = "failure" ]; then
             VALIDATION_PASSED="false"
           fi
           
           # Check license validation
-          LICENSE_STATUS="${{ steps.license.result }}"
+          LICENSE_STATUS="${{ steps.license.outcome }}"
           if [ "${{ inputs.enable-license-check }}" = "true" ] && [ "${{ inputs.fail-on-license-issues }}" = "true" ] && [ "$LICENSE_STATUS" = "failure" ]; then
             VALIDATION_PASSED="false"
           fi
@@ -160,7 +160,7 @@ jobs:
           
           # Security Scan
           if [ "${{ inputs.enable-security-scan }}" = "true" ]; then
-            SECURITY_ICON="${{ steps.security.result == 'success' && '✅' || '❌' }}"
+            SECURITY_ICON="${{ steps.security.outcome == 'success' && '✅' || '❌' }}"
             SECURITY_SCORE="${{ steps.security.outputs.security-score || 'N/A' }}"
             echo "| **Security Scan** | ✅ | $SECURITY_ICON | Score: $SECURITY_SCORE/100 |" >> $GITHUB_STEP_SUMMARY
           else
@@ -169,7 +169,7 @@ jobs:
           
           # License Check
           if [ "${{ inputs.enable-license-check }}" = "true" ]; then
-            LICENSE_ICON="${{ steps.license.result == 'success' && '✅' || '❌' }}"
+            LICENSE_ICON="${{ steps.license.outcome == 'success' && '✅' || '❌' }}"
             LICENSE_STATUS="${{ steps.license.outputs.compliance-status || 'N/A' }}"
             echo "| **License Compliance** | ✅ | $LICENSE_ICON | Status: $LICENSE_STATUS |" >> $GITHUB_STEP_SUMMARY
           else

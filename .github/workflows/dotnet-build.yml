@@ -637,7 +637,7 @@ jobs:
           HAS_CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN != '' }}
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ${{ steps.coverage.outputs.report-path }}
+          files: ${{ steps.coverage.outputs.report-path }}
           fail_ci_if_error: false
           verbose: true
       

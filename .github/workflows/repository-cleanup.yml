@@ -146,7 +146,6 @@ jobs:
           # Validate numerical inputs
           MAX_AGE="${{ github.event.inputs.max-age-days }}"
           BATCH_SIZE="${{ github.event.inputs.batch-size }}"
-          BATCH_DELAY="${{ github.event.inputs.batch-delay }}"
           
           if [[ ! "$MAX_AGE" =~ ^[0-9]+$ ]] || [[ "$MAX_AGE" -lt 0 ]]; then
             echo "❌ Invalid max-age-days: $MAX_AGE"

@@ -305,6 +305,7 @@ jobs:
     
     steps:
       - name: 📊 Generate Summary
+        id: summary
         shell: bash
         run: |
           echo "# Zephyr Build Summary 📋" >> $GITHUB_STEP_SUMMARY

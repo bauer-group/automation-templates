@@ -149,7 +149,7 @@ jobs:
       - name: 🔍 Validate Prerequisites
         if: steps.should-run.outputs.should_run == 'true'
         run: |
-          TEMPLATE_FILE="${{ inputs.template-path || 'docs/SECURITY.template.MD' }}"
+          TEMPLATE_FILE="docs/SECURITY.template.MD"
           
           if [ ! -f "$TEMPLATE_FILE" ]; then
             echo "❌ Template file not found: $TEMPLATE_FILE"

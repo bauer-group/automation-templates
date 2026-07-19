@@ -52,6 +52,8 @@ jobs:
         id: issue
         env:
           GITHUB_TOKEN: ${{ secrets.token || secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           echo "🔍 Getting issue/PR details..."
 
@@ -65,7 +67,7 @@ jobs:
               echo '${{ toJson(github.event.issue.labels.*.name) }}'
               echo 'EOF'
             } >> $GITHUB_OUTPUT
-            echo "title=${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
+            echo "title=$ISSUE_TITLE" >> $GITHUB_OUTPUT
           elif [ -n "${{ github.event.pull_request }}" ]; then
             echo "type=pull_request" >> $GITHUB_OUTPUT
             echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
@@ -75,7 +77,7 @@ jobs:
               echo '${{ toJson(github.event.pull_request.labels.*.name) }}'
               echo 'EOF'
             } >> $GITHUB_OUTPUT
-            echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
+            echo "title=$PR_TITLE" >> $GITHUB_OUTPUT
           fi
       
       - name: 📖 Load Label Configuration
@@ -347,6 +349,9 @@ jobs:
       
       - name: 📊 Summary
         if: always()
+        env:
+          ISSUE_TITLE: ${{ steps.issue.outputs.title }}
+          ISSUE_LABELS: ${{ steps.issue.outputs.labels }}
         run: |
           echo "### 🤖 Issue Automation Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -354,8 +359,8 @@ jobs:
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| **Type** | ${{ steps.issue.outputs.type }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Number** | #${{ steps.issue.outputs.number }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Title** | ${{ steps.issue.outputs.title }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Labels** | ${{ steps.issue.outputs.labels }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Title** | $ISSUE_TITLE |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Labels** | $ISSUE_LABELS |" >> $GITHUB_STEP_SUMMARY
           echo "| **Dry Run** | ${{ inputs.dry-run }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           

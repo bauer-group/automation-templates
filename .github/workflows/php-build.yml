@@ -360,7 +360,7 @@ jobs:
     
     outputs:
       build-status: ${{ steps.summary.outputs.build-status }}
-      test-results: ${{ steps.test-results.outputs.summary }}
+      test-results: ${{ steps.phpunit.outputs.status }}
       coverage-percentage: ${{ steps.coverage.outputs.percentage }}
       quality-score: ${{ steps.quality.outputs.score }}
       docker-image: ${{ steps.docker.outputs.image }}
@@ -517,7 +517,7 @@ jobs:
           HAS_CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN != '' }}
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ${{ inputs.working-directory }}/coverage.xml
+          files: ${{ inputs.working-directory }}/coverage.xml
           flags: phpunit
           name: PHP ${{ matrix.php-version }}
           fail_ci_if_error: false

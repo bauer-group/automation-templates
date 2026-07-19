@@ -206,6 +206,20 @@ jobs:
           TRIGGER_PHRASE: ${{ inputs.trigger-phrase }}
           ALLOWED_USERS: ${{ inputs.allowed-users }}
           ALLOWED_LABELS: ${{ inputs.allowed-labels }}
+          # Event payload data is attacker-controlled and must never be
+          # interpolated directly into the script body (script injection).
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_COMMENT_BODY: ${{ github.event.comment.body }}
+          EVENT_COMMENT_USER: ${{ github.event.comment.user.login }}
+          EVENT_REVIEW_BODY: ${{ github.event.review.body }}
+          EVENT_REVIEW_USER: ${{ github.event.review.user.login }}
+          EVENT_ISSUE_BODY: ${{ github.event.issue.body }}
+          EVENT_ISSUE_TITLE: ${{ github.event.issue.title }}
+          EVENT_ISSUE_USER: ${{ github.event.issue.user.login }}
+          EVENT_ISSUE_PULL_REQUEST: ${{ github.event.issue.pull_request }}
+          EVENT_ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
+          EVENT_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
           SHOULD_RESPOND="false"
           TRIGGER_TYPE=""
@@ -213,36 +227,36 @@ jobs:
           TRIGGER_BODY=""
 
           echo "📍 Checking trigger conditions..."
-          echo "Event: ${{ github.event_name }}"
-          echo "Action: ${{ github.event.action }}"
+          echo "Event: $EVENT_NAME"
+          echo "Action: $EVENT_ACTION"
 
           # Determine trigger type and extract body
-          case "${{ github.event_name }}" in
+          case "$EVENT_NAME" in
             "issue_comment")
               TRIGGER_TYPE="issue_comment"
-              TRIGGER_BODY='${{ github.event.comment.body }}'
-              TRIGGER_USER='${{ github.event.comment.user.login }}'
+              TRIGGER_BODY="$EVENT_COMMENT_BODY"
+              TRIGGER_USER="$EVENT_COMMENT_USER"
               # Check if this is a PR comment
-              if [[ '${{ github.event.issue.pull_request }}' != '' ]]; then
+              if [[ -n "$EVENT_ISSUE_PULL_REQUEST" ]]; then
                 TRIGGER_TYPE="pr_comment"
               fi
               ;;
             "pull_request_review_comment")
               TRIGGER_TYPE="pr_review_comment"
-              TRIGGER_BODY='${{ github.event.comment.body }}'
-              TRIGGER_USER='${{ github.event.comment.user.login }}'
+              TRIGGER_BODY="$EVENT_COMMENT_BODY"
+              TRIGGER_USER="$EVENT_COMMENT_USER"
               ;;
             "pull_request_review")
               TRIGGER_TYPE="pr_review"
-              TRIGGER_BODY='${{ github.event.review.body }}'
-              TRIGGER_USER='${{ github.event.review.user.login }}'
+              TRIGGER_BODY="$EVENT_REVIEW_BODY"
+              TRIGGER_USER="$EVENT_REVIEW_USER"
               ;;
             "issues")
               TRIGGER_TYPE="issue"
-              TRIGGER_BODY='${{ github.event.issue.body }}'
-              TRIGGER_USER='${{ github.event.issue.user.login }}'
+              TRIGGER_BODY="$EVENT_ISSUE_BODY"
+              TRIGGER_USER="$EVENT_ISSUE_USER"
               # Also check title for @claude
-              ISSUE_TITLE='${{ github.event.issue.title }}'
+              ISSUE_TITLE="$EVENT_ISSUE_TITLE"
               TRIGGER_BODY="$ISSUE_TITLE $TRIGGER_BODY"
               ;;
           esac
@@ -270,7 +284,7 @@ jobs:
 
           # Check allowed labels (if specified)
           if [[ "$SHOULD_RESPOND" == "true" ]] && [[ -n "$ALLOWED_LABELS" ]]; then
-            ISSUE_LABELS='${{ join(github.event.issue.labels.*.name, ',') }}${{ join(github.event.pull_request.labels.*.name, ',') }}'
+            ISSUE_LABELS="${EVENT_ISSUE_LABELS}${EVENT_PR_LABELS}"
             LABEL_FOUND="false"
             IFS=',' read -ra LABELS <<< "$ALLOWED_LABELS"
             for label in "${LABELS[@]}"; do
@@ -287,11 +301,15 @@ jobs:
 
           echo "should-respond=$SHOULD_RESPOND" >> $GITHUB_OUTPUT
 
-          # Store trigger body (escape for multiline)
+          # Store trigger body (escape for multiline).
+          # The delimiter is randomised because the body is attacker-controlled:
+          # a fixed "EOF" lets a comment close the heredoc early and forge
+          # further step outputs (e.g. should-respond=true).
+          DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
           {
-            echo "trigger-body<<EOF"
+            echo "trigger-body<<$DELIMITER"
             echo "$TRIGGER_BODY"
-            echo "EOF"
+            echo "$DELIMITER"
           } >> $GITHUB_OUTPUT
 
           echo "📊 Should respond: $SHOULD_RESPOND"
