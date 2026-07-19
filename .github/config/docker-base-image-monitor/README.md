@@ -106,6 +106,31 @@ jobs:
 
 **Fertig!** Der Workflow prüft jetzt täglich, ob ein neues n8n Base Image verfügbar ist.
 
+### Interne oder private GHCR-Images überwachen
+
+Das Beispiel oben nutzt ein öffentliches Image. Für **interne oder private** GHCR-Packages
+muss der **aufrufende** Workflow zusätzlich `packages: read` gewähren — ein Reusable
+Workflow kann Caller-Permissions nur einschränken, niemals erweitern:
+
+```yaml
+jobs:
+  check:
+    permissions:
+      packages: read          # <-- ohne dies: "denied" beim Lesen der Manifeste
+    uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
+    secrets: inherit
+```
+
+Der Registry-Login nutzt dafür `github.token`. Dieser greift auch **org-übergreifend**
+auf intern sichtbare Packages innerhalb derselben Enterprise zu — ein PAT ist dafür
+nicht nötig. `PAT_READWRITE_ORGANISATION` braucht daher **keinen** Packages-Scope.
+
+Nur für Registries **außerhalb** der Enterprise wird ein optionales Secret
+`REGISTRY_READ_TOKEN` benötigt.
+
+> Fehlt `packages: read`, meldet der Login trotzdem `Login Succeeded!` — die Manifeste
+> schlagen erst danach mit `denied` fehl. Siehe [docs/ghcr-internal-visibility.md](../../../docs/ghcr-internal-visibility.md).
+
 ---
 
 ## 📚 Vollständige Einrichtung

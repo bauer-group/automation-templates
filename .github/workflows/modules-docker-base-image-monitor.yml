@@ -26,15 +26,30 @@
 #   secrets: inherit
 #
 # Required Secret: PAT_READWRITE_ORGANISATION
-#   - Classic PAT: 'repo' scope + 'read:packages' OR
+#   - Classic PAT: 'repo' scope OR
 #   - Fine-grained PAT:
 #       - Contents (Read/Write)  - checkout + commit/push
 #       - Variables (Read/Write) - digest storage
 #       - Actions (Read/Write)   - workflow_dispatch (only if target-workflow is used)
-#       - Packages (Read)        - reading manifests of internal/private images
+#   No packages scope is needed: the registry login does not use this PAT.
 #
-# Monitoring internal or private GHCR packages additionally requires the CALLING
-# workflow to grant 'packages: read'. See docs/ghcr-internal-visibility.md.
+# Optional Secret: REGISTRY_READ_TOKEN
+#   Only for registries outside this enterprise. The GHCR login defaults to
+#   github.token, which reads internal and private packages across orgs of the
+#   same enterprise.
+#
+# Monitoring internal or private GHCR packages requires the CALLING workflow to
+# grant 'packages: read' - a reusable workflow can only restrict caller
+# permissions, never add to them:
+#
+#   jobs:
+#     monitor:
+#       permissions:
+#         packages: read
+#       uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
+#       secrets: inherit
+#
+# See docs/ghcr-internal-visibility.md.
 # =============================================================================
 
 name: "🔍 Module | Docker Base Image Monitor"
@@ -95,8 +110,11 @@ on:
 
     secrets:
       PAT_READWRITE_ORGANISATION:
-        description: "GitHub PAT with variable write and contents write permissions"
+        description: "GitHub PAT with variable write and contents write permissions. NOT used for the registry login - see REGISTRY_READ_TOKEN."
         required: true
+      REGISTRY_READ_TOKEN:
+        description: "Optional token for the GHCR login used to read image manifests. Only needed for registries outside this enterprise - github.token covers internal and private packages across orgs of the same enterprise, provided the CALLING workflow grants 'packages: read'."
+        required: false
 
     outputs:
       updates-found:
@@ -178,19 +196,31 @@ jobs:
           fetch-depth: 0
 
       # `docker manifest inspect` below is anonymous without this, which fails for
-      # internal/private GHCR packages. Uses the PAT rather than GITHUB_TOKEN: as a
-      # reusable workflow we cannot grant ourselves packages: read - a permissions
-      # block can only restrict what the caller already holds - whereas the PAT is
-      # validated above and therefore guaranteed present. It needs `read:packages`
-      # (classic) or `Packages: Read` (fine-grained).
+      # internal/private GHCR packages.
+      # Defaults to github.token, matching modules-auto-maintenance.yml: it exists in
+      # every run, needs no setup, and carries packages: read whenever the CALLING
+      # workflow grants it (a reusable workflow cannot grant itself that scope - a
+      # permissions block only restricts what the caller already holds). Internal
+      # visibility resolves across orgs of the same enterprise for github.token too.
+      # PAT_READWRITE_ORGANISATION is deliberately NOT in this chain: it is
+      # `required: true`, so it would always win and the default would never apply.
+      # Its validation only proves the secret is present, not that it carries
+      # read:packages - an org-wide write PAT is also far more than a manifest read
+      # needs, and a fine-grained one is org-bound and cannot reach another org's
+      # packages at all. Set REGISTRY_READ_TOKEN for registries outside the
+      # enterprise, where github.token does not apply.
+      # continue-on-error: a failed login must not break repos that monitor only
+      # public images; a genuinely unreadable manifest is still caught downstream by
+      # fail-on-unreachable-image.
       # Unconditional and harmless for Docker Hub-only setups: a ghcr.io login does
       # not affect anonymous pulls from other registries.
       - name: "🔐 Log in to GitHub Container Registry"
         uses: docker/login-action@v4
+        continue-on-error: true
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.PAT_READWRITE_ORGANISATION }}
+          password: ${{ secrets.REGISTRY_READ_TOKEN || github.token }}
 
       - name: "🔍 Check for image updates"
         id: check
@@ -275,7 +305,7 @@ jobs:
               # decides whether we report a problem.
               case "$MANIFEST_OUTPUT" in
                 *unauthorized*|*denied*|*forbidden*|*401*|*403*)
-                  echo "::error::Access denied for $IMAGE:$TAG - if this package is internal or private, the calling workflow must grant 'packages: read' and the token used for the registry login must carry read access to packages. See docs/ghcr-internal-visibility.md"
+                  echo "::error::Access denied for $IMAGE:$TAG - if this package is internal or private, the CALLING workflow must grant 'packages: read' (a permissions block that omits 'packages' sets it to none). For registries outside this enterprise, set the REGISTRY_READ_TOKEN secret. See docs/ghcr-internal-visibility.md"
                   ;;
                 *)
                   echo "::error::Could not fetch manifest for $IMAGE:$TAG"
