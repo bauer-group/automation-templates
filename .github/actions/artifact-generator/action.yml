@@ -246,40 +246,56 @@ runs:
       id: docker-build
       if: (contains(inputs.artifact-types, 'docker') || contains(inputs.artifact-types, 'all')) && inputs.docker-username != ''
       shell: bash
+      env:
+        # Passed via env, never interpolated into the script body: a password
+        # containing shell metacharacters would otherwise be executed.
+        DOCKER_PASSWORD: ${{ inputs.docker-password }}
+        DOCKER_REGISTRY: ${{ inputs.docker-registry }}
+        DOCKER_USERNAME: ${{ inputs.docker-username }}
+        ARTIFACT_VERSION: ${{ inputs.version }}
       run: |
         echo "🐳 Building Docker images..."
-        
+
         if ! command -v docker &> /dev/null; then
-          echo "❌ Docker not available"
+          echo "::error::Docker is not available on this runner but docker artifacts were requested"
           echo "docker-images=" >> $GITHUB_OUTPUT
-          exit 0
+          exit 1
         fi
-        
+
         PROJECT_NAME=$(basename "$GITHUB_REPOSITORY" 2>/dev/null || echo "project")
-        VERSION="${{ inputs.version }}"
-        REGISTRY="${{ inputs.docker-registry }}"
-        USERNAME="${{ inputs.docker-username }}"
-        
+        VERSION="$ARTIFACT_VERSION"
+        REGISTRY="$DOCKER_REGISTRY"
+        USERNAME="$DOCKER_USERNAME"
+
         # Login to registry
-        if [ -n "${{ inputs.docker-password }}" ]; then
+        if [ -n "$DOCKER_PASSWORD" ]; then
           echo "Logging into $REGISTRY..."
-          echo "${{ inputs.docker-password }}" | docker login "$REGISTRY" -u "$USERNAME" --password-stdin
+          if ! printf '%s' "$DOCKER_PASSWORD" | docker login "$REGISTRY" -u "$USERNAME" --password-stdin; then
+            echo "::error::docker login to $REGISTRY failed - cannot build or push images"
+            echo "docker-images=" >> $GITHUB_OUTPUT
+            exit 1
+          fi
         fi
-        
+
         DOCKER_IMAGES=""
-        
+        BUILD_FAILED=false
+
         # Look for Dockerfile(s)
         DOCKERFILES=$(find . -name "Dockerfile*" -type f | head -5)
-        
+
         if [ -z "$DOCKERFILES" ]; then
           echo "⚠️ No Dockerfile found"
           echo "docker-images=" >> $GITHUB_OUTPUT
           exit 0
         fi
-        
-        echo "$DOCKERFILES" | while read -r dockerfile; do
+
+        # Process substitution, NOT a pipe: a pipe would run this loop in a subshell
+        # and DOCKER_IMAGES/BUILD_FAILED would be discarded at `done`, making the
+        # docker-images output permanently empty and build failures invisible.
+        while read -r dockerfile; do
+          [ -n "$dockerfile" ] || continue
           echo "Building from: $dockerfile"
-          
+
           # Determine image name
           if [[ "$dockerfile" == "./Dockerfile" ]]; then
             IMAGE_NAME="$REGISTRY/$USERNAME/$PROJECT_NAME"
@@ -287,30 +303,40 @@ runs:
             VARIANT=$(basename "$dockerfile" | sed 's/Dockerfile//' | sed 's/^.//')
             IMAGE_NAME="$REGISTRY/$USERNAME/$PROJECT_NAME-$VARIANT"
           fi
-          
+
           # Build image
           BUILD_CONTEXT=$(dirname "$dockerfile")
           if docker build -f "$dockerfile" -t "$IMAGE_NAME:$VERSION" -t "$IMAGE_NAME:latest" "$BUILD_CONTEXT"; then
             echo "✅ Built: $IMAGE_NAME:$VERSION"
-            
+
             # Push image
-            if [ -n "${{ inputs.docker-password }}" ]; then
+            if [ -n "$DOCKER_PASSWORD" ]; then
               echo "Pushing $IMAGE_NAME:$VERSION..."
-              docker push "$IMAGE_NAME:$VERSION"
-              docker push "$IMAGE_NAME:latest"
-              echo "✅ Pushed: $IMAGE_NAME:$VERSION"
+              if docker push "$IMAGE_NAME:$VERSION" && docker push "$IMAGE_NAME:latest"; then
+                echo "✅ Pushed: $IMAGE_NAME:$VERSION"
+              else
+                echo "::error::Failed to push $IMAGE_NAME:$VERSION"
+                BUILD_FAILED=true
+                continue
+              fi
             fi
-            
+
             DOCKER_IMAGES="$DOCKER_IMAGES,$IMAGE_NAME:$VERSION"
           else
-            echo "❌ Failed to build: $IMAGE_NAME"
+            echo "::error::Failed to build $IMAGE_NAME from $dockerfile"
+            BUILD_FAILED=true
           fi
-        done
-        
+        done < <(printf '%s\n' "$DOCKERFILES")
+
         # Remove leading comma
         DOCKER_IMAGES="${DOCKER_IMAGES#,}"
         echo "docker-images=$DOCKER_IMAGES" >> $GITHUB_OUTPUT
         echo "🐳 Docker images: $DOCKER_IMAGES"
+
+        if [ "$BUILD_FAILED" = "true" ]; then
+          echo "::error::One or more Docker images failed to build or push"
+          exit 1
+        fi
 
     - name: 🔐 Generate Checksums
       id: checksums

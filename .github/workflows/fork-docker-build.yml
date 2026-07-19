@@ -221,9 +221,20 @@ jobs:
           trivy image --format sarif  --output "$SARIF"  --severity MEDIUM,HIGH,CRITICAL "$IMAGE" || echo "trivy (sarif) reported findings"
           echo "sarif-path=$SARIF" >> "$GITHUB_OUTPUT"
 
-          CRIT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' "$REPORT" 2>/dev/null || echo 0)
-          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")]     | length' "$REPORT" 2>/dev/null || echo 0)
-          MED=$( jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")]   | length' "$REPORT" 2>/dev/null || echo 0)
+          # FAIL-CLOSED: without this guard a scanner that never ran (missing report)
+          # or a truncated report would fall through to CRIT/HIGH/MED = 0 and report
+          # "✅ Security scan passed", pushing an unscanned image behind a green check.
+          if [ ! -s "$REPORT" ] || ! jq -e '.' "$REPORT" >/dev/null 2>&1; then
+            echo "scan-passed=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Trivy produced no readable report at $REPORT for '${IMAGE_NAME}'."
+            echo "::error::  The scan did not complete (e.g. vulnerability DB download or registry rate limit)."
+            echo "::error::  Refusing to report a pass for a scan that did not happen. Push blocked."
+            exit 1
+          fi
+
+          CRIT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' "$REPORT")
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")]     | length' "$REPORT")
+          MED=$( jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")]   | length' "$REPORT")
           echo "critical=$CRIT" >> "$GITHUB_OUTPUT"
           echo "high=$HIGH"     >> "$GITHUB_OUTPUT"
           echo "medium=$MED"    >> "$GITHUB_OUTPUT"

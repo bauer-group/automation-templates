@@ -638,15 +638,29 @@ runs:
         echo "sarif-path=$SARIF_PATH" >> $GITHUB_OUTPUT
 
         # Check for vulnerabilities based on configured severity threshold
+        #
+        # FAIL-CLOSED: a scan that could not run is treated exactly like a scan that
+        # found something - it must never open the push gate below. The scanner
+        # invocations above intentionally tolerate a non-zero exit (findings are not
+        # an error there), so a genuine scanner failure surfaces here as a missing or
+        # unreadable report. Reporting "passed" for a scan that never happened would
+        # push an unscanned image behind a green check.
         if [ -f "$REPORT_PATH" ]; then
           CRITICAL_COUNT=0
           HIGH_COUNT=0
           MEDIUM_COUNT=0
 
           if [ "${{ inputs.security-scanner }}" = "trivy" ]; then
-            CRITICAL_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
-            HIGH_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
-            MEDIUM_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "$REPORT_PATH" 2>/dev/null || echo "0")
+            # A malformed report must not silently degrade to "0 vulnerabilities".
+            if ! jq -e '.' "$REPORT_PATH" >/dev/null 2>&1; then
+              echo "::error::Security report at $REPORT_PATH is not valid JSON - the scanner did not complete successfully"
+              echo "scan-passed=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+
+            CRITICAL_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$REPORT_PATH")
+            HIGH_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$REPORT_PATH")
+            MEDIUM_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "$REPORT_PATH")
           fi
 
           echo "🛡️ Security scan results:"
@@ -688,8 +702,11 @@ runs:
             echo "✅ Security scan passed - image is safe to push"
           fi
         else
-          echo "⚠️ Security report not found, assuming scan passed"
-          echo "scan-passed=true" >> $GITHUB_OUTPUT
+          echo "::error::Security report not found at $REPORT_PATH - the ${{ inputs.security-scanner }} scan did not produce a report"
+          echo "::error::  This usually means the scanner failed to run (e.g. vulnerability DB download or registry rate limit)."
+          echo "::error::  Refusing to report a pass for a scan that did not happen. Set security-scan: false to build without scanning."
+          echo "scan-passed=false" >> $GITHUB_OUTPUT
+          exit 1
         fi
 
     - name: 🚀 Push Docker Image
