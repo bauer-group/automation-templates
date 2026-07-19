@@ -1087,6 +1087,7 @@ gh auth status --show-token
 - [🔄 **Meta Repository Sync**](docs/workflows/meta-repository-sync.md) - Automated submodule synchronization
 - [🔔 **Teams Notifications**](docs/workflows/teams-notifications.md) - Microsoft Teams integration
 - [🏃 **Self-Hosted Runners**](docs/self-hosted-runners.md) - Self-hosted runner configuration guide
+- [🔐 **GHCR Internal Visibility**](docs/ghcr-internal-visibility.md) - Registry authentication for internal/private container packages
 
 #### 🔍 Validation Modules
 

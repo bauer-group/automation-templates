@@ -26,6 +26,8 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 |--------|--------------|
 | `GITHUB_TOKEN` | Automatisch von GitHub bereitgestellt. Berechtigt für das aktuelle Repository. |
 
+> **Container-Pakete mit `internal`-Sichtbarkeit:** Der `GITHUB_TOKEN` genügt auch organisationsübergreifend innerhalb derselben Enterprise — **kein** PAT nötig. Der **aufrufende** Workflow muss dafür aber `packages: read` gewähren. Achtung: Ein *partieller* `permissions:`-Block, der `packages` nicht nennt, setzt den Scope auf `none` und bricht den Pull; ein *fehlender* Block nicht. Details: [GHCR Internal Visibility](./ghcr-internal-visibility.md).
+
 ### Code Coverage
 
 | Secret | Workflows | Beschreibung | Einrichtung |
