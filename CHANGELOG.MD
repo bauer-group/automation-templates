@@ -1,3 +1,11 @@
+## [7.0.3](https://github.com/bauer-group/automation-templates/compare/v7.0.2...v7.0.3) (2026-07-19)
+
+### 🐛 Bug Fixes
+
+* **ci:** quoted runner path variables in redirects ([871f8d5](https://github.com/bauer-group/automation-templates/commit/871f8d563364d35c032947f7a8a8cb3570f56d84))
+* **ci:** removed shared temp paths and unescaped fact JSON ([a6b17e2](https://github.com/bauer-group/automation-templates/commit/a6b17e2e834ed0bc4cb0c2e33fe10a819b3bec8f))
+* **security:** removed script injection from teams-notification ([24b3677](https://github.com/bauer-group/automation-templates/commit/24b367768de7749de50db2bada4c12538be74c5f))
+
 ## [7.0.2](https://github.com/bauer-group/automation-templates/compare/v7.0.1...v7.0.2) (2026-07-19)
 
 ### 🐛 Bug Fixes
