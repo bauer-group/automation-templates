@@ -500,7 +500,8 @@ jobs:
             echo "percentage=$COVERAGE_PCT" >> $GITHUB_OUTPUT
             
             # Check threshold
-            if [ "${{ inputs.test-coverage-threshold }}" -gt 0 ]; then
+            COVERAGE_THRESHOLD="${{ inputs.test-coverage-threshold }}"
+            if [ "${COVERAGE_THRESHOLD:-0}" -gt 0 ]; then
               if (( $(echo "$COVERAGE_PCT < ${{ inputs.test-coverage-threshold }}" | bc -l) )); then
                 echo "❌ Coverage $COVERAGE_PCT% is below threshold ${{ inputs.test-coverage-threshold }}%"
                 exit 1

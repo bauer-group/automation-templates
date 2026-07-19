@@ -780,7 +780,8 @@ jobs:
           fi
           
           # Check coverage threshold
-          if [ "${{ inputs.coverage-threshold }}" -gt 0 ]; then
+          COVERAGE_THRESHOLD="${{ inputs.coverage-threshold }}"
+          if [ "${COVERAGE_THRESHOLD:-0}" -gt 0 ]; then
             echo "Checking coverage threshold: ${{ inputs.coverage-threshold }}%"
             # Add coverage threshold check logic here
           fi
@@ -813,7 +814,8 @@ jobs:
           fi
           
           # Check bundle size if threshold is set
-          if [ "${{ inputs.max-bundle-size }}" -gt 0 ]; then
+          MAX_BUNDLE_SIZE="${{ inputs.max-bundle-size }}"
+          if [ "${MAX_BUNDLE_SIZE:-0}" -gt 0 ]; then
             echo "Checking bundle size threshold: ${{ inputs.max-bundle-size }}KB"
             # Add bundle size check logic here
           fi

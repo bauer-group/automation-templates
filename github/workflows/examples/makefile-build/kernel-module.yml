@@ -146,9 +146,11 @@ jobs:
           echo "Module load test simulation"
           
           # Check module dependencies
-          if [ -f *.ko ]; then
-            modinfo *.ko | grep -E "(depends|license|author|description)"
-          fi
+          # `[ -f *.ko ]` errors when the glob matches more than one file.
+          for ko in *.ko; do
+            [ -f "$ko" ] || continue
+            modinfo "$ko" | grep -E "(depends|license|author|description)"
+          done
           
           # Simulate module loading (without actually loading)
           echo "Module would be loaded with: insmod $(ls *.ko | head -1)"

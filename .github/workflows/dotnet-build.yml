@@ -622,7 +622,10 @@ jobs:
             echo "report-path=${{ steps.test.outputs.results-path }}/${COVERAGE_FILE#TestResults/}" >> $GITHUB_OUTPUT
 
             # Check threshold if specified
-            if [ "${{ inputs.coverage-threshold }}" -gt 0 ]; then
+            # Via a variable so shellcheck sees a value rather than a literal,
+            # and so an empty input degrades to 0 instead of an integer error.
+            COVERAGE_THRESHOLD="${{ inputs.coverage-threshold }}"
+            if [ "${COVERAGE_THRESHOLD:-0}" -gt 0 ]; then
               echo "Coverage threshold check: ${{ inputs.coverage-threshold }}%"
             fi
           else

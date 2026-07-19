@@ -31,6 +31,11 @@ on:
         required: false
         type: string
         default: "1.7.7"
+      shellcheck-severity:
+        description: "Minimum shellcheck severity that blocks the run: error, warning, info or style."
+        required: false
+        type: string
+        default: "error"
       check-permission-ceiling:
         description: "Verify that every locally called reusable workflow gets the permissions it declares"
         required: false
@@ -86,6 +91,16 @@ jobs:
         id: actionlint
         env:
           LINT_PATHS: ${{ inputs.lint-paths }}
+          # actionlint runs shellcheck on every `run:` block and fails on ANY
+          # finding. Unfiltered that is 2000+ hits across this repository, ~99% of
+          # them SC2086 (quote your variables) and SC2129 (combine redirects) -
+          # style, not breakage. A gate that demands two thousand cosmetic edits
+          # gets switched off, and then it catches nothing at all.
+          #
+          # `error` is the severity at which shellcheck reports things that
+          # genuinely break: a numeric comparison against a non-number, `-f` with a
+          # glob. Raise this to `warning` once the ~50 warnings are worked through.
+          SHELLCHECK_OPTS: --severity=${{ inputs.shellcheck-severity }}
         shell: bash
         run: |
           set -uo pipefail
