@@ -333,6 +333,18 @@ jobs:
             exit 1
           fi
 
+      # `docker manifest inspect` below is anonymous without this, so images from
+      # internal/private GHCR packages are reported as "not accessible" even when
+      # the caller is entitled to read them. Requires `packages: read` in the
+      # CALLING workflow - see docs/ghcr-internal-visibility.md.
+      - name: 🔐 Log in to GitHub Container Registry
+        if: inputs.check-image-references && steps.validate.outputs.valid == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: 🔍 Check Image References
         if: inputs.check-image-references && steps.validate.outputs.valid == 'true'
         shell: bash

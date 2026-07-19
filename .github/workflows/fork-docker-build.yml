@@ -147,8 +147,11 @@ jobs:
       - name: "🔧 Set up Docker Buildx"
         uses: docker/setup-buildx-action@v4
 
+      # Unconditional: the local scan build below resolves every `FROM` and runs on
+      # pull requests too, where the old `inputs.push && not a PR` gate skipped the
+      # login entirely. GITHUB_TOKEN is always present, so this is a no-op for public
+      # base images and the prerequisite for internal/private ones.
       - name: "🔐 Log in to ${{ inputs.registry }}"
-        if: inputs.push && github.event_name != 'pull_request'
         uses: docker/login-action@v4
         with:
           registry: ${{ inputs.registry }}

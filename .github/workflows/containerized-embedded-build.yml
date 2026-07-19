@@ -225,6 +225,17 @@ jobs:
           fetch-depth: ${{ inputs.checkout-fetch-depth }}
           submodules: ${{ inputs.checkout-submodules }}
 
+      # The builder image is built from a Dockerfile whose `FROM` may point at an
+      # internal/private GHCR package. Without this the build resolves it anonymously
+      # and fails. Requires `packages: read` in the CALLING workflow - see
+      # docs/ghcr-internal-visibility.md.
+      - name: 🔐 Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: 🐳 Containerised build
         id: build
         uses: bauer-group/automation-templates/.github/actions/containerized-embedded-build@main

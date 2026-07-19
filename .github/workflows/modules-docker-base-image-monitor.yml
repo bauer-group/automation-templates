@@ -156,6 +156,21 @@ jobs:
           token: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           fetch-depth: 0
 
+      # `docker manifest inspect` below is anonymous without this, which fails for
+      # internal/private GHCR packages. Uses the PAT rather than GITHUB_TOKEN: as a
+      # reusable workflow we cannot grant ourselves packages: read - a permissions
+      # block can only restrict what the caller already holds - whereas the PAT is
+      # validated above and therefore guaranteed present. It needs `read:packages`
+      # (classic) or `Packages: Read` (fine-grained).
+      # Unconditional and harmless for Docker Hub-only setups: a ghcr.io login does
+      # not affect anonymous pulls from other registries.
+      - name: "🔐 Log in to GitHub Container Registry"
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.PAT_READWRITE_ORGANISATION }}
+
       - name: "🔍 Check for image updates"
         id: check
         env:

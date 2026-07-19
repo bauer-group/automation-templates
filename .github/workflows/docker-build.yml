@@ -653,9 +653,10 @@ jobs:
   # (this pulls & scans the pushed image; nothing exists to scan on PRs / push:false).
   # Skipped otherwise — deploy/summary tolerate the skipped result. Advisory only:
   # fail-on-findings:false so it never blocks the build or the deploy gate.
-  # NOTE: the container scan (Anchore/Grype) pulls the image without a registry login, so
-  # for PRIVATE GHCR images this advisory job may report a pull failure. The build, tags,
-  # digests, outputs and deploy gate are unaffected.
+  # The container scan pulls the image from the registry. modules-vulnerability-scan
+  # performs its own GHCR login for that, and `packages: read` below is what makes it
+  # work for internal/private packages - a called workflow can only restrict the
+  # caller's permissions, never extend them. See docs/ghcr-internal-visibility.md.
   security-analysis:
     name: 🛡️ Advanced Security Analysis
     needs: build

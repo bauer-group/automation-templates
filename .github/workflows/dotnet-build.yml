@@ -428,7 +428,13 @@ jobs:
       coverage-report: ${{ steps.coverage.outputs.report-path }}
       package-path: ${{ steps.package.outputs.package-path }}
       docker-image: ${{ steps.docker.outputs.image-tag }}
-    
+
+    env:
+      # Job level, not step level: the `secrets` context is not available in a step's
+      # `if:`, and the docs do not guarantee that a step's own `env:` is visible to
+      # that same step's `if:`. Job-level env is unambiguously available there.
+      HAS_DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD != '' }}
+
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v6
@@ -732,6 +738,33 @@ jobs:
             --source ${{ inputs.nuget-source }} \
             --skip-duplicate
       
+      # Two distinct needs, two logins - both BEFORE the build, because `docker build`
+      # resolves the Dockerfile's `FROM` and the login inside the push step further
+      # down comes too late for that.
+      #
+      # 1. GHCR: covers a base image from an internal/private bauer-group package.
+      #    Applies even when nothing is pushed (docker-registry empty). GITHUB_TOKEN
+      #    is always present, so this is a no-op for public base images. Requires
+      #    `packages: read` in the CALLING workflow - see docs/ghcr-internal-visibility.md.
+      - name: 🔐 Log in to GitHub Container Registry
+        if: inputs.build-docker
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 2. The configured push target, when credentials exist. Guarded on the
+      #    password so fork PRs, where secrets are empty, skip the login instead of
+      #    failing with "Password required".
+      - name: 🔐 Log in to Docker Registry
+        if: inputs.build-docker && inputs.docker-registry != '' && env.HAS_DOCKER_REGISTRY_PASSWORD == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ inputs.docker-registry }}
+          username: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
+          password: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
+
       - name: 🐳 Build Docker Image
         id: docker
         if: inputs.build-docker
