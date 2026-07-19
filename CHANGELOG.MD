@@ -1,3 +1,9 @@
+## [7.0.1](https://github.com/bauer-group/automation-templates/compare/v7.0.0...v7.0.1) (2026-07-19)
+
+### 🐛 Bug Fixes
+
+* **ci:** calibrated the shellcheck gate to real breakage ([5be8f41](https://github.com/bauer-group/automation-templates/commit/5be8f41e922ff1e0501b7e8d15b12ff4ed38ddb1))
+
 ## [7.0.0](https://github.com/bauer-group/automation-templates/compare/v6.9.0...v7.0.0) (2026-07-19)
 
 ### ⚠ BREAKING CHANGES
