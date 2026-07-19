@@ -22,12 +22,12 @@ jobs:
             package-manager: pnpm
           - os: macos-latest
             node: '20.x'
-        include:
-          # Add specific test cases
-          - os: ubuntu-latest
-            node: '21.x'
-            package-manager: npm
-            experimental: true
+        # NOTE: a job that calls a reusable workflow via `uses` cannot use
+        # `continue-on-error`, so every matrix leg gates the workflow result.
+        # This is why there is no "experimental" leg here - an entry added via
+        # `include:` would fail the run like any other. Keep this matrix to
+        # versions you are willing to block on; the base matrix above covers the
+        # active LTS and current lines.
       fail-fast: false
     
     uses: ./.github/workflows/nodejs-build.yml
@@ -51,9 +51,7 @@ jobs:
       # Artifacts
       upload-artifacts: true
       artifact-name: 'build-${{ matrix.os }}-node${{ matrix.node }}-${{ matrix.package-manager }}'
-      
-    continue-on-error: ${{ matrix.experimental == true }}
-  
+
   # Compatibility report
   compatibility-report:
     needs: matrix-build

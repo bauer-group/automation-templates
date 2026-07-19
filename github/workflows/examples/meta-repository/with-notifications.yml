@@ -8,7 +8,7 @@
 #
 # Requirements:
 # - TEAMS_WEBHOOK_URL secret configured
-# - teams-notifications workflow available
+# - teams-notification action available
 
 name: 🔄 Sync with Notifications
 
@@ -38,56 +38,53 @@ jobs:
     name: Notify Success
     needs: sync
     if: success()
-    uses: bauer-group/automation-templates/.github/workflows/teams-notifications.yml@main
-    with:
-      webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
-      title: "✅ Meta Repository Sync Successful"
-      message: |
-        **Summary:** ${{ needs.sync.outputs.sync-summary }}
-        **Repositories:** ${{ needs.sync.outputs.repositories-synced }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v6
 
-        The meta repository has been successfully synchronized.
-      color: "good"
-      facts: |
-        [
-          {
-            "name": "Repository",
-            "value": "${{ github.repository }}"
-          },
-          {
-            "name": "Triggered By",
-            "value": "${{ github.event_name }}"
-          },
-          {
-            "name": "Repositories Synced",
-            "value": "${{ needs.sync.outputs.repositories-synced }}"
-          }
-        ]
+      - name: 🔔 Send Success Notification
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          event-type: "workflow_success"
+          title: "✅ Meta Repository Sync Successful"
+          summary: "The meta repository has been successfully synchronized."
+          details: |
+            **Summary:** ${{ needs.sync.outputs.sync-summary }}
+            **Repositories:** ${{ needs.sync.outputs.repositories-synced }}
+          custom-facts: |
+            [
+              {"title": "Repository", "value": "${{ github.repository }}"},
+              {"title": "Triggered By", "value": "${{ github.event_name }}"},
+              {"title": "Repositories Synced", "value": "${{ needs.sync.outputs.repositories-synced }}"}
+            ]
+          config-file: 'success'
 
   notify-failure:
     name: Notify Failure
     needs: sync
     if: failure()
-    uses: bauer-group/automation-templates/.github/workflows/teams-notifications.yml@main
-    with:
-      webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
-      title: "❌ Meta Repository Sync Failed"
-      message: |
-        The meta repository synchronization has failed.
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v6
 
-        Please check the workflow logs for details.
-      color: "attention"
-      facts: |
-        [
-          {
-            "name": "Repository",
-            "value": "${{ github.repository }}"
-          },
-          {
-            "name": "Workflow Run",
-            "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          }
-        ]
+      - name: 🔔 Send Failure Notification
+        uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+        with:
+          webhook-url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          event-type: "workflow_failure"
+          title: "❌ Meta Repository Sync Failed"
+          summary: "The meta repository synchronization has failed."
+          details: |
+            Please check the workflow logs for details.
+          custom-facts: |
+            [
+              {"title": "Repository", "value": "${{ github.repository }}"},
+              {"title": "Workflow Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}
+            ]
+          config-file: 'failure'
 
   create-issue-on-failure:
     name: Create Issue on Failure

@@ -20,6 +20,13 @@ env:
 
 jobs:
   build-and-test:
+    # Pushing the built image to ghcr.io needs `packages: write`. Both repository
+    # default settings grant only `packages: read`, so without this the push fails
+    # with 403. `contents: read` is required alongside it because naming any scope
+    # sets every unnamed scope to `none`.
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/nodejs-build.yml
     with:
       node-version: '22.x'
@@ -49,8 +56,10 @@ jobs:
       # Docker build
       build-docker: true
       dockerfile-path: './Dockerfile'
-      docker-image-name: ${{ env.IMAGE_NAME }}
-      docker-registry: ${{ env.REGISTRY }}
+      # NOTE: the `env` context is not available in a reusable-workflow `with:`
+      # block, so these mirror the values of env.IMAGE_NAME / env.REGISTRY above.
+      docker-image-name: ${{ github.repository }}/nextjs-app
+      docker-registry: 'ghcr.io'
       
       # Artifacts
       upload-artifacts: true
@@ -58,8 +67,8 @@ jobs:
       artifact-path: '.next/**'
     
     secrets:
-      DOCKER_USERNAME: ${{ github.actor }}
-      DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      DOCKER_REGISTRY_USERNAME: ${{ github.actor }}
+      DOCKER_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
   
   analyze:
     needs: build-and-test
@@ -147,7 +156,7 @@ jobs:
           E2E_BASE_URL: https://app.example.com
       
       - name: Performance Test
-        uses: treosh/lighthouse-ci-action@v10
+        uses: treosh/lighthouse-ci-action@v12
         with:
           urls: |
             https://app.example.com

@@ -54,7 +54,6 @@ permissions:
   issues: write
   pull-requests: write
   actions: write
-  metadata: read
 
 jobs:
   # Comprehensive pre-cleanup safety validation

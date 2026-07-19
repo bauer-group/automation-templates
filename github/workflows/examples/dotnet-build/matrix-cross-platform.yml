@@ -40,11 +40,12 @@ jobs:
       project-path: 'src/CrossPlatformApp.sln'
       
       # Platform-specific runtime
-      runtime: ${{ 
+      runtime: >-
+        ${{
         matrix.os == 'ubuntu-latest' && 'linux-x64' ||
         matrix.os == 'windows-latest' && 'win-x64' ||
-        matrix.os == 'macos-latest' && 'osx-x64' 
-      }}
+        matrix.os == 'macos-latest' && 'osx-x64'
+        }}
       
       # Testing
       run-tests: true

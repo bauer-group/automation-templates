@@ -51,7 +51,7 @@ jobs:
       run-format-check: true
       formatter: "black"
       format-check-only: true
-      run-import-sort: true
+      run-isort-check: true
       run-type-check: true
       type-checker: "mypy"
 
@@ -72,41 +72,21 @@ jobs:
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  # Optional: Publish to TestPyPI on develop branch
-  publish-test:
-    name: Publish to TestPyPI
-    needs: build
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
-    uses: ./.github/workflows/python-publish.yml
-    with:
-      python-version: "3.12"
-      publish-to: "testpypi"
-      run-tests: false # Already tested in build job
-      validate-package: true
-      run-security-scan: true
-      create-github-release: false
-      environment: "testpypi"
-    secrets:
-      TEST_PYPI_API_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-  # Optional: Publish to PyPI on release
-  publish-release:
-    name: Publish to PyPI
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    uses: ./.github/workflows/python-publish.yml
-    with:
-      python-version: "3.12"
-      publish-to: "pypi"
-      run-tests: false # Already tested in build job
-      validate-package: true
-      run-security-scan: true
-      create-github-release: true
-      release-draft: false
-      release-prerelease: false
-      generate-docs: true
-      environment: "pypi"
-    secrets:
-      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+# Publishing to TestPyPI / PyPI is intentionally NOT part of this example.
+# The reusable workflow this example previously called
+# (./.github/workflows/python-publish.yml) no longer exists.
+#
+# Choose one of the supported publishing paths instead:
+#
+#   1. Automatic, commit-driven releases (recommended):
+#      Call the reusable workflow
+#      bauer-group/automation-templates/.github/workflows/python-semantic-release.yml@main
+#      from a separate workflow. It derives the version from the commit
+#      messages, tags, publishes to PyPI and creates the GitHub release.
+#      Note: it needs contents/id-token/issues/pull-requests write permissions,
+#      which is why it does not belong in this read-only CI example.
+#      See docs/workflows/python-semantic-release.md
+#
+#   2. Explicit publish on GitHub release / manual dispatch:
+#      Copy the standalone python-publish.yml example from this same folder.
+#      It uses PyPI Trusted Publishing plus environment gates (testpypi/pypi).

@@ -48,8 +48,8 @@ jobs:
       run-format-check: true
       formatter: "black"
       format-check-only: true
-      run-import-sort: true
-      import-sorter: "isort"
+      run-isort-check: true
+      isort-check-only: true
       run-type-check: true
       type-checker: "mypy"
 

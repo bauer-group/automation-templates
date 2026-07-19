@@ -232,7 +232,7 @@ jobs:
         with:
           webhook-url: ${{ steps.security.outputs.status == 'failed' && env.SECURITY_TEAMS_WEBHOOK || env.DEV_TEAMS_WEBHOOK }}
           event-type: ${{ steps.security.outputs.status == 'failed' && 'workflow_failure' || steps.security.outputs.status == 'warning' && 'workflow_warning' || 'workflow_success' }}
-          title: '🛡️ Security Scan: ${{ steps.security.outputs.status == 'failed' && '❌ Failed' || steps.security.outputs.status == 'warning' && '⚠️ Warnings' || '✅ Passed' }}'
+          title: "🛡️ Security Scan: ${{ steps.security.outputs.status == 'failed' && '❌ Failed' || steps.security.outputs.status == 'warning' && '⚠️ Warnings' || '✅ Passed' }}"
           summary: |
             **Security scan completed** with ${{ steps.security.outputs.total }} findings
             

@@ -10,10 +10,6 @@ on:
     types: [ published ]
   workflow_dispatch:
 
-env:
-  SOLUTION_PATH: 'src/MyApp.sln'
-  WAP_PROJECT_PATH: 'Package/MyApp.Package.wapproj'
-
 jobs:
   create-msix:
     uses: ./.github/workflows/dotnet-desktop-build.yml
@@ -24,8 +20,8 @@ jobs:
       platforms: '["x64", "x86", "arm64"]'
       
       # Project Paths
-      solution-path: ${{ env.SOLUTION_PATH }}
-      wap-project-path: ${{ env.WAP_PROJECT_PATH }}
+      solution-path: 'src/MyApp.sln'
+      wap-project-path: 'Package/MyApp.Package.wapproj'
       
       # MSIX Configuration
       create-msix: true
@@ -45,8 +41,8 @@ jobs:
       artifact-retention-days: 30
       
     secrets:
-      SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-      CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      DOTNET_SIGNING_CERTIFICATE_BASE64: ${{ secrets.DOTNET_SIGNING_CERTIFICATE_BASE64 }}
+      DOTNET_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.DOTNET_SIGNING_CERTIFICATE_PASSWORD }}
   
   deploy-to-store:
     needs: create-msix

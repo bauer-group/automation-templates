@@ -29,6 +29,13 @@ env:
 
 jobs:
   build-microservice:
+    # Pushing the built image to ghcr.io needs `packages: write`. Both repository
+    # default settings grant only `packages: read`, so without this the push fails
+    # with 403. `contents: read` is required alongside it because naming any scope
+    # sets every unnamed scope to `none`.
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/dotnet-build.yml
     with:
       # .NET Configuration
@@ -67,16 +74,16 @@ jobs:
       # Docker
       build-docker: true
       dockerfile-path: './Dockerfile'
-      docker-image-name: ${{ env.IMAGE_NAME }}
-      docker-registry: ${{ env.REGISTRY }}
+      docker-image-name: '${{ github.repository }}/microservice'
+      docker-registry: 'ghcr.io'
       
       # Artifacts
       upload-artifacts: true
       artifact-name: 'microservice'
       
     secrets:
-      DOCKER_USERNAME: ${{ github.actor }}
-      DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      DOCKER_REGISTRY_USERNAME: ${{ github.actor }}
+      DOCKER_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       SONARQUBE_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
       SONARQUBE_HOST_URL: ${{ secrets.SONARQUBE_HOST_URL }}
   

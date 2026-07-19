@@ -53,10 +53,9 @@ jobs:
     name: Generate Documentation
     runs-on: ubuntu-latest
     outputs:
-      should_run: ${{ steps.should-run.outputs.should_run }}
       readme_updated: ${{ steps.generate.outputs.readme_updated || 'false' }}
       changes_detected: ${{ steps.generate.outputs.changes_detected || 'false' }}
-      validation_passed: ${{ steps.generate.outputs.validation_passed || steps.should-run.outputs.should_run == 'false' && 'skipped' || 'false' }}
+      validation_passed: ${{ steps.generate.outputs.validation_passed || 'false' }}
       unresolved_found: ${{ steps.generate.outputs.unresolved_found }}
     
     steps:
@@ -68,7 +67,7 @@ jobs:
 
       - name: 🔍 Validate Prerequisites
         run: |
-          TEMPLATE_FILE="${{ inputs.template-path || 'docs/README.template.MD' }}"
+          TEMPLATE_FILE="docs/README.template.MD"
           
           if [ ! -f "$TEMPLATE_FILE" ]; then
             echo "❌ Template file not found: $TEMPLATE_FILE"

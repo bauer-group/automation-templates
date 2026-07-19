@@ -219,7 +219,7 @@ jobs:
         with:
           webhook-url: ${{ steps.priority.outputs.webhook || env.DEV_TEAMS_WEBHOOK }}
           event-type: 'issue_opened'
-          title: '🐛 ${{ steps.priority.outputs.level == 'critical' && '🚨 CRITICAL' || steps.priority.outputs.level == 'high' && '⚠️ HIGH PRIORITY' || 'New' }} Issue: ${{ github.event.issue.title }}'
+          title: "🐛 ${{ steps.priority.outputs.level == 'critical' && '🚨 CRITICAL' || steps.priority.outputs.level == 'high' && '⚠️ HIGH PRIORITY' || 'New' }} Issue: ${{ github.event.issue.title }}"
           summary: |
             **Issue #${{ github.event.issue.number }}** opened by **${{ github.event.issue.user.login }}**
             
@@ -269,7 +269,8 @@ jobs:
           ADDITIONS=${{ github.event.pull_request.additions }}
           DELETIONS=${{ github.event.pull_request.deletions }}
           TOTAL_CHANGES=$((ADDITIONS + DELETIONS))
-          
+          echo "total-changes=$TOTAL_CHANGES" >> $GITHUB_OUTPUT
+
           if [ $TOTAL_CHANGES -lt 50 ]; then
             echo "size=Small (< 50 lines)" >> $GITHUB_OUTPUT
             echo "complexity=🟢 Simple" >> $GITHUB_OUTPUT
@@ -315,7 +316,7 @@ jobs:
             - **Files Changed**: ${{ github.event.pull_request.changed_files }}
             - **Additions**: +${{ github.event.pull_request.additions }} lines
             - **Deletions**: -${{ github.event.pull_request.deletions }} lines
-            - **Total Changes**: ${{ github.event.pull_request.additions + github.event.pull_request.deletions }} lines
+            - **Total Changes**: ${{ steps.changes.outputs.total-changes }} lines
             - **Commits**: ${{ github.event.pull_request.commits }}
             
             **Branch Information:**

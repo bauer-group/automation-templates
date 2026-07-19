@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v6
       
       - name: Path Filter
-        uses: dorny/paths-filter@v2
+        uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |

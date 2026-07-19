@@ -14,6 +14,13 @@ env:
 
 jobs:
   build-and-test:
+    # Pushing the built image to ghcr.io needs `packages: write`. Both repository
+    # default settings grant only `packages: read`, so without this the push fails
+    # with 403. `contents: read` is required alongside it because naming any scope
+    # sets every unnamed scope to `none`.
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/dotnet-build.yml
     with:
       # .NET Configuration
@@ -47,8 +54,10 @@ jobs:
       # Docker
       build-docker: true
       dockerfile-path: './Dockerfile'
-      docker-image-name: ${{ env.IMAGE_NAME }}
-      docker-registry: ${{ env.DOCKER_REGISTRY }}
+      # Note: the `env` context is NOT available in `with:` of a reusable
+      # workflow call - these values must be literals or allowed contexts.
+      docker-image-name: '${{ github.repository }}'
+      docker-registry: 'ghcr.io'
       
       # Artifacts
       upload-artifacts: true
@@ -56,8 +65,8 @@ jobs:
       artifact-retention-days: 7
       
     secrets:
-      DOCKER_USERNAME: ${{ github.actor }}
-      DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      DOCKER_REGISTRY_USERNAME: ${{ github.actor }}
+      DOCKER_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   
   deploy-staging:

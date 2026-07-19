@@ -47,7 +47,7 @@ jobs:
       artifact-name: 'nuget-packages'
       
     secrets:
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      DOTNET_NUGET_PUBLISH_API_KEY: ${{ secrets.NUGET_API_KEY }}
   
   publish-github-packages:
     needs: build-package

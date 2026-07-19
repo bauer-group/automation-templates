@@ -96,12 +96,30 @@ jobs:
     secrets:
       PHP_DEPLOY_KEY: ${{ secrets.STAGING_DEPLOY_KEY }}
 
-  deploy-production:
+  # GitHub does not allow `environment:` on a job that calls a reusable workflow
+  # with `uses:`, so the approval gate lives in this small guard job. Required
+  # reviewers configured on the `production` environment must approve before it
+  # completes, which holds back deploy-production through `needs`.
+  #
+  # Do NOT drop this job to "simplify" the example - without it the production
+  # deployment below runs unattended on every push to main.
+  production-gate:
+    name: Await production approval
     if: github.ref == 'refs/heads/main'
-    needs: [matrix-test, code-quality, docker-build]
+    # Code quality runs *inside* php-build (via `enable-sonar: true` on
+    # matrix-test), so needing matrix-test already gates on it.
+    needs: [matrix-test, docker-build]
+    runs-on: ubuntu-latest
     environment:
       name: production
       url: https://your-app.com
+    steps:
+      - name: Approved
+        run: echo "Production deployment approved."
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    needs: [production-gate]
     uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
     with:
       php-version: '8.2'
@@ -110,4 +128,7 @@ jobs:
       deploy-to: 'aws'
       deploy-path: '/var/www/production'
     secrets:
+      # Must be a repository or organization secret. Secrets scoped to the
+      # `production` environment are only visible to the guard job above, not
+      # here - a called workflow cannot read the caller's environment secrets.
       PHP_DEPLOY_KEY: ${{ secrets.PRODUCTION_DEPLOY_KEY }}

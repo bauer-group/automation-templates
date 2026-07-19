@@ -353,7 +353,7 @@ jobs:
   # Release preparation
   release-preparation:
     name: 🚀 Release Preparation
-    needs: [build-matrix, code-quality, performance-benchmark]
+    needs: [pre-flight, build-matrix, code-quality, performance-benchmark]
     runs-on: ubuntu-latest
     if: github.event_name == 'release' || (github.ref == 'refs/heads/main' && needs.pre-flight.outputs.release-build == 'true')
     

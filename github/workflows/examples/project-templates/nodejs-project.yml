@@ -86,7 +86,6 @@ jobs:
       generate-sbom: true
       allowed-licenses: 'MIT,Apache-2.0,BSD-*,ISC,CC0-1.0,Unlicense'
       forbidden-licenses: 'GPL-*,AGPL-*'
-    secrets:
 
   # Release management for Node.js projects
   release:
@@ -98,7 +97,6 @@ jobs:
       release-type: 'node'  # Node.js-specific release type
       auto-merge-enabled: true
       cleanup-release-branch: true
-    secrets:
 
   # Build and publish artifacts
   build-and-publish:
@@ -157,7 +155,6 @@ jobs:
       version: ${{ needs.release.outputs.version }}
       release-url: ${{ needs.release.outputs.release-url }}
       build-command: 'npm ci && npm run build'
-    secrets:
 
   # Project summary
   nodejs-summary:
