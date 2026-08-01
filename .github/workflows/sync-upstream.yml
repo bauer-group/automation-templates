@@ -227,22 +227,38 @@ jobs:
           EOF
           )
 
+          # Issues can be disabled outright - the GitHub default for forks, which
+          # is exactly where this workflow runs. Degrade to a log report instead
+          # of failing: the conflict is already surfaced as a warning above, and
+          # an unfileable issue must not turn a reported conflict into a red job.
+          if [ "$(gh api "/repos/${{ github.repository }}" --jq '.has_issues' 2>/dev/null || echo false)" != "true" ]; then
+            echo "::warning::Issues are disabled on ${{ github.repository }} - reporting the conflict in the log instead."
+            printf '%s\n' "$BODY"
+            exit 0
+          fi
+
           # Ensure labels exist (best-effort), then upsert the issue.
           gh label create sync      --color "1D76DB" --description "Upstream sync automation"      >/dev/null 2>&1 || true
           gh label create conflict  --color "B60205" --description "Requires manual resolution"    >/dev/null 2>&1 || true
           gh label create automated --color "0E8A16" --description "Created by automation"          >/dev/null 2>&1 || true
 
+          # `|| true` guards the assignment: `pipefail` propagates a failing
+          # `gh issue list` to the pipeline, which under `bash -e` would abort
+          # the step before the issue is ever attempted.
           EXISTING=$(gh issue list --state open --label sync --label conflict --json number,title \
-            --jq '.[] | [.number, .title] | @tsv' 2>/dev/null | awk -F'\t' -v t="$TITLE" '$2==t {print $1; exit}')
+            --jq '.[] | [.number, .title] | @tsv' 2>/dev/null | awk -F'\t' -v t="$TITLE" '$2==t {print $1; exit}' || true)
 
           if [ -n "${EXISTING:-}" ]; then
-            gh issue comment "$EXISTING" --body "Konflikt erneut aufgetreten - Run: ${RUN_URL}"
+            gh issue comment "$EXISTING" --body "Konflikt erneut aufgetreten - Run: ${RUN_URL}" \
+              || echo "::warning::Could not comment on issue #${EXISTING}."
             echo "🔁 Bestehendes Issue #${EXISTING} aktualisiert."
-          else
-            gh issue create --title "$TITLE" --body "$BODY" \
-              --label sync --label conflict --label automated \
-              || gh issue create --title "$TITLE" --body "$BODY"
+          elif gh issue create --title "$TITLE" --body "$BODY" \
+                 --label sync --label conflict --label automated \
+               || gh issue create --title "$TITLE" --body "$BODY"; then
             echo "🆕 Konflikt-Issue erstellt."
+          else
+            echo "::warning::Could not create the conflict issue - reporting it in the log instead."
+            printf '%s\n' "$BODY"
           fi
 
   # ---------------------------------------------------------------------------
@@ -334,21 +350,32 @@ jobs:
           EOF
           )
 
+          # Same degradation as Stage A: a fork with Issues disabled must still
+          # get the conflict reported, just in the log rather than as an issue.
+          if [ "$(gh api "/repos/${{ github.repository }}" --jq '.has_issues' 2>/dev/null || echo false)" != "true" ]; then
+            echo "::warning::Issues are disabled on ${{ github.repository }} - reporting the conflict in the log instead."
+            printf '%s\n' "$BODY"
+            exit 0
+          fi
+
           gh label create sync      --color "1D76DB" --description "Upstream sync automation"   >/dev/null 2>&1 || true
           gh label create conflict  --color "B60205" --description "Requires manual resolution" >/dev/null 2>&1 || true
           gh label create automated --color "0E8A16" --description "Created by automation"       >/dev/null 2>&1 || true
 
           EXISTING=$(gh issue list --state open --label sync --label conflict --json number,title \
-            --jq '.[] | [.number, .title] | @tsv' 2>/dev/null | awk -F'\t' -v t="$TITLE" '$2==t {print $1; exit}')
+            --jq '.[] | [.number, .title] | @tsv' 2>/dev/null | awk -F'\t' -v t="$TITLE" '$2==t {print $1; exit}' || true)
 
           if [ -n "${EXISTING:-}" ]; then
-            gh issue comment "$EXISTING" --body "Konflikt erneut aufgetreten - Run: ${RUN_URL}"
+            gh issue comment "$EXISTING" --body "Konflikt erneut aufgetreten - Run: ${RUN_URL}" \
+              || echo "::warning::Could not comment on issue #${EXISTING}."
             echo "🔁 Bestehendes Issue #${EXISTING} aktualisiert."
-          else
-            gh issue create --title "$TITLE" --body "$BODY" \
-              --label sync --label conflict --label automated \
-              || gh issue create --title "$TITLE" --body "$BODY"
+          elif gh issue create --title "$TITLE" --body "$BODY" \
+                 --label sync --label conflict --label automated \
+               || gh issue create --title "$TITLE" --body "$BODY"; then
             echo "🆕 Konflikt-Issue erstellt."
+          else
+            echo "::warning::Could not create the conflict issue - reporting it in the log instead."
+            printf '%s\n' "$BODY"
           fi
 
   # ---------------------------------------------------------------------------
