@@ -125,7 +125,20 @@ jobs:
           REPO="${{ github.repository }}"
 
           # Verify this is a GitHub-native fork (merge-upstream requires a parent).
-          PARENT=$(gh api "/repos/${REPO}" --jq '.parent.full_name // ""' 2>/dev/null || echo "")
+          # Keep an API failure distinguishable from "repo has no parent": masking
+          # it with `2>/dev/null || echo ""` reports an invalid token as "not a
+          # fork", which sends whoever reads the log down the wrong path.
+          REPO_RC=0
+          REPO_JSON=$(gh api "/repos/${REPO}" 2>&1) || REPO_RC=$?
+          if [ $REPO_RC -ne 0 ]; then
+            printf '%s\n' "$REPO_JSON"
+            echo "status=error" >> "$GITHUB_OUTPUT"
+            echo "merge-type=none" >> "$GITHUB_OUTPUT"
+            echo "::error::Cannot read '${REPO}' via the API (see response above). Check that the token is valid and can access the repository."
+            exit 1
+          fi
+
+          PARENT=$(printf '%s' "$REPO_JSON" | jq -r '.parent.full_name // ""')
           if [ -z "$PARENT" ]; then
             echo "::error::'${REPO}' is not a GitHub-native fork (no parent repository). The merge-upstream API requires a fork. Use a manual upstream-remote sync instead."
             echo "status=not-a-fork" >> "$GITHUB_OUTPUT"
@@ -143,11 +156,16 @@ jobs:
           fi
 
           # Call the "Sync fork" API. Capture body + any error text, plus exit code.
+          # `|| RC=$?` is load-bearing: Actions runs `run:` blocks under `bash -e`
+          # (the `set -uo pipefail` above does not clear it), so a bare
+          # `RESPONSE=$(gh api ...)` aborts the step on any non-2xx response --
+          # before the printf below. That left the whole ladder unreachable and
+          # the job failing with no diagnosis at all.
+          RC=0
           RESPONSE=$(gh api --method POST \
             -H "Accept: application/vnd.github+json" \
             "/repos/${REPO}/merge-upstream" \
-            -f branch="${MIRROR_BRANCH}" 2>&1)
-          RC=$?
+            -f branch="${MIRROR_BRANCH}" 2>&1) || RC=$?
           printf '%s\n' "$RESPONSE"
 
           if [ $RC -eq 0 ]; then
@@ -160,6 +178,11 @@ jobs:
               echo "status=synced" >> "$GITHUB_OUTPUT"
               echo "✅ Synced '${MIRROR_BRANCH}' from upstream (merge_type=${MERGE_TYPE})."
             fi
+          elif printf '%s' "$RESPONSE" | grep -qiE 'HTTP 40[13]|Bad credentials|Resource not accessible|SAML enforcement'; then
+            echo "status=auth-error" >> "$GITHUB_OUTPUT"
+            echo "merge-type=none" >> "$GITHUB_OUTPUT"
+            echo "::error::Upstream sync for '${MIRROR_BRANCH}' was rejected with 401/403. The token (PAT_READWRITE_ORGANISATION, else GITHUB_TOKEN) needs write access to repository contents on '${REPO}' - fine-grained: 'Contents: Read and write', classic: 'repo'; SAML orgs additionally require the PAT to be SSO-authorised. NB: on a public repo the fork check above still passes with a read-only token, so this is the first call that actually exercises write access."
+            exit 1
           elif printf '%s' "$RESPONSE" | grep -qiE 'HTTP 409|merge conflict'; then
             echo "status=conflict" >> "$GITHUB_OUTPUT"
             echo "merge-type=none" >> "$GITHUB_OUTPUT"
@@ -355,6 +378,7 @@ jobs:
               dry-run)    echo "🔍 Dry run" ;;
               conflict)   echo "⚠️ Conflict" ;;
               not-a-fork) echo "❌ Not a fork" ;;
+              auth-error) echo "🔐 Token rejected (401/403)" ;;
               *)          echo "❌ Error" ;;
             esac
           }
