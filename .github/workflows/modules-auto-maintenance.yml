@@ -376,7 +376,7 @@ jobs:
       # =====================================================================
       - name: "🔧 Setup Node.js"
         if: steps.config.outputs.has-node == 'true'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ steps.config.outputs.node-version }}
 
