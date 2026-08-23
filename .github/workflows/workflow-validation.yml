@@ -41,3 +41,21 @@ jobs:
         .github/workflows/*.yaml
         github/workflows/examples/*/*.yml
         github/workflows/examples/*/*.yaml
+
+  action-tests:
+    name: "🧪 Action Tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v6
+
+      # Behavioural tests for composite actions whose logic is not covered by linting.
+      # actionlint checks that a step is well-formed; these check that it decides the
+      # right thing. Each test extracts the real step body from its action.yml, so a
+      # regression in the action fails here rather than in a consumer's registry.
+      - name: "🧪 docker-build: platform resolution"
+        shell: bash
+        run: bash .github/actions/docker-build/tests/resolve-platforms.test.sh

@@ -45,7 +45,6 @@ jobs:
       docker-context: '.'
       build-target: 'runtime'
       platforms: 'linux/amd64,linux/arm64'
-      multi-platform: true
 
       # Microservice build arguments
       build-args: |

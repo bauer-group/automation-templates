@@ -40,7 +40,6 @@ jobs:
       docker-context: '.'
       build-target: 'production'
       platforms: 'linux/amd64,linux/arm64'
-      multi-platform: true
 
       # Build arguments for web apps
       build-args: |

@@ -155,8 +155,8 @@ The Docker build action provides:
 | `docker-context` | Docker build context | `'.'` |
 | `build-target` | Docker build target stage | `''` |
 | `build-args` | Build arguments as JSON object | `'{}'` |
-| `platforms` | Target platforms (comma-separated) | `'linux/amd64'` |
-| `multi-platform` | Enable multi-platform builds | `false` |
+| `platforms` | Target platforms to build and push (comma-separated). Listing more than one produces a multi-arch manifest list | `'linux/amd64'` |
+| `multi-platform` | **Deprecated** - ignored. `platforms` alone decides what is built | `false` |
 | `checkout-fetch-depth` | Git history depth for the build checkout. `0` = full history (required for Dockerfile-version write-back and semver derivation); set `1` for a faster shallow checkout when neither is used | `0` |
 | `checkout-lfs` | Fetch Git LFS objects on the build checkout; set `false` to skip LFS blobs for a faster checkout | `true` |
 
@@ -400,15 +400,36 @@ categories and a security score in the **Security** tab. It is advisory only
 | `sbom-attested` | Whether the SBOM was cryptographically attested |
 | `vex-path` | Path to the generated OpenVEX document (empty when `generate-vex: false`) |
 | `build-duration` | Build duration in seconds |
+| `platforms` | Platforms actually built and pushed (comma-separated) |
 
 ## Multi-Platform Builds
 
-Enable cross-architecture builds:
+List every architecture in `platforms`. More than one entry produces a multi-arch
+manifest list, and QEMU is registered automatically for the non-native ones:
 
 ```yaml
 platforms: 'linux/amd64,linux/arm64,linux/arm/v7'
-multi-platform: true
 ```
+
+Verify the result:
+
+```console
+$ docker buildx imagetools inspect ghcr.io/<owner>/<image>:<tag>
+MediaType: application/vnd.oci.image.index.v1+json   # manifest list
+  Platform: linux/amd64
+  Platform: linux/arm64
+```
+
+A `vnd.oci.image.manifest.v1+json` media type with no `Platform:` lines means a
+single-platform image was published.
+
+> **Deprecated:** `multi-platform` is no longer required and is ignored. Before
+> this was fixed, omitting it silently narrowed `platforms` to `linux/amd64`, so
+> callers requesting arm64 published amd64-only images with a green pipeline.
+> Remove the input; `platforms` alone controls what is built.
+
+Non-native architectures build under QEMU emulation and are noticeably slower.
+Build cache is exported per architecture, so only the first run pays full price.
 
 ## README Sync to Docker Hub
 

@@ -49,13 +49,13 @@ on:
       
       # Platform Configuration
       platforms:
-        description: 'Target platforms (comma-separated)'
+        description: 'Target platforms to build and push (comma-separated, e.g. "linux/amd64,linux/arm64"). More than one platform produces a multi-arch manifest list; QEMU is registered automatically for non-native architectures.'
         type: string
         required: false
         default: 'linux/amd64'
       
       multi-platform:
-        description: 'Enable multi-platform builds'
+        description: 'DEPRECATED - ignored, no longer required. "platforms" alone decides what is built. Previously this had to be true or the "platforms" list was silently narrowed to linux/amd64.'
         type: boolean
         required: false
         default: false
@@ -423,6 +423,7 @@ jobs:
       sbom-attested: ${{ steps.docker-build.outputs.sbom-attested }}
       vex-path: ${{ steps.docker-build.outputs.vex-path }}
       build-duration: ${{ steps.docker-build.outputs.build-duration }}
+      platforms: ${{ steps.docker-build.outputs.platforms }}
     
     steps:
       - name: 📥 Checkout Repository
@@ -761,6 +762,15 @@ jobs:
           echo "## 🐳 Docker Build & Deploy Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
 
+          # Platforms actually built, as reported by the build job. Falls back to the
+          # requested list if the build did not get far enough to report them.
+          BUILT_PLATFORMS="${{ needs.build.outputs.platforms }}"
+          [ -n "$BUILT_PLATFORMS" ] || BUILT_PLATFORMS="${{ inputs.platforms }}"
+          case "$BUILT_PLATFORMS" in
+            *,*) MULTI_ARCH="✅ Yes (manifest list)" ;;
+            *)   MULTI_ARCH="⚪ No (single platform)" ;;
+          esac
+
           # Feature Configuration Overview
           echo "### ⚙️ Feature Configuration" >> "$GITHUB_STEP_SUMMARY"
           echo "| Feature | Enabled | Status |" >> "$GITHUB_STEP_SUMMARY"
@@ -792,7 +802,7 @@ jobs:
             echo "| **Image** | \`${{ needs.build.outputs.image-url }}\` |" >> "$GITHUB_STEP_SUMMARY"
             echo "| **Digest** | \`${{ needs.build.outputs.image-digest }}\` |" >> "$GITHUB_STEP_SUMMARY"
             echo "| **Size** | ${{ needs.build.outputs.image-size-display }} |" >> "$GITHUB_STEP_SUMMARY"
-            echo "| **Platforms** | \`${{ inputs.multi-platform && inputs.platforms || 'linux/amd64' }}\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Platforms** | \`$BUILT_PLATFORMS\` |" >> "$GITHUB_STEP_SUMMARY"
             echo "| **Pushed** | ${{ needs.build.outputs.image-pushed == 'true' && '✅ Yes' || '❌ No' }} |" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
 
@@ -817,4 +827,4 @@ jobs:
           echo "| **Context** | \`${{ inputs.docker-context }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Builder** | ${{ inputs.builder-driver }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Cache** | ${{ inputs.cache-enabled && '✅ Enabled' || '❌ Disabled' }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Multi-Platform** | ${{ inputs.multi-platform && '✅ Enabled' || '❌ Disabled' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Multi-Platform** | $MULTI_ARCH |" >> "$GITHUB_STEP_SUMMARY"

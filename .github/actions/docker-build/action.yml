@@ -30,11 +30,11 @@ inputs:
     default: ''
   # Platform Configuration
   platforms:
-    description: 'Target platforms (comma-separated)'
+    description: 'Target platforms to build and push (comma-separated, e.g. "linux/amd64,linux/arm64"). More than one platform produces a multi-arch manifest list; QEMU is registered automatically for non-native architectures.'
     required: false
     default: 'linux/amd64'
   multi-platform:
-    description: 'Enable multi-platform builds'
+    description: 'DEPRECATED - ignored, no longer required. "platforms" alone decides what is built. Previously this had to be true or the "platforms" list was silently narrowed to linux/amd64.'
     required: false
     default: 'false'
   # Registry Configuration
@@ -241,6 +241,9 @@ outputs:
   build-duration:
     description: 'Build duration in seconds'
     value: ${{ steps.build-info.outputs.duration }}
+  platforms:
+    description: 'Platforms actually built and pushed (comma-separated)'
+    value: ${{ steps.resolve-platforms.outputs.list }}
 
 runs:
   using: 'composite'
@@ -265,17 +268,93 @@ runs:
         
         echo "✅ Docker build environment ready"
 
+    - name: 🧭 Resolve Build Platforms
+      id: resolve-platforms
+      # Single source of truth for what actually gets built. The platform list used to be
+      # re-derived from 'multi-platform' in three separate places (buildx setup, push
+      # build, step summary); the push build narrowed it to linux/amd64 whenever the flag
+      # was unset, so a multi-arch request produced an amd64-only image with a green run
+      # and a summary that agreed with the wrong outcome. 'platforms' now decides alone.
+      shell: bash
+      env:
+        REQUESTED_PLATFORMS: ${{ inputs.platforms }}
+        MULTI_PLATFORM: ${{ inputs.multi-platform }}
+      run: |
+        # Normalize: drop whitespace, collapse and trim separators.
+        LIST=$(echo "$REQUESTED_PLATFORMS" | tr -d '[:space:]' | sed 's/,,*/,/g; s/^,//; s/,$//')
+        [ -n "$LIST" ] || LIST="linux/amd64"
+        COUNT=$(awk -F, '{print NF}' <<< "$LIST")
+
+        # Runner's native platform - anything else has to run under binfmt/QEMU.
+        case "${RUNNER_ARCH:-X64}" in
+          X64)   NATIVE_ARCH="amd64" ;;
+          ARM64) NATIVE_ARCH="arm64" ;;
+          ARM)   NATIVE_ARCH="arm/v7" ;;
+          X86)   NATIVE_ARCH="386" ;;
+          *)     NATIVE_ARCH="amd64" ;;
+        esac
+        NATIVE_OS=$(echo "${RUNNER_OS:-Linux}" | tr '[:upper:]' '[:lower:]')
+        NATIVE="${NATIVE_OS}/${NATIVE_ARCH}"
+
+        # QEMU is only meaningful on Linux runners, and only for foreign linux/* targets.
+        NEEDS_QEMU="false"
+        if [ "$NATIVE_OS" = "linux" ]; then
+          for PLATFORM in $(echo "$LIST" | tr ',' ' '); do
+            case "$PLATFORM" in
+              linux/*)
+                if [ "$PLATFORM" != "$NATIVE" ]; then
+                  NEEDS_QEMU="true"
+                fi
+                ;;
+            esac
+          done
+        fi
+
+        # The security-scan build uses load:true and can therefore hold exactly one
+        # platform. Prefer the native one (no emulation), but fall back to the first
+        # requested platform so a single foreign-platform build still scans what it ships.
+        case ",$LIST," in
+          *",$NATIVE,"*) SCAN_PLATFORM="$NATIVE" ;;
+          *)             SCAN_PLATFORM="${LIST%%,*}" ;;
+        esac
+
+        {
+          echo "list=$LIST"
+          echo "count=$COUNT"
+          echo "needs-qemu=$NEEDS_QEMU"
+          echo "scan-platform=$SCAN_PLATFORM"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "🧭 Build platforms : $LIST"
+        echo "🧭 Runner native   : $NATIVE"
+        echo "🧭 Scan platform   : $SCAN_PLATFORM"
+        echo "🧭 QEMU emulation  : $NEEDS_QEMU"
+
+        if [ "$COUNT" -gt 1 ]; then
+          echo "::notice title=Multi-platform build::Building a manifest list for $LIST. Non-native architectures build under QEMU emulation and are slower."
+        fi
+
+        # 'multi-platform: true' with a single platform is almost always a mistake: the
+        # caller wanted multi-arch but never listed the architectures.
+        if [ "$MULTI_PLATFORM" = "true" ] && [ "$COUNT" -eq 1 ]; then
+          echo "::warning title=Only one platform will be built::'multi-platform: true' is set but 'platforms' lists only '$LIST'. List every target architecture in 'platforms' (e.g. 'linux/amd64,linux/arm64')."
+        fi
+
+        if [ "$MULTI_PLATFORM" = "true" ]; then
+          echo "::notice title=multi-platform is deprecated::'platforms' alone now controls what is built. The 'multi-platform' input is ignored and can be removed from the caller."
+        fi
+
     - name: 🔧 Set up QEMU
       # Registers binfmt/QEMU so non-native arches (arm64, arm/v7) build reliably under
-      # emulation. Only needed for multi-platform builds; skipped otherwise (no-op cost).
-      if: inputs.multi-platform == 'true'
+      # emulation. Skipped when every requested platform is native (saves ~5s, no effect).
+      if: steps.resolve-platforms.outputs.needs-qemu == 'true'
       uses: docker/setup-qemu-action@v3
 
     - name: 🏗️ Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
       with:
         driver: ${{ inputs.builder-driver }}
-        platforms: ${{ inputs.platforms }}
+        platforms: ${{ steps.resolve-platforms.outputs.list }}
 
     - name: 🔄 Update Dockerfile Version
       id: update-dockerfile-version
@@ -576,8 +655,9 @@ runs:
       with:
         context: ${{ inputs.docker-context }}
         file: ${{ inputs.dockerfile-path }}
-        # For security scan: build for local platform only, load into Docker daemon
-        platforms: linux/amd64
+        # For security scan: single platform only (load:true cannot hold a manifest
+        # list), preferring the runner's native architecture. See 'Resolve Build Platforms'.
+        platforms: ${{ steps.resolve-platforms.outputs.scan-platform }}
         push: false
         load: true
         tags: ${{ steps.meta.outputs.tags }}
@@ -727,7 +807,7 @@ runs:
       with:
         context: ${{ inputs.docker-context }}
         file: ${{ inputs.dockerfile-path }}
-        platforms: ${{ inputs.multi-platform == 'true' && inputs.platforms || 'linux/amd64' }}
+        platforms: ${{ steps.resolve-platforms.outputs.list }}
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
@@ -895,7 +975,7 @@ runs:
         echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
         echo "| **Dockerfile** | \`${{ inputs.dockerfile-path }}\` |" >> "$GITHUB_STEP_SUMMARY"
         echo "| **Context** | \`${{ inputs.docker-context }}\` |" >> "$GITHUB_STEP_SUMMARY"
-        echo "| **Platforms** | \`${{ inputs.multi-platform == 'true' && inputs.platforms || 'linux/amd64' }}\` |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| **Platforms** | \`${{ steps.resolve-platforms.outputs.list }}\` |" >> "$GITHUB_STEP_SUMMARY"
         echo "| **Registry** | \`${{ inputs.registry }}\` |" >> "$GITHUB_STEP_SUMMARY"
         echo "| **Duration** | ${{ steps.build-info.outputs.duration }}s |" >> "$GITHUB_STEP_SUMMARY"
         echo "| **Image Size** | ${{ steps.build-info.outputs.image-size-display }} |" >> "$GITHUB_STEP_SUMMARY"

@@ -46,7 +46,6 @@ jobs:
       dockerfile-path: './Dockerfile'
       docker-context: '.'
       platforms: 'linux/amd64,linux/arm64'
-      multi-platform: true
 
       # Tagging Strategy
       auto-tags: true

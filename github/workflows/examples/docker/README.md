@@ -124,8 +124,9 @@ deployment-environment: ${{ github.ref == 'refs/heads/main' && 'production' || '
 
 ### Multi-Platform Builds
 ```yaml
+# Listing more than one platform produces a multi-arch manifest list.
+# QEMU is set up automatically; no second switch is needed.
 platforms: 'linux/amd64,linux/arm64'
-multi-platform: true
 ```
 
 ### Security Scanning
