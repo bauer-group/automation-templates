@@ -1,3 +1,12 @@
+## [7.0.4](https://github.com/bauer-group/automation-templates/compare/v7.0.3...v7.0.4) (2026-08-23)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** honored platforms input on push ([fb347f1](https://github.com/bauer-group/automation-templates/commit/fb347f19ff2fe17199b86faf591c3e35bdb0d67c)), closes [#76](https://github.com/bauer-group/automation-templates/issues/76)
+* **monitor:** switched GHCR login to github.token ([e5fbd2b](https://github.com/bauer-group/automation-templates/commit/e5fbd2b55b4d647d99945ef7afd354d015d66320))
+* **sync-upstream:** kept conflict reports non-fatal ([1a1c3bb](https://github.com/bauer-group/automation-templates/commit/1a1c3bb6a487c28b595d2f9e501f0745cb8ffb7a))
+* **sync-upstream:** surfaced swallowed API errors ([d0f282a](https://github.com/bauer-group/automation-templates/commit/d0f282a05905fa0a8ed4eb62b3b6a2a8833c5989))
+
 ## [7.0.3](https://github.com/bauer-group/automation-templates/compare/v7.0.2...v7.0.3) (2026-07-19)
 
 ### 🐛 Bug Fixes
