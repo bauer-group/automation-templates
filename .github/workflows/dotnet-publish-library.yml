@@ -222,6 +222,29 @@ on:
         default: ''
 
       # =======================================================================
+      # Authenticated Restore (private NuGet feeds)
+      # =======================================================================
+      # A library that itself consumes a private package needs this too - packing
+      # is not the only step that has to reach an authenticated feed.
+      nuget-source-name:
+        description: 'Package source key in the repository nuget.config to authenticate against (e.g. GITHUB). Empty means restore from public sources only.'
+        type: string
+        required: false
+        default: ''
+
+      nuget-source-url:
+        description: 'Feed URL. Used only when nuget-source-name is not declared in any nuget.config; the source is then registered in the runner user-level config. The repository nuget.config is never modified.'
+        type: string
+        required: false
+        default: ''
+
+      nuget-username:
+        description: 'HTTP Basic username for the private feed. Defaults to the workflow actor. GitHub Packages ignores it; Azure Artifacts and others do not.'
+        type: string
+        required: false
+        default: ''
+
+      # =======================================================================
       # MSBuild Escape Hatch
       # =======================================================================
       extra-msbuild-properties:
@@ -233,6 +256,13 @@ on:
     secrets:
       NUGET_API_KEY:
         description: 'NuGet.org API key (fallback if Trusted Publishing not configured)'
+        required: false
+
+      DOTNET_NUGET_RESTORE_CREDENTIALS:
+        description: >-
+          Token used as the HTTP Basic password when RESTORING from the private feed
+          named by nuget-source-name (for GitHub Packages: a PAT with read:packages).
+          Distinct from NUGET_API_KEY, which publishes to NuGet.org.
         required: false
 
       DOTNET_SIGNKEY_BASE64:
@@ -368,6 +398,10 @@ jobs:
           push-to-nuget: 'false'
           push-to-github: 'false'
           cache-enabled: ${{ inputs.cache-enabled }}
+          nuget-source-name: ${{ inputs.nuget-source-name }}
+          nuget-source-url: ${{ inputs.nuget-source-url }}
+          nuget-username: ${{ inputs.nuget-username }}
+          nuget-restore-credential: ${{ secrets.DOTNET_NUGET_RESTORE_CREDENTIALS }}
           cache-nuget-lockfile: ${{ inputs.cache-nuget-lockfile }}
           generate-summary: 'false'
           extra-msbuild-properties: ${{ inputs.extra-msbuild-properties }}
@@ -425,6 +459,10 @@ jobs:
           push-to-nuget: 'false'
           push-to-github: 'false'
           cache-enabled: ${{ inputs.cache-enabled }}
+          nuget-source-name: ${{ inputs.nuget-source-name }}
+          nuget-source-url: ${{ inputs.nuget-source-url }}
+          nuget-username: ${{ inputs.nuget-username }}
+          nuget-restore-credential: ${{ secrets.DOTNET_NUGET_RESTORE_CREDENTIALS }}
           cache-nuget-lockfile: ${{ inputs.cache-nuget-lockfile }}
           generate-summary: 'false'
 

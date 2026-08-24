@@ -122,6 +122,24 @@ inputs:
     required: false
     default: 'true'
 
+  # Authenticated Restore (private NuGet feeds)
+  nuget-source-name:
+    description: 'Package source key in the repository nuget.config to authenticate against (e.g. GITHUB). Empty means restore from public sources only.'
+    required: false
+    default: ''
+  nuget-source-url:
+    description: 'Feed URL. Used only when nuget-source-name is not declared in any nuget.config; the source is then registered in the runner user-level config.'
+    required: false
+    default: ''
+  nuget-username:
+    description: 'HTTP Basic username for the private feed. Defaults to the workflow actor.'
+    required: false
+    default: ''
+  nuget-restore-credential:
+    description: 'Token used as the HTTP Basic password when RESTORING from the private feed (for GitHub Packages: a PAT with read:packages). Distinct from nuget-api-key, which publishes.'
+    required: false
+    default: ''
+
   # Cache Configuration
   cache-enabled:
     description: 'Enable NuGet package caching'
@@ -339,6 +357,21 @@ runs:
           echo "::warning title=Assembly Signing Skipped::DOTNET_SIGNKEY_BASE64 secret is not available. Assembly signing will be disabled for this build. This is expected for PR builds."
           echo "signing-available=false" >> "$GITHUB_OUTPUT"
         fi
+
+    # =========================================================================
+    # Private Feed Authentication
+    # =========================================================================
+    # Placed after the SDK setup (it shells out to `dotnet nuget`) and before the
+    # restore. Exports NuGetPackageSourceCredentials_<source>, which NuGet reads
+    # ahead of any nuget.config, so the repository's committed configuration -
+    # packageSourceMapping included - is left untouched.
+    - name: Authenticate Private NuGet Feed
+      uses: bauer-group/automation-templates/.github/actions/dotnet-nuget-auth@main
+      with:
+        source-name: ${{ inputs.nuget-source-name }}
+        source-url: ${{ inputs.nuget-source-url }}
+        username: ${{ inputs.nuget-username }}
+        credential: ${{ inputs.nuget-restore-credential }}
 
     # =========================================================================
     # Restore Dependencies

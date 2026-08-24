@@ -249,9 +249,34 @@ on:
         required: false
         default: true
 
+      # Authenticated Restore (private NuGet feeds)
+      nuget-source-name:
+        description: 'Package source key in the repository nuget.config to authenticate against (e.g. GITHUB). Empty means restore from public sources only.'
+        type: string
+        required: false
+        default: ''
+
+      nuget-source-url:
+        description: 'Feed URL. Used only when nuget-source-name is not declared in any nuget.config; the source is then registered in the runner user-level config. The repository nuget.config is never modified.'
+        type: string
+        required: false
+        default: ''
+
+      nuget-username:
+        description: 'HTTP Basic username for the private feed. Defaults to the workflow actor. GitHub Packages ignores it; Azure Artifacts and others do not.'
+        type: string
+        required: false
+        default: ''
+
     secrets:
       DOTNET_SIGNKEY_BASE64:
         description: 'Optional base64-encoded .snk file for strong-name signing. Caller must wire it into a project property via extra-msbuild-properties if used.'
+        required: false
+
+      DOTNET_NUGET_RESTORE_CREDENTIALS:
+        description: >-
+          Token used as the HTTP Basic password when RESTORING from the private feed
+          named by nuget-source-name (for GitHub Packages: a PAT with read:packages).
         required: false
 
     outputs:
@@ -379,7 +404,21 @@ jobs:
           path: ${{ inputs.working-directory }}/${{ inputs.download-artifact-path }}
 
       # -----------------------------------------------------------------------
-      # 6. Restore for the target RID
+      # 6. Authenticate a private feed, if one was requested
+      # -----------------------------------------------------------------------
+      # Exports NuGetPackageSourceCredentials_<source> through $GITHUB_ENV. NuGet
+      # reads it before any nuget.config, so the committed configuration - including
+      # packageSourceMapping - is left exactly as it is.
+      - name: 🔐 Authenticate Private NuGet Feed
+        uses: bauer-group/automation-templates/.github/actions/dotnet-nuget-auth@main
+        with:
+          source-name: ${{ inputs.nuget-source-name }}
+          source-url: ${{ inputs.nuget-source-url }}
+          username: ${{ inputs.nuget-username }}
+          credential: ${{ secrets.DOTNET_NUGET_RESTORE_CREDENTIALS }}
+
+      # -----------------------------------------------------------------------
+      # 7. Restore for the target RID
       # -----------------------------------------------------------------------
       - name: 📚 Restore (${{ matrix.platform.rid }})
         shell: bash
@@ -390,7 +429,7 @@ jobs:
             --verbosity minimal
 
       # -----------------------------------------------------------------------
-      # 7. Publish self-contained
+      # 8. Publish self-contained
       # -----------------------------------------------------------------------
       # All single-file knobs are passed as MSBuild properties rather than
       # CLI flags so the project can override them per-target if needed
@@ -418,7 +457,7 @@ jobs:
             ${{ inputs.extra-publish-args }}
 
       # -----------------------------------------------------------------------
-      # 8. Stage archive contents (binary + extras)
+      # 9. Stage archive contents (binary + extras)
       # -----------------------------------------------------------------------
       # Bash on every runner (Windows uses Git-bash). Token-substituting the
       # archive-name-template here keeps the convention in one place: the

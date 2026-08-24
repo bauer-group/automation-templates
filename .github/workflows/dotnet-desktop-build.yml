@@ -167,6 +167,25 @@ on:
         required: false
         default: 30
       
+      # Authenticated Restore (private NuGet feeds)
+      nuget-source-name:
+        description: 'Package source key in the repository nuget.config to authenticate against (e.g. GITHUB). Empty means restore from public sources only.'
+        type: string
+        required: false
+        default: ''
+
+      nuget-source-url:
+        description: 'Feed URL. Used only when nuget-source-name is not declared in any nuget.config; the source is then registered in the runner user-level config. The repository nuget.config is never modified.'
+        type: string
+        required: false
+        default: ''
+
+      nuget-username:
+        description: 'HTTP Basic username for the private feed. Defaults to the workflow actor. GitHub Packages ignores it; Azure Artifacts and others do not.'
+        type: string
+        required: false
+        default: ''
+
       # Runner Configuration
       runs-on:
         description: 'Runner to use. Use string for GitHub-hosted (e.g., windows-latest, windows-2022, windows-2019) or JSON array for self-hosted (e.g., ["self-hosted", "windows"])'
@@ -189,8 +208,20 @@ on:
         description: 'Password for the .NET desktop application signing certificate'
         required: false
       
+      DOTNET_NUGET_RESTORE_CREDENTIALS:
+        description: >-
+          Token used as the HTTP Basic password when RESTORING from the private feed
+          named by nuget-source-name (for GitHub Packages: a PAT with read:packages).
+          A NuGet.org API key is a publish credential and is not accepted here.
+        required: false
+
       DOTNET_NUGET_API_KEY:
-        description: 'NuGet API key for .NET package restoration from private feeds'
+        description: >-
+          DEPRECATED and unused. It never authenticated anything: it only triggered a
+          step that overwrote the repository nuget.config with a nuget.org-only file,
+          discarding packageSourceMapping (issue #77). Still declared so that callers
+          passing it explicitly do not break; use DOTNET_NUGET_RESTORE_CREDENTIALS
+          instead. Will be removed in the next major release.
         required: false
 
     outputs:
@@ -283,25 +314,24 @@ jobs:
           Write-Output "version=$version" >> $env:GITHUB_OUTPUT
           Write-Host "Version: $version"
       
-      - name: 🔐 Configure NuGet
-        shell: pwsh
-        run: |
-          # Only configure NuGet if API key is provided
-          if ("${{ secrets.DOTNET_NUGET_API_KEY }}" -ne "") {
-            $nugetConfig = @"
-            <?xml version="1.0" encoding="utf-8"?>
-            <configuration>
-              <packageSources>
-                <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
-              </packageSources>
-            </configuration>
-            "@
-            $nugetConfig | Out-File -FilePath "nuget.config" -Encoding utf8
-            Write-Host "✅ NuGet configuration created"
-          } else {
-            Write-Host "ℹ️ Skipping NuGet configuration (no API key provided)"
-          }
-      
+      # Replaces a step that used to overwrite the repository's nuget.config with a
+      # nuget.org-only file whenever DOTNET_NUGET_API_KEY was set - deleting the
+      # private source and its packageSourceMapping, and never binding the key to a
+      # source (issue #77). The generated file was also invalid: the here-string was
+      # indented, so the XML declaration did not start at byte 0.
+      #
+      # Nothing is written now. NuGet reads the credential from the environment before
+      # it reads any config file, so the committed nuget.config is left untouched and
+      # NuGet.exe, the dotnet CLI and MSBuild all pick the credential up - they share
+      # the NuGet.Configuration assembly that resolves it.
+      - name: 🔐 Authenticate Private NuGet Feed
+        uses: bauer-group/automation-templates/.github/actions/dotnet-nuget-auth@main
+        with:
+          source-name: ${{ inputs.nuget-source-name }}
+          source-url: ${{ inputs.nuget-source-url }}
+          username: ${{ inputs.nuget-username }}
+          credential: ${{ secrets.DOTNET_NUGET_RESTORE_CREDENTIALS }}
+
       - name: 📚 Restore Dependencies
         shell: pwsh
         run: |

@@ -1,0 +1,218 @@
+name: '.NET Private NuGet Feed Authentication'
+description: 'Bind a restore credential to a private NuGet package source without writing it to any file'
+author: 'BAUER GROUP'
+
+# =============================================================================
+# Authenticated `dotnet restore` for the .NET reusable workflows.
+#
+# NuGet reads NuGetPackageSourceCredentials_<sourceName> from the environment
+# BEFORE it reads any nuget.config, so the credential never reaches a file and the
+# repository's own nuget.config - including packageSourceMapping, which is what
+# stops a public package of the same name being resolved instead of yours - is
+# left exactly as committed.
+#
+# Every failure mode below otherwise surfaces as a bare HTTP 401 with nothing in
+# the log pointing at the cause, because NuGet discards a credential it cannot
+# parse SILENTLY. This action therefore validates first and fails loudly, naming
+# the input or secret at fault, before `dotnet restore` ever runs.
+# =============================================================================
+
+inputs:
+  source-name:
+    description: >-
+      Package source key exactly as it appears in the repository nuget.config
+      (e.g. GITHUB). Leave empty to disable the action entirely.
+    required: false
+    default: ''
+  credential:
+    description: >-
+      Token used as the HTTP Basic password - for GitHub Packages a PAT with the
+      read:packages scope. Pass the DOTNET_NUGET_RESTORE_CREDENTIALS secret.
+    required: false
+    default: ''
+  username:
+    description: >-
+      HTTP Basic username. Defaults to the workflow actor. GitHub Packages checks
+      only the token and ignores this, but other feeds do not.
+    required: false
+    default: ''
+  source-url:
+    description: >-
+      Feed URL. Used only when source-name is not configured anywhere; the source
+      is then registered in the runner's user-level config, never in the
+      repository's nuget.config.
+    required: false
+    default: ''
+
+outputs:
+  configured:
+    description: 'true when a credential was bound to a package source'
+    value: ${{ steps.configure.outputs.configured }}
+  credential-env-var:
+    description: 'Name of the environment variable carrying the credential (empty when not configured)'
+    value: ${{ steps.configure.outputs.credential-env-var }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🔐 Configure Private Feed Credentials
+      id: configure
+      shell: bash
+      # Inputs arrive as environment variables rather than being interpolated into
+      # the script body: it keeps the step testable in isolation (see
+      # tests/configure-credentials.test.sh) and keeps a hostile input value from
+      # being able to close a quote and inject shell.
+      env:
+        NUGET_SOURCE_NAME: ${{ inputs.source-name }}
+        NUGET_CREDENTIAL: ${{ inputs.credential }}
+        NUGET_USERNAME: ${{ inputs.username }}
+        NUGET_SOURCE_URL: ${{ inputs.source-url }}
+      run: |
+        set -euo pipefail
+
+        # A secret pasted with a trailing newline is the classic silent 401: NuGet
+        # sends the newline as part of the password and the feed just says no.
+        trim() {
+          local v="$1"
+          v="${v#"${v%%[![:space:]]*}"}"
+          v="${v%"${v##*[![:space:]]}"}"
+          printf '%s' "$v"
+        }
+
+        fail() {
+          echo "::error title=$1::$2"
+          exit 1
+        }
+
+        SOURCE_NAME="$(trim "${NUGET_SOURCE_NAME:-}")"
+        CREDENTIAL="$(trim "${NUGET_CREDENTIAL:-}")"
+        USERNAME="$(trim "${NUGET_USERNAME:-}")"
+        SOURCE_URL="$(trim "${NUGET_SOURCE_URL:-}")"
+
+        # --- Opt-out: almost every caller restores from nuget.org alone ----------
+        if [ -z "$SOURCE_NAME" ]; then
+          if [ -n "$CREDENTIAL" ]; then
+            fail "NuGet restore credential has no source" \
+              "A restore credential was supplied but 'nuget-source-name' is empty. NuGet attaches a credential to a NAMED package source, so an unattached credential is never sent and the restore fails with a bare HTTP 401. Set 'nuget-source-name' to the <add key=\"...\"> value of your private feed in nuget.config."
+          fi
+          echo "ℹ️ No private NuGet feed requested - restore uses the repository's own configuration unchanged."
+          {
+            echo "configured=false"
+            echo "credential-env-var="
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        ENV_VAR="NuGetPackageSourceCredentials_${SOURCE_NAME}"
+
+        if [ -z "$CREDENTIAL" ]; then
+          fail "Missing NuGet restore credential" \
+            "Package source '${SOURCE_NAME}' was requested but no credential was supplied, so ${ENV_VAR} cannot be composed and the restore would fail with a bare HTTP 401. Set the DOTNET_NUGET_RESTORE_CREDENTIALS secret to a token with the read:packages scope and pass 'secrets: inherit' from the calling workflow."
+        fi
+
+        # Masked here rather than relying on the caller: an input that did not come
+        # from a secret is not registered for redaction by the runner.
+        echo "::add-mask::${CREDENTIAL}"
+
+        [ -n "$USERNAME" ] || USERNAME="${GITHUB_ACTOR:-x-access-token}"
+
+        # --- Reject what NuGet would silently truncate ---------------------------
+        # The value is parsed as semicolon-separated key=value pairs. A semicolon
+        # anywhere inside cuts the credential short, and NuGet reports nothing.
+        for field in "credential:${CREDENTIAL}" "username:${USERNAME}"; do
+          what="${field%%:*}"
+          value="${field#*:}"
+          case "$value" in
+            *";"*)
+              fail "Unusable NuGet ${what}" \
+                "The ${what} contains a semicolon. NuGet parses ${ENV_VAR} as semicolon-separated key=value pairs, so the value would be truncated there and discarded WITHOUT any log line - the restore then fails with a bare HTTP 401 that appears to blame the token. Use a value with no semicolon."
+              ;;
+          esac
+          case "$value" in
+            *$'\n'*)
+              fail "Unusable NuGet ${what}" \
+                "The ${what} contains a line break, which cannot be carried in a single environment variable. Check the secret for a stray newline."
+              ;;
+          esac
+        done
+
+        # --- What does NuGet actually see? --------------------------------------
+        # Asking the CLI rather than parsing nuget.config ourselves is the only way
+        # to get the merged view: repository config, every parent directory, and the
+        # runner's user-level config.
+        list_sources() {
+          DOTNET_CLI_UI_LANGUAGE=en dotnet nuget list source 2>&1
+        }
+
+        # Names may contain spaces ("Syncfusion WinUI Nugets 24.1.41"), so the name
+        # is everything between the ordinal and the trailing [Enabled]/[Disabled].
+        # `tr -d '\r'` matters: the listing is CRLF on Windows runners.
+        parse_sources() {
+          printf '%s\n' "$1" | tr -d '\r' \
+            | sed -n -E 's/^[[:space:]]*[0-9]+\.[[:space:]]+(.*)[[:space:]]+\[[^][]*\][[:space:]]*$/\1/p'
+        }
+
+        if ! LISTING="$(list_sources)"; then
+          fail "Cannot inspect NuGet sources" \
+            "'dotnet nuget list source' failed, so package source '${SOURCE_NAME}' could not be verified: ${LISTING}"
+        fi
+        KNOWN="$(parse_sources "$LISTING")"
+
+        if printf '%s\n' "$KNOWN" | grep -qxF -- "$SOURCE_NAME"; then
+          echo "✅ Package source '${SOURCE_NAME}' is configured."
+        else
+          NEAR="$(printf '%s\n' "$KNOWN" | grep -ixF -- "$SOURCE_NAME" | head -n1 || true)"
+          if [ -n "$NEAR" ]; then
+            fail "NuGet source key case mismatch" \
+              "nuget-source-name is '${SOURCE_NAME}' but the configured source is '${NEAR}'. NuGet resolves ${ENV_VAR} with Environment.GetEnvironmentVariable, which is case-insensitive on Windows and case-sensitive on Linux - so this passes on windows-latest and fails on ubuntu-latest with a bare HTTP 401. Use '${NEAR}' exactly."
+          fi
+
+          if [ -z "$SOURCE_URL" ]; then
+            fail "Unknown NuGet source" \
+              "Package source '${SOURCE_NAME}' is not configured, and NuGet can only attach a credential to a source it knows about. Configured sources: $(printf '%s\n' "$KNOWN" | tr '\n' ' '). Either add <add key=\"${SOURCE_NAME}\" value=\"...\" /> to nuget.config, or set the 'nuget-source-url' input so this action registers it."
+          fi
+
+          echo "🔧 Package source '${SOURCE_NAME}' is not configured - registering it from nuget-source-url."
+          # Registered from a scratch directory on purpose. Run from the repository,
+          # `dotnet nuget add source` rewrites the repository's OWN nuget.config in
+          # place - reformatting it and prepending a BOM. From a directory with no
+          # config in its ancestry, NuGet writes the runner's user-level config
+          # instead and the committed file is untouched.
+          #
+          # The credential is deliberately NOT passed here: --username/--password
+          # would persist it to that config file, which is the thing this action
+          # exists to avoid.
+          SCRATCH="${RUNNER_TEMP:-}"
+          if [ -z "$SCRATCH" ] || [ ! -d "$SCRATCH" ]; then
+            SCRATCH="$(mktemp -d)"
+          fi
+          ( cd "$SCRATCH" && DOTNET_CLI_UI_LANGUAGE=en dotnet nuget add source "$SOURCE_URL" --name "$SOURCE_NAME" ) \
+            || fail "NuGet source registration failed" \
+                 "Could not register package source '${SOURCE_NAME}' from '${SOURCE_URL}'."
+
+          if ! LISTING="$(list_sources)" || ! parse_sources "$LISTING" | grep -qxF -- "$SOURCE_NAME"; then
+            fail "NuGet source registration had no effect" \
+              "'${SOURCE_NAME}' was registered at user level but is still not visible from this repository. A <clear /> inside <packageSources> in the repository's nuget.config discards every inherited source. Declare <add key=\"${SOURCE_NAME}\" value=\"${SOURCE_URL}\" /> in that file instead."
+          fi
+          echo "✅ Package source '${SOURCE_NAME}' registered."
+        fi
+
+        # --- Compose and publish -------------------------------------------------
+        # The shape is checked rather than assumed: NuGet accepts nothing else and
+        # says nothing when it declines.
+        VALUE="Username=${USERNAME};Password=${CREDENTIAL}"
+        case "$VALUE" in
+          Username=?*";"Password=?*) : ;;
+          *)
+            fail "Malformed NuGet credential" \
+              "${ENV_VAR} must be exactly 'Username=<user>;Password=<token>'. NuGet discards any other shape without a log line, leaving a bare HTTP 401. Check the 'username' input and the DOTNET_NUGET_RESTORE_CREDENTIALS secret for empty values."
+            ;;
+        esac
+
+        printf '%s=%s\n' "$ENV_VAR" "$VALUE" >> "$GITHUB_ENV"
+        {
+          echo "configured=true"
+          echo "credential-env-var=${ENV_VAR}"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "🔐 Restore credential bound to source '${SOURCE_NAME}' via ${ENV_VAR} (username '${USERNAME}'). The credential is not written to any file."

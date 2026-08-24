@@ -256,6 +256,25 @@ on:
         required: false
         default: 30
       
+      # Authenticated Restore (private NuGet feeds)
+      nuget-source-name:
+        description: 'Package source key in the repository nuget.config to authenticate against (e.g. GITHUB). Empty means restore from public sources only.'
+        type: string
+        required: false
+        default: ''
+
+      nuget-source-url:
+        description: 'Feed URL. Used only when nuget-source-name is not declared in any nuget.config; the source is then registered in the runner user-level config. The repository nuget.config is never modified.'
+        type: string
+        required: false
+        default: ''
+
+      nuget-username:
+        description: 'HTTP Basic username for the private feed. Defaults to the workflow actor. GitHub Packages ignores it; Azure Artifacts and others do not.'
+        type: string
+        required: false
+        default: ''
+
       # Caching
       cache-dependencies:
         description: 'Cache NuGet dependencies'
@@ -347,7 +366,15 @@ on:
       DOTNET_NUGET_PUBLISH_API_KEY:
         description: 'NuGet API key for publishing .NET packages to NuGet.org or private feeds'
         required: false
-      
+
+      DOTNET_NUGET_RESTORE_CREDENTIALS:
+        description: >-
+          Token used as the HTTP Basic password when RESTORING from the private feed
+          named by nuget-source-name (for GitHub Packages: a PAT with read:packages).
+          Deliberately separate from DOTNET_NUGET_PUBLISH_API_KEY: a NuGet.org API key
+          is a publish credential and is not accepted for restore from GitHub Packages.
+        required: false
+
       DOCKER_REGISTRY_USERNAME:
         description: 'Username for Docker registry authentication'
         required: false
@@ -537,6 +564,17 @@ jobs:
             echo "::warning title=Assembly Signing Skipped::DOTNET_SIGNKEY_BASE64 secret is not available. Assembly signing will be disabled for this build. This is expected for PR builds."
             echo "signing-available=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # Must run after the SDK is installed (it shells out to `dotnet nuget`) and
+      # before the first restore. The credential is exported through $GITHUB_ENV, so
+      # every later step - restore, build, test, pack - sees it without repeating it.
+      - name: 🔐 Authenticate Private NuGet Feed
+        uses: bauer-group/automation-templates/.github/actions/dotnet-nuget-auth@main
+        with:
+          source-name: ${{ inputs.nuget-source-name }}
+          source-url: ${{ inputs.nuget-source-url }}
+          username: ${{ inputs.nuget-username }}
+          credential: ${{ secrets.DOTNET_NUGET_RESTORE_CREDENTIALS }}
 
       - name: 📚 Restore Dependencies
         working-directory: ${{ inputs.working-directory }}

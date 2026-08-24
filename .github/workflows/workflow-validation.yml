@@ -59,3 +59,7 @@ jobs:
       - name: "🧪 docker-build: platform resolution"
         shell: bash
         run: bash .github/actions/docker-build/tests/resolve-platforms.test.sh
+
+      - name: "🧪 dotnet-nuget-auth: private feed credentials"
+        shell: bash
+        run: bash .github/actions/dotnet-nuget-auth/tests/configure-credentials.test.sh
