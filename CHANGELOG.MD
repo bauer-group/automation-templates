@@ -1,3 +1,10 @@
+## [7.1.0](https://github.com/bauer-group/automation-templates/compare/v7.0.4...v7.1.0) (2026-08-25)
+
+### 🚀 Features
+
+* **dotnet:** added authenticated restore from private NuGet feeds ([fe2c842](https://github.com/bauer-group/automation-templates/commit/fe2c84259c8404382ff21c2591b16caf7b2cd4c0)), closes [#77](https://github.com/bauer-group/automation-templates/issues/77)
+* **dotnet:** added WiX MSI packaging workflow ([90eba9f](https://github.com/bauer-group/automation-templates/commit/90eba9f85b2147a4e1699361d9c59f0148bf1b7c)), closes [#77](https://github.com/bauer-group/automation-templates/issues/77)
+
 ## [7.0.4](https://github.com/bauer-group/automation-templates/compare/v7.0.3...v7.0.4) (2026-08-23)
 
 ### 🐛 Bug Fixes
