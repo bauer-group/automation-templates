@@ -25,8 +25,9 @@ This document defines the naming convention for GitHub Secrets used in our workf
 |------------|-------------|-------|---------|
 | `DOTNET_SIGNING_CERTIFICATE_BASE64` | Base64 encoded PFX certificate for .NET desktop app code signing | Project | dotnet-desktop-build.yml |
 | `DOTNET_SIGNING_CERTIFICATE_PASSWORD` | Password for .NET desktop app signing certificate | Project | dotnet-desktop-build.yml |
-| `DOTNET_NUGET_API_KEY` | NuGet API key for private feed restoration | Global | dotnet-desktop-build.yml |
-| `DOTNET_NUGET_PUBLISH_API_KEY` | NuGet API key for publishing packages | Global | dotnet-build.yml |
+| `DOTNET_NUGET_RESTORE_CREDENTIALS` | PAT (`read:packages`) for **restoring** from a private feed | Global | dotnet-build.yml, dotnet-desktop-build.yml, dotnet-publish-binaries.yml, dotnet-publish-library.yml |
+| `DOTNET_NUGET_PUBLISH_API_KEY` | NuGet API key for **publishing** packages | Global | dotnet-build.yml |
+| `DOTNET_NUGET_API_KEY` | **Deprecated, unused.** Never authenticated anything — it only triggered a step that overwrote the repository `nuget.config`. Use `DOTNET_NUGET_RESTORE_CREDENTIALS`. | — | — |
 
 ### 📦 Node.js Secrets
 
@@ -113,8 +114,13 @@ DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
 - ✅ `CERTIFICATE_BASE64` - Base64 encoded
 
 ### 4. Separate Read/Write Permissions
-- `NUGET_API_KEY` - For package restoration (read)
-- `NUGET_PUBLISH_API_KEY` - For publishing (write)
+- `DOTNET_NUGET_RESTORE_CREDENTIALS` - For package restoration (read)
+- `DOTNET_NUGET_PUBLISH_API_KEY` - For publishing (write)
+
+These are not interchangeable, and not merely as a matter of least privilege: a
+NuGet.org **API key** is a publish credential, and GitHub Packages does not accept
+one for restore at all. Restore authenticates with HTTP Basic, so it needs a PAT
+carrying `read:packages`. Conflating the two is what produced issue #77.
 
 ### 5. Use Consistent Prefixes
 - All Docker secrets start with `DOCKER_`
@@ -156,11 +162,17 @@ gh secret set DOTNET_SIGNING_CERTIFICATE_BASE64 --env production
 jobs:
   build:
     uses: ./.github/workflows/dotnet-desktop-build.yml
+    with:
+      # The package source key in the repository's nuget.config, spelled EXACTLY.
+      # NuGet's lookup is case-sensitive on Linux and case-insensitive on Windows.
+      nuget-source-name: 'GITHUB'
     secrets:
       DOTNET_SIGNING_CERTIFICATE_BASE64: ${{ secrets.DOTNET_SIGNING_CERTIFICATE_BASE64 }}
       DOTNET_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.DOTNET_SIGNING_CERTIFICATE_PASSWORD }}
-      DOTNET_NUGET_API_KEY: ${{ secrets.DOTNET_NUGET_API_KEY }}
+      DOTNET_NUGET_RESTORE_CREDENTIALS: ${{ secrets.DOTNET_NUGET_RESTORE_CREDENTIALS }}
 ```
+
+`secrets: inherit` does the same thing with less to keep in sync.
 
 ### Node.js Package Publish
 ```yaml

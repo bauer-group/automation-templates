@@ -13,7 +13,8 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 | `DOCKER_PASSWORD` | Optional | Docker Hub Passwort/Token |
 | `GITGUARDIAN_API_KEY` | Optional | GitGuardian Secret Scanning |
 | `GITLEAKS_LICENSE` | Optional | Gitleaks Enterprise License |
-| `NUGET_API_KEY` | Optional | NuGet.org API Key |
+| `NUGET_API_KEY` | Optional | NuGet.org API Key (Publishing) |
+| `DOTNET_NUGET_RESTORE_CREDENTIALS` | Optional | PAT (`read:packages`) für Restore aus privaten NuGet-Feeds |
 | `PYPI_API_TOKEN` | Optional | PyPI Publishing Token |
 | `TEAMS_WEBHOOK_URL` | Optional | Microsoft Teams Notifications |
 | `PAT_READWRITE_ORGANISATION` | Optional | PAT für Fork-Sync & Auto-Wartung (triggert Folge-Workflows) |
@@ -88,8 +89,20 @@ Nur nötig, wenn Dependabot **interne oder private** Base-Images aktualisieren s
 | `DOTNET_SIGNKEY_BASE64` | dotnet-build, dotnet-nuget | Base64-kodierter SNK Key für Assembly Signing | `base64 -w 0 MyKey.snk` |
 | `DOTNET_NUGET_PUBLISH_API_KEY` | dotnet-build | NuGet.org API Key | [nuget.org](https://www.nuget.org) → API Keys |
 | `NUGET_API_KEY` | dotnet-build | Alternative für NuGet API Key | [nuget.org](https://www.nuget.org) → API Keys |
-| `DOTNET_SIGNING_CERTIFICATE_BASE64` | dotnet-desktop-build | Base64-kodiertes Code Signing Zertifikat (.pfx) | `base64 -w 0 cert.pfx` |
-| `DOTNET_SIGNING_CERTIFICATE_PASSWORD` | dotnet-desktop-build | Passwort für das Signing Zertifikat | Zertifikat-Passwort |
+| `DOTNET_SIGNING_CERTIFICATE_BASE64` | dotnet-desktop-build, dotnet-package-msi | Base64-kodiertes Code Signing Zertifikat (.pfx) | `base64 -w 0 cert.pfx` |
+| `DOTNET_SIGNING_CERTIFICATE_PASSWORD` | dotnet-desktop-build, dotnet-package-msi | Passwort für das Signing Zertifikat | Zertifikat-Passwort |
+| `DOTNET_NUGET_RESTORE_CREDENTIALS` | dotnet-build, dotnet-desktop-build, dotnet-publish-binaries, dotnet-publish-library | PAT für **Restore** aus einem privaten Feed (GitHub Packages: Scope `read:packages`) | GitHub → Settings → Developer settings → Personal access tokens |
+
+> **Restore ist nicht Publish.** `DOTNET_NUGET_RESTORE_CREDENTIALS` enthält **nur den PAT**; der Workflow setzt daraus `Username=…;Password=…` zusammen und exportiert es als
+> `NuGetPackageSourceCredentials_<Quelle>`. NuGet liest diese Variable **vor** jeder `nuget.config`, deshalb landet das Credential nie in einer Datei und die
+> `nuget.config` des Repositories bleibt inklusive `packageSourceMapping` unverändert.
+>
+> Ein NuGet.org-**API-Key** (`DOTNET_NUGET_PUBLISH_API_KEY`, `NUGET_API_KEY`) ist ein Publish-Credential und wird von GitHub Packages für Restore **nicht** akzeptiert —
+> die beiden dürfen nicht vermischt werden.
+>
+> Zusätzlich nötig ist der Input `nuget-source-name`: der Key der Paketquelle in der `nuget.config`, **exakt** in derselben Schreibweise. NuGet löst die Variable über
+> `Environment.GetEnvironmentVariable` auf — unter Windows case-insensitiv, unter Linux case-**sensitiv**. Ein falsch geschriebener Key baut auf `windows-latest` grün
+> durch und scheitert an dem Tag, an dem der Job auf `ubuntu-latest` umzieht. Die Workflows prüfen die Schreibweise vorab und brechen mit beiden Varianten im Fehlertext ab.
 
 ### Python
 
@@ -207,6 +220,7 @@ GitHub Organization → Settings → Secrets and variables → Actions → New o
 - `GITLEAKS_LICENSE`
 - `SONARQUBE_TOKEN` / `SONARQUBE_HOST_URL`
 - `NUGET_API_KEY`
+- `DOTNET_NUGET_RESTORE_CREDENTIALS`
 - `PYPI_API_TOKEN`
 - `TEAMS_WEBHOOK_URL`
 - `PAT_READONLY_ORGANISATION`
@@ -267,7 +281,8 @@ devtools run gh-secrets-sync.py -R owner/repo   # anderes Ziel-Repo
 ```yaml
 secrets:
   DOTNET_SIGNKEY_BASE64: ${{ secrets.DOTNET_SIGNKEY_BASE64 }}      # Assembly Signing
-  DOTNET_NUGET_PUBLISH_API_KEY: ${{ secrets.NUGET_API_KEY }}       # NuGet Publishing
+  DOTNET_NUGET_PUBLISH_API_KEY: ${{ secrets.NUGET_API_KEY }}       # NuGet Publishing (schreibend)
+  DOTNET_NUGET_RESTORE_CREDENTIALS: ${{ secrets.DOTNET_NUGET_RESTORE_CREDENTIALS }}  # Privater Feed (lesend)
   CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}                       # Coverage Upload
   DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_USERNAME }}         # Docker Push
   DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}         # Docker Push

@@ -282,6 +282,96 @@ For projects that use build-time codegen (Kiota / OpenAPI / T4 / source generato
 | `NUGET_API_KEY` | `nuget-auth-method: 'api-key'` | NuGet.org API key |
 | `DOTNET_SIGNKEY_BASE64` | `sign-assembly: true` | Base64-encoded .snk file |
 | `CODECOV_TOKEN` | Coverage upload | Codecov token (optional) |
+| `DOTNET_NUGET_RESTORE_CREDENTIALS` | `nuget-source-name` is set | PAT (`read:packages`) for restoring from a private feed. Distinct from `NUGET_API_KEY`, which publishes - see [Private NuGet Feeds](#private-nuget-feeds). |
+
+## Private NuGet Feeds
+
+Restore from an authenticated feed - GitHub Packages, Azure Artifacts, an internal
+mirror - without the credential ever reaching a file, and without the repository's
+`nuget.config` being modified.
+
+### How it works
+
+The workflow composes `Username=<user>;Password=<token>` and exports it as
+`NuGetPackageSourceCredentials_<sourceName>`. NuGet reads that variable **before** it
+reads any `nuget.config`, so:
+
+- no credential is written to disk at any point;
+- the repository's committed `nuget.config` survives the run untouched, including
+  `packageSourceMapping` - which is what stops a public package of the same name being
+  resolved instead of yours;
+- `nuget.exe`, the `dotnet` CLI and MSBuild all honour it, because the lookup lives in
+  the `NuGet.Configuration` assembly they share.
+
+### Setup
+
+**1. Declare the source in the repository's `nuget.config`:**
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+    <add key="GITHUB" value="https://nuget.pkg.github.com/bauer-group/index.json" />
+  </packageSources>
+  <packageSourceMapping>
+    <packageSource key="nuget.org">
+      <package pattern="*" />
+    </packageSource>
+    <packageSource key="GITHUB">
+      <package pattern="BAUERGROUP.Shared.Industrial.*" />
+    </packageSource>
+  </packageSourceMapping>
+</configuration>
+```
+
+A source NuGet does not know about cannot have a credential attached to it. If the
+repository ships no `nuget.config`, set `nuget-source-url` instead and the workflow
+registers the source in the runner's **user-level** config - never in the repository's.
+
+**2. Store the token** as `DOTNET_NUGET_RESTORE_CREDENTIALS` - the PAT alone, with the
+`read:packages` scope. The workflow composes the rest.
+
+**3. Name the source:**
+
+```yaml
+jobs:
+  publish:
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    with:
+      project-path: 'src/MyLib/MyLib.csproj'
+      nuget-source-name: 'GITHUB'
+    secrets: inherit
+```
+
+### Inputs
+
+| Input | Description |
+|-------|-------------|
+| `nuget-source-name` | Package source key in `nuget.config`, spelled exactly. Empty disables authenticated restore. |
+| `nuget-source-url` | Feed URL. Only used when the key is not configured anywhere; registered at user level. |
+| `nuget-username` | HTTP Basic username. Defaults to the workflow actor. GitHub Packages ignores it; Azure Artifacts does not. |
+
+### Two traps this closes
+
+**The source key is case-sensitive - on Linux only.** NuGet resolves the variable with
+`Environment.GetEnvironmentVariable`, which is case-insensitive on Windows and
+case-**sensitive** on Linux. `github` instead of `GITHUB` therefore builds green on
+`windows-latest` and fails the day the job moves to `ubuntu-latest`. The workflow
+compares the spelling up front and fails with both spellings named.
+
+**A malformed credential is discarded in silence.** If the composed value is not
+exactly `Username=...;Password=...`, NuGet drops it with no log line at all and the
+symptom is a bare HTTP 401 that appears to blame the token. A trailing newline on a
+pasted secret and a semicolon inside it both do this. Both are detected and rejected
+before restore runs.
+
+### Restore is not publish
+
+`DOTNET_NUGET_RESTORE_CREDENTIALS` is deliberately separate from the publish key. A
+NuGet.org **API key** is a publish credential and GitHub Packages does not accept one
+for restore at all - restore authenticates with HTTP Basic and needs a PAT carrying
+`read:packages`. They are not interchangeable.
 
 ## Outputs
 
