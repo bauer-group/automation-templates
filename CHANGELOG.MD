@@ -1,3 +1,9 @@
+## [7.1.1](https://github.com/bauer-group/automation-templates/compare/v7.1.0...v7.1.1) (2026-08-25)
+
+### 🐛 Bug Fixes
+
+* **dotnet-nuget-auth:** stopped failing builds on an inherited credential ([e89dec0](https://github.com/bauer-group/automation-templates/commit/e89dec0c210efa38728a50a9d47f77c82ca0c623)), closes [#78](https://github.com/bauer-group/automation-templates/issues/78)
+
 ## [7.1.0](https://github.com/bauer-group/automation-templates/compare/v7.0.4...v7.1.0) (2026-08-25)
 
 ### 🚀 Features
