@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-08-23 19:48:40 UTC -->
+<!-- Generated on 2026-08-25 09:30:41 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -9,7 +9,7 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 
 **Repository Information:**
 
-- **Version:** 7.0.4 (2026-08-23)
+- **Version:** 7.0.4 (2026-08-25)
 - **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)
 - **Branch:** main
 - **Architecture:** Modular, Reusable, Enterprise-Ready
@@ -121,6 +121,8 @@ jobs:
 │   │   ├── semantic-release/     # Automated semantic releases
 │   │   ├── teams-notification/   # Microsoft Teams integration
 │   │   ├── dotnet-nuget/         # .NET NuGet build and pack
+│   │   ├── dotnet-nuget-auth/    # Authenticated restore from private NuGet feeds
+│   │   ├── dotnet-msi/           # WiX MSI packaging for Windows deployment
 │   │   ├── zephyr-build/         # Zephyr RTOS build automation
 │   │   ├── esp32-build/          # ESP32 microcontroller build automation
 │   │   ├── stm32-build/          # STM32 microcontroller build automation
@@ -156,6 +158,7 @@ jobs:
 │       ├── documentation.yml          # Documentation automation
 │       ├── dotnet-build.yml           # .NET build & test
 │       ├── dotnet-desktop-build.yml   # .NET desktop builds
+│       ├── dotnet-package-msi.yml    # .NET MSI packaging (WiX)
 │       ├── dotnet-publish-library.yml # .NET library NuGet publishing
 │       ├── issue-automation.yml       # Automated issue management
 │       ├── makefile-build.yml         # Makefile-based builds
@@ -195,6 +198,7 @@ jobs:
 │           ├── dotnet-build/         # .NET project examples
 │           ├── dotnet-desktop-build/ # .NET desktop examples
 │           ├── dotnet-nuget/         # .NET NuGet publishing examples
+│           ├── dotnet-package-msi/  # .NET MSI packaging examples
 │           ├── makefile-build/       # Makefile project examples
 │           ├── meta-repository/      # Meta repository examples
 │           ├── nodejs-build/         # Node.js project examples
@@ -562,6 +566,7 @@ jobs:
 | **🟢 .NET Build** | Available | Complete .NET Core/Framework automation | `uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main` |
 | **🟢 .NET Desktop** | Available | Desktop application builds (WPF, WinForms) | `uses: bauer-group/automation-templates/.github/workflows/dotnet-desktop-build.yml@main` |
 | **🟢 .NET Library Publish** | Available | NuGet package build, sign, and publish | `uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main` |
+| **🟢 .NET MSI Package** | Available | Per-machine Windows Installer packaging with WiX | `uses: bauer-group/automation-templates/.github/workflows/dotnet-package-msi.yml@main` |
 | **🟢 Node.js Build** | Available | Node.js and npm/yarn automation | `uses: bauer-group/automation-templates/.github/workflows/nodejs-build.yml@main` |
 | **🟢 PHP Build** | Available | PHP and Composer automation | `uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main` |
 | **🟢 Makefile Build** | Available | Makefile-based build automation | `uses: bauer-group/automation-templates/.github/workflows/makefile-build.yml@main` |
@@ -1081,6 +1086,7 @@ gh auth status --show-token
 - [🔨 **.NET Build System**](docs/workflows/dotnet-build.md) - .NET Core/Framework automation
 - [🖥️ **.NET Desktop Build System**](docs/workflows/dotnet-desktop-build.md) - Desktop application automation
 - [📦 **.NET Library Publishing**](docs/workflows/dotnet-publish-library.md) - NuGet package build, sign, and publish
+- [🪟 **.NET MSI Packaging**](docs/workflows/dotnet-package-msi.md) - Per-machine Windows Installer packaging with WiX
 - [📦 **Node.js Build System**](docs/workflows/nodejs-build.md) - Node.js and npm/yarn automation
 - [🐘 **PHP Build System**](docs/workflows/php-build.md) - PHP and Composer automation
 - [🛒 **Shopware 5 Plugin Build System**](docs/workflows/shopware5-build.md) - Shopware 5 plugin automation with store integration
@@ -1105,6 +1111,8 @@ gh auth status --show-token
 
 - [🐳 **docker-build**](.github/actions/docker-build/README.md) - Multi-platform Docker builds with security
 - [📦 **dotnet-nuget**](.github/actions/dotnet-nuget/action.yml) - .NET NuGet build, sign, and pack
+- [🔐 **dotnet-nuget-auth**](.github/actions/dotnet-nuget-auth/action.yml) - Authenticated restore from private NuGet feeds
+- [🪟 **dotnet-msi**](.github/actions/dotnet-msi/action.yml) - WiX MSI packaging for Windows deployment
 - [⚡ **zephyr-build**](.github/actions/zephyr-build/README.md) - Complete Zephyr RTOS build automation with SDK management
 - [📟 **esp32-build**](.github/actions/esp32-build/README.md) - ESP32 microcontroller build automation with ESP-IDF
 - [🔧 **stm32-build**](.github/actions/stm32-build/README.md) - STM32 microcontroller build automation
@@ -1168,6 +1176,7 @@ gh auth status --show-token
 - [🔨 **.NET Examples**](github/workflows/examples/dotnet-build/) - .NET project examples
 - [🖥️ **.NET Desktop Examples**](github/workflows/examples/dotnet-desktop-build/) - .NET desktop application examples
 - [📦 **.NET NuGet Examples**](github/workflows/examples/dotnet-nuget/) - .NET NuGet publishing examples
+- [🪟 **.NET MSI Examples**](github/workflows/examples/dotnet-package-msi/) - .NET MSI packaging examples
 - [📦 **Node.js Examples**](github/workflows/examples/nodejs-build/) - Node.js project examples
 - [🐘 **PHP Examples**](github/workflows/examples/php-build/) - PHP project examples
 - [🛒 **Shopware 5 Examples**](github/workflows/examples/shopware5-build/) - Shopware 5 plugin workflow examples
@@ -1215,5 +1224,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-08-23 19:48:40 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-08-25 09:30:41 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
