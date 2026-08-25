@@ -67,3 +67,21 @@ jobs:
       - name: "🧪 dotnet-msi: MSI version resolution"
         shell: bash
         run: bash .github/actions/dotnet-msi/tests/resolve-msi-version.test.sh
+
+      # The allowlist in /.gitleaks.toml is a hole in secret scanning, so it is held
+      # shut from both sides: the documented placeholders stay quiet AND realistic
+      # tokens are still caught. Version is pinned so a gitleaks release cannot change
+      # what the test is asserting against.
+      - name: "🔧 Install gitleaks"
+        shell: bash
+        env:
+          GITLEAKS_VERSION: "8.24.3"
+        run: |
+          set -euo pipefail
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar xz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+          gitleaks version
+
+      - name: "🧪 gitleaks: allowlist stays narrow"
+        shell: bash
+        run: bash .github/actions/gitleaks-scan/tests/allowlist.test.sh

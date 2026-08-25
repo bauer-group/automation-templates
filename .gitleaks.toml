@@ -1,0 +1,44 @@
+# Gitleaks configuration
+# https://github.com/gitleaks/gitleaks#configuration
+#
+# Everything allowlisted here is a documentation PLACEHOLDER, never a credential that
+# was inconvenient to rotate. Each pattern is anchored end-to-end, so it matches a
+# literal placeholder and nothing that could be a real token.
+#
+# Why this file exists at all: `gitleaks detect` scans git HISTORY, not the working
+# tree. On a push it receives a commit range and only inspects what changed; on a
+# workflow_dispatch it receives no range and scans everything ever committed. The
+# release pipeline is dispatchable, so one false positive anywhere in history blocks
+# every manual release - which is what a documented `Authorization: Bearer YOUR_TOKEN`
+# example from December 2025 did. Editing the file would not have helped: the old
+# commit still contains it.
+#
+# .github/actions/gitleaks-scan/tests/allowlist.test.sh pins both halves of the
+# bargain - that these placeholders stay quiet, AND that realistic tokens are still
+# caught. Widen anything here and that test fails.
+
+title = "BAUER GROUP Automation Templates"
+
+# Extend rather than replace: the full default ruleset stays active. Without this,
+# defining any rule of our own would silently switch off everything gitleaks ships.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documentation placeholders, not credentials"
+regexTarget = "secret"
+regexes = [
+  # YOUR_TOKEN, YOUR_API_KEY, ... - the convention used throughout docs/ and the
+  # example workflows.
+  '''^YOUR_[A-Z0-9_]*$''',
+
+  # <COOLIFY_API_TOKEN>, <your-token> - angle-bracket placeholders.
+  '''^<[A-Za-z0-9_.\-]+>$''',
+
+  # $TOKEN and ${TOKEN} - a shell variable reference is a pointer to a secret, not
+  # the secret itself.
+  '''^\$\{?[A-Za-z0-9_]+\}?$''',
+
+  # ${{ secrets.NAME }} - a GitHub Actions expression, resolved at run time.
+  '''^\$\{\{[^{}]*\}\}$''',
+]
