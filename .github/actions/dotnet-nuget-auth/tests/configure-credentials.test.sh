@@ -230,9 +230,32 @@ assert_auth "a source without a credential names the secret to set" 1 \
   "log=DOTNET_NUGET_RESTORE_CREDENTIALS" "log=NuGetPackageSourceCredentials_GITHUB" \
   "noenv=NuGetPackageSourceCredentials_GITHUB"
 
+# Issue #78. This assertion used to demand exit 1, on the reading that a credential
+# with no source meant someone had passed one by mistake. It does not: `secrets:
+# inherit` is how these workflows are called, so an organisation secret reaches EVERY
+# consumer the moment it exists - including the many that restore only public packages
+# and have no reason to set nuget-source-name. The condition detected "this
+# organisation defines the secret", not "this caller made a mistake", and it turned the
+# default configuration into a build break across the org.
+#
+# It is also a genuine no-op: NuGet only ever reads NuGetPackageSourceCredentials_<name>,
+# so a credential with no source is never composed and never leaves the runner.
 T_CREDENTIAL=ghp_secrettoken \
-assert_auth "a credential without a source names the input to set" 1 \
+assert_auth "an inherited credential with no source is a no-op, not a failure" 0 \
+  "out=configured=false" "noenv=NuGetPackageSourceCredentials_GITHUB" "noadd=" \
   "log=nuget-source-name" "nolog=ghp_secrettoken"
+
+# The signal that really does discriminate a misconfiguration: an input can only come
+# from the caller's own `with:` block - there is no inheritance for inputs - so a URL
+# supplied without a name is a mistake in a way an inherited secret never is.
+T_CREDENTIAL=ghp_secrettoken T_SOURCE_URL=https://nuget.contoso.com/v3/index.json \
+assert_auth "a source url without a source name is still a hard failure" 1 \
+  "log=nuget-source-name" "log=nuget-source-url" \
+  "noenv=NuGetPackageSourceCredentials_CONTOSO" "noadd="
+
+T_SOURCE_URL=https://nuget.contoso.com/v3/index.json \
+assert_auth "a source url alone is a hard failure" 1 \
+  "log=nuget-source-name" "noadd="
 
 # The central trap from issue #77: case-insensitive on Windows, case-SENSITIVE on Linux.
 T_SOURCE_NAME=github T_CREDENTIAL=tok \

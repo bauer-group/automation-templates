@@ -91,10 +91,29 @@ runs:
 
         # --- Opt-out: almost every caller restores from nuget.org alone ----------
         if [ -z "$SOURCE_NAME" ]; then
-          if [ -n "$CREDENTIAL" ]; then
-            fail "NuGet restore credential has no source" \
-              "A restore credential was supplied but 'nuget-source-name' is empty. NuGet attaches a credential to a NAMED package source, so an unattached credential is never sent and the restore fails with a bare HTTP 401. Set 'nuget-source-name' to the <add key=\"...\"> value of your private feed in nuget.config."
+          # An INPUT can only come from the caller's own `with:` block - there is no
+          # inheritance for inputs - so a feed URL supplied without a name really is a
+          # misconfiguration, and a URL on its own configures nothing anyway.
+          if [ -n "$SOURCE_URL" ]; then
+            fail "NuGet source url without a source name" \
+              "'nuget-source-url' is set to '${SOURCE_URL}' but 'nuget-source-name' is empty. NuGet attaches a credential to a NAMED package source, so a URL alone configures nothing. Set 'nuget-source-name' to the <add key=\"...\"> value of that feed."
           fi
+
+          # An inherited CREDENTIAL is a different matter, and treating it as a
+          # misconfiguration was issue #78. `secrets: inherit` is how these workflows
+          # are called, so an organisation secret arrives at every consumer the moment
+          # it exists - including the many that restore only public packages and have
+          # no reason to set nuget-source-name. The old guard here detected "this
+          # organisation defines the secret" while claiming to detect "this caller made
+          # a mistake", and so broke the default configuration across the org.
+          #
+          # Ignoring it is safe as well as necessary: NuGet only ever reads
+          # NuGetPackageSourceCredentials_<name>, so a credential with no source is
+          # never composed into a variable and never leaves the runner.
+          if [ -n "$CREDENTIAL" ]; then
+            echo "::notice title=Unused NuGet restore credential::A restore credential was inherited but 'nuget-source-name' is empty, so no private feed is configured and the credential is ignored. Set 'nuget-source-name' if this repository is meant to restore from a private feed."
+          fi
+
           echo "ℹ️ No private NuGet feed requested - restore uses the repository's own configuration unchanged."
           {
             echo "configured=false"

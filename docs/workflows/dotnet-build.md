@@ -342,7 +342,17 @@ jobs:
 
 | Input | Description |
 |-------|-------------|
-| `nuget-source-name` | Package source key in `nuget.config`, spelled exactly. Empty disables authenticated restore. |
+| `nuget-source-name` | Package source key in `nuget.config`, spelled exactly. Empty disables authenticated restore entirely. |
+
+Leaving `nuget-source-name` empty is the normal case, and it stays a no-op even when
+`DOTNET_NUGET_RESTORE_CREDENTIALS` exists as an organisation secret and arrives via
+`secrets: inherit`. NuGet only ever reads `NuGetPackageSourceCredentials_<name>`, so a
+credential with no source is never composed into a variable and never leaves the runner.
+The run logs a notice saying the credential was inherited but unused, in case the input
+was meant to be set.
+
+| Input | Description |
+|-------|-------------|
 | `nuget-source-url` | Feed URL. Only used when the key is not configured anywhere; registered at user level. |
 | `nuget-username` | HTTP Basic username. Defaults to the workflow actor. GitHub Packages ignores it; Azure Artifacts does not. |
 
