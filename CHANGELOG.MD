@@ -1,3 +1,9 @@
+## [7.1.2](https://github.com/bauer-group/automation-templates/compare/v7.1.1...v7.1.2) (2026-08-25)
+
+### 🐛 Bug Fixes
+
+* **security-scan:** stopped reporting an aborted scan as clean ([763caa6](https://github.com/bauer-group/automation-templates/commit/763caa60dba51aacaa92f4a700cd7350bda10b11))
+
 ## [7.1.1](https://github.com/bauer-group/automation-templates/compare/v7.1.0...v7.1.1) (2026-08-25)
 
 ### 🐛 Bug Fixes
