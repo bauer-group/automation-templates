@@ -85,3 +85,13 @@ jobs:
       - name: "🧪 gitleaks: allowlist stays narrow"
         shell: bash
         run: bash .github/actions/gitleaks-scan/tests/allowlist.test.sh
+
+      # A security scanner that reports "clean" when it did not run is worse than no
+      # scanner. These two pin the distinction between "no secrets" and "not scanned".
+      - name: "🧪 security-scan: a failed scan is never reported as clean"
+        shell: bash
+        run: bash .github/actions/security-scan/tests/process-gitleaks.test.sh
+
+      - name: "🧪 security-scan: every output read is declared"
+        shell: bash
+        run: bash .github/actions/security-scan/tests/declared-outputs.test.sh

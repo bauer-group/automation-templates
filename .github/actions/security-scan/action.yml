@@ -40,9 +40,18 @@ inputs:
     required: true
 
 outputs:
+  secrets-found:
+    description: >-
+      Aggregate secret state across engines: 'true', 'false', or 'unknown' when a scan
+      did not complete. Consumers were already reading this name while it did not
+      exist, so an empty value rendered as 'false' in their summaries.
+    value: ${{ steps.process-gitleaks.outputs.secrets-found == 'unknown' && 'unknown' || (steps.process-gitleaks.outputs.secrets-found == 'true' || (steps.gitguardian-scan.outputs.secrets-found != '' && steps.gitguardian-scan.outputs.secrets-found != '0')) }}
   gitleaks-secrets-found:
-    description: 'Whether secrets were found by Gitleaks'
+    description: 'Whether secrets were found by Gitleaks: true, false, or unknown'
     value: ${{ steps.process-gitleaks.outputs.secrets-found }}
+  gitleaks-secrets-count:
+    description: 'Number of secrets found by Gitleaks, or unknown if the scan did not complete'
+    value: ${{ steps.process-gitleaks.outputs.secrets-count }}
   gitguardian-secrets-found:
     description: 'Number of secrets found by GitGuardian'
     value: ${{ steps.gitguardian-scan.outputs.secrets-found }}
@@ -96,6 +105,13 @@ runs:
     - name: 🔐 Gitleaks Secrets Detection
       id: gitleaks-scan
       if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both')
+      # gitleaks exits 2 when it finds something, which without this fails the step
+      # and aborts the whole composite action - taking the result processing, the
+      # summary AND the deliberate `fail-on-findings` gate down with it. That is how
+      # `fail-on-findings: false` came to be ignored and how a run with a real finding
+      # printed "Secrets Found | false". Finding a secret is a RESULT here, not an
+      # error; the gate at the end of this action decides what to do about it.
+      continue-on-error: true
       uses: gitleaks/gitleaks-action@v3
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
@@ -104,28 +120,59 @@ runs:
         GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
         GITLEAKS_ENABLE_SUMMARY: false
 
-    - name: 📊 Process Gitleaks Results  
+    - name: 📊 Process Gitleaks Results
       id: process-gitleaks
-      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both')
+      # always(): this must still run when the scan step failed, which is precisely
+      # when there is something to report.
+      if: always() && (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both')
       shell: bash
+      env:
+        GITLEAKS_OUTCOME: ${{ steps.gitleaks-scan.outcome }}
+        GITLEAKS_SARIF: results.sarif
       run: |
-        echo "📊 Processing Gitleaks results..."
-        
-        # The official gitleaks action will fail if secrets are found
-        # So we check the job status and set our output accordingly
-        if [ "${{ job.status }}" = "failure" ] || [ "${{ steps.gitleaks-scan.outcome }}" = "failure" ]; then
-          echo "❌ Gitleaks detected secrets!"
-          echo "secrets-found=true" >> "$GITHUB_OUTPUT"
+        set -uo pipefail
+
+        OUTCOME="${GITLEAKS_OUTCOME:-unknown}"
+        SARIF="${GITLEAKS_SARIF:-results.sarif}"
+
+        # Count the report rather than infer from the exit status. gitleaks exits
+        # non-zero BOTH when it finds secrets and when it fails to run, and those two
+        # need opposite handling. In the SARIF, `rules` entries carry "id" and only
+        # findings carry "ruleId", so counting "ruleId" counts findings exactly.
+        if [ -f "$SARIF" ]; then
+          # `|| true` is load-bearing: grep exits 1 when it matches nothing, and
+          # GitHub runs `shell: bash` steps with -e, so a CLEAN report would
+          # otherwise crash this step and be reported as a scan failure.
+          COUNT=$( { grep -o '"ruleId"' "$SARIF" || true; } | wc -l | tr -d '[:space:]')
+          if [ "${COUNT:-0}" -gt 0 ]; then
+            STATE="true"
+            echo "❌ Gitleaks found ${COUNT} secret(s)"
+          else
+            STATE="false"
+            echo "✅ No secrets detected by Gitleaks"
+          fi
+        elif [ "$OUTCOME" = "success" ]; then
+          COUNT="0"
+          STATE="false"
+          echo "✅ No secrets detected by Gitleaks"
         else
-          echo "✅ No secrets detected by Gitleaks" 
-          echo "secrets-found=false" >> "$GITHUB_OUTPUT"
+          # No report and a step that did not succeed: gitleaks itself did not run to
+          # completion. Reporting that as "clean" is the one outcome that must never
+          # happen, so it gets its own value and says so loudly.
+          COUNT="unknown"
+          STATE="unknown"
+          echo "::error title=Gitleaks scan did not complete::The Gitleaks step ended as '${OUTCOME}' and wrote no ${SARIF}, so this repository has NOT been scanned for secrets. Treat this as unscanned, not as clean, and check the step log for the cause (bad config, missing licence, network failure)."
         fi
-        
-        # Create security reports directory for consistency
+
+        {
+          echo "secrets-found=${STATE}"
+          echo "secrets-count=${COUNT}"
+        } >> "$GITHUB_OUTPUT"
+
         mkdir -p security-reports/gitleaks
-        
-        # Note: The official action uploads artifacts automatically
-        echo "📄 Gitleaks results will be available in artifacts"
+        if [ -f "$SARIF" ]; then
+          cp "$SARIF" security-reports/gitleaks/ 2>/dev/null || true
+        fi
 
     - name: 🛡️ GitGuardian Security Scan
       id: gitguardian-scan
@@ -486,7 +533,9 @@ runs:
         if-no-files-found: ignore
 
     - name: 🚨 Fail on Security Issues
-      if: inputs.fail-on-findings == 'true' && (steps.process-gitleaks.outputs.secrets-found == 'true' || steps.vulnerability-scan.outputs.vulnerabilities-found == 'true')
+      # 'unknown' fails too: a scan that did not run is not a pass. Without this,
+      # a broken scanner would be indistinguishable from a clean repository.
+      if: inputs.fail-on-findings == 'true' && (steps.process-gitleaks.outputs.secrets-found == 'true' || steps.process-gitleaks.outputs.secrets-found == 'unknown' || steps.vulnerability-scan.outputs.vulnerabilities-found == 'true')
       shell: bash
       run: |
         echo "❌ Security scan failed due to findings"

@@ -42,8 +42,13 @@ on:
         required: false
     outputs:
       secrets-found:
-        description: 'Whether secrets were found'
+        description: >-
+          Whether secrets were found: 'true', 'false', or 'unknown' when the scan did
+          not complete. Treat 'unknown' as unscanned, never as clean.
         value: ${{ jobs.security-scan.outputs.secrets-found }}
+      secrets-count:
+        description: 'Number of secrets found, or unknown if the scan did not complete'
+        value: ${{ jobs.security-scan.outputs.secrets-count }}
       vulnerabilities-found:
         description: 'Whether vulnerabilities were found'
         value: ${{ jobs.security-scan.outputs.vulnerabilities-found }}
@@ -64,7 +69,11 @@ jobs:
     name: 🔐 Security Analysis
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     outputs:
-      secrets-found: ${{ steps.security.outputs.gitleaks-secrets-found == 'true' || steps.security.outputs.gitguardian-secrets-found != '0' }}
+      # Reads the action's aggregate output. The previous expression compared
+      # gitguardian-secrets-found != '0', which is TRUE for the empty string a skipped
+      # GitGuardian leaves behind - so it claimed secrets on every gitleaks-only run.
+      secrets-found: ${{ steps.security.outputs.secrets-found }}
+      secrets-count: ${{ steps.security.outputs.gitleaks-secrets-count }}
       vulnerabilities-found: ${{ steps.security.outputs.vulnerabilities-found }}
       security-score: ${{ steps.security.outputs.security-score }}
       scan-results: ${{ steps.security.outputs.scan-results }}
@@ -91,21 +100,55 @@ jobs:
 
       - name: 📊 Security Report Summary
         if: always()
+        # Values arrive as environment variables rather than being interpolated into
+        # the script: an unset ${{ }} expands to nothing mid-command, which is how
+        # `[ "$SCORE" -ge 95 ]` came to be evaluated as `[ -ge 95 ]` and log
+        # "integer expression expected" twice per run.
+        env:
+          SCAN_ENGINE: ${{ inputs.scan-engine }}
+          SCAN_TYPE: ${{ inputs.scan-type }}
+          SECURITY_SCORE: ${{ steps.security.outputs.security-score }}
+          SECRETS_FOUND: ${{ steps.security.outputs.secrets-found }}
+          SECRETS_COUNT: ${{ steps.security.outputs.gitleaks-secrets-count }}
+          VULNERABILITIES_FOUND: ${{ steps.security.outputs.vulnerabilities-found }}
+          SCAN_RESULTS: ${{ steps.security.outputs.scan-results }}
         run: |
-          echo "### 🛡️ Security Scan Results" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Engine Used** | ${{ inputs.scan-engine }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Scan Type** | ${{ inputs.scan-type }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Security Score** | ${{ steps.security.outputs.security-score || '100' }}/100 |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Secrets Found** | ${{ steps.security.outputs.secrets-found || 'false' }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Vulnerabilities (Trivy)** | ${{ steps.security.outputs.vulnerabilities-found || 'false' }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Status** | ${{ steps.security.outputs.scan-results || 'Complete' }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          
-          SCORE="${{ steps.security.outputs.security-score }}"
-          if [ "$SCORE" -ge 95 ]; then
+          set -uo pipefail
+
+          # A missing value means the scan did not report, which is NOT the same as a
+          # clean result. Defaulting it to 'false' is what let a run with a real
+          # finding print "Secrets Found | false".
+          SECRETS_FOUND="${SECRETS_FOUND:-unknown}"
+          VULNERABILITIES_FOUND="${VULNERABILITIES_FOUND:-unknown}"
+          SECRETS_COUNT="${SECRETS_COUNT:-unknown}"
+          SCORE="${SECURITY_SCORE:-}"
+
+          case "$SECRETS_FOUND" in
+            true)  SECRETS_CELL="🚨 yes ($SECRETS_COUNT)" ;;
+            false) SECRETS_CELL="✅ no" ;;
+            *)     SECRETS_CELL="❓ unknown - the scan did not complete" ;;
+          esac
+
+          {
+            echo "### 🛡️ Security Scan Results"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|--------|-------|"
+            echo "| **Engine Used** | ${SCAN_ENGINE} |"
+            echo "| **Scan Type** | ${SCAN_TYPE} |"
+            echo "| **Security Score** | ${SCORE:-unknown}/100 |"
+            echo "| **Secrets Found** | ${SECRETS_CELL} |"
+            echo "| **Vulnerabilities (Trivy)** | ${VULNERABILITIES_FOUND} |"
+            echo "| **Status** | ${SCAN_RESULTS:-Incomplete} |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Only compare when there is actually a number to compare.
+          if [ -z "$SCORE" ] || ! [ "$SCORE" -eq "$SCORE" ] 2>/dev/null; then
+            echo "❓ **No security score was reported - treat this run as unscanned.**" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$SECRETS_FOUND" = "unknown" ]; then
+            echo "❓ **The secret scan did not complete - this is not a clean result.**" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$SCORE" -ge 95 ]; then
             echo "✅ **Excellent security posture!**" >> "$GITHUB_STEP_SUMMARY"
           elif [ "$SCORE" -ge 80 ]; then
             echo "⚠️ **Good security with room for improvement.**" >> "$GITHUB_STEP_SUMMARY"
