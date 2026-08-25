@@ -1,0 +1,358 @@
+name: 🪟 .NET MSI Package
+
+# =============================================================================
+# Reusable workflow: package a published .NET application as a Windows Installer
+# (MSI) with WiX, sign it, and attach it to a GitHub Release.
+#
+# Sibling of the other .NET publishing workflows:
+#   - dotnet-publish-binaries.yml -> self-contained binaries per RID, archived
+#   - dotnet-publish-library.yml  -> .nupkg / .snupkg to a NuGet feed
+#   - dotnet-package-msi.yml      -> a per-machine .msi for Windows deployment
+#
+# Why MSI and not MSIX: dotnet-desktop-build.yml already offers MSIX, but MSIX
+# wants a signed package and a modern deployment story. Industrial customers
+# install per-machine from a share, often onto locked-down images, and expect
+# `msiexec /i ... /qn` to work with a real upgrade code and a clean uninstall.
+#
+# Typical caller flow:
+#   1. a build job publishes the application (dotnet publish) and uploads the
+#      output as an artifact
+#   2. this workflow downloads that artifact, packages it, signs the result and
+#      uploads <name>.msi + <name>.msi.sha256 to the Release
+# =============================================================================
+
+on:
+  workflow_call:
+    inputs:
+      # =======================================================================
+      # What to package
+      # =======================================================================
+      source-artifact-name:
+        description: 'Artifact from an upstream job holding the published application. Empty to package a path already in the repository.'
+        type: string
+        required: false
+        default: ''
+
+      source-path:
+        description: 'Directory holding the published application files. When source-artifact-name is set, the artifact is extracted here.'
+        type: string
+        required: false
+        default: 'publish'
+
+      # =======================================================================
+      # Product identity
+      # =======================================================================
+      product-name:
+        description: 'Product name shown in Add/Remove Programs and used as the install folder name'
+        type: string
+        required: true
+
+      version:
+        description: 'Version to embed. A prerelease suffix is accepted but cannot be carried in an MSI ProductVersion - see the docs.'
+        type: string
+        required: true
+
+      manufacturer:
+        description: 'Manufacturer shown in Add/Remove Programs. Defaults to the repository owner.'
+        type: string
+        required: false
+        default: ''
+
+      upgrade-code:
+        description: >-
+          Stable GUID identifying the product across all its versions. Required when
+          using the generated template. It must NEVER change: it is how Windows
+          Installer recognises an upgrade rather than a second, parallel install.
+        type: string
+        required: false
+        default: ''
+
+      architecture:
+        description: 'Target architecture: x64, x86 or arm64'
+        type: string
+        required: false
+        default: 'x64'
+
+      # =======================================================================
+      # WiX authoring
+      # =======================================================================
+      wix-project-path:
+        description: 'Path to a .wixproj (built with MSBuild) or a .wxs (built with `wix build`). Empty uses the generated per-machine template.'
+        type: string
+        required: false
+        default: ''
+
+      main-executable:
+        description: 'Executable file name inside source-path. Generated template only, used as the Start Menu shortcut target.'
+        type: string
+        required: false
+        default: ''
+
+      create-shortcut:
+        description: 'Add a Start Menu shortcut. Generated template only; requires main-executable.'
+        type: boolean
+        required: false
+        default: false
+
+      preprocessor-variables:
+        description: 'Extra WiX preprocessor variables as newline-separated name=value pairs'
+        type: string
+        required: false
+        default: ''
+
+      msbuild-properties:
+        description: 'Extra MSBuild properties for the .wixproj path (e.g. "-p:Foo=bar")'
+        type: string
+        required: false
+        default: ''
+
+      wix-extensions:
+        description: 'WiX extensions to add and reference, whitespace-separated (e.g. "WixToolset.Util.wixext/7.0.0")'
+        type: string
+        required: false
+        default: ''
+
+      wix-version:
+        description: >-
+          WiX Toolset version. Pinned deliberately - a floating version silently rolled
+          repositories from v6 to v7 and broke them with WIX7015.
+        type: string
+        required: false
+        default: '7.0.0'
+
+      accept-eula:
+        description: >-
+          Accept the WiX Open Source Maintenance Fee EULA. WiX v7 and later refuse to
+          run without it; v6 and earlier ignore it. Set false with a 6.x wix-version if
+          your organisation does not want CI accepting the EULA on its behalf.
+        type: boolean
+        required: false
+        default: true
+
+      dotnet-version:
+        description: '.NET SDK version used to install the WiX tool and build a .wixproj'
+        type: string
+        required: false
+        default: '8.0.x'
+
+      # =======================================================================
+      # Output
+      # =======================================================================
+      output-name:
+        description: 'MSI file name without extension. Default: <product>-<version>-<architecture>.'
+        type: string
+        required: false
+        default: ''
+
+      artifact-name:
+        description: 'Name of the uploaded workflow artifact'
+        type: string
+        required: false
+        default: 'msi-package'
+
+      artifact-retention-days:
+        description: 'Days to retain the workflow artifact'
+        type: number
+        required: false
+        default: 30
+
+      upload-to-release:
+        description: 'Attach the .msi and its .sha256 to a GitHub Release'
+        type: boolean
+        required: false
+        default: false
+
+      release-tag:
+        description: 'Release tag to upload to. Defaults to "v<version>".'
+        type: string
+        required: false
+        default: ''
+
+      # =======================================================================
+      # Signing
+      # =======================================================================
+      sign-msi:
+        description: 'Sign the finished MSI with signtool'
+        type: boolean
+        required: false
+        default: false
+
+      certificate-subject:
+        description: 'Subject of a certificate already in the machine store. Used when no PFX secret is supplied.'
+        type: string
+        required: false
+        default: ''
+
+      timestamp-server:
+        description: 'RFC 3161 timestamp server URL'
+        type: string
+        required: false
+        default: 'http://timestamp.digicert.com'
+
+      # =======================================================================
+      # Runner
+      # =======================================================================
+      runs-on:
+        description: 'Runner to use. Must be Windows. String for GitHub-hosted (e.g. windows-latest) or JSON array for self-hosted (e.g. ["self-hosted", "windows"]).'
+        type: string
+        required: false
+        default: 'windows-latest'
+
+      timeout-minutes:
+        description: 'Job timeout in minutes'
+        type: number
+        required: false
+        default: 30
+
+    secrets:
+      DOTNET_SIGNING_CERTIFICATE_BASE64:
+        description: 'Base64 encoded PFX certificate for signing the MSI'
+        required: false
+
+      DOTNET_SIGNING_CERTIFICATE_PASSWORD:
+        description: 'Password for the signing certificate'
+        required: false
+
+    outputs:
+      msi-name:
+        description: 'File name of the produced .msi'
+        value: ${{ jobs.package.outputs.msi-name }}
+
+      product-version:
+        description: 'The ProductVersion actually embedded (prerelease suffixes removed)'
+        value: ${{ jobs.package.outputs.product-version }}
+
+      sha256:
+        description: 'SHA-256 checksum of the produced .msi'
+        value: ${{ jobs.package.outputs.sha256 }}
+
+# `contents: write` is needed only when upload-to-release is true. It is declared
+# unconditionally because a workflow cannot vary its permissions by input, and a
+# reusable workflow that asks for a scope its caller withholds makes GitHub refuse
+# to start the run at all. Callers that never upload to a Release can grant
+# `contents: read` and leave upload-to-release false.
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: 🪟 Package MSI
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: write   # required by `gh release upload` when upload-to-release is set
+
+    outputs:
+      msi-name: ${{ steps.msi.outputs.msi-name }}
+      product-version: ${{ steps.msi.outputs.product-version }}
+      sha256: ${{ steps.msi.outputs.sha256 }}
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: 🔧 Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      # The publish output normally comes from an upstream job rather than the
+      # repository, so it is downloaded into source-path before packaging.
+      - name: 📥 Download Published Application
+        if: inputs.source-artifact-name != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.source-artifact-name }}
+          path: ${{ inputs.source-path }}
+
+      - name: 🪟 Build MSI
+        id: msi
+        uses: bauer-group/automation-templates/.github/actions/dotnet-msi@main
+        with:
+          source-path: ${{ inputs.source-path }}
+          product-name: ${{ inputs.product-name }}
+          version: ${{ inputs.version }}
+          manufacturer: ${{ inputs.manufacturer }}
+          upgrade-code: ${{ inputs.upgrade-code }}
+          architecture: ${{ inputs.architecture }}
+          wix-project-path: ${{ inputs.wix-project-path }}
+          main-executable: ${{ inputs.main-executable }}
+          create-shortcut: ${{ inputs.create-shortcut }}
+          preprocessor-variables: ${{ inputs.preprocessor-variables }}
+          msbuild-properties: ${{ inputs.msbuild-properties }}
+          wix-extensions: ${{ inputs.wix-extensions }}
+          wix-version: ${{ inputs.wix-version }}
+          accept-eula: ${{ inputs.accept-eula }}
+          output-directory: msi-output
+          output-name: ${{ inputs.output-name }}
+          sign-msi: ${{ inputs.sign-msi }}
+          certificate-base64: ${{ secrets.DOTNET_SIGNING_CERTIFICATE_BASE64 }}
+          certificate-password: ${{ secrets.DOTNET_SIGNING_CERTIFICATE_PASSWORD }}
+          certificate-subject: ${{ inputs.certificate-subject }}
+          timestamp-server: ${{ inputs.timestamp-server }}
+
+      # Only the installer and its checksum. The .wixpdb that WiX writes alongside
+      # is a build artefact for authoring patches, not something to ship.
+      - name: 📦 Upload MSI Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: |
+            msi-output/*.msi
+            msi-output/*.msi.sha256
+          retention-days: ${{ inputs.artifact-retention-days }}
+          if-no-files-found: error
+
+      - name: 🚀 Upload MSI to Release
+        if: inputs.upload-to-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MSI_NAME: ${{ steps.msi.outputs.msi-name }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="${RELEASE_TAG:-v${VERSION}}"
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error title=Release not found::No release tagged '${TAG}' exists, so the MSI has nowhere to go. Run this workflow after the release is created, or set 'release-tag' to an existing tag."
+            exit 1
+          fi
+
+          # --clobber keeps a re-run idempotent instead of failing on an asset that
+          # is already there.
+          gh release upload "$TAG" \
+            "msi-output/${MSI_NAME}" \
+            "msi-output/${MSI_NAME}.sha256" \
+            --clobber
+
+          echo "Uploaded ${MSI_NAME} to release ${TAG}"
+
+      - name: 📊 Step Summary
+        if: always() && steps.msi.outputs.msi-name != ''
+        shell: bash
+        env:
+          MSI_NAME: ${{ steps.msi.outputs.msi-name }}
+          PRODUCT_VERSION: ${{ steps.msi.outputs.product-version }}
+          SHA256: ${{ steps.msi.outputs.sha256 }}
+        run: |
+          {
+            echo "### 🪟 MSI Package"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Installer | \`${MSI_NAME}\` |"
+            echo "| ProductVersion | \`${PRODUCT_VERSION}\` |"
+            echo "| Architecture | \`${{ inputs.architecture }}\` |"
+            echo "| Signed | ${{ inputs.sign-msi && '✅' || '➖' }} |"
+            echo "| SHA-256 | \`${SHA256}\` |"
+            echo ""
+            echo "Install per-machine with:"
+            echo ""
+            echo '```cmd'
+            echo "msiexec /i ${MSI_NAME} /qn"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

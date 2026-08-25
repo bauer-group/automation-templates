@@ -1,0 +1,638 @@
+name: '.NET MSI Packaging'
+description: 'Package a published .NET application as a Windows Installer (MSI) with WiX'
+author: 'BAUER GROUP'
+
+# =============================================================================
+# Builds a classic per-machine MSI from an already-published application folder.
+#
+# MSIX, which dotnet-desktop-build.yml already offers, is not a substitute on the
+# shop floor: it wants a signed package and a modern deployment story, while
+# industrial customers install per-machine from a share, often onto locked-down
+# images, and expect `msiexec /i ... /qn` to work with a real upgrade code and a
+# clean uninstall. That is what this produces.
+#
+# Three authoring shapes, picked from `wix-project-path`:
+#   *.wixproj  -> `dotnet build` (WixToolset.Sdk; full control, custom actions, UI)
+#   *.wxs      -> `wix build`    (hand-authored source, no project file needed)
+#   (empty)    -> a generated per-machine template that installs the whole source
+#                 folder into Program Files, with MajorUpgrade wired up and an
+#                 optional Start Menu shortcut
+#
+# Windows only: the Windows Installer toolchain does not exist elsewhere.
+# =============================================================================
+
+inputs:
+  # --- What to package -------------------------------------------------------
+  source-path:
+    description: 'Directory holding the published application files to package (e.g. publish/win-x64)'
+    required: true
+  product-name:
+    description: 'Product name shown in Add/Remove Programs and used as the install folder name'
+    required: true
+  version:
+    description: 'Version to embed. A semantic-release version with a prerelease suffix is accepted; see the version notes in the docs.'
+    required: true
+  manufacturer:
+    description: 'Manufacturer shown in Add/Remove Programs. Defaults to the repository owner.'
+    required: false
+    default: ''
+  upgrade-code:
+    description: >-
+      Stable GUID identifying the product across all its versions. Required when using
+      the generated template - without a constant one, every version installs
+      side-by-side instead of upgrading. Generate once with `New-Guid` and keep it.
+    required: false
+    default: ''
+  architecture:
+    description: 'Target architecture: x64, x86 or arm64'
+    required: false
+    default: 'x64'
+
+  # --- Authoring -------------------------------------------------------------
+  wix-project-path:
+    description: 'Path to a .wixproj or .wxs. Empty uses the generated per-machine template.'
+    required: false
+    default: ''
+  main-executable:
+    description: 'Executable file name inside source-path. Generated template only, used as the shortcut target.'
+    required: false
+    default: ''
+  create-shortcut:
+    description: 'Add a Start Menu shortcut. Generated template only; requires main-executable.'
+    required: false
+    default: 'false'
+  preprocessor-variables:
+    description: 'Extra WiX preprocessor variables as newline-separated name=value pairs. Passed as -d to `wix build`.'
+    required: false
+    default: ''
+  msbuild-properties:
+    description: 'Extra MSBuild properties for the .wixproj path (e.g. "-p:Foo=bar"). Ignored for .wxs and the generated template.'
+    required: false
+    default: ''
+  wix-extensions:
+    description: 'WiX extensions to add before building, whitespace-separated (e.g. "WixToolset.Util.wixext/7.0.0")'
+    required: false
+    default: ''
+
+  # --- Toolchain -------------------------------------------------------------
+  wix-version:
+    description: 'WiX Toolset version to install. Pinned deliberately: a floating version silently rolled repositories from v6 to v7 and broke them with WIX7015.'
+    required: false
+    default: '7.0.0'
+  accept-eula:
+    description: >-
+      Accept the WiX Open Source Maintenance Fee EULA. WiX v7 and later refuse to run
+      without it; v6 and earlier ignore this. Setting it false makes a v7 build fail
+      with an explanation instead of a raw WIX7015.
+    required: false
+    default: 'true'
+
+  # --- Output ----------------------------------------------------------------
+  output-directory:
+    description: 'Directory the finished .msi and .sha256 are written to'
+    required: false
+    default: 'msi-output'
+  output-name:
+    description: 'MSI file name without extension. Default: <product>-<version>-<architecture>.'
+    required: false
+    default: ''
+
+  # --- Signing ---------------------------------------------------------------
+  sign-msi:
+    description: 'Sign the finished MSI with signtool'
+    required: false
+    default: 'false'
+  certificate-base64:
+    description: 'Base64-encoded PFX certificate. Takes precedence over certificate-subject.'
+    required: false
+    default: ''
+  certificate-password:
+    description: 'Password for the PFX certificate'
+    required: false
+    default: ''
+  certificate-subject:
+    description: 'Subject name of a certificate already in the machine store. Used when no PFX is supplied.'
+    required: false
+    default: ''
+  timestamp-server:
+    description: 'RFC 3161 timestamp server URL'
+    required: false
+    default: 'http://timestamp.digicert.com'
+
+outputs:
+  msi-path:
+    description: 'Path to the finished .msi'
+    value: ${{ steps.package.outputs.msi-path }}
+  msi-name:
+    description: 'File name of the finished .msi'
+    value: ${{ steps.package.outputs.msi-name }}
+  product-version:
+    description: 'The MSI ProductVersion actually embedded (prerelease suffixes removed)'
+    value: ${{ steps.resolve-version.outputs.product-version }}
+  sha256:
+    description: 'SHA-256 checksum of the finished .msi'
+    value: ${{ steps.checksum.outputs.sha256 }}
+
+runs:
+  using: 'composite'
+  steps:
+    # =========================================================================
+    # Version
+    # =========================================================================
+    - name: Resolve MSI Version
+      id: resolve-version
+      shell: bash
+      env:
+        MSI_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        fail() { echo "::error title=$1::$2"; exit 1; }
+
+        RAW="${MSI_VERSION:-}"
+        RAW="$(printf '%s' "$RAW" | tr -d '[:space:]')"
+        RAW="${RAW#v}"
+        RAW="${RAW#V}"
+
+        if [ -z "$RAW" ]; then
+          fail "Missing MSI version" \
+            "The 'version' input is required: an MSI has no meaningful default version, and Windows Installer uses ProductVersion to decide whether a package upgrades an installed one."
+        fi
+
+        FILE_VERSION="$RAW"
+
+        # An MSI ProductVersion carries no prerelease or build metadata, so strip
+        # both. They stay in the file name, which is the only place they can live.
+        CORE="${RAW%%+*}"
+        CORE="${CORE%%-*}"
+        SUFFIX_DROPPED=0
+        [ "$CORE" = "$RAW" ] || SUFFIX_DROPPED=1
+
+        case "$CORE" in
+          ""|*[!0-9.]*|.*|*..*|*.)
+            fail "Unusable MSI version" \
+              "'${FILE_VERSION}' is not a Windows Installer version. ProductVersion must be numeric dotted fields (major.minor.build[.revision]); anything else is rejected by WiX with an error that names neither the input nor the reason."
+            ;;
+        esac
+
+        IFS='.' read -r -a PARTS <<< "$CORE"
+        if [ "${#PARTS[@]}" -gt 4 ]; then
+          fail "Unusable MSI version" \
+            "'${FILE_VERSION}' has ${#PARTS[@]} fields. A Windows Installer ProductVersion has at most four (major.minor.build.revision)."
+        fi
+
+        # Pad to the three fields Windows Installer actually compares.
+        while [ "${#PARTS[@]}" -lt 3 ]; do
+          PARTS+=("0")
+        done
+
+        # 10# forces base 10: a zero-padded field like "08" is otherwise read as
+        # octal and blows up the arithmetic.
+        check_field() {
+          local name="$1" value="$2" max="$3"
+          if [ $((10#$value)) -gt "$max" ]; then
+            fail "MSI version field out of range" \
+              "'${FILE_VERSION}' has ${name}=${value}, but a Windows Installer ProductVersion allows at most ${max} there. A date-based version such as 20260825.1.0 overflows this; use a three-part version instead."
+          fi
+        }
+        check_field "major" "${PARTS[0]}" 255
+        check_field "minor" "${PARTS[1]}" 255
+        check_field "build" "${PARTS[2]}" 65535
+        [ "${#PARTS[@]}" -lt 4 ] || check_field "revision" "${PARTS[3]}" 65535
+
+        PRODUCT_VERSION="$(IFS='.'; printf '%s' "${PARTS[*]}")"
+
+        if [ "$SUFFIX_DROPPED" -eq 1 ]; then
+          echo "::warning title=Prerelease version in an MSI::ProductVersion is '${PRODUCT_VERSION}' - the prerelease or build metadata in '${FILE_VERSION}' cannot be carried in an MSI. Builds differing only in that suffix are indistinguishable to Windows Installer and will not upgrade one another. The full version is kept in the file name."
+        fi
+
+        {
+          echo "product-version=${PRODUCT_VERSION}"
+          echo "file-version=${FILE_VERSION}"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "ProductVersion: ${PRODUCT_VERSION} (file name uses ${FILE_VERSION})"
+
+    # =========================================================================
+    # Source folder + authoring
+    # =========================================================================
+    - name: Resolve Package Source
+      id: resolve-source
+      shell: bash
+      env:
+        SOURCE_PATH: ${{ inputs.source-path }}
+      run: |
+        set -euo pipefail
+
+        if [ ! -d "$SOURCE_PATH" ]; then
+          echo "::error title=Package source not found::'${SOURCE_PATH}' is not a directory. Point 'source-path' at the published application folder - typically the output of a `dotnet publish` step or a downloaded build artifact."
+          exit 1
+        fi
+
+        if [ -z "$(find "$SOURCE_PATH" -type f -print -quit)" ]; then
+          echo "::error title=Package source is empty::'${SOURCE_PATH}' contains no files, so the MSI would install nothing. Check that the publish step ran and that its output landed here."
+          exit 1
+        fi
+
+        # WiX is a native tool: give it a Windows path. `pwd -W` is the Git Bash way
+        # of asking for one; the fallback keeps the step usable off MSYS.
+        ABS="$(cd "$SOURCE_PATH" && { pwd -W 2>/dev/null || pwd; })"
+        echo "source-abs=${ABS}" >> "$GITHUB_OUTPUT"
+        echo "Packaging $(find "$SOURCE_PATH" -type f | wc -l) file(s) from ${ABS}"
+
+    - name: Prepare WiX Authoring
+      id: authoring
+      shell: bash
+      env:
+        WIX_PROJECT_PATH: ${{ inputs.wix-project-path }}
+        PRODUCT_NAME: ${{ inputs.product-name }}
+        UPGRADE_CODE: ${{ inputs.upgrade-code }}
+        MAIN_EXECUTABLE: ${{ inputs.main-executable }}
+        CREATE_SHORTCUT: ${{ inputs.create-shortcut }}
+        SOURCE_ABS: ${{ steps.resolve-source.outputs.source-abs }}
+      run: |
+        set -euo pipefail
+
+        if [ -n "$WIX_PROJECT_PATH" ]; then
+          if [ ! -f "$WIX_PROJECT_PATH" ]; then
+            echo "::error title=WiX project not found::'${WIX_PROJECT_PATH}' does not exist. Give a path to a .wixproj or a .wxs, or leave 'wix-project-path' empty to use the generated template."
+            exit 1
+          fi
+          case "$WIX_PROJECT_PATH" in
+            *.wixproj) MODE=msbuild ;;
+            *.wxs)     MODE=cli ;;
+            *)
+              echo "::error title=Unsupported WiX source::'${WIX_PROJECT_PATH}' is neither a .wixproj nor a .wxs. Those are the two shapes this action can build."
+              exit 1
+              ;;
+          esac
+          echo "mode=${MODE}" >> "$GITHUB_OUTPUT"
+          echo "source-file=${WIX_PROJECT_PATH}" >> "$GITHUB_OUTPUT"
+          echo "generated=false" >> "$GITHUB_OUTPUT"
+          echo "Using ${MODE} build for ${WIX_PROJECT_PATH}"
+          exit 0
+        fi
+
+        # --- Generated template ------------------------------------------------
+        # An UpgradeCode is what ties every version of a product together. Left to
+        # vary, each build installs alongside the last instead of replacing it, and
+        # the machine slowly fills with copies. There is no safe default, so this is
+        # a hard requirement rather than a generated GUID.
+        if [ -z "$UPGRADE_CODE" ]; then
+          echo "::error title=Missing upgrade code::'upgrade-code' is required when using the generated template. It must be the SAME GUID for every version of this product - it is how Windows Installer recognises an upgrade. Generate one once with 'New-Guid' (PowerShell) or 'uuidgen', commit it to the workflow, and never change it."
+          exit 1
+        fi
+
+        SHORTCUT_ARGS=""
+        if [ "$CREATE_SHORTCUT" = "true" ]; then
+          if [ -z "$MAIN_EXECUTABLE" ]; then
+            echo "::error title=Shortcut without a target::'create-shortcut' is enabled but 'main-executable' is empty, so the shortcut would point at nothing. Set it to the executable file name inside source-path."
+            exit 1
+          fi
+          if [ ! -f "${SOURCE_ABS}/${MAIN_EXECUTABLE}" ]; then
+            echo "::error title=Shortcut target not found::'${MAIN_EXECUTABLE}' does not exist in the package source. A shortcut to a missing file installs successfully and then fails for the user, so this is rejected here."
+            exit 1
+          fi
+          SHORTCUT_ARGS="-d Shortcut=1 -d MainExecutable=${MAIN_EXECUTABLE}"
+        fi
+
+        mkdir -p .wix-generated
+        cat > .wix-generated/Package.wxs <<'WXS'
+        <?xml version="1.0" encoding="utf-8"?>
+        <!--
+          Generated by bauer-group/automation-templates (dotnet-msi).
+          Installs the whole published folder per-machine under Program Files.
+          Supply your own .wxs or .wixproj for services, custom actions or UI.
+        -->
+        <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+          <Package
+              Name="$(var.ProductName)"
+              Manufacturer="$(var.Manufacturer)"
+              Version="$(var.ProductVersion)"
+              UpgradeCode="$(var.UpgradeCode)"
+              Scope="perMachine"
+              Compressed="yes">
+
+            <!-- Removes the previously installed version instead of stacking a second
+                 copy beside it. Without this an MSI never upgrades anything. -->
+            <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed. Uninstall it before installing this version." />
+            <MediaTemplate EmbedCab="yes" />
+
+            <!-- ProgramFiles6432Folder resolves to Program Files on a 64-bit package
+                 and Program Files (x86) on a 32-bit one, so one authoring covers both. -->
+            <StandardDirectory Id="ProgramFiles6432Folder">
+              <Directory Id="INSTALLFOLDER" Name="$(var.ProductName)" />
+            </StandardDirectory>
+
+            <Feature Id="Main" Title="$(var.ProductName)" Level="1">
+              <ComponentGroupRef Id="ApplicationFiles" />
+        <?ifdef Shortcut ?>
+              <ComponentGroupRef Id="ApplicationShortcuts" />
+        <?endif?>
+            </Feature>
+          </Package>
+
+          <Fragment>
+            <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+              <Files Include="$(var.PublishDir)\**" />
+            </ComponentGroup>
+          </Fragment>
+
+        <?ifdef Shortcut ?>
+          <Fragment>
+            <StandardDirectory Id="ProgramMenuFolder">
+              <Directory Id="ApplicationProgramsFolder" Name="$(var.ProductName)" />
+            </StandardDirectory>
+            <ComponentGroup Id="ApplicationShortcuts" Directory="ApplicationProgramsFolder">
+              <Component Id="StartMenuShortcut" Guid="*">
+                <Shortcut Id="AppStartMenuShortcut"
+                          Name="$(var.ProductName)"
+                          Target="[INSTALLFOLDER]$(var.MainExecutable)"
+                          WorkingDirectory="INSTALLFOLDER" />
+                <RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+                <!-- A shortcut cannot be a component key path, so the component needs
+                     a registry value to be keyed on. This is the standard idiom. -->
+                <RegistryValue Root="HKLM"
+                               Key="Software\$(var.Manufacturer)\$(var.ProductName)"
+                               Name="installed" Type="integer" Value="1" KeyPath="yes" />
+              </Component>
+            </ComponentGroup>
+          </Fragment>
+        <?endif?>
+        </Wix>
+        WXS
+
+        # An XML declaration is only valid at byte 0. The step this action replaces in
+        # dotnet-desktop-build.yml generated its config from an indented PowerShell
+        # here-string and so wrote a file that no XML parser would accept; the bug was
+        # invisible because the secret that triggered it was rarely set. Assert the
+        # invariant rather than trusting the indentation to stay right.
+        if [ "$(head -c 5 .wix-generated/Package.wxs)" != "<?xml" ]; then
+          echo "::error title=Generated WiX source is malformed::The XML declaration does not start at byte 0 of the generated Package.wxs, so WiX will reject it. The here-doc in this action has been re-indented - fix its indentation."
+          exit 1
+        fi
+
+        echo "mode=cli" >> "$GITHUB_OUTPUT"
+        echo "source-file=.wix-generated/Package.wxs" >> "$GITHUB_OUTPUT"
+        echo "generated=true" >> "$GITHUB_OUTPUT"
+        echo "shortcut-args=${SHORTCUT_ARGS}" >> "$GITHUB_OUTPUT"
+        echo "Using the generated per-machine template"
+
+    # =========================================================================
+    # Toolchain
+    # =========================================================================
+    - name: Install WiX Toolset
+      id: wix
+      shell: bash
+      env:
+        WIX_VERSION: ${{ inputs.wix-version }}
+        ACCEPT_EULA: ${{ inputs.accept-eula }}
+        WIX_EXTENSIONS: ${{ inputs.wix-extensions }}
+        MODE: ${{ steps.authoring.outputs.mode }}
+      run: |
+        set -euo pipefail
+
+        MAJOR="${WIX_VERSION%%.*}"
+        EULA_ID="wix${MAJOR}"
+
+        # v6 and earlier have no EULA gate and reject the flag as an unknown option,
+        # so it is only ever passed to v7+.
+        EULA_CLI=""
+        EULA_MSBUILD=""
+        if [ "$MAJOR" -ge 7 ] 2>/dev/null; then
+          if [ "$ACCEPT_EULA" = "true" ]; then
+            EULA_CLI="--acceptEula ${EULA_ID}"
+            EULA_MSBUILD="-p:AcceptEula=${EULA_ID}"
+          else
+            echo "::error title=WiX EULA not accepted::WiX v${MAJOR} refuses to run unless the Open Source Maintenance Fee EULA is accepted (error WIX7015), and 'accept-eula' is false. Either set it to true - which accepts the EULA on your organisation's behalf on every run - or pin 'wix-version' to a 6.x release, which has no acceptance gate. See https://wixtoolset.org/osmf/"
+            exit 1
+          fi
+        fi
+
+        {
+          echo "eula-cli=${EULA_CLI}"
+          echo "eula-msbuild=${EULA_MSBUILD}"
+        } >> "$GITHUB_OUTPUT"
+
+        # The .wixproj path gets the toolset from WixToolset.Sdk via NuGet, so the
+        # global tool is only needed for `wix build`.
+        if [ "$MODE" != "cli" ]; then
+          echo "MSBuild build - WixToolset.Sdk supplies the toolset, skipping the global tool."
+          exit 0
+        fi
+
+        dotnet tool install --global wix --version "$WIX_VERSION"
+        export PATH="$PATH:$HOME/.dotnet/tools"
+        echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+        # shellcheck disable=SC2086
+        wix --version $EULA_CLI
+
+        # Caching an extension is only half of it - the build still has to reference
+        # each one with -ext, or its elements are simply undefined at compile time.
+        EXT_ARGS=""
+        for ext in $WIX_EXTENSIONS; do
+          echo "Adding WiX extension: $ext"
+          # shellcheck disable=SC2086
+          wix extension add --global "$ext" $EULA_CLI
+          EXT_ARGS="${EXT_ARGS} -ext ${ext}"
+        done
+        echo "ext-args=${EXT_ARGS# }" >> "$GITHUB_OUTPUT"
+
+    # =========================================================================
+    # Build
+    # =========================================================================
+    - name: Build MSI
+      id: package
+      shell: bash
+      env:
+        MODE: ${{ steps.authoring.outputs.mode }}
+        SOURCE_FILE: ${{ steps.authoring.outputs.source-file }}
+        GENERATED: ${{ steps.authoring.outputs.generated }}
+        SHORTCUT_ARGS: ${{ steps.authoring.outputs.shortcut-args }}
+        SOURCE_ABS: ${{ steps.resolve-source.outputs.source-abs }}
+        PRODUCT_NAME: ${{ inputs.product-name }}
+        MANUFACTURER: ${{ inputs.manufacturer }}
+        PRODUCT_VERSION: ${{ steps.resolve-version.outputs.product-version }}
+        FILE_VERSION: ${{ steps.resolve-version.outputs.file-version }}
+        UPGRADE_CODE: ${{ inputs.upgrade-code }}
+        ARCHITECTURE: ${{ inputs.architecture }}
+        OUTPUT_DIR: ${{ inputs.output-directory }}
+        OUTPUT_NAME: ${{ inputs.output-name }}
+        PREPROCESSOR_VARIABLES: ${{ inputs.preprocessor-variables }}
+        MSBUILD_PROPERTIES: ${{ inputs.msbuild-properties }}
+        EULA_CLI: ${{ steps.wix.outputs.eula-cli }}
+        EULA_MSBUILD: ${{ steps.wix.outputs.eula-msbuild }}
+      run: |
+        set -euo pipefail
+
+        case "$ARCHITECTURE" in
+          x64|x86|arm64) : ;;
+          *)
+            echo "::error title=Unsupported architecture::'${ARCHITECTURE}' is not a Windows Installer architecture. Use x64, x86 or arm64."
+            exit 1
+            ;;
+        esac
+
+        MANUFACTURER="${MANUFACTURER:-${GITHUB_REPOSITORY_OWNER:-Unknown}}"
+
+        if [ -z "$OUTPUT_NAME" ]; then
+          SLUG="$(printf '%s' "$PRODUCT_NAME" | tr -c '[:alnum:]._-' '-' | sed -e 's/-\{2,\}/-/g' -e 's/^-//' -e 's/-$//')"
+          OUTPUT_NAME="${SLUG}-${FILE_VERSION}-${ARCHITECTURE}"
+        fi
+
+        mkdir -p "$OUTPUT_DIR"
+        OUT_ABS="$(cd "$OUTPUT_DIR" && { pwd -W 2>/dev/null || pwd; })"
+        MSI_PATH="${OUTPUT_DIR}/${OUTPUT_NAME}.msi"
+
+        if [ "$MODE" = "msbuild" ]; then
+          # The .wixproj owns its own DefineConstants; these arrive as plain MSBuild
+          # properties for it to map in. Passing -p:DefineConstants= here instead
+          # would overwrite whatever the project defines.
+          # shellcheck disable=SC2086
+          dotnet build "$SOURCE_FILE" \
+            --configuration Release \
+            $EULA_MSBUILD \
+            -p:ProductVersion="$PRODUCT_VERSION" \
+            -p:ProductName="$PRODUCT_NAME" \
+            -p:Manufacturer="$MANUFACTURER" \
+            -p:UpgradeCode="$UPGRADE_CODE" \
+            -p:PublishDir="$SOURCE_ABS" \
+            -p:OutputPath="${OUT_ABS}\\" \
+            -p:Platform="$ARCHITECTURE" \
+            $MSBUILD_PROPERTIES
+
+          BUILT="$(find "$OUTPUT_DIR" -maxdepth 2 -name '*.msi' -print -quit)"
+          if [ -z "$BUILT" ]; then
+            echo "::error title=No MSI produced::The .wixproj build reported success but produced no .msi under '${OUTPUT_DIR}'. Check that its OutputType is Package."
+            exit 1
+          fi
+          [ "$BUILT" = "$MSI_PATH" ] || mv "$BUILT" "$MSI_PATH"
+        else
+          DEFINES=()
+          if [ "$GENERATED" = "true" ]; then
+            DEFINES+=(-d "ProductName=${PRODUCT_NAME}")
+            DEFINES+=(-d "Manufacturer=${MANUFACTURER}")
+            DEFINES+=(-d "ProductVersion=${PRODUCT_VERSION}")
+            DEFINES+=(-d "UpgradeCode=${UPGRADE_CODE}")
+            DEFINES+=(-d "PublishDir=${SOURCE_ABS}")
+          fi
+
+          # Caller-supplied -d values, one name=value per line.
+          while IFS= read -r pair; do
+            pair="$(printf '%s' "$pair" | tr -d '\r')"
+            [ -n "$pair" ] || continue
+            case "$pair" in
+              *=*) DEFINES+=(-d "$pair") ;;
+              *)
+                echo "::error title=Malformed preprocessor variable::'${pair}' is not name=value. Each line of 'preprocessor-variables' must be a single name=value pair."
+                exit 1
+                ;;
+            esac
+          done <<< "$PREPROCESSOR_VARIABLES"
+
+          # shellcheck disable=SC2086
+          wix build $EULA_CLI -nologo \
+            -arch "$ARCHITECTURE" \
+            "${DEFINES[@]}" \
+            $SHORTCUT_ARGS \
+            ${EXT_ARGS:-} \
+            -o "$MSI_PATH" \
+            "$SOURCE_FILE"
+        fi
+
+        if [ ! -f "$MSI_PATH" ]; then
+          echo "::error title=No MSI produced::Expected '${MSI_PATH}' after the build, but it is not there."
+          exit 1
+        fi
+
+        {
+          echo "msi-path=${MSI_PATH}"
+          echo "msi-name=${OUTPUT_NAME}.msi"
+        } >> "$GITHUB_OUTPUT"
+        echo "Built ${MSI_PATH} ($(du -k "$MSI_PATH" | cut -f1) KB)"
+
+    # =========================================================================
+    # Signing
+    # =========================================================================
+    - name: Sign MSI
+      if: inputs.sign-msi == 'true'
+      shell: pwsh
+      env:
+        MSI_PATH: ${{ steps.package.outputs.msi-path }}
+        CERT_BASE64: ${{ inputs.certificate-base64 }}
+        CERT_PASSWORD: ${{ inputs.certificate-password }}
+        CERT_SUBJECT: ${{ inputs.certificate-subject }}
+        TIMESTAMP_SERVER: ${{ inputs.timestamp-server }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        # signtool ships with the Windows SDK and is not on PATH by default on the
+        # hosted images, so resolve it explicitly. Picking the highest version keeps
+        # us on the newest SDK the image happens to carry.
+        $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
+        if (-not $signtool) {
+          $candidates = Get-ChildItem -Path 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\' } |
+            Sort-Object { [version]($_.Directory.Parent.Name) } -Descending
+          if (-not $candidates) {
+            Write-Host "::error title=signtool not found::sign-msi is enabled but signtool.exe is not on PATH and no Windows SDK copy was found. Install the Windows SDK on the runner or disable signing."
+            exit 1
+          }
+          $signtoolPath = $candidates[0].FullName
+        } else {
+          $signtoolPath = $signtool.Source
+        }
+        Write-Host "Using $signtoolPath"
+
+        $certPath = $null
+        try {
+          if ($env:CERT_BASE64) {
+            $certPath = Join-Path $env:RUNNER_TEMP 'msi-signing.pfx'
+            [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:CERT_BASE64))
+            $args = @('sign', '/f', $certPath, '/p', $env:CERT_PASSWORD)
+          } elseif ($env:CERT_SUBJECT) {
+            $args = @('sign', '/n', $env:CERT_SUBJECT)
+          } else {
+            Write-Host "::error title=No signing certificate::sign-msi is enabled but neither a PFX (DOTNET_SIGNING_CERTIFICATE_BASE64) nor a certificate subject was supplied."
+            exit 1
+          }
+
+          # /tr + /td SHA256 is an RFC 3161 timestamp. The legacy /t Authenticode
+          # timestamp is SHA-1 and is rejected by current Windows policy.
+          $args += @('/fd', 'SHA256', '/td', 'SHA256', '/tr', $env:TIMESTAMP_SERVER, $env:MSI_PATH)
+
+          & $signtoolPath @args
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error title=MSI signing failed::signtool exited with $LASTEXITCODE."
+            exit 1
+          }
+
+          & $signtoolPath verify /pa /v $env:MSI_PATH
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error title=MSI signature verification failed::The MSI was signed but does not verify. It would be rejected on a machine with SmartScreen or WDAC enabled."
+            exit 1
+          }
+          Write-Host "MSI signed and verified"
+        }
+        finally {
+          if ($certPath -and (Test-Path $certPath)) { Remove-Item $certPath -Force }
+        }
+
+    # =========================================================================
+    # Checksum
+    # =========================================================================
+    - name: Checksum MSI
+      id: checksum
+      shell: pwsh
+      env:
+        MSI_PATH: ${{ steps.package.outputs.msi-path }}
+        MSI_NAME: ${{ steps.package.outputs.msi-name }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $hash = (Get-FileHash -Path $env:MSI_PATH -Algorithm SHA256).Hash.ToLower()
+
+        # Two spaces then the bare file name: the format `sha256sum -c` expects, so a
+        # customer can verify the download with the tool they already have.
+        "$hash  $($env:MSI_NAME)" | Set-Content -Path "$($env:MSI_PATH).sha256" -Encoding ascii -NoNewline
+        "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        Write-Host "SHA-256: $hash"

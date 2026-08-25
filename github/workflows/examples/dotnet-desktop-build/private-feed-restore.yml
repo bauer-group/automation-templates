@@ -1,0 +1,63 @@
+name: Desktop Build (private NuGet feed)
+
+# A desktop application that consumes packages from a private GitHub Packages feed.
+#
+# The repository keeps its own nuget.config, and the workflow leaves it exactly as
+# committed - packageSourceMapping included. The credential is passed through the
+# environment as NuGetPackageSourceCredentials_<source>, which NuGet reads before it
+# reads any config file, so nothing is ever written to disk.
+#
+#   nuget.config in the repository root:
+#
+#     <?xml version="1.0" encoding="utf-8"?>
+#     <configuration>
+#       <packageSources>
+#         <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+#         <add key="GITHUB" value="https://nuget.pkg.github.com/bauer-group/index.json" />
+#       </packageSources>
+#       <packageSourceMapping>
+#         <packageSource key="nuget.org">
+#           <package pattern="*" />
+#         </packageSource>
+#         <packageSource key="GITHUB">
+#           <package pattern="BAUERGROUP.Shared.Industrial.*" />
+#         </packageSource>
+#       </packageSourceMapping>
+#     </configuration>
+#
+# `nuget-source-name` must match that key EXACTLY. NuGet resolves the credential
+# with Environment.GetEnvironmentVariable, which is case-insensitive on Windows and
+# case-SENSITIVE on Linux - so "github" instead of "GITHUB" builds fine on
+# windows-latest and fails the day the job moves to ubuntu-latest. The workflow
+# checks the spelling up front and fails with both spellings named rather than
+# letting it surface as a bare HTTP 401.
+#
+# Secret: DOTNET_NUGET_RESTORE_CREDENTIALS holds the PAT alone (read:packages scope);
+# the workflow composes Username=...;Password=... around it. It is deliberately NOT
+# DOTNET_NUGET_PUBLISH_API_KEY - a NuGet.org API key is a publish credential and
+# GitHub Packages does not accept one for restore.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-desktop-build.yml@main
+    with:
+      dotnet-version: '8.0.x'
+      solution-path: 'src/MyApp.sln'
+      configurations: '["Release"]'
+      platforms: '["x64"]'
+      publish-type: 'self-contained'
+
+      # The package source key in the repository's nuget.config, spelled exactly.
+      nuget-source-name: 'GITHUB'
+
+      run-tests: true
+      upload-artifacts: true
+    secrets: inherit

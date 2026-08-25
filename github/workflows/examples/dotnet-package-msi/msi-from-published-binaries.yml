@@ -1,0 +1,80 @@
+name: Package MSI
+
+# End-to-end example: publish a self-contained single-file application, package it
+# as a per-machine MSI, sign it, and attach it to the GitHub Release.
+#
+# No WiX authoring is needed for this shape - leaving `wix-project-path` empty uses
+# the generated template, which installs the whole published folder into
+# Program Files with MajorUpgrade wired up.
+
+on:
+  release:
+    types: [ published ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to package (e.g. 1.2.3)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Publish the application and hand it to the packaging job as an artifact
+  # ---------------------------------------------------------------------------
+  publish:
+    name: Publish win-x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish
+        shell: bash
+        run: |
+          dotnet publish src/MyApp/MyApp.csproj \
+            --configuration Release \
+            --runtime win-x64 \
+            --self-contained true \
+            --output publish \
+            -p:PublishSingleFile=true \
+            -p:Version=${{ github.event.release.tag_name && github.event.release.tag_name || inputs.version }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-win-x64
+          path: publish
+
+  # ---------------------------------------------------------------------------
+  # 2. Package it
+  # ---------------------------------------------------------------------------
+  msi:
+    name: Package MSI
+    needs: publish
+    permissions:
+      contents: write   # attach the installer to the Release
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-package-msi.yml@main
+    with:
+      source-artifact-name: 'app-win-x64'
+      source-path: 'publish'
+
+      product-name: 'MyApp'
+      manufacturer: 'BAUER GROUP'
+      version: ${{ github.event.release.tag_name || inputs.version }}
+
+      # Generate this ONCE with `New-Guid` and never change it. It is how Windows
+      # Installer recognises that a new MSI replaces the installed one rather than
+      # installing a second copy beside it.
+      upgrade-code: '3f2504e0-4f89-41d3-9a0c-0305e82c3301'
+
+      architecture: 'x64'
+      main-executable: 'MyApp.exe'
+      create-shortcut: true
+
+      sign-msi: true
+      upload-to-release: true
+    secrets: inherit

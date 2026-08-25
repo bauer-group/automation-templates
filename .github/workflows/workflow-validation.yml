@@ -63,3 +63,7 @@ jobs:
       - name: "🧪 dotnet-nuget-auth: private feed credentials"
         shell: bash
         run: bash .github/actions/dotnet-nuget-auth/tests/configure-credentials.test.sh
+
+      - name: "🧪 dotnet-msi: MSI version resolution"
+        shell: bash
+        run: bash .github/actions/dotnet-msi/tests/resolve-msi-version.test.sh

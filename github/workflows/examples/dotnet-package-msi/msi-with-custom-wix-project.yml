@@ -1,0 +1,66 @@
+name: Package MSI (custom WiX project)
+
+# For installers that need more than "copy a folder into Program Files" - a Windows
+# service, custom actions, a UI sequence, per-user registry keys - author a WiX
+# project in the repository and point the workflow at it.
+#
+# The .wixproj owns its own DefineConstants; the workflow passes plain MSBuild
+# properties for it to map in, so the project decides what reaches the preprocessor:
+#
+#   <Project Sdk="WixToolset.Sdk/7.0.0">
+#     <PropertyGroup>
+#       <OutputName>MyApp</OutputName>
+#       <OutputType>Package</OutputType>
+#       <DefineConstants>
+#         ProductName=$(ProductName);
+#         Manufacturer=$(Manufacturer);
+#         ProductVersion=$(ProductVersion);
+#         UpgradeCode=$(UpgradeCode);
+#         PublishDir=$(PublishDir)
+#       </DefineConstants>
+#     </PropertyGroup>
+#     <ItemGroup>
+#       <PackageReference Include="WixToolset.Util.wixext" Version="7.0.0" />
+#     </ItemGroup>
+#   </Project>
+#
+# A .wxs without a project file works too - give its path instead and the workflow
+# builds it with `wix build`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to package'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  msi:
+    name: Package MSI
+    permissions:
+      contents: read
+    uses: bauer-group/automation-templates/.github/workflows/dotnet-package-msi.yml@main
+    with:
+      source-artifact-name: 'app-win-x64'
+      source-path: 'publish'
+
+      wix-project-path: 'installer/MyApp.Installer.wixproj'
+
+      product-name: 'MyApp'
+      manufacturer: 'BAUER GROUP'
+      version: ${{ inputs.version }}
+      upgrade-code: '3f2504e0-4f89-41d3-9a0c-0305e82c3301'
+      architecture: 'x64'
+
+      # Extensions must be referenced at build time, not merely installed - the
+      # workflow adds each one to the cache AND passes it as -ext.
+      wix-extensions: 'WixToolset.Util.wixext/7.0.0'
+
+      # Anything the standard inputs do not expose.
+      msbuild-properties: '-p:ServiceAccount=LocalSystem'
+
+      sign-msi: true
+    secrets: inherit
