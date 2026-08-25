@@ -931,7 +931,7 @@ jobs:
         # comparison was always false and this step never ran. Bare truthiness is
         # correct for a boolean input.
         if: inputs.collect-coverage && env.HAS_CODECOV_TOKEN == 'true'
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         env:
           HAS_CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN != '' }}
         with:
