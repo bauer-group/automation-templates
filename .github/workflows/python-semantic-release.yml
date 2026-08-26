@@ -296,7 +296,7 @@ jobs:
   # Semantic Release - The main event (MOVED UP)
   release:
     name: 🚀 Semantic Release
-    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_call') && (needs.test-and-quality.result == 'success' || needs.test-and-quality.result == 'skipped') && (needs.security-scan.result == 'success' || needs.security-scan.result == 'skipped') && (needs.license-compliance.result == 'success' || needs.license-compliance.result == 'skipped')
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (needs.test-and-quality.result == 'success' || needs.test-and-quality.result == 'skipped') && (needs.security-scan.result == 'success' || needs.security-scan.result == 'skipped') && (needs.license-compliance.result == 'success' || needs.license-compliance.result == 'skipped')
     needs: [test-and-quality, security-scan, license-compliance]
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     concurrency: release
@@ -511,7 +511,7 @@ jobs:
   # Pipeline summary
   pipeline-summary:
     name: 📊 Pipeline Summary
-    if: always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call')
+    if: always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call')
     needs: [test-and-quality, security-scan, license-compliance, release, pypi-publish, update-documentation, update-security]
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     
