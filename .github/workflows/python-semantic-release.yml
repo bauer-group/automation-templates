@@ -323,7 +323,14 @@ jobs:
       - name: 📦 Install python-semantic-release and build tools
         run: |
           python -m pip install --upgrade pip
-          pip install python-semantic-release build
+          # GitPython 3.1.60 (2026-08-25) removed Actor.name_email_regex, which
+          # python-semantic-release 10.6.1 still calls while loading its config
+          # (cli/config.py). Unpinned, every release run dies with
+          # "type object 'Actor' has no attribute 'name_email_regex'".
+          # PSR's fix is merged on main but unreleased -- REMOVE THIS PIN once a
+          # release newer than 10.6.1 ships. Tracking:
+          # https://github.com/python-semantic-release/python-semantic-release/issues/1476
+          pip install python-semantic-release "GitPython<3.1.60" build
           
           # Install tomli for Python <3.11 compatibility (needed for pyproject.toml parsing)
           python -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)" || pip install tomli
