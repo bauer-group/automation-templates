@@ -124,7 +124,7 @@ jobs:
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -148,7 +148,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -269,7 +269,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

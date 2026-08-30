@@ -328,7 +328,7 @@ jobs:
       trigger-type: ${{ needs.validate.outputs.trigger-type }}
     steps:
       - name: 📥 Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: ${{ inputs.fetch-depth }}
 

@@ -54,7 +54,7 @@ jobs:
       review-result: ${{ steps.review.outcome }}
     steps:
       - name: 🚀 Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🔍 Dependency Review
         id: review

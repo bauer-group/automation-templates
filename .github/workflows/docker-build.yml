@@ -427,7 +427,7 @@ jobs:
     
     steps:
       - name: 📥 Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: ${{ inputs.checkout-fetch-depth }}
           lfs: ${{ inputs.checkout-lfs }}
@@ -550,7 +550,7 @@ jobs:
     
     steps:
       - name: 📥 Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # README sync only needs the working-tree README; skip full history + LFS blobs.
           fetch-depth: 1
@@ -695,7 +695,7 @@ jobs:
     steps:
       - name: 📥 Checkout Repository
         if: inputs.deploy-enabled == true
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🚀 Deploy Docker Image
         if: inputs.deploy-enabled == true
