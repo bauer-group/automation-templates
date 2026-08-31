@@ -27,7 +27,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0  # Full history for better analysis
       
@@ -90,7 +90,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       
       - name: 🔨 Build for Analysis
         uses: bauer-group/automation-templates/.github/actions/makefile-build@main
@@ -178,7 +178,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       
       - name: 📦 Install Vulnerability Scanners
         run: |
@@ -225,7 +225,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       
       - name: 📋 License Compliance Check
         uses: bauer-group/automation-templates/.github/actions/license-compliance@main
@@ -256,7 +256,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       
       - name: 📦 Install Security Tools
         run: |

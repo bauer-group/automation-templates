@@ -551,7 +551,7 @@ jobs:
           if [ "${{ inputs.include-private }}" = "true" ] && [ -n "${{ secrets.GITHUB_PAT }}" ]; then
             echo "🔄 Resetting git credentials to github.token for push operations..."
 
-            # actions/checkout@v6 uses includeIf.gitdir with external credential files
+            # actions/checkout@v7 uses includeIf.gitdir with external credential files
             # We need to update the credential in that file, not add a new extraheader
             # This prevents "Duplicate header: Authorization" errors
 

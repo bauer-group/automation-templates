@@ -28,7 +28,7 @@ jobs:
       id-token: write
       attestations: write    # Required!
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: 📋 Generate SBOM
         run: trivy fs --format cyclonedx --output sbom.cdx.json .

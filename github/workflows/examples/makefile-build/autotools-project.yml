@@ -61,7 +61,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       
       - name: 🔧 Test Installation
         uses: bauer-group/automation-templates/.github/actions/makefile-build@main
@@ -81,7 +81,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       
       - name: 📚 Build Documentation
         uses: bauer-group/automation-templates/.github/actions/makefile-build@main

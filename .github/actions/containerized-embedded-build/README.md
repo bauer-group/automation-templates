@@ -77,7 +77,7 @@ seconds instead of minutes.
 ### Minimal example (firmware)
 
 ```yaml
-- uses: actions/checkout@v6
+- uses: actions/checkout@v7
   with:
     submodules: recursive
 
@@ -95,7 +95,7 @@ strategy:
     board: [rpbridge_rp2354b, rpbridge_pico2]
 
 steps:
-  - uses: actions/checkout@v6
+  - uses: actions/checkout@v7
     with:
       submodules: recursive
   - uses: bauer-group/automation-templates/.github/actions/containerized-embedded-build@main

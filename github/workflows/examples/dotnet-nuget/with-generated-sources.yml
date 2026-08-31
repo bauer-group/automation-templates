@@ -73,7 +73,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout release tag
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: refs/tags/v${{ needs.release.outputs.version }}
           fetch-depth: 1

@@ -413,7 +413,7 @@ skips = ["B101", "B601"]
 
 1. **Caching**
    ```yaml
-   - uses: actions/setup-python@v6
+   - uses: actions/setup-python@v7
      with:
        python-version: "3.12"
        cache: 'pip'
@@ -447,7 +447,7 @@ python: "3.12"
 script: pytest
 
 # Nachher (GitHub Actions)
-- uses: actions/setup-python@v6
+- uses: actions/setup-python@v7
   with:
     python-version: "3.12"
 - run: pytest
@@ -464,7 +464,7 @@ test:
     - pytest
 
 # Nachher (GitHub Actions)
-- uses: actions/setup-python@v6
+- uses: actions/setup-python@v7
   with:
     python-version: "3.12"
     cache: 'pip'

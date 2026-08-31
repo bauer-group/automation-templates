@@ -467,7 +467,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       
       - name: Setup Compiler
         run: |
@@ -524,7 +524,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
         with:
           platforms: linux/${{ matrix.arch }}
       
@@ -704,7 +704,7 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: bauer-group/automation-templates/.github/actions/gitleaks-scan@main
   
   build:
@@ -868,7 +868,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Deploy Documentation
         uses: peaceiris/actions-gh-pages@v3
         with:
