@@ -76,11 +76,17 @@ jobs:
 
       - name: 🔍 Check if workflow should run
         id: should-run
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
+          GIT_REF_TYPE: ${{ github.ref_type }}
+          GIT_REF: ${{ github.ref }}
         run: |
           echo "🔍 Determining if workflow should run..."
           echo "Event: ${{ github.event_name }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "Ref Type: ${{ github.ref_type }}"
+          echo "Ref: $GIT_REF"
+          echo "Ref Type: $GIT_REF_TYPE"
           echo "Force Update: ${{ inputs.force-update }}"
           
           # Always run if force-update is true (from manual trigger)
@@ -92,8 +98,8 @@ jobs:
           fi
           
           # Always run for tags - update README with new version
-          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
-            echo "🏷️ ✅ RUNNING FOR TAG: ${{ github.ref_name }}"
+          if [[ "$GIT_REF" == refs/tags/* ]] || [[ "$GIT_REF_TYPE" == "tag" ]]; then
+            echo "🏷️ ✅ RUNNING FOR TAG: $GIT_REF_NAME"
             echo "🏷️ Updating README with new version information"
             echo "should_run=true" >> "$GITHUB_OUTPUT"
             echo "skip_reason=" >> "$GITHUB_OUTPUT"
@@ -319,6 +325,11 @@ jobs:
           fi
 
       - name: 📊 Documentation Summary
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
+          GIT_REF: ${{ github.ref }}
         run: |
           echo "### 📄 Documentation Validation Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -346,11 +357,11 @@ jobs:
             echo "- Current repository metadata" >> "$GITHUB_STEP_SUMMARY"
             echo "- Modular workflow architecture documentation" >> "$GITHUB_STEP_SUMMARY"
             
-            if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            if [[ "$GIT_REF" == refs/tags/* ]]; then
               echo "" >> "$GITHUB_STEP_SUMMARY"
               echo "🏷️ **Tag Details:**" >> "$GITHUB_STEP_SUMMARY"
-              echo "- Tag: ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
-              echo "- Ref: ${{ github.ref }}" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Tag: $GIT_REF_NAME" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Ref: $GIT_REF" >> "$GITHUB_STEP_SUMMARY"
               echo "- Triggered by: Tag push" >> "$GITHUB_STEP_SUMMARY"
             fi
           else

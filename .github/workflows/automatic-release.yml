@@ -194,13 +194,17 @@ jobs:
     
     steps:
       - name: 📊 Generate Pipeline Summary
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
           echo "### 🔄 Modular CI/CD Pipeline Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Repository:** automation-templates" >> "$GITHUB_STEP_SUMMARY"
           echo "**Architecture:** Modular Workflow Components" >> "$GITHUB_STEP_SUMMARY"
           echo "**Event:** ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Branch:** ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Branch:** $GIT_REF_NAME" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           
           echo "| Module | Status | Details |" >> "$GITHUB_STEP_SUMMARY"

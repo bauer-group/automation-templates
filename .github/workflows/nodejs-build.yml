@@ -957,6 +957,10 @@ jobs:
       
       - name: 🐳 Push Docker Image
         if: inputs.build-docker && inputs.docker-registry != ''
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF: ${{ github.ref }}
         run: |
           echo "${{ secrets.DOCKER_REGISTRY_PASSWORD }}" | docker login ${{ inputs.docker-registry }} -u "${{ secrets.DOCKER_REGISTRY_USERNAME }}" --password-stdin
           
@@ -965,7 +969,7 @@ jobs:
           docker push "$FULL_IMAGE_NAME"
           
           # Push latest tag for main branch
-          if [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
+          if [ "$GIT_REF" = "refs/heads/main" ] || [ "$GIT_REF" = "refs/heads/master" ]; then
             LATEST_TAG="${{ inputs.docker-registry }}/${{ inputs.docker-image-name }}:latest"
             docker tag "${{ steps.docker.outputs.image }}" "$LATEST_TAG"
             docker push "$LATEST_TAG"

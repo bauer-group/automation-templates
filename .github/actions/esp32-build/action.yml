@@ -89,14 +89,19 @@ runs:
     - name: Determine Version
       id: version
       shell: bash
+      env:
+        # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+        # It therefore travels through the environment, never the script body.
+        GIT_REF_NAME: ${{ github.ref_name }}
+        GIT_REF: ${{ github.ref }}
       run: |
-        if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-          VERSION="${{ github.ref_name }}"
+        if [[ "$GIT_REF" == refs/tags/v* ]]; then
+          VERSION="$GIT_REF_NAME"
           VERSION="${VERSION#v}"
         else
           SHA="${{ github.sha }}"
           SHORT_SHA="${SHA:0:7}"
-          BRANCH="${{ github.ref_name }}"
+          BRANCH="$GIT_REF_NAME"
           SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9]/-/g' | head -c 20)
           VERSION="0.0.0-${SAFE_BRANCH}+${SHORT_SHA}"
         fi
@@ -116,6 +121,10 @@ runs:
 
     - name: Create Build Info
       shell: bash
+      env:
+        # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+        # It therefore travels through the environment, never the script body.
+        GIT_REF_NAME: ${{ github.ref_name }}
       run: |
         mkdir -p ${{ inputs.project-path }}/build_info
         cat > ${{ inputs.project-path }}/build_info/version.json << EOF
@@ -126,7 +135,7 @@ runs:
           "idf_version": "${{ inputs.idf-version }}",
           "build_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
           "git_commit": "${{ github.sha }}",
-          "git_branch": "${{ github.ref_name }}"
+          "git_branch": "$GIT_REF_NAME"
         }
         EOF
 
