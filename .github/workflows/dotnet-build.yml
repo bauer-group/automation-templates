@@ -440,7 +440,7 @@ jobs:
   code-quality:
     name: 🛡️ Code Quality (SonarQube)
     if: inputs.enable-sonar
-    uses: ./.github/workflows/modules-code-quality.yml
+    uses: bauer-group/automation-templates/.github/workflows/modules-code-quality.yml@main
     with:
       enable-sonar: true
       sonar-edition: ${{ inputs.sonar-edition }}
