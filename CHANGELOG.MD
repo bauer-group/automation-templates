@@ -1,3 +1,32 @@
+# Changelog
+
+All notable changes to this project are documented here. This file is maintained
+automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
+on every release to `main`.
+
+## [8.0.0](https://github.com/bauer-group/automation-templates/compare/v7.1.3...v8.0.0) (2026-08-31)
+
+### ⚠ BREAKING CHANGES
+
+* **actions:** labeler-triage and the claude-code action now read event
+  payload from environment variables. Behaviour is unchanged for every
+  documented input, but a fork of either action that referenced the removed
+  inline expressions must be updated.
+* **ci:** semantic-release 25 requires Node >= 22.14 / >= 24.10.
+  The action's node-version default moves 22 -> 24, which carries consumers
+  that do not pin it. Any consumer pinning node-version <= 20 must raise it
+  to >= 22.14 or 24, otherwise the release job fails on the engine check.
+
+### 🚀 Features
+
+* **ci:** decoupled changelog notes onto the current toolchain ([3adf5e0](https://github.com/bauer-group/automation-templates/commit/3adf5e0873aca222fcb584b1c70606ceb449e49f))
+
+### 🐛 Bug Fixes
+
+* **actions:** closed script injection in labeler-triage and claude-code ([27dd66a](https://github.com/bauer-group/automation-templates/commit/27dd66a65e021eb27086abe54fb6a4967abeb0a7))
+* **ci:** stopped ignoring .github in the release trigger ([0e82e26](https://github.com/bauer-group/automation-templates/commit/0e82e26b2842441d484c54cbbae0f691b9673cd2)), references [#71](https://github.com/bauer-group/automation-templates/issues/71)
+* **workflows:** qualified nested reusable-workflow references ([90da967](https://github.com/bauer-group/automation-templates/commit/90da967ba88fd19aa95b49624abe9bf7cd04f9be))
+
 ## [7.1.3](https://github.com/bauer-group/automation-templates/compare/v7.1.2...v7.1.3) (2026-08-31)
 
 ### 🐛 Bug Fixes
