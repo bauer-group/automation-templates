@@ -107,11 +107,21 @@ jobs:
       
       - name: 🔍 Validate User Confirmation
         id: validation
+        env:
+          # Free-text workflow_dispatch fields. Interpolated into the script body
+          # they run at assignment time - i.e. before the regex checks below could
+          # ever look at them, which made that validation decorative.
+          INPUT_CONFIRM: ${{ github.event.inputs.confirm-cleanup }}
+          INPUT_PROFILE: ${{ github.event.inputs.cleanup-profile }}
+          INPUT_TARGET_REPO: ${{ github.event.inputs.target-repository }}
+          INPUT_MAX_AGE: ${{ github.event.inputs.max-age-days }}
+          INPUT_BATCH_SIZE: ${{ github.event.inputs.batch-size }}
+          INPUT_CUSTOM_OPS: ${{ github.event.inputs.custom-operations }}
         run: |
           echo "🔍 Validating cleanup configuration..."
           
           # Check confirmation
-          if [[ "${{ github.event.inputs.confirm-cleanup }}" != "CONFIRM" ]]; then
+          if [[ "$INPUT_CONFIRM" != "CONFIRM" ]]; then
             echo "❌ Cleanup not confirmed"
             echo "🛡️ Please type 'CONFIRM' exactly to proceed with cleanup"
             echo "This safety measure prevents accidental cleanup operations"
@@ -120,7 +130,7 @@ jobs:
           fi
           
           # Validate cleanup profile
-          PROFILE="${{ github.event.inputs.cleanup-profile }}"
+          PROFILE="$INPUT_PROFILE"
           case "$PROFILE" in
             conservative|aggressive|development|maintenance|emergency|custom)
               echo "✅ Valid cleanup profile: $PROFILE"
@@ -133,7 +143,7 @@ jobs:
           esac
           
           # Validate target repository format
-          TARGET_REPO="${{ github.event.inputs.target-repository }}"
+          TARGET_REPO="$INPUT_TARGET_REPO"
           if [[ -n "$TARGET_REPO" ]]; then
             if [[ ! "$TARGET_REPO" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
               echo "❌ Invalid repository format: $TARGET_REPO"
@@ -144,8 +154,8 @@ jobs:
           fi
           
           # Validate numerical inputs
-          MAX_AGE="${{ github.event.inputs.max-age-days }}"
-          BATCH_SIZE="${{ github.event.inputs.batch-size }}"
+          MAX_AGE="$INPUT_MAX_AGE"
+          BATCH_SIZE="$INPUT_BATCH_SIZE"
           
           if [[ ! "$MAX_AGE" =~ ^[0-9]+$ ]] || [[ "$MAX_AGE" -lt 0 ]]; then
             echo "❌ Invalid max-age-days: $MAX_AGE"
@@ -170,9 +180,9 @@ jobs:
           echo "✅ Input validation completed"
           
           # Validate custom operations format if using custom profile
-          PROFILE="${{ github.event.inputs.cleanup-profile }}"
+          PROFILE="$INPUT_PROFILE"
           if [[ "$PROFILE" == "custom" ]]; then
-            CUSTOM_OPS="${{ github.event.inputs.custom-operations }}"
+            CUSTOM_OPS="$INPUT_CUSTOM_OPS"
             if [[ -z "$CUSTOM_OPS" ]]; then
               echo "❌ Custom operations required when using custom profile"
               echo "Please specify operations: releases,tags,branches,prs,workflows,issues"
@@ -198,8 +208,14 @@ jobs:
       
       - name: ⚙️ Determine Effective Configuration
         id: profile
+        env:
+          INPUT_PROFILE: ${{ github.event.inputs.cleanup-profile }}
+          INPUT_MAX_AGE: ${{ github.event.inputs.max-age-days }}
+          INPUT_PROTECTED_BRANCHES: ${{ github.event.inputs.protected-branches }}
+          INPUT_BATCH_SIZE: ${{ github.event.inputs.batch-size }}
+          INPUT_CUSTOM_OPS: ${{ github.event.inputs.custom-operations }}
         run: |
-          PROFILE="${{ github.event.inputs.cleanup-profile }}"
+          PROFILE="$INPUT_PROFILE"
           
           echo "📋 Configuring cleanup for profile: $PROFILE"
           
@@ -242,17 +258,17 @@ jobs:
           esac
           
           # Use user inputs or defaults
-          EFFECTIVE_MAX_AGE=${{ github.event.inputs.max-age-days }}
+          EFFECTIVE_MAX_AGE="$INPUT_MAX_AGE"
           if [[ "$EFFECTIVE_MAX_AGE" -eq 0 ]]; then
             EFFECTIVE_MAX_AGE=$MAX_AGE_DEFAULT
           fi
           
-          EFFECTIVE_PROTECTED_BRANCHES="${{ github.event.inputs.protected-branches }}"
+          EFFECTIVE_PROTECTED_BRANCHES="$INPUT_PROTECTED_BRANCHES"
           if [[ -z "$EFFECTIVE_PROTECTED_BRANCHES" ]]; then
             EFFECTIVE_PROTECTED_BRANCHES="$PROTECTED_BRANCHES_DEFAULT"
           fi
           
-          EFFECTIVE_BATCH_SIZE=${{ github.event.inputs.batch-size }}
+          EFFECTIVE_BATCH_SIZE="$INPUT_BATCH_SIZE"
           if [[ "$EFFECTIVE_BATCH_SIZE" -eq 0 ]]; then
             EFFECTIVE_BATCH_SIZE=$BATCH_SIZE_DEFAULT
           fi
@@ -264,7 +280,7 @@ jobs:
           
           # Parse custom operations if using custom profile
           if [[ "$PROFILE" == "custom" ]]; then
-            CUSTOM_OPS="${{ github.event.inputs.custom-operations }}"
+            CUSTOM_OPS="$INPUT_CUSTOM_OPS"
             
             # Convert comma-separated operations to boolean flags
             if [[ "$CUSTOM_OPS" == *"releases"* ]]; then
@@ -350,12 +366,16 @@ jobs:
       
       - name: 📋 Generate Configuration Summary
         id: summary
+        env:
+          # The || is resolved by the expression evaluator, not by bash, so the
+          # fallback to github.repository behaves exactly as before.
+          INPUT_TARGET_REPO: ${{ github.event.inputs.target-repository || github.repository }}
         run: |
           echo "### 🧹 Repository Cleanup Configuration" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Execution Details:**" >> "$GITHUB_STEP_SUMMARY"
           echo "- 🎯 **Profile**: ${{ steps.profile.outputs.effective-profile }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- 📁 **Repository**: ${{ github.event.inputs.target-repository || github.repository }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 📁 **Repository**: $INPUT_TARGET_REPO" >> "$GITHUB_STEP_SUMMARY"
           echo "- 🔧 **Mode**: ${{ github.event.inputs.dry-run == 'true' && '🔍 Dry Run' || '⚠️ LIVE EXECUTION' }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- 📅 **Max Age**: ${{ steps.profile.outputs.effective-max-age }} days" >> "$GITHUB_STEP_SUMMARY"
           echo "- 🕐 **Timestamp**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_STEP_SUMMARY"

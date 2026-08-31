@@ -79,6 +79,11 @@ jobs:
 
       - name: 🏷️ Calculate Target Version
         id: version
+        env:
+          # Free-text workflow_dispatch input. Pasted into the script body it would
+          # run on assignment: a closing quote ends CALCULATED_VERSION= and hands
+          # the rest to the shell, before any validation could look at it.
+          INPUT_CUSTOM_VERSION: ${{ inputs.custom-version }}
         run: |
           # Get current version from manifest or git tags
           if [[ -f ".github/config/.release-please-manifest.json" ]]; then
@@ -91,8 +96,8 @@ jobs:
           echo "current-version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
           
           # Calculate target version
-          if [[ -n "${{ inputs.custom-version }}" ]]; then
-            CALCULATED_VERSION="${{ inputs.custom-version }}"
+          if [[ -n "$INPUT_CUSTOM_VERSION" ]]; then
+            CALCULATED_VERSION="$INPUT_CUSTOM_VERSION"
             echo "Using custom version: $CALCULATED_VERSION"
           else
             # Parse current version
