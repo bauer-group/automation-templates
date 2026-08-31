@@ -218,6 +218,21 @@ runs:
       env:
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_EVENT_ACTION: ${{ github.event.action }}
+        # Event payload data is attacker-controlled and must never be interpolated
+        # directly into the script body (script injection). Anyone able to comment on
+        # an issue or PR can otherwise close the shell string and run arbitrary code -
+        # and this step runs BEFORE the permission gate below, so the allowed-users
+        # allowlist provides no protection. Mirrors the hardening already applied in
+        # .github/workflows/claude-code.yml.
+        EVENT_COMMENT_BODY: ${{ github.event.comment.body }}
+        EVENT_COMMENT_USER: ${{ github.event.comment.user.login }}
+        EVENT_REVIEW_BODY: ${{ github.event.review.body }}
+        EVENT_REVIEW_USER: ${{ github.event.review.user.login }}
+        EVENT_ISSUE_BODY: ${{ github.event.issue.body }}
+        EVENT_ISSUE_USER: ${{ github.event.issue.user.login }}
+        EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
+        EVENT_ISSUE_PULL_REQUEST: ${{ github.event.issue.pull_request }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         echo "📍 Event: $GITHUB_EVENT_NAME"
         echo "📍 Action: $GITHUB_EVENT_ACTION"
@@ -231,31 +246,31 @@ runs:
         case "$GITHUB_EVENT_NAME" in
           "issue_comment")
             TRIGGER_TYPE="issue_comment"
-            TRIGGER_BODY='${{ github.event.comment.body }}'
-            TRIGGER_USER='${{ github.event.comment.user.login }}'
-            ISSUE_NUMBER='${{ github.event.issue.number }}'
-            if [[ '${{ github.event.issue.pull_request }}' != '' ]]; then
+            TRIGGER_BODY="$EVENT_COMMENT_BODY"
+            TRIGGER_USER="$EVENT_COMMENT_USER"
+            ISSUE_NUMBER="$EVENT_ISSUE_NUMBER"
+            if [[ -n "$EVENT_ISSUE_PULL_REQUEST" ]]; then
               TRIGGER_TYPE="pr_comment"
-              PR_NUMBER='${{ github.event.issue.number }}'
+              PR_NUMBER="$EVENT_ISSUE_NUMBER"
             fi
             ;;
           "pull_request_review_comment")
             TRIGGER_TYPE="pr_review_comment"
-            TRIGGER_BODY='${{ github.event.comment.body }}'
-            TRIGGER_USER='${{ github.event.comment.user.login }}'
-            PR_NUMBER='${{ github.event.pull_request.number }}'
+            TRIGGER_BODY="$EVENT_COMMENT_BODY"
+            TRIGGER_USER="$EVENT_COMMENT_USER"
+            PR_NUMBER="$EVENT_PR_NUMBER"
             ;;
           "pull_request_review")
             TRIGGER_TYPE="pr_review"
-            TRIGGER_BODY='${{ github.event.review.body }}'
-            TRIGGER_USER='${{ github.event.review.user.login }}'
-            PR_NUMBER='${{ github.event.pull_request.number }}'
+            TRIGGER_BODY="$EVENT_REVIEW_BODY"
+            TRIGGER_USER="$EVENT_REVIEW_USER"
+            PR_NUMBER="$EVENT_PR_NUMBER"
             ;;
           "issues")
             TRIGGER_TYPE="issue_opened"
-            TRIGGER_BODY='${{ github.event.issue.body }}'
-            TRIGGER_USER='${{ github.event.issue.user.login }}'
-            ISSUE_NUMBER='${{ github.event.issue.number }}'
+            TRIGGER_BODY="$EVENT_ISSUE_BODY"
+            TRIGGER_USER="$EVENT_ISSUE_USER"
+            ISSUE_NUMBER="$EVENT_ISSUE_NUMBER"
             ;;
           *)
             echo "⚠️ Unknown event type: $GITHUB_EVENT_NAME"
@@ -268,10 +283,16 @@ runs:
         echo "issue-number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
         echo "pr-number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
-        # Store trigger body for later use
-        echo "trigger-body<<EOF" >> "$GITHUB_OUTPUT"
-        echo "$TRIGGER_BODY" >> "$GITHUB_OUTPUT"
-        echo "EOF" >> "$GITHUB_OUTPUT"
+        # Store trigger body for later use.
+        # The delimiter is randomised because the body is attacker-controlled: a fixed
+        # "EOF" lets a comment close the heredoc early and forge further step outputs
+        # (e.g. issue-number, or trigger-user to impersonate a maintainer).
+        DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+        {
+          echo "trigger-body<<$DELIMITER"
+          echo "$TRIGGER_BODY"
+          echo "$DELIMITER"
+        } >> "$GITHUB_OUTPUT"
 
     - name: 🛡️ Validate Permissions
       id: permissions
@@ -397,10 +418,16 @@ runs:
           fi
         fi
 
-        # Save context
-        echo "context<<EOF" >> "$GITHUB_OUTPUT"
-        echo -e "$CONTEXT" >> "$GITHUB_OUTPUT"
-        echo "EOF" >> "$GITHUB_OUTPUT"
+        # Save context.
+        # CONTEXT embeds the trigger body and fetched issue/PR comments, all of which
+        # are attacker-controlled, so the delimiter must be unguessable - a fixed "EOF"
+        # lets any of them close the block early and append forged step outputs.
+        CONTEXT_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+        {
+          echo "context<<$CONTEXT_DELIMITER"
+          echo -e "$CONTEXT"
+          echo "$CONTEXT_DELIMITER"
+        } >> "$GITHUB_OUTPUT"
 
     - name: 🤖 Run Claude Code
       id: claude

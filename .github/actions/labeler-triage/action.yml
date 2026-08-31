@@ -140,6 +140,8 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
+        EVENT_PR_TITLE: ${{ github.event.pull_request.title }}
+        EVENT_PR_BODY: ${{ github.event.pull_request.body }}
       run: |
         echo "🎯 Checking for priority indicators..."
         
@@ -155,16 +157,14 @@ runs:
           exit 0
         fi
         
-        # Use heredoc to safely capture PR title and body with special characters
-        PR_TITLE=$(cat <<'EOF_TITLE'
-        ${{ github.event.pull_request.title }}
-        EOF_TITLE
-        )
-
-        PR_BODY=$(cat <<'EOF_BODY'
-        ${{ github.event.pull_request.body }}
-        EOF_BODY
-        )
+        # Title and body are attacker-controlled and arrive as environment values.
+        # They must never be interpolated into the script body: a quoted heredoc stops
+        # expansion of the CONTENT, but expression substitution happens before bash ever
+        # parses the script - so a body containing the terminator line closes the heredoc
+        # early and everything after it executes as shell. Reachable unauthenticated via
+        # pr-labeler.yml's pull_request_target trigger.
+        PR_TITLE="$EVENT_PR_TITLE"
+        PR_BODY="$EVENT_PR_BODY"
 
         # Check for priority keywords
         PRIORITY=""
@@ -202,6 +202,8 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
+        EVENT_PR_TITLE: ${{ github.event.pull_request.title }}
+        EVENT_HEAD_REF: ${{ github.head_ref }}
       run: |
         echo "🔖 Detecting PR type..."
         
@@ -217,16 +219,14 @@ runs:
           exit 0
         fi
         
-        # Use heredoc to safely capture branch name and PR title with special characters
-        BRANCH_NAME=$(cat <<'EOF_BRANCH'
-        ${{ github.head_ref }}
-        EOF_BRANCH
-        )
-
-        PR_TITLE=$(cat <<'EOF_TITLE'
-        ${{ github.event.pull_request.title }}
-        EOF_TITLE
-        )
+        # Title and body are attacker-controlled and arrive as environment values.
+        # They must never be interpolated into the script body: a quoted heredoc stops
+        # expansion of the CONTENT, but expression substitution happens before bash ever
+        # parses the script - so a body containing the terminator line closes the heredoc
+        # early and everything after it executes as shell. Reachable unauthenticated via
+        # pr-labeler.yml's pull_request_target trigger.
+        BRANCH_NAME="$EVENT_HEAD_REF"
+        PR_TITLE="$EVENT_PR_TITLE"
 
         # Detect type from branch name or PR title
         TYPE_LABELS=""
