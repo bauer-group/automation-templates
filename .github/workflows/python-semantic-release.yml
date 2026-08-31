@@ -119,7 +119,7 @@ jobs:
           fetch-depth: 0
           
       - name: 🐍 Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python-version }}
           cache: pip
@@ -316,7 +316,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: 🐍 Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python-version }}
           
