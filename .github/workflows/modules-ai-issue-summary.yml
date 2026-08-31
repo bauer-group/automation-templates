@@ -82,6 +82,15 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          # Label names are free text and were interpolated inside SINGLE shell
+          # quotes, so an apostrophe in a label closed the string and handed the
+          # remainder to the shell. The numbers drive the issue/PR branch below.
+          ISSUE_LABELS_JSON: ${{ toJson(github.event.issue.labels.*.name) }}
+          PR_LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           echo "🔍 Extracting issue/PR details..."
 
@@ -112,14 +121,14 @@ jobs:
           }
 
           # Determine if this is an issue or PR
-          if [ -n "${{ github.event.issue }}" ]; then
+          if [ -n "$ISSUE_NUMBER" ]; then
             echo "type=issue" >> "$GITHUB_OUTPUT"
-            echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+            echo "number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
 
             # Generate safe delimiters for each field
             DELIM_TITLE=$(generate_safe_delimiter "$ISSUE_TITLE" "GHEOF_TITLE")
             DELIM_BODY=$(generate_safe_delimiter "$ISSUE_BODY" "GHEOF_BODY")
-            DELIM_LABELS=$(generate_safe_delimiter '${{ toJson(github.event.issue.labels.*.name) }}' "GHEOF_LABELS")
+            DELIM_LABELS=$(generate_safe_delimiter "$ISSUE_LABELS_JSON" "GHEOF_LABELS")
 
             # Use environment variables to safely handle special characters
             {
@@ -135,23 +144,23 @@ jobs:
               echo "${DELIM_BODY}"
             } >> "$GITHUB_OUTPUT"
 
-            echo "author=${{ github.event.issue.user.login }}" >> "$GITHUB_OUTPUT"
+            echo "author=$ISSUE_AUTHOR" >> "$GITHUB_OUTPUT"
 
             # Use heredoc for labels JSON
             {
               echo "labels<<${DELIM_LABELS}"
-              echo '${{ toJson(github.event.issue.labels.*.name) }}'
+              printf '%s\n' "$ISSUE_LABELS_JSON"
               echo "${DELIM_LABELS}"
             } >> "$GITHUB_OUTPUT"
 
-          elif [ -n "${{ github.event.pull_request }}" ]; then
+          elif [ -n "$PR_NUMBER" ]; then
             echo "type=pull_request" >> "$GITHUB_OUTPUT"
-            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
             # Generate safe delimiters for each field
             DELIM_TITLE=$(generate_safe_delimiter "$PR_TITLE" "GHEOF_TITLE")
             DELIM_BODY=$(generate_safe_delimiter "$PR_BODY" "GHEOF_BODY")
-            DELIM_LABELS=$(generate_safe_delimiter '${{ toJson(github.event.pull_request.labels.*.name) }}' "GHEOF_LABELS")
+            DELIM_LABELS=$(generate_safe_delimiter "$PR_LABELS_JSON" "GHEOF_LABELS")
 
             # Use environment variables to safely handle special characters
             {
@@ -167,12 +176,12 @@ jobs:
               echo "${DELIM_BODY}"
             } >> "$GITHUB_OUTPUT"
 
-            echo "author=${{ github.event.pull_request.user.login }}" >> "$GITHUB_OUTPUT"
+            echo "author=$PR_AUTHOR" >> "$GITHUB_OUTPUT"
 
             # Use heredoc for labels JSON
             {
               echo "labels<<${DELIM_LABELS}"
-              echo '${{ toJson(github.event.pull_request.labels.*.name) }}'
+              printf '%s\n' "$PR_LABELS_JSON"
               echo "${DELIM_LABELS}"
             } >> "$GITHUB_OUTPUT"
           fi

@@ -160,24 +160,46 @@ runs:
     - name: 📋 Load Configuration
       id: config
       shell: bash
+      env:
+        # Every one of these ended up inside a single-quoted yq expression, where
+        # an apostrophe in the value closed the shell quoting and handed the rest
+        # to the shell. yq reads them with strenv() now. config-file additionally
+        # selects a path, so it is restricted rather than trusted.
+        INPUT_CONFIG_FILE: ${{ inputs.config-file }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_MAX_TOKENS: ${{ inputs.max-tokens }}
+        INPUT_TRIGGER_PHRASE: ${{ inputs.trigger-phrase }}
+        INPUT_RESPONSE_MODE: ${{ inputs.response-mode }}
+        INPUT_ADD_REACTION: ${{ inputs.add-reaction }}
+        INPUT_ALLOWED_USERS: ${{ inputs.allowed-users }}
+        INPUT_ALLOWED_TEAMS: ${{ inputs.allowed-teams }}
+        INPUT_APPEND_SYSTEM_PROMPT: ${{ inputs.append-system-prompt }}
       run: |
-        CONFIG_FILE=".github/config/claude-code/${{ inputs.config-file }}.yml"
+        if [[ ! "$INPUT_CONFIG_FILE" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          echo "::error::Invalid config-file '$INPUT_CONFIG_FILE' - only letters, digits, dot, underscore and hyphen are allowed"
+          exit 1
+        fi
+        CONFIG_FILE=".github/config/claude-code/${INPUT_CONFIG_FILE}.yml"
 
         if [[ -f "$CONFIG_FILE" ]]; then
           echo "✅ Loading configuration from $CONFIG_FILE"
 
           # Parse YAML configuration using yq
           if command -v yq &> /dev/null; then
-            MODEL=$(yq eval '.model.name // "${{ inputs.model }}"' "$CONFIG_FILE")
-            MAX_TOKENS=$(yq eval '.model.max_tokens // "${{ inputs.max-tokens }}"' "$CONFIG_FILE")
-            TRIGGER_PHRASE=$(yq eval '.trigger.phrase // "${{ inputs.trigger-phrase }}"' "$CONFIG_FILE")
-            RESPONSE_MODE=$(yq eval '.response.mode // "${{ inputs.response-mode }}"' "$CONFIG_FILE")
-            ADD_REACTION=$(yq eval '.response.reaction // "${{ inputs.add-reaction }}"' "$CONFIG_FILE")
-            ALLOWED_USERS=$(yq eval '.permissions.allowed_users | join(",") // "${{ inputs.allowed-users }}"' "$CONFIG_FILE")
-            ALLOWED_TEAMS=$(yq eval '.permissions.allowed_teams | join(",") // "${{ inputs.allowed-teams }}"' "$CONFIG_FILE")
+            MODEL=$(yq eval '.model.name // strenv(INPUT_MODEL)' "$CONFIG_FILE")
+            MAX_TOKENS=$(yq eval '.model.max_tokens // strenv(INPUT_MAX_TOKENS)' "$CONFIG_FILE")
+            TRIGGER_PHRASE=$(yq eval '.trigger.phrase // strenv(INPUT_TRIGGER_PHRASE)' "$CONFIG_FILE")
+            RESPONSE_MODE=$(yq eval '.response.mode // strenv(INPUT_RESPONSE_MODE)' "$CONFIG_FILE")
+            ADD_REACTION=$(yq eval '.response.reaction // strenv(INPUT_ADD_REACTION)' "$CONFIG_FILE")
+            ALLOWED_USERS=$(yq eval '.permissions.allowed_users | join(",") // strenv(INPUT_ALLOWED_USERS)' "$CONFIG_FILE")
+            ALLOWED_TEAMS=$(yq eval '.permissions.allowed_teams | join(",") // strenv(INPUT_ALLOWED_TEAMS)' "$CONFIG_FILE")
             SYSTEM_PROMPT=$(yq eval '.prompts.system // ""' "$CONFIG_FILE")
-            APPEND_PROMPT=$(yq eval '.prompts.append // "${{ inputs.append-system-prompt }}"' "$CONFIG_FILE")
+            APPEND_PROMPT=$(yq eval '.prompts.append // strenv(INPUT_APPEND_SYSTEM_PROMPT)' "$CONFIG_FILE")
 
+            if [[ ! "$MODEL" =~ ^[A-Za-z0-9._-]+$ ]]; then
+              echo "::error::Invalid model '$MODEL' - expected a plain model name (e.g. opus, sonnet, haiku)"
+              exit 1
+            fi
             echo "model=$MODEL" >> "$GITHUB_OUTPUT"
             echo "max-tokens=$MAX_TOKENS" >> "$GITHUB_OUTPUT"
             echo "trigger-phrase=$TRIGGER_PHRASE" >> "$GITHUB_OUTPUT"
@@ -188,16 +210,24 @@ runs:
             echo "config-loaded=true" >> "$GITHUB_OUTPUT"
 
             # Handle multiline system prompt
+            # Randomised delimiters: prompt text is free-form, and a line reading
+            # exactly EOF would close the block early and forge later outputs.
             if [[ -n "$SYSTEM_PROMPT" ]]; then
-              echo "system-prompt<<EOF" >> "$GITHUB_OUTPUT"
-              echo "$SYSTEM_PROMPT" >> "$GITHUB_OUTPUT"
-              echo "EOF" >> "$GITHUB_OUTPUT"
+              PROMPT_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+              {
+                echo "system-prompt<<$PROMPT_DELIMITER"
+                echo "$SYSTEM_PROMPT"
+                echo "$PROMPT_DELIMITER"
+              } >> "$GITHUB_OUTPUT"
             fi
 
             if [[ -n "$APPEND_PROMPT" ]]; then
-              echo "append-prompt<<EOF" >> "$GITHUB_OUTPUT"
-              echo "$APPEND_PROMPT" >> "$GITHUB_OUTPUT"
-              echo "EOF" >> "$GITHUB_OUTPUT"
+              APPEND_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+              {
+                echo "append-prompt<<$APPEND_DELIMITER"
+                echo "$APPEND_PROMPT"
+                echo "$APPEND_DELIMITER"
+              } >> "$GITHUB_OUTPUT"
             fi
           else
             echo "⚠️ yq not found, using input defaults"
