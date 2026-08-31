@@ -141,11 +141,17 @@ runs:
           
         } > "$OUTPUT_FILE"
         
-        # Set output
+        # Set output. The delimiter is randomised because the changelog is built
+        # from commit messages, which a fork pull request author chooses freely: a
+        # commit whose message contains a line reading EOF would otherwise close
+        # the block and forge the remaining step outputs.
         CHANGELOG_CONTENT=$(cat "$OUTPUT_FILE")
-        echo "changelog<<EOF" >> "$GITHUB_OUTPUT"
-        echo "$CHANGELOG_CONTENT" >> "$GITHUB_OUTPUT"
-        echo "EOF" >> "$GITHUB_OUTPUT"
+        CHANGELOG_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+        {
+          echo "changelog<<$CHANGELOG_DELIMITER"
+          echo "$CHANGELOG_CONTENT"
+          echo "$CHANGELOG_DELIMITER"
+        } >> "$GITHUB_OUTPUT"
         
         echo "📝 Changelog generated to $OUTPUT_FILE"
 

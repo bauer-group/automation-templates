@@ -565,6 +565,8 @@ runs:
     - name: 🏷️ Combine Tags for Multi-Registry Push
       id: meta
       shell: bash
+      env:
+        META_PRIMARY_LABELS: ${{ steps.meta-primary.outputs.labels }}
       run: |
         # Combine tags from both registries
         PRIMARY_TAGS="${{ steps.meta-primary.outputs.tags }}"
@@ -584,14 +586,21 @@ runs:
         # Remove any remaining empty lines
         COMBINED_TAGS=$(echo "$COMBINED_TAGS" | grep -v '^[[:space:]]*$' || echo "$COMBINED_TAGS")
 
-        echo "tags<<EOF" >> "$GITHUB_OUTPUT"
-        echo "$COMBINED_TAGS" >> "$GITHUB_OUTPUT"
-        echo "EOF" >> "$GITHUB_OUTPUT"
+        TAGS_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+        {
+          echo "tags<<$TAGS_DELIMITER"
+          echo "$COMBINED_TAGS"
+          echo "$TAGS_DELIMITER"
+        } >> "$GITHUB_OUTPUT"
 
-        # Use primary labels
-        echo "labels<<EOF" >> "$GITHUB_OUTPUT"
-        echo "${{ steps.meta-primary.outputs.labels }}" >> "$GITHUB_OUTPUT"
-        echo "EOF" >> "$GITHUB_OUTPUT"
+        # Use primary labels. Labels carry image metadata such as the commit
+        # subject, so they get the same treatment.
+        LABELS_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+        {
+          echo "labels<<$LABELS_DELIMITER"
+          echo "$META_PRIMARY_LABELS"
+          echo "$LABELS_DELIMITER"
+        } >> "$GITHUB_OUTPUT"
 
         echo "📋 Combined tags:"
         echo "$COMBINED_TAGS"

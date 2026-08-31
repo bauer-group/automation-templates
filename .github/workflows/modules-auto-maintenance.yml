@@ -147,10 +147,11 @@ jobs:
 
           if [ "$HAS_BASE_IMAGES" = "true" ]; then
             BASE_IMAGES=$(jq -c '.["base-images"]' "$CONFIG_FILE")
+            BASE_IMAGES_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
             {
-              echo "base-images<<BASE_IMAGES_EOF"
+              echo "base-images<<$BASE_IMAGES_DELIMITER"
               printf '%s\n' "$BASE_IMAGES"
-              echo "BASE_IMAGES_EOF"
+              echo "$BASE_IMAGES_DELIMITER"
             } >> "$GITHUB_OUTPUT"
             echo "🐳 Base images: $(printf '%s' "$BASE_IMAGES" | jq 'length') configured"
           fi
@@ -353,10 +354,13 @@ jobs:
           echo "unreachable-images=$UNREACHABLE_IMAGES" >> "$GITHUB_OUTPUT"
 
           # Store update details for commit message
+          # This writes to GITHUB_ENV, where a forged entry becomes an environment
+          # variable for every later step, so the delimiter must not be guessable.
+          DETAILS_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
           {
-            echo "UPDATE_DETAILS<<DETAILS_EOF"
+            echo "UPDATE_DETAILS<<$DETAILS_DELIMITER"
             echo "$UPDATE_DETAILS"
-            echo "DETAILS_EOF"
+            echo "$DETAILS_DELIMITER"
           } >> "$GITHUB_ENV"
 
           echo ""
