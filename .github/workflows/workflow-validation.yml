@@ -50,7 +50,7 @@ jobs:
       contents: read
     steps:
       - name: "📥 Checkout Repository"
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # Behavioural tests for composite actions whose logic is not covered by linting.
       # actionlint checks that a step is well-formed; these check that it decides the

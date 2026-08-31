@@ -348,7 +348,7 @@ jobs:
       # 2. Checkout the exact ref the release was cut from
       # -----------------------------------------------------------------------
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.resolve.outputs.checkout-ref }}
           fetch-depth: 1

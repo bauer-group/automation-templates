@@ -190,7 +190,7 @@ jobs:
           echo "✅ PAT_READWRITE_ORGANISATION secret is configured"
 
       - name: "📥 Checkout repository"
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           fetch-depth: 0

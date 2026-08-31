@@ -136,7 +136,7 @@ jobs:
 
     steps:
       - name: "📥 Checkout Repository"
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: "🔧 Set up QEMU"
         # Registers binfmt/QEMU so non-native arches (arm64, arm/v7) build under emulation.
