@@ -1,3 +1,11 @@
+## [7.1.3](https://github.com/bauer-group/automation-templates/compare/v7.1.2...v7.1.3) (2026-08-31)
+
+### 🐛 Bug Fixes
+
+* **ci:** allowed workflow_dispatch to cut a release ([7bb5e8d](https://github.com/bauer-group/automation-templates/commit/7bb5e8d95a40069fc7f869bd540b4a216ae9453a))
+* **ci:** pinned GitPython below 3.1.60 for release ([5107894](https://github.com/bauer-group/automation-templates/commit/5107894fd94acfeddf3ddcf8c728fa41afd61484))
+* **ci:** replaced GitPython pin with a compat shim ([0ef07ef](https://github.com/bauer-group/automation-templates/commit/0ef07ef9b6379cb6d7d6a8b5e4084fdce35f3f54)), closes [#1477](https://github.com/bauer-group/automation-templates/issues/1477) [#79](https://github.com/bauer-group/automation-templates/issues/79)
+
 ## [7.1.2](https://github.com/bauer-group/automation-templates/compare/v7.1.1...v7.1.2) (2026-08-25)
 
 ### 🐛 Bug Fixes
