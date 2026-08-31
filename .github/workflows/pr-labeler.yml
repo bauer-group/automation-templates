@@ -54,7 +54,7 @@ permissions:
 jobs:
   labeler:
     name: 🏷️ Label & Triage
-    uses: ./.github/workflows/modules-pr-labeler.yml
+    uses: bauer-group/automation-templates/.github/workflows/modules-pr-labeler.yml@main
     with:
       config-path: ${{ inputs.config-path || '.github/config/pr-labeler/path-labels.yml' }}
       sync-labels: ${{ inputs.sync-labels != null && inputs.sync-labels || true }}
