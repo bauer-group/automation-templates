@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [9.0.2](https://github.com/bauer-group/automation-templates/compare/v9.0.1...v9.0.2) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **platformio:** made the check and test gates able to fail ([013f639](https://github.com/bauer-group/automation-templates/commit/013f63921a7324172ddd8b42382d5b53687b5249))
+
 ## [9.0.1](https://github.com/bauer-group/automation-templates/compare/v9.0.0...v9.0.1) (2026-09-01)
 
 ### 🐛 Bug Fixes
