@@ -4,6 +4,16 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [9.0.0](https://github.com/bauer-group/automation-templates/compare/v8.1.1...v9.0.0) (2026-09-01)
+
+### ⚠ BREAKING CHANGES
+
+* **ci:** closed the second hop on version outputs
+
+### 🐛 Bug Fixes
+
+* **ci:** closed the second hop on version outputs ([83c7e9a](https://github.com/bauer-group/automation-templates/commit/83c7e9a68c51df6d01c3d183384e849eb3dc48aa))
+
 ## [8.1.1](https://github.com/bauer-group/automation-templates/compare/v8.1.0...v8.1.1) (2026-09-01)
 
 ### 🐛 Bug Fixes
