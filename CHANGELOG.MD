@@ -4,6 +4,13 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [9.1.1](https://github.com/bauer-group/automation-templates/compare/v9.1.0...v9.1.1) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** converted JSON build-args instead of dropping them ([1340736](https://github.com/bauer-group/automation-templates/commit/1340736906cab803135f84fdb87e453463f48e62)), closes [#89](https://github.com/bauer-group/automation-templates/issues/89)
+* **docker-build:** diagnosed disk exhaustion during the Trivy scan ([b4527e8](https://github.com/bauer-group/automation-templates/commit/b4527e8b67f7d0e6cfa3709f92a88440e353be92)), closes [#90](https://github.com/bauer-group/automation-templates/issues/90)
+
 ## [9.1.0](https://github.com/bauer-group/automation-templates/compare/v9.0.3...v9.1.0) (2026-09-01)
 
 ### 🚀 Features
