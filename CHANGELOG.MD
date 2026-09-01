@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [9.0.1](https://github.com/bauer-group/automation-templates/compare/v9.0.0...v9.0.1) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** stopped leaking GITHUB_TOKEN to Docker Hub ([5df444c](https://github.com/bauer-group/automation-templates/commit/5df444c980bf37c972fcb10d97acaef6c4e4f24e))
+
 ## [9.0.0](https://github.com/bauer-group/automation-templates/compare/v8.1.1...v9.0.0) (2026-09-01)
 
 ### ⚠ BREAKING CHANGES
