@@ -170,7 +170,13 @@ runs:
             echo "No tags found, using: $CURRENT_VERSION"
           fi
         fi
-        
+
+        # This becomes a step output that later run: bodies interpolate, so a
+        # metacharacter here would execute there. A version never contains one.
+        if [[ ! "$CURRENT_VERSION" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+          echo "::error title=Invalid version::Resolved version '$CURRENT_VERSION' is not a plain version string (letters, digits, dot, underscore, plus, hyphen)."
+          exit 1
+        fi
         echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
         
         # Get all tags for version table
