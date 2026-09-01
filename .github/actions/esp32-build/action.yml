@@ -98,6 +98,12 @@ runs:
         if [[ "$GIT_REF" == refs/tags/v* ]]; then
           VERSION="$GIT_REF_NAME"
           VERSION="${VERSION#v}"
+          # A git tag may contain $ ` ; | & ( ), and this becomes a step output
+          # that later run: bodies interpolate.
+          if [[ ! "$VERSION" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+            echo "::error title=Invalid tag::Tag '$GIT_REF_NAME' is not a plain version string."
+            exit 1
+          fi
         else
           SHA="${{ github.sha }}"
           SHORT_SHA="${SHA:0:7}"
