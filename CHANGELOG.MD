@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [8.1.0](https://github.com/bauer-group/automation-templates/compare/v8.0.4...v8.1.0) (2026-09-01)
+
+### 🚀 Features
+
+* **ci:** enabled publish-last release ordering ([c8f3083](https://github.com/bauer-group/automation-templates/commit/c8f3083a045af7373a8e0f0f0c5c9e153a59b0b4)), closes [#86](https://github.com/bauer-group/automation-templates/issues/86)
+
 ## [8.0.4](https://github.com/bauer-group/automation-templates/compare/v8.0.3...v8.0.4) (2026-09-01)
 
 ### 🐛 Bug Fixes
