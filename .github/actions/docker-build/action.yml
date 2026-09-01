@@ -786,13 +786,65 @@ runs:
               curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
             fi
 
-            # Run Trivy scan on local image
+            # Trivy exports the image to a tarball before analysing it, so it needs roughly
+            # the image size AGAIN in free space, on top of the image already in the daemon,
+            # the build cache and the runner's preinstalled toolchains. Around 3 GB this
+            # stops fitting on a standard hosted runner and the scan dies with
+            # "no space left on device" (issue #90). Checking first turns that into a
+            # diagnosable failure instead of one that surfaces later as a missing report
+            # blamed on the vulnerability DB.
+            # `df --output=avail -B1` prints one column of bytes, which avoids parsing a
+            # positional field: a filesystem name containing a space shifts every column of
+            # plain `df -P` output, and picking $4 then silently returns Used instead of
+            # Available. The -P fallback exists for a runner without GNU coreutils.
+            avail_bytes() {
+              df -B1 --output=avail "$1" 2>/dev/null | tail -n1 | tr -dc '0-9' \
+                || df -P "$1" 2>/dev/null | awk 'END {print $(NF-2) * 1024}'
+            }
+            IMAGE_BYTES=$(docker image inspect "$PRIMARY_TAG" --format '{{.Size}}' 2>/dev/null || echo 0)
+            AVAIL_BYTES=$(avail_bytes /var/lib/docker)
+            [ -z "$AVAIL_BYTES" ] && AVAIL_BYTES=$(avail_bytes /)
+            [ -z "$AVAIL_BYTES" ] && AVAIL_BYTES=0
+            echo "💽 Image ~$((IMAGE_BYTES / 1024 / 1024)) MB, free ~$((AVAIL_BYTES / 1024 / 1024)) MB"
+
+            # Reclaim what is safely reclaimable: dangling images only. The build cache and
+            # the image just built are needed by the push build that follows, so they are
+            # deliberately left alone.
+            if [ "$IMAGE_BYTES" -gt 0 ] && [ "$AVAIL_BYTES" -lt "$IMAGE_BYTES" ]; then
+              echo "🧹 Free space below image size - pruning dangling images"
+              docker image prune -f >/dev/null 2>&1 || true
+              AVAIL_BYTES=$(avail_bytes /var/lib/docker)
+              [ -z "$AVAIL_BYTES" ] && AVAIL_BYTES=$(avail_bytes /)
+              [ -z "$AVAIL_BYTES" ] && AVAIL_BYTES=0
+              echo "💽 Free after prune: ~$((AVAIL_BYTES / 1024 / 1024)) MB"
+            fi
+
+            if [ "$IMAGE_BYTES" -gt 0 ] && [ "$AVAIL_BYTES" -lt "$IMAGE_BYTES" ]; then
+              echo "::error::Not enough disk space to scan this image. Trivy exports it to a tarball first, so it needs about $((IMAGE_BYTES / 1024 / 1024)) MB free and only $((AVAIL_BYTES / 1024 / 1024)) MB remain."
+              echo "::error::  Options: shrink the image (multi-stage build, fetch large assets at runtime), use a larger runner, or free space before this workflow."
+              echo "scan-passed=false" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+
+            # Run Trivy scan on local image.
+            # The exit code is captured rather than swallowed: findings are not an error
+            # here (the gate below scores them from the JSON), but a scanner that could not
+            # run is, and `|| echo ...` previously hid the real cause - the run only failed
+            # later at the missing-report guard, which blamed the vulnerability DB.
+            set +e
             trivy image \
               --format json \
               --output "$REPORT_PATH" \
               --severity "$SCAN_SEVERITIES" \
               ${{ inputs.security-ignore-unfixed == 'true' && '--ignore-unfixed' || '' }} \
-              "$PRIMARY_TAG" || echo "Trivy scan completed with issues"
+              "$PRIMARY_TAG"
+            TRIVY_EXIT=$?
+            set -e
+            if [ "$TRIVY_EXIT" -ne 0 ] && [ ! -s "$REPORT_PATH" ]; then
+              echo "::error::Trivy exited with $TRIVY_EXIT and produced no report. Check the log above for the actual cause - a common one on large images is running out of disk space during the image export."
+              echo "scan-passed=false" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
 
             # Convert to SARIF for GitHub Security
             trivy image \
@@ -899,7 +951,7 @@ runs:
           fi
         else
           echo "::error::Security report not found at $REPORT_PATH - the ${{ inputs.security-scanner }} scan did not produce a report"
-          echo "::error::  This usually means the scanner failed to run (e.g. vulnerability DB download or registry rate limit)."
+          echo "::error::  This usually means the scanner failed to run - a vulnerability DB download, a registry rate limit, or running out of disk space while exporting a large image."
           echo "::error::  Refusing to report a pass for a scan that did not happen. Set security-scan: false to build without scanning."
           echo "scan-passed=false" >> "$GITHUB_OUTPUT"
           exit 1
