@@ -426,6 +426,28 @@ jobs:
       platforms: ${{ steps.docker-build.outputs.platforms }}
     
     steps:
+      - name: 🔎 Validate Registry Credentials
+        if: inputs.publish-to == 'dockerhub' || inputs.publish-to == 'both'
+        shell: bash
+        env:
+          # Presence only - the secret values themselves are never referenced here.
+          HAS_DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME != '' }}
+          HAS_DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD != '' }}
+        run: |
+          # Fail early and legibly when Docker Hub is targeted without credentials.
+          # Without this the run either skips the login and fails much later at push with
+          # an opaque error, or - before the credential expressions above were inverted -
+          # logged in to docker.io using the repository GITHUB_TOKEN and returned a bare 401.
+          MISSING=""
+          [ "$HAS_DOCKER_USERNAME" = "true" ] || MISSING="$MISSING DOCKER_USERNAME"
+          [ "$HAS_DOCKER_PASSWORD" = "true" ] || MISSING="$MISSING DOCKER_PASSWORD"
+
+          if [ -n "$MISSING" ]; then
+            echo "::error::publish-to is '${{ inputs.publish-to }}' but these secrets are not set:$MISSING. Pass them from the caller (secrets: inherit, or an explicit secrets: block), or use publish-to: 'ghcr'."
+            exit 1
+          fi
+          echo "✅ Docker Hub credentials present"
+
       - name: 📥 Checkout Repository
         uses: actions/checkout@v7
         with:
@@ -438,25 +460,23 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           echo "🧪 Running pre-build tests..."
-          
-          # Check if custom test command provided
-          if [ -n "${{ inputs.test-command }}" ]; then
-            # Replace placeholder with actual image tag
-            TEST_CMD="${{ inputs.test-command }}"
-            eval "$TEST_CMD"
+
+          # `test-command` is an IMAGE test - its default is `docker run --rm $IMAGE_TAG test`
+          # and the post-build step substitutes $IMAGE_TAG with the built image URL. No image
+          # exists yet at this point, so running it here expanded $IMAGE_TAG to nothing and
+          # executed `docker run --rm test`, which fails and, under `shell: bash` (-e), killed
+          # every build with run-tests enabled before it started. This step therefore runs the
+          # source-level defaults only; the custom command belongs to Run Post-Build Tests.
+          if [ -f "package.json" ]; then
+            npm test
+          elif [ -f "requirements.txt" ]; then
+            python -m pytest
+          elif [ -f "go.mod" ]; then
+            go test ./...
+          elif [ -f "Cargo.toml" ]; then
+            cargo test
           else
-            # Default test commands based on file existence
-            if [ -f "package.json" ]; then
-              npm test
-            elif [ -f "requirements.txt" ]; then
-              python -m pytest
-            elif [ -f "go.mod" ]; then
-              go test ./...
-            elif [ -f "Cargo.toml" ]; then
-              cargo test
-            else
-              echo "No test framework detected, skipping tests"
-            fi
+            echo "No test framework detected, skipping pre-build tests"
           fi
       
       - name: 🐳 Build Docker Image
@@ -472,9 +492,18 @@ jobs:
           platforms: ${{ inputs.enable-matrix && matrix.platform || inputs.platforms }}
           multi-platform: ${{ inputs.enable-matrix && 'false' || inputs.multi-platform }}
           # Primary registry: GHCR (if publish-to is 'ghcr' or 'both') or Docker Hub (if publish-to is 'dockerhub')
+          #
+          # The credential expressions are deliberately keyed on `!= 'dockerhub'` rather than
+          # `== 'dockerhub'`. In `A && B || C`, an unset secret is the empty string, so the
+          # previous `publish-to == 'dockerhub' && secrets.DOCKER_PASSWORD || secrets.GITHUB_TOKEN`
+          # fell through to GITHUB_TOKEN whenever DOCKER_PASSWORD was absent - and since
+          # `registry` had already resolved to docker.io, that shipped the repository's
+          # GITHUB_TOKEN to Docker Hub as a login password. Inverting the test makes the
+          # GHCR branch the one that carries GITHUB_TOKEN, so the Docker Hub branch can only
+          # ever yield DOCKER_PASSWORD - empty at worst, never a GitHub credential.
           registry: ${{ inputs.publish-to == 'dockerhub' && 'docker.io' || inputs.registry }}
-          registry-username: ${{ inputs.publish-to == 'dockerhub' && secrets.DOCKER_USERNAME || github.actor }}
-          registry-password: ${{ inputs.publish-to == 'dockerhub' && secrets.DOCKER_PASSWORD || secrets.GITHUB_TOKEN }}
+          registry-username: ${{ inputs.publish-to != 'dockerhub' && github.actor || secrets.DOCKER_USERNAME }}
+          registry-password: ${{ inputs.publish-to != 'dockerhub' && secrets.GITHUB_TOKEN || secrets.DOCKER_PASSWORD }}
           # Secondary registry: Docker Hub (if publish-to is 'both')
           secondary-registry: ${{ inputs.publish-to == 'both' && 'docker.io' || inputs.secondary-registry }}
           secondary-registry-username: ${{ secrets.DOCKER_USERNAME }}
