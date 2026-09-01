@@ -4,6 +4,18 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [8.0.1](https://github.com/bauer-group/automation-templates/compare/v8.0.0...v8.0.1) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **actions:** closed heredoc breakout in Teams card ([0c6334e](https://github.com/bauer-group/automation-templates/commit/0c6334ec166b7a8b998996b1bf17ac2aecc504af))
+* **actions:** stopped reporting a failed secret scan as clean ([6544887](https://github.com/bauer-group/automation-templates/commit/6544887d682f8ed3f6af7ee006b7671a67b1f626))
+* **ci:** closed workflow_dispatch input injection ([00610df](https://github.com/bauer-group/automation-templates/commit/00610df2058a0a201b691bdb605728acd8e52f0a))
+* **ci:** fixed quote breakout in toJson and yq expressions ([1d17458](https://github.com/bauer-group/automation-templates/commit/1d17458f89acee00c1c1c1685e8efd851260179c))
+* **ci:** passed git refs through the environment ([f7d43bd](https://github.com/bauer-group/automation-templates/commit/f7d43bd3c755814e287228c5434101a6ecfbfb00))
+* **ci:** quoted the project path in embedded build info ([f459384](https://github.com/bauer-group/automation-templates/commit/f459384f1b0e3386c336f95eeb58e84fc5c5dde2))
+* **ci:** randomised delimiters for untrusted step outputs ([0f85096](https://github.com/bauer-group/automation-templates/commit/0f85096df095d2b164f4c8c3dc8fd7814663f643))
+
 ## [8.0.0](https://github.com/bauer-group/automation-templates/compare/v7.1.3...v8.0.0) (2026-08-31)
 
 ### ⚠ BREAKING CHANGES
