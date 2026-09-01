@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [8.0.4](https://github.com/bauer-group/automation-templates/compare/v8.0.3...v8.0.4) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **examples:** closed script injection in shipped examples ([e235f07](https://github.com/bauer-group/automation-templates/commit/e235f07ffe4917872c3aed1958599874ebadba3e))
+
 ## [8.0.3](https://github.com/bauer-group/automation-templates/compare/v8.0.2...v8.0.3) (2026-09-01)
 
 ### 🐛 Bug Fixes
