@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [9.1.3](https://github.com/bauer-group/automation-templates/compare/v9.1.2...v9.1.3) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **makefile-build:** made the test targets actually run ([bdf94a3](https://github.com/bauer-group/automation-templates/commit/bdf94a367dfc5402cce8f9b340f02aba5647d99a))
+
 ## [9.1.2](https://github.com/bauer-group/automation-templates/compare/v9.1.1...v9.1.2) (2026-09-01)
 
 ### 🐛 Bug Fixes
