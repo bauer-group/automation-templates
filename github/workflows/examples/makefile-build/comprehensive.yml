@@ -236,10 +236,13 @@ jobs:
           time make clean
           time make all
           
-          # Run performance tests if available
-          if make -q benchmark >/dev/null 2>&1; then
+          # Run performance tests if available.
+          # `make -n` (dry run), not `make -q` (question mode): -q asks whether a target is
+          # already up to date and returns 1 for any .PHONY target, so it reports every
+          # benchmark target as unavailable and nothing ever runs.
+          if make -n benchmark >/dev/null 2>&1; then
             make benchmark
-          elif make -q perf >/dev/null 2>&1; then
+          elif make -n perf >/dev/null 2>&1; then
             make perf
           else
             echo "No benchmark targets available"

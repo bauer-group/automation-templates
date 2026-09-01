@@ -210,15 +210,37 @@ runs:
         echo "🧪 Running tests..."
         
         CHECK_TARGETS="${{ inputs.check-targets }}"
-        
+
+        # Existence is tested with `make -n` (dry run), NOT `make -q`.
+        #
+        # `make -q` is question mode: it answers "is this target already up to date?" -
+        # exit 0 when there is nothing to do, 1 when the target needs remaking. A test
+        # target is virtually always .PHONY, so it is never "up to date", `make -q test`
+        # returned 1, and the guard took the else branch. The tests therefore NEVER ran,
+        # the step succeeded, and the summary rendered them as passed. The guard was
+        # asking the wrong question and reading the answer backwards.
+        #
+        # `make -n` exits non-zero when no rule for the target exists, which is the
+        # question that was actually intended.
+        RAN=0
+        MISSING=""
         for target in $CHECK_TARGETS; do
-          if make -q $target >/dev/null 2>&1; then
+          if make -n "$target" >/dev/null 2>&1; then
             echo "📝 Running: make $target"
-            make $target
+            make "$target"
+            RAN=$((RAN + 1))
           else
-            echo "⚠️  Target '$target' not available, skipping"
+            # Surfaced rather than whispered: a configured test target that does not exist
+            # is the difference between "tests passed" and "no tests ran".
+            echo "::warning::Make target '$target' does not exist - no rule found, nothing was run for it"
+            MISSING="$MISSING $target"
           fi
         done
+
+        echo "🧪 Ran $RAN of $(echo $CHECK_TARGETS | wc -w) configured target(s)"
+        if [ "$RAN" -eq 0 ]; then
+          echo "::warning::No configured check target could be run (missing:$MISSING) - this run proves nothing about the test suite"
+        fi
 
     - name: 📦 Distribution Check
       id: distcheck
@@ -228,11 +250,13 @@ runs:
       run: |
         echo "📦 Running distribution check..."
         
-        if make -q distcheck >/dev/null 2>&1; then
+        # See Run Tests above: `make -q` asks whether the target is up to date, not whether
+        # it exists, so a .PHONY distcheck was always reported as unavailable.
+        if make -n distcheck >/dev/null 2>&1; then
           echo "📝 Running: make distcheck"
           make distcheck
         else
-          echo "⚠️  Target 'distcheck' not available, skipping"
+          echo "::warning::Make target 'distcheck' does not exist - no rule found, distribution check did not run"
         fi
 
     - name: 📊 Generate Artifacts
