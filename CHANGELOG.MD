@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [8.0.2](https://github.com/bauer-group/automation-templates/compare/v8.0.1...v8.0.2) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** stopped security-fail-on LOW from disabling the gate ([f9cd3c0](https://github.com/bauer-group/automation-templates/commit/f9cd3c057979930841ed9d620abda4ca13e21ad9))
+
 ## [8.0.1](https://github.com/bauer-group/automation-templates/compare/v8.0.0...v8.0.1) (2026-09-01)
 
 ### 🐛 Bug Fixes
