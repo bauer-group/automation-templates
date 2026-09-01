@@ -4,6 +4,16 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [9.1.0](https://github.com/bauer-group/automation-templates/compare/v9.0.3...v9.1.0) (2026-09-01)
+
+### 🚀 Features
+
+* **tools:** added workflow-audit for script injection ([3f55d80](https://github.com/bauer-group/automation-templates/commit/3f55d803e0db1fac48197b0ebebab6c0f650298c))
+
+### 🐛 Bug Fixes
+
+* **actions:** closed the second hop on current_version ([9f8a099](https://github.com/bauer-group/automation-templates/commit/9f8a099f7508283cd8925d99bf74afc32decf0c9))
+
 ## [9.0.3](https://github.com/bauer-group/automation-templates/compare/v9.0.2...v9.0.3) (2026-09-01)
 
 ### 🐛 Bug Fixes
