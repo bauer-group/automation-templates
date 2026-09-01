@@ -4,6 +4,16 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [8.0.3](https://github.com/bauer-group/automation-templates/compare/v8.0.2...v8.0.3) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **actions:** fixed case lookup ignoring the C locale ([49fa7fd](https://github.com/bauer-group/automation-templates/commit/49fa7fdd9cde9c0bc89d803cec146a06f5b01616))
+
+### ♻️ Refactoring
+
+* **ci:** routed the python test-command through env ([4cd5eaf](https://github.com/bauer-group/automation-templates/commit/4cd5eaf9927b495ff77ef9f9572007229707cdc7))
+
 ## [8.0.2](https://github.com/bauer-group/automation-templates/compare/v8.0.1...v8.0.2) (2026-09-01)
 
 ### 🐛 Bug Fixes
