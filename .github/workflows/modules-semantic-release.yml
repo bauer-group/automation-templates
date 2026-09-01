@@ -8,8 +8,16 @@ on:
         required: false
         type: string
         default: 'main'
+      ref:
+        description: >-
+          Exact commit to release from. Leave empty to use the tip of target-branch.
+          Set this to github.sha when splitting determine/publish across jobs, so both
+          evaluate the SAME commit set and cannot compute different versions.
+        required: false
+        type: string
+        default: ''
       dry-run:
-        description: 'Perform dry run without creating release'
+        description: 'Perform dry run without creating release. Determines the next version and writes nothing - no tag, no release, no changelog commit.'
         required: false
         type: boolean
         default: false
@@ -45,6 +53,17 @@ on:
       version:
         description: 'Release version'
         value: ${{ jobs.semantic-release.outputs.version }}
+      next-version:
+        description: >-
+          The version semantic-release determined for this commit set, populated in
+          dry-run mode too. Use this as the image tag for a build that must succeed
+          BEFORE the release is published.
+        value: ${{ jobs.semantic-release.outputs.next-version }}
+      will-release:
+        description: >-
+          Whether this commit set yields a release. Unlike release-created this is
+          meaningful in dry-run mode, where nothing has been created yet.
+        value: ${{ jobs.semantic-release.outputs.will-release }}
       tag-name:
         description: 'Git tag name'
         value: ${{ jobs.semantic-release.outputs.tag }}
@@ -62,24 +81,42 @@ jobs:
       release-created: ${{ steps.release.outputs.release-created }}
       version: ${{ steps.release.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
+      next-version: ${{ steps.release.outputs.next-version }}
+      will-release: ${{ steps.release.outputs.will-release }}
     
     steps:
       - name: 🚀 Checkout
         uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref || inputs.target-branch }}
           fetch-depth: 0
           persist-credentials: false
           
       - name: 📥 Sync with Remote
+        env:
+          # Passed as environment values rather than interpolated into the script body,
+          # so a caller-supplied ref can never be parsed as shell.
+          PINNED_REF: ${{ inputs.ref }}
+          TARGET_BRANCH: ${{ inputs.target-branch }}
         run: |
           echo "🔄 Fetching latest changes to ensure branch is up-to-date"
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Actions"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           git fetch origin
-          git reset --hard origin/${{ inputs.target-branch }}
+
+          # With an explicit ref, stay on exactly that commit. Resetting to the branch
+          # tip here is what would let a determine job and a later publish job observe
+          # different commit sets - and therefore compute different versions - when a
+          # push lands while the build in between is still running.
+          if [ -n "$PINNED_REF" ]; then
+            git reset --hard "$PINNED_REF"
+            echo "📌 Pinned to $PINNED_REF"
+          else
+            git reset --hard "origin/$TARGET_BRANCH"
+            echo "✅ Branch synchronized with remote"
+          fi
           git clean -fd
-          echo "✅ Branch synchronized with remote"
           
       - name: 🚀 Semantic Release
         id: semantic
@@ -96,10 +133,39 @@ jobs:
       - name: 📊 Process Results
         id: release
         run: |
-          # Map outputs from action
-          if [ "${{ steps.semantic.outputs.release-created }}" = "true" ]; then
+          # Map outputs from action.
+          #
+          # Two distinct questions, deliberately separated:
+          #   will-release / next-version -> what WOULD be released for this commit set.
+          #                                  Meaningful in dry-run, where nothing exists yet.
+          #   release-created / version   -> what WAS actually published.
+          #                                  Always false in dry-run.
+          PUBLISHED="${{ steps.semantic.outputs.release-created }}"
+          VERSION="${{ steps.semantic.outputs.version }}"
+          DRY_RUN="${{ inputs.dry-run }}"
+
+          # Keyed on VERSION, not on PUBLISHED. In dry-run the underlying action reports
+          # nothing as published - which is correct - so gating on PUBLISHED here would
+          # make will-release always false in exactly the mode it exists to serve.
+          # A version is determined whenever a release is warranted, in either mode.
+          if [ -n "$VERSION" ]; then
+            echo "will-release=true" >> "$GITHUB_OUTPUT"
+            echo "next-version=$VERSION" >> "$GITHUB_OUTPUT"
+          else
+            echo "will-release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$DRY_RUN" = "true" ]; then
+            # Nothing was written: no tag, no GitHub Release, no changelog commit.
+            echo "release-created=false" >> "$GITHUB_OUTPUT"
+            if [ -n "$VERSION" ]; then
+              echo "🔎 Dry run - next version would be: $VERSION (nothing published)"
+            else
+              echo "🔎 Dry run - no releasable changes"
+            fi
+          elif [ "$PUBLISHED" = "true" ]; then
             echo "release-created=true" >> "$GITHUB_OUTPUT"
-            echo "version=${{ steps.semantic.outputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
             echo "tag=${{ steps.semantic.outputs.tag }}" >> "$GITHUB_OUTPUT"
             echo "✅ Released version: ${{ steps.semantic.outputs.tag }}"
           else
@@ -113,7 +179,20 @@ jobs:
           echo "### 🚀 Semantic Release Results" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           
-          if [ "${{ steps.release.outputs.release-created }}" = "true" ]; then
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            echo "🔎 **Dry Run - Nothing Published**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ steps.release.outputs.will-release }}" = "true" ]; then
+              echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+              echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+              echo "| **Next version** | ${{ steps.release.outputs.next-version }} |" >> "$GITHUB_STEP_SUMMARY"
+              echo "| **Branch** | ${{ inputs.target-branch }} |" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "No tag, no GitHub Release and no changelog commit were created." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "No releasable changes found since the last release." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          elif [ "${{ steps.release.outputs.release-created }}" = "true" ]; then
             echo "✅ **Release Created Successfully**" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
