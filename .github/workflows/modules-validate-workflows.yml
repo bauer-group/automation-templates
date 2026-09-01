@@ -161,6 +161,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          # PyYAML ships with the GitHub-hosted ubuntu images but not with act's
+          # runner image, and not necessarily with a self-hosted one. Without this
+          # the whole job died on a bare ModuleNotFoundError. Prefer --user so a
+          # persistent self-hosted runner's system site-packages stay untouched;
+          # --break-system-packages is the PEP 668 fallback (pip 23+).
+          if ! python3 -c "import yaml" 2>/dev/null; then
+            echo "PyYAML is not available - installing it for this run"
+            python3 -m pip install --quiet --disable-pip-version-check --user pyyaml 2>/dev/null \
+              || python3 -m pip install --quiet --disable-pip-version-check --break-system-packages pyyaml 2>/dev/null \
+              || true
+          fi
+          if ! python3 -c "import yaml" 2>/dev/null; then
+            echo "::error title=Permission ceiling::PyYAML is required to check the permission ceiling but could not be imported or installed. Install it on the runner (apt-get install -y python3-yaml, or pip install pyyaml), or set 'check-permission-ceiling: false' to skip this check."
+            exit 1
+          fi
+
           python3 - <<'PYEOF'
           import os, sys, glob, yaml
 
