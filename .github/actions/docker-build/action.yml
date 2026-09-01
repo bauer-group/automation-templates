@@ -684,6 +684,8 @@ runs:
       if: inputs.security-scan == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        SECURITY_FAIL_ON: ${{ inputs.security-fail-on }}
       run: |
         echo "🛡️ Running security scan with ${{ inputs.security-scanner }}..."
 
@@ -694,6 +696,34 @@ runs:
 
         # Initialize scan result
         SCAN_FAILED=false
+
+        # Resolve the severity threshold ONCE, here.
+        #
+        # It drives two independent things - which severities the scanner reports, and
+        # which of them block the push - and those were previously derived separately and
+        # disagreed. Two concrete consequences of that:
+        #   * the gate `case` had no LOW branch and no default, so `security-fail-on: LOW`
+        #     (documented, and used by examples/docker/security-focused-build.yml) matched
+        #     nothing, left SCAN_FAILED=false and published the image whatever was found;
+        #   * `--severity <input>,HIGH,CRITICAL` is not cumulative, so LOW omitted MEDIUM
+        #     entirely, and a typo was passed straight through to the scanner.
+        #
+        # Normalising and validating once removes both. An unrecognised value falls back
+        # to CRITICAL with a warning rather than to "no gate at all" - the same behaviour
+        # fork-docker-build.yml already implements for this input.
+        FAIL_ON=$(printf '%s' "$SECURITY_FAIL_ON" | tr '[:lower:]' '[:upper:]')
+        case "$FAIL_ON" in
+          CRITICAL) SCAN_SEVERITIES="CRITICAL" ;;
+          HIGH)     SCAN_SEVERITIES="HIGH,CRITICAL" ;;
+          MEDIUM)   SCAN_SEVERITIES="MEDIUM,HIGH,CRITICAL" ;;
+          LOW)      SCAN_SEVERITIES="LOW,MEDIUM,HIGH,CRITICAL" ;;
+          *)
+            echo "::warning::Unknown security-fail-on '$SECURITY_FAIL_ON' - falling back to CRITICAL. Valid values: CRITICAL, HIGH, MEDIUM, LOW"
+            FAIL_ON="CRITICAL"
+            SCAN_SEVERITIES="CRITICAL"
+            ;;
+        esac
+        echo "🎚️ Severity threshold: $FAIL_ON (scanning: $SCAN_SEVERITIES)"
 
         case "${{ inputs.security-scanner }}" in
           trivy)
@@ -707,7 +737,7 @@ runs:
             trivy image \
               --format json \
               --output "$REPORT_PATH" \
-              --severity ${{ inputs.security-fail-on }},HIGH,CRITICAL \
+              --severity "$SCAN_SEVERITIES" \
               ${{ inputs.security-ignore-unfixed == 'true' && '--ignore-unfixed' || '' }} \
               "$PRIMARY_TAG" || echo "Trivy scan completed with issues"
 
@@ -715,7 +745,7 @@ runs:
             trivy image \
               --format sarif \
               --output "$SARIF_PATH" \
-              --severity ${{ inputs.security-fail-on }},HIGH,CRITICAL \
+              --severity "$SCAN_SEVERITIES" \
               "$PRIMARY_TAG" || echo "SARIF generation completed"
             ;;
 
@@ -745,6 +775,7 @@ runs:
           CRITICAL_COUNT=0
           HIGH_COUNT=0
           MEDIUM_COUNT=0
+          LOW_COUNT=0
 
           if [ "${{ inputs.security-scanner }}" = "trivy" ]; then
             # A malformed report must not silently degrade to "0 vulnerabilities".
@@ -757,15 +788,21 @@ runs:
             CRITICAL_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$REPORT_PATH")
             HIGH_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$REPORT_PATH")
             MEDIUM_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "$REPORT_PATH")
+            LOW_COUNT=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW")] | length' "$REPORT_PATH")
           fi
 
           echo "🛡️ Security scan results:"
           echo "  • Critical: $CRITICAL_COUNT"
           echo "  • High: $HIGH_COUNT"
           echo "  • Medium: $MEDIUM_COUNT"
+          echo "  • Low: $LOW_COUNT"
 
           # Determine if we should fail based on security-fail-on threshold
-          case "${{ inputs.security-fail-on }}" in
+          # $FAIL_ON is already normalised and validated above, so only the four known
+          # values can reach this point. The default branch is kept as a backstop and
+          # fails CLOSED - an unreachable-by-construction case must still never be the
+          # one that opens the push gate.
+          case "$FAIL_ON" in
             CRITICAL)
               if [ "$CRITICAL_COUNT" -gt 0 ]; then
                 echo "❌ $CRITICAL_COUNT CRITICAL vulnerabilities found - blocking push"
@@ -783,6 +820,16 @@ runs:
                 echo "❌ Found vulnerabilities at or above MEDIUM severity - blocking push"
                 SCAN_FAILED=true
               fi
+              ;;
+            LOW)
+              if [ "$CRITICAL_COUNT" -gt 0 ] || [ "$HIGH_COUNT" -gt 0 ] || [ "$MEDIUM_COUNT" -gt 0 ] || [ "$LOW_COUNT" -gt 0 ]; then
+                echo "❌ Found vulnerabilities at or above LOW severity - blocking push"
+                SCAN_FAILED=true
+              fi
+              ;;
+            *)
+              echo "::error::Unresolved severity threshold '$FAIL_ON' - refusing to open the push gate"
+              SCAN_FAILED=true
               ;;
           esac
 
