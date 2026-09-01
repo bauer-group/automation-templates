@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [9.0.3](https://github.com/bauer-group/automation-templates/compare/v9.0.2...v9.0.3) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **license-compliance:** made the forbidden-license gate actually gate ([0d83e9d](https://github.com/bauer-group/automation-templates/commit/0d83e9d04aafb468952b596b7e86351c1638c4ec))
+
 ## [9.0.2](https://github.com/bauer-group/automation-templates/compare/v9.0.1...v9.0.2) (2026-09-01)
 
 ### 🐛 Bug Fixes
