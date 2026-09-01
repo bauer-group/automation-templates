@@ -112,6 +112,10 @@ jobs:
 
     steps:
       - name: Generate Summary
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
           echo "## Pipeline Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -137,7 +141,7 @@ jobs:
             echo "### Deployment (Release)" >> "$GITHUB_STEP_SUMMARY"
             echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
             echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
-            echo "| Version | \`${{ github.ref_name }}\` |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Version | \`${GIT_REF_NAME}\` |" >> "$GITHUB_STEP_SUMMARY"
             echo "| Status | \`${{ needs.deploy-release.outputs.deployment-status }}\` |" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
           fi

@@ -206,10 +206,11 @@ jobs:
       - name: Trigger AI Summary
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_ISSUE_NUMBER: ${{ inputs.issue-number }}
         run: |
           # Trigger the AI summary for a specific issue
           gh workflow run modules-ai-issue-summary.yml \
-            -f issue-number=${{ inputs.issue-number }} \
+            -f issue-number="$INPUT_ISSUE_NUMBER" \
             -f summary-type=detailed \
             --repo ${{ github.repository }}
 

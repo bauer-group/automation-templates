@@ -71,9 +71,14 @@ jobs:
       
       - name: 🛡️ Safety Confirmation Check
         id: safety-check
+        env:
+          # workflow_dispatch inputs are free text typed into the Actions UI.
+          # Interpolated into the script body they run on assignment, so they
+          # travel through the environment instead.
+          INPUT_CONFIRM: ${{ github.event.inputs.confirm-aggressive-cleanup }}
         run: |
           # Check confirmation phrase
-          if [[ "${{ github.event.inputs.confirm-aggressive-cleanup }}" != "AGGRESSIVE_CLEANUP_CONFIRMED" ]]; then
+          if [[ "$INPUT_CONFIRM" != "AGGRESSIVE_CLEANUP_CONFIRMED" ]]; then
             echo "❌ Aggressive cleanup not properly confirmed"
             echo "🚨 Please type 'AGGRESSIVE_CLEANUP_CONFIRMED' exactly to proceed"
             echo "🛡️ This safety measure prevents accidental aggressive operations"
@@ -96,9 +101,10 @@ jobs:
         id: repo-check
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TARGET_REPO: ${{ github.event.inputs.target-repository || github.repository }}
         run: |
           # Check if repository is archived
-          REPO="${{ github.event.inputs.target-repository || github.repository }}"
+          REPO="$INPUT_TARGET_REPO"
           
           ARCHIVED=$(gh api "repos/$REPO" --jq '.archived')
           echo "archived=$ARCHIVED" >> "$GITHUB_OUTPUT"
@@ -125,14 +131,20 @@ jobs:
           fi
       
       - name: 📋 Display Aggressive Configuration
+        env:
+          # workflow_dispatch inputs are free text typed into the Actions UI.
+          # Interpolated into the script body they run on assignment, so they
+          # travel through the environment instead.
+          INPUT_TARGET_REPO: ${{ github.event.inputs.target-repository || github.repository }}
+          INPUT_MAX_AGE: ${{ github.event.inputs.max-age-days }}
         run: |
           echo "### 🔥 Aggressive Cleanup Configuration" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "> ⚠️ **WARNING: This is an aggressive cleanup operation that will permanently delete data**" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Target Repository:** ${{ github.event.inputs.target-repository || github.repository }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Target Repository:** $INPUT_TARGET_REPO" >> "$GITHUB_STEP_SUMMARY"
           echo "**Execution Mode:** ${{ github.event.inputs.dry-run == 'true' && '🔍 Dry Run' || '🔧 LIVE EXECUTION' }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Max Age:** ${{ github.event.inputs.max-age-days }} days (⚠️ Aggressive)" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Max Age:** ${INPUT_MAX_AGE} days (⚠️ Aggressive)" >> "$GITHUB_STEP_SUMMARY"
           echo "**Profile:** Aggressive (High Risk)" >> "$GITHUB_STEP_SUMMARY"
           echo "**Repository Archived:** ${{ steps.repo-check.outputs.archived }}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"

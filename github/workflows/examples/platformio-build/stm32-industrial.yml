@@ -126,7 +126,11 @@ jobs:
 
     steps:
       - name: Summary
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
-          echo "Industrial Release: ${{ github.ref_name }}"
+          echo "Industrial Release: $GIT_REF_NAME"
           echo "Build: ${{ needs.build.result }}"
           echo "Quality Gate: ${{ needs.quality-gate.result }}"

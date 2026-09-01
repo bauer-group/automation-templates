@@ -60,6 +60,10 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: SBOM Generation
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
           # Generate Software Bill of Materials
           echo "Generating SBOM..."
@@ -74,7 +78,7 @@ jobs:
               "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
               "component": {
                 "name": "${{ github.repository }}",
-                "version": "${{ github.ref_name }}",
+                "version": "$GIT_REF_NAME",
                 "type": "firmware"
               }
             },
@@ -194,8 +198,12 @@ jobs:
           echo "=== Quality Gate PASSED ==="
 
       - name: Generate release report
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
-          VERSION="${{ github.ref_name }}"
+          VERSION="$GIT_REF_NAME"
 
           cat > release-report.md << EOF
           # Industrial Firmware Release Report
@@ -253,9 +261,13 @@ jobs:
 
     steps:
       - name: Approval confirmed
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
           echo "Release approved for production"
-          echo "Version: ${{ github.ref_name }}"
+          echo "Version: $GIT_REF_NAME"
           echo "Approved at: $(date -u)"
 
   # Final release publication
@@ -277,8 +289,9 @@ jobs:
       - name: Update release with additional assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
-          VERSION="${{ github.ref_name }}"
+          VERSION="$GIT_REF_NAME"
 
           # Upload SBOM to release
           if [[ -f "release-artifacts/sbom/sbom.json" ]]; then
@@ -293,6 +306,10 @@ jobs:
           echo "Release assets updated"
 
       - name: Notify stakeholders
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
-          echo "Industrial firmware release ${{ github.ref_name }} published"
-          echo "Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+          echo "Industrial firmware release ${GIT_REF_NAME} published"
+          echo "Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$GIT_REF_NAME"

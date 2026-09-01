@@ -41,14 +41,21 @@ jobs:
 
           gh api repos/${META_REPO}/dispatches \
             -f event_type='trigger-from-repository' \
-            -f client_payload="{\"source\":\"${{ github.repository }}\",\"ref\":\"${{ github.ref }}\",\"sha\":\"${{ github.sha }}\"}"
+            -f client_payload="{\"source\":\"${{ github.repository }}\",\"ref\":\"${GIT_REF}\",\"sha\":\"${{ github.sha }}\"}"
 
           echo "✅ Meta repository sync triggered"
         env:
           GH_TOKEN: ${{ secrets.META_REPO_TOKEN }}
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF: ${{ github.ref }}
 
       - name: Report
         if: always()
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF: ${{ github.ref }}
         run: |
           echo "### 🔔 Meta Repository Notification" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -57,7 +64,7 @@ jobs:
           echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| Source Repository | ${{ github.repository }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Ref | ${{ github.ref }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Ref | ${GIT_REF} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Event | ${{ github.event_name }} |" >> "$GITHUB_STEP_SUMMARY"
 
 # Alternative: Using workflow_run instead of repository_dispatch

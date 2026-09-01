@@ -108,6 +108,10 @@ jobs:
     
     steps:
       - name: 🚨 Security Alert Analysis
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
           SECURITY_SCORE="${{ needs.security-analysis.outputs.security-score }}"
           COMPLIANCE_STATUS="${{ needs.compliance-check.outputs.compliance-status }}"
@@ -116,7 +120,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Scan Date:** $(date -u)" >> "$GITHUB_STEP_SUMMARY"
           echo "**Trigger:** ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Branch:** ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Branch:** $GIT_REF_NAME" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           
           echo "| Security Metric | Value | Status |" >> "$GITHUB_STEP_SUMMARY"
