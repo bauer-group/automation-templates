@@ -268,6 +268,59 @@ runs:
         
         echo "✅ Docker build environment ready"
 
+    - name: 🧮 Normalise Build Arguments
+      id: build-args
+      shell: bash
+      env:
+        RAW_BUILD_ARGS: ${{ inputs.build-args }}
+      run: |
+        # docker/build-push-action accepts KEY=VALUE lines and nothing else. This input is
+        # documented as "JSON object or multiline string" and its default is literally '{}',
+        # but the value was previously passed through verbatim - so a JSON object became a
+        # single --build-arg whose NAME was the JSON text. --build-arg without an '=' means
+        # "inherit this variable from the environment"; no such variable exists, docker drops
+        # it, and the build succeeds with the argument silently missing. A release shipped
+        # that way (see issue #89): green pipeline, clean scan, wrong image.
+        #
+        # Accept what the documentation promises, and reject what cannot be honoured.
+        NORMALISED=""
+        TRIMMED=$(printf '%s' "$RAW_BUILD_ARGS" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+        if [ -z "$TRIMMED" ] || [ "$TRIMMED" = "{}" ]; then
+          echo "ℹ️ No build arguments"
+        elif [ "${TRIMMED:0:1}" = "{" ]; then
+          if ! printf '%s' "$TRIMMED" | jq -e 'type == "object"' >/dev/null 2>&1; then
+            echo "::error::build-args starts with '{' but is not a valid JSON object. Pass a JSON object, or KEY=VALUE lines."
+            exit 1
+          fi
+          # Values are emitted verbatim on one line each. A value containing a newline
+          # cannot survive the KEY=VALUE line format, so reject it rather than truncate.
+          if printf '%s' "$TRIMMED" | jq -e 'to_entries[] | select((.value | tostring) | test("\n"))' >/dev/null 2>&1; then
+            echo "::error::build-args contains a value with a newline, which the KEY=VALUE format cannot represent."
+            exit 1
+          fi
+          NORMALISED=$(printf '%s' "$TRIMMED" | jq -r 'to_entries[] | "\(.key)=\(.value)"')
+          echo "🔁 Converted JSON build-args to $(printf '%s\n' "$NORMALISED" | grep -c .) KEY=VALUE line(s)"
+        else
+          NORMALISED="$RAW_BUILD_ARGS"
+          # A line without '=' is legal (inherit from the environment) but is also exactly
+          # what a mistyped argument looks like, so surface it instead of losing it silently.
+          while IFS= read -r line; do
+            [ -z "${line// /}" ] && continue
+            case "$line" in
+              *=*) : ;;
+              *) echo "::warning::build-args line '$line' has no '=' - docker will try to inherit it from the environment and drop it if unset" ;;
+            esac
+          done <<< "$NORMALISED"
+        fi
+
+        DELIM="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+        {
+          echo "normalised<<$DELIM"
+          echo "$NORMALISED"
+          echo "$DELIM"
+        } >> "$GITHUB_OUTPUT"
+
     - name: 🧭 Resolve Build Platforms
       id: resolve-platforms
       # Single source of truth for what actually gets built. The platform list used to be
@@ -671,7 +724,7 @@ runs:
         load: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-        build-args: ${{ inputs.build-args }}
+        build-args: ${{ steps.build-args.outputs.normalised }}
         secrets: ${{ inputs.build-secrets }}
         target: ${{ inputs.target }}
         cache-from: ${{ steps.cache-settings.outputs.cache-from }}
@@ -867,7 +920,7 @@ runs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-        build-args: ${{ inputs.build-args }}
+        build-args: ${{ steps.build-args.outputs.normalised }}
         secrets: ${{ inputs.build-secrets }}
         target: ${{ inputs.target }}
         # Multi-arch cache: read amd64 (from the local scan build) + arm64 (from a prior
