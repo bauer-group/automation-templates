@@ -705,12 +705,18 @@ jobs:
         if: inputs.run-tests
         shell: bash
         working-directory: ${{ inputs.working-directory }}
+        env:
+          # test-command is an intentional "run this" input and is eval'd either
+          # way, but pasting it into the script body means a quote inside it also
+          # breaks the surrounding [ -n ... ] test. Every other eval in this repo
+          # goes through a variable first; this one was the outlier.
+          CUSTOM_TEST_CMD: ${{ inputs.test-command }}
         run: |
           TEST_RESULTS_DIR="${{ runner.temp }}/test-results"
           mkdir -p "$TEST_RESULTS_DIR"
           
-          if [ -n "${{ inputs.test-command }}" ]; then
-            eval "${{ inputs.test-command }}"
+          if [ -n "$CUSTOM_TEST_CMD" ]; then
+            eval "$CUSTOM_TEST_CMD"
           elif [ "${{ inputs.test-framework }}" = "pytest" ]; then
             # Intelligente Test-Pfad-Erkennung
             TEST_PATH=""
