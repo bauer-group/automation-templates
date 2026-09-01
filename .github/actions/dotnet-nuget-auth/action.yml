@@ -180,7 +180,20 @@ runs:
         if printf '%s\n' "$KNOWN" | grep -qxF -- "$SOURCE_NAME"; then
           echo "✅ Package source '${SOURCE_NAME}' is configured."
         else
-          NEAR="$(printf '%s\n' "$KNOWN" | grep -ixF -- "$SOURCE_NAME" | head -n1 || true)"
+          # Deliberately not `grep -ixF`: GNU grep silently ignores -i when it is
+          # combined with -F under the C locale, so on a runner whose LANG is not
+          # UTF-8 this lookup found nothing. The case mismatch this action exists
+          # to catch was then reported as "unknown source" - or, with a source-url
+          # set, silently registered as a duplicate source. Bash case folding has
+          # no such locale dependency.
+          NEAR=""
+          while IFS= read -r candidate; do
+            [ -n "$candidate" ] || continue
+            if [ "${candidate,,}" = "${SOURCE_NAME,,}" ]; then
+              NEAR="$candidate"
+              break
+            fi
+          done <<< "$KNOWN"
           if [ -n "$NEAR" ]; then
             fail "NuGet source key case mismatch" \
               "nuget-source-name is '${SOURCE_NAME}' but the configured source is '${NEAR}'. NuGet resolves ${ENV_VAR} with Environment.GetEnvironmentVariable, which is case-insensitive on Windows and case-sensitive on Linux - so this passes on windows-latest and fails on ubuntu-latest with a bare HTTP 401. Use '${NEAR}' exactly."
