@@ -148,7 +148,7 @@ jobs:
 │   │   ├── esp32-build/          # ESP32 microcontroller configurations
 │   │   ├── stm32-build/          # STM32 microcontroller configurations
 │   │   ├── platformio-build/     # PlatformIO build configurations
-│   │   └── commitlint.config.js  # Commit linting rules
+│   │   └── commitlint.config.mjs  # Commit linting rules
 │   └── workflows/             # 🚀 Reusable Workflows
 │       ├── ai-issue-summary.yml       # AI-powered issue summarization
 │       ├── automatic-release.yml      # Automated release management
@@ -683,10 +683,10 @@ policies:
 
 ### Commit Lint Configuration
 
-**.github/config/commitlint.config.js**
+**.github/config/commitlint.config.mjs**
 
 ```javascript
-module.exports = {
+export default {
   extends: ['@commitlint/config-conventional'],
   rules: {
     'type-enum': [2, 'always', [
@@ -765,7 +765,7 @@ module.exports = {
    vim .github/config/zephyr-build/iot-device.yml
    
    # Update commit linting rules
-   vim .github/config/commitlint.config.js
+   vim .github/config/commitlint.config.mjs
    ```
 
 ### Quick Examples by Technology

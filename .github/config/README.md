@@ -28,7 +28,7 @@ Organized configuration files for GitHub Actions workflows and modules.
 ├── 📁 docker-base-image-monitor/  # Docker base image monitoring
 │   ├── docker-base-images.schema.json
 │   └── example.json
-└── commitlint.config.js # Commit message linting configuration
+└── commitlint.config.mjs # Commit message linting configuration
 ```
 
 ## 🔧 Configuration Files by Module
