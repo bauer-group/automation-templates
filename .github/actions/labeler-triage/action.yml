@@ -68,7 +68,7 @@ runs:
   steps:
     - name: 🏷️ Apply File-based Labels
       id: labeler
-      uses: actions/labeler@v6
+      uses: actions/labeler@v7
       with:
         repo-token: ${{ inputs.token }}
         configuration-path: ${{ inputs.config-path }}
