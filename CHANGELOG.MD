@@ -4,6 +4,24 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [10.0.6](https://github.com/bauer-group/automation-templates/compare/v10.0.5...v10.0.6) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **ai-summary:** fixed secrets context in step if ([0938f34](https://github.com/bauer-group/automation-templates/commit/0938f34895e0ae8e78cd2737d366b26138b809f0))
+
+## [10.0.5](https://github.com/bauer-group/automation-templates/compare/v10.0.4...v10.0.5) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **ai-summary:** installed the Copilot CLI and used its auth channel ([b2b1b35](https://github.com/bauer-group/automation-templates/commit/b2b1b3539dbf20de7999331f5e0b9e7724f2811f))
+
+## [10.0.4](https://github.com/bauer-group/automation-templates/compare/v10.0.3...v10.0.4) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **ai-summary:** restored inference after the GitHub Models retirement ([2702e26](https://github.com/bauer-group/automation-templates/commit/2702e26ebc6258d6c62e4cab8861da393169938a)), references [#92](https://github.com/bauer-group/automation-templates/issues/92)
+
 ## [10.0.3](https://github.com/bauer-group/automation-templates/compare/v10.0.2...v10.0.3) (2026-09-02)
 
 ### 🐛 Bug Fixes

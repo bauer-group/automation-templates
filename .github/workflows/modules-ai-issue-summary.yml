@@ -29,10 +29,14 @@ on:
         type: string
         default: ''
       model:
-        description: 'AI model to use (gpt-4.1-mini, gpt-4.1, gpt-5)'
+        description: >-
+          Model for the Copilot provider - it must be one the Copilot CLI accepts
+          (verified against api.githubcopilot.com/models). GitHub Models identifiers such
+          as gpt-4.1-mini no longer work: that catalogue endpoint now returns HTTP 410 and
+          actions/ai-inference v3 speaks only to Copilot.
         required: false
         type: string
-        default: 'gpt-4.1-mini'
+        default: 'gpt-5-mini'
       comment-template:
         description: 'Template for the comment (use {summary} placeholder)'
         required: false
@@ -56,6 +60,13 @@ on:
       ai-api-key:
         description: 'API key for AI service (if using external service)'
         required: false
+      copilot-token:
+        description: >-
+          PAT with Copilot access, exported to the Copilot CLI as COPILOT_GITHUB_TOKEN.
+          github.token cannot authenticate against the Copilot provider regardless of the
+          models: read permission, so without this the inference step fails and the run
+          degrades to the non-AI fallback summary.
+        required: false
 
 permissions:
   issues: write
@@ -67,6 +78,14 @@ jobs:
   summarize:
     name: 🧠 Generate AI Summary
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+
+    # A step's `if:` cannot read the `secrets` context - GitHub resolves it before
+    # secrets enter the expression scope, so `${{ !secrets.ai-api-key }}` did not
+    # evaluate to false, it failed the whole run with `Unrecognized named-value`.
+    # A job-level `env:` may read secrets, so the provider test is resolved once
+    # here and the steps below branch on the resulting string.
+    env:
+      HAS_EXTERNAL_AI_KEY: ${{ secrets.ai-api-key != '' }}
     
     steps:
       - name: 🚀 Checkout Repository
@@ -283,18 +302,44 @@ jobs:
           # Set output
           echo "prompt-file=/tmp/prompt.txt" >> "$GITHUB_OUTPUT"
       
-      - name: 🧠 Run AI Inference (GitHub Models)
+      # actions/ai-inference v3 does not call an API itself - it shells out to the GitHub
+      # Copilot CLI, which is NOT pre-installed on hosted runners. Both of these steps are
+      # required by the action's documented usage; without them the inference step fails
+      # and the job falls back to the template summary.
+      - name: 🟢 Setup Node (for Copilot CLI)
+        if: env.HAS_EXTERNAL_AI_KEY != 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: 🤖 Install Copilot CLI
+        if: env.HAS_EXTERNAL_AI_KEY != 'true'
+        run: npm install -g @github/copilot
+
+      # Runs unless an external OpenAI key is configured, in which case the step below
+      # handles it. The previous condition - `!custom-prompt || !contains(model, 'gpt')` -
+      # selected on the MODEL NAME, which never described the provider: with the default
+      # configuration both this step and the OpenAI step fired at once, and with a model
+      # named gpt-5-mini they would again. Provider selection now follows the thing that
+      # actually decides it, namely whether an external key was supplied.
+      - name: 🧠 Run AI Inference (Copilot)
         id: inference-github
-        if: ${{ !inputs.custom-prompt || !contains(inputs.model, 'gpt') }}
+        if: env.HAS_EXTERNAL_AI_KEY != 'true'
         continue-on-error: true
-        uses: actions/ai-inference@v2
+        uses: actions/ai-inference@v3
         with:
           prompt-file: ${{ steps.prompt.outputs.prompt-file }}
           model: ${{ inputs.model }}
+        env:
+          # The CLI authenticates from this environment variable - NOT from the action's
+          # `token` input, which is why models: read on github.token is not enough. The
+          # action's own documented example passes a PAT here for exactly this reason.
+          COPILOT_GITHUB_TOKEN: ${{ secrets.copilot-token || secrets.token || github.token }}
       
+      # Complementary to the step above: exactly one provider runs per job.
       - name: 🧠 Run AI Inference (OpenAI)
         id: inference-openai
-        if: ${{ contains(inputs.model, 'gpt') }}
+        if: env.HAS_EXTERNAL_AI_KEY == 'true'
         continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.ai-api-key }}

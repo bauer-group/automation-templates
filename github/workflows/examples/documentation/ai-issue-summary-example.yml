@@ -31,7 +31,7 @@ jobs:
       summary-type: 'brief'
       add-labels: true
       add-priority: false
-      model: 'gpt-3.5-turbo'
+      model: 'gpt-5-mini'
     secrets: inherit
 
   # Detailed technical analysis for bug reports
@@ -226,8 +226,10 @@ jobs:
 #    - Define custom templates for different scenarios
 # 
 # 3. Model options:
-#    - GitHub Models: Various models available through GitHub
-#    - OpenAI: gpt-3.5-turbo, gpt-4, etc.
+#    - Copilot (default): any model the Copilot CLI accepts, e.g. gpt-5-mini.
+#      GitHub Models is retired - its catalogue endpoint returns HTTP 410 - and
+#      actions/ai-inference v3 speaks only to Copilot.
+#    - OpenAI: used instead when the ai-api-key secret is set; any model that API accepts.
 #    - Custom: Implement your own AI service integration
 # 
 # 4. Best practices:
