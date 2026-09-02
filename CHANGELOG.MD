@@ -4,6 +4,26 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [10.0.0](https://github.com/bauer-group/automation-templates/compare/v9.1.3...v10.0.0) (2026-09-02)
+
+### ⚠ BREAKING CHANGES
+
+* **docker-build:** version-from-dockerfile: true now fails when the Dockerfile
+  has no parsable org.opencontainers.image.version LABEL, instead of silently
+  publishing the image as :latest. A repository relying on that fallback must
+  add the label or set version-from-dockerfile: false. security-scanner:
+  'snyk' now fails explicitly rather than failing later with a misleading
+  message.
+
+  Findings 3, 5 and 6 of the workflow audit.
+
+### 🐛 Bug Fixes
+
+* **build:** made the build-side test and coverage gates able to fail ([416b9e8](https://github.com/bauer-group/automation-templates/commit/416b9e83b36a296d92ad8d5ab9d05a8331941940)), references [#14](https://github.com/bauer-group/automation-templates/issues/14) [#33](https://github.com/bauer-group/automation-templates/issues/33) [#26](https://github.com/bauer-group/automation-templates/issues/26) [#34](https://github.com/bauer-group/automation-templates/issues/34) [#29](https://github.com/bauer-group/automation-templates/issues/29)
+* **ci:** corrected the release signals and closed the Dependabot blind spot ([8d84dc5](https://github.com/bauer-group/automation-templates/commit/8d84dc5b00ccceee4db8cd0763f738f547d53b50)), references [#11](https://github.com/bauer-group/automation-templates/issues/11) [#12](https://github.com/bauer-group/automation-templates/issues/12) [#13](https://github.com/bauer-group/automation-templates/issues/13) [#8](https://github.com/bauer-group/automation-templates/issues/8) [#35](https://github.com/bauer-group/automation-templates/issues/35)
+* **docker-build:** stopped the version write-back reverting the default branch ([2682ad0](https://github.com/bauer-group/automation-templates/commit/2682ad007ca9afe81becdddc0ccc1df889374ce9)), references [#3](https://github.com/bauer-group/automation-templates/issues/3) [#5](https://github.com/bauer-group/automation-templates/issues/5) [#6](https://github.com/bauer-group/automation-templates/issues/6)
+* **security:** made the vulnerability and secret gates able to fail ([378a9eb](https://github.com/bauer-group/automation-templates/commit/378a9eba67870b4bc4c8c88315e6d5f38a978775)), references [#15](https://github.com/bauer-group/automation-templates/issues/15) [#32](https://github.com/bauer-group/automation-templates/issues/32) [#30](https://github.com/bauer-group/automation-templates/issues/30) [#22](https://github.com/bauer-group/automation-templates/issues/22)
+
 ## [9.1.3](https://github.com/bauer-group/automation-templates/compare/v9.1.2...v9.1.3) (2026-09-01)
 
 ### 🐛 Bug Fixes
