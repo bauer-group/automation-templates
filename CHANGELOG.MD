@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [10.0.1](https://github.com/bauer-group/automation-templates/compare/v10.0.0...v10.0.1) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **pr-validation:** repaired commitlint, then made its verdict binding ([25a6dd8](https://github.com/bauer-group/automation-templates/commit/25a6dd88b97e84eab62d55f184f8c223256c63f3)), references [#25](https://github.com/bauer-group/automation-templates/issues/25)
+
 ## [10.0.0](https://github.com/bauer-group/automation-templates/compare/v9.1.3...v10.0.0) (2026-09-02)
 
 ### ⚠ BREAKING CHANGES
