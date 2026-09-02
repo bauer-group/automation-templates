@@ -13,7 +13,11 @@ permissions:
   issues: write
   pull-requests: write
   contents: read
-  models: read
+  # Replaces models: read - the GitHub Models API it granted has been retired. The module
+  # now drives the Copilot CLI, which needs copilot-requests: write on github.token. The
+  # module declares the same, but a called workflow's permissions block is a ceiling, not
+  # a grant: without this line here the token would arrive without the permission.
+  copilot-requests: write
 
 jobs:
   summarize-new-issue:

@@ -62,16 +62,25 @@ on:
         required: false
       copilot-token:
         description: >-
-          PAT with Copilot access, exported to the Copilot CLI as COPILOT_GITHUB_TOKEN.
-          github.token cannot authenticate against the Copilot provider regardless of the
-          models: read permission, so without this the inference step fails and the run
-          degrades to the non-AI fallback summary.
+          OPTIONAL. Only needed outside an organisation-owned repository, or to bill
+          Copilot usage to a specific user's seat instead of the organisation. In an
+          org-owned repo github.token with copilot-requests: write is the recommended
+          path and no secret is required. When set, this must be a fine-grained PAT with
+          the "Copilot Requests" permission.
         required: false
 
 permissions:
   issues: write
   pull-requests: write
-  models: read
+  # copilot-requests: write is what actions/ai-inference v3 needs - it drives the Copilot
+  # CLI, and github.token carries Copilot access only with this permission. It replaces
+  # models: read, which governed the GitHub Models API that has since been retired (its
+  # catalogue endpoint returns HTTP 410).
+  #
+  # NOTE for consumers: in a workflow_call workflow this block is a CEILING, not a grant.
+  # A caller that declares its own permissions must list copilot-requests: write too, or
+  # the token arrives without it and inference fails.
+  copilot-requests: write
   contents: read
 
 jobs:
@@ -331,10 +340,18 @@ jobs:
           prompt-file: ${{ steps.prompt.outputs.prompt-file }}
           model: ${{ inputs.model }}
         env:
-          # The CLI authenticates from this environment variable - NOT from the action's
-          # `token` input, which is why models: read on github.token is not enough. The
-          # action's own documented example passes a PAT here for exactly this reason.
-          COPILOT_GITHUB_TOKEN: ${{ secrets.copilot-token || secrets.token || github.token }}
+          # github.token is the RECOMMENDED path for an organisation-owned repository: with
+          # copilot-requests: write it authenticates the Copilot CLI directly, usage is
+          # metered to the organisation, and no long-lived credential has to be stored or
+          # rotated. It requires the organisation setting "Allow use of Copilot CLI billed
+          # to the organisation", which is on by default where Copilot CLI is enabled.
+          #
+          # The CLI reads this variable itself; the action only masks whatever it finds in
+          # COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN so it cannot leak into logs.
+          #
+          # copilot-token overrides it for repositories outside an organisation, or when
+          # usage should be billed to a specific user's Copilot seat instead.
+          GITHUB_TOKEN: ${{ secrets.copilot-token || github.token }}
       
       # Complementary to the step above: exactly one provider runs per job.
       - name: 🧠 Run AI Inference (OpenAI)
