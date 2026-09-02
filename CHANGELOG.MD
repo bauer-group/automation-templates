@@ -4,6 +4,16 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [10.2.0](https://github.com/bauer-group/automation-templates/compare/v10.1.1...v10.2.0) (2026-09-02)
+
+### 🚀 Features
+
+* **fork-docker-build:** added disk space controls ([68d55c4](https://github.com/bauer-group/automation-templates/commit/68d55c4e6efa58d5251f805dad23cd6e586fb91b))
+
+### 🐛 Bug Fixes
+
+* **docker-build:** warned when scan disk is tight ([000d59b](https://github.com/bauer-group/automation-templates/commit/000d59b68d83c86fcabd121d35a94451872646ed))
+
 ## [10.1.1](https://github.com/bauer-group/automation-templates/compare/v10.1.0...v10.1.1) (2026-09-02)
 
 ### 🐛 Bug Fixes
