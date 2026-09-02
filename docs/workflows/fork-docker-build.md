@@ -93,8 +93,41 @@ with:
 | `extra-tags` | string | `''` | Additional `docker/metadata-action` tag lines |
 | `security-scan` | boolean | `true` | Scan with Trivy before pushing |
 | `security-fail-on` | string | `CRITICAL` | Severity that blocks the push: `CRITICAL`, `HIGH`, `MEDIUM`, or `NONE` (scan + report only) |
+| `cache-mode` | string | `max` | Cache export mode: `max` (every intermediate layer of every stage) or `min` (final stage only) |
+| `free-disk-space` | boolean | `false` | Remove unused runner toolchains before building (Linux only) |
 | `runs-on` | string | `ubuntu-latest` | Runner (string or JSON array for self-hosted) |
 | `build-timeout` | number | `30` | Per-image job timeout (minutes) |
+
+## Running out of disk space
+
+A GitHub-hosted runner has roughly 4 GB free once its preinstalled toolchains are
+accounted for, and this workflow needs that several times over: BuildKit's layers,
+the `load: true` copy kept in the daemon so the image can be scanned, the cache
+export, and the tarball Trivy has Docker export before it analyses anything.
+
+The scan checks first and says so plainly:
+
+```
+💽 Image ~1967 MB, free ~3142 MB
+::warning::Disk space is tight for this scan … Trivy wants roughly 3934 MB
+```
+
+Below the image size the job stops there with an error rather than letting Trivy
+die mid-export — which used to surface as `Trivy produced no readable report`,
+naming the guard instead of the cause.
+
+Two settings answer it:
+
+```yaml
+free-disk-space: true    # reclaims 10+ GB: CodeQL bundle, Android SDK, .NET, GHC, Swift, PowerShell
+cache-mode: 'min'        # exports only the final stage instead of every layer of every stage
+```
+
+`free-disk-space` runs after checkout and before the build — the only place it can,
+since a caller cannot inject a step into this job. It skips itself on non-Linux
+runners, logs `df -h /` before and after, and deliberately leaves the rest of
+`/opt/hostedtoolcache` and all of `/usr/local/lib/node_modules` alone (npm lives
+in the latter).
 
 ## Secrets
 
