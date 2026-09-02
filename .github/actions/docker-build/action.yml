@@ -109,6 +109,18 @@ inputs:
     description: 'Push images on pull requests'
     required: false
     default: 'false'
+  single-build-scan:
+    description: >-
+      Close the scan->push TOCTOU window: build the image ONCE, scan it, then push the
+      EXACT scanned artifact (docker push, no rebuild) instead of building a second time.
+      Currently applies to single-platform builds only; multi-platform (multi-platform=true)
+      falls back to the standard two-build flow. Default false preserves current behaviour.
+      MUTUALLY EXCLUSIVE WITH PROVENANCE: the fast path uses `docker push`, which attaches no
+      SLSA build provenance. Since provenance defaults to mode=max, enabling this without also
+      setting provenance:'false' is refused before the build starts rather than losing
+      provenance silently. SBOM file attestation (attest-sbom) is unaffected.
+    required: false
+    default: 'false'
   # Caching
   cache-enabled:
     description: 'Enable build caching'
@@ -158,22 +170,22 @@ inputs:
     default: ''
   # SBOM Generation
   generate-sbom:
-    description: 'Generate Software Bill of Materials'
+    description: 'Generate Software Bill of Materials. BREAKING: default flipped to true (secure-by-default). Set false to skip SBOM generation.'
     required: false
-    default: 'false'
+    default: 'true'
   sbom-format:
     description: 'SBOM format (cyclonedx, spdx)'
     required: false
     default: 'cyclonedx'
   attest-sbom:
-    description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true and the caller job to grant attestations:write + id-token:write. Default false = no attestation (current behaviour).'
+    description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true and the caller job to grant attestations:write + id-token:write. BREAKING: default flipped to true (secure-by-default). A direct-action caller without those permissions must set attest-sbom=false.'
     required: false
-    default: 'false'
+    default: 'true'
   # Provenance
   provenance:
-    description: 'SLSA build provenance for the PUSHED image. Passed to docker/build-push-action (false, true, or mode=max). Default false preserves the current single-manifest form; enabling it attaches an attestation manifest (changes the observable manifest/index) - opt-in only.'
+    description: 'SLSA build provenance for the PUSHED image. Passed to docker/build-push-action (false, true, or mode=max). BREAKING: default flipped to mode=max, which attaches an attestation manifest and changes the pushed image to an index. Set false to keep the single-manifest form.'
     required: false
-    default: 'false'
+    default: 'mode=max'
   # VEX (Vulnerability Exploitability eXchange)
   generate-vex:
     description: 'Generate an OpenVEX document from the Trivy scan report (all CVEs under_investigation, merged with optional security/vex-overrides.json). Requires security-scan=true with the trivy scanner. Default false.'
@@ -206,8 +218,9 @@ inputs:
 outputs:
   image-digest:
     description: 'Image digest'
-    # Use push digest if available, otherwise local build digest
-    value: ${{ steps.build.outputs.digest || steps.build-local.outputs.digest }}
+    # Prefer the standard push digest, then the single-build fast-path push digest,
+    # otherwise the local build digest.
+    value: ${{ steps.build.outputs.digest || steps.push-scanned.outputs.digest || steps.build-local.outputs.digest }}
   image-tags:
     description: 'Generated image tags'
     value: ${{ steps.meta.outputs.tags }}
@@ -248,6 +261,26 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    # Provenance and single-build-scan are both security properties and this
+    # combination cannot deliver both. The fast path pushes with `docker push`,
+    # which carries no SLSA attestation, while the standard path gets provenance
+    # from buildx at build time - and the image the fast path pushes came from a
+    # `load: true` build, which the docker exporter cannot attach attestations to
+    # in the first place.
+    #
+    # Refused rather than warned. This PR makes provenance mode=max the default, so
+    # a caller enabling single-build-scan would silently lose a property it never
+    # asked to give up, and the only evidence would be a log line in a green run -
+    # the exact shape of failure the scan gate and the disk precheck exist to avoid.
+    # Which property matters is the caller's call, so the build stops until one is
+    # named.
+    - name: 🚦 Reject Provenance With Single-Build-Scan
+      if: inputs.single-build-scan == 'true' && inputs.multi-platform != 'true' && inputs.push == 'true' && inputs.provenance != 'false'
+      shell: bash
+      run: |
+        echo "::error title=single-build-scan cannot carry provenance::single-build-scan pushes the scanned image with 'docker push', which attaches no SLSA build provenance, but provenance is set to '${{ inputs.provenance }}'. Pick the property this build needs: set provenance:'false' to keep the scan->push TOCTOU window closed and accept no provenance, or single-build-scan:false to keep provenance and accept the second build. SBOM attestation (attest-sbom) is unaffected either way."
+        exit 1
+
     - name: 🔧 Setup Build Environment
       shell: bash
       working-directory: ${{ inputs.working-directory }}
@@ -1030,7 +1063,10 @@ runs:
 
     - name: 🚀 Push Docker Image
       id: build
-      if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true')
+      # Standard two-build push. Skipped when the single-build fast path is active
+      # (single-build-scan=true AND single-platform) - the Push Scanned Image step below
+      # pushes the already-scanned image instead, closing the scan->push TOCTOU window.
+      if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true') && (inputs.single-build-scan != 'true' || inputs.multi-platform == 'true')
       uses: docker/build-push-action@v7
       env:
         # See build-local step above for rationale - opt-in via verbose-build-summary input.
@@ -1051,11 +1087,45 @@ runs:
         # from scratch under QEMU on every run.
         cache-from: ${{ steps.cache-settings.outputs.cache-from-push }}
         cache-to: ${{ steps.cache-settings.outputs.cache-to-push }}
-        # provenance: opt-in via the 'provenance' input (default 'false' = unchanged
-        # single-manifest push). Only the push build carries provenance - the local
-        # scan build uses load:true (docker exporter), which cannot hold attestations.
+        # provenance now defaults to mode=max (see the feat(ci)! commit on this branch),
+        # so the pushed image is an OCI index rather than a single manifest unless a
+        # caller sets provenance:'false'. Only this push build can carry it - the local
+        # scan build uses load:true, and the docker exporter cannot hold attestations,
+        # which is why single-build-scan and provenance are mutually exclusive and are
+        # refused up front rather than silently dropping one.
         provenance: ${{ inputs.provenance }}
         sbom: false
+
+    - name: 🚀 Push Scanned Image (single-build, no rebuild)
+      id: push-scanned
+      # Fast path: push the EXACT image that build-local built and the scan verified, with
+      # no second build - closing the scan->push TOCTOU window. Only for single-platform
+      # builds (docker load/push handle one arch); the standard push step covers the rest.
+      # Same push gate as the standard step (respects push / push-on-pr / scan-passed).
+      if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true') && inputs.single-build-scan == 'true' && inputs.multi-platform != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "🚀 Pushing the exact scanned image (no rebuild)..."
+
+        # Push every tag build-local loaded (primary + any secondary-registry tags). All
+        # tags reference the same local image, so this uploads the scanned bytes verbatim.
+        pushed_any=false
+        while IFS= read -r TAG; do
+          [ -z "$TAG" ] && continue
+          echo "  → $TAG"
+          docker push "$TAG"
+          pushed_any=true
+        done <<< "${{ steps.meta.outputs.tags }}"
+
+        # Resolve the registry manifest digest from the first tag's RepoDigests.
+        DIGEST=""
+        if [ "$pushed_any" = "true" ]; then
+          FIRST_TAG=$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n1)
+          DIGEST=$(docker inspect --format='{{range .RepoDigests}}{{println .}}{{end}}' "$FIRST_TAG" 2>/dev/null | head -n1 | sed 's/.*@//' || true)
+        fi
+        echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+        echo "✅ Pushed scanned image (digest: ${DIGEST:-unknown})"
 
     - name: 📊 Collect Build Information
       id: build-info
@@ -1111,14 +1181,15 @@ runs:
           go install github.com/sigstore/cosign/v2/cmd/cosign@latest
         fi
 
-        # Sign all tags using the push digest
+        # Sign all tags using the push digest (standard push, or the single-build fast-path push).
+        PUSH_DIGEST="${{ steps.build.outputs.digest || steps.push-scanned.outputs.digest }}"
         echo "${{ steps.meta.outputs.tags }}" | while read -r tag; do
           if [ -n "$tag" ]; then
-            echo "Signing: $tag@${{ steps.build.outputs.digest }}"
+            echo "Signing: $tag@${PUSH_DIGEST}"
             if [ -n "$COSIGN_PRIVATE_KEY" ]; then
-              echo "$COSIGN_PRIVATE_KEY" | cosign sign --key env://COSIGN_PRIVATE_KEY --yes "$tag@${{ steps.build.outputs.digest }}"
+              echo "$COSIGN_PRIVATE_KEY" | cosign sign --key env://COSIGN_PRIVATE_KEY --yes "$tag@${PUSH_DIGEST}"
             else
-              cosign sign --yes "$tag@${{ steps.build.outputs.digest }}"
+              cosign sign --yes "$tag@${PUSH_DIGEST}"
             fi
           fi
         done
