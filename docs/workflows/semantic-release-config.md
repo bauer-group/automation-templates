@@ -33,7 +33,7 @@ second instance — the entry is filtered out of the extra-plugins merge:
 | `@semantic-release/exec` | with the action's `generateNotesCmd` **plus your other hooks** |
 | `@semantic-release/changelog` | with your `changelogFile` / `changelogTitle`, if set |
 | `@semantic-release/git` | with your `assets` / `message`, if set |
-| `@semantic-release/github` | as a bare entry — see *Known gaps* |
+| `@semantic-release/github` | with your options, if any |
 | `@semantic-release/release-notes-generator` | **not provided at all** — see *Known gaps* |
 
 ## What is read from your config
@@ -49,6 +49,7 @@ Exactly this, and nothing else:
 | `git` → `.assets` | **which files the release commit includes** |
 | `git` → `.message` | the release commit message |
 | `exec` → every hook except `generateNotesCmd` | merged into the reserved `exec` entry |
+| `github` → all options | merged into the reserved `github` entry |
 | any plugin outside the six reserved | appended before `@semantic-release/github` |
 
 Everything else — `branches`, plugin ordering, and any plugin option not in this
@@ -95,17 +96,14 @@ commits. It is asserted by
 
 ## Known gaps
 
-**`@semantic-release/github` options are ignored.** The action emits the plugin as a
-bare entry, and `github` is reserved, so options like `successComment`, `failComment`
-or `releasedLabels` in your config never reach it. No extraction exists for them.
-
 **`@semantic-release/release-notes-generator` is inert.** The action does not include
 the plugin — `notes/notes.mjs` replaces it — and it is reserved, so it is also filtered
 out of the extra-plugins merge. A `presetConfig` for it in your config is dead weight,
-including the section titles it appears to define.
+**including the section titles it appears to define**: those live in `notes.mjs`'s own
+`TYPES` table, and a config asking for different ones does not get them.
 
-Both are silent. If either matters for your repository, raise it rather than
-assuming the setting took effect.
+This one is no longer silent. The action now emits a warning when it finds the plugin
+in a repository config, so the entry can be deleted rather than trusted.
 
 ## History
 
@@ -115,6 +113,12 @@ could not be registered twice, but enforced the reservation by dropping the cons
 GitHub releases stayed correct, and only the version *inside* the artifacts stopped
 advancing. It ran for four releases across three repositories before anyone noticed.
 Fixed in #97; the regression is now covered by the test linked above.
+
+Writing this page surfaced the same mistake on `@semantic-release/github`: reserved,
+but with no extraction behind it, so every option a repository set was discarded. That
+one left even less trace than the `exec` case — there was no key to notice missing,
+only releases that kept commenting on issues a repository had asked them not to touch.
+Its options are read now, and the test covers them.
 
 ## See also
 

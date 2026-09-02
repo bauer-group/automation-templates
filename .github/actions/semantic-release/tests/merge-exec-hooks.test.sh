@@ -68,6 +68,24 @@ if [ -z "$MERGE_PROGRAM" ]; then
   exit 1
 fi
 
+# The same pair for @semantic-release/github. It is reserved like exec, but the
+# action owns no option on it, so reserving it discarded every option a repository
+# set - successComment, failComment, releasedLabels, assets - silently.
+GITHUB_EXTRACT_PROGRAM=$(sed -n "s/^ *CUSTOM_GITHUB=\$(jq -c '\(.*\)' \"\$REPO_CONFIG\".*$/\1/p" "$ACTION_FILE")
+
+GITHUB_MERGE_PROGRAM=$(awk '
+  /jq --argjson gh "\$CUSTOM_GITHUB" .$/ { collecting = 1; next }
+  collecting && /^ *'\'' / { exit }
+  collecting { print }
+' "$ACTION_FILE")
+
+if [ -z "$GITHUB_EXTRACT_PROGRAM" ] || [ -z "$GITHUB_MERGE_PROGRAM" ]; then
+  echo "FATAL: could not extract the github option programs from action.yml."
+  echo "       Reserving @semantic-release/github without reading its options is how"
+  echo "       every successComment/failComment/assets setting was silently dropped."
+  exit 1
+fi
+
 PASSED=0
 FAILED=0
 WORK=$(mktemp -d)
@@ -114,6 +132,11 @@ write_action_config() {
       first=0
       if [ "$plugin" = "@semantic-release/exec" ]; then
         printf '    ["%s", {"generateNotesCmd": "%s"}]' "$plugin" "$NOTES_CMD"
+      elif [ "$plugin" = "@semantic-release/github" ]; then
+        # action.yml emits github as a BARE STRING, holding no options of its own.
+        # The fixture has to present it that way or the merge is never exercised on
+        # the shape it actually meets.
+        printf '    "%s"' "$plugin"
       else
         printf '    ["%s", {}]' "$plugin"
       fi
@@ -132,9 +155,20 @@ run_pipeline() {
     CUSTOM_EXEC="{}"
   fi
 
+  CUSTOM_GITHUB=$(jq -c "$GITHUB_EXTRACT_PROGRAM" "$repo_config" 2>/dev/null || echo "{}")
+  if [ -n "$CUSTOM_GITHUB" ] && [ "$CUSTOM_GITHUB" != "{}" ] && [ "$CUSTOM_GITHUB" != "null" ]; then
+    :
+  else
+    CUSTOM_GITHUB="{}"
+  fi
+
   write_action_config
   if [ "$CUSTOM_EXEC" != "{}" ]; then
     jq --argjson exec "$CUSTOM_EXEC" "$MERGE_PROGRAM" "$WORK/releaserc.json" > "$WORK/out.json" \
+      && mv "$WORK/out.json" "$WORK/releaserc.json"
+  fi
+  if [ "$CUSTOM_GITHUB" != "{}" ]; then
+    jq --argjson gh "$CUSTOM_GITHUB" "$GITHUB_MERGE_PROGRAM" "$WORK/releaserc.json" > "$WORK/out.json" \
       && mv "$WORK/out.json" "$WORK/releaserc.json"
   fi
 }
@@ -174,6 +208,15 @@ assert() {
         got=$(jq -r --arg k "$key" '[.plugins[] | select(type == "array") | select(.[0] == "@semantic-release/exec") | .[1][$k]] | first // "<absent>"' "$WORK/releaserc.json")
         if [ "$got" != "$want" ]; then
           ok=0; detail="$detail\n    exec.$key: expected '$want', got '$got'"
+        fi ;;
+      ghval=*)
+        local gkv gkey gwant ggot
+        gkv="${e#ghval=}"
+        gkey="${gkv%%=*}"
+        gwant="${gkv#*=}"
+        ggot=$(jq -r --arg k "$gkey" '[.plugins[] | select(type == "array") | select(.[0] == "@semantic-release/github") | .[1][$k]] | first | if . == null then "<absent>" else tostring end' "$WORK/releaserc.json")
+        if [ "$ggot" != "$gwant" ]; then
+          ok=0; detail="$detail\n    github.$gkey: expected '$gwant', got '$ggot'"
         fi ;;
       len=*)
         if [ "$len" != "${e#len=}" ]; then
@@ -278,6 +321,55 @@ assert "the merge preserves array length for the positional splice below" \
   '{"plugins":[["@semantic-release/exec",{"prepareCmd":"a","successCmd":"b"}]]}' \
   "len=5" "order=@semantic-release/commit-analyzer>@semantic-release/exec" \
   "order=@semantic-release/git>@semantic-release/github"
+
+# --- @semantic-release/github options --------------------------------------------
+# The second half of the same mistake. github is reserved like exec, but the action
+# owns no option on it, so reserving it discarded everything a repository set. Unlike
+# the exec case this one left no trace at all: there was no extraction to inspect and
+# no key to notice missing, only a release that quietly kept commenting on issues a
+# repository had asked it not to touch.
+assert "a consumer's github options reach the plugin" \
+  '{"plugins":[["@semantic-release/github",{"successComment":false,"failComment":false,"releasedLabels":false}]]}' \
+  "ghval=successComment=false" "ghval=failComment=false" "ghval=releasedLabels=false" "len=5"
+
+assert "github stays in place when its options are merged" \
+  '{"plugins":[["@semantic-release/github",{"successComment":false}]]}' \
+  "len=5" "order=@semantic-release/git>@semantic-release/github"
+
+assert "no github options leaves the bare entry alone" \
+  '{"plugins":[["@semantic-release/exec",{"prepareCmd":"a"}]]}' \
+  "ghval=successComment=<absent>" "len=5"
+
+assert "github as a bare string in the repo config is a no-op" \
+  '{"plugins":["@semantic-release/github"]}' \
+  "ghval=successComment=<absent>" "len=5"
+
+# exec and github hooks arriving together must not interfere - they are separate
+# merges over the same array, and each has to leave the other's entry intact.
+assert "exec hooks and github options merge independently" \
+  '{"plugins":[["@semantic-release/exec",{"prepareCmd":"stamp"}],["@semantic-release/github",{"successComment":false}]]}' \
+  "exec=generateNotesCmd,prepareCmd" "execval=generateNotesCmd=node notes.mjs" \
+  "ghval=successComment=false" "len=5"
+
+# The merge's second branch handles a github entry already in array form. action.yml
+# emits it bare today, so that branch is unreachable through the fixture above and
+# would sit untested until the day it is not - a defensive branch nobody has ever
+# run is not a defence. Exercised directly against the extracted program instead.
+echo
+if jq -n --argjson gh '{"successComment":false}' \
+     '{"plugins":[["@semantic-release/github",{"assets":["dist/*"]}]]}' > "$WORK/arrayform.json" 2>/dev/null \
+   && jq --argjson gh '{"successComment":false}' "$GITHUB_MERGE_PROGRAM" "$WORK/arrayform.json" > "$WORK/arrayform.out" 2>/dev/null; then
+  KEPT=$(jq -r '.plugins[0][1].assets[0] // "<lost>"' "$WORK/arrayform.out")
+  ADDED=$(jq -r '.plugins[0][1].successComment | tostring' "$WORK/arrayform.out")
+  if [ "$KEPT" = "dist/*" ] && [ "$ADDED" = "false" ]; then
+    PASSED=$((PASSED + 1)); echo "  PASS  an array-form github entry keeps its existing options"
+  else
+    FAILED=$((FAILED + 1)); echo "  FAIL  an array-form github entry keeps its existing options"
+    echo "        assets: expected 'dist/*', got '$KEPT'; successComment: expected 'false', got '$ADDED'"
+  fi
+else
+  FAILED=$((FAILED + 1)); echo "  FAIL  an array-form github entry keeps its existing options (merge program errored)"
+fi
 
 echo
 echo "$PASSED passed, $FAILED failed"
