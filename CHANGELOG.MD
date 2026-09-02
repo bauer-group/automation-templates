@@ -4,6 +4,19 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.0.0](https://github.com/bauer-group/automation-templates/compare/v10.3.0...v11.0.0) (2026-09-02)
+
+### ⚠ BREAKING CHANGES
+
+* **ci:** the security gate now actually enforces. Images that previously
+  passed under a grype scanner or a LOW threshold may now be blocked. Set
+  security-fail-on to a higher severity, or security-scan: false, to restore the
+  prior non-blocking behaviour.
+
+### 🐛 Bug Fixes
+
+* **ci:** enforced grype gate & LOW severity threshold ([63cfcbf](https://github.com/bauer-group/automation-templates/commit/63cfcbf19750646a41ea84669eb6a99ecb10f675)), references [#68](https://github.com/bauer-group/automation-templates/issues/68) [#68](https://github.com/bauer-group/automation-templates/issues/68)
+
 ## [10.3.0](https://github.com/bauer-group/automation-templates/compare/v10.2.2...v10.3.0) (2026-09-02)
 
 ### 🚀 Features
