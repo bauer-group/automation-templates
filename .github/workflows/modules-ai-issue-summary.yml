@@ -78,6 +78,14 @@ jobs:
   summarize:
     name: 🧠 Generate AI Summary
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+
+    # A step's `if:` cannot read the `secrets` context - GitHub resolves it before
+    # secrets enter the expression scope, so `${{ !secrets.ai-api-key }}` did not
+    # evaluate to false, it failed the whole run with `Unrecognized named-value`.
+    # A job-level `env:` may read secrets, so the provider test is resolved once
+    # here and the steps below branch on the resulting string.
+    env:
+      HAS_EXTERNAL_AI_KEY: ${{ secrets.ai-api-key != '' }}
     
     steps:
       - name: 🚀 Checkout Repository
@@ -299,13 +307,13 @@ jobs:
       # required by the action's documented usage; without them the inference step fails
       # and the job falls back to the template summary.
       - name: 🟢 Setup Node (for Copilot CLI)
-        if: ${{ !secrets.ai-api-key }}
+        if: env.HAS_EXTERNAL_AI_KEY != 'true'
         uses: actions/setup-node@v7
         with:
           node-version: '24'
 
       - name: 🤖 Install Copilot CLI
-        if: ${{ !secrets.ai-api-key }}
+        if: env.HAS_EXTERNAL_AI_KEY != 'true'
         run: npm install -g @github/copilot
 
       # Runs unless an external OpenAI key is configured, in which case the step below
@@ -316,7 +324,7 @@ jobs:
       # actually decides it, namely whether an external key was supplied.
       - name: 🧠 Run AI Inference (Copilot)
         id: inference-github
-        if: ${{ !secrets.ai-api-key }}
+        if: env.HAS_EXTERNAL_AI_KEY != 'true'
         continue-on-error: true
         uses: actions/ai-inference@v3
         with:
@@ -331,7 +339,7 @@ jobs:
       # Complementary to the step above: exactly one provider runs per job.
       - name: 🧠 Run AI Inference (OpenAI)
         id: inference-openai
-        if: ${{ secrets.ai-api-key != '' }}
+        if: env.HAS_EXTERNAL_AI_KEY == 'true'
         continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.ai-api-key }}
