@@ -358,7 +358,7 @@ jobs:
       # 3. Setup .NET SDK
       # -----------------------------------------------------------------------
       - name: 🔧 Setup .NET SDK
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ inputs.global-json-file == '' && inputs.dotnet-version || '' }}
           global-json-file: ${{ inputs.global-json-file }}
