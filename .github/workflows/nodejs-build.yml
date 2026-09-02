@@ -641,10 +641,15 @@ jobs:
         id: audit
         if: inputs.run-audit
         working-directory: ${{ inputs.working-directory }}
+        env:
+          # Caller-supplied value - kept out of the script body.
+          AUDIT_LEVEL: ${{ inputs.audit-level }}
         run: |
           PM="${{ steps.detect-pm.outputs.package-manager }}"
           AUDIT_FILE="${{ runner.temp }}/audit-output.txt"
           AUDIT_EXIT=0
+          # Whether an audit actually ran. Never report a pass without one.
+          AUDITED=true
           OMIT_FLAG=""
           if [ "${{ inputs.audit-production-only }}" = "true" ]; then
             OMIT_FLAG="--omit=dev"
@@ -661,15 +666,52 @@ jobs:
               pnpm audit --audit-level ${{ inputs.audit-level }} ${{ inputs.audit-production-only == true && '--prod' || '' }} > "$AUDIT_FILE" 2>&1 || AUDIT_EXIT=$?
               ;;
             bun)
-              echo "Bun doesn't support audit yet" > "$AUDIT_FILE"
+              # `bun audit` exists since Bun 1.2.15. This branch used to print
+              # "Bun doesn't support audit yet", leave AUDIT_EXIT at 0 and let the
+              # summary read "No issues above threshold" - a green security gate
+              # that had audited nothing. Run the real audit instead, and when the
+              # runner's Bun is too old say "NOT audited" rather than report a pass.
+              # Capability is read from the command list (an old Bun would treat
+              # `bun audit` as a package.json script of that name).
+              if bun --help 2>&1 | grep -qE '^[[:space:]]+audit[[:space:]]'; then
+                if [ "${{ inputs.audit-production-only }}" = "true" ]; then
+                  echo "Note: bun audit has no production-only mode - auditing all dependencies"
+                fi
+                # `if ! cmd; then rc=$?` would capture the status of the negation,
+                # so run it plainly with -e off and read the real exit code.
+                set +e
+                bun audit --audit-level="$AUDIT_LEVEL" > "$AUDIT_FILE" 2>&1
+                AUDIT_EXIT=$?
+                set -e
+                if [ "$AUDIT_EXIT" -ne 0 ] && grep -qE 'nothing to audit|missing lockfile' "$AUDIT_FILE"; then
+                  # There was nothing installed to audit. That is not a finding - and
+                  # not a clean bill of health either, so report "NOT audited" instead
+                  # of failing a build that has no dependencies to check. Any other
+                  # non-zero exit stays a failure, exactly like the npm/yarn/pnpm arms.
+                  AUDITED=false
+                  AUDIT_EXIT=0
+                fi
+              else
+                AUDITED=false
+                echo "bun audit is unavailable in this Bun version (needs Bun >= 1.2.15) - dependencies were NOT audited" > "$AUDIT_FILE"
+              fi
               ;;
           esac
 
           cat "$AUDIT_FILE"
+          echo "audited=$AUDITED" >> "$GITHUB_OUTPUT"
 
           # Parse vulnerability summary for job summary
-          SUMMARY=$(grep -oE '[0-9]+ (low|moderate|high|critical) severity' "$AUDIT_FILE" | tr '\n' ', ' | sed 's/, $//' || echo "")
-          [ -z "$SUMMARY" ] && SUMMARY="No issues above threshold"
+          if [ "$AUDITED" != "true" ]; then
+            # Fail closed in the report: "could not audit" must never render as "no issues found".
+            echo "::warning::Security audit was requested but could not run - dependencies were NOT audited"
+            SUMMARY="NOT audited - see step log"
+          else
+            SUMMARY=$(grep -oE '[0-9]+ (low|moderate|high|critical) severity' "$AUDIT_FILE" | tr '\n' ', ' | sed 's/, $//' || echo "")
+            # bun prints "12 vulnerabilities (2 critical, 4 high, 6 moderate)" instead of npm's "N low severity"
+            [ -z "$SUMMARY" ] && SUMMARY=$(grep -oE '[0-9]+ vulnerabilit(y|ies)( \([^)]*\))?' "$AUDIT_FILE" | tail -n 1 || echo "")
+            [ -z "$SUMMARY" ] && SUMMARY="No issues above threshold"
+          fi
           echo "audit-summary=$SUMMARY" >> "$GITHUB_OUTPUT"
 
           exit $AUDIT_EXIT
@@ -770,6 +812,9 @@ jobs:
         id: coverage
         if: inputs.test-coverage
         working-directory: ${{ inputs.working-directory }}
+        env:
+          # Caller-supplied value - kept out of the script body.
+          COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
         run: |
           CUSTOM_CMD="${{ inputs.coverage-command }}"
           if [ -n "$CUSTOM_CMD" ]; then
@@ -795,12 +840,147 @@ jobs:
             fi
           fi
           
-          # Check coverage threshold
-          COVERAGE_THRESHOLD="${{ inputs.coverage-threshold }}"
-          if [ "${COVERAGE_THRESHOLD:-0}" -gt 0 ]; then
-            echo "Checking coverage threshold: ${{ inputs.coverage-threshold }}%"
-            # Add coverage threshold check logic here
-          fi
+          # --- Coverage threshold gate ---
+          # This was a stub ("# Add coverage threshold check logic here"), so
+          # coverage-threshold was documented as enforced while every value passed.
+          # It now reads the generated coverage report and fails when measured line
+          # coverage is below the threshold - and fails the same way when no readable
+          # report exists, because a threshold that could not be measured must never
+          # be reported as one that was met. coverage-threshold: 0 (the default) still
+          # skips the gate entirely, so builds that never set it are unaffected.
+          COVERAGE_CHECK="${RUNNER_TEMP:-/tmp}/coverage-threshold-check.cjs"
+          cat > "$COVERAGE_CHECK" <<'COVERAGE_CHECK_EOF'
+          const fs = require('fs');
+          const path = require('path');
+
+          const raw = (process.env.COVERAGE_THRESHOLD || '').trim();
+          const threshold = Number(raw);
+          if (raw !== '' && !Number.isFinite(threshold)) {
+            // Same stance as dotnet-build.yml: an unusable threshold is not a passed gate.
+            console.log('::error::coverage-threshold "' + raw + '" is not a number - refusing to report the coverage gate as satisfied');
+            process.exit(1);
+          }
+          // Gate disabled (0 is the default): behave exactly as before.
+          if (!(threshold > 0)) process.exit(0);
+
+          // Priority order: richest/most explicit report format first.
+          const WANTED = ['coverage-summary.json', 'lcov.info', 'coverage-final.json', 'clover.xml', 'cobertura-coverage.xml'];
+          const SKIP = new Set(['node_modules', 'dist', 'build', 'out', 'vendor', 'tmp']);
+          const found = new Map();
+
+          // Breadth-first so the shallowest report wins in a monorepo.
+          function collect() {
+            const queue = [['.', 0]];
+            while (queue.length) {
+              const item = queue.shift();
+              const dir = item[0];
+              const depth = item[1];
+              let entries = [];
+              try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { continue; }
+              for (const entry of entries) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                  if (depth >= 4 || SKIP.has(entry.name)) continue;
+                  if (entry.name.startsWith('.') && entry.name !== '.nyc_output') continue;
+                  queue.push([full, depth + 1]);
+                } else if (WANTED.indexOf(entry.name) !== -1 && !found.has(entry.name)) {
+                  found.set(entry.name, full);
+                }
+              }
+            }
+          }
+          collect();
+
+          function fromSummary(file) {
+            const total = (JSON.parse(fs.readFileSync(file, 'utf8')) || {}).total || {};
+            const metric = total.lines || total.statements;
+            if (!metric) return null;
+            if (Number.isFinite(metric.pct)) return metric.pct;
+            if (metric.total > 0) return (metric.covered / metric.total) * 100;
+            return null;
+          }
+
+          function fromLcov(file) {
+            let lines = 0;
+            let hits = 0;
+            for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+              if (line.startsWith('LF:')) lines += Number(line.slice(3)) || 0;
+              else if (line.startsWith('LH:')) hits += Number(line.slice(3)) || 0;
+            }
+            return lines > 0 ? (hits / lines) * 100 : null;
+          }
+
+          function fromIstanbul(file) {
+            const report = JSON.parse(fs.readFileSync(file, 'utf8')) || {};
+            let total = 0;
+            let covered = 0;
+            for (const entry of Object.keys(report)) {
+              const counts = report[entry] && report[entry].s;
+              if (!counts) continue;
+              for (const key of Object.keys(counts)) {
+                total++;
+                if (counts[key] > 0) covered++;
+              }
+            }
+            return total > 0 ? (covered / total) * 100 : null;
+          }
+
+          function fromClover(file) {
+            const tag = (fs.readFileSync(file, 'utf8').match(/<metrics\b[^>]*>/) || [])[0];
+            if (!tag) return null;
+            // \b keeps "statements" from matching inside "coveredstatements".
+            const total = tag.match(/\bstatements="(\d+)"/);
+            const covered = tag.match(/\bcoveredstatements="(\d+)"/);
+            if (!total || !covered || Number(total[1]) <= 0) return null;
+            return (Number(covered[1]) / Number(total[1])) * 100;
+          }
+
+          function fromCobertura(file) {
+            const tag = (fs.readFileSync(file, 'utf8').match(/<coverage\b[^>]*>/) || [])[0];
+            if (!tag) return null;
+            const valid = tag.match(/\blines-valid="(\d+)"/);
+            const covered = tag.match(/\blines-covered="(\d+)"/);
+            if (valid && covered && Number(valid[1]) > 0) return (Number(covered[1]) / Number(valid[1])) * 100;
+            const rate = tag.match(/\bline-rate="([0-9.]+)"/);
+            return rate ? Number(rate[1]) * 100 : null;
+          }
+
+          const PARSERS = [fromSummary, fromLcov, fromIstanbul, fromClover, fromCobertura];
+
+          let measured = null;
+          let source = null;
+          for (let i = 0; i < WANTED.length; i++) {
+            const file = found.get(WANTED[i]);
+            if (!file) continue;
+            try {
+              const value = PARSERS[i](file);
+              if (Number.isFinite(value)) { measured = value; source = file; break; }
+            } catch (e) {
+              console.log('::warning::Could not parse coverage report ' + file + ': ' + e.message);
+            }
+          }
+
+          if (measured === null) {
+            // Fail closed: no report means the threshold is unverified, not met.
+            console.log('::error::coverage-threshold is ' + threshold + '% but no readable coverage report was found');
+            console.log('Searched ' + process.cwd() + ' (depth 4) for: ' + WANTED.join(', '));
+            console.log('Emit one of those reports (json-summary, lcov, clover or cobertura reporter), or set coverage-threshold: 0 to disable the gate.');
+            process.exit(1);
+          }
+
+          const pct = Math.round(measured * 100) / 100;
+          if (process.env.GITHUB_OUTPUT) {
+            try { fs.appendFileSync(process.env.GITHUB_OUTPUT, 'coverage-pct=' + pct + '\n'); } catch (e) { /* non-fatal */ }
+          }
+          console.log('Coverage: ' + pct + '% (from ' + source + ') - threshold: ' + threshold + '%');
+
+          if (pct + 1e-9 < threshold) {
+            console.log('::error::Coverage ' + pct + '% is below the required threshold of ' + threshold + '%');
+            process.exit(1);
+          }
+          console.log('Coverage threshold met.');
+          COVERAGE_CHECK_EOF
+          node "$COVERAGE_CHECK"
       
       - name: 📊 Upload Coverage
         if: inputs.test-coverage && env.HAS_CODECOV_TOKEN == 'true'
@@ -1010,6 +1190,12 @@ jobs:
 
       - name: 📋 Job Summary
         if: always()
+        env:
+          # Step outputs carry text parsed out of tool output - they travel through
+          # the environment instead of being interpolated into the script body.
+          AUDIT_SUMMARY: ${{ steps.audit.outputs.audit-summary }}
+          AUDIT_PERFORMED: ${{ steps.audit.outputs.audited }}
+          COVERAGE_PCT: ${{ steps.coverage.outputs.coverage-pct }}
         run: |
           # --- Status helper ---
           status() {
@@ -1041,11 +1227,14 @@ jobs:
             echo "| Check | Status | Details |"
             echo "|-------|--------|---------|"
 
-            # Security Audit
-            if [ "${{ inputs.run-audit }}" = "true" ]; then
-              echo "| 🔍 Security Audit | $(status ${{ steps.audit.outcome }}) | Level: \`${{ inputs.audit-level }}\` — ${{ steps.audit.outputs.audit-summary }} |"
-            else
+            # Security Audit - a package manager that could not be audited (e.g. a
+            # Bun too old for `bun audit`) must not render as a passed audit.
+            if [ "${{ inputs.run-audit }}" != "true" ]; then
               echo "| 🔍 Security Audit | ➖ Disabled | |"
+            elif [ "$AUDIT_PERFORMED" = "false" ]; then
+              echo "| 🔍 Security Audit | ⚠️ Not audited | Level: \`${{ inputs.audit-level }}\` — ${AUDIT_SUMMARY} |"
+            else
+              echo "| 🔍 Security Audit | $(status ${{ steps.audit.outcome }}) | Level: \`${{ inputs.audit-level }}\` — ${AUDIT_SUMMARY} |"
             fi
 
             # Lint
@@ -1078,7 +1267,7 @@ jobs:
 
             # Coverage
             if [ "${{ inputs.test-coverage }}" = "true" ]; then
-              echo "| 📊 Coverage | $(status ${{ steps.coverage.outcome }}) | Threshold: \`${{ inputs.coverage-threshold }}%\` |"
+              echo "| 📊 Coverage | $(status ${{ steps.coverage.outcome }}) | Threshold: \`${{ inputs.coverage-threshold }}%\`${COVERAGE_PCT:+ — Measured: \`${COVERAGE_PCT}%\`} |"
             else
               echo "| 📊 Coverage | ➖ Disabled | |"
             fi

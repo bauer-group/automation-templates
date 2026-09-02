@@ -614,19 +614,83 @@ jobs:
         shell: bash
         working-directory: ${{ inputs.working-directory }}
         continue-on-error: ${{ !inputs.security-fail-on-error }}
+        env:
+          # Caller-controlled values reach the script through the environment
+          # instead of being pasted into the script body.
+          SECURITY_TOOLS: ${{ inputs.security-tools }}
+          SECURITY_FAIL_ON_ERROR: ${{ inputs.security-fail-on-error }}
         run: |
-          SECURITY_TOOLS='${{ inputs.security-tools }}'
+          # Both scanners used to end in `|| echo ...` / `|| true`, so this step
+          # always exited 0 and `security-fail-on-error: true` could never fail the
+          # build - the continue-on-error expression had no failure to act on. Now
+          # each scanner's real exit code is captured (`if ! cmd` would only report
+          # the status of the negation, never the command's) and the step exits
+          # non-zero solely when the caller asked for it, so the default
+          # `security-fail-on-error: false` keeps the green step it has today.
+          SCAN_FAILED=0
+          TOOLS_RUN=0
           
-          if echo "$SECURITY_TOOLS" | jq -e '. | index("pip-audit")' >/dev/null; then
-            pip install pip-audit
-            echo "Running pip-audit vulnerability check..."
-            pip-audit --format=json --output=pip-audit-report.json || echo "⚠️ Vulnerability scan completed with warnings"
+          # Tool selection below is a jq match, so a missing jq or a tool list that
+          # is not a JSON array selects nothing - and the gate then used to report
+          # "pass" without having scanned anything. Name the two causes apart: a red
+          # build should not send the reader hunting the wrong one.
+          TOOLS_COUNT=0
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "::warning::jq is not available on this runner - no security scanner could be selected"
+            SCAN_FAILED=1
+          else
+            set +e
+            TOOLS_COUNT=$(echo "$SECURITY_TOOLS" | jq -r 'if type == "array" then length else "invalid" end' 2>/dev/null)
+            set -e
+            if [ -z "$TOOLS_COUNT" ] || [ "$TOOLS_COUNT" = "invalid" ]; then
+              echo "::warning::security-tools is not a JSON array - no security scanner ran"
+              TOOLS_COUNT=0
+              SCAN_FAILED=1
+            fi
           fi
           
-          if echo "$SECURITY_TOOLS" | jq -e '. | index("bandit")' >/dev/null; then
+          if echo "$SECURITY_TOOLS" | jq -e '. | index("pip-audit")' >/dev/null 2>&1; then
+            TOOLS_RUN=$((TOOLS_RUN + 1))
+            pip install pip-audit
+            echo "Running pip-audit vulnerability check..."
+            set +e
+            pip-audit --format=json --output=pip-audit-report.json
+            PIP_AUDIT_RC=$?
+            set -e
+            if [ "$PIP_AUDIT_RC" -ne 0 ]; then
+              echo "::warning::pip-audit exited with $PIP_AUDIT_RC - vulnerabilities found or the scan could not run"
+              SCAN_FAILED=1
+            fi
+          fi
+          
+          if echo "$SECURITY_TOOLS" | jq -e '. | index("bandit")' >/dev/null 2>&1; then
+            TOOLS_RUN=$((TOOLS_RUN + 1))
             pip install bandit
             echo "Running bandit security scan..."
-            bandit -r . -f json -o bandit-report.json || true
+            set +e
+            bandit -r . -f json -o bandit-report.json
+            BANDIT_RC=$?
+            set -e
+            if [ "$BANDIT_RC" -ne 0 ]; then
+              echo "::warning::bandit exited with $BANDIT_RC - issues found or the scan could not run"
+              SCAN_FAILED=1
+            fi
+          fi
+          
+          # A non-empty list naming only unknown tools scans nothing at all, which
+          # must not read as a clean result either. An explicit empty list is a
+          # deliberate "scan nothing" and stays silent.
+          if [ "$TOOLS_RUN" -eq 0 ] && [ "$TOOLS_COUNT" -gt 0 ]; then
+            echo "::warning::security-tools names no supported scanner (supported: bandit, pip-audit) - nothing was scanned"
+            SCAN_FAILED=1
+          fi
+          
+          if [ "$SCAN_FAILED" -ne 0 ]; then
+            if [ "$SECURITY_FAIL_ON_ERROR" = "true" ]; then
+              echo "::error::Security scan did not pass and security-fail-on-error is true"
+              exit 1
+            fi
+            echo "⚠️ Security scan completed with findings - not failing the build (security-fail-on-error is false)"
           fi
       
       - name: 🧹 Run Linting
@@ -636,7 +700,17 @@ jobs:
         run: |
           if [ "${{ inputs.linter }}" = "ruff" ]; then
             pip install ruff
+            # Report for the artifact - informational, never gates.
             ruff check . --output-format=json --output-file=ruff-report.json || true
+            # Gate. Every ruff finding used to be swallowed by `|| true`, so with
+            # linter: ruff the lint step could not fail at all while the flake8
+            # branch below did gate. This is flake8's exact narrow rule set
+            # (syntax errors, broken literal comparisons, undefined names), so only
+            # real breakage fails and style findings stay report-only. --select on
+            # the CLI overrides the project's own ruff selection, --no-fix stops a
+            # `fix = true` config from repairing violations and exiting 0, and a
+            # ruff that cannot run (exit 2) now fails instead of reading as clean.
+            ruff check . --select=E9,F63,F7,F82 --no-fix
           elif [ "${{ inputs.linter }}" = "pylint" ]; then
             pip install pylint
             # Collect files into an array: paths with spaces stay intact and a
@@ -645,7 +719,42 @@ jobs:
             while IFS= read -r -d '' file; do
               PYTHON_FILES+=("$file")
             done < <(find . -name "*.py" -print0)
-            pylint --output-format=json --reports=no "${PYTHON_FILES[@]}" > pylint-report.json || true
+            if [ ${#PYTHON_FILES[@]} -eq 0 ]; then
+              # pylint with no targets exits 32 and prints "No files to lint" instead
+              # of JSON. That is not a lint failure, so keep the report valid and skip.
+              echo "::notice::No Python files found - skipping pylint"
+              echo '[]' > pylint-report.json
+            else
+              set +e
+              pylint --output-format=json --reports=no "${PYTHON_FILES[@]}" > pylint-report.json
+              PYLINT_RC=$?
+              set -e
+              # Gate. The run used to end in `|| true`, so with linter: pylint the lint
+              # step could not fail at all. Failing on pylint's exit code is not an
+              # option - it sets a bit for every convention and refactor message too -
+              # so gate on the same class of breakage the flake8 branch fails on
+              # (E9/F63/F7/F82): fatals, syntax errors, undefined names and statements
+              # outside a valid context. Everything else stays report-only.
+              if ! command -v jq >/dev/null 2>&1; then
+                # The gate is a jq query; without jq it cannot be evaluated at all,
+                # and an unevaluated gate must not read as a pass.
+                echo "::error::jq is not available on this runner - the pylint gate cannot be evaluated"
+                exit 1
+              fi
+              if ! jq -e 'type == "array"' pylint-report.json >/dev/null 2>&1; then
+                # No parseable report means pylint never reached a verdict (exit 32 is
+                # a usage or config error); that must not read as "clean".
+                echo "::error::pylint produced no usable JSON report (exit $PYLINT_RC)"
+                exit 1
+              fi
+              PYLINT_GATE='.[] | select(.type == "fatal" or (.["message-id"] as $id | ["E0001","E0103","E0104","E0105","E0601","E0602","E0603"] | index($id) != null))'
+              PYLINT_BLOCKING=$(jq -r "[$PYLINT_GATE] | length" pylint-report.json)
+              if [ "$PYLINT_BLOCKING" -gt 0 ]; then
+                jq -r "$PYLINT_GATE | \"::error file=\(.path),line=\(.line)::[\(.[\"message-id\"])] \(.message)\"" pylint-report.json
+                echo "❌ pylint reported $PYLINT_BLOCKING blocking issue(s)"
+                exit 1
+              fi
+            fi
           else
             # Default: flake8
             pip install flake8
