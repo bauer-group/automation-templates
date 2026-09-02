@@ -82,7 +82,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           
@@ -145,7 +145,7 @@ jobs:
 │   │   ├── esp32-build/          # ESP32 microcontroller configurations
 │   │   ├── stm32-build/          # STM32 microcontroller configurations
 │   │   ├── platformio-build/     # PlatformIO build configurations
-│   │   └── commitlint.config.js  # Commit linting rules
+│   │   └── commitlint.config.mjs  # Commit linting rules
 │   └── workflows/             # 🚀 Reusable Workflows
 │       ├── ai-issue-summary.yml       # AI-powered issue summarization
 │       ├── automatic-release.yml      # Automated release management
@@ -680,10 +680,10 @@ policies:
 
 ### Commit Lint Configuration
 
-**.github/config/commitlint.config.js**
+**.github/config/commitlint.config.mjs**
 
 ```javascript
-module.exports = {
+export default {
   extends: ['@commitlint/config-conventional'],
   rules: {
     'type-enum': [2, 'always', [
@@ -762,7 +762,7 @@ module.exports = {
    vim .github/config/zephyr-build/iot-device.yml
    
    # Update commit linting rules
-   vim .github/config/commitlint.config.js
+   vim .github/config/commitlint.config.mjs
    ```
 
 ### Quick Examples by Technology
@@ -883,7 +883,7 @@ jobs:
 
 ```yaml
 - name: Setup Python Environment  
-  uses: actions/setup-python@v6
+  uses: actions/setup-python@v7
   with:
     python-version: '3.12'
     package-manager: 'poetry'
@@ -1088,6 +1088,7 @@ gh auth status --show-token
 - [🐘 **PHP Build System**](docs/workflows/php-build.md) - PHP and Composer automation
 - [🛒 **Shopware 5 Plugin Build System**](docs/workflows/shopware5-build.md) - Shopware 5 plugin automation with store integration
 - [🔧 **Makefile Build System**](docs/workflows/makefile-build.md) - Makefile-based build automation
+- [🧠 **AI Issue Summary**](docs/workflows/ai-issue-summary.md) - Copilot-powered issue and PR summaries
 - [🤖 **Claude Code AI Assistant**](docs/workflows/claude-code.md) - AI-powered code assistant
 - [🚀 **Coolify Deploy**](docs/workflows/coolify-deploy.md) - Coolify deployment automation
 - [🔄 **Meta Repository Sync**](docs/workflows/meta-repository-sync.md) - Automated submodule synchronization

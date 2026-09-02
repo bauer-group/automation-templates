@@ -77,7 +77,7 @@ jobs:
         environment: [esp32dev, nucleo_f446re]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build Firmware
         id: build

@@ -295,6 +295,20 @@ runs:
         NOTIFY_LOGS_TITLE: ${{ inputs.logs-title }}
         NOTIFY_WORKFLOW_LOGS: ${{ inputs.workflow-logs }}
         NOTIFY_SHOW_LOGS: ${{ inputs.show-logs }}
+        # These were still pasted into the script body. A quoted heredoc stops
+        # expansion of its CONTENT, but expression substitution happens first, so a
+        # value carrying a newline followed by a bare EOF closed the heredoc early
+        # and the remainder was executed as shell.
+        NOTIFY_REPO_NAME: ${{ inputs.repository-name }}
+        NOTIFY_REPO_URL: ${{ inputs.repository-url }}
+        NOTIFY_ACTOR_AVATAR: ${{ inputs.actor-avatar }}
+        NOTIFY_PR_NUMBER: ${{ inputs.pr-number }}
+        NOTIFY_ISSUE_NUMBER: ${{ inputs.issue-number }}
+        NOTIFY_RUN_URL: ${{ inputs.run-url }}
+        NOTIFY_PR_URL: ${{ inputs.pr-url }}
+        NOTIFY_ISSUE_URL: ${{ inputs.issue-url }}
+        NOTIFY_ENABLE_FACTS: ${{ steps.config.outputs.enable-facts }}
+        NOTIFY_SHORT_SHA: ${{ steps.event-data.outputs.short-sha }}
       run: |
         # Emit a value as a correctly escaped JSON string, quotes included.
         json_string() {
@@ -322,7 +336,10 @@ runs:
                     "items": [
                       {
                         "type": "TextBlock",
-                        "text": "📦 **[${{ inputs.repository-name }}](${{ inputs.repository-url }})**",
+        EOF
+        printf '                        "text": %s,\n' \
+          "$(json_string "📦 **[${NOTIFY_REPO_NAME}](${NOTIFY_REPO_URL})**")" >> "$CARD_FILE"
+        cat >> "$CARD_FILE" << 'EOF'
                         "weight": "Bolder",
                         "size": "Large",
                         "color": "Accent",
@@ -339,7 +356,10 @@ runs:
                             "items": [
                               {
                                 "type": "Image",
-                                "url": "${{ inputs.actor-avatar }}",
+        EOF
+        printf '                                "url": %s,\n' \
+          "$(json_string "$NOTIFY_ACTOR_AVATAR")" >> "$CARD_FILE"
+        cat >> "$CARD_FILE" << 'EOF'
                                 "style": "Person",
                                 "size": "Small"
                               }
@@ -409,37 +429,34 @@ runs:
         fi
         
         # Add facts section
-        ENABLE_FACTS="${{ steps.config.outputs.enable-facts }}"
-        if [[ "$ENABLE_FACTS" == "true" ]]; then
-          cat >> "$CARD_FILE" << 'EOF'
-                  {
-                    "type": "FactSet",
-                    "facts": [
-                      {
-                        "title": "🔗 Commit SHA:",
-                        "value": "${{ steps.event-data.outputs.short-sha }}"
-                      }
-        EOF
-          
+        if [[ "$NOTIFY_ENABLE_FACTS" == "true" ]]; then
+          {
+            echo '                  {'
+            echo '                    "type": "FactSet",'
+            echo '                    "facts": ['
+            echo '                      {'
+            echo '                        "title": "🔗 Commit SHA:",'
+            printf '                        "value": %s\n' "$(json_string "$NOTIFY_SHORT_SHA")"
+            echo '                      }'
+          } >> "$CARD_FILE"
+
           # Add event-specific facts
-          PR_NUMBER="${{ inputs.pr-number }}"
-          if [[ -n "$PR_NUMBER" ]]; then
-            cat >> "$CARD_FILE" << 'EOF'
-                      ,{
-                        "title": "🔀 Pull Request:",
-                        "value": "#${{ inputs.pr-number }}"
-                      }
-        EOF
+          if [[ -n "$NOTIFY_PR_NUMBER" ]]; then
+            {
+              echo '                      ,{'
+              echo '                        "title": "🔀 Pull Request:",'
+              printf '                        "value": %s\n' "$(json_string "#${NOTIFY_PR_NUMBER}")"
+              echo '                      }'
+            } >> "$CARD_FILE"
           fi
-          
-          ISSUE_NUMBER="${{ inputs.issue-number }}"
-          if [[ -n "$ISSUE_NUMBER" ]]; then
-            cat >> "$CARD_FILE" << 'EOF'
-                      ,{
-                        "title": "🐛 Issue:",
-                        "value": "#${{ inputs.issue-number }}"
-                      }
-        EOF
+
+          if [[ -n "$NOTIFY_ISSUE_NUMBER" ]]; then
+            {
+              echo '                      ,{'
+              echo '                        "title": "🐛 Issue:",'
+              printf '                        "value": %s\n' "$(json_string "#${NOTIFY_ISSUE_NUMBER}")"
+              echo '                      }'
+            } >> "$CARD_FILE"
           fi
           
           cat >> "$CARD_FILE" << 'EOF'
@@ -489,48 +506,45 @@ runs:
         EOF
         
         # Repository action
-        cat >> "$CARD_FILE" << 'EOF'
-                      {
-                        "type": "Action.OpenUrl",
-                        "title": "📂 Repository",
-                        "url": "${{ inputs.repository-url }}"
-                      }
-        EOF
-        
+        {
+          echo '                      {'
+          echo '                        "type": "Action.OpenUrl",'
+          echo '                        "title": "📂 Repository",'
+          printf '                        "url": %s\n' "$(json_string "$NOTIFY_REPO_URL")"
+          echo '                      }'
+        } >> "$CARD_FILE"
+
         # Workflow run action
-        RUN_URL="${{ inputs.run-url }}"
-        if [[ -n "$RUN_URL" ]]; then
-          cat >> "$CARD_FILE" << 'EOF'
-                      ,{
-                        "type": "Action.OpenUrl",
-                        "title": "🔄 Workflow",
-                        "url": "${{ inputs.run-url }}"
-                      }
-        EOF
+        if [[ -n "$NOTIFY_RUN_URL" ]]; then
+          {
+            echo '                      ,{'
+            echo '                        "type": "Action.OpenUrl",'
+            echo '                        "title": "🔄 Workflow",'
+            printf '                        "url": %s\n' "$(json_string "$NOTIFY_RUN_URL")"
+            echo '                      }'
+          } >> "$CARD_FILE"
         fi
-        
+
         # PR action
-        PR_URL="${{ inputs.pr-url }}"
-        if [[ -n "$PR_URL" ]]; then
-          cat >> "$CARD_FILE" << 'EOF'
-                      ,{
-                        "type": "Action.OpenUrl",
-                        "title": "🔀 Pull Request",
-                        "url": "${{ inputs.pr-url }}"
-                      }
-        EOF
+        if [[ -n "$NOTIFY_PR_URL" ]]; then
+          {
+            echo '                      ,{'
+            echo '                        "type": "Action.OpenUrl",'
+            echo '                        "title": "🔀 Pull Request",'
+            printf '                        "url": %s\n' "$(json_string "$NOTIFY_PR_URL")"
+            echo '                      }'
+          } >> "$CARD_FILE"
         fi
-        
+
         # Issue action
-        ISSUE_URL="${{ inputs.issue-url }}"
-        if [[ -n "$ISSUE_URL" ]]; then
-          cat >> "$CARD_FILE" << 'EOF'
-                      ,{
-                        "type": "Action.OpenUrl",
-                        "title": "🐛 Issue",
-                        "url": "${{ inputs.issue-url }}"
-                      }
-        EOF
+        if [[ -n "$NOTIFY_ISSUE_URL" ]]; then
+          {
+            echo '                      ,{'
+            echo '                        "type": "Action.OpenUrl",'
+            echo '                        "title": "🐛 Issue",'
+            printf '                        "url": %s\n' "$(json_string "$NOTIFY_ISSUE_URL")"
+            echo '                      }'
+          } >> "$CARD_FILE"
         fi
         
         # Close actions and card
@@ -547,11 +561,24 @@ runs:
         }
         EOF
         
-        # Output card payload
+        # Fail loudly on a malformed card rather than letting Teams reject it
+        # with an opaque 400 two steps later. jq is already required by
+        # json_string above, so this adds no new dependency.
+        if ! jq empty "$CARD_FILE"; then
+          echo "::error title=Teams Notification::Generated Adaptive Card is not valid JSON"
+          exit 1
+        fi
+
+        # Output card payload. The delimiter is randomised because the payload
+        # carries free-form user text: a line reading exactly EOF would otherwise
+        # close the block early and forge the remaining step outputs.
         CARD_PAYLOAD=$(cat "$CARD_FILE")
-        echo "payload<<EOF" >> "$GITHUB_OUTPUT"
-        echo "$CARD_PAYLOAD" >> "$GITHUB_OUTPUT"
-        echo "EOF" >> "$GITHUB_OUTPUT"
+        PAYLOAD_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+        {
+          echo "payload<<$PAYLOAD_DELIMITER"
+          echo "$CARD_PAYLOAD"
+          echo "$PAYLOAD_DELIMITER"
+        } >> "$GITHUB_OUTPUT"
         
         # Clean up
         rm "$CARD_FILE"

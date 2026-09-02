@@ -132,7 +132,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # SECURITY: Always use github.token for write operations (checkout, commit, push)
           # GITHUB_PAT is only used for reading private repos from organization
@@ -151,8 +151,13 @@ jobs:
 
       - name: 🔍 Detect Default Branch
         id: detect-branch
+        env:
+          # Caller-supplied value reaches the script through the environment instead of
+          # being interpolated into the script body.
+          INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
+          AUTO_COMMIT: ${{ inputs.auto-commit }}
         run: |
-          BASE_BRANCH="${{ inputs.base-branch }}"
+          BASE_BRANCH="${INPUT_BASE_BRANCH}"
 
           # Auto-detect default branch if not provided
           if [ -z "$BASE_BRANCH" ]; then
@@ -187,6 +192,34 @@ jobs:
             else
               echo "❌ Could not find a valid branch"
               exit 1
+            fi
+          fi
+
+          # Make sure the work happens ON the branch this job will push to - but ONLY when it
+          # is going to push.
+          #
+          # actions/checkout has no `ref:` input here, so it checks out github.ref, while the
+          # final step pushes $BASE_BRANCH. When those differ the commit was created on one
+          # branch and `git push origin <base-branch>` named another, which fails with
+          # "src refspec ... does not match any" (a remote-tracking ref does not satisfy it).
+          #
+          # Gated on auto-commit deliberately. Switching unconditionally would change which
+          # working tree the WHOLE job reads: a consumer running this with auto-commit: false
+          # from a feature branch or PR - a dry run to preview a topics.json change - would
+          # silently generate its metadata from origin/$BASE_BRANCH instead of from the branch
+          # under review, and still report success. A preview that stops previewing the change
+          # it was asked about is the same class of defect as the gates this audit is closing,
+          # just arrived at from the other side.
+          #
+          # Every path above verified that origin/$BASE_BRANCH exists, and when we are already
+          # on that branch nothing happens, so the common case is completely unchanged.
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+          if [ "$CURRENT_BRANCH" != "$BASE_BRANCH" ]; then
+            if [ "$AUTO_COMMIT" = "true" ]; then
+              echo "🔀 Checked out ref is '$CURRENT_BRANCH' - switching to '$BASE_BRANCH' (the branch this job pushes to)"
+              git checkout -B "$BASE_BRANCH" "origin/$BASE_BRANCH"
+            else
+              echo "ℹ️ Checked out ref is '$CURRENT_BRANCH', base-branch is '$BASE_BRANCH' - staying on the checked-out ref because auto-commit is disabled and nothing will be pushed"
             fi
           fi
 
@@ -252,6 +285,11 @@ jobs:
 
       - name: 🔍 Fetch Repositories by Topics
         id: fetch-repos
+        env:
+          # Presence only - the secret's value is deliberately not placed in the
+          # environment, and no longer interpolated into the script body either.
+          HAS_GITHUB_PAT: ${{ secrets.GITHUB_PAT != '' }}
+          INPUT_INCLUDE_PRIVATE: ${{ inputs.include-private }}
         run: |
           CONFIG_FILE="${{ inputs.config-file }}"
           ORG="${ORGANIZATION}"
@@ -264,7 +302,7 @@ jobs:
 
           # Determine repository type filter
           # Handle both boolean and string values
-          INCLUDE_PRIVATE="${{ inputs.include-private }}"
+          INCLUDE_PRIVATE="$INPUT_INCLUDE_PRIVATE"
           echo "🔐 Include private repositories: $INCLUDE_PRIVATE"
 
           # Check which token is being used (GH_TOKEN is already set in env)
@@ -273,7 +311,7 @@ jobs:
             echo "📥 Fetching ALL repositories (public + private) from organization..."
 
             # Check if GITHUB_PAT was provided
-            if [ -n "${{ secrets.GITHUB_PAT }}" ]; then
+            if [ "$HAS_GITHUB_PAT" = "true" ]; then
               echo "🔑 Using provided GITHUB_PAT token (supports private repos)"
             else
               echo "⚠️ WARNING: include-private=true but GITHUB_PAT secret not provided!"
@@ -352,6 +390,14 @@ jobs:
 
       - name: 🔄 Sync Submodules
         id: sync-submodules
+        env:
+          # SECURITY: the tokens reach the script through the environment instead of being
+          # interpolated into the script body, so a token value containing shell
+          # metacharacters cannot alter the script that handles it.
+          # NOTE: the global credential written below is removed unconditionally by the
+          # final "Scrub Git Credentials" step, not only when this step reaches its end.
+          PAT_TOKEN: ${{ secrets.GITHUB_PAT }}
+          WRITE_TOKEN: ${{ github.token }}
         run: |
           CONFIG_FILE="${{ inputs.config-file }}"
           OUTPUT_DIR="${{ inputs.output-directory }}"
@@ -361,7 +407,7 @@ jobs:
 
           # Configure git to use the correct token for submodule operations
           # IMPORTANT: Submodules need GLOBAL config, not local!
-          if [ "${{ inputs.include-private }}" = "true" ] && [ -n "${{ secrets.GITHUB_PAT }}" ]; then
+          if [ "${{ inputs.include-private }}" = "true" ] && [ -n "$PAT_TOKEN" ]; then
             echo "🔑 Configuring git to use GITHUB_PAT for submodule operations..."
 
             # Unset the existing extraheader first (both local and global)
@@ -371,7 +417,7 @@ jobs:
             # Set new extraheader with PAT token in GLOBAL config
             # This is needed because git submodule add creates new git repos that inherit global config
             # Format: "AUTHORIZATION: basic BASE64(x-access-token:TOKEN)"
-            AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${{ secrets.GITHUB_PAT }}" | base64 -w 0)"
+            AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${PAT_TOKEN}" | base64 -w 0)"
             git config --global http.https://github.com/.extraheader "$AUTH_HEADER"
 
             echo "         ✅ Git credentials configured globally for private repo access"
@@ -548,10 +594,10 @@ jobs:
 
           # IMPORTANT: Reset git credentials back to github.token for push operations
           # The GITHUB_PAT is read-only and should NOT be used for pushing to meta repo
-          if [ "${{ inputs.include-private }}" = "true" ] && [ -n "${{ secrets.GITHUB_PAT }}" ]; then
+          if [ "${{ inputs.include-private }}" = "true" ] && [ -n "$PAT_TOKEN" ]; then
             echo "🔄 Resetting git credentials to github.token for push operations..."
 
-            # actions/checkout@v6 uses includeIf.gitdir with external credential files
+            # actions/checkout@v7 uses includeIf.gitdir with external credential files
             # We need to update the credential in that file, not add a new extraheader
             # This prevents "Duplicate header: Authorization" errors
 
@@ -565,14 +611,14 @@ jobs:
             if [ -n "$CREDS_FILE" ] && [ -f "$CREDS_FILE" ]; then
               echo "         📝 Updating credentials file: $CREDS_FILE"
               # Overwrite the extraheader in the credentials file with github.token
-              AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${{ github.token }}" | base64 -w 0)"
+              AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${WRITE_TOKEN}" | base64 -w 0)"
               echo "[http \"https://github.com/\"]" > "$CREDS_FILE"
               echo "	extraheader = $AUTH_HEADER" >> "$CREDS_FILE"
               echo "         ✅ Credentials file updated with github.token"
             else
               echo "         ⚠️ No credentials file found, setting extraheader directly"
               # Fallback: set extraheader directly (shouldn't be needed with checkout v6)
-              AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${{ github.token }}" | base64 -w 0)"
+              AUTH_HEADER="AUTHORIZATION: basic $(echo -n "x-access-token:${WRITE_TOKEN}" | base64 -w 0)"
               git config --local http.https://github.com/.extraheader "$AUTH_HEADER"
             fi
           fi
@@ -692,6 +738,25 @@ jobs:
 
           echo "✅ README.md generated"
 
+      - name: 🧹 Remove Generated JSON Files
+        # The generate-json input was declared but never read: the per-topic JSON files were
+        # written unconditionally and therefore always committed, so generate-json=false had
+        # no effect at all. They cannot simply not be written - the submodule sync and the
+        # README generation both read them - so they are pruned here instead: after the last
+        # consumer (README) and before the commit step picks the tree up.
+        if: ${{ !inputs.generate-json }}
+        env:
+          CONFIG_FILE: ${{ inputs.config-file }}
+          OUTPUT_DIR: ${{ inputs.output-directory }}
+        run: |
+          echo "🧹 generate-json=false - removing generated JSON files"
+
+          while read -r topic; do
+            [ -n "$topic" ] || continue
+            rm -f "${OUTPUT_DIR}/${topic}.json"
+            echo "   Removed ${OUTPUT_DIR}/${topic}.json"
+          done < <(jq -r '.groups[].topic' "$CONFIG_FILE")
+
       - name: 📊 Generate Summary
         id: summary
         run: |
@@ -721,14 +786,17 @@ jobs:
 
       - name: 💾 Commit and Push Changes
         if: inputs.auto-commit
+        env:
+          BASE_BRANCH: ${{ steps.detect-branch.outputs.branch }}
+          # Caller-supplied text reaches git through the environment rather than being
+          # interpolated into the script body.
+          COMMIT_MESSAGE: ${{ inputs.commit-message }}
         run: |
-          BASE_BRANCH="${{ steps.detect-branch.outputs.branch }}"
-
           git add .
 
           if ! git diff --cached --quiet; then
             # Build commit message with optional [skip ci] suffix
-            COMMIT_MSG="${{ inputs.commit-message }}"
+            COMMIT_MSG="${COMMIT_MESSAGE}"
 
             if [ "${{ inputs.skip-ci }}" = "true" ]; then
               # Add [skip ci] to prevent triggering CI workflows
@@ -737,7 +805,12 @@ jobs:
             fi
 
             git commit -m "$COMMIT_MSG"
-            git push origin "$BASE_BRANCH"
+            # Push what was actually committed. "git push origin <branch>" resolves <branch>
+            # as a LOCAL ref, so it pushed the wrong thing (or nothing) whenever HEAD was not
+            # that branch; HEAD:refs/heads/<branch> names the new commit explicitly and is
+            # identical to the old form when we are on that branch - which the branch
+            # detection step now guarantees.
+            git push origin "HEAD:refs/heads/${BASE_BRANCH}"
             echo "✅ Changes committed and pushed to $BASE_BRANCH"
           else
             echo "ℹ️ No changes to commit"
@@ -747,3 +820,46 @@ jobs:
         id: count
         run: |
           echo "total=${{ steps.fetch-repos.outputs.total-repos }}" >> "$GITHUB_OUTPUT"
+
+      - name: 🔐 Scrub Git Credentials
+        # SECURITY: the submodule step writes "AUTHORIZATION: basic <base64 of the PAT>" into
+        # the GLOBAL git config (~/.gitconfig), and used to remove it again only at the end of
+        # that same step. Any failure in between - or in any later step - left the PAT sitting
+        # in a file that outlives the job on a self-hosted runner, readable by whatever runs
+        # next. This teardown runs with always(), so the credential is removed whether the job
+        # succeeded, failed or was cancelled. It fails the job if the credential is still there
+        # afterwards: a leftover credential must never be reported as a clean run.
+        # The guard below mirrors exactly the condition under which the submodule step writes
+        # that global credential, so a global extraheader configured by the runner's own owner
+        # (and never touched by this workflow) is left alone.
+        if: always()
+        env:
+          PAT_TOKEN: ${{ secrets.GITHUB_PAT }}
+          INCLUDE_PRIVATE: ${{ inputs.include-private }}
+        run: |
+          if [ "$INCLUDE_PRIVATE" != "true" ] || [ -z "$PAT_TOKEN" ]; then
+            echo "ℹ️ This job configured no global git credential - nothing to scrub"
+            exit 0
+          fi
+
+          git config --global --unset-all http.https://github.com/.extraheader 2>/dev/null || true
+
+          # Only rc 1 means "the key is absent". rc 0 means it is still there, and ANY other
+          # code means git could not answer - a syntactically corrupt ~/.gitconfig makes
+          # --unset-all fail while --get-regexp exits 128, so treating every non-zero as
+          # "clean" would print a tick while the secret is still on disk. Reproduced.
+          set +e
+          git config --global --get-regexp '^http\.https://github\.com/\.extraheader$' >/dev/null 2>&1
+          SCRUB_RC=$?
+          set -e
+
+          if [ "$SCRUB_RC" -eq 0 ]; then
+            echo "::error::Global git credential is still present after cleanup"
+            exit 1
+          fi
+          if [ "$SCRUB_RC" -ne 1 ]; then
+            echo "::error::Could not verify that the global git credential was removed (git config exited $SCRUB_RC). Refusing to report a clean scrub that was not confirmed."
+            exit 1
+          fi
+
+          echo "✅ Global git credentials scrubbed"

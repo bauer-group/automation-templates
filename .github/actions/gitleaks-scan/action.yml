@@ -317,30 +317,44 @@ runs:
         SECRETS_COUNT=0
         SCAN_EXIT_CODE=0
         
-        # Run appropriate scan command
+        # Run appropriate scan command.
+        #
+        # The exit code is captured immediately after the command, NOT inside an
+        # `if ! gitleaks ...; then` branch: there $? is the status of the negation
+        # (always 0), so the previous form could never observe gitleaks' real code and
+        # `-eq 1` was never true. Detection then rested entirely on the report file.
+        #
+        # gitleaks exit codes: 0 = no leaks, 1 = leaks found, anything else = the scan
+        # itself failed. A failed scan must never be reported as a clean repository.
+        set +e
         if [ "${{ inputs.scan-history }}" == "true" ]; then
           echo "🕒 Scanning entire git history..."
-          if ! gitleaks detect $SCAN_ARGS .; then
-            SCAN_EXIT_CODE=$?
-            echo "⚠️ Gitleaks found issues in git history (exit code: $SCAN_EXIT_CODE)"
-            if [ $SCAN_EXIT_CODE -eq 1 ]; then
-              SECRETS_FOUND="true"
-            fi
-          else
-            echo "✅ No secrets found in git history"
-          fi
+          gitleaks detect $SCAN_ARGS .
+          SCAN_EXIT_CODE=$?
+          SCAN_TARGET="git history"
         else
           echo "📁 Scanning current working directory..."
-          if ! gitleaks detect --source=. $SCAN_ARGS; then
-            SCAN_EXIT_CODE=$?
-            echo "⚠️ Gitleaks found issues in working directory (exit code: $SCAN_EXIT_CODE)"
-            if [ $SCAN_EXIT_CODE -eq 1 ]; then
-              SECRETS_FOUND="true"
-            fi
-          else
-            echo "✅ No secrets found in working directory"
-          fi
+          gitleaks detect --source=. $SCAN_ARGS
+          SCAN_EXIT_CODE=$?
+          SCAN_TARGET="working directory"
         fi
+        set -e
+
+        case "$SCAN_EXIT_CODE" in
+          0)
+            echo "✅ No secrets found in $SCAN_TARGET"
+            ;;
+          1)
+            echo "⚠️ Gitleaks found secrets in $SCAN_TARGET"
+            SECRETS_FOUND="true"
+            ;;
+          *)
+            echo "::error::Gitleaks exited with $SCAN_EXIT_CODE scanning $SCAN_TARGET - the scan did not complete, so its result says nothing about whether secrets are present"
+            echo "secrets-found=true" >> "$GITHUB_OUTPUT"
+            echo "secrets-count=0" >> "$GITHUB_OUTPUT"
+            exit 1
+            ;;
+        esac
         
         # Parse results if report file exists
         if [ -f "$OUTPUT_FILE" ]; then
@@ -412,8 +426,13 @@ runs:
               fi
               ;;
           esac
+        elif [ "$SECRETS_FOUND" = "true" ]; then
+          # gitleaks reported leaks but produced no parsable report - inconsistent state.
+          # Reporting "clean" here would discard a positive detection.
+          echo "::error::Gitleaks reported secrets (exit 1) but wrote no report file at $OUTPUT_FILE - refusing to report this scan as clean"
+          exit 1
         else
-          echo "ℹ️ No report file generated (clean scan)"
+          echo "ℹ️ No report file generated - scan exited 0, treated as clean"
         fi
         
         # Output results

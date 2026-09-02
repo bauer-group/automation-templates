@@ -197,6 +197,22 @@ runs:
         set -e
         echo "TruffleHog exit code: $SCAN_EXIT"
 
+        # The exit code must be acted on, not merely printed. The scan is invoked WITHOUT
+        # --fail (findings are scored from the JSON below), so a non-zero exit means the
+        # scanner itself failed - bad arguments, a clone or network error, an OOM kill.
+        # In that case RESULTS_FILE is empty or truncated, every count below evaluates to
+        # 0, and the step would report "no secrets found" for a scan that never ran.
+        # A missing result is not a negative result.
+        if [ "$SCAN_EXIT" -ne 0 ]; then
+          echo "::error::TruffleHog exited with $SCAN_EXIT - the scan did not complete, so its output says nothing about whether secrets are present"
+          echo "--- scanner log (tail) ---"
+          tail -n 40 "$LOG_FILE" || true
+          echo "secrets-found=true" >> "$GITHUB_OUTPUT"
+          echo "secrets-count=0" >> "$GITHUB_OUTPUT"
+          echo "verified-count=0" >> "$GITHUB_OUTPUT"
+          exit 1
+        fi
+
         # Keep only well-formed result objects (drop any stray non-JSON lines)
         VALID_FILE="trufflehog-reports/trufflehog-valid.ndjson"
         : > "$VALID_FILE"

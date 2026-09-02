@@ -78,7 +78,7 @@ jobs:
     
     steps:
       - name: 🚀 Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
@@ -86,11 +86,17 @@ jobs:
 
       - name: 🔍 Check if workflow should run
         id: should-run
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
+          GIT_REF_TYPE: ${{ github.ref_type }}
+          GIT_REF: ${{ github.ref }}
         run: |
           echo "🔍 Determining if security policy workflow should run..."
           echo "Event: ${{ github.event_name }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "Ref Type: ${{ github.ref_type }}"
+          echo "Ref: $GIT_REF"
+          echo "Ref Type: $GIT_REF_TYPE"
           echo "Force Update: ${{ inputs.force-update }}"
           
           # Always run if force-update is true (from manual trigger)
@@ -102,8 +108,8 @@ jobs:
           fi
           
           # Always run for tags - update SECURITY with new version
-          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
-            echo "🏷️ ✅ RUNNING FOR TAG: ${{ github.ref_name }}"
+          if [[ "$GIT_REF" == refs/tags/* ]] || [[ "$GIT_REF_TYPE" == "tag" ]]; then
+            echo "🏷️ ✅ RUNNING FOR TAG: $GIT_REF_NAME"
             echo "🏷️ Updating SECURITY policy with new version information"
             echo "should_run=true" >> "$GITHUB_OUTPUT"
             echo "skip_reason=" >> "$GITHUB_OUTPUT"
@@ -172,23 +178,32 @@ jobs:
 
       - name: 🛡️ Commit and Push Changes
         if: steps.should-run.outputs.should_run == 'true' && steps.generate.outputs.changes_detected == 'true' && github.event_name != 'pull_request'
+        env:
+          # A git ref may contain $ ` ; | & ( ), and custom-version is a free-text
+          # workflow_dispatch field. Both end up in a commit message here, so they
+          # travel through the environment instead of the script body.
+          GIT_REF: ${{ github.ref }}
+          GIT_REF_TYPE: ${{ github.ref_type }}
+          GIT_REF_NAME: ${{ github.ref_name }}
+          INPUT_CUSTOM_VERSION: ${{ inputs.custom-version }}
+          INPUT_POLICY_VERSION: ${{ inputs.policy-version }}
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "🛡️ Security Policy Bot"
           
           COMMIT_MSG="docs: update SECURITY.MD"
           
-          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.ref_type }}" == "tag" ]]; then
-            COMMIT_MSG="$COMMIT_MSG for tag ${{ github.ref_name }} [automated]"
+          if [[ "$GIT_REF" == refs/tags/* ]] || [[ "$GIT_REF_TYPE" == "tag" ]]; then
+            COMMIT_MSG="$COMMIT_MSG for tag $GIT_REF_NAME [automated]"
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ "${{ inputs.force-update }}" = "true" ]; then
               COMMIT_MSG="$COMMIT_MSG (forced update)"
             fi
-            if [ -n "${{ inputs.custom-version }}" ]; then
-              COMMIT_MSG="$COMMIT_MSG (version ${{ inputs.custom-version }})"
+            if [ -n "$INPUT_CUSTOM_VERSION" ]; then
+              COMMIT_MSG="$COMMIT_MSG (version $INPUT_CUSTOM_VERSION)"
             fi
-            if [ -n "${{ inputs.policy-version }}" ]; then
-              COMMIT_MSG="$COMMIT_MSG (policy v${{ inputs.policy-version }})"
+            if [ -n "$INPUT_POLICY_VERSION" ]; then
+              COMMIT_MSG="$COMMIT_MSG (policy v$INPUT_POLICY_VERSION)"
             fi
           fi
           
@@ -266,7 +281,7 @@ jobs:
     
     steps:
       - name: 🚀 Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🔍 Validate Security Policy Structure
         run: |
@@ -321,6 +336,11 @@ jobs:
           fi
 
       - name: 📊 Security Policy Summary
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
+          GIT_REF: ${{ github.ref }}
         run: |
           echo "### 🛡️ Security Policy Management Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -348,11 +368,11 @@ jobs:
             echo "- Policy Version: ${{ needs.generate-security-policy.outputs.policy_version }}" >> "$GITHUB_STEP_SUMMARY"
             echo "- Next Review: ${{ needs.generate-security-policy.outputs.next_review_date }}" >> "$GITHUB_STEP_SUMMARY"
             
-            if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            if [[ "$GIT_REF" == refs/tags/* ]]; then
               echo "" >> "$GITHUB_STEP_SUMMARY"
               echo "🏷️ **Tag Details:**" >> "$GITHUB_STEP_SUMMARY"
-              echo "- Tag: ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
-              echo "- Ref: ${{ github.ref }}" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Tag: $GIT_REF_NAME" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Ref: $GIT_REF" >> "$GITHUB_STEP_SUMMARY"
               echo "- Triggered by: Tag push" >> "$GITHUB_STEP_SUMMARY"
             fi
           else

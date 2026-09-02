@@ -160,24 +160,46 @@ runs:
     - name: 📋 Load Configuration
       id: config
       shell: bash
+      env:
+        # Every one of these ended up inside a single-quoted yq expression, where
+        # an apostrophe in the value closed the shell quoting and handed the rest
+        # to the shell. yq reads them with strenv() now. config-file additionally
+        # selects a path, so it is restricted rather than trusted.
+        INPUT_CONFIG_FILE: ${{ inputs.config-file }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_MAX_TOKENS: ${{ inputs.max-tokens }}
+        INPUT_TRIGGER_PHRASE: ${{ inputs.trigger-phrase }}
+        INPUT_RESPONSE_MODE: ${{ inputs.response-mode }}
+        INPUT_ADD_REACTION: ${{ inputs.add-reaction }}
+        INPUT_ALLOWED_USERS: ${{ inputs.allowed-users }}
+        INPUT_ALLOWED_TEAMS: ${{ inputs.allowed-teams }}
+        INPUT_APPEND_SYSTEM_PROMPT: ${{ inputs.append-system-prompt }}
       run: |
-        CONFIG_FILE=".github/config/claude-code/${{ inputs.config-file }}.yml"
+        if [[ ! "$INPUT_CONFIG_FILE" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          echo "::error::Invalid config-file '$INPUT_CONFIG_FILE' - only letters, digits, dot, underscore and hyphen are allowed"
+          exit 1
+        fi
+        CONFIG_FILE=".github/config/claude-code/${INPUT_CONFIG_FILE}.yml"
 
         if [[ -f "$CONFIG_FILE" ]]; then
           echo "✅ Loading configuration from $CONFIG_FILE"
 
           # Parse YAML configuration using yq
           if command -v yq &> /dev/null; then
-            MODEL=$(yq eval '.model.name // "${{ inputs.model }}"' "$CONFIG_FILE")
-            MAX_TOKENS=$(yq eval '.model.max_tokens // "${{ inputs.max-tokens }}"' "$CONFIG_FILE")
-            TRIGGER_PHRASE=$(yq eval '.trigger.phrase // "${{ inputs.trigger-phrase }}"' "$CONFIG_FILE")
-            RESPONSE_MODE=$(yq eval '.response.mode // "${{ inputs.response-mode }}"' "$CONFIG_FILE")
-            ADD_REACTION=$(yq eval '.response.reaction // "${{ inputs.add-reaction }}"' "$CONFIG_FILE")
-            ALLOWED_USERS=$(yq eval '.permissions.allowed_users | join(",") // "${{ inputs.allowed-users }}"' "$CONFIG_FILE")
-            ALLOWED_TEAMS=$(yq eval '.permissions.allowed_teams | join(",") // "${{ inputs.allowed-teams }}"' "$CONFIG_FILE")
+            MODEL=$(yq eval '.model.name // strenv(INPUT_MODEL)' "$CONFIG_FILE")
+            MAX_TOKENS=$(yq eval '.model.max_tokens // strenv(INPUT_MAX_TOKENS)' "$CONFIG_FILE")
+            TRIGGER_PHRASE=$(yq eval '.trigger.phrase // strenv(INPUT_TRIGGER_PHRASE)' "$CONFIG_FILE")
+            RESPONSE_MODE=$(yq eval '.response.mode // strenv(INPUT_RESPONSE_MODE)' "$CONFIG_FILE")
+            ADD_REACTION=$(yq eval '.response.reaction // strenv(INPUT_ADD_REACTION)' "$CONFIG_FILE")
+            ALLOWED_USERS=$(yq eval '.permissions.allowed_users | join(",") // strenv(INPUT_ALLOWED_USERS)' "$CONFIG_FILE")
+            ALLOWED_TEAMS=$(yq eval '.permissions.allowed_teams | join(",") // strenv(INPUT_ALLOWED_TEAMS)' "$CONFIG_FILE")
             SYSTEM_PROMPT=$(yq eval '.prompts.system // ""' "$CONFIG_FILE")
-            APPEND_PROMPT=$(yq eval '.prompts.append // "${{ inputs.append-system-prompt }}"' "$CONFIG_FILE")
+            APPEND_PROMPT=$(yq eval '.prompts.append // strenv(INPUT_APPEND_SYSTEM_PROMPT)' "$CONFIG_FILE")
 
+            if [[ ! "$MODEL" =~ ^[A-Za-z0-9._-]+$ ]]; then
+              echo "::error::Invalid model '$MODEL' - expected a plain model name (e.g. opus, sonnet, haiku)"
+              exit 1
+            fi
             echo "model=$MODEL" >> "$GITHUB_OUTPUT"
             echo "max-tokens=$MAX_TOKENS" >> "$GITHUB_OUTPUT"
             echo "trigger-phrase=$TRIGGER_PHRASE" >> "$GITHUB_OUTPUT"
@@ -188,16 +210,24 @@ runs:
             echo "config-loaded=true" >> "$GITHUB_OUTPUT"
 
             # Handle multiline system prompt
+            # Randomised delimiters: prompt text is free-form, and a line reading
+            # exactly EOF would close the block early and forge later outputs.
             if [[ -n "$SYSTEM_PROMPT" ]]; then
-              echo "system-prompt<<EOF" >> "$GITHUB_OUTPUT"
-              echo "$SYSTEM_PROMPT" >> "$GITHUB_OUTPUT"
-              echo "EOF" >> "$GITHUB_OUTPUT"
+              PROMPT_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+              {
+                echo "system-prompt<<$PROMPT_DELIMITER"
+                echo "$SYSTEM_PROMPT"
+                echo "$PROMPT_DELIMITER"
+              } >> "$GITHUB_OUTPUT"
             fi
 
             if [[ -n "$APPEND_PROMPT" ]]; then
-              echo "append-prompt<<EOF" >> "$GITHUB_OUTPUT"
-              echo "$APPEND_PROMPT" >> "$GITHUB_OUTPUT"
-              echo "EOF" >> "$GITHUB_OUTPUT"
+              APPEND_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+              {
+                echo "append-prompt<<$APPEND_DELIMITER"
+                echo "$APPEND_PROMPT"
+                echo "$APPEND_DELIMITER"
+              } >> "$GITHUB_OUTPUT"
             fi
           else
             echo "⚠️ yq not found, using input defaults"
@@ -218,6 +248,21 @@ runs:
       env:
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         GITHUB_EVENT_ACTION: ${{ github.event.action }}
+        # Event payload data is attacker-controlled and must never be interpolated
+        # directly into the script body (script injection). Anyone able to comment on
+        # an issue or PR can otherwise close the shell string and run arbitrary code -
+        # and this step runs BEFORE the permission gate below, so the allowed-users
+        # allowlist provides no protection. Mirrors the hardening already applied in
+        # .github/workflows/claude-code.yml.
+        EVENT_COMMENT_BODY: ${{ github.event.comment.body }}
+        EVENT_COMMENT_USER: ${{ github.event.comment.user.login }}
+        EVENT_REVIEW_BODY: ${{ github.event.review.body }}
+        EVENT_REVIEW_USER: ${{ github.event.review.user.login }}
+        EVENT_ISSUE_BODY: ${{ github.event.issue.body }}
+        EVENT_ISSUE_USER: ${{ github.event.issue.user.login }}
+        EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
+        EVENT_ISSUE_PULL_REQUEST: ${{ github.event.issue.pull_request }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         echo "📍 Event: $GITHUB_EVENT_NAME"
         echo "📍 Action: $GITHUB_EVENT_ACTION"
@@ -231,31 +276,31 @@ runs:
         case "$GITHUB_EVENT_NAME" in
           "issue_comment")
             TRIGGER_TYPE="issue_comment"
-            TRIGGER_BODY='${{ github.event.comment.body }}'
-            TRIGGER_USER='${{ github.event.comment.user.login }}'
-            ISSUE_NUMBER='${{ github.event.issue.number }}'
-            if [[ '${{ github.event.issue.pull_request }}' != '' ]]; then
+            TRIGGER_BODY="$EVENT_COMMENT_BODY"
+            TRIGGER_USER="$EVENT_COMMENT_USER"
+            ISSUE_NUMBER="$EVENT_ISSUE_NUMBER"
+            if [[ -n "$EVENT_ISSUE_PULL_REQUEST" ]]; then
               TRIGGER_TYPE="pr_comment"
-              PR_NUMBER='${{ github.event.issue.number }}'
+              PR_NUMBER="$EVENT_ISSUE_NUMBER"
             fi
             ;;
           "pull_request_review_comment")
             TRIGGER_TYPE="pr_review_comment"
-            TRIGGER_BODY='${{ github.event.comment.body }}'
-            TRIGGER_USER='${{ github.event.comment.user.login }}'
-            PR_NUMBER='${{ github.event.pull_request.number }}'
+            TRIGGER_BODY="$EVENT_COMMENT_BODY"
+            TRIGGER_USER="$EVENT_COMMENT_USER"
+            PR_NUMBER="$EVENT_PR_NUMBER"
             ;;
           "pull_request_review")
             TRIGGER_TYPE="pr_review"
-            TRIGGER_BODY='${{ github.event.review.body }}'
-            TRIGGER_USER='${{ github.event.review.user.login }}'
-            PR_NUMBER='${{ github.event.pull_request.number }}'
+            TRIGGER_BODY="$EVENT_REVIEW_BODY"
+            TRIGGER_USER="$EVENT_REVIEW_USER"
+            PR_NUMBER="$EVENT_PR_NUMBER"
             ;;
           "issues")
             TRIGGER_TYPE="issue_opened"
-            TRIGGER_BODY='${{ github.event.issue.body }}'
-            TRIGGER_USER='${{ github.event.issue.user.login }}'
-            ISSUE_NUMBER='${{ github.event.issue.number }}'
+            TRIGGER_BODY="$EVENT_ISSUE_BODY"
+            TRIGGER_USER="$EVENT_ISSUE_USER"
+            ISSUE_NUMBER="$EVENT_ISSUE_NUMBER"
             ;;
           *)
             echo "⚠️ Unknown event type: $GITHUB_EVENT_NAME"
@@ -268,10 +313,16 @@ runs:
         echo "issue-number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
         echo "pr-number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
-        # Store trigger body for later use
-        echo "trigger-body<<EOF" >> "$GITHUB_OUTPUT"
-        echo "$TRIGGER_BODY" >> "$GITHUB_OUTPUT"
-        echo "EOF" >> "$GITHUB_OUTPUT"
+        # Store trigger body for later use.
+        # The delimiter is randomised because the body is attacker-controlled: a fixed
+        # "EOF" lets a comment close the heredoc early and forge further step outputs
+        # (e.g. issue-number, or trigger-user to impersonate a maintainer).
+        DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+        {
+          echo "trigger-body<<$DELIMITER"
+          echo "$TRIGGER_BODY"
+          echo "$DELIMITER"
+        } >> "$GITHUB_OUTPUT"
 
     - name: 🛡️ Validate Permissions
       id: permissions
@@ -397,10 +448,16 @@ runs:
           fi
         fi
 
-        # Save context
-        echo "context<<EOF" >> "$GITHUB_OUTPUT"
-        echo -e "$CONTEXT" >> "$GITHUB_OUTPUT"
-        echo "EOF" >> "$GITHUB_OUTPUT"
+        # Save context.
+        # CONTEXT embeds the trigger body and fetched issue/PR comments, all of which
+        # are attacker-controlled, so the delimiter must be unguessable - a fixed "EOF"
+        # lets any of them close the block early and append forged step outputs.
+        CONTEXT_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+        {
+          echo "context<<$CONTEXT_DELIMITER"
+          echo -e "$CONTEXT"
+          echo "$CONTEXT_DELIMITER"
+        } >> "$GITHUB_OUTPUT"
 
     - name: 🤖 Run Claude Code
       id: claude

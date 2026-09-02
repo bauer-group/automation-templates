@@ -18,7 +18,7 @@ on:
 permissions:
   issues: write
   pull-requests: write
-  models: read
+  copilot-requests: write   # Copilot CLI access; replaces the retired models: read
   contents: read
 
 jobs:
@@ -31,7 +31,7 @@ jobs:
       summary-type: 'brief'
       add-labels: true
       add-priority: false
-      model: 'gpt-3.5-turbo'
+      model: 'gpt-5-mini'
     secrets: inherit
 
   # Detailed technical analysis for bug reports
@@ -206,27 +206,36 @@ jobs:
       - name: Trigger AI Summary
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_ISSUE_NUMBER: ${{ inputs.issue-number }}
         run: |
           # Trigger the AI summary for a specific issue
           gh workflow run modules-ai-issue-summary.yml \
-            -f issue-number=${{ inputs.issue-number }} \
+            -f issue-number="$INPUT_ISSUE_NUMBER" \
             -f summary-type=detailed \
             --repo ${{ github.repository }}
 
 # Configuration notes:
 # 
-# 1. Set up secrets:
-#    - GITHUB_TOKEN is automatically available
-#    - For OpenAI: Add OPENAI_API_KEY secret
-#    - For other AI services: Add appropriate API key
+# 1. Authentication - no secret is needed for the default path:
+#    - The Copilot provider authenticates with the built-in github.token. What it needs
+#      is the `copilot-requests: write` PERMISSION, declared in this workflow's
+#      permissions block. Note that a called workflow's permissions block is a ceiling,
+#      not a grant, so the caller must declare it too.
+#    - An organisation owner must have "Allow use of Copilot CLI billed to the
+#      organisation" enabled. It is on by default where Copilot CLI is enabled, and
+#      usage is metered to the organisation.
+#    - Optional: set the ai-api-key secret to route through the OpenAI API instead. When
+#      it is set the Copilot step is skipped entirely - exactly one provider runs.
 # 
 # 2. Customize prompts:
 #    - Create .github/config/issues/ai-prompts.yml
 #    - Define custom templates for different scenarios
 # 
 # 3. Model options:
-#    - GitHub Models: Various models available through GitHub
-#    - OpenAI: gpt-3.5-turbo, gpt-4, etc.
+#    - Copilot (default): any model the Copilot CLI accepts, e.g. gpt-5-mini.
+#      GitHub Models is retired - its catalogue endpoint returns HTTP 410 - and
+#      actions/ai-inference v3 speaks only to Copilot.
+#    - OpenAI: used instead when the ai-api-key secret is set; any model that API accepts.
 #    - Custom: Implement your own AI service integration
 # 
 # 4. Best practices:

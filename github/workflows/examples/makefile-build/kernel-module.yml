@@ -68,7 +68,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       
       - name: 🐧 Install Kernel Headers
         run: |
@@ -101,7 +101,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       
       - name: 🛡️ Security Scan
         uses: bauer-group/automation-templates/.github/actions/gitleaks-scan@main
@@ -132,7 +132,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       
       - name: 🔨 Build Module
         uses: bauer-group/automation-templates/.github/actions/makefile-build@main
@@ -170,7 +170,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       
       - name: 📚 Generate Module Documentation
         run: |

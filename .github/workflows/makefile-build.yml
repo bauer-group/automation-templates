@@ -124,7 +124,7 @@ jobs:
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -148,16 +148,20 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: 📋 Workflow Information
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF: ${{ github.ref }}
         run: |
           echo "🔨 Makefile Build & Test Workflow"
           echo "================================="
           echo "Repository: ${{ github.repository }}"
-          echo "Ref: ${{ github.ref }}"
+          echo "Ref: $GIT_REF"
           echo "SHA: ${{ github.sha }}"
           echo "Runner: ${{ inputs.runs-on }}"
           echo "Config: ${{ inputs.config-file }}"
@@ -269,7 +273,7 @@ jobs:
     
     steps:
       - name: 🔍 Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

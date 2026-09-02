@@ -203,7 +203,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -235,12 +235,23 @@ jobs:
       - name: Determine Version
         id: version
         shell: bash
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
+          GIT_REF: ${{ github.ref }}
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION="${{ github.ref_name }}"
+          if [[ "$GIT_REF" == refs/tags/v* ]]; then
+            VERSION="$GIT_REF_NAME"
             VERSION="${VERSION#v}"
+            # A git tag may contain $ ` ; | & ( ), and this becomes a job output
+            # that later run: bodies interpolate.
+            if [[ ! "$VERSION" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+              echo "::error title=Invalid tag::Tag '$GIT_REF_NAME' is not a plain version string."
+              exit 1
+            fi
           else
-            BRANCH="${{ github.ref_name }}"
+            BRANCH="$GIT_REF_NAME"
             SHA="${{ github.sha }}"
             SHORT_SHA="${SHA:0:7}"
 
@@ -262,7 +273,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Security Scan
         uses: bauer-group/automation-templates/.github/actions/security-scan@main
@@ -291,7 +302,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -337,10 +348,16 @@ jobs:
 
       - name: Create Build Info
         shell: bash
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
+          # The path is used unquoted in mkdir/cat below; keep it out of the script body.
+          PROJECT_PATH: ${{ inputs.project-path }}
         run: |
-          mkdir -p ${{ inputs.project-path }}/build_info
+          mkdir -p "$PROJECT_PATH/build_info"
 
-          cat > ${{ inputs.project-path }}/build_info/version.json << EOF
+          cat > "$PROJECT_PATH/build_info/version.json" << EOF
           {
             "version": "${{ needs.prepare.outputs.version }}",
             "target_mcu": "${{ matrix.mcu }}",
@@ -348,7 +365,7 @@ jobs:
             "toolchain": "arm-none-eabi-gcc ${{ inputs.toolchain-version }}",
             "build_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
             "git_commit": "${{ github.sha }}",
-            "git_branch": "${{ github.ref_name }}"
+            "git_branch": "$GIT_REF_NAME"
           }
           EOF
 
@@ -654,7 +671,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

@@ -60,8 +60,13 @@ jobs:
     steps:
       - name: 🔍 Validate Confirmation
         id: validation
+        env:
+          # workflow_dispatch inputs are free text typed into the Actions UI.
+          # Interpolated into the script body they run on assignment, so they
+          # travel through the environment instead.
+          INPUT_CONFIRM: ${{ github.event.inputs.confirm-cleanup }}
         run: |
-          if [[ "${{ github.event.inputs.confirm-cleanup }}" != "CONFIRM" ]]; then
+          if [[ "$INPUT_CONFIRM" != "CONFIRM" ]]; then
             echo "❌ Cleanup not confirmed. Please type 'CONFIRM' to proceed."
             echo "🛡️ This safety measure prevents accidental cleanup operations."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
@@ -72,12 +77,18 @@ jobs:
           echo "proceed=true" >> "$GITHUB_OUTPUT"
       
       - name: 📋 Display Configuration
+        env:
+          # workflow_dispatch inputs are free text typed into the Actions UI.
+          # Interpolated into the script body they run on assignment, so they
+          # travel through the environment instead.
+          INPUT_TARGET_REPO: ${{ github.event.inputs.target-repository || github.repository }}
+          INPUT_MAX_AGE: ${{ github.event.inputs.max-age-days }}
         run: |
           echo "### 🛡️ Conservative Cleanup Configuration" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Target Repository:** ${{ github.event.inputs.target-repository || github.repository }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Target Repository:** $INPUT_TARGET_REPO" >> "$GITHUB_STEP_SUMMARY"
           echo "**Execution Mode:** ${{ github.event.inputs.dry-run == 'true' && '🔍 Dry Run' || '🔧 Live Execution' }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Max Age:** ${{ github.event.inputs.max-age-days }} days" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Max Age:** ${INPUT_MAX_AGE} days" >> "$GITHUB_STEP_SUMMARY"
           echo "**Profile:** Conservative (Low Risk)" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Operations Enabled:**" >> "$GITHUB_STEP_SUMMARY"

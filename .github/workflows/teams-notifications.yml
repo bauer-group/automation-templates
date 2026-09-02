@@ -89,19 +89,28 @@ jobs:
     name: 🔄 Workflow Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 📊 Get Workflow Logs
         id: get-logs
         continue-on-error: true
+        env:
+          RUN_NAME: ${{ github.event.workflow_run.name }}
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          RUN_CREATED_AT: ${{ github.event.workflow_run.created_at }}
+          RUN_UPDATED_AT: ${{ github.event.workflow_run.updated_at }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
           # Get the last few lines of the workflow logs
-          echo "logs<<EOF" >> "$GITHUB_OUTPUT"
-          echo "${{ github.event.workflow_run.name }}" >> "$GITHUB_OUTPUT"
-          echo "🔄 Run #${{ github.event.workflow_run.run_number }}" >> "$GITHUB_OUTPUT"
-          echo "⏱️ Duration: ${{ github.event.workflow_run.created_at }} - ${{ github.event.workflow_run.updated_at }}" >> "$GITHUB_OUTPUT"
-          echo "🎯 Conclusion: ${{ github.event.workflow_run.conclusion }}" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          LOGS_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+          {
+            echo "logs<<$LOGS_DELIMITER"
+            echo "$RUN_NAME"
+            echo "🔄 Run #$RUN_NUMBER"
+            echo "⏱️ Duration: $RUN_CREATED_AT - $RUN_UPDATED_AT"
+            echo "🎯 Conclusion: $RUN_CONCLUSION"
+            echo "$LOGS_DELIMITER"
+          } >> "$GITHUB_OUTPUT"
 
       - name: 🔔 Send Workflow Success Notification
         if: github.event.workflow_run.conclusion == 'success' && env.NOTIFICATION_LEVEL == 'all'
@@ -129,15 +138,24 @@ jobs:
         id: get-failure-logs
         if: github.event.workflow_run.conclusion == 'failure'
         continue-on-error: true
+        env:
+          RUN_NAME: ${{ github.event.workflow_run.name }}
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          RUN_UPDATED_AT: ${{ github.event.workflow_run.updated_at }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_HTML_URL: ${{ github.event.workflow_run.html_url }}
         run: |
           # Get failure information
-          echo "logs<<EOF" >> "$GITHUB_OUTPUT"
-          echo "${{ github.event.workflow_run.name }}" >> "$GITHUB_OUTPUT"
-          echo "🔄 Run #${{ github.event.workflow_run.run_number }}" >> "$GITHUB_OUTPUT"
-          echo "⏱️ Failed at: ${{ github.event.workflow_run.updated_at }}" >> "$GITHUB_OUTPUT"
-          echo "🎯 Conclusion: ${{ github.event.workflow_run.conclusion }}" >> "$GITHUB_OUTPUT"
-          echo "🔗 View full logs: ${{ github.event.workflow_run.html_url }}" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          LOGS_DELIMITER="EOF_${RANDOM}${RANDOM}${RANDOM}${RANDOM}"
+          {
+            echo "logs<<$LOGS_DELIMITER"
+            echo "$RUN_NAME"
+            echo "🔄 Run #$RUN_NUMBER"
+            echo "⏱️ Failed at: $RUN_UPDATED_AT"
+            echo "🎯 Conclusion: $RUN_CONCLUSION"
+            echo "🔗 View full logs: $RUN_HTML_URL"
+            echo "$LOGS_DELIMITER"
+          } >> "$GITHUB_OUTPUT"
 
       - name: 🔔 Send Workflow Failure Notification
         if: github.event.workflow_run.conclusion == 'failure'
@@ -169,7 +187,7 @@ jobs:
     name: 🐛 Issue Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🔔 Send Issue Opened Notification
         if: github.event.action == 'opened' && env.NOTIFICATION_LEVEL == 'all'
@@ -221,7 +239,7 @@ jobs:
     name: 🔀 Pull Request Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🔔 Send PR Opened Notification
         if: github.event.action == 'opened' && env.NOTIFICATION_LEVEL == 'all'
@@ -311,7 +329,7 @@ jobs:
     name: 🚀 Push Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🔔 Send Push Notification
         if: env.NOTIFICATION_LEVEL == 'all'
@@ -341,7 +359,7 @@ jobs:
     name: 🏷️ Release Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🔔 Send Release Notification
         if: github.event.action == 'published' && env.NOTIFICATION_LEVEL == 'all'
@@ -371,7 +389,7 @@ jobs:
     name: 🧪 Test Notifications
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🔔 Send Test Notification
         uses: bauer-group/automation-templates/.github/actions/teams-notification@main

@@ -16,9 +16,9 @@ inputs:
     required: false
     default: ''
   node-version:
-    description: 'Node.js version to use'
+    description: 'Node.js version to use (semantic-release v25 requires >= 22.14 / >= 24.10)'
     required: false
-    default: '22'
+    default: '24'
   token:
     description: 'GitHub token for authentication'
     required: true
@@ -26,6 +26,14 @@ inputs:
     description: 'Force create release even without conventional commits'
     required: false
     default: 'false'
+  changelog-title:
+    description: >-
+      Preamble kept pinned at the top of the changelog file (title + intro).
+      Used only when the changelog has no existing preamble; an existing
+      preamble (everything above the first "## " entry) is always preserved.
+      Leave empty to use the built-in BAUER GROUP standard preamble.
+    required: false
+    default: ''
 
 outputs:
   release-created:
@@ -51,6 +59,8 @@ runs:
 
     - name: Build Config
       shell: bash
+      env:
+        DEFAULT_CHANGELOG_TITLE: ${{ inputs.changelog-title }}
       run: |
         echo "Building semantic-release config..."
 
@@ -87,6 +97,7 @@ runs:
         GIT_MESSAGE='"chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"'
         RELEASE_RULES=""
         TAG_FORMAT=""
+        CUSTOM_TITLE=""
 
         if [ -f ".github/config/release/semantic-release.json" ]; then
           echo "Found repository config - extracting custom settings..."
@@ -120,10 +131,11 @@ runs:
             echo "  Using custom git message"
           fi
 
-          # Extract extra plugins (not commit-analyzer, release-notes-generator, changelog, git, github)
+          # Extract extra plugins (exclude the plugins this action already provides:
+          # commit-analyzer, exec, release-notes-generator, changelog, git, github)
           EXTRA_PLUGINS=$(jq -c '[.plugins[] | select(
-            (type == "string" and . != "@semantic-release/commit-analyzer" and . != "@semantic-release/release-notes-generator" and . != "@semantic-release/changelog" and . != "@semantic-release/git" and . != "@semantic-release/github") or
-            (type == "array" and .[0] != "@semantic-release/commit-analyzer" and .[0] != "@semantic-release/release-notes-generator" and .[0] != "@semantic-release/changelog" and .[0] != "@semantic-release/git" and .[0] != "@semantic-release/github")
+            (type == "string" and . != "@semantic-release/commit-analyzer" and . != "@semantic-release/exec" and . != "@semantic-release/release-notes-generator" and . != "@semantic-release/changelog" and . != "@semantic-release/git" and . != "@semantic-release/github") or
+            (type == "array" and .[0] != "@semantic-release/commit-analyzer" and .[0] != "@semantic-release/exec" and .[0] != "@semantic-release/release-notes-generator" and .[0] != "@semantic-release/changelog" and .[0] != "@semantic-release/git" and .[0] != "@semantic-release/github")
           )]' "$REPO_CONFIG" 2>/dev/null || echo "[]")
 
           if [ "$EXTRA_PLUGINS" != "[]" ] && [ "$EXTRA_PLUGINS" != "null" ]; then
@@ -137,6 +149,13 @@ runs:
           if [ -n "$CUSTOM_TAG_FORMAT" ]; then
             TAG_FORMAT="$CUSTOM_TAG_FORMAT"
             echo "  Using custom tagFormat: $TAG_FORMAT"
+          fi
+
+          # Extract changelogTitle if specified (repo config takes precedence over the
+          # preserved-preamble / action-input default resolved further below)
+          CUSTOM_TITLE=$(jq -r '.plugins[] | select(type == "array") | select(.[0] == "@semantic-release/changelog") | .[1].changelogTitle // empty' "$REPO_CONFIG" 2>/dev/null || echo "")
+          if [ -n "$CUSTOM_TITLE" ]; then
+            echo "  Using custom changelogTitle from repo config"
           fi
         else
           echo "No repository config found - using defaults"
@@ -162,23 +181,8 @@ runs:
               "preset": "conventionalcommits",
               "releaseRules": $RELEASE_RULES
             }],
-            ["@semantic-release/release-notes-generator", {
-              "preset": "conventionalcommits",
-              "presetConfig": {
-                "types": [
-                  {"type": "feat", "section": "🚀 Features"},
-                  {"type": "fix", "section": "🐛 Bug Fixes"},
-                  {"type": "perf", "section": "⚡ Performance"},
-                  {"type": "revert", "section": "⏪ Reverts"},
-                  {"type": "refactor", "section": "♻️ Refactoring"},
-                  {"type": "docs", "section": "📚 Documentation", "hidden": true},
-                  {"type": "style", "section": "💄 Styles", "hidden": true},
-                  {"type": "chore", "section": "🔧 Chores", "hidden": true},
-                  {"type": "test", "section": "🧪 Tests", "hidden": true},
-                  {"type": "build", "section": "🔨 Build", "hidden": true},
-                  {"type": "ci", "section": "👷 CI", "hidden": true}
-                ]
-              }
+            ["@semantic-release/exec", {
+              "generateNotesCmd": "node \"$GITHUB_ACTION_PATH/notes/notes.mjs\" \"\${lastRelease.gitTag}\" \"\${nextRelease.gitTag}\" \"\${nextRelease.version}\""
             }],
             ["@semantic-release/changelog", {
               "changelogFile": "$CHANGELOG_FILE"
@@ -197,6 +201,48 @@ runs:
           jq --arg tf "$TAG_FORMAT" '.tagFormat = $tf' .releaserc.json > .releaserc.tmp.json && mv .releaserc.tmp.json .releaserc.json
         fi
 
+        # Built-in standard preamble (single source of truth). Used when neither the
+        # repo, the existing file, nor the changelog-title input provide one — so an
+        # empty input passed through by a caller workflow still yields a sensible header.
+        read -r -d '' BUILTIN_PREAMBLE <<'PREAMBLE' || true
+        # Changelog
+
+        All notable changes to this project are documented here. This file is maintained
+        automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
+        on every release to `main`.
+        PREAMBLE
+
+        # Resolve the changelog preamble (title) that stays pinned at the top of the
+        # file. Priority: repo-config changelogTitle > existing file preamble > input >
+        # built-in default. Preserving the existing preamble keeps any repo's own H1 +
+        # intro on top instead of letting new entries push it down.
+        if [ -n "$CUSTOM_TITLE" ]; then
+          CHANGELOG_TITLE="$CUSTOM_TITLE"
+          echo "changelogTitle: repo config"
+        else
+          CHANGELOG_TITLE="$(node "$GITHUB_ACTION_PATH/notes/preamble.mjs" "$CHANGELOG_FILE" 2>/dev/null || true)"
+          if [ -n "$CHANGELOG_TITLE" ]; then
+            echo "changelogTitle: preserved existing preamble of $CHANGELOG_FILE"
+          elif [ -n "$DEFAULT_CHANGELOG_TITLE" ]; then
+            CHANGELOG_TITLE="$DEFAULT_CHANGELOG_TITLE"
+            echo "changelogTitle: from changelog-title input"
+          else
+            CHANGELOG_TITLE="$BUILTIN_PREAMBLE"
+            echo "changelogTitle: built-in default"
+          fi
+        fi
+
+        # Inject changelogTitle into the @semantic-release/changelog plugin options
+        # (jq --arg keeps the multi-line value safely JSON-encoded)
+        if [ -n "$CHANGELOG_TITLE" ]; then
+          jq --arg t "$CHANGELOG_TITLE" '
+            .plugins |= map(
+              if type == "array" and .[0] == "@semantic-release/changelog"
+              then [.[0], (.[1] + {changelogTitle: $t})]
+              else . end)
+          ' .releaserc.json > .releaserc.tmp.json && mv .releaserc.tmp.json .releaserc.json
+        fi
+
         # Merge extra plugins if any
         if [ "$EXTRA_PLUGINS" != "[]" ]; then
           echo "Merging extra plugins into config..."
@@ -210,26 +256,33 @@ runs:
         echo "Final config:"
         cat .releaserc.json | jq .
 
+    - name: Install Changelog Notes Toolchain
+      shell: bash
+      run: |
+        echo "Installing pinned, decoupled changelog notes toolchain..."
+        cd "$GITHUB_ACTION_PATH/notes"
+        npm ci --omit=dev --no-audit --no-fund
+
     - name: Semantic Release
       id: release
       uses: cycjimmy/semantic-release-action@v6
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
       with:
-        # Pin the semantic-release line so cycjimmy@v6 (which otherwise floats to
-        # semantic-release@latest) stays on release-notes-generator v14, matching
-        # the pinned conventionalcommits preset below. Prevents silent drift.
-        semantic_version: '24'
+        # Pin the semantic-release line to the current major. Notes generation is
+        # decoupled (see notes/notes.mjs via @semantic-release/exec), so semantic-release
+        # and the changelog toolchain move on their own current versions and can no
+        # longer silently break each other.
+        semantic_version: '25'
         dry_run: ${{ inputs.dry-run }}
         branches: ${{ inputs.branches }}
-        # conventionalcommits MUST be pinned to the v9 line: release-notes-generator
-        # v14 is built/tested against conventional-changelog-conventionalcommits@9.3.1
-        # (writer ^8). The unpinned package floats to v10 (a @conventional-changelog/
-        # template rewrite) whose writer templates emit no sections -> empty changelog.
+        # commit-analyzer still needs the conventionalcommits preset (parser only, so the
+        # v10 line is fine); @semantic-release/exec runs our decoupled notes generator.
         extra_plugins: |
           @semantic-release/changelog
           @semantic-release/git
-          conventional-changelog-conventionalcommits@9.3.1
+          @semantic-release/exec
+          conventional-changelog-conventionalcommits@10
           ${{ inputs.extra-plugins }}
 
     - name: Set Tag Output

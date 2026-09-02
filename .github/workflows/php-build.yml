@@ -353,7 +353,7 @@ jobs:
   code-quality:
     name: 🛡️ Code Quality (SonarQube)
     if: inputs.enable-sonar
-    uses: ./.github/workflows/modules-code-quality.yml
+    uses: bauer-group/automation-templates/.github/workflows/modules-code-quality.yml@main
     with:
       enable-sonar: true
       sonar-edition: ${{ inputs.sonar-edition }}
@@ -389,7 +389,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       

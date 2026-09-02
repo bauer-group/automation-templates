@@ -36,7 +36,7 @@ jobs:
     name: Publish win-x64
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'

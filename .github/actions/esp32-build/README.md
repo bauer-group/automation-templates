@@ -118,7 +118,7 @@ jobs:
         target: [esp32, esp32s3, esp32c3]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build Firmware
         id: build

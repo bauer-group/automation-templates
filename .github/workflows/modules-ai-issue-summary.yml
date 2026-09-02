@@ -29,10 +29,14 @@ on:
         type: string
         default: ''
       model:
-        description: 'AI model to use (gpt-4.1-mini, gpt-4.1, gpt-5)'
+        description: >-
+          Model for the Copilot provider - it must be one the Copilot CLI accepts
+          (verified against api.githubcopilot.com/models). GitHub Models identifiers such
+          as gpt-4.1-mini no longer work: that catalogue endpoint now returns HTTP 410 and
+          actions/ai-inference v3 speaks only to Copilot.
         required: false
         type: string
-        default: 'gpt-4.1-mini'
+        default: 'gpt-5-mini'
       comment-template:
         description: 'Template for the comment (use {summary} placeholder)'
         required: false
@@ -60,17 +64,33 @@ on:
 permissions:
   issues: write
   pull-requests: write
-  models: read
+  # copilot-requests: write is what actions/ai-inference v3 needs - it drives the Copilot
+  # CLI, and github.token carries Copilot access only with this permission. It replaces
+  # models: read, which governed the GitHub Models API that has since been retired (its
+  # catalogue endpoint returns HTTP 410).
+  #
+  # NOTE for consumers: in a workflow_call workflow this block is a CEILING, not a grant.
+  # A caller that declares its own permissions must list copilot-requests: write too, or
+  # the token arrives without it and inference fails.
+  copilot-requests: write
   contents: read
 
 jobs:
   summarize:
     name: 🧠 Generate AI Summary
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+
+    # A step's `if:` cannot read the `secrets` context - GitHub resolves it before
+    # secrets enter the expression scope, so `${{ !secrets.ai-api-key }}` did not
+    # evaluate to false, it failed the whole run with `Unrecognized named-value`.
+    # A job-level `env:` may read secrets, so the provider test is resolved once
+    # here and the steps below branch on the resulting string.
+    env:
+      HAS_EXTERNAL_AI_KEY: ${{ secrets.ai-api-key != '' }}
     
     steps:
       - name: 🚀 Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.token || secrets.GITHUB_TOKEN }}
       
@@ -82,6 +102,15 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          # Label names are free text and were interpolated inside SINGLE shell
+          # quotes, so an apostrophe in a label closed the string and handed the
+          # remainder to the shell. The numbers drive the issue/PR branch below.
+          ISSUE_LABELS_JSON: ${{ toJson(github.event.issue.labels.*.name) }}
+          PR_LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           echo "🔍 Extracting issue/PR details..."
 
@@ -112,14 +141,14 @@ jobs:
           }
 
           # Determine if this is an issue or PR
-          if [ -n "${{ github.event.issue }}" ]; then
+          if [ -n "$ISSUE_NUMBER" ]; then
             echo "type=issue" >> "$GITHUB_OUTPUT"
-            echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+            echo "number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
 
             # Generate safe delimiters for each field
             DELIM_TITLE=$(generate_safe_delimiter "$ISSUE_TITLE" "GHEOF_TITLE")
             DELIM_BODY=$(generate_safe_delimiter "$ISSUE_BODY" "GHEOF_BODY")
-            DELIM_LABELS=$(generate_safe_delimiter '${{ toJson(github.event.issue.labels.*.name) }}' "GHEOF_LABELS")
+            DELIM_LABELS=$(generate_safe_delimiter "$ISSUE_LABELS_JSON" "GHEOF_LABELS")
 
             # Use environment variables to safely handle special characters
             {
@@ -135,23 +164,23 @@ jobs:
               echo "${DELIM_BODY}"
             } >> "$GITHUB_OUTPUT"
 
-            echo "author=${{ github.event.issue.user.login }}" >> "$GITHUB_OUTPUT"
+            echo "author=$ISSUE_AUTHOR" >> "$GITHUB_OUTPUT"
 
             # Use heredoc for labels JSON
             {
               echo "labels<<${DELIM_LABELS}"
-              echo '${{ toJson(github.event.issue.labels.*.name) }}'
+              printf '%s\n' "$ISSUE_LABELS_JSON"
               echo "${DELIM_LABELS}"
             } >> "$GITHUB_OUTPUT"
 
-          elif [ -n "${{ github.event.pull_request }}" ]; then
+          elif [ -n "$PR_NUMBER" ]; then
             echo "type=pull_request" >> "$GITHUB_OUTPUT"
-            echo "number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
             # Generate safe delimiters for each field
             DELIM_TITLE=$(generate_safe_delimiter "$PR_TITLE" "GHEOF_TITLE")
             DELIM_BODY=$(generate_safe_delimiter "$PR_BODY" "GHEOF_BODY")
-            DELIM_LABELS=$(generate_safe_delimiter '${{ toJson(github.event.pull_request.labels.*.name) }}' "GHEOF_LABELS")
+            DELIM_LABELS=$(generate_safe_delimiter "$PR_LABELS_JSON" "GHEOF_LABELS")
 
             # Use environment variables to safely handle special characters
             {
@@ -167,12 +196,12 @@ jobs:
               echo "${DELIM_BODY}"
             } >> "$GITHUB_OUTPUT"
 
-            echo "author=${{ github.event.pull_request.user.login }}" >> "$GITHUB_OUTPUT"
+            echo "author=$PR_AUTHOR" >> "$GITHUB_OUTPUT"
 
             # Use heredoc for labels JSON
             {
               echo "labels<<${DELIM_LABELS}"
-              echo '${{ toJson(github.event.pull_request.labels.*.name) }}'
+              printf '%s\n' "$PR_LABELS_JSON"
               echo "${DELIM_LABELS}"
             } >> "$GITHUB_OUTPUT"
           fi
@@ -274,18 +303,50 @@ jobs:
           # Set output
           echo "prompt-file=/tmp/prompt.txt" >> "$GITHUB_OUTPUT"
       
-      - name: 🧠 Run AI Inference (GitHub Models)
+      # actions/ai-inference v3 does not call an API itself - it shells out to the GitHub
+      # Copilot CLI, which is NOT pre-installed on hosted runners. Both of these steps are
+      # required by the action's documented usage; without them the inference step fails
+      # and the job falls back to the template summary.
+      - name: 🟢 Setup Node (for Copilot CLI)
+        if: env.HAS_EXTERNAL_AI_KEY != 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: 🤖 Install Copilot CLI
+        if: env.HAS_EXTERNAL_AI_KEY != 'true'
+        run: npm install -g @github/copilot
+
+      # Runs unless an external OpenAI key is configured, in which case the step below
+      # handles it. The previous condition - `!custom-prompt || !contains(model, 'gpt')` -
+      # selected on the MODEL NAME, which never described the provider: with the default
+      # configuration both this step and the OpenAI step fired at once, and with a model
+      # named gpt-5-mini they would again. Provider selection now follows the thing that
+      # actually decides it, namely whether an external key was supplied.
+      - name: 🧠 Run AI Inference (Copilot)
         id: inference-github
-        if: ${{ !inputs.custom-prompt || !contains(inputs.model, 'gpt') }}
+        if: env.HAS_EXTERNAL_AI_KEY != 'true'
         continue-on-error: true
-        uses: actions/ai-inference@v2
+        uses: actions/ai-inference@v3
         with:
           prompt-file: ${{ steps.prompt.outputs.prompt-file }}
           model: ${{ inputs.model }}
+        env:
+          # github.token is the RECOMMENDED path for an organisation-owned repository: with
+          # copilot-requests: write it authenticates the Copilot CLI directly, usage is
+          # metered to the organisation, and no long-lived credential has to be stored or
+          # rotated. It requires the organisation setting "Allow use of Copilot CLI billed
+          # to the organisation", which is on by default where Copilot CLI is enabled.
+          #
+          # The CLI reads this variable itself; the action only masks whatever it finds in
+          # COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN so it cannot leak into logs.
+          #
+          GITHUB_TOKEN: ${{ github.token }}
       
+      # Complementary to the step above: exactly one provider runs per job.
       - name: 🧠 Run AI Inference (OpenAI)
         id: inference-openai
-        if: ${{ contains(inputs.model, 'gpt') }}
+        if: env.HAS_EXTERNAL_AI_KEY == 'true'
         continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.ai-api-key }}

@@ -159,12 +159,12 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -212,12 +212,23 @@ jobs:
       - name: Determine Version
         id: version
         shell: bash
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
+          GIT_REF: ${{ github.ref }}
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION="${{ github.ref_name }}"
+          if [[ "$GIT_REF" == refs/tags/v* ]]; then
+            VERSION="$GIT_REF_NAME"
             VERSION="${VERSION#v}"
+            # A git tag may contain $ ` ; | & ( ), and this becomes a job output
+            # that later run: bodies interpolate.
+            if [[ ! "$VERSION" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+              echo "::error title=Invalid tag::Tag '$GIT_REF_NAME' is not a plain version string."
+              exit 1
+            fi
           else
-            BRANCH="${{ github.ref_name }}"
+            BRANCH="$GIT_REF_NAME"
             SHA="${{ github.sha }}"
             SHORT_SHA="${SHA:0:7}"
 
@@ -239,7 +250,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Security Scan
         uses: bauer-group/automation-templates/.github/actions/security-scan@main
@@ -266,12 +277,12 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -301,6 +312,10 @@ jobs:
       - name: Create Build Info
         shell: bash
         working-directory: ${{ inputs.project-path }}
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
           mkdir -p build_info
 
@@ -311,7 +326,7 @@ jobs:
             "platformio_version": "$(pio --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')",
             "build_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
             "git_commit": "${{ github.sha }}",
-            "git_branch": "${{ github.ref_name }}"
+            "git_branch": "$GIT_REF_NAME"
           }
           EOF
 
@@ -352,11 +367,18 @@ jobs:
             echo "Checking for $tool..."
           done
 
-          # Run analysis
+          # Run analysis.
+          #
+          # Deliberately NO trailing `|| true`: --fail-on-defect is what makes pio check
+          # exit non-zero on a defect, and swallowing that exit made check-fail-on-defect
+          # inert - the input promised a gate that could never fire. The step-level
+          # `continue-on-error: ${{ !inputs.check-fail-on-defect }}` already expresses both
+          # modes correctly: with the input false the step is advisory, with it true a
+          # defect fails the job.
           if [[ "$ENV" == "default" ]]; then
-            pio check --severity="$SEVERITY" --fail-on-defect=${{ inputs.check-fail-on-defect }} || true
+            pio check --severity="$SEVERITY" --fail-on-defect=${{ inputs.check-fail-on-defect }}
           else
-            pio check -e "$ENV" --severity="$SEVERITY" --fail-on-defect=${{ inputs.check-fail-on-defect }} || true
+            pio check -e "$ENV" --severity="$SEVERITY" --fail-on-defect=${{ inputs.check-fail-on-defect }}
           fi
 
       - name: Prepare Artifacts
@@ -434,12 +456,12 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -481,17 +503,36 @@ jobs:
             exit 0
           fi
 
-          # Run tests
-          if [[ -n "$TEST_ENVS" && "$TEST_ENVS" != "" ]]; then
+          # Run tests.
+          #
+          # Deliberately NO trailing `|| true`. The release job declares
+          # `needs: [prepare, build, test]`, so this job is a release gate - but a swallowed
+          # exit made it succeed unconditionally, releases shipped with red tests, and the
+          # Build Summary rendered "Tests | Success" from needs.test.result regardless.
+          #
+          # Every environment is still attempted before the job fails, so one broken
+          # environment does not hide the others.
+          FAILED_ENVS=""
+          if [[ -n "$TEST_ENVS" ]]; then
             # Test specific environments
             for env in $(echo "$TEST_ENVS" | jq -r '.[]'); do
               echo "Testing environment: $env"
-              pio test -e "$env" --filter "$TEST_FILTER" || true
+              if ! pio test -e "$env" --filter "$TEST_FILTER"; then
+                FAILED_ENVS="$FAILED_ENVS $env"
+              fi
             done
           else
             # Test all environments with tests
-            pio test --filter "$TEST_FILTER" || true
+            if ! pio test --filter "$TEST_FILTER"; then
+              FAILED_ENVS=" (all environments)"
+            fi
           fi
+
+          if [ -n "$FAILED_ENVS" ]; then
+            echo "::error::PlatformIO unit tests failed in:$FAILED_ENVS"
+            exit 1
+          fi
+          echo "✅ All PlatformIO unit tests passed"
 
           echo "Tests completed"
 
@@ -507,7 +548,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

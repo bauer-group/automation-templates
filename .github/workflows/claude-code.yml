@@ -328,7 +328,7 @@ jobs:
       trigger-type: ${{ needs.validate.outputs.trigger-type }}
     steps:
       - name: 📥 Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: ${{ inputs.fetch-depth }}
 
@@ -356,8 +356,17 @@ jobs:
 
       - name: 📋 Load Configuration
         id: config
+        env:
+          # config-file selects a path and model becomes a CLI argument, so
+          # neither may be pasted into the script body.
+          INPUT_CONFIG_FILE: ${{ inputs.config-file }}
+          INPUT_MODEL: ${{ inputs.model }}
         run: |
-          CONFIG_FILE=".github/config/claude-code/${{ inputs.config-file }}.yml"
+          if [[ ! "$INPUT_CONFIG_FILE" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::Invalid config-file '$INPUT_CONFIG_FILE' - only letters, digits, dot, underscore and hyphen are allowed"
+            exit 1
+          fi
+          CONFIG_FILE=".github/config/claude-code/${INPUT_CONFIG_FILE}.yml"
 
           if [[ -f "$CONFIG_FILE" ]]; then
             echo "✅ Configuration file found: $CONFIG_FILE"
@@ -368,7 +377,13 @@ jobs:
           fi
 
           # Determine final model
-          MODEL="${{ inputs.model }}"
+          MODEL="$INPUT_MODEL"
+          # The model lands in claude_args as a flat argument string, so anything
+          # beyond a bare model token could smuggle in extra CLI flags.
+          if [[ ! "$MODEL" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::Invalid model '$MODEL' - expected a plain model name (e.g. opus, sonnet, haiku)"
+            exit 1
+          fi
           echo "model=$MODEL" >> "$GITHUB_OUTPUT"
 
       - name: 🤖 Run Claude Code

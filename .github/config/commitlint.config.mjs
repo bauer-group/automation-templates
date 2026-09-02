@@ -1,4 +1,8 @@
-module.exports = {
+// ESM (.mjs) is required: wagoid/commitlint-github-action rejects a .js configFile
+// outright - "'.js' extension is not allowed for the `configFile`, please use .mjs
+// instead" - and it throws BEFORE its existsSync fallback, so the whole commitlint
+// step errored on every run. See the rename in this commit.
+export default {
   extends: ['@commitlint/config-conventional'],
   rules: {
     'type-enum': [

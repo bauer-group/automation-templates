@@ -73,12 +73,17 @@ jobs:
     
     steps:
       - name: 🚀 Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: 🏷️ Calculate Target Version
         id: version
+        env:
+          # workflow_dispatch inputs are free text typed into the Actions UI.
+          # Interpolated into the script body they run on assignment, so they
+          # travel through the environment instead.
+          INPUT_CUSTOM_VERSION: ${{ inputs.custom-version }}
         run: |
           # Get current version from manifest or git tags
           if [[ -f ".github/config/.release-please-manifest.json" ]]; then
@@ -91,8 +96,8 @@ jobs:
           echo "current-version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
           
           # Calculate target version
-          if [[ -n "${{ inputs.custom-version }}" ]]; then
-            CALCULATED_VERSION="${{ inputs.custom-version }}"
+          if [[ -n "$INPUT_CUSTOM_VERSION" ]]; then
+            CALCULATED_VERSION="$INPUT_CUSTOM_VERSION"
             echo "Using custom version: $CALCULATED_VERSION"
           else
             # Parse current version
@@ -113,6 +118,14 @@ jobs:
             echo "Calculated version (${{ inputs.version-bump }} bump): $CALCULATED_VERSION"
           fi
           
+
+          # This value becomes a step output and is pasted into later run: bodies,
+          # so a metacharacter here would execute there. A version never contains
+          # one legitimately.
+          if [[ ! "$CALCULATED_VERSION" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+            echo "::error title=Invalid version::Calculated version '$CALCULATED_VERSION' is not a plain version string (letters, digits, dot, underscore, plus, hyphen)."
+            exit 1
+          fi
           echo "calculated-version=$CALCULATED_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: 📊 Input Validation Summary
@@ -169,7 +182,7 @@ jobs:
     
     steps:
       - name: 🚀 Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}

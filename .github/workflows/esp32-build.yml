@@ -193,7 +193,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -222,14 +222,25 @@ jobs:
       - name: Determine Version
         id: version
         shell: bash
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
+          GIT_REF: ${{ github.ref }}
         run: |
           # Try to get version from git tag or generate from commit
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION="${{ github.ref_name }}"
+          if [[ "$GIT_REF" == refs/tags/v* ]]; then
+            VERSION="$GIT_REF_NAME"
             VERSION="${VERSION#v}"
+            # A git tag may contain $ ` ; | & ( ), and this becomes a job output
+            # that later run: bodies interpolate.
+            if [[ ! "$VERSION" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+              echo "::error title=Invalid tag::Tag '$GIT_REF_NAME' is not a plain version string."
+              exit 1
+            fi
           else
             # Generate version from branch and short SHA
-            BRANCH="${{ github.ref_name }}"
+            BRANCH="$GIT_REF_NAME"
             SHA="${{ github.sha }}"
             SHORT_SHA="${SHA:0:7}"
 
@@ -251,7 +262,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -282,7 +293,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: recursive
@@ -301,11 +312,19 @@ jobs:
       - name: Prepare Build Environment
         id: prepare-env
         shell: bash
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
+          # The path is used unquoted in mkdir/cat below; keep it out of the script body.
+          PROJECT_PATH: ${{ inputs.project-path }}
+          # Same value behind a ternary: it still resolves to the branch/tag name.
+          GIT_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: |
           # Create build info file
-          mkdir -p ${{ inputs.project-path }}/build_info
+          mkdir -p "$PROJECT_PATH/build_info"
 
-          cat > ${{ inputs.project-path }}/build_info/version.json << EOF
+          cat > "$PROJECT_PATH/build_info/version.json" << EOF
           {
             "version": "${{ needs.prepare.outputs.version }}",
             "target": "${{ matrix.target }}",
@@ -313,8 +332,8 @@ jobs:
             "idf_version": "${{ inputs.idf-version }}",
             "build_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
             "git_commit": "${{ github.sha }}",
-            "git_branch": "${{ github.ref_name }}",
-            "git_tag": "${{ github.ref_type == 'tag' && github.ref_name || '' }}",
+            "git_branch": "$GIT_REF_NAME",
+            "git_tag": "$GIT_TAG",
             "secure_boot": ${{ inputs.secure-boot }},
             "flash_encryption": ${{ inputs.flash-encryption }}
           }
@@ -471,8 +490,38 @@ jobs:
 
             # Check if pytest is configured
             if [[ -f "pytest.ini" || -f "conftest.py" ]]; then
-              pip install pytest pytest-embedded pytest-embedded-idf || true
-              python -m pytest --target=${{ matrix.target }} -v || echo "Tests completed"
+              TEST_TARGET="${{ matrix.target }}"
+
+              # A red suite used to be hidden by `|| echo "Tests completed"`, so a
+              # failing test run reported success. The pytest exit code is now
+              # inspected: 0 = passed, 5 = pytest collected nothing (no result at
+              # all - kept non-fatal because ESP-IDF suites routinely deselect for
+              # a given target), any other code = real failure, and the step fails.
+              # `|| rc=$?` is used instead of `if ! cmd`, which would capture the
+              # status of the negation rather than of pytest.
+              pip_rc=0
+              pip install pytest pytest-embedded pytest-embedded-idf || pip_rc=$?
+              if [[ "$pip_rc" -ne 0 ]]; then
+                echo "::warning title=pytest install failed::pip exited with ${pip_rc}; falling back to a pre-installed pytest"
+              fi
+
+              # A missing pytest must never read as "tests passed".
+              if ! python -m pytest --version >/dev/null 2>&1; then
+                echo "::error title=pytest unavailable::pytest could not be installed or imported - the test gate did not run"
+                exit 1
+              fi
+
+              pytest_rc=0
+              python -m pytest --target="$TEST_TARGET" -v || pytest_rc=$?
+
+              if [[ "$pytest_rc" -eq 0 ]]; then
+                echo "All tests passed"
+              elif [[ "$pytest_rc" -eq 5 ]]; then
+                echo "::warning title=No tests collected::pytest collected no tests for target ${TEST_TARGET} (exit code 5)"
+              else
+                echo "::error title=Tests failed::pytest exited with code ${pytest_rc}"
+                exit "$pytest_rc"
+              fi
             fi
 
             # Run Unity tests if configured
@@ -580,7 +629,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

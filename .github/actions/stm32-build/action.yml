@@ -94,14 +94,25 @@ runs:
     - name: Determine Version
       id: version
       shell: bash
+      env:
+        # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+        # It therefore travels through the environment, never the script body.
+        GIT_REF_NAME: ${{ github.ref_name }}
+        GIT_REF: ${{ github.ref }}
       run: |
-        if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-          VERSION="${{ github.ref_name }}"
+        if [[ "$GIT_REF" == refs/tags/v* ]]; then
+          VERSION="$GIT_REF_NAME"
           VERSION="${VERSION#v}"
+          # A git tag may contain $ ` ; | & ( ), and this becomes a step output
+          # that later run: bodies interpolate.
+          if [[ ! "$VERSION" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+            echo "::error title=Invalid tag::Tag '$GIT_REF_NAME' is not a plain version string."
+            exit 1
+          fi
         else
           SHA="${{ github.sha }}"
           SHORT_SHA="${SHA:0:7}"
-          BRANCH="${{ github.ref_name }}"
+          BRANCH="$GIT_REF_NAME"
           SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9]/-/g' | head -c 20)
           VERSION="0.0.0-${SAFE_BRANCH}+${SHORT_SHA}"
         fi
@@ -125,9 +136,15 @@ runs:
 
     - name: Create Build Info
       shell: bash
+      env:
+        # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+        # It therefore travels through the environment, never the script body.
+        GIT_REF_NAME: ${{ github.ref_name }}
+        # The path is used unquoted in mkdir/cat below; keep it out of the script body.
+        PROJECT_PATH: ${{ inputs.project-path }}
       run: |
-        mkdir -p ${{ inputs.project-path }}/build_info
-        cat > ${{ inputs.project-path }}/build_info/version.json << EOF
+        mkdir -p "$PROJECT_PATH/build_info"
+        cat > "$PROJECT_PATH/build_info/version.json" << EOF
         {
           "version": "${{ steps.version.outputs.version }}",
           "target_mcu": "${{ inputs.target-mcu }}",
@@ -135,7 +152,7 @@ runs:
           "toolchain": "arm-none-eabi-gcc ${{ inputs.toolchain-version }}",
           "build_date": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
           "git_commit": "${{ github.sha }}",
-          "git_branch": "${{ github.ref_name }}"
+          "git_branch": "$GIT_REF_NAME"
         }
         EOF
 

@@ -61,7 +61,7 @@ jobs:
       coverage: ${{ steps.test.outputs.coverage }}
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: ⏱️ Start Timing
         id: timing
@@ -86,13 +86,17 @@ jobs:
 
       - name: 🏗️ Build Application
         id: build
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
           echo "🏗️ Building application..."
           # Simulate build process
           sleep 10
           
           # Simulate build success/failure based on conditions
-          if [[ "${{ github.ref_name }}" == *"break"* ]]; then
+          if [[ "$GIT_REF_NAME" == *"break"* ]]; then
             echo "❌ Build failed - intentional failure for demo"
             exit 1
           fi
@@ -192,7 +196,7 @@ jobs:
     name: 🛡️ Security Scan
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🛡️ Run Security Scan
         id: security
@@ -270,14 +274,18 @@ jobs:
     environment: ${{ github.event.inputs.environment || 'development' }}
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🎯 Determine Target Environment
         id: env
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF: ${{ github.ref }}
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             ENV="${{ github.event.inputs.environment }}"
-          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          elif [[ "$GIT_REF" == "refs/heads/main" ]]; then
             ENV="production"
           else
             ENV="development"
@@ -323,6 +331,10 @@ jobs:
 
       - name: 🚀 Deploy Application
         id: deploy
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
           echo "🚀 Deploying to ${{ steps.env.outputs.target }}..."
           # Simulate deployment process
@@ -331,7 +343,7 @@ jobs:
           # Simulate deployment success
           echo "✅ Deployment completed successfully"
           echo "deployment-url=https://${{ steps.env.outputs.target }}.example.com" >> "$GITHUB_OUTPUT"
-          echo "version=${{ github.ref_name }}-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "version=${GIT_REF_NAME}-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: 🔔 Deployment Success
         if: steps.deploy.outcome == 'success'

@@ -3,21 +3,48 @@ name: 🔄 CI/CD Pipeline (Automatic Release)
 # Main CI/CD pipeline using modular workflow components
 # This demonstrates the new modular approach for this repository
 
+# paths-ignore DISABLED on 2026-08-31 - kept commented out rather than deleted so the
+# original intent stays visible.
+#
+# Why it was wrong HERE: the filter below is the sensible default for an application
+# repository, where .github/** is build scaffolding around the product. In THIS repository
+# .github/** IS the product - the reusable workflows and composite actions consumers call.
+# Ignoring it meant a change to the thing we ship never cut a release.
+#
+# Demonstrated: commit 27dd66a (a security fix closing an unauthenticated RCE in
+# .github/actions/labeler-triage) triggered no release at all, and the breaking change in
+# d8919d2 (#71) produced no MAJOR. Releases only happened when a commit incidentally also
+# touched a path outside the filter - v7.1.3 was cut by c7741b4 only because that sweep
+# also touched github/workflows/examples/**.
+#
+# Why re-enabling the trigger cannot loop, verified against this repository's own history:
+#   1. All three bots (semantic-release-bot, README Bot, Security Policy Bot) push with
+#      GITHUB_TOKEN, and GitHub does not start `on: push` workflows for GITHUB_TOKEN pushes.
+#      Confirmed empirically: f318554, decb698, 0fa97dd and 9ae540d ran ZERO push workflows,
+#      while the human pushes c7741b4 and 27dd66a ran five and two respectively.
+#   2. Independently, `chore` and `docs` map to "release": false in the releaseRules of
+#      .github/config/release/semantic-release.json, so even a triggered run cuts nothing.
+#
+# Cost accepted: every push to main and every PR now runs this pipeline, including doc-only
+# ones. That is the intended trade - correct release semantics over saved minutes.
+#
+# Compare .github/workflows/workflow-validation.yml, which already documents choosing
+# `paths:` over `paths-ignore:` for exactly this reason.
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '.github/**'
-      - 'docs/**'
-      - '*.md'
-      - '*.MD'
+    # paths-ignore:
+    #   - '.github/**'
+    #   - 'docs/**'
+    #   - '*.md'
+    #   - '*.MD'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - '.github/**'
-      - 'docs/**'
-      - '*.md'
-      - '*.MD'
+    # paths-ignore:
+    #   - '.github/**'
+    #   - 'docs/**'
+    #   - '*.md'
+    #   - '*.MD'
 
   workflow_dispatch:
     inputs:
@@ -167,13 +194,17 @@ jobs:
     
     steps:
       - name: 📊 Generate Pipeline Summary
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
           echo "### 🔄 Modular CI/CD Pipeline Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Repository:** automation-templates" >> "$GITHUB_STEP_SUMMARY"
           echo "**Architecture:** Modular Workflow Components" >> "$GITHUB_STEP_SUMMARY"
           echo "**Event:** ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Branch:** ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Branch:** $GIT_REF_NAME" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           
           echo "| Module | Status | Details |" >> "$GITHUB_STEP_SUMMARY"

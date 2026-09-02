@@ -348,7 +348,7 @@ jobs:
       # 2. Checkout the exact ref the release was cut from
       # -----------------------------------------------------------------------
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.resolve.outputs.checkout-ref }}
           fetch-depth: 1
@@ -358,7 +358,7 @@ jobs:
       # 3. Setup .NET SDK
       # -----------------------------------------------------------------------
       - name: 🔧 Setup .NET SDK
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ inputs.global-json-file == '' && inputs.dotnet-version || '' }}
           global-json-file: ${{ inputs.global-json-file }}
