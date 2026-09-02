@@ -1088,6 +1088,7 @@ gh auth status --show-token
 - [🐘 **PHP Build System**](docs/workflows/php-build.md) - PHP and Composer automation
 - [🛒 **Shopware 5 Plugin Build System**](docs/workflows/shopware5-build.md) - Shopware 5 plugin automation with store integration
 - [🔧 **Makefile Build System**](docs/workflows/makefile-build.md) - Makefile-based build automation
+- [🧠 **AI Issue Summary**](docs/workflows/ai-issue-summary.md) - Copilot-powered issue and PR summaries
 - [🤖 **Claude Code AI Assistant**](docs/workflows/claude-code.md) - AI-powered code assistant
 - [🚀 **Coolify Deploy**](docs/workflows/coolify-deploy.md) - Coolify deployment automation
 - [🔄 **Meta Repository Sync**](docs/workflows/meta-repository-sync.md) - Automated submodule synchronization

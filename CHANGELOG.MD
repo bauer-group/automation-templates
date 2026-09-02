@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [10.0.7](https://github.com/bauer-group/automation-templates/compare/v10.0.6...v10.0.7) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **ai-summary:** authenticated Copilot via github.token, no PAT needed ([9e30e91](https://github.com/bauer-group/automation-templates/commit/9e30e910895e96362f40ae041af6708ec03ff7f4))
+
 ## [10.0.6](https://github.com/bauer-group/automation-templates/compare/v10.0.5...v10.0.6) (2026-09-02)
 
 ### 🐛 Bug Fixes

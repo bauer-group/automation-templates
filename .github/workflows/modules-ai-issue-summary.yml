@@ -60,14 +60,6 @@ on:
       ai-api-key:
         description: 'API key for AI service (if using external service)'
         required: false
-      copilot-token:
-        description: >-
-          OPTIONAL. Only needed outside an organisation-owned repository, or to bill
-          Copilot usage to a specific user's seat instead of the organisation. In an
-          org-owned repo github.token with copilot-requests: write is the recommended
-          path and no secret is required. When set, this must be a fine-grained PAT with
-          the "Copilot Requests" permission.
-        required: false
 
 permissions:
   issues: write
@@ -349,9 +341,7 @@ jobs:
           # The CLI reads this variable itself; the action only masks whatever it finds in
           # COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN so it cannot leak into logs.
           #
-          # copilot-token overrides it for repositories outside an organisation, or when
-          # usage should be billed to a specific user's Copilot seat instead.
-          GITHUB_TOKEN: ${{ secrets.copilot-token || github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
       
       # Complementary to the step above: exactly one provider runs per job.
       - name: 🧠 Run AI Inference (OpenAI)
