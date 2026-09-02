@@ -37,7 +37,13 @@ Diese Workflows sind speziell für das `automation-templates` Repository entwick
 
 #### 🤖 [ai-issue-summary.yml](./ai-issue-summary.yml) - AI Issue Zusammenfassungen
 **Zweck:** AI-gestützte Issue-Zusammenfassungen  
-**Module verwendet:** modules-ai-issue-summary
+**Module verwendet:** modules-ai-issue-summary  
+**Benötigt:** `copilot-requests: write` — im Caller **und** im Modul, da der
+`permissions:`-Block eines `workflow_call`-Workflows eine Obergrenze ist, keine
+Vergabe. Kein Secret nötig: der Copilot-Provider authentifiziert sich mit
+`github.token`. Voraussetzung ist die Org-Einstellung „Allow use of Copilot CLI
+billed to the organization".  
+**Doku:** [docs/workflows/ai-issue-summary.md](../../docs/workflows/ai-issue-summary.md)
 
 #### 🏷️ [pr-labeler.yml](./pr-labeler.yml) - PR Labeling
 **Zweck:** Automatisches PR Labeling  

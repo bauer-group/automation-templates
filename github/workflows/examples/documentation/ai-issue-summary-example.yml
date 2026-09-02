@@ -216,10 +216,16 @@ jobs:
 
 # Configuration notes:
 # 
-# 1. Set up secrets:
-#    - GITHUB_TOKEN is automatically available
-#    - For OpenAI: Add OPENAI_API_KEY secret
-#    - For other AI services: Add appropriate API key
+# 1. Authentication - no secret is needed for the default path:
+#    - The Copilot provider authenticates with the built-in github.token. What it needs
+#      is the `copilot-requests: write` PERMISSION, declared in this workflow's
+#      permissions block. Note that a called workflow's permissions block is a ceiling,
+#      not a grant, so the caller must declare it too.
+#    - An organisation owner must have "Allow use of Copilot CLI billed to the
+#      organisation" enabled. It is on by default where Copilot CLI is enabled, and
+#      usage is metered to the organisation.
+#    - Optional: set the ai-api-key secret to route through the OpenAI API instead. When
+#      it is set the Copilot step is skipped entirely - exactly one provider runs.
 # 
 # 2. Customize prompts:
 #    - Create .github/config/issues/ai-prompts.yml
