@@ -12,8 +12,12 @@
 //   - lastReleaseGitTag: empty on the very first release (no compare link then)
 //
 // Why we replicate the commit filter here: writer@9 no longer honours the
-// preset's `hidden` flag, so we drop hidden types ourselves. We keep the exact
-// section titles the action configured previously so output stays identical.
+// preset's `hidden` flag, so we drop hidden types ourselves.
+//
+// These section titles are the ONLY ones that apply. A repository's own
+// `presetConfig` for @semantic-release/release-notes-generator does not reach this
+// script and never did - the plugin is reserved and not provided at all. The action
+// warns when it finds one. See docs/workflows/semantic-release-config.md.
 
 import { execFileSync } from 'node:child_process';
 import { CommitParser } from 'conventional-commits-parser';
@@ -23,17 +27,24 @@ import createPreset from 'conventional-changelog-conventionalcommits';
 const [lastTag = '', nextTag = '', version = ''] = process.argv.slice(2);
 const repoDir = process.env.GITHUB_WORKSPACE || process.cwd();
 
-// Section map identical to the action's previous presetConfig. Visible types are
-// rendered; the rest are hidden (but breaking changes always surface — see filter).
+// Visible types are rendered; the rest are dropped (but breaking changes always
+// surface — see filter). Titles and visibility follow what the repository configs
+// had been asking for while the plugin that would have honoured them was inert:
+// style and chore visible as UI/UX Improvements and Maintenance, refactor spelled
+// out. Reader-facing changes and dependency bumps are things a release audience
+// wants to see; docs, tests, build and CI churn is not.
+//
+// chore(release) commits are excluded further down regardless, so a visible chore
+// section does not fill up with the pipeline's own release commits.
 const TYPES = [
   { type: 'feat', section: '🚀 Features' },
   { type: 'fix', section: '🐛 Bug Fixes' },
   { type: 'perf', section: '⚡ Performance' },
   { type: 'revert', section: '⏪ Reverts' },
-  { type: 'refactor', section: '♻️ Refactoring' },
+  { type: 'refactor', section: '♻️ Code Refactoring' },
+  { type: 'style', section: '💄 UI/UX Improvements' },
+  { type: 'chore', section: '🔧 Maintenance' },
   { type: 'docs', section: '📚 Documentation', hidden: true },
-  { type: 'style', section: '💄 Styles', hidden: true },
-  { type: 'chore', section: '🔧 Chores', hidden: true },
   { type: 'test', section: '🧪 Tests', hidden: true },
   { type: 'build', section: '🔨 Build', hidden: true },
   { type: 'ci', section: '👷 CI', hidden: true },

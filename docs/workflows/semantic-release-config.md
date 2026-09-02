@@ -105,6 +105,21 @@ out of the extra-plugins merge. A `presetConfig` for it in your config is dead w
 This one is no longer silent. The action now emits a warning when it finds the plugin
 in a repository config, so the entry can be deleted rather than trusted.
 
+The sections are these, and they are the only ones:
+
+| Commit type | Section | |
+|---|---|---|
+| `feat` | 🚀 Features | |
+| `fix` | 🐛 Bug Fixes | |
+| `perf` | ⚡ Performance | |
+| `revert` | ⏪ Reverts | |
+| `refactor` | ♻️ Code Refactoring | |
+| `style` | 💄 UI/UX Improvements | |
+| `chore` | 🔧 Maintenance | `chore(release)` excluded |
+| `docs`, `test`, `build`, `ci` | — | not rendered |
+
+A breaking change always surfaces under **⚠ BREAKING CHANGES**, whatever its type.
+
 ## History
 
 `3adf5e08` added `@semantic-release/exec` to the reserved set so the notes generator
