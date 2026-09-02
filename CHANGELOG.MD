@@ -4,6 +4,17 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [10.1.0](https://github.com/bauer-group/automation-templates/compare/v10.0.7...v10.1.0) (2026-09-02)
+
+### 🚀 Features
+
+* **docker-build:** added a pre-build disk cleanup ([90cdc94](https://github.com/bauer-group/automation-templates/commit/90cdc94cb3ce475a34e8629a5cdff79b87533a32))
+
+### 🐛 Bug Fixes
+
+* **ai-summary:** authenticated Copilot via github.token, no PAT needed ([1739798](https://github.com/bauer-group/automation-templates/commit/1739798be222f77721af042bc5e7063b9c95db14))
+* **docker-build:** kept npm out of disk cleanup ([fc019e4](https://github.com/bauer-group/automation-templates/commit/fc019e41a8e11c7395f23feef3b484cd5e865348))
+
 ## [10.0.7](https://github.com/bauer-group/automation-templates/compare/v10.0.6...v10.0.7) (2026-09-02)
 
 ### 🐛 Bug Fixes
