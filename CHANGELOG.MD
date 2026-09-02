@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [10.1.1](https://github.com/bauer-group/automation-templates/compare/v10.1.0...v10.1.1) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **ci:** removed the PSR GitPython compat shim ([0912526](https://github.com/bauer-group/automation-templates/commit/09125261555b37b63618e4d542e3a411f38c1a3e)), references [python-semantic-release#1477](https://github.com/python-semantic-release/issues/1477) [#1477](https://github.com/bauer-group/automation-templates/issues/1477)
+
 ## [10.1.0](https://github.com/bauer-group/automation-templates/compare/v10.0.7...v10.1.0) (2026-09-02)
 
 ### 🚀 Features
