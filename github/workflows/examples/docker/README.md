@@ -82,6 +82,37 @@ Security-first Docker build with comprehensive vulnerability scanning.
 
 **Use Case:** Security-critical applications, financial services, healthcare
 
+### 7. Large Image Build (`large-image-build.yml`)
+Docker build for images too large for a GitHub-hosted runner's default free space.
+
+**Features:**
+- `free-disk-space`: reclaims the runner's unused toolchains before the build
+- `cache-mode: 'min'`: keeps the cache export from refilling the disk
+- Single-platform build to hold one image in the daemon rather than several
+- Documents the failure it prevents, which reports itself as a scanner error
+
+**Use Case:** ML images carrying model weights, CUDA base images, multi-stage
+builds with a large toolchain stage - anything much past 1.5 GB
+
+## Running out of disk space
+
+A GitHub-hosted runner has roughly 4 GB free once its preinstalled toolchains are
+accounted for, and a large build needs that several times over: BuildKit's layers,
+the local copy kept in the daemon so the image can be scanned, the cache export,
+and the tarball Trivy has Docker export before it analyses anything.
+
+The symptom does not name disk space. It surfaces as
+
+```
+FATAL failed to analyze layer ... unable to export the image:
+      write /var/lib/docker/tmp/docker-export-...: no space left on device
+```
+
+minutes and one step away from the cause, which reads like a scanner fault -
+and disabling the scanner does not help, because the expensive step is the local
+build that runs either way. See `large-image-build.yml` for the two settings that
+fix it.
+
 ## Configuration Files
 
 Each example uses one of the predefined configuration files:

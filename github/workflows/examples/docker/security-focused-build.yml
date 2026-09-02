@@ -76,6 +76,13 @@ jobs:
       generate-sbom: true
       sbom-format: 'cyclonedx'
 
+      # A strict scan is also the heaviest step on disk: Trivy has Docker export
+      # the whole image to a tarball before it analyses anything, which is a
+      # second full-size copy on a runner that has ~4 GB free to begin with. If
+      # this build ever fails with "no space left on device" reported by the
+      # scanner, that is the cause and this is the fix - see large-image-build.yml.
+      # free-disk-space: true
+
       # Testing
       run-tests: true
       test-command: 'docker run --rm --read-only --tmpfs /tmp $IMAGE_TAG --version'

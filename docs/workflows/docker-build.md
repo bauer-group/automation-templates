@@ -234,6 +234,10 @@ cleanup snippets do remove: npm lives in it, so deleting it leaves
 
 `cache-mode: 'min'` is the other lever worth reaching for: the default `'max'`
 exports every intermediate layer of every build stage, into two separate scopes.
+On a multi-stage build that export is regularly larger than the image itself.
+
+Both settings together, with the reasoning inline, are in
+**[large-image-build.yml](../../github/workflows/examples/docker/large-image-build.yml)**.
 
 ### Platform Configuration
 
@@ -483,11 +487,14 @@ readme-file: ''  # Auto-detects: DOCKER_README.MD -> README.MD -> README.md
 The repository includes comprehensive examples in `github/workflows/examples/docker/`:
 
 1. **[simple-docker-build.yml](../../github/workflows/examples/docker/simple-docker-build.yml)**: Basic GHCR build
-2. **[ghost-bunnycdn-connector.yml](../../github/workflows/examples/docker/ghost-bunnycdn-connector.yml)**: Multi-registry with version sync
-3. **[dockerhub-with-readme-sync.yml](../../github/workflows/examples/docker/dockerhub-with-readme-sync.yml)**: Docker Hub with README sync
-4. **[multi-platform-build.yml](../../github/workflows/examples/docker/multi-platform-build.yml)**: Cross-architecture builds
-5. **[security-focused-build.yml](../../github/workflows/examples/docker/security-focused-build.yml)**: Security-first approach
-6. **[enterprise-build.yml](../../github/workflows/examples/docker/enterprise-build.yml)**: Maximum security and compliance
+2. **[dockerhub-with-readme-sync.yml](../../github/workflows/examples/docker/dockerhub-with-readme-sync.yml)**: Docker Hub with README sync
+3. **[multi-platform-build.yml](../../github/workflows/examples/docker/multi-platform-build.yml)**: Cross-architecture builds
+4. **[security-focused-build.yml](../../github/workflows/examples/docker/security-focused-build.yml)**: Security-first approach
+5. **[enterprise-build.yml](../../github/workflows/examples/docker/enterprise-build.yml)**: Maximum security and compliance
+6. **[large-image-build.yml](../../github/workflows/examples/docker/large-image-build.yml)**: Images that outgrow a runner's free disk
+7. **[web-application-build.yml](../../github/workflows/examples/docker/web-application-build.yml)**: Web app build with staging deploy
+8. **[microservice-build.yml](../../github/workflows/examples/docker/microservice-build.yml)**: Microservice with Helm deployment
+9. **[self-hosted-build.yml](../../github/workflows/examples/docker/self-hosted-build.yml)**: Building on a self-hosted runner
 
 ## Best Practices
 
