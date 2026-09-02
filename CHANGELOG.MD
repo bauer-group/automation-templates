@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [10.0.3](https://github.com/bauer-group/automation-templates/compare/v10.0.2...v10.0.3) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **ci:** stopped the OSV summary reporting a stale scanner version ([9875ca4](https://github.com/bauer-group/automation-templates/commit/9875ca425ce2ec5ba02a3ba927e67b98f35129bf)), references [#93](https://github.com/bauer-group/automation-templates/issues/93)
+
 ## [10.0.2](https://github.com/bauer-group/automation-templates/compare/v10.0.1...v10.0.2) (2026-09-02)
 
 ### 🐛 Bug Fixes
