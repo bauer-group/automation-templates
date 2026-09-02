@@ -132,7 +132,7 @@ inputs:
     required: false
     default: 'true'
   security-scanner:
-    description: 'Security scanner (trivy, snyk, grype)'
+    description: 'Security scanner: trivy (default) or grype. snyk is NOT implemented - it is rejected with an explicit error instead of silently producing no report.'
     required: false
     default: 'trivy'
   security-fail-on:
@@ -450,10 +450,12 @@ runs:
       if: inputs.version-from-dockerfile == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        DOCKERFILE_PATH: ${{ inputs.dockerfile-path }}
       run: |
         echo "🏷️ Extracting version from Dockerfile..."
 
-        DOCKERFILE="${{ inputs.dockerfile-path }}"
+        DOCKERFILE="$DOCKERFILE_PATH"
 
         # Extract version from LABEL org.opencontainers.image.version
         VERSION=$(grep -oP 'LABEL\s+org\.opencontainers\.image\.version\s*=\s*["\x27]?\K[0-9]+\.[0-9]+\.[0-9]+(?:[-.][a-zA-Z0-9]+)*' "$DOCKERFILE" 2>/dev/null || \
@@ -461,12 +463,16 @@ runs:
                   echo "")
 
         if [ -z "$VERSION" ]; then
-          echo "⚠️ No version found in Dockerfile LABEL, falling back to 'latest'"
-          VERSION="latest"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "version-tag=type=raw,value=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "version-major-minor-tag=" >> "$GITHUB_OUTPUT"
-          echo "version-major-tag=" >> "$GITHUB_OUTPUT"
+          # FAIL CLOSED. This used to fall back to VERSION="latest" and publish
+          # 'type=raw,value=latest' as the version tag. Two things were wrong with that:
+          # 'latest' is not the version the caller asked to publish, and this tag is added
+          # independently of the 'latest-tag' input - so a caller with latest-tag: false
+          # still had their :latest tag overwritten, by a build whose version could not
+          # even be determined. A missing version is a misconfiguration, not a version.
+          echo "::error::version-from-dockerfile is enabled but $DOCKERFILE has no parsable 'org.opencontainers.image.version' LABEL."
+          echo "::error::  Expected e.g. LABEL org.opencontainers.image.version=\"1.2.3\" (major.minor.patch, optional -suffix)."
+          echo "::error::  Refusing to fall back to ':latest' - that would publish an unknown version and ignore 'latest-tag'."
+          exit 1
         else
           echo "✅ Found version in Dockerfile: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -739,8 +745,13 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         SECURITY_FAIL_ON: ${{ inputs.security-fail-on }}
+        SECURITY_SCANNER: ${{ inputs.security-scanner }}
       run: |
-        echo "🛡️ Running security scan with ${{ inputs.security-scanner }}..."
+        # Resolve the scanner name ONCE. The dispatch below, the vulnerability counting
+        # and the missing-report message each read the raw input separately, so they
+        # could disagree about which scanner actually ran.
+        SCANNER=$(printf '%s' "$SECURITY_SCANNER" | tr '[:upper:]' '[:lower:]')
+        echo "🛡️ Running security scan with $SCANNER..."
 
         # Use the first tag for scanning (local image)
         PRIMARY_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
@@ -778,7 +789,7 @@ runs:
         esac
         echo "🎚️ Severity threshold: $FAIL_ON (scanning: $SCAN_SEVERITIES)"
 
-        case "${{ inputs.security-scanner }}" in
+        case "$SCANNER" in
           trivy)
             # Install Trivy if not available
             if ! command -v trivy >/dev/null 2>&1; then
@@ -863,6 +874,28 @@ runs:
 
             grype "$PRIMARY_TAG" -o json --file "$REPORT_PATH" || echo "Grype scan completed"
             ;;
+
+          snyk)
+            # 'snyk' is offered by this input's description and by the documentation, but
+            # no snyk arm was ever implemented here: the case fell through, nothing wrote
+            # a report, and the run died further down at the missing-report guard - which
+            # blames the vulnerability DB, a rate limit or the disk. Report the real
+            # reason at the point where it is known.
+            # (Wiring Snyk up needs an auth-token input AND a Snyk-shaped result parser:
+            #  the counting below understands Trivy's JSON schema only, so a snyk report
+            #  would otherwise be counted as zero vulnerabilities and pass every gate.)
+            echo "::error::security-scanner 'snyk' is not implemented by this action. Use 'trivy' (default) or 'grype', or run Snyk as a separate step in your workflow."
+            echo "scan-passed=false" >> "$GITHUB_OUTPUT"
+            exit 1
+            ;;
+
+          *)
+            # Fail CLOSED on anything unrecognised, for the same reason: an unmatched
+            # scanner name meant "no scan ran", surfacing later as a misleading failure.
+            echo "::error::Unknown security-scanner '$SECURITY_SCANNER'. Supported values: trivy, grype."
+            echo "scan-passed=false" >> "$GITHUB_OUTPUT"
+            exit 1
+            ;;
         esac
 
         echo "report-path=$REPORT_PATH" >> "$GITHUB_OUTPUT"
@@ -882,7 +915,7 @@ runs:
           MEDIUM_COUNT=0
           LOW_COUNT=0
 
-          if [ "${{ inputs.security-scanner }}" = "trivy" ]; then
+          if [ "$SCANNER" = "trivy" ]; then
             # A malformed report must not silently degrade to "0 vulnerabilities".
             if ! jq -e '.' "$REPORT_PATH" >/dev/null 2>&1; then
               echo "::error::Security report at $REPORT_PATH is not valid JSON - the scanner did not complete successfully"
@@ -950,7 +983,7 @@ runs:
             echo "✅ Security scan passed - image is safe to push"
           fi
         else
-          echo "::error::Security report not found at $REPORT_PATH - the ${{ inputs.security-scanner }} scan did not produce a report"
+          echo "::error::Security report not found at $REPORT_PATH - the $SCANNER scan did not produce a report"
           echo "::error::  This usually means the scanner failed to run - a vulnerability DB download, a registry rate limit, or running out of disk space while exporting a large image."
           echo "::error::  Refusing to report a pass for a scan that did not happen. Set security-scan: false to build without scanning."
           echo "scan-passed=false" >> "$GITHUB_OUTPUT"
@@ -1184,24 +1217,30 @@ runs:
       if: inputs.update-dockerfile-version == 'true' && inputs.version-from-dockerfile != 'true' && steps.update-dockerfile-version.outputs.version != '' && (inputs.release-version != '' || startsWith(github.ref, 'refs/tags/v'))
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        DOCKERFILE_PATH: ${{ inputs.dockerfile-path }}
+        VERSION: ${{ steps.update-dockerfile-version.outputs.version }}
+        RELEASE_VERSION: ${{ inputs.release-version }}
       run: |
         echo "📝 Committing Dockerfile version update..."
 
-        DOCKERFILE="${{ inputs.dockerfile-path }}"
-        VERSION="${{ steps.update-dockerfile-version.outputs.version }}"
+        DOCKERFILE="$DOCKERFILE_PATH"
 
         # Determine tag name for commit message
-        if [ -n "${{ inputs.release-version }}" ]; then
-          TAG_NAME="v${{ inputs.release-version }}"
+        if [ -n "$RELEASE_VERSION" ]; then
+          TAG_NAME="v$RELEASE_VERSION"
         else
           TAG_NAME="${GITHUB_REF#refs/tags/}"
         fi
 
-        # IMPORTANT: Save the modified Dockerfile content BEFORE any git operations
-        # This is crucial because after git checkout, the local changes would be lost
-        echo "💾 Saving modified Dockerfile content..."
-        TEMP_DOCKERFILE=$(mktemp)
-        cp "$DOCKERFILE" "$TEMP_DOCKERFILE"
+        # The version is spliced into a sed replacement below, where '/', '&' and '\' would
+        # change what the expression means. Reject anything a version label cannot contain.
+        case "$VERSION" in
+          ''|*[!A-Za-z0-9.+_-]*)
+            echo "::error::Refusing to write version '$VERSION' into $DOCKERFILE - only letters, digits and '.', '+', '_', '-' are allowed."
+            exit 1
+            ;;
+        esac
 
         # Configure git
         git config user.name "github-actions[bot]"
@@ -1210,6 +1249,19 @@ runs:
         # Get the default branch
         DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
         echo "📌 Default branch: $DEFAULT_BRANCH"
+
+        # WHY THIS LOOKS DIFFERENT NOW:
+        # This step used to copy the Dockerfile of the BUILT REF to a temp file, check out
+        # the default branch, and copy that whole file back over the default branch's copy.
+        # That is a whole-file replacement, not a version bump - re-running an older tag
+        # reverted every Dockerfile change made on the default branch since that tag, and
+        # `git diff --quiet` could not catch it: in exactly that case the diff is non-empty
+        # BECAUSE newer content is being reverted, so the guard read the regression as a
+        # reason to commit. The version edit is now RE-APPLIED to the default branch's own
+        # copy, so no other content can travel with it.
+        # Drop the in-tree edit made on the built ref first: it is no longer needed, and a
+        # dirty Dockerfile makes `git checkout` fail whenever the two refs' copies differ.
+        git checkout -- "$DOCKERFILE" 2>/dev/null || true
 
         # Fetch latest changes and checkout default branch
         git fetch origin "$DEFAULT_BRANCH"
@@ -1221,15 +1273,56 @@ runs:
           git pull origin "$DEFAULT_BRANCH" --rebase
         }
 
-        # Restore the modified Dockerfile from temp file
-        echo "📄 Restoring modified Dockerfile..."
-        cp "$TEMP_DOCKERFILE" "$DOCKERFILE"
-        rm -f "$TEMP_DOCKERFILE"
+        if [ ! -f "$DOCKERFILE" ]; then
+          echo "::warning::$DOCKERFILE does not exist on $DEFAULT_BRANCH - nothing to write back"
+          exit 0
+        fi
+
+        if ! grep -q 'org\.opencontainers\.image\.version' "$DOCKERFILE"; then
+          echo "::warning::No org.opencontainers.image.version label in $DOCKERFILE on $DEFAULT_BRANCH - nothing to write back"
+          exit 0
+        fi
+
+        # Never move the label backwards. Re-running an old tag must not downgrade a newer
+        # version that already sits on the default branch. Skipped, not failed: the release
+        # itself succeeded, only the write-back is inapplicable. If `sort -V` is missing the
+        # comparison is skipped and the update proceeds as it did before.
+        CURRENT_VERSION=$(grep -oE 'org\.opencontainers\.image\.version[^0-9]*[0-9]+\.[0-9]+\.[0-9]+([-.][a-zA-Z0-9]+)*' "$DOCKERFILE" \
+          | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+([-.][a-zA-Z0-9]+)*' | head -1 || true)
+        if [ -n "$CURRENT_VERSION" ] && [ "$CURRENT_VERSION" != "$VERSION" ]; then
+          set +e
+          NEWEST=$(printf '%s\n%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V 2>/dev/null | tail -n1)
+          SORT_RC=$?
+          set -e
+          if [ "$SORT_RC" -eq 0 ] && [ "$NEWEST" = "$CURRENT_VERSION" ]; then
+            echo "::warning::$DEFAULT_BRANCH already carries version $CURRENT_VERSION, which is newer than $VERSION - not writing the older version back."
+            exit 0
+          fi
+        fi
+
+        # Re-apply the version edit - same expression as the 'Update Dockerfile Version' step.
+        echo "📄 Applying version $VERSION to $DOCKERFILE on $DEFAULT_BRANCH..."
+        sed -i -E "s/(org\.opencontainers\.image\.version\s*=\s*[\"']?)[0-9]+\.[0-9]+\.[0-9]+([-.][a-zA-Z0-9]+)*([\"']?)/\1$VERSION\3/" "$DOCKERFILE"
 
         # Check if there are actual changes compared to the current branch state
-        if git diff --quiet "$DOCKERFILE"; then
+        if git diff --quiet -- "$DOCKERFILE"; then
           echo "ℹ️ No changes to commit - Dockerfile already up to date"
           exit 0
+        fi
+
+        # Fail CLOSED: the only lines this step may change are version-label lines. Anything
+        # else means the write-back did more than bump a version - and this commit lands on
+        # the default branch - so refuse instead of pushing it. `set +e` around the pipeline
+        # because grep exits non-zero when it matches nothing, which is the normal case here.
+        set +e
+        UNEXPECTED=$(git diff -U0 -- "$DOCKERFILE" | grep -E '^[+-]' | grep -Ev '^(\+\+\+|---)' | grep -cv 'org\.opencontainers\.image\.version')
+        set -e
+        UNEXPECTED=$(printf '%s' "$UNEXPECTED" | tr -dc '0-9')
+        [ -n "$UNEXPECTED" ] || UNEXPECTED=0
+        if [ "$UNEXPECTED" -gt 0 ]; then
+          echo "::error::The Dockerfile write-back touched $UNEXPECTED line(s) unrelated to org.opencontainers.image.version - refusing to commit to $DEFAULT_BRANCH."
+          git --no-pager diff -- "$DOCKERFILE" || true
+          exit 1
         fi
 
         # Stage and commit
