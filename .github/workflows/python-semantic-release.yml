@@ -325,48 +325,8 @@ jobs:
       - name: 📦 Install python-semantic-release and build tools
         run: |
           python -m pip install --upgrade pip
-          pip install python-semantic-release build
+          pip install "python-semantic-release>10.6.1" build
 
-          # Compatibility shim: python-semantic-release 10.6.1 + GitPython >= 3.1.60
-          #
-          # GitPython 3.1.60 removed Actor.name_email_regex while fixing GHSA-g5vv-9gxw-82hx
-          # (ReDoS in commit author/committer parsing). PSR 10.6.1 still reads that attribute
-          # on every config load, so `semantic-release version` aborts before inspecting a
-          # single commit with: type object 'Actor' has no attribute 'name_email_regex'
-          #
-          # We deliberately keep GitPython current rather than pinning back to 3.1.59:
-          # Actor._from_string no longer uses the regex, so untrusted commit data stays on the
-          # hardened code path. PSR applies it only to the configured (trusted) author string
-          # from pyproject.toml or the environment.
-          #
-          # The shim is loaded via PYTHONPATH scoped to the semantic-release call only, so it
-          # does not leak into the package build or any other Python process in this job.
-          #
-          # Upstream fix: python-semantic-release#1477 (open, unreleased as of 2026-08-26).
-          # TODO: remove this shim once a PSR release containing #1477 is available.
-          mkdir -p "$RUNNER_TEMP/psr-compat"
-          cat > "$RUNNER_TEMP/psr-compat/sitecustomize.py" <<'PSR_COMPAT'
-          import re
-
-          # NOTE: import via `from git.util import ...` -- the attribute `git.util` resolves to
-          # git.index.util, so `import git.util` would silently patch the wrong module.
-          try:
-              from git.util import Actor
-          except ImportError:
-              pass
-          else:
-              if not hasattr(Actor, "name_email_regex"):
-                  Actor.name_email_regex = re.compile(r"(.*) <(.*?)>")
-          PSR_COMPAT
-
-          # Fail loudly here rather than silently shipping an ineffective shim into the
-          # release step (e.g. if a future GitPython moves Actor again).
-          PYTHONPATH="$RUNNER_TEMP/psr-compat" python -c "
-          from git import Actor
-          assert Actor.name_email_regex.match('github-actions[bot] <bot@users.noreply.github.com>')
-          print('OK: Actor.name_email_regex available for python-semantic-release')
-          "
-          
           # Install tomli for Python <3.11 compatibility (needed for pyproject.toml parsing)
           python -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)" || pip install tomli
           
@@ -425,7 +385,7 @@ jobs:
           git tag --list > "$TAGS_BEFORE"
 
           # Run semantic release (creates version, commit, tag, release, and builds packages)
-          PYTHONPATH="$RUNNER_TEMP/psr-compat" semantic-release --verbose version
+          semantic-release --verbose version
 
           # A release happened only if a tag now points at HEAD that did not exist before.
           # No new tag => released=false, so an unproven release can never read as a real one.
