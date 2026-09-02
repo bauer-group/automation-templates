@@ -195,8 +195,40 @@ The Docker build action provides:
 |-----------|-------------|---------|
 | `cache-enabled` | Enable build caching | `true` |
 | `cache-mode` | Cache mode: `'min'`, `'max'`, `'inline'` | `'max'` |
+| `free-disk-space` | Remove unused runner toolchains before building (Linux only) | `false` |
 | `builder-driver` | Builder driver: `'docker'`, `'docker-container'`, `'kubernetes'` | `'docker-container'` |
 | `build-timeout` | Build timeout in minutes | `30` |
+
+#### Running out of disk space
+
+A GitHub-hosted runner has roughly 4 GB free once the toolchains it ships with
+are accounted for. That is enough for most images and not enough for large ones,
+because a build needs the space several times over: BuildKit's layers, the
+`load: true` copy this workflow keeps in the daemon so the image can be scanned,
+the cache export, and - when `security-scan` is on - the tarball Trivy has Docker
+export before it analyses anything.
+
+When it runs out, it does not say so plainly. The scan fails with
+`unable to export the image: no space left on device`, minutes and one step away
+from the cause, which reads like a scanner fault; disabling the scanner does not
+help, because the expensive step is the unconditional local build. Run out
+earlier and the runner process itself dies without writing a log.
+
+```yaml
+free-disk-space: true
+```
+
+removes toolchains no Docker build uses - the CodeQL bundle, Android SDK, .NET,
+GHC, Swift, PowerShell, global node_modules - and logs `df -h /` before and
+after, so the number is in the log whether or not it turned out to matter.
+Roughly 13 GB on a current `ubuntu-24.04` runner.
+
+Deliberately not the whole of `/opt/hostedtoolcache`: only its CodeQL bundle,
+which is the bulk of it and is never used inside a build job. The rest holds the
+Python, Node and Go versions a `setup-*` step later in the same job may expect.
+
+`cache-mode: 'min'` is the other lever worth reaching for: the default `'max'`
+exports every intermediate layer of every build stage, into two separate scopes.
 
 ### Platform Configuration
 
