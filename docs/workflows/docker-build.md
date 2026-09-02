@@ -239,6 +239,21 @@ On a multi-stage build that export is regularly larger than the image itself.
 Both settings together, with the reasoning inline, are in
 **[large-image-build.yml](../../github/workflows/examples/docker/large-image-build.yml)**.
 
+The scan says so before it dies, too. It measures the image against the free space
+on `/var/lib/docker` and reports one of three things:
+
+| Free space | Behaviour |
+|---|---|
+| below the image size | error, job stops before Trivy runs |
+| between 1x and 2x the image size | warning naming the real requirement |
+| 2x or more | silent |
+
+Trivy needs closer to twice the image size - the export tarball, plus room to
+analyse the layers - but a build in the middle band can still finish, so that one
+warns rather than blocks. A real failure showed `Image ~1967 MB, free ~3142 MB`,
+passed the gate and died in the scan three minutes later; that run now carries the
+warning in its log.
+
 ### Platform Configuration
 
 | Parameter | Description | Default | Options |
