@@ -1076,6 +1076,7 @@ gh auth status --show-token
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
 - [🐍 **Python Build System**](docs/workflows/python-build.md) - Python application builds and testing
 - [🐍 **Python Semantic Release System**](docs/workflows/python-semantic-release.md) - Modern Python CI/CD with semantic versioning
+- [📦 **Semantic Release Config Contract**](docs/workflows/semantic-release-config.md) - What a repository's `semantic-release.json` actually controls, and what is silently ignored
 - [⚡ **Zephyr RTOS Build System**](docs/workflows/zephyr-build.md) - Real-time OS automation with hardware testing
 - [📟 **ESP32 Build System**](docs/workflows/esp32-build.md) - ESP32 microcontroller automation with ESP-IDF
 - [🔧 **STM32 Build System**](docs/workflows/stm32-build.md) - STM32 microcontroller automation

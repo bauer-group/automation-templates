@@ -104,3 +104,10 @@ jobs:
       - name: "🧪 security-scan: every output read is declared"
         shell: bash
         run: bash .github/actions/security-scan/tests/declared-outputs.test.sh
+
+      # Same failure class as the security-scan test above: the run stays green and
+      # the release looks correct, only the version inside the artifacts stops
+      # advancing. That went unnoticed for four releases across three repositories.
+      - name: "🧪 semantic-release: a consumer's exec hooks survive the reservation"
+        shell: bash
+        run: bash .github/actions/semantic-release/tests/merge-exec-hooks.test.sh
