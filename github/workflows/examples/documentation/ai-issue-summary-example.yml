@@ -18,7 +18,7 @@ on:
 permissions:
   issues: write
   pull-requests: write
-  models: read
+  copilot-requests: write   # Copilot CLI access; replaces the retired models: read
   contents: read
 
 jobs:
