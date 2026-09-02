@@ -456,9 +456,13 @@ multi-platform: false      # single-platform only (see below)
 - **Scope:** applies to **single-platform** builds. With `multi-platform: true` it falls
   back to the standard two-build flow (scanning every architecture of a pushed multi-arch
   index still needs the design tracked in the breaking PR).
-- **Provenance caveat:** the fast path uses `docker push`, which does **not** attach SLSA
-  build provenance. SBOM file attestation (`attest-sbom`) still works. Set
-  `provenance: 'false'` when enabling this if you would otherwise expect provenance.
+- **Mutually exclusive with provenance.** The fast path uses `docker push`, which attaches
+  no SLSA build provenance, and the image it pushes came from a `load: true` build the docker
+  exporter cannot attach attestations to at all. Since `provenance` defaults to `mode=max`,
+  the combination is **refused before the build starts** rather than dropping provenance
+  silently. Pick the property the build needs: `provenance: 'false'` keeps the scan->push
+  window closed, `single-build-scan: false` keeps provenance and accepts the second build.
+  SBOM file attestation (`attest-sbom`) works either way.
 
 ## Outputs
 

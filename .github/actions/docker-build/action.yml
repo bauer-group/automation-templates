@@ -115,9 +115,10 @@ inputs:
       EXACT scanned artifact (docker push, no rebuild) instead of building a second time.
       Currently applies to single-platform builds only; multi-platform (multi-platform=true)
       falls back to the standard two-build flow. Default false preserves current behaviour.
-      NOTE: the fast path uses `docker push`, which does NOT attach SLSA build provenance to
-      the manifest (unlike the buildx push). SBOM file attestation (attest-sbom) still works;
-      set provenance:'false' if you enable this to avoid expecting provenance that isn't there.
+      MUTUALLY EXCLUSIVE WITH PROVENANCE: the fast path uses `docker push`, which attaches no
+      SLSA build provenance. Since provenance defaults to mode=max, enabling this without also
+      setting provenance:'false' is refused before the build starts rather than losing
+      provenance silently. SBOM file attestation (attest-sbom) is unaffected.
     required: false
     default: 'false'
   # Caching
@@ -260,6 +261,26 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    # Provenance and single-build-scan are both security properties and this
+    # combination cannot deliver both. The fast path pushes with `docker push`,
+    # which carries no SLSA attestation, while the standard path gets provenance
+    # from buildx at build time - and the image the fast path pushes came from a
+    # `load: true` build, which the docker exporter cannot attach attestations to
+    # in the first place.
+    #
+    # Refused rather than warned. This PR makes provenance mode=max the default, so
+    # a caller enabling single-build-scan would silently lose a property it never
+    # asked to give up, and the only evidence would be a log line in a green run -
+    # the exact shape of failure the scan gate and the disk precheck exist to avoid.
+    # Which property matters is the caller's call, so the build stops until one is
+    # named.
+    - name: 🚦 Reject Provenance With Single-Build-Scan
+      if: inputs.single-build-scan == 'true' && inputs.multi-platform != 'true' && inputs.push == 'true' && inputs.provenance != 'false'
+      shell: bash
+      run: |
+        echo "::error title=single-build-scan cannot carry provenance::single-build-scan pushes the scanned image with 'docker push', which attaches no SLSA build provenance, but provenance is set to '${{ inputs.provenance }}'. Pick the property this build needs: set provenance:'false' to keep the scan->push TOCTOU window closed and accept no provenance, or single-build-scan:false to keep provenance and accept the second build. SBOM attestation (attest-sbom) is unaffected either way."
+        exit 1
+
     - name: 🔧 Setup Build Environment
       shell: bash
       working-directory: ${{ inputs.working-directory }}
@@ -1066,9 +1087,12 @@ runs:
         # from scratch under QEMU on every run.
         cache-from: ${{ steps.cache-settings.outputs.cache-from-push }}
         cache-to: ${{ steps.cache-settings.outputs.cache-to-push }}
-        # provenance: opt-in via the 'provenance' input (default 'false' = unchanged
-        # single-manifest push). Only the push build carries provenance - the local
-        # scan build uses load:true (docker exporter), which cannot hold attestations.
+        # provenance now defaults to mode=max (see the feat(ci)! commit on this branch),
+        # so the pushed image is an OCI index rather than a single manifest unless a
+        # caller sets provenance:'false'. Only this push build can carry it - the local
+        # scan build uses load:true, and the docker exporter cannot hold attestations,
+        # which is why single-build-scan and provenance are mutually exclusive and are
+        # refused up front rather than silently dropping one.
         provenance: ${{ inputs.provenance }}
         sbom: false
 
