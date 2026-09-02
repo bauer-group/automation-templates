@@ -486,6 +486,13 @@ jobs:
           # the single largest item and is never used inside a build job, while the
           # rest of the tool cache holds the Python, Node and Go versions a setup-*
           # step later in the same job may expect to find.
+          #
+          # /usr/local/lib/node_modules is deliberately NOT on this list. npm itself
+          # lives there - the runner installs Node with `n` into /usr/local, so
+          # /usr/local/bin/npm is a symlink into that directory - and Run Pre-Build
+          # Tests below calls `npm test` for any repository that has a package.json.
+          # Removing it leaves a dangling symlink and fails the build it was meant
+          # to rescue, for well under a gigabyte.
           sudo rm -rf \
             /opt/hostedtoolcache/CodeQL \
             /usr/local/lib/android \
@@ -493,7 +500,6 @@ jobs:
             /usr/local/.ghcup \
             /usr/share/swift \
             /usr/local/share/powershell \
-            /usr/local/lib/node_modules \
             /opt/ghc || true
 
           AFTER=$(df --output=avail -BM / | tail -1 | tr -dc '0-9')

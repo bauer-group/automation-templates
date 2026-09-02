@@ -219,13 +219,18 @@ free-disk-space: true
 ```
 
 removes toolchains no Docker build uses - the CodeQL bundle, Android SDK, .NET,
-GHC, Swift, PowerShell, global node_modules - and logs `df -h /` before and
-after, so the number is in the log whether or not it turned out to matter.
-Roughly 13 GB on a current `ubuntu-24.04` runner.
+GHC, Swift, PowerShell - and logs `df -h /` before and after, so the number is in
+the log whether or not it turned out to matter. Over 10 GB on a current
+`ubuntu-24.04` runner, most of it the Android SDK and the CodeQL bundle.
 
 Deliberately not the whole of `/opt/hostedtoolcache`: only its CodeQL bundle,
 which is the bulk of it and is never used inside a build job. The rest holds the
 Python, Node and Go versions a `setup-*` step later in the same job may expect.
+
+Deliberately not `/usr/local/lib/node_modules` either, which several published
+cleanup snippets do remove: npm lives in it, so deleting it leaves
+`/usr/local/bin/npm` dangling and breaks `run-tests` for any repository with a
+`package.json` - the pre-build test step runs `npm test`.
 
 `cache-mode: 'min'` is the other lever worth reaching for: the default `'max'`
 exports every intermediate layer of every build stage, into two separate scopes.
