@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-09-02 17:31:31 UTC -->
+<!-- Generated on 2026-09-02 17:55:30 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -1079,6 +1079,7 @@ gh auth status --show-token
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
 - [🐍 **Python Build System**](docs/workflows/python-build.md) - Python application builds and testing
 - [🐍 **Python Semantic Release System**](docs/workflows/python-semantic-release.md) - Modern Python CI/CD with semantic versioning
+- [📦 **Semantic Release Config Contract**](docs/workflows/semantic-release-config.md) - What a repository's `semantic-release.json` actually controls, and what is silently ignored
 - [⚡ **Zephyr RTOS Build System**](docs/workflows/zephyr-build.md) - Real-time OS automation with hardware testing
 - [📟 **ESP32 Build System**](docs/workflows/esp32-build.md) - ESP32 microcontroller automation with ESP-IDF
 - [🔧 **STM32 Build System**](docs/workflows/stm32-build.md) - STM32 microcontroller automation
@@ -1225,5 +1226,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-09-02 17:31:31 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-09-02 17:55:30 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
