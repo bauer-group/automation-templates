@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [10.2.1](https://github.com/bauer-group/automation-templates/compare/v10.2.0...v10.2.1) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **semantic-release:** restored the consumer's own exec hooks ([a9b6cb3](https://github.com/bauer-group/automation-templates/commit/a9b6cb334723bd1b4284cb29b632f8e45b468155))
+
 ## [10.2.0](https://github.com/bauer-group/automation-templates/compare/v10.1.1...v10.2.0) (2026-09-02)
 
 ### 🚀 Features
