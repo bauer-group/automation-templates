@@ -254,26 +254,72 @@ jobs:
           SCRIPT_FILES=$(cat /tmp/script-files.txt | tr '\n' ' ')
           FILE_COUNT=${{ steps.find-scripts.outputs.file-count }}
 
-          # Run shellcheck once with JSON format for counting
+          # Run shellcheck once with JSON format for counting.
+          #
+          # ShellCheck's own exit status is what tells us whether a result exists:
+          #   0    = scanned, no findings
+          #   1    = scanned, findings reported
+          #   >= 2 = ShellCheck could NOT do its job (unreadable input file, unknown
+          #          flag, bad --severity/--shell/--exclude/--format value)
+          # On exit 2 ShellCheck still prints a valid but empty "[]" on stdout, and on
+          # exit 3/4 it prints nothing at all. The previous form discarded the status
+          # with "|| true" and parsed the result under a bare "except", so every one of
+          # those crashes came out as "0 issues found" - a gate that reported pass
+          # without having checked anything. Now the status is captured and anything
+          # above 1 fails the step. set +e is required here: "if ! cmd; then rc=$?"
+          # would capture the status of the negation (always 0), not of ShellCheck.
+          set +e
           # shellcheck disable=SC2086
-          JSON_OUTPUT=$(shellcheck --format=json $SHELLCHECK_ARGS $SCRIPT_FILES 2>/dev/null || true)
+          JSON_OUTPUT=$(shellcheck --format=json $SHELLCHECK_ARGS $SCRIPT_FILES 2>/tmp/shellcheck-stderr.txt)
+          SHELLCHECK_RC=$?
+          set -e
 
-          # Parse JSON to count issues
-          COUNTS=$(echo "$JSON_OUTPUT" | python3 -c "
+          if [ "$SHELLCHECK_RC" -gt 1 ]; then
+            echo ""
+            echo "❌ ShellCheck could not complete the analysis (exit code $SHELLCHECK_RC)"
+            echo "   No verdict was produced, so this gate fails instead of reporting a clean run."
+            if [ -s /tmp/shellcheck-stderr.txt ]; then
+              echo "   ShellCheck reported:"
+              sed 's/^/     /' /tmp/shellcheck-stderr.txt
+            fi
+            exit 1
+          fi
+
+          # Parse JSON to count issues. Unreadable output must not read as "no issues"
+          # either, so the parser now fails loudly instead of swallowing the error.
+          set +e
+          COUNTS=$(printf '%s' "$JSON_OUTPUT" | python3 -c "
           import sys, json
-          try:
-              data = json.load(sys.stdin)
-              if not data:
-                  print('0 0 0')
-              else:
-                  errors = sum(1 for c in data if c.get('level') == 'error')
-                  warnings = sum(1 for c in data if c.get('level') == 'warning')
-                  print(f'{len(data)} {errors} {warnings}')
-          except:
-              print('0 0 0')
-          " 2>/dev/null || echo "0 0 0")
+          raw = sys.stdin.read().strip()
+          data = json.loads(raw) if raw else []
+          if not isinstance(data, list):
+              raise SystemExit('ShellCheck JSON payload is not a list')
+          errors = sum(1 for c in data if c.get('level') == 'error')
+          warnings = sum(1 for c in data if c.get('level') == 'warning')
+          print(f'{len(data)} {errors} {warnings}')
+          ")
+          PARSE_RC=$?
+          set -e
+
+          if [ "$PARSE_RC" -ne 0 ]; then
+            echo ""
+            echo "❌ Could not parse the ShellCheck JSON output (parser exit code $PARSE_RC)"
+            echo "   Refusing to report a clean run from output that could not be read."
+            exit 1
+          fi
 
           read -r ISSUES_FOUND ERROR_COUNT WARNING_COUNT <<< "$COUNTS"
+
+          # ShellCheck exits 1 only when it actually emitted findings - the --severity
+          # and --exclude filters lower the exit code to 0 along with the payload - so
+          # "exit 1 but nothing counted" means the count cannot be trusted. Fail rather
+          # than let an uncountable scan through as a pass.
+          if [ "$SHELLCHECK_RC" -eq 1 ] && [ "$ISSUES_FOUND" -eq 0 ]; then
+            echo ""
+            echo "❌ ShellCheck signalled findings (exit code 1) but none could be counted"
+            echo "   The result is inconsistent, so this gate fails instead of reporting a clean run."
+            exit 1
+          fi
 
           # Determine pass/fail
           if [ "$ISSUES_FOUND" -gt 0 ]; then
