@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [10.0.6](https://github.com/bauer-group/automation-templates/compare/v10.0.5...v10.0.6) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **ai-summary:** fixed secrets context in step if ([0938f34](https://github.com/bauer-group/automation-templates/commit/0938f34895e0ae8e78cd2737d366b26138b809f0))
+
 ## [10.0.5](https://github.com/bauer-group/automation-templates/compare/v10.0.4...v10.0.5) (2026-09-02)
 
 ### 🐛 Bug Fixes
