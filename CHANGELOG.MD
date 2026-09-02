@@ -4,6 +4,15 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [10.0.2](https://github.com/bauer-group/automation-templates/compare/v10.0.1...v10.0.2) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **dotnet-build:** made the coverage threshold compare something ([594d241](https://github.com/bauer-group/automation-templates/commit/594d241aca2c1b26bfdabff8514fadaa1ce9a93f))
+* **dotnet-desktop:** made the coverage gate compare something ([51f1554](https://github.com/bauer-group/automation-templates/commit/51f1554d15efcaefb0ba83e1c3aecca5dbe45fb8))
+* **meta-sync:** stopped leaving the PAT in the global git config ([47f8017](https://github.com/bauer-group/automation-templates/commit/47f8017d1d22a4e98f79998693a3c5365edf682a)), references [#7](https://github.com/bauer-group/automation-templates/issues/7) [#9](https://github.com/bauer-group/automation-templates/issues/9) [#10](https://github.com/bauer-group/automation-templates/issues/10)
+* **validate-dockerfile:** made the hadolint gate fail closed ([4687101](https://github.com/bauer-group/automation-templates/commit/4687101e33bbedddb281a8afa16bbcaba85b705c)), references [#23](https://github.com/bauer-group/automation-templates/issues/23) [#24](https://github.com/bauer-group/automation-templates/issues/24)
+
 ## [10.0.1](https://github.com/bauer-group/automation-templates/compare/v10.0.0...v10.0.1) (2026-09-02)
 
 ### 🐛 Bug Fixes
