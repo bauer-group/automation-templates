@@ -106,6 +106,7 @@ jobs:
     name: 🧪 Tests & Quality
     if: inputs.run-tests == true && github.event_name != 'pull_request'
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: 30
     outputs:
       tests-passed: ${{ steps.run-tests.outputs.tests-passed || 'skipped' }}
       coverage-percentage: ${{ steps.run-tests.outputs.coverage-percentage || 'N/A' }}
@@ -299,6 +300,7 @@ jobs:
     if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (needs.test-and-quality.result == 'success' || needs.test-and-quality.result == 'skipped') && (needs.security-scan.result == 'success' || needs.security-scan.result == 'skipped') && (needs.license-compliance.result == 'success' || needs.license-compliance.result == 'skipped')
     needs: [test-and-quality, security-scan, license-compliance]
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: 30
     concurrency: release
     outputs:
       released: ${{ steps.release.outputs.released }}
@@ -390,31 +392,61 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Sync with remote to avoid push conflicts
-          echo "📥 Syncing with remote branch..."
+          # Verify the branch tip still matches what the gates actually tested.
+          echo "📥 Checking remote branch..."
           git fetch origin "$GIT_REF_NAME"
 
-          # Check if remote has changes
+          # This checkout is exactly the commit that test-and-quality, the security scan and
+          # the license gate inspected. The previous form rebased onto whatever the branch
+          # tip had become and then tagged, released and published the result - splicing in
+          # commits no gate had ever seen. Divergence now stops the release instead of
+          # absorbing it. Remote commits already contained in this checkout stay harmless:
+          # the push fast-forwards and nothing untested is added, so the ordinary
+          # in-sync case is unchanged.
           LOCAL=$(git rev-parse HEAD)
           REMOTE=$(git rev-parse origin/"$GIT_REF_NAME")
 
-          if [ "$LOCAL" != "$REMOTE" ]; then
-            echo "⚠️ Remote branch has changes, rebasing..."
-            git pull --rebase origin "$GIT_REF_NAME"
+          if git merge-base --is-ancestor "$REMOTE" "$LOCAL"; then
+            echo "✅ origin/$GIT_REF_NAME is contained in the tested commit ($LOCAL)"
           else
-            echo "✅ Local and remote are in sync"
+            echo "::error::Refusing to release: origin/$GIT_REF_NAME ($REMOTE) carries commits that are not in the tested commit ($LOCAL)."
+            echo "The test, security and license gates ran against $LOCAL only." >&2
+            echo "Re-run this workflow on the current branch tip so the released code is the code that was verified." >&2
+            exit 1
           fi
+
+          # Record the tags that exist BEFORE the release so a tag semantic-release just
+          # cut can be told apart from one HEAD merely happens to sit on. The previous
+          # check was `git describe --exact-match --tags HEAD`, which is equally true for a
+          # pre-existing tag - a re-run, or a workflow_dispatch on an already-released
+          # commit reported released=true with no release, and every downstream consumer,
+          # the docs/security jobs and the PyPI gate took the released path on that lie.
+          TAGS_BEFORE="$RUNNER_TEMP/psr-tags-before.txt"
+          git tag --list > "$TAGS_BEFORE"
 
           # Run semantic release (creates version, commit, tag, release, and builds packages)
           PYTHONPATH="$RUNNER_TEMP/psr-compat" semantic-release --verbose version
-          
+
+          # A release happened only if a tag now points at HEAD that did not exist before.
+          # No new tag => released=false, so an unproven release can never read as a real one.
+          NEW_TAG=""
+          git tag --points-at HEAD > "$RUNNER_TEMP/psr-tags-at-head.txt"
+          while IFS= read -r CANDIDATE_TAG; do
+            [ -n "$CANDIDATE_TAG" ] || continue
+            if ! grep -qxF -- "$CANDIDATE_TAG" "$TAGS_BEFORE"; then
+              NEW_TAG="$CANDIDATE_TAG"
+              break
+            fi
+          done < "$RUNNER_TEMP/psr-tags-at-head.txt"
+
           # Check if release was created and extract build information
-          if git describe --exact-match --tags HEAD 2>/dev/null; then
+          if [ -n "$NEW_TAG" ]; then
+            echo "✅ semantic-release created tag $NEW_TAG"
             echo "released=true" >> "$GITHUB_OUTPUT"
-            VERSION=$(git describe --tags --abbrev=0)
+            VERSION="$NEW_TAG"
             echo "version=$VERSION" >> "$GITHUB_OUTPUT"
             echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
-            
+
             # Check if wheel was built
             if ls dist/*.whl >/dev/null 2>&1; then
               echo "wheel-built=true" >> "$GITHUB_OUTPUT"
@@ -457,6 +489,7 @@ jobs:
               echo "⚠️ No wheel file found in dist/"
             fi
           else
+            echo "ℹ️ semantic-release created no new tag - no release was made"
             echo "released=false" >> "$GITHUB_OUTPUT"
             echo "version=" >> "$GITHUB_OUTPUT"
             echo "tag=" >> "$GITHUB_OUTPUT"
@@ -504,6 +537,7 @@ jobs:
     if: needs.release.outputs.released == 'true' && needs.release.outputs.wheel-built == 'true' && inputs.skip-pypi != true
     needs: [release]
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: 15
     environment: production
     
     steps:
@@ -548,7 +582,8 @@ jobs:
     if: always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_call')
     needs: [test-and-quality, security-scan, license-compliance, release, pypi-publish, update-documentation, update-security]
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
-    
+    timeout-minutes: 10
+
     steps:
       - name: 📊 Generate Pipeline Summary
         env:

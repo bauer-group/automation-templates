@@ -198,13 +198,24 @@ jobs:
         if: steps.sync.outputs.status == 'conflict' && inputs.create-issue-on-conflict
         env:
           GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          # GH_REPO is load-bearing here: this job deliberately never checks the
+          # repository out, so the repo-scoped gh commands below (issue list /
+          # comment / create, label create) had no git remote to infer a target
+          # from and aborted before touching the API. Every mirror conflict then
+          # fell straight through to the "Could not create the conflict issue"
+          # branch, so the issue this step exists to file was never filed once.
+          # Naming the repo explicitly makes those commands work checkout-free;
+          # `gh api "/repos/..."` was always fine because its path is explicit.
+          GH_REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          RUN_ID: ${{ github.run_id }}
           MIRROR_BRANCH: ${{ inputs.mirror-branch }}
         shell: bash
         run: |
           set -uo pipefail
           TITLE="⚠️ Upstream-Sync-Konflikt: ${MIRROR_BRANCH}"
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          PARENT=$(gh api "/repos/${{ github.repository }}" --jq '.parent.full_name // "<upstream>"' 2>/dev/null || echo "<upstream>")
+          RUN_URL="${SERVER_URL}/${GH_REPO}/actions/runs/${RUN_ID}"
+          PARENT=$(gh api "/repos/${GH_REPO}" --jq '.parent.full_name // "<upstream>"' 2>/dev/null || echo "<upstream>")
 
           BODY=$(cat <<EOF
           ## Automatischer Upstream-Sync fehlgeschlagen
@@ -231,8 +242,8 @@ jobs:
           # is exactly where this workflow runs. Degrade to a log report instead
           # of failing: the conflict is already surfaced as a warning above, and
           # an unfileable issue must not turn a reported conflict into a red job.
-          if [ "$(gh api "/repos/${{ github.repository }}" --jq '.has_issues' 2>/dev/null || echo false)" != "true" ]; then
-            echo "::warning::Issues are disabled on ${{ github.repository }} - reporting the conflict in the log instead."
+          if [ "$(gh api "/repos/${GH_REPO}" --jq '.has_issues' 2>/dev/null || echo false)" != "true" ]; then
+            echo "::warning::Issues are disabled on ${GH_REPO} - reporting the conflict in the log instead."
             printf '%s\n' "$BODY"
             exit 0
           fi
