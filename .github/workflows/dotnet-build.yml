@@ -119,7 +119,7 @@ on:
         default: false
       
       coverage-type:
-        description: 'Coverage format (cobertura, opencover, coverlet)'
+        description: 'Coverage format the collector produces: cobertura (default) or opencover. These are the only two the coverage threshold gate can read.'
         type: string
         required: false
         default: 'cobertura'
@@ -668,24 +668,153 @@ jobs:
         if: inputs.collect-coverage && steps.test.outputs.results-path != ''
         shell: bash
         working-directory: ${{ inputs.working-directory }}
+        env:
+          # Caller-supplied values reach the script through the environment
+          # instead of being interpolated into the shell source.
+          COVERAGE_TYPE: ${{ inputs.coverage-type }}
+          COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
+          TEST_RESULTS_PATH: ${{ steps.test.outputs.results-path }}
         run: |
-          COVERAGE_FILE=$(find TestResults -name "coverage.${{ inputs.coverage-type }}.xml" -type f 2>/dev/null | head -1)
+          # Case-folded once and reused for BOTH the filename and the parser below.
+          # The two disagreed before: the parser folded case, `find -name` did not, so
+          # coverage-type: Cobertura matched no file and was reported as "no coverage
+          # report produced" rather than as the configuration slip it is.
+          COVERAGE_TYPE_LC=$(printf '%s' "$COVERAGE_TYPE" | tr '[:upper:]' '[:lower:]')
+
+          # ALL matching reports, not `head -1`.
+          #
+          # With --collect:"XPlat Code Coverage", coverlet writes one
+          # TestResults/<guid>/coverage.cobertura.xml PER TEST ASSEMBLY. `find | head -1`
+          # returns readdir order, not sorted order, so on a multi-project solution the
+          # pick is effectively arbitrary and can differ between runs on the same commit.
+          # Choosing one report was harmless while it only decided what went to Codecov;
+          # promoting it into a build-breaking judgement would let a solution with 85%
+          # overall coverage fail a 80% threshold because the run happened to pick a 40%
+          # integration-test project - a green build turning red for a reason unrelated
+          # to its actual coverage.
+          COVERAGE_FILES=$(find TestResults -name "coverage.${COVERAGE_TYPE_LC}.xml" -type f 2>/dev/null | LC_ALL=C sort)
+          COVERAGE_FILE_COUNT=$(printf '%s' "$COVERAGE_FILES" | grep -c . || true)
+          COVERAGE_FILE=$(echo "$COVERAGE_FILES" | head -1)
 
           if [ -n "$COVERAGE_FILE" ]; then
             echo "Coverage report: $COVERAGE_FILE"
-            echo "report-path=${{ steps.test.outputs.results-path }}/${COVERAGE_FILE#TestResults/}" >> "$GITHUB_OUTPUT"
-
-            # Check threshold if specified
-            # Via a variable so shellcheck sees a value rather than a literal,
-            # and so an empty input degrades to 0 instead of an integer error.
-            COVERAGE_THRESHOLD="${{ inputs.coverage-threshold }}"
-            if [ "${COVERAGE_THRESHOLD:-0}" -gt 0 ]; then
-              echo "Coverage threshold check: ${{ inputs.coverage-threshold }}%"
-            fi
+            echo "report-path=${TEST_RESULTS_PATH}/${COVERAGE_FILE#TestResults/}" >> "$GITHUB_OUTPUT"
           else
             echo "No coverage file found"
             echo "report-path=" >> "$GITHUB_OUTPUT"
           fi
+
+          # --- Coverage threshold gate -------------------------------------
+          # This used to be a comment plus an echo of the configured number: it
+          # never read the report and had no branch that could fail, so a build
+          # below its configured minimum still reported success. It now reads
+          # the measured percentage and compares it, and it fails just as hard
+          # when a threshold is configured but no percentage could be produced
+          # (no report, unreadable report, unsupported format) - an unmeasured
+          # run must never read as a passing one.
+          # 0, 0.0 or an empty value keep the gate disabled, exactly as before.
+          THRESHOLD_STATE="disabled"
+          if [ -n "${COVERAGE_THRESHOLD:-}" ]; then
+            # set +e / set -e so $? is the awk status, not the status of a negation
+            set +e
+            LC_ALL=C awk -v thr="$COVERAGE_THRESHOLD" 'BEGIN {
+              if (thr !~ /^[[:space:]]*[0-9]+([.][0-9]+)?[[:space:]]*$/) exit 2
+              exit (thr + 0 > 0) ? 0 : 1
+            }'
+            THRESHOLD_RC=$?
+            set -e
+            case "$THRESHOLD_RC" in
+              0) THRESHOLD_STATE="active" ;;
+              1) THRESHOLD_STATE="disabled" ;;
+              *) THRESHOLD_STATE="invalid" ;;
+            esac
+          fi
+
+          if [ "$THRESHOLD_STATE" = "invalid" ]; then
+            echo "::error title=Invalid Coverage Threshold::coverage-threshold '${COVERAGE_THRESHOLD}' is not a number. Refusing to report the coverage gate as satisfied."
+            exit 1
+          fi
+
+          if [ "$THRESHOLD_STATE" = "disabled" ]; then
+            echo "No coverage threshold configured (${COVERAGE_THRESHOLD:-0})"
+            exit 0
+          fi
+
+          if [ -z "$COVERAGE_FILE" ]; then
+            echo "::error title=Coverage Unavailable::coverage-threshold is ${COVERAGE_THRESHOLD}% but no coverage.${COVERAGE_TYPE}.xml report was produced, so the threshold could not be verified."
+            exit 1
+          fi
+
+          COVERAGE_PERCENT=""
+          if [ "${COVERAGE_FILE_COUNT:-0}" -gt 1 ]; then
+            # Several test assemblies produced reports. Judging the solution on whichever
+            # one readdir happened to return first is arbitrary and not reproducible, so
+            # aggregate the absolute counters instead. Cobertura from coverlet carries
+            # lines-valid / lines-covered on each root element; if any report lacks them
+            # there is nothing sound to sum, and refusing is the only honest answer.
+            # EVERY report must contribute. Summing only those that happen to carry the
+            # counters yields a partial figure presented as the overall one - a project
+            # whose report lacks them simply disappears from the result, which reads as
+            # better coverage than was measured. Verified: three reports where one lacks
+            # counters produced 85.45% from the other two instead of refusing.
+            COVERAGE_PERCENT=$(LC_ALL=C awk '
+              FNR == 1 { files++ }
+              { for (i = 1; i <= NF; i++) {
+                  if ($i ~ /^lines-valid=/)   { gsub(/[^0-9]/, "", $i); valid += $i; hv[FILENAME] = 1 }
+                  if ($i ~ /^lines-covered=/) { gsub(/[^0-9]/, "", $i); cov   += $i; hc[FILENAME] = 1 }
+                } }
+              END {
+                ok = 0
+                for (f in hv) if (f in hc) ok++
+                if (ok == files && files > 0 && valid > 0) printf "%.2f", (cov / valid) * 100
+              }
+            ' $COVERAGE_FILES)
+            if [ -z "$COVERAGE_PERCENT" ]; then
+              echo "::error title=Coverage Unavailable::${COVERAGE_FILE_COUNT} coverage reports were found but they carry no lines-valid/lines-covered counters, so an overall percentage cannot be determined. Refusing to judge the ${COVERAGE_THRESHOLD}% threshold on one arbitrarily chosen report."
+              exit 1
+            fi
+            echo "Aggregated ${COVERAGE_FILE_COUNT} coverage reports"
+          else
+          case "$COVERAGE_TYPE_LC" in
+            cobertura)
+              # Cobertura keeps the overall coverage as a 0..1 line-rate on the
+              # root element; grep -o reports it first because the root
+              # precedes the per-package and per-class rates in document order.
+              LINE_RATE=$(grep -o 'line-rate="[0-9.]*"' "$COVERAGE_FILE" | head -1 | cut -d'"' -f2 || true)
+              if [ -n "$LINE_RATE" ]; then
+                COVERAGE_PERCENT=$(LC_ALL=C awk -v r="$LINE_RATE" 'BEGIN { printf "%.2f", r * 100 }')
+              fi
+              ;;
+            opencover)
+              # OpenCover's session-level <Summary> comes first and already
+              # carries a percentage.
+              COVERAGE_PERCENT=$(grep -o 'sequenceCoverage="[0-9.]*"' "$COVERAGE_FILE" | head -1 | cut -d'"' -f2 || true)
+              ;;
+            *)
+              # Only cobertura and opencover can be read here. Saying so is the point:
+              # the previous behaviour reported "no coverage report produced", which sent
+              # the reader looking for a missing file rather than at an unsupported
+              # coverage-type. The input description no longer advertises formats this
+              # gate cannot honour.
+              echo "::error title=Unsupported Coverage Format::coverage-type '${COVERAGE_TYPE}' cannot be read by the coverage threshold gate. Supported: cobertura, opencover. Set coverage-threshold to 0 to disable the gate."
+              exit 1
+              ;;
+          esac
+          fi
+
+          if [ -z "$COVERAGE_PERCENT" ]; then
+            echo "::error title=Coverage Unavailable::Could not read a coverage percentage from ${COVERAGE_FILE} (format '${COVERAGE_TYPE}'), so the ${COVERAGE_THRESHOLD}% threshold could not be verified."
+            exit 1
+          fi
+
+          echo "Coverage: ${COVERAGE_PERCENT}% (threshold: ${COVERAGE_THRESHOLD}%)"
+          # Compared with awk because [ -gt ] is integer-only and errors out on
+          # a fractional threshold such as 80.5.
+          if LC_ALL=C awk -v cov="$COVERAGE_PERCENT" -v thr="$COVERAGE_THRESHOLD" 'BEGIN { exit !(cov + 0 < thr + 0) }'; then
+            echo "::error title=Coverage Below Threshold::Coverage ${COVERAGE_PERCENT}% is below the required threshold ${COVERAGE_THRESHOLD}%"
+            exit 1
+          fi
+          echo "✅ Coverage ${COVERAGE_PERCENT}% meets the ${COVERAGE_THRESHOLD}% threshold"
       
       - name: 📊 Upload Coverage to Codecov
         if: inputs.collect-coverage && steps.coverage.outputs.report-path != '' && env.HAS_CODECOV_TOKEN == 'true'
