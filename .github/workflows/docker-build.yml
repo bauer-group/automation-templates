@@ -148,6 +148,16 @@ on:
         required: false
         default: false
       
+      free-disk-space:
+        description: >-
+          Remove unused preinstalled toolchains from the runner before building.
+          Off by default; turn it on for images large enough that the build, the
+          `load: true` copy in the daemon and the security scan no longer fit in
+          a GitHub-hosted runner's free space. Linux runners only.
+        type: boolean
+        required: false
+        default: false
+      
       # Testing Configuration
       run-tests:
         description: 'Run tests before building'
@@ -454,6 +464,51 @@ jobs:
           fetch-depth: ${{ inputs.checkout-fetch-depth }}
           lfs: ${{ inputs.checkout-lfs }}
 
+      # Runs BEFORE the build, which is the whole point: a caller cannot inject a
+      # step into this job, and `test-command` is not a substitute - it executes in
+      # Run Post-Build Tests, long after the disk has filled up. A repository that
+      # had put a cleanup there was silently running none.
+      #
+      # A curated list rather than a caller-supplied command: every consumer that
+      # needs this needs it for the same reason and would otherwise write the same
+      # five `rm -rf` lines, each with its own idea of what is safe to remove.
+      - name: 🧹 Free Disk Space
+        if: inputs.free-disk-space && runner.os == 'Linux'
+        shell: bash
+        run: |
+          BEFORE=$(df --output=avail -BM / | tail -1 | tr -dc '0-9')
+          echo "Before: $(df -h / | tail -1)"
+
+          # Each removed with `|| true`: a runner image that drops one of these
+          # must not fail a build over its absence.
+          #
+          # Note the CodeQL bundle rather than /opt/hostedtoolcache wholesale. It is
+          # the single largest item and is never used inside a build job, while the
+          # rest of the tool cache holds the Python, Node and Go versions a setup-*
+          # step later in the same job may expect to find.
+          #
+          # /usr/local/lib/node_modules is deliberately NOT on this list. npm itself
+          # lives there - the runner installs Node with `n` into /usr/local, so
+          # /usr/local/bin/npm is a symlink into that directory - and Run Pre-Build
+          # Tests below calls `npm test` for any repository that has a package.json.
+          # Removing it leaves a dangling symlink and fails the build it was meant
+          # to rescue, for well under a gigabyte.
+          sudo rm -rf \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /usr/local/.ghcup \
+            /usr/share/swift \
+            /usr/local/share/powershell \
+            /opt/ghc || true
+
+          AFTER=$(df --output=avail -BM / | tail -1 | tr -dc '0-9')
+          echo "After:  $(df -h / | tail -1)"
+          echo "🧹 Freed $(( (AFTER - BEFORE) / 1024 )) GB - ${AFTER} MB now available"
+
+          # Logged whether or not it mattered. The failure this input exists for
+          # surfaces minutes later as a scanner error, and without a number in the
+          # log there is no way to tell a build that was tight from one with room.
       - name: 🧪 Run Pre-Build Tests
         if: inputs.run-tests
         shell: bash
