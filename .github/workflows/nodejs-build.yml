@@ -542,7 +542,7 @@ jobs:
       
       - name: 🔧 Setup pnpm
         if: steps.detect-pm.outputs.package-manager == 'pnpm'
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
         with:
           version: ${{ inputs.package-manager-version || 'latest' }}
       
