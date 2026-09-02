@@ -98,6 +98,7 @@ runs:
         RELEASE_RULES=""
         TAG_FORMAT=""
         CUSTOM_TITLE=""
+        CUSTOM_EXEC="{}"
 
         if [ -f ".github/config/release/semantic-release.json" ]; then
           echo "Found repository config - extracting custom settings..."
@@ -142,6 +143,20 @@ runs:
             echo "  Found extra plugins: $EXTRA_PLUGINS"
           else
             EXTRA_PLUGINS="[]"
+          fi
+
+          # Extract the repo's own @semantic-release/exec options. exec is in the
+          # reserved set above so it cannot be registered twice, but this action
+          # only owns generateNotesCmd — every other hook (prepareCmd,
+          # verifyConditionsCmd, publishCmd, successCmd, ...) is the consumer's
+          # and is merged back into the reserved entry further below. Reserving
+          # the plugin silently dropped those, which stops a repo bumping its own
+          # version files during prepare.
+          CUSTOM_EXEC=$(jq -c '[.plugins[] | select(type == "array") | select(.[0] == "@semantic-release/exec") | .[1]] | add // {} | del(.generateNotesCmd)' "$REPO_CONFIG" 2>/dev/null || echo "{}")
+          if [ -n "$CUSTOM_EXEC" ] && [ "$CUSTOM_EXEC" != "{}" ] && [ "$CUSTOM_EXEC" != "null" ]; then
+            echo "  Found repo exec hooks: $(echo "$CUSTOM_EXEC" | jq -r 'keys | join(", ")')"
+          else
+            CUSTOM_EXEC="{}"
           fi
 
           # Extract tagFormat if specified
@@ -240,6 +255,20 @@ runs:
               if type == "array" and .[0] == "@semantic-release/changelog"
               then [.[0], (.[1] + {changelogTitle: $t})]
               else . end)
+          ' .releaserc.json > .releaserc.tmp.json && mv .releaserc.tmp.json .releaserc.json
+        fi
+
+        # Merge the repo's exec hooks into the reserved exec plugin. The action's
+        # generateNotesCmd is kept: it was deleted from CUSTOM_EXEC at extraction,
+        # so a consumer cannot override the notes seam by accident.
+        if [ "$CUSTOM_EXEC" != "{}" ]; then
+          echo "Merging repo exec hooks into the exec plugin..."
+          jq --argjson exec "$CUSTOM_EXEC" '
+            .plugins |= map(
+              if (type == "array" and .[0] == "@semantic-release/exec")
+              then [.[0], (.[1] + $exec)]
+              else . end
+            )
           ' .releaserc.json > .releaserc.tmp.json && mv .releaserc.tmp.json .releaserc.json
         fi
 
