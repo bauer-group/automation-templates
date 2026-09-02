@@ -15,6 +15,33 @@ updates:
       - "dependencies"
       - "dependabot"
 
+  # Composite actions live in .github/actions/*/action.yml and were NEVER checked:
+  # for the github-actions ecosystem Dependabot scans .github/workflows plus an
+  # action.yml in the configured directory itself, so the "/" entry above reaches
+  # the workflows but not the actions. Third-party pins inside those files (e.g.
+  # aquasecurity/trivy-action, peaceiris/actions-gh-pages) silently went stale.
+  # The plural "directories" key supports globbing, so this one entry covers every
+  # current and future action directory. It is a separate update entry so the
+  # workflow updates above keep their own pull-request budget unchanged, and the
+  # directories do not overlap with "/" (no duplicate pull requests).
+  # Internal bauer-group/* references stay on @main by design - Dependabot only
+  # bumps version-tagged or SHA-pinned refs and leaves branch refs untouched.
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/.github/actions/*"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - "dependencies"
+      - "dependabot"
+    # One grouped pull request instead of one per action directory per dependency.
+    groups:
+      composite-actions:
+        patterns:
+          - "*"
+
   # - package-ecosystem: "gitsubmodule"
   #   directory: "/"
   #   schedule:

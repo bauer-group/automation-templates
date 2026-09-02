@@ -499,7 +499,7 @@ jobs:
       # =====================================================================
       - name: "🔧 Setup .NET SDK"
         if: steps.config.outputs.has-dotnet == 'true'
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ steps.config.outputs.dotnet-version }}
 

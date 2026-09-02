@@ -206,7 +206,16 @@ runs:
         echo "" >> license-reports/findings.md
         
         # Check for SPDX license identifiers in source files
-        SOURCE_FILES=$(find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.java" -o -name "*.cs" -o -name "*.cpp" -o -name "*.c" -o -name "*.go" -o -name "*.rs" \) -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./vendor/*" 2>/dev/null | head -50 || echo "")
+        # Deliberately NOT capped with `head -50`. The cap silently limited the forbidden
+        # license gate to the first fifty source files - a forbidden SPDX header in file 51
+        # was never seen, while the step still reported a clean result.
+        #
+        # The cap existed because the loop below runs one grep per file. Doing that filter
+        # inside find with `-exec ... +` batches it into a handful of grep invocations, so
+        # the gate can cover every file without the per-file cost the cap worked around.
+        SOURCE_TOTAL=$(find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.java" -o -name "*.cs" -o -name "*.cpp" -o -name "*.c" -o -name "*.go" -o -name "*.rs" \) -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./vendor/*" 2>/dev/null | wc -l || echo 0)
+        SOURCE_FILES=$(find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.java" -o -name "*.cs" -o -name "*.cpp" -o -name "*.c" -o -name "*.go" -o -name "*.rs" \) -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./vendor/*" -exec grep -l -i "SPDX-License-Identifier:" {} + 2>/dev/null || echo "")
+        echo "🔎 Scanned $SOURCE_TOTAL source file(s) for SPDX headers"
         
         SPDX_COUNT=0
         if [ -n "$SOURCE_FILES" ]; then
@@ -320,7 +329,7 @@ runs:
           
           if command -v pip3 &> /dev/null; then
             pip3 install pip-licenses 2>/dev/null || echo "Could not install pip-licenses"
-            pip-licenses --format=markdown 2>/dev/null >> license-reports/findings.md || echo "Could not scan Python licenses"
+            pip-licenses --format=markdown 2>/dev/null | tee -a license-reports/findings.md > license-reports/python-licenses.txt || echo "Could not scan Python licenses"
           fi
         fi
         
@@ -343,6 +352,48 @@ runs:
           fi
         fi
         
+        # Gate the dependency licenses.
+        #
+        # Until now this step only PRODUCED reports - npm-licenses.txt, python-licenses.txt
+        # and the findings.md sections - and nothing ever compared them against
+        # forbidden-licenses. FORBIDDEN_FOUND was set exclusively by the SPDX header loop in
+        # the previous step, so `scan-dependencies: true` bought a report, not a gate: a
+        # GPL-3.0 transitive dependency passed compliance silently.
+        #
+        # The step still exits 0 by design (a scan failure is not a compliance failure); the
+        # verdict travels as an output and is combined in the Compliance Check step.
+        DEP_FORBIDDEN_FOUND=false
+        DEP_REPORTS=""
+        for f in license-reports/npm-licenses.txt license-reports/python-licenses.txt; do
+          [ -s "$f" ] && DEP_REPORTS="$DEP_REPORTS $f"
+        done
+
+        if [ -n "$DEP_REPORTS" ]; then
+          # Case-folded with tr and matched with a plain -F, deliberately NOT `grep -i -F`:
+          # that combination is unreliable and, on some builds, aborts outright (see
+          # 49fa7fd, which removed the same pairing from dotnet-nuget-auth). License names
+          # also contain regex metacharacters ("GPL-3.0", "LGPL-2.1+"), so -F is required
+          # and case folding has to happen before the match rather than inside it.
+          DEP_HAYSTACK=$(cat $DEP_REPORTS 2>/dev/null | tr '[:upper:]' '[:lower:]')
+          IFS_BACKUP="$IFS"
+          IFS=',' read -ra FORBIDDEN <<< "${{ inputs.forbidden-licenses }}"
+          IFS="$IFS_BACKUP"
+          for forbidden in "${FORBIDDEN[@]}"; do
+            forbidden_clean=$(echo "$forbidden" | xargs)
+            [ -z "$forbidden_clean" ] && continue
+            forbidden_lower=$(printf '%s' "$forbidden_clean" | tr '[:upper:]' '[:lower:]')
+            if printf '%s' "$DEP_HAYSTACK" | grep -q -F -- "$forbidden_lower"; then
+              echo "❌ Forbidden dependency license found: $forbidden_clean"
+              echo "- ❌ Forbidden dependency license: \`$forbidden_clean\`" >> license-reports/findings.md
+              DEP_FORBIDDEN_FOUND=true
+            fi
+          done
+        else
+          echo "ℹ️ No machine-readable dependency license report produced - nothing to gate on"
+        fi
+
+        echo "dep-forbidden-found=$DEP_FORBIDDEN_FOUND" >> "$GITHUB_OUTPUT"
+
         # Ensure dependency scan step always succeeds
         echo "✅ Dependency scan completed successfully"
         exit 0
@@ -418,6 +469,15 @@ runs:
         
         FORBIDDEN_FOUND="${{ steps.license-scan.outputs.forbidden-found }}"
         UNKNOWN_FOUND="${{ steps.license-scan.outputs.unknown-found }}"
+
+        # Combine the SPDX-header verdict with the dependency-license verdict. The
+        # dependency scan is skipped when scan-dependencies is false, in which case its
+        # output is empty and contributes nothing.
+        DEP_FORBIDDEN_FOUND="${{ steps.dependency-scan.outputs.dep-forbidden-found }}"
+        if [ "$DEP_FORBIDDEN_FOUND" == "true" ]; then
+          echo "❌ Forbidden license found in dependencies"
+          FORBIDDEN_FOUND="true"
+        fi
         
         # Determine compliance status
         COMPLIANCE_STATUS="pass"

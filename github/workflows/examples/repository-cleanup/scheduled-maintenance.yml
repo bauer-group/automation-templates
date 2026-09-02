@@ -62,6 +62,11 @@ jobs:
       
       - name: ⚙️ Configure Maintenance Parameters
         id: config
+        env:
+          # workflow_dispatch inputs are free text typed into the Actions UI.
+          # Interpolated into the script body they run on assignment, so they
+          # travel through the environment instead.
+          INPUT_CUSTOM_AGE_DAYS: ${{ github.event.inputs.custom-age-days }}
         run: |
           # Determine maintenance type
           if [[ "${{ github.event_name }}" == "schedule" ]]; then
@@ -89,7 +94,7 @@ jobs:
           esac
           
           # Override with custom age if provided
-          CUSTOM_AGE_DAYS="${{ github.event.inputs.custom-age-days }}"
+          CUSTOM_AGE_DAYS="$INPUT_CUSTOM_AGE_DAYS"
           if [[ -n "$CUSTOM_AGE_DAYS" ]] && [[ "${CUSTOM_AGE_DAYS:-0}" -gt 0 ]]; then
             AGE_DAYS="$CUSTOM_AGE_DAYS"
             echo "🎯 Using custom age threshold: $AGE_DAYS days"

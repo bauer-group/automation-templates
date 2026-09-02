@@ -74,7 +74,7 @@ outputs:
     description: 'Number of policy violations found by GitGuardian'
     value: ${{ steps.gitguardian-scan.outputs.policy-violations }}
   vulnerabilities-found:
-    description: 'Whether vulnerabilities were found'
+    description: 'Whether vulnerabilities were found (true/false, or unknown when the Trivy report could not be evaluated)'
     value: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found }}
 
 runs:
@@ -153,7 +153,7 @@ runs:
     - name: 🔬 Trivy Vulnerability Scan
       id: trivy-vuln-scan
       if: inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities'
-      uses: aquasecurity/trivy-action@v0.35.0
+      uses: aquasecurity/trivy-action@v0.36.0
       with:
         scan-type: 'fs'
         scan-ref: '.'
@@ -174,15 +174,53 @@ runs:
         CRITICAL=0
         HIGH=0
         MEDIUM=0
+        SCAN_OK=true
 
         REPORT="security-reports/trivy-results.json"
-        if [ -f "$REPORT" ]; then
-          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$REPORT" 2>/dev/null || echo "0")
-          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$REPORT" 2>/dev/null || echo "0")
-          MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "$REPORT" 2>/dev/null || echo "0")
 
+        # Fail closed on an unusable report. This step carries the same `if:` as the
+        # Trivy step, so it only runs when Trivy ran: a missing or unparsable report
+        # means the scan delivered no verdict, which is not the same as "no findings".
+        # The previous code silently kept the counts at 0 in that case - and on an
+        # empty report jq exits 0 without printing anything, so `|| echo "0"` never
+        # fired and the counts became empty strings - which the gate below then read
+        # as a clean result. A clean Trivy report is still a JSON object (it simply
+        # carries no .Results), so this guard cannot trip on a healthy scan.
+        if [ ! -f "$REPORT" ] || ! jq -e 'type == "object"' "$REPORT" >/dev/null 2>&1; then
+          SCAN_OK=false
+        else
+          # `if ! jq ...` would only ever report the status of the negation, so jq's
+          # real exit code is captured with set +e / set -e around the call.
+          set +e
+          COUNTS="$(jq -r '
+            [.Results[]?.Vulnerabilities[]? | (.Severity // "UNKNOWN") | ascii_upcase] as $sev
+            | [ ($sev | map(select(. == "CRITICAL")) | length),
+                ($sev | map(select(. == "HIGH"))     | length),
+                ($sev | map(select(. == "MEDIUM"))   | length) ]
+            | @tsv' "$REPORT" 2>/dev/null)"
+          JQ_RC=$?
+          set -e
+
+          read -r CRITICAL HIGH MEDIUM <<< "$COUNTS" || true
+          for COUNT in "$CRITICAL" "$HIGH" "$MEDIUM"; do
+            case "$COUNT" in
+              ''|*[!0-9]*) SCAN_OK=false ;;
+            esac
+          done
+          [ "$JQ_RC" -eq 0 ] || SCAN_OK=false
+        fi
+
+        if [ "$SCAN_OK" != "true" ]; then
+          # 'unknown' is the sentinel the gate refuses to read as a pass (the same one
+          # the security-scan action uses for a scanner that did not deliver a result).
+          echo "::error::Trivy produced no readable $REPORT - vulnerabilities could not be evaluated"
+          VULNS_FOUND="unknown"
+          CRITICAL=0
+          HIGH=0
+          MEDIUM=0
+        else
           TOTAL=$((CRITICAL + HIGH + MEDIUM))
-          if [ $TOTAL -gt 0 ]; then
+          if [ "$TOTAL" -gt 0 ]; then
             VULNS_FOUND="true"
           fi
 
@@ -190,8 +228,6 @@ runs:
           echo "  • Critical: $CRITICAL"
           echo "  • High: $HIGH"
           echo "  • Medium: $MEDIUM"
-        else
-          echo "ℹ️ No Trivy report found, skipping evaluation"
         fi
 
         echo "vulnerabilities-found=$VULNS_FOUND" >> "$GITHUB_OUTPUT"
@@ -521,14 +557,22 @@ runs:
     - name: 🚨 Evaluate Security Findings
       if: inputs.fail-on-findings == 'true'
       shell: bash
+      # Scanner results reach the script through env: instead of being interpolated
+      # into the body, so nothing a scanner reports can be parsed as shell.
+      env:
+        GITLEAKS_SECRETS: ${{ steps.gitleaks-scan.outputs.secrets-found || 'false' }}
+        GITGUARDIAN_SECRETS: ${{ steps.gitguardian-scan.outputs.secrets-found || '0' }}
+        GITGUARDIAN_POLICIES: ${{ steps.gitguardian-scan.outputs.policy-violations || '0' }}
+        VULNS_FOUND: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found || 'false' }}
+        TRIVY_CRITICAL: ${{ steps.vulnerability-scan.outputs.trivy-critical || '0' }}
+        TRIVY_HIGH: ${{ steps.vulnerability-scan.outputs.trivy-high || '0' }}
+        TRIVY_MEDIUM: ${{ steps.vulnerability-scan.outputs.trivy-medium || '0' }}
+        COMBINED_SCORE: ${{ steps.summary.outputs.security-score }}
+        BEST_SCORE: ${{ steps.summary.outputs.best-engine-score }}
+        ENGINES_USED: ${{ steps.summary.outputs.engines-used }}
       run: |
-        GITLEAKS_SECRETS="${{ steps.gitleaks-scan.outputs.secrets-found || 'false' }}"
-        GITGUARDIAN_SECRETS="${{ steps.gitguardian-scan.outputs.secrets-found || '0' }}"
-        GITGUARDIAN_POLICIES="${{ steps.gitguardian-scan.outputs.policy-violations || '0' }}"
-        VULNS_FOUND="${{ steps.vulnerability-scan.outputs.vulnerabilities-found || 'false' }}"
-        
         SHOULD_FAIL=false
-        
+
         # Check for critical findings
         if [ "$GITLEAKS_SECRETS" == "true" ]; then
           echo "❌ Critical: Gitleaks detected secrets"
@@ -544,19 +588,29 @@ runs:
           echo "⚠️  Warning: GitGuardian detected $GITGUARDIAN_POLICIES policy violations"
         fi
         
+        # Vulnerabilities used to print this warning and nothing else: SHOULD_FAIL was
+        # never set, so a run with CRITICAL/HIGH/MEDIUM CVEs still ended in
+        # "✅ Security scan completed successfully" and exit 0 while fail-on-findings
+        # was 'true' - the gate reported a pass it had not earned. Findings now fail it,
+        # matching the security-scan action, which fails on vulnerabilities-found alone.
+        # 'unknown' fails too: a scan that produced no readable result is not a clean scan.
         if [ "$VULNS_FOUND" == "true" ]; then
-          echo "⚠️  Warning: Vulnerabilities detected"
+          echo "❌ Critical: Trivy detected vulnerabilities (critical: $TRIVY_CRITICAL, high: $TRIVY_HIGH, medium: $TRIVY_MEDIUM)"
+          SHOULD_FAIL=true
+        elif [ "$VULNS_FOUND" == "unknown" ]; then
+          echo "❌ Critical: Vulnerability scan produced no readable result - failing closed"
+          SHOULD_FAIL=true
         fi
-        
+
         if [ "$SHOULD_FAIL" == "true" ]; then
           echo ""
           echo "💥 Dual Security Scan Failed Due to Critical Findings"
           echo "===================================================="
           echo ""
           echo "📊 Summary:"
-          echo "  • Combined Score: ${{ steps.summary.outputs.security-score }}/100"
-          echo "  • Best Engine Score: ${{ steps.summary.outputs.best-engine-score }}/100"
-          echo "  • Engines Used: ${{ steps.summary.outputs.engines-used }}"
+          echo "  • Combined Score: $COMBINED_SCORE/100"
+          echo "  • Best Engine Score: $BEST_SCORE/100"
+          echo "  • Engines Used: $ENGINES_USED"
           echo "  • Gitleaks Secrets: $GITLEAKS_SECRETS"
           echo "  • GitGuardian Secrets: $GITGUARDIAN_SECRETS"
           echo "  • GitGuardian Policies: $GITGUARDIAN_POLICIES"

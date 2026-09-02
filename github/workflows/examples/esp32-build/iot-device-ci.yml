@@ -148,8 +148,9 @@ jobs:
         env:
           OTA_SERVER_URL: ${{ vars.OTA_SERVER_URL }}
           OTA_API_KEY: ${{ secrets.OTA_API_KEY }}
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
-          VERSION="${{ github.ref_name }}"
+          VERSION="$GIT_REF_NAME"
           VERSION="${VERSION#v}"
 
           echo "Deploying firmware for ${{ matrix.target }} version $VERSION"
@@ -184,8 +185,9 @@ jobs:
         if: vars.TEAMS_WEBHOOK_URL != ''
         env:
           TEAMS_WEBHOOK_URL: ${{ vars.TEAMS_WEBHOOK_URL }}
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
-          VERSION="${{ github.ref_name }}"
+          VERSION="$GIT_REF_NAME"
           BUILD_STATUS="${{ needs.release.result }}"
           DEPLOY_STATUS="${{ needs.deploy-ota.result }}"
 

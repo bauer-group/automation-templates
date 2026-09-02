@@ -195,8 +195,64 @@ The Docker build action provides:
 |-----------|-------------|---------|
 | `cache-enabled` | Enable build caching | `true` |
 | `cache-mode` | Cache mode: `'min'`, `'max'`, `'inline'` | `'max'` |
+| `free-disk-space` | Remove unused runner toolchains before building (Linux only) | `false` |
 | `builder-driver` | Builder driver: `'docker'`, `'docker-container'`, `'kubernetes'` | `'docker-container'` |
 | `build-timeout` | Build timeout in minutes | `30` |
+
+#### Running out of disk space
+
+A GitHub-hosted runner has roughly 4 GB free once the toolchains it ships with
+are accounted for. That is enough for most images and not enough for large ones,
+because a build needs the space several times over: BuildKit's layers, the
+`load: true` copy this workflow keeps in the daemon so the image can be scanned,
+the cache export, and - when `security-scan` is on - the tarball Trivy has Docker
+export before it analyses anything.
+
+When it runs out, it does not say so plainly. The scan fails with
+`unable to export the image: no space left on device`, minutes and one step away
+from the cause, which reads like a scanner fault; disabling the scanner does not
+help, because the expensive step is the unconditional local build. Run out
+earlier and the runner process itself dies without writing a log.
+
+```yaml
+free-disk-space: true
+```
+
+removes toolchains no Docker build uses - the CodeQL bundle, Android SDK, .NET,
+GHC, Swift, PowerShell - and logs `df -h /` before and after, so the number is in
+the log whether or not it turned out to matter. Over 10 GB on a current
+`ubuntu-24.04` runner, most of it the Android SDK and the CodeQL bundle.
+
+Deliberately not the whole of `/opt/hostedtoolcache`: only its CodeQL bundle,
+which is the bulk of it and is never used inside a build job. The rest holds the
+Python, Node and Go versions a `setup-*` step later in the same job may expect.
+
+Deliberately not `/usr/local/lib/node_modules` either, which several published
+cleanup snippets do remove: npm lives in it, so deleting it leaves
+`/usr/local/bin/npm` dangling and breaks `run-tests` for any repository with a
+`package.json` - the pre-build test step runs `npm test`.
+
+`cache-mode: 'min'` is the other lever worth reaching for: the default `'max'`
+exports every intermediate layer of every build stage, into two separate scopes.
+On a multi-stage build that export is regularly larger than the image itself.
+
+Both settings together, with the reasoning inline, are in
+**[large-image-build.yml](../../github/workflows/examples/docker/large-image-build.yml)**.
+
+The scan says so before it dies, too. It measures the image against the free space
+on `/var/lib/docker` and reports one of three things:
+
+| Free space | Behaviour |
+|---|---|
+| below the image size | error, job stops before Trivy runs |
+| between 1x and 2x the image size | warning naming the real requirement |
+| 2x or more | silent |
+
+Trivy needs closer to twice the image size - the export tarball, plus room to
+analyse the layers - but a build in the middle band can still finish, so that one
+warns rather than blocks. A real failure showed `Image ~1967 MB, free ~3142 MB`,
+passed the gate and died in the scan three minutes later; that run now carries the
+warning in its log.
 
 ### Platform Configuration
 
@@ -465,11 +521,14 @@ readme-file: ''  # Auto-detects: DOCKER_README.MD -> README.MD -> README.md
 The repository includes comprehensive examples in `github/workflows/examples/docker/`:
 
 1. **[simple-docker-build.yml](../../github/workflows/examples/docker/simple-docker-build.yml)**: Basic GHCR build
-2. **[ghost-bunnycdn-connector.yml](../../github/workflows/examples/docker/ghost-bunnycdn-connector.yml)**: Multi-registry with version sync
-3. **[dockerhub-with-readme-sync.yml](../../github/workflows/examples/docker/dockerhub-with-readme-sync.yml)**: Docker Hub with README sync
-4. **[multi-platform-build.yml](../../github/workflows/examples/docker/multi-platform-build.yml)**: Cross-architecture builds
-5. **[security-focused-build.yml](../../github/workflows/examples/docker/security-focused-build.yml)**: Security-first approach
-6. **[enterprise-build.yml](../../github/workflows/examples/docker/enterprise-build.yml)**: Maximum security and compliance
+2. **[dockerhub-with-readme-sync.yml](../../github/workflows/examples/docker/dockerhub-with-readme-sync.yml)**: Docker Hub with README sync
+3. **[multi-platform-build.yml](../../github/workflows/examples/docker/multi-platform-build.yml)**: Cross-architecture builds
+4. **[security-focused-build.yml](../../github/workflows/examples/docker/security-focused-build.yml)**: Security-first approach
+5. **[enterprise-build.yml](../../github/workflows/examples/docker/enterprise-build.yml)**: Maximum security and compliance
+6. **[large-image-build.yml](../../github/workflows/examples/docker/large-image-build.yml)**: Images that outgrow a runner's free disk
+7. **[web-application-build.yml](../../github/workflows/examples/docker/web-application-build.yml)**: Web app build with staging deploy
+8. **[microservice-build.yml](../../github/workflows/examples/docker/microservice-build.yml)**: Microservice with Helm deployment
+9. **[self-hosted-build.yml](../../github/workflows/examples/docker/self-hosted-build.yml)**: Building on a self-hosted runner
 
 ## Best Practices
 

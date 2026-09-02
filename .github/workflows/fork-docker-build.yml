@@ -113,6 +113,26 @@ on:
         type: number
         default: 30
 
+      cache-mode: 
+        description: >-
+          Registry cache export mode: 'max' exports every intermediate layer of every
+          build stage, 'min' only the final stage. 'max' rebuilds faster and is the
+          default; on a large multi-stage image the export is regularly bigger than the
+          image itself, which is when 'min' is worth the colder cache.
+        required: false
+        type: string
+        default: "max"
+
+      free-disk-space: 
+        description: >-
+          Remove unused preinstalled toolchains from the runner before building.
+          Off by default; turn it on for images large enough that the build, the
+          `load: true` copy in the daemon and the Trivy scan no longer fit in a
+          GitHub-hosted runner's free space. Linux runners only.
+        required: false
+        type: boolean
+        default: false
+
     outputs:
       images-built:
         description: "JSON array of image names that were processed"
@@ -137,6 +157,29 @@ jobs:
     steps:
       - name: "📥 Checkout Repository"
         uses: actions/checkout@v7
+
+      # Same step, same list and same reasoning as docker-build.yml. It has to run
+      # here because a caller cannot inject a step into this job, and everything
+      # after this point - the local build, the daemon copy, the cache export and
+      # Trivy's export tarball - competes for the same few gigabytes.
+      - name: "🧹 Free Disk Space"
+        if: inputs.free-disk-space && runner.os == 'Linux'
+        shell: bash
+        run: |
+          BEFORE=$(df --output=avail -BM / | tail -1 | tr -dc '0-9')
+          echo "Before: $(df -h / | tail -1)"
+
+          # Each removed with `|| true`: a runner image that drops one of these
+          # must not fail a build over its absence.
+          #
+          # Only the CodeQL bundle out of /opt/hostedtoolcache - the rest holds the
+          # Python, Node and Go versions a setup-* step may expect to find. And not
+          # /usr/local/lib/node_modules at all: npm itself lives there.
+          sudo rm -rf             /opt/hostedtoolcache/CodeQL             /usr/local/lib/android             /usr/share/dotnet             /usr/local/.ghcup             /usr/share/swift             /usr/local/share/powershell             /opt/ghc || true
+
+          AFTER=$(df --output=avail -BM / | tail -1 | tr -dc '0-9')
+          echo "After:  $(df -h / | tail -1)"
+          echo "🧹 Freed $(( (AFTER - BEFORE) / 1024 )) GB - ${AFTER} MB now available"
 
       - name: "🔧 Set up QEMU"
         # Registers binfmt/QEMU so non-native arches (arm64, arm/v7) build under emulation.
@@ -192,7 +235,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: ${{ inputs.cache && format('type=gha,scope={0}', matrix.image.name) || '' }}
-          cache-to: ${{ inputs.cache && format('type=gha,scope={0},mode=max', matrix.image.name) || '' }}
+          cache-to: ${{ inputs.cache && format('type=gha,scope={0},mode={1}', matrix.image.name, inputs.cache-mode) || '' }}
           provenance: false
           sbom: false
 
@@ -217,6 +260,50 @@ jobs:
             echo "::group::Installing Trivy"
             curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
             echo "::endgroup::"
+          fi
+
+          # Disk precheck - the same one docker-build.yml's composite action carries.
+          # This workflow never inherited it because it does not use that action, so a
+          # large fork image failed here with "Trivy produced no readable report",
+          # which names the guard below rather than the cause.
+          #
+          # `df --output=avail -B1` prints a single column of bytes, so no positional
+          # field has to be parsed - a filesystem name containing a space shifts every
+          # column of plain `df -P` output. The -P fallback is for a runner without
+          # GNU coreutils.
+          avail_bytes() {
+            df -B1 --output=avail "$1" 2>/dev/null | tail -n1 | tr -dc '0-9'               || df -P "$1" 2>/dev/null | awk 'END {print $(NF-2) * 1024}'
+          }
+          IMAGE_BYTES=$(docker image inspect "$IMAGE" --format '{{.Size}}' 2>/dev/null || echo 0)
+          AVAIL_BYTES=$(avail_bytes /var/lib/docker)
+          [ -z "$AVAIL_BYTES" ] && AVAIL_BYTES=$(avail_bytes /)
+          [ -z "$AVAIL_BYTES" ] && AVAIL_BYTES=0
+          echo "💽 Image ~$((IMAGE_BYTES / 1024 / 1024)) MB, free ~$((AVAIL_BYTES / 1024 / 1024)) MB"
+
+          # Reclaim only what is safely reclaimable. The image just built and the build
+          # cache are both needed by the push build that follows.
+          if [ "$IMAGE_BYTES" -gt 0 ] && [ "$AVAIL_BYTES" -lt "$IMAGE_BYTES" ]; then
+            echo "🧹 Free space below image size - pruning dangling images"
+            docker image prune -f >/dev/null 2>&1 || true
+            AVAIL_BYTES=$(avail_bytes /var/lib/docker)
+            [ -z "$AVAIL_BYTES" ] && AVAIL_BYTES=$(avail_bytes /)
+            [ -z "$AVAIL_BYTES" ] && AVAIL_BYTES=0
+            echo "💽 Free after prune: ~$((AVAIL_BYTES / 1024 / 1024)) MB"
+          fi
+
+          # Warn between 1x and 2x, fail below 1x. Trivy wants closer to twice the image
+          # size - the export tarball plus room to analyse the layers - but a build in
+          # that band may still finish, so it is a warning and not a gate.
+          if [ "$IMAGE_BYTES" -gt 0 ] && [ "$AVAIL_BYTES" -ge "$IMAGE_BYTES" ]              && [ "$AVAIL_BYTES" -lt $((IMAGE_BYTES * 2)) ]; then
+            echo "::warning::Disk space is tight for this scan: ~$((AVAIL_BYTES / 1024 / 1024)) MB free for a ~$((IMAGE_BYTES / 1024 / 1024)) MB image, and Trivy wants roughly $((IMAGE_BYTES * 2 / 1024 / 1024)) MB. If the scan fails below with 'no space left on device', this is why."
+            echo "::warning::  Set 'free-disk-space: true' to reclaim the runner's unused toolchains, and/or 'cache-mode: min' to shrink the cache export."
+          fi
+
+          if [ "$IMAGE_BYTES" -gt 0 ] && [ "$AVAIL_BYTES" -lt "$IMAGE_BYTES" ]; then
+            echo "::error::Not enough disk space to scan '${IMAGE_NAME}'. Trivy exports the image to a tarball first, so it needs about $((IMAGE_BYTES / 1024 / 1024)) MB free and only $((AVAIL_BYTES / 1024 / 1024)) MB remain."
+            echo "::error::  Options: set 'free-disk-space: true' (reclaims 10+ GB of unused runner toolchains) and/or 'cache-mode: min', shrink the image, or use a larger runner."
+            echo "scan-passed=false" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
 
           echo "🛡️ Scanning $IMAGE ..."
@@ -290,7 +377,7 @@ jobs:
           cache-from: |
             ${{ inputs.cache && format('type=gha,scope={0}', matrix.image.name) || '' }}
             ${{ inputs.cache && format('type=gha,scope={0}-push', matrix.image.name) || '' }}
-          cache-to: ${{ inputs.cache && format('type=gha,scope={0}-push,mode=max', matrix.image.name) || '' }}
+          cache-to: ${{ inputs.cache && format('type=gha,scope={0}-push,mode={1}', matrix.image.name, inputs.cache-mode) || '' }}
           provenance: false
           sbom: false
 

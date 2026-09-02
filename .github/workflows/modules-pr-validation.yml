@@ -84,7 +84,7 @@ jobs:
         continue-on-error: true
         uses: wagoid/commitlint-github-action@v6
         with:
-          configFile: .github/config/commitlint.config.js
+          configFile: .github/config/commitlint.config.mjs
           failOnWarnings: false
 
       # Secrets-only scan keeps PRs fast; the full vuln/SCA sweep stays in the
@@ -255,3 +255,27 @@ jobs:
                 body: body
               });
             }
+
+      # The summary step computed validation-passed=false and nothing ever acted
+      # on it: commit-lint runs with continue-on-error, so a PR that failed the
+      # conventional-commit check reported a green run while the output said
+      # "false". This gate makes the computed verdict authoritative. It also
+      # fails closed on an empty verdict - if the summary step never produced a
+      # result, that is an unknown outcome, not a pass. Cancelled runs are left
+      # alone so a cancellation is not reported as a validation failure.
+      - name: 🚦 Enforce Validation Result
+        if: ${{ !cancelled() }}
+        env:
+          VALIDATION_PASSED: ${{ steps.summary.outputs.validation-passed }}
+        run: |
+          if [ "${VALIDATION_PASSED}" = "true" ]; then
+            echo "✅ All enabled PR validation checks passed."
+            exit 0
+          fi
+
+          if [ -z "${VALIDATION_PASSED}" ]; then
+            echo "::error::PR validation produced no result - the validation summary did not complete. Failing closed."
+          else
+            echo "::error::PR validation failed - see the validation summary for the failing checks."
+          fi
+          exit 1

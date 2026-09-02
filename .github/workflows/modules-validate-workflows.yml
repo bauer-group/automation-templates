@@ -36,6 +36,16 @@ on:
         required: false
         type: string
         default: "warning"
+      ignore-patterns:
+        description: >-
+          Newline-separated regular expressions; an actionlint message matching any of
+          them is dropped. Intended for findings that are wrong rather than unwanted -
+          chiefly a workflow feature GitHub has shipped and actionlint does not know yet,
+          where the alternative is holding every merge until the linter catches up. Each
+          entry should carry a comment saying what removes it again.
+        required: false
+        type: string
+        default: ""
       check-permission-ceiling:
         description: "Verify that every locally called reusable workflow gets the permissions it declares"
         required: false
@@ -103,6 +113,7 @@ jobs:
           # non-number. `info` and `style` below it are dominated by "quote your
           # variables", which is worth doing but is not what a merge gate is for.
           SHELLCHECK_OPTS: --severity=${{ inputs.shellcheck-severity }}
+          IGNORE_PATTERNS: ${{ inputs.ignore-patterns }}
         shell: bash
         run: |
           set -uo pipefail
@@ -123,9 +134,27 @@ jobs:
             exit 0
           fi
 
+          # One -ignore per pattern. Built as an array so a pattern containing
+          # spaces stays a single argument.
+          IGNORE=()
+          while IFS= read -r pattern; do
+            [ -n "$pattern" ] || continue
+            IGNORE+=(-ignore "$pattern")
+          done <<< "$IGNORE_PATTERNS"
+
           echo "Linting ${#FILES[@]} file(s)"
+          if [ ${#IGNORE[@]} -gt 0 ]; then
+            echo "Suppressing $(( ${#IGNORE[@]} / 2 )) message pattern(s)"
+          fi
+          # Branching rather than always expanding "${IGNORE[@]}": under `set -u`,
+          # expanding an empty array is an error on bash before 4.4, and `runs-on`
+          # admits self-hosted runners that may ship one.
           set +e
-          actionlint -oneline "${FILES[@]}" > actionlint-output.txt 2>&1
+          if [ ${#IGNORE[@]} -gt 0 ]; then
+            actionlint -oneline "${IGNORE[@]}" "${FILES[@]}" > actionlint-output.txt 2>&1
+          else
+            actionlint -oneline "${FILES[@]}" > actionlint-output.txt 2>&1
+          fi
           set -e
 
           COUNT=$(grep -c . actionlint-output.txt || true)
@@ -161,6 +190,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          # PyYAML ships with the GitHub-hosted ubuntu images but not with act's
+          # runner image, and not necessarily with a self-hosted one. Without this
+          # the whole job died on a bare ModuleNotFoundError. Prefer --user so a
+          # persistent self-hosted runner's system site-packages stay untouched;
+          # --break-system-packages is the PEP 668 fallback (pip 23+).
+          if ! python3 -c "import yaml" 2>/dev/null; then
+            echo "PyYAML is not available - installing it for this run"
+            python3 -m pip install --quiet --disable-pip-version-check --user pyyaml 2>/dev/null \
+              || python3 -m pip install --quiet --disable-pip-version-check --break-system-packages pyyaml 2>/dev/null \
+              || true
+          fi
+          if ! python3 -c "import yaml" 2>/dev/null; then
+            echo "::error title=Permission ceiling::PyYAML is required to check the permission ceiling but could not be imported or installed. Install it on the runner (apt-get install -y python3-yaml, or pip install pyyaml), or set 'check-permission-ceiling: false' to skip this check."
+            exit 1
+          fi
+
           python3 - <<'PYEOF'
           import os, sys, glob, yaml
 

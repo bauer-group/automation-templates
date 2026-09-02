@@ -257,7 +257,7 @@ jobs:
           lfs: true
       
       - name: 🔧 Setup .NET SDK
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
       
@@ -503,15 +503,149 @@ jobs:
       - name: 📊 Check Coverage
         if: inputs.collect-coverage == true && inputs.coverage-threshold > 0
         shell: pwsh
+        env:
+          COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
         run: |
-          # Parse coverage results
-          $coverageFiles = Get-ChildItem -Path TestResults -Filter *.coverage -Recurse
-          
-          if ($coverageFiles.Count -gt 0) {
-            # This is a simplified example - you'd need proper coverage parsing
-            Write-Host "Coverage files found: $($coverageFiles.Count)"
-            # Add actual coverage parsing and threshold checking here
+          $ErrorActionPreference = 'Stop'
+
+          # This gate used to only count *.coverage files and print the count: it never
+          # parsed any coverage value and never compared anything to coverage-threshold,
+          # so a caller who explicitly asked for a minimum coverage always got a green
+          # step - even at 0% coverage, or with no coverage data produced at all.
+          # It now reads the real line coverage and fails when it is below the threshold
+          # or cannot be determined, because an unmeasured result must never be reported
+          # as a passing one. Only callers that opted in (collect-coverage = true AND
+          # coverage-threshold > 0) reach this step, so no default configuration changes.
+          $invariant = [System.Globalization.CultureInfo]::InvariantCulture
+          $threshold = [double]::Parse("$env:COVERAGE_THRESHOLD", $invariant)
+          Write-Host "Required minimum line coverage: $threshold%"
+
+          if (-not (Test-Path -LiteralPath 'TestResults')) {
+            Write-Host "::error title=Coverage gate::No TestResults directory - coverage could not be measured, so the $threshold% threshold cannot be verified."
+            exit 1
           }
+
+          # Cobertura/OpenCover XML is emitted directly by coverlet ('XPlat Code Coverage'
+          # or MSBuild integration). The built-in 'Code Coverage' collector used by the
+          # test step writes a binary *.coverage file instead, which is converted below.
+          $reports = @(Get-ChildItem -Path 'TestResults' -Recurse -File -Include '*.cobertura.xml', '*.opencover.xml' -ErrorAction SilentlyContinue)
+
+          if ($reports.Count -eq 0) {
+            $binaryReports = @(Get-ChildItem -Path 'TestResults' -Recurse -File -Filter '*.coverage' -ErrorAction SilentlyContinue)
+
+            if ($binaryReports.Count -eq 0) {
+              Write-Host "::error title=Coverage gate::No coverage report found under TestResults - coverage could not be measured, so the $threshold% threshold cannot be verified."
+              exit 1
+            }
+
+            Write-Host "Converting $($binaryReports.Count) binary coverage report(s) to Cobertura..."
+            $toolsPath = Join-Path ([System.Environment]::GetFolderPath('UserProfile')) '.dotnet/tools'
+            if (Test-Path -LiteralPath $toolsPath) { $env:PATH = "$toolsPath$([System.IO.Path]::PathSeparator)$env:PATH" }
+
+            if (-not (Get-Command 'dotnet-coverage' -ErrorAction SilentlyContinue)) {
+              try {
+                & dotnet tool install --global dotnet-coverage | Out-Host
+              } catch {
+                Write-Host "::warning title=Coverage gate::dotnet tool install reported: $($_.Exception.Message)"
+              }
+              if (Test-Path -LiteralPath $toolsPath) { $env:PATH = "$toolsPath$([System.IO.Path]::PathSeparator)$env:PATH" }
+            }
+
+            if (-not (Get-Command 'dotnet-coverage' -ErrorAction SilentlyContinue)) {
+              Write-Host "::error title=Coverage gate::The dotnet-coverage tool is unavailable, so the binary coverage report cannot be read and the $threshold% threshold cannot be verified."
+              exit 1
+            }
+
+            $mergedReport = Join-Path 'TestResults' 'merged.cobertura.xml'
+            try {
+              & dotnet-coverage merge -o $mergedReport -f cobertura $binaryReports.FullName | Out-Host
+            } catch {
+              Write-Host "::warning title=Coverage gate::dotnet-coverage merge reported: $($_.Exception.Message)"
+            }
+
+            if (-not (Test-Path -LiteralPath $mergedReport)) {
+              Write-Host "::error title=Coverage gate::Converting the binary coverage report failed, so the $threshold% threshold cannot be verified."
+              exit 1
+            }
+            $reports = @(Get-Item -LiteralPath $mergedReport)
+          }
+
+          $linesCovered = 0.0
+          $linesValid = 0.0
+          $lineRates = @()
+
+          foreach ($report in $reports) {
+            try {
+              $document = New-Object System.Xml.XmlDocument
+              $document.XmlResolver = $null   # no external DTD/entity resolution
+              $document.Load($report.FullName)
+            } catch {
+              Write-Host "::warning title=Coverage gate::Could not parse $($report.FullName): $($_.Exception.Message)"
+              continue
+            }
+
+            $root = $document.DocumentElement
+            if ($null -eq $root) { continue }
+
+            if ($root.Name -eq 'coverage') {
+              # Cobertura: prefer the absolute counters so several reports can be summed.
+              $valid = $root.GetAttribute('lines-valid')
+              $covered = $root.GetAttribute('lines-covered')
+              $rate = $root.GetAttribute('line-rate')
+
+              if ($valid -and $covered -and ([double]::Parse($valid, $invariant) -gt 0)) {
+                $linesValid += [double]::Parse($valid, $invariant)
+                $linesCovered += [double]::Parse($covered, $invariant)
+              } elseif ($rate -and ($root.SelectNodes('.//class').Count -gt 0)) {
+                # line-rate is only meaningful when the report actually describes classes.
+                $lineRates += ([double]::Parse($rate, $invariant) * 100)
+              } elseif ($rate) {
+                # `dotnet-coverage merge -f cobertura` emits line-rate="1" with an EMPTY
+                # <packages /> and no lines-covered/lines-valid when the collector gathered
+                # no data at all. Trusting line-rate there reports a fabricated 100% and
+                # passes any threshold - the exact failure this gate exists to prevent, and
+                # worse than the old no-op because it publishes an authoritative-looking
+                # number to the job summary. Absent counters together with no classes is the
+                # signature of "nothing was measured", so contribute nothing and let the
+                # fail-closed branch below reject the run.
+                Write-Host "::warning title=Coverage gate::$($report.Name) reports line-rate=$rate but contains no classes - treating it as no measurement rather than as full coverage."
+              }
+            } elseif ($root.Name -eq 'CoverageSession') {
+              # OpenCover
+              $summary = $root.SelectSingleNode('Summary')
+              if ($null -ne $summary) {
+                $points = $summary.GetAttribute('numSequencePoints')
+                $visited = $summary.GetAttribute('visitedSequencePoints')
+                if ($points -and $visited) {
+                  $linesValid += [double]::Parse($points, $invariant)
+                  $linesCovered += [double]::Parse($visited, $invariant)
+                }
+              }
+            }
+          }
+
+          if ($linesValid -gt 0) {
+            $coverage = ($linesCovered / $linesValid) * 100
+          } elseif ($lineRates.Count -gt 0) {
+            # No absolute counters available - use the lowest reported rate.
+            $coverage = ($lineRates | Measure-Object -Minimum).Minimum
+          } else {
+            Write-Host "::error title=Coverage gate::Coverage reports were found but contained no readable line coverage, so the $threshold% threshold cannot be verified."
+            exit 1
+          }
+
+          $rounded = [math]::Round($coverage, 2)
+          Write-Host "Line coverage: $rounded% (threshold: $threshold%)"
+          if ($env:GITHUB_STEP_SUMMARY) {
+            "### Code Coverage`n`nLine coverage: **$rounded%** (threshold: $threshold%)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
+          if ($coverage -lt $threshold) {
+            Write-Host "::error title=Coverage below threshold::Line coverage $rounded% is below the required $threshold%."
+            exit 1
+          }
+
+          Write-Host "Coverage gate passed."
       
       - name: 📤 Prepare Artifacts
         id: artifacts

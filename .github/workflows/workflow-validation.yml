@@ -42,6 +42,15 @@ jobs:
         github/workflows/examples/*/*.yml
         github/workflows/examples/*/*.yaml
 
+      # copilot-requests: write is a real permission scope - GitHub documents it as
+      # the way to authenticate the Copilot CLI from github.token, and it is what
+      # replaced the retired models: read here. actionlint carries a hardcoded list
+      # of scopes and has not learned this one as of 1.7.12, so it reports every
+      # workflow that declares it. Remove this line once a release knows the scope.
+      # https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli-in-actions
+      ignore-patterns: |
+        unknown permission scope "copilot-requests"
+
   action-tests:
     name: "🧪 Action Tests"
     runs-on: ubuntu-latest
@@ -95,3 +104,10 @@ jobs:
       - name: "🧪 security-scan: every output read is declared"
         shell: bash
         run: bash .github/actions/security-scan/tests/declared-outputs.test.sh
+
+      # Same failure class as the security-scan test above: the run stays green and
+      # the release looks correct, only the version inside the artifacts stops
+      # advancing. That went unnoticed for four releases across three repositories.
+      - name: "🧪 semantic-release: a consumer's exec hooks survive the reservation"
+        shell: bash
+        run: bash .github/actions/semantic-release/tests/merge-exec-hooks.test.sh

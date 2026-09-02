@@ -145,7 +145,7 @@ jobs:
 │   │   ├── esp32-build/          # ESP32 microcontroller configurations
 │   │   ├── stm32-build/          # STM32 microcontroller configurations
 │   │   ├── platformio-build/     # PlatformIO build configurations
-│   │   └── commitlint.config.js  # Commit linting rules
+│   │   └── commitlint.config.mjs  # Commit linting rules
 │   └── workflows/             # 🚀 Reusable Workflows
 │       ├── ai-issue-summary.yml       # AI-powered issue summarization
 │       ├── automatic-release.yml      # Automated release management
@@ -680,10 +680,10 @@ policies:
 
 ### Commit Lint Configuration
 
-**.github/config/commitlint.config.js**
+**.github/config/commitlint.config.mjs**
 
 ```javascript
-module.exports = {
+export default {
   extends: ['@commitlint/config-conventional'],
   rules: {
     'type-enum': [2, 'always', [
@@ -762,7 +762,7 @@ module.exports = {
    vim .github/config/zephyr-build/iot-device.yml
    
    # Update commit linting rules
-   vim .github/config/commitlint.config.js
+   vim .github/config/commitlint.config.mjs
    ```
 
 ### Quick Examples by Technology
@@ -1076,6 +1076,7 @@ gh auth status --show-token
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
 - [🐍 **Python Build System**](docs/workflows/python-build.md) - Python application builds and testing
 - [🐍 **Python Semantic Release System**](docs/workflows/python-semantic-release.md) - Modern Python CI/CD with semantic versioning
+- [📦 **Semantic Release Config Contract**](docs/workflows/semantic-release-config.md) - What a repository's `semantic-release.json` actually controls, and what is silently ignored
 - [⚡ **Zephyr RTOS Build System**](docs/workflows/zephyr-build.md) - Real-time OS automation with hardware testing
 - [📟 **ESP32 Build System**](docs/workflows/esp32-build.md) - ESP32 microcontroller automation with ESP-IDF
 - [🔧 **STM32 Build System**](docs/workflows/stm32-build.md) - STM32 microcontroller automation
@@ -1088,6 +1089,7 @@ gh auth status --show-token
 - [🐘 **PHP Build System**](docs/workflows/php-build.md) - PHP and Composer automation
 - [🛒 **Shopware 5 Plugin Build System**](docs/workflows/shopware5-build.md) - Shopware 5 plugin automation with store integration
 - [🔧 **Makefile Build System**](docs/workflows/makefile-build.md) - Makefile-based build automation
+- [🧠 **AI Issue Summary**](docs/workflows/ai-issue-summary.md) - Copilot-powered issue and PR summaries
 - [🤖 **Claude Code AI Assistant**](docs/workflows/claude-code.md) - AI-powered code assistant
 - [🚀 **Coolify Deploy**](docs/workflows/coolify-deploy.md) - Coolify deployment automation
 - [🔄 **Meta Repository Sync**](docs/workflows/meta-repository-sync.md) - Automated submodule synchronization

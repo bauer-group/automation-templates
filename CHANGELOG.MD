@@ -4,6 +4,201 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [10.3.0](https://github.com/bauer-group/automation-templates/compare/v10.2.2...v10.3.0) (2026-09-02)
+
+### 🚀 Features
+
+* **semantic-release:** surfaced maintenance in release notes ([eeef70e](https://github.com/bauer-group/automation-templates/commit/eeef70e92a24c9a896392c45d787c2bed60a485b))
+
+## [10.2.2](https://github.com/bauer-group/automation-templates/compare/v10.2.1...v10.2.2) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **semantic-release:** read the repo's github plugin options ([a5c46b9](https://github.com/bauer-group/automation-templates/commit/a5c46b93a3d4a009c382f7fd66e7473dc819240b)), closes [#97](https://github.com/bauer-group/automation-templates/issues/97)
+
+## [10.2.1](https://github.com/bauer-group/automation-templates/compare/v10.2.0...v10.2.1) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **semantic-release:** restored the consumer's own exec hooks ([a9b6cb3](https://github.com/bauer-group/automation-templates/commit/a9b6cb334723bd1b4284cb29b632f8e45b468155))
+
+## [10.2.0](https://github.com/bauer-group/automation-templates/compare/v10.1.1...v10.2.0) (2026-09-02)
+
+### 🚀 Features
+
+* **fork-docker-build:** added disk space controls ([68d55c4](https://github.com/bauer-group/automation-templates/commit/68d55c4e6efa58d5251f805dad23cd6e586fb91b))
+
+### 🐛 Bug Fixes
+
+* **docker-build:** warned when scan disk is tight ([000d59b](https://github.com/bauer-group/automation-templates/commit/000d59b68d83c86fcabd121d35a94451872646ed))
+
+## [10.1.1](https://github.com/bauer-group/automation-templates/compare/v10.1.0...v10.1.1) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **ci:** removed the PSR GitPython compat shim ([0912526](https://github.com/bauer-group/automation-templates/commit/09125261555b37b63618e4d542e3a411f38c1a3e)), references [python-semantic-release#1477](https://github.com/python-semantic-release/issues/1477) [#1477](https://github.com/bauer-group/automation-templates/issues/1477)
+
+## [10.1.0](https://github.com/bauer-group/automation-templates/compare/v10.0.7...v10.1.0) (2026-09-02)
+
+### 🚀 Features
+
+* **docker-build:** added a pre-build disk cleanup ([90cdc94](https://github.com/bauer-group/automation-templates/commit/90cdc94cb3ce475a34e8629a5cdff79b87533a32))
+
+### 🐛 Bug Fixes
+
+* **ai-summary:** authenticated Copilot via github.token, no PAT needed ([1739798](https://github.com/bauer-group/automation-templates/commit/1739798be222f77721af042bc5e7063b9c95db14))
+* **docker-build:** kept npm out of disk cleanup ([fc019e4](https://github.com/bauer-group/automation-templates/commit/fc019e41a8e11c7395f23feef3b484cd5e865348))
+
+## [10.0.7](https://github.com/bauer-group/automation-templates/compare/v10.0.6...v10.0.7) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **ai-summary:** authenticated Copilot via github.token, no PAT needed ([9e30e91](https://github.com/bauer-group/automation-templates/commit/9e30e910895e96362f40ae041af6708ec03ff7f4))
+
+## [10.0.6](https://github.com/bauer-group/automation-templates/compare/v10.0.5...v10.0.6) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **ai-summary:** fixed secrets context in step if ([0938f34](https://github.com/bauer-group/automation-templates/commit/0938f34895e0ae8e78cd2737d366b26138b809f0))
+
+## [10.0.5](https://github.com/bauer-group/automation-templates/compare/v10.0.4...v10.0.5) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **ai-summary:** installed the Copilot CLI and used its auth channel ([b2b1b35](https://github.com/bauer-group/automation-templates/commit/b2b1b3539dbf20de7999331f5e0b9e7724f2811f))
+
+## [10.0.4](https://github.com/bauer-group/automation-templates/compare/v10.0.3...v10.0.4) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **ai-summary:** restored inference after the GitHub Models retirement ([2702e26](https://github.com/bauer-group/automation-templates/commit/2702e26ebc6258d6c62e4cab8861da393169938a)), references [#92](https://github.com/bauer-group/automation-templates/issues/92)
+
+## [10.0.3](https://github.com/bauer-group/automation-templates/compare/v10.0.2...v10.0.3) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **ci:** stopped the OSV summary reporting a stale scanner version ([9875ca4](https://github.com/bauer-group/automation-templates/commit/9875ca425ce2ec5ba02a3ba927e67b98f35129bf)), references [#93](https://github.com/bauer-group/automation-templates/issues/93)
+
+## [10.0.2](https://github.com/bauer-group/automation-templates/compare/v10.0.1...v10.0.2) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **dotnet-build:** made the coverage threshold compare something ([594d241](https://github.com/bauer-group/automation-templates/commit/594d241aca2c1b26bfdabff8514fadaa1ce9a93f))
+* **dotnet-desktop:** made the coverage gate compare something ([51f1554](https://github.com/bauer-group/automation-templates/commit/51f1554d15efcaefb0ba83e1c3aecca5dbe45fb8))
+* **meta-sync:** stopped leaving the PAT in the global git config ([47f8017](https://github.com/bauer-group/automation-templates/commit/47f8017d1d22a4e98f79998693a3c5365edf682a)), references [#7](https://github.com/bauer-group/automation-templates/issues/7) [#9](https://github.com/bauer-group/automation-templates/issues/9) [#10](https://github.com/bauer-group/automation-templates/issues/10)
+* **validate-dockerfile:** made the hadolint gate fail closed ([4687101](https://github.com/bauer-group/automation-templates/commit/4687101e33bbedddb281a8afa16bbcaba85b705c)), references [#23](https://github.com/bauer-group/automation-templates/issues/23) [#24](https://github.com/bauer-group/automation-templates/issues/24)
+
+## [10.0.1](https://github.com/bauer-group/automation-templates/compare/v10.0.0...v10.0.1) (2026-09-02)
+
+### 🐛 Bug Fixes
+
+* **pr-validation:** repaired commitlint, then made its verdict binding ([25a6dd8](https://github.com/bauer-group/automation-templates/commit/25a6dd88b97e84eab62d55f184f8c223256c63f3)), references [#25](https://github.com/bauer-group/automation-templates/issues/25)
+
+## [10.0.0](https://github.com/bauer-group/automation-templates/compare/v9.1.3...v10.0.0) (2026-09-02)
+
+### ⚠ BREAKING CHANGES
+
+* **docker-build:** version-from-dockerfile: true now fails when the Dockerfile
+  has no parsable org.opencontainers.image.version LABEL, instead of silently
+  publishing the image as :latest. A repository relying on that fallback must
+  add the label or set version-from-dockerfile: false. security-scanner:
+  'snyk' now fails explicitly rather than failing later with a misleading
+  message.
+
+  Findings 3, 5 and 6 of the workflow audit.
+
+### 🐛 Bug Fixes
+
+* **build:** made the build-side test and coverage gates able to fail ([416b9e8](https://github.com/bauer-group/automation-templates/commit/416b9e83b36a296d92ad8d5ab9d05a8331941940)), references [#14](https://github.com/bauer-group/automation-templates/issues/14) [#33](https://github.com/bauer-group/automation-templates/issues/33) [#26](https://github.com/bauer-group/automation-templates/issues/26) [#34](https://github.com/bauer-group/automation-templates/issues/34) [#29](https://github.com/bauer-group/automation-templates/issues/29)
+* **ci:** corrected the release signals and closed the Dependabot blind spot ([8d84dc5](https://github.com/bauer-group/automation-templates/commit/8d84dc5b00ccceee4db8cd0763f738f547d53b50)), references [#11](https://github.com/bauer-group/automation-templates/issues/11) [#12](https://github.com/bauer-group/automation-templates/issues/12) [#13](https://github.com/bauer-group/automation-templates/issues/13) [#8](https://github.com/bauer-group/automation-templates/issues/8) [#35](https://github.com/bauer-group/automation-templates/issues/35)
+* **docker-build:** stopped the version write-back reverting the default branch ([2682ad0](https://github.com/bauer-group/automation-templates/commit/2682ad007ca9afe81becdddc0ccc1df889374ce9)), references [#3](https://github.com/bauer-group/automation-templates/issues/3) [#5](https://github.com/bauer-group/automation-templates/issues/5) [#6](https://github.com/bauer-group/automation-templates/issues/6)
+* **security:** made the vulnerability and secret gates able to fail ([378a9eb](https://github.com/bauer-group/automation-templates/commit/378a9eba67870b4bc4c8c88315e6d5f38a978775)), references [#15](https://github.com/bauer-group/automation-templates/issues/15) [#32](https://github.com/bauer-group/automation-templates/issues/32) [#30](https://github.com/bauer-group/automation-templates/issues/30) [#22](https://github.com/bauer-group/automation-templates/issues/22)
+
+## [9.1.3](https://github.com/bauer-group/automation-templates/compare/v9.1.2...v9.1.3) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **makefile-build:** made the test targets actually run ([bdf94a3](https://github.com/bauer-group/automation-templates/commit/bdf94a367dfc5402cce8f9b340f02aba5647d99a))
+
+## [9.1.2](https://github.com/bauer-group/automation-templates/compare/v9.1.1...v9.1.2) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **security-scan:** made GitGuardian findings block the gate ([6d94caf](https://github.com/bauer-group/automation-templates/commit/6d94caf552a74f376ef0fdedad57c70bd65a9b22))
+
+## [9.1.1](https://github.com/bauer-group/automation-templates/compare/v9.1.0...v9.1.1) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** converted JSON build-args instead of dropping them ([1340736](https://github.com/bauer-group/automation-templates/commit/1340736906cab803135f84fdb87e453463f48e62)), closes [#89](https://github.com/bauer-group/automation-templates/issues/89)
+* **docker-build:** diagnosed disk exhaustion during the Trivy scan ([b4527e8](https://github.com/bauer-group/automation-templates/commit/b4527e8b67f7d0e6cfa3709f92a88440e353be92)), closes [#90](https://github.com/bauer-group/automation-templates/issues/90)
+
+## [9.1.0](https://github.com/bauer-group/automation-templates/compare/v9.0.3...v9.1.0) (2026-09-01)
+
+### 🚀 Features
+
+* **tools:** added workflow-audit for script injection ([3f55d80](https://github.com/bauer-group/automation-templates/commit/3f55d803e0db1fac48197b0ebebab6c0f650298c))
+
+### 🐛 Bug Fixes
+
+* **actions:** closed the second hop on current_version ([9f8a099](https://github.com/bauer-group/automation-templates/commit/9f8a099f7508283cd8925d99bf74afc32decf0c9))
+
+## [9.0.3](https://github.com/bauer-group/automation-templates/compare/v9.0.2...v9.0.3) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **license-compliance:** made the forbidden-license gate actually gate ([0d83e9d](https://github.com/bauer-group/automation-templates/commit/0d83e9d04aafb468952b596b7e86351c1638c4ec))
+
+## [9.0.2](https://github.com/bauer-group/automation-templates/compare/v9.0.1...v9.0.2) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **platformio:** made the check and test gates able to fail ([013f639](https://github.com/bauer-group/automation-templates/commit/013f63921a7324172ddd8b42382d5b53687b5249))
+
+## [9.0.1](https://github.com/bauer-group/automation-templates/compare/v9.0.0...v9.0.1) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** stopped leaking GITHUB_TOKEN to Docker Hub ([5df444c](https://github.com/bauer-group/automation-templates/commit/5df444c980bf37c972fcb10d97acaef6c4e4f24e))
+
+## [9.0.0](https://github.com/bauer-group/automation-templates/compare/v8.1.1...v9.0.0) (2026-09-01)
+
+### ⚠ BREAKING CHANGES
+
+* **ci:** closed the second hop on version outputs
+
+### 🐛 Bug Fixes
+
+* **ci:** closed the second hop on version outputs ([83c7e9a](https://github.com/bauer-group/automation-templates/commit/83c7e9a68c51df6d01c3d183384e849eb3dc48aa))
+
+## [8.1.1](https://github.com/bauer-group/automation-templates/compare/v8.1.0...v8.1.1) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **ci:** guarded the permission ceiling against a missing PyYAML ([6ac9f64](https://github.com/bauer-group/automation-templates/commit/6ac9f64c2a76ed7d4a7c54a487cb665acbdf9a74))
+
+## [8.1.0](https://github.com/bauer-group/automation-templates/compare/v8.0.4...v8.1.0) (2026-09-01)
+
+### 🚀 Features
+
+* **ci:** enabled publish-last release ordering ([c8f3083](https://github.com/bauer-group/automation-templates/commit/c8f3083a045af7373a8e0f0f0c5c9e153a59b0b4)), closes [#86](https://github.com/bauer-group/automation-templates/issues/86)
+
+## [8.0.4](https://github.com/bauer-group/automation-templates/compare/v8.0.3...v8.0.4) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **examples:** closed script injection in shipped examples ([e235f07](https://github.com/bauer-group/automation-templates/commit/e235f07ffe4917872c3aed1958599874ebadba3e))
+
+## [8.0.3](https://github.com/bauer-group/automation-templates/compare/v8.0.2...v8.0.3) (2026-09-01)
+
+### 🐛 Bug Fixes
+
+* **actions:** fixed case lookup ignoring the C locale ([49fa7fd](https://github.com/bauer-group/automation-templates/commit/49fa7fdd9cde9c0bc89d803cec146a06f5b01616))
+
+### ♻️ Refactoring
+
+* **ci:** routed the python test-command through env ([4cd5eaf](https://github.com/bauer-group/automation-templates/commit/4cd5eaf9927b495ff77ef9f9572007229707cdc7))
+
 ## [8.0.2](https://github.com/bauer-group/automation-templates/compare/v8.0.1...v8.0.2) (2026-09-01)
 
 ### 🐛 Bug Fixes

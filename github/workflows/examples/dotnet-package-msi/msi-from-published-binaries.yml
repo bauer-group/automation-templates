@@ -35,6 +35,11 @@ jobs:
 
       - name: Publish
         shell: bash
+        env:
+          # workflow_dispatch inputs are free text typed into the Actions UI.
+          # Interpolated into the script body they run on assignment, so they
+          # travel through the environment instead.
+          INPUT_MSI_VERSION: ${{ github.event.release.tag_name && github.event.release.tag_name || inputs.version }}
         run: |
           dotnet publish src/MyApp/MyApp.csproj \
             --configuration Release \
@@ -42,7 +47,7 @@ jobs:
             --self-contained true \
             --output publish \
             -p:PublishSingleFile=true \
-            -p:Version=${{ github.event.release.tag_name && github.event.release.tag_name || inputs.version }}
+            -p:Version="$INPUT_MSI_VERSION"
 
       - uses: actions/upload-artifact@v7
         with:

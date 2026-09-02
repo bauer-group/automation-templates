@@ -41,4 +41,11 @@ jobs:
       # platforms: 'linux/amd64,linux/arm64'   # per-image override via images[].platforms
       # security-fail-on: 'CRITICAL'           # CRITICAL | HIGH | MEDIUM
       # latest-on-default: true
+      #
+      # If a build fails with "no space left on device", or the scan warns that free
+      # space is tight, these are the two levers. A hosted runner has ~4 GB free, and
+      # the local build, the daemon copy, the cache export and Trivy's export tarball
+      # all come out of it:
+      # free-disk-space: true                  # reclaims 10+ GB of unused toolchains
+      # cache-mode: 'min'                      # final stage only, instead of every layer
     secrets: inherit

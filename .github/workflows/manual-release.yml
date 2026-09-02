@@ -118,6 +118,14 @@ jobs:
             echo "Calculated version (${{ inputs.version-bump }} bump): $CALCULATED_VERSION"
           fi
           
+
+          # This value becomes a step output and is pasted into later run: bodies,
+          # so a metacharacter here would execute there. A version never contains
+          # one legitimately.
+          if [[ ! "$CALCULATED_VERSION" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+            echo "::error title=Invalid version::Calculated version '$CALCULATED_VERSION' is not a plain version string (letters, digits, dot, underscore, plus, hyphen)."
+            exit 1
+          fi
           echo "calculated-version=$CALCULATED_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: 📊 Input Validation Summary

@@ -98,6 +98,8 @@ runs:
         RELEASE_RULES=""
         TAG_FORMAT=""
         CUSTOM_TITLE=""
+        CUSTOM_EXEC="{}"
+        CUSTOM_GITHUB="{}"
 
         if [ -f ".github/config/release/semantic-release.json" ]; then
           echo "Found repository config - extracting custom settings..."
@@ -142,6 +144,40 @@ runs:
             echo "  Found extra plugins: $EXTRA_PLUGINS"
           else
             EXTRA_PLUGINS="[]"
+          fi
+
+          # Extract the repo's own @semantic-release/exec options. exec is in the
+          # reserved set above so it cannot be registered twice, but this action
+          # only owns generateNotesCmd — every other hook (prepareCmd,
+          # verifyConditionsCmd, publishCmd, successCmd, ...) is the consumer's
+          # and is merged back into the reserved entry further below. Reserving
+          # the plugin silently dropped those, which stops a repo bumping its own
+          # version files during prepare.
+          CUSTOM_EXEC=$(jq -c '[.plugins[] | select(type == "array") | select(.[0] == "@semantic-release/exec") | .[1]] | add // {} | del(.generateNotesCmd)' "$REPO_CONFIG" 2>/dev/null || echo "{}")
+          if [ -n "$CUSTOM_EXEC" ] && [ "$CUSTOM_EXEC" != "{}" ] && [ "$CUSTOM_EXEC" != "null" ]; then
+            echo "  Found repo exec hooks: $(echo "$CUSTOM_EXEC" | jq -r 'keys | join(", ")')"
+          else
+            CUSTOM_EXEC="{}"
+          fi
+
+          # Extract the repo's own @semantic-release/github options. github is in the
+          # reserved set so it cannot be registered twice, but unlike exec the action
+          # owns NO option on it - it emits the plugin bare. Reserving it therefore
+          # discarded every option a repository set (successComment, failComment,
+          # releasedLabels, assets, ...) with no warning: the config was read, the run
+          # was green, and the setting simply never applied.
+          CUSTOM_GITHUB=$(jq -c '[.plugins[] | select(type == "array") | select(.[0] == "@semantic-release/github") | .[1]] | add // {}' "$REPO_CONFIG" 2>/dev/null || echo "{}")
+          if [ -n "$CUSTOM_GITHUB" ] && [ "$CUSTOM_GITHUB" != "{}" ] && [ "$CUSTOM_GITHUB" != "null" ]; then
+            echo "  Found repo github options: $(echo "$CUSTOM_GITHUB" | jq -r 'keys | join(", ")')"
+          else
+            CUSTOM_GITHUB="{}"
+          fi
+
+          # @semantic-release/release-notes-generator is reserved AND not provided:
+          # notes/notes.mjs replaces it. A config that still carries it is configuring
+          # nothing, so say so rather than let it look effective.
+          if jq -e '[.plugins[]? | select((type == "string" and . == "@semantic-release/release-notes-generator") or (type == "array" and .[0] == "@semantic-release/release-notes-generator"))] | length > 0' "$REPO_CONFIG" >/dev/null 2>&1; then
+            echo "::warning title=Inert release config::@semantic-release/release-notes-generator is configured in .github/config/release/semantic-release.json but is not used - this action generates notes with notes/notes.mjs instead, and section titles are defined there. The entry has no effect and can be removed. See docs/workflows/semantic-release-config.md"
           fi
 
           # Extract tagFormat if specified
@@ -240,6 +276,37 @@ runs:
               if type == "array" and .[0] == "@semantic-release/changelog"
               then [.[0], (.[1] + {changelogTitle: $t})]
               else . end)
+          ' .releaserc.json > .releaserc.tmp.json && mv .releaserc.tmp.json .releaserc.json
+        fi
+
+        # Merge the repo's exec hooks into the reserved exec plugin. The action's
+        # generateNotesCmd is kept: it was deleted from CUSTOM_EXEC at extraction,
+        # so a consumer cannot override the notes seam by accident.
+        if [ "$CUSTOM_EXEC" != "{}" ]; then
+          echo "Merging repo exec hooks into the exec plugin..."
+          jq --argjson exec "$CUSTOM_EXEC" '
+            .plugins |= map(
+              if (type == "array" and .[0] == "@semantic-release/exec")
+              then [.[0], (.[1] + $exec)]
+              else . end
+            )
+          ' .releaserc.json > .releaserc.tmp.json && mv .releaserc.tmp.json .releaserc.json
+        fi
+
+        # Merge the repo's github options into the reserved github entry. The action
+        # emits it as a bare string, so the entry is rewritten to array form here.
+        # map() is used rather than an index so the array keeps its length and order -
+        # the positional splice below depends on .plugins[4] still being github.
+        if [ "$CUSTOM_GITHUB" != "{}" ]; then
+          echo "Merging repo github options into the github plugin..."
+          jq --argjson gh "$CUSTOM_GITHUB" '
+            .plugins |= map(
+              if (type == "string" and . == "@semantic-release/github")
+              then ["@semantic-release/github", $gh]
+              elif (type == "array" and .[0] == "@semantic-release/github")
+              then [.[0], ((.[1] // {}) + $gh)]
+              else . end
+            )
           ' .releaserc.json > .releaserc.tmp.json && mv .releaserc.tmp.json .releaserc.json
         fi
 

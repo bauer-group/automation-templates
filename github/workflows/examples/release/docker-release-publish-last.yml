@@ -1,0 +1,89 @@
+# Release a Docker image, publishing the release ONLY after the image builds.
+#
+# The naive chain runs semantic-release first and gates the build on its
+# release-created output. That publishes the tag, the GitHub Release and the
+# CHANGELOG entry before anything knows whether the image builds — so a failed
+# build leaves a release with no artifact behind it, and `docker pull …:1.0.2`
+# fails against a version GitHub presents as shipped.
+#
+# This shape determines the version first, builds with it, and publishes last.
+# A failed build therefore produces no release at all, and the next push retries
+# the same version number.
+#
+# See docs/workflows/release-ordering.md for the full rationale.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Two runs must never overlap. Both could otherwise observe "nothing published
+# yet", legitimately claim the same reusable version, and then both publish it.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # 1. What version WOULD this commit set produce? Writes nothing:
+  #    no tag, no GitHub Release, no changelog commit.
+  determine:
+    name: Determine Version
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      dry-run: true
+      ref: ${{ github.sha }}
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    secrets: inherit
+
+  # 2. Build, scan and push the image under that version. release-version takes
+  #    the number directly, so no git tag has to exist yet.
+  build:
+    name: Build Image
+    needs: determine
+    if: needs.determine.outputs.will-release == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      release-version: ${{ needs.determine.outputs.next-version }}
+      registry: ghcr.io
+      push: true
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
+    secrets: inherit
+
+  # 3. Only now publish the tag, the GitHub Release and the CHANGELOG.
+  #    ref is pinned to the SAME commit the determine job evaluated, so this run
+  #    cannot compute a different version than the one baked into the image.
+  publish:
+    name: Publish Release
+    needs: [determine, build]
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      ref: ${{ github.sha }}
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    secrets: inherit
+
+# Version-number policy when the build fails
+#
+#   Nothing written yet (no tag, no Release, no CHANGELOG commit)
+#     -> the number is REUSED by the next attempt. This is the normal case here:
+#        the build runs before anything is published, so a Trivy block or a failing
+#        image test simply produces no release and the next push retries the number.
+#
+#   Something already written (publish failed partway through)
+#     -> the number is BURNED and stays a version without a release. Do not delete
+#        the tag to reclaim it: the CHANGELOG commit on main would survive anyway,
+#        and reusing the number would make it mean two different things.

@@ -139,12 +139,16 @@ jobs:
           echo "=== Quality Gate PASSED ==="
 
       - name: Generate compliance report
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
           cat > compliance-report.md << 'EOF'
           # Industrial Firmware Compliance Report
 
           ## Build Information
-          - **Version**: ${{ github.ref_name }}
+          - **Version**: "$GIT_REF_NAME"
           - **Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
           - **Commit**: ${{ github.sha }}
           - **Target MCU**: ${{ inputs.target-mcu || 'STM32F407VG' }}
@@ -184,9 +188,13 @@ jobs:
 
     steps:
       - name: Approval confirmed
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
           echo "Release approved for production"
-          echo "Version: ${{ github.ref_name }}"
+          echo "Version: $GIT_REF_NAME"
 
   # Notify on completion
   notify:
@@ -197,8 +205,12 @@ jobs:
 
     steps:
       - name: Send notification
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
         run: |
-          VERSION="${{ github.ref_name }}"
+          VERSION="$GIT_REF_NAME"
           BUILD_STATUS="${{ needs.build.result }}"
           QG_STATUS="${{ needs.quality-gate.result }}"
 

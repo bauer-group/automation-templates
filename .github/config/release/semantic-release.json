@@ -28,24 +28,6 @@
         {"type": "ci", "release": false}
       ]
     }],
-    ["@semantic-release/release-notes-generator", {
-      "preset": "conventionalcommits",
-      "presetConfig": {
-        "types": [
-          {"type": "feat", "section": "🚀 Features"},
-          {"type": "fix", "section": "🐛 Bug Fixes"},
-          {"type": "perf", "section": "⚡ Performance"},
-          {"type": "revert", "section": "⏪ Reverts"},
-          {"type": "refactor", "section": "♻️ Code Refactoring"},
-          {"type": "style", "section": "💄 UI/UX Improvements"},
-          {"type": "chore", "section": "🔧 Maintenance"},
-          {"type": "docs", "section": "📚 Documentation", "hidden": true},
-          {"type": "test", "section": "🧪 Tests", "hidden": true},
-          {"type": "build", "section": "🔨 Build", "hidden": true},
-          {"type": "ci", "section": "👷 CI", "hidden": true}
-        ]
-      }
-    }],
     ["@semantic-release/changelog", {
       "changelogFile": "CHANGELOG.MD"
     }],

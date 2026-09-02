@@ -153,7 +153,17 @@ on:
         type: boolean
         required: false
         default: false
-
+      
+      free-disk-space:
+        description: >-
+          Remove unused preinstalled toolchains from the runner before building.
+          Off by default; turn it on for images large enough that the build, the
+          `load: true` copy in the daemon and the security scan no longer fit in
+          a GitHub-hosted runner's free space. Linux runners only.
+        type: boolean
+        required: false
+        default: false
+      
       # Testing Configuration
       run-tests:
         description: 'Run tests before building'
@@ -432,37 +442,102 @@ jobs:
       platforms: ${{ steps.docker-build.outputs.platforms }}
     
     steps:
+      - name: 🔎 Validate Registry Credentials
+        if: inputs.publish-to == 'dockerhub' || inputs.publish-to == 'both'
+        shell: bash
+        env:
+          # Presence only - the secret values themselves are never referenced here.
+          HAS_DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME != '' }}
+          HAS_DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD != '' }}
+        run: |
+          # Fail early and legibly when Docker Hub is targeted without credentials.
+          # Without this the run either skips the login and fails much later at push with
+          # an opaque error, or - before the credential expressions above were inverted -
+          # logged in to docker.io using the repository GITHUB_TOKEN and returned a bare 401.
+          MISSING=""
+          [ "$HAS_DOCKER_USERNAME" = "true" ] || MISSING="$MISSING DOCKER_USERNAME"
+          [ "$HAS_DOCKER_PASSWORD" = "true" ] || MISSING="$MISSING DOCKER_PASSWORD"
+
+          if [ -n "$MISSING" ]; then
+            echo "::error::publish-to is '${{ inputs.publish-to }}' but these secrets are not set:$MISSING. Pass them from the caller (secrets: inherit, or an explicit secrets: block), or use publish-to: 'ghcr'."
+            exit 1
+          fi
+          echo "✅ Docker Hub credentials present"
+
       - name: 📥 Checkout Repository
         uses: actions/checkout@v7
         with:
           fetch-depth: ${{ inputs.checkout-fetch-depth }}
           lfs: ${{ inputs.checkout-lfs }}
 
+      # Runs BEFORE the build, which is the whole point: a caller cannot inject a
+      # step into this job, and `test-command` is not a substitute - it executes in
+      # Run Post-Build Tests, long after the disk has filled up. A repository that
+      # had put a cleanup there was silently running none.
+      #
+      # A curated list rather than a caller-supplied command: every consumer that
+      # needs this needs it for the same reason and would otherwise write the same
+      # five `rm -rf` lines, each with its own idea of what is safe to remove.
+      - name: 🧹 Free Disk Space
+        if: inputs.free-disk-space && runner.os == 'Linux'
+        shell: bash
+        run: |
+          BEFORE=$(df --output=avail -BM / | tail -1 | tr -dc '0-9')
+          echo "Before: $(df -h / | tail -1)"
+
+          # Each removed with `|| true`: a runner image that drops one of these
+          # must not fail a build over its absence.
+          #
+          # Note the CodeQL bundle rather than /opt/hostedtoolcache wholesale. It is
+          # the single largest item and is never used inside a build job, while the
+          # rest of the tool cache holds the Python, Node and Go versions a setup-*
+          # step later in the same job may expect to find.
+          #
+          # /usr/local/lib/node_modules is deliberately NOT on this list. npm itself
+          # lives there - the runner installs Node with `n` into /usr/local, so
+          # /usr/local/bin/npm is a symlink into that directory - and Run Pre-Build
+          # Tests below calls `npm test` for any repository that has a package.json.
+          # Removing it leaves a dangling symlink and fails the build it was meant
+          # to rescue, for well under a gigabyte.
+          sudo rm -rf \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /usr/local/.ghcup \
+            /usr/share/swift \
+            /usr/local/share/powershell \
+            /opt/ghc || true
+
+          AFTER=$(df --output=avail -BM / | tail -1 | tr -dc '0-9')
+          echo "After:  $(df -h / | tail -1)"
+          echo "🧹 Freed $(( (AFTER - BEFORE) / 1024 )) GB - ${AFTER} MB now available"
+
+          # Logged whether or not it mattered. The failure this input exists for
+          # surfaces minutes later as a scanner error, and without a number in the
+          # log there is no way to tell a build that was tight from one with room.
       - name: 🧪 Run Pre-Build Tests
         if: inputs.run-tests
         shell: bash
         working-directory: ${{ inputs.working-directory }}
         run: |
           echo "🧪 Running pre-build tests..."
-          
-          # Check if custom test command provided
-          if [ -n "${{ inputs.test-command }}" ]; then
-            # Replace placeholder with actual image tag
-            TEST_CMD="${{ inputs.test-command }}"
-            eval "$TEST_CMD"
+
+          # `test-command` is an IMAGE test - its default is `docker run --rm $IMAGE_TAG test`
+          # and the post-build step substitutes $IMAGE_TAG with the built image URL. No image
+          # exists yet at this point, so running it here expanded $IMAGE_TAG to nothing and
+          # executed `docker run --rm test`, which fails and, under `shell: bash` (-e), killed
+          # every build with run-tests enabled before it started. This step therefore runs the
+          # source-level defaults only; the custom command belongs to Run Post-Build Tests.
+          if [ -f "package.json" ]; then
+            npm test
+          elif [ -f "requirements.txt" ]; then
+            python -m pytest
+          elif [ -f "go.mod" ]; then
+            go test ./...
+          elif [ -f "Cargo.toml" ]; then
+            cargo test
           else
-            # Default test commands based on file existence
-            if [ -f "package.json" ]; then
-              npm test
-            elif [ -f "requirements.txt" ]; then
-              python -m pytest
-            elif [ -f "go.mod" ]; then
-              go test ./...
-            elif [ -f "Cargo.toml" ]; then
-              cargo test
-            else
-              echo "No test framework detected, skipping tests"
-            fi
+            echo "No test framework detected, skipping pre-build tests"
           fi
       
       - name: 🐳 Build Docker Image
@@ -478,9 +553,18 @@ jobs:
           platforms: ${{ inputs.enable-matrix && matrix.platform || inputs.platforms }}
           multi-platform: ${{ inputs.enable-matrix && 'false' || inputs.multi-platform }}
           # Primary registry: GHCR (if publish-to is 'ghcr' or 'both') or Docker Hub (if publish-to is 'dockerhub')
+          #
+          # The credential expressions are deliberately keyed on `!= 'dockerhub'` rather than
+          # `== 'dockerhub'`. In `A && B || C`, an unset secret is the empty string, so the
+          # previous `publish-to == 'dockerhub' && secrets.DOCKER_PASSWORD || secrets.GITHUB_TOKEN`
+          # fell through to GITHUB_TOKEN whenever DOCKER_PASSWORD was absent - and since
+          # `registry` had already resolved to docker.io, that shipped the repository's
+          # GITHUB_TOKEN to Docker Hub as a login password. Inverting the test makes the
+          # GHCR branch the one that carries GITHUB_TOKEN, so the Docker Hub branch can only
+          # ever yield DOCKER_PASSWORD - empty at worst, never a GitHub credential.
           registry: ${{ inputs.publish-to == 'dockerhub' && 'docker.io' || inputs.registry }}
-          registry-username: ${{ inputs.publish-to == 'dockerhub' && secrets.DOCKER_USERNAME || github.actor }}
-          registry-password: ${{ inputs.publish-to == 'dockerhub' && secrets.DOCKER_PASSWORD || secrets.GITHUB_TOKEN }}
+          registry-username: ${{ inputs.publish-to != 'dockerhub' && github.actor || secrets.DOCKER_USERNAME }}
+          registry-password: ${{ inputs.publish-to != 'dockerhub' && secrets.GITHUB_TOKEN || secrets.DOCKER_PASSWORD }}
           # Secondary registry: Docker Hub (if publish-to is 'both')
           secondary-registry: ${{ inputs.publish-to == 'both' && 'docker.io' || inputs.secondary-registry }}
           secondary-registry-username: ${{ secrets.DOCKER_USERNAME }}

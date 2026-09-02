@@ -207,7 +207,7 @@ runs:
     # Setup Environment
     # =========================================================================
     - name: Setup .NET SDK
-      uses: actions/setup-dotnet@v5
+      uses: actions/setup-dotnet@v6
       with:
         dotnet-version: ${{ inputs.dotnet-version }}
         cache: ${{ inputs.cache-nuget-lockfile == 'true' }}
@@ -475,6 +475,10 @@ runs:
       if: inputs.run-tests == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        # Caller-controlled value: passed through the environment instead of
+        # being interpolated into the script body.
+        COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
       run: |
         echo "Looking for test projects..."
 
@@ -545,26 +549,74 @@ runs:
 
         # Extract coverage percentage if available
         COVERAGE="N/A"
+        THRESHOLD="${COVERAGE_THRESHOLD}"
+        COVERAGE_GATE_FAILED="false"
+
         if [ "${{ inputs.collect-coverage }}" = "true" ]; then
           COVERAGE_FILE=$(find TestResults -name "coverage.cobertura.xml" 2>/dev/null | head -1)
           if [ -n "$COVERAGE_FILE" ] && [ -f "$COVERAGE_FILE" ]; then
-            COVERAGE=$(grep -oP 'line-rate="\K[^"]+' "$COVERAGE_FILE" 2>/dev/null | head -1 || echo "0")
-            COVERAGE=$(awk "BEGIN {printf \"%.2f\", $COVERAGE * 100}")
-            echo "Code coverage: ${COVERAGE}%"
-
-            # Check threshold
-            THRESHOLD="${{ inputs.coverage-threshold }}"
-            if [ "$THRESHOLD" != "0" ] && [ -n "$THRESHOLD" ]; then
-              if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
-                echo "Coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
-              fi
+            # sed instead of `grep -oP`: BSD grep on macOS runners has no -P, so the
+            # old extraction silently yielded an empty match there and reported 0.00%.
+            # The pattern is anchored on the root <coverage> element, so the overall
+            # line-rate is read rather than the rate of some individual class.
+            COVERAGE_RAW=$(sed -n 's/.*<coverage[^>]*line-rate="\([^"]*\)".*/\1/p' "$COVERAGE_FILE" | head -1)
+            if [ -n "$COVERAGE_RAW" ]; then
+              COVERAGE=$(awk -v rate="$COVERAGE_RAW" 'BEGIN { printf "%.2f", rate * 100 }')
+              echo "Code coverage: ${COVERAGE}%"
+            else
+              echo "Could not read line-rate from $COVERAGE_FILE - coverage is unknown"
             fi
+          else
+            echo "No coverage.cobertura.xml found under TestResults - coverage is unknown"
           fi
         fi
         echo "coverage=$COVERAGE" >> "$GITHUB_OUTPUT"
 
+        # Coverage threshold gate.
+        # The shortfall used to be echoed only, so a build below its configured
+        # minimum still reported success and shipped. It now fails the step. It
+        # fails just as hard when a threshold is configured but no coverage number
+        # could be produced (collector missing, report absent, unparsable value) -
+        # an unmeasured run must never read as a passing run.
+        # 0, 0.0 or an empty value keep the gate disabled, exactly as before.
+        THRESHOLD_STATE="disabled"
+        if [ -n "$THRESHOLD" ]; then
+          # set +e / set -e so $? is the awk status, not the status of a negation
+          set +e
+          awk -v thr="$THRESHOLD" 'BEGIN {
+            if (thr !~ /^[[:space:]]*[0-9]+([.][0-9]+)?[[:space:]]*$/) exit 2
+            exit (thr + 0 > 0) ? 0 : 1
+          }'
+          THRESHOLD_RC=$?
+          set -e
+          case "$THRESHOLD_RC" in
+            0) THRESHOLD_STATE="active" ;;
+            1) THRESHOLD_STATE="disabled" ;;
+            *) THRESHOLD_STATE="invalid" ;;
+          esac
+        fi
+
+        if [ "$THRESHOLD_STATE" = "invalid" ]; then
+          echo "::error title=Invalid Coverage Threshold::coverage-threshold '${THRESHOLD}' is not a number. Refusing to report the coverage gate as satisfied."
+          COVERAGE_GATE_FAILED="true"
+        elif [ "$THRESHOLD_STATE" = "active" ]; then
+          if [ "$COVERAGE" = "N/A" ]; then
+            echo "::error title=Coverage Unavailable::coverage-threshold is ${THRESHOLD}% but no coverage result was produced. Enable collect-coverage and make sure the test run writes coverage.cobertura.xml (e.g. reference coverlet.collector)."
+            COVERAGE_GATE_FAILED="true"
+          elif awk -v cov="$COVERAGE" -v thr="$THRESHOLD" 'BEGIN { exit !(cov + 0 < thr + 0) }'; then
+            echo "::error title=Coverage Below Threshold::Coverage ${COVERAGE}% is below the required threshold ${THRESHOLD}%"
+            COVERAGE_GATE_FAILED="true"
+          else
+            echo "Coverage ${COVERAGE}% meets the ${THRESHOLD}% threshold"
+          fi
+        fi
+
         # Exit with error after coverage is collected so the job is marked as failed
         if [ "$TEST_RESULT" = "failed" ]; then
+          exit 1
+        fi
+
+        if [ "$COVERAGE_GATE_FAILED" = "true" ]; then
           exit 1
         fi
 

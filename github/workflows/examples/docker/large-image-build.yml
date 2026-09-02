@@ -1,0 +1,98 @@
+name: Docker Large Image Build Example
+# Example: an image too large for a GitHub-hosted runner's default free space
+#
+# Publishes to: GitHub Container Registry (ghcr.io)
+# Authentication: Automatic via GITHUB_TOKEN
+#
+# This example demonstrates:
+# - free-disk-space: reclaiming preinstalled toolchains before the build starts
+# - cache-mode 'min': keeping the cache export from consuming what is left
+# - why the two belong together once an image passes roughly a gigabyte
+#
+# ---------------------------------------------------------------------------
+# The failure this prevents never mentions disk space
+# ---------------------------------------------------------------------------
+#
+# A GitHub-hosted runner has roughly 4 GB free once its preinstalled toolchains
+# are accounted for. A large image needs that space several times over:
+#
+#   - BuildKit's layers for every stage
+#   - the `load: true` copy kept in the daemon so the image can be scanned
+#   - the cache export (with the default 'max', every intermediate layer of
+#     every stage, into two scopes)
+#   - and with security-scan on, the tarball Trivy has Docker export before it
+#     analyses anything - a second full-size copy of the image
+#
+# When it runs out, the scan is what reports it:
+#
+#   FATAL failed to analyze layer ... unable to export the image:
+#         write /var/lib/docker/tmp/docker-export-...: no space left on device
+#
+# That arrives minutes and one step away from the cause and reads like a scanner
+# fault. Turning the scanner off does not help - the expensive step is the local
+# build, which runs regardless. Run out a little earlier and the runner process
+# itself dies, with no job log to look at at all.
+#
+# Candidates: ML images carrying model weights, CUDA base images, multi-stage
+# builds with a large toolchain stage - anything much past 1.5 GB.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  docker-build:
+    name: Build Large Image
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      # Publish to GHCR
+      publish-to: 'ghcr'
+      ghcr-image-name: 'large-app'
+
+      # --- Lever 1: reclaim the runner's unused toolchains -------------------
+      #
+      # Removes what a Docker build never touches: the CodeQL bundle, the
+      # Android SDK, .NET, Haskell, Swift and PowerShell. Well over 10 GB on a
+      # current ubuntu-24.04 image, most of it the Android SDK and CodeQL.
+      #
+      # Runs after checkout and before the build - the only place it can, since
+      # a caller cannot inject a step into that job. Linux runners only; it
+      # skips itself elsewhere. It logs `df -h /` before and after, so the
+      # number is in the log whether or not it turned out to be the problem.
+      #
+      # It deliberately leaves the rest of /opt/hostedtoolcache and all of
+      # /usr/local/lib/node_modules alone, so `run-tests` below still finds the
+      # Python, Node and Go it expects - npm in particular lives in the latter.
+      free-disk-space: true
+
+      # --- Lever 2: stop the cache export from refilling the disk ------------
+      #
+      # The default 'max' exports every intermediate layer of every build stage
+      # into two separate scopes. On a multi-stage build that is regularly
+      # larger than the image itself. 'min' exports the final stage only:
+      # smaller cache, slightly colder rebuilds.
+      cache-mode: 'min'
+
+      # The scan is usually where the problem surfaces, because Trivy has
+      # Docker export the whole image to a tarball before analysing it.
+      security-scan: true
+      security-scanner: 'trivy'
+      security-fail-on: 'HIGH'
+
+      # Single platform keeps one image in the daemon rather than several.
+      # Multi-arch multiplies every figure above - see multi-platform-build.yml.
+      platforms: 'linux/amd64'
+
+      # Tagging and push
+      auto-tags: true
+      latest-tag: true
+      push: ${{ github.event_name != 'pull_request' }}
+
+      # Still works with the cleanup enabled - that is the point of the two
+      # exclusions noted above.
+      run-tests: true
+
+    secrets: inherit

@@ -218,7 +218,7 @@ runs:
     - name: 🛡️ Trivy Vulnerability Scan
       id: trivy-vuln-scan
       if: inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities'
-      uses: aquasecurity/trivy-action@v0.35.0
+      uses: aquasecurity/trivy-action@v0.36.0
       with:
         scan-type: 'fs'
         scan-ref: '.'
@@ -535,11 +535,25 @@ runs:
     - name: 🚨 Fail on Security Issues
       # 'unknown' fails too: a scan that did not run is not a pass. Without this,
       # a broken scanner would be indistinguishable from a clean repository.
-      if: inputs.fail-on-findings == 'true' && (steps.process-gitleaks.outputs.secrets-found == 'true' || steps.process-gitleaks.outputs.secrets-found == 'unknown' || steps.vulnerability-scan.outputs.vulnerabilities-found == 'true')
+      #
+      # GitGuardian is part of this condition. The gitguardian-scan step is deliberately
+      # invoked with fail-on-findings: 'false' so that this gate decides - but it was not
+      # consulted here, so with scan-engine 'gitguardian' (or 'both' with a clean gitleaks
+      # run) a GitGuardian secret finding never blocked anything. The action's own
+      # secrets-found output already combined both scanners, so a caller reading the output
+      # saw the finding that this gate ignored. The count test mirrors that output exactly.
+      if: >-
+        inputs.fail-on-findings == 'true' && (
+          steps.process-gitleaks.outputs.secrets-found == 'true' ||
+          steps.process-gitleaks.outputs.secrets-found == 'unknown' ||
+          steps.vulnerability-scan.outputs.vulnerabilities-found == 'true' ||
+          (steps.gitguardian-scan.outputs.secrets-found != '' && steps.gitguardian-scan.outputs.secrets-found != '0')
+        )
       shell: bash
       run: |
         echo "❌ Security scan failed due to findings"
-        echo "Secrets found: ${{ steps.process-gitleaks.outputs.secrets-found }}"
+        echo "Secrets found (gitleaks): ${{ steps.process-gitleaks.outputs.secrets-found }}"
+        echo "Secrets found (gitguardian): ${{ steps.gitguardian-scan.outputs.secrets-found || 'n/a' }}"
         echo "Vulnerabilities found: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found }}"
         echo ""
         echo "Review the security reports and address the issues before proceeding."

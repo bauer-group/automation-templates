@@ -95,20 +95,26 @@ jobs:
 
       - name: 📄 Commit and Push Changes
         if: steps.generate.outputs.changes_detected == 'true' && github.event_name != 'pull_request'
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
+          GIT_REF: ${{ github.ref }}
+          INPUT_CUSTOM_VERSION: ${{ inputs.custom-version }}
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "📄 README Bot"
           
           COMMIT_MSG="docs: update README.MD"
           
-          if [ "${{ github.event_name }}" = "create" ] && [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            COMMIT_MSG="$COMMIT_MSG for release ${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "create" ] && [[ "$GIT_REF" == refs/tags/* ]]; then
+            COMMIT_MSG="$COMMIT_MSG for release $GIT_REF_NAME"
           elif [ "${{ github.event_name }}" = "schedule" ]; then
             COMMIT_MSG="$COMMIT_MSG (scheduled update)"
           elif [ "${{ inputs.force-update }}" = "true" ]; then
             COMMIT_MSG="$COMMIT_MSG (forced update)"
-          elif [ -n "${{ inputs.custom-version }}" ]; then
-            COMMIT_MSG="$COMMIT_MSG (version ${{ inputs.custom-version }})"
+          elif [ -n "$INPUT_CUSTOM_VERSION" ]; then
+            COMMIT_MSG="$COMMIT_MSG (version ${INPUT_CUSTOM_VERSION})"
           fi
           
           COMMIT_MSG="$COMMIT_MSG [automated]"
@@ -178,6 +184,11 @@ jobs:
           fi
 
       - name: 📊 Documentation Summary
+        env:
+          # A git ref is attacker-chosen: branch names may contain $ ` ; | & ( ).
+          # It therefore travels through the environment, never the script body.
+          GIT_REF_NAME: ${{ github.ref_name }}
+          GIT_REF: ${{ github.ref }}
         run: |
           echo "### 📄 Documentation Validation Summary" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -197,11 +208,11 @@ jobs:
             echo "- Current repository metadata" >> "$GITHUB_STEP_SUMMARY"
             echo "- Modular workflow architecture documentation" >> "$GITHUB_STEP_SUMMARY"
             
-            if [ "${{ github.event_name }}" = "create" ] && [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            if [ "${{ github.event_name }}" = "create" ] && [[ "$GIT_REF" == refs/tags/* ]]; then
               echo "" >> "$GITHUB_STEP_SUMMARY"
               echo "🎉 **Release Details:**" >> "$GITHUB_STEP_SUMMARY"
-              echo "- Version: ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
-              echo "- Tag: ${{ github.ref }}" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Version: $GIT_REF_NAME" >> "$GITHUB_STEP_SUMMARY"
+              echo "- Tag: $GIT_REF" >> "$GITHUB_STEP_SUMMARY"
               echo "- Triggered by: Tag creation" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
