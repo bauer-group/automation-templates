@@ -62,9 +62,9 @@ on:
         required: false
       copilot-token:
         description: >-
-          Token with Copilot access, passed to actions/ai-inference. Falls back to the
-          `token` secret and then to github.token, neither of which can normally reach the
-          Copilot provider - so without this the inference step fails and the run silently
+          PAT with Copilot access, exported to the Copilot CLI as COPILOT_GITHUB_TOKEN.
+          github.token cannot authenticate against the Copilot provider regardless of the
+          models: read permission, so without this the inference step fails and the run
           degrades to the non-AI fallback summary.
         required: false
 
@@ -294,6 +294,20 @@ jobs:
           # Set output
           echo "prompt-file=/tmp/prompt.txt" >> "$GITHUB_OUTPUT"
       
+      # actions/ai-inference v3 does not call an API itself - it shells out to the GitHub
+      # Copilot CLI, which is NOT pre-installed on hosted runners. Both of these steps are
+      # required by the action's documented usage; without them the inference step fails
+      # and the job falls back to the template summary.
+      - name: 🟢 Setup Node (for Copilot CLI)
+        if: ${{ !secrets.ai-api-key }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: 🤖 Install Copilot CLI
+        if: ${{ !secrets.ai-api-key }}
+        run: npm install -g @github/copilot
+
       # Runs unless an external OpenAI key is configured, in which case the step below
       # handles it. The previous condition - `!custom-prompt || !contains(model, 'gpt')` -
       # selected on the MODEL NAME, which never described the provider: with the default
@@ -308,10 +322,11 @@ jobs:
         with:
           prompt-file: ${{ steps.prompt.outputs.prompt-file }}
           model: ${{ inputs.model }}
-          # actions/ai-inference v3 shells out to the Copilot CLI, and github.token cannot
-          # authenticate against that provider. Without a Copilot-capable token here the
-          # step fails and the job quietly falls back to the template summary.
-          token: ${{ secrets.copilot-token || secrets.token || github.token }}
+        env:
+          # The CLI authenticates from this environment variable - NOT from the action's
+          # `token` input, which is why models: read on github.token is not enough. The
+          # action's own documented example passes a PAT here for exactly this reason.
+          COPILOT_GITHUB_TOKEN: ${{ secrets.copilot-token || secrets.token || github.token }}
       
       # Complementary to the step above: exactly one provider runs per job.
       - name: 🧠 Run AI Inference (OpenAI)
