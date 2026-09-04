@@ -103,6 +103,15 @@ This composite action provides comprehensive .NET library build and packaging ca
 |-------|-------------|---------|
 | `extra-msbuild-properties` | Additional MSBuild properties appended to `dotnet restore/build/pack` (e.g., `-p:KiotaSkip=true -p:PackAsTool=false`). Use when the project needs flags not exposed by the standard inputs. | `''` |
 
+> **Package validation baselines belong here, not in `Directory.Build.props`.** The SDK
+> acquires the baseline through a restore-only `PackageDownload` item, so a props-file
+> setting makes *every* restore of the repository - including jobs that only consume the
+> projects and never pack - contact the feed the baseline lives on. Jobs without that
+> credential fail with `NU1301` / `401 Unauthorized`. Pass
+> `-p:PackageValidationBaselineVersion=<version>` through this input instead, which scopes
+> it to the job that configures the private feed. See
+> [Package Validation Baselines](../../../docs/workflows/dotnet-publish-library.md#package-validation-baselines).
+
 ## Outputs
 
 | Output | Description |
