@@ -15,6 +15,7 @@ on:
       - '.github/actions/**'
       - '.github/actionlint.yaml'
       - 'github/workflows/examples/**'
+      - 'tools/workflow-audit/**'
   pull_request:
     branches: [main]
     paths:
@@ -22,6 +23,7 @@ on:
       - '.github/actions/**'
       - '.github/actionlint.yaml'
       - 'github/workflows/examples/**'
+      - 'tools/workflow-audit/**'
   workflow_dispatch:
 
 permissions:
@@ -111,3 +113,36 @@ jobs:
       - name: "🧪 semantic-release: a consumer's exec hooks survive the reservation"
         shell: bash
         run: bash .github/actions/semantic-release/tests/merge-exec-hooks.test.sh
+
+  workflow-audit:
+    name: "🔎 Workflow Audit"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v7
+
+      - name: "🐍 Setup Python"
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: "📦 Install Audit Dependencies"
+        shell: bash
+        run: pip install -r tools/workflow-audit/requirements.txt
+
+      # The checker before the checks: a silently broken audit reports "clean",
+      # which is the failure mode the audit itself exists to prevent.
+      - name: "🧪 workflow-audit: self-test"
+        shell: bash
+        run: python tools/workflow-audit/tests/test_workflow_audit.py
+
+      # Static checks for script injection and for a step reading a variable it was
+      # never given. The tool was written, tested and then never wired to anything,
+      # so it watched dotnet-msi install every WiX extension and pass none of them
+      # to `wix build`. Gating from here - any finding exits 1.
+      - name: "🔍 workflow-audit: workflows, actions and shipped examples"
+        shell: bash
+        run: python tools/workflow-audit/workflow_audit.py

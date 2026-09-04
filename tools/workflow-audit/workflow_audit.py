@@ -351,9 +351,18 @@ def check_env_decls(root: str, files: Sequence[str]) -> List[Finding]:
     # `\$FOO` is an escaped literal (e.g. the search half of ${VAR//\$FOO/...}),
     # not a variable read, so require the $ not be backslash-escaped.
     used = re.compile(r"(?<!\\)\$\{?([A-Z][A-Z0-9_]{2,})\}?")
-    # ${FOO:-}, ${FOO-x}, ${FOO:=x}, ${FOO:?x}: the author has said in the code
-    # that the name may be unset, so an absent declaration is deliberate.
-    defaulted = re.compile(r"(?<!\\)\$\{([A-Z][A-Z0-9_]{2,}):?[-=?+]")
+    # ${FOO:-x}, ${FOO:=x}, ${FOO:?x}, ${FOO:+x}: the author has said in the
+    # code what happens when the name is unset, so an absent declaration is
+    # deliberate.
+    #
+    # ${FOO:-} is NOT in that set, and used to be. An empty fallback supplies
+    # no value - it only silences `set -u`, so a name that never arrives
+    # expands to nothing and the command runs on quietly without it. That is
+    # how EXT_ARGS was lost in dotnet-msi: assembled in one step, written to
+    # that step's output, then read as ${EXT_ARGS:-} by a step that never
+    # declared it. Every WiX extension was installed and none reached
+    # `wix build`, and this check stayed silent through all of it.
+    defaulted = re.compile(r"(?<!\\)\$\{([A-Z][A-Z0-9_]{2,})(?::?[=?+]|:?-(?=[^}]))")
     comment = re.compile(r"^\s*#.*$", re.M)
     # written to $GITHUB_ENV, so available to every LATER step in the same file
     to_github_env = re.compile(

@@ -55,6 +55,13 @@ Scanned by default: `.github/workflows/`, `.github/actions/*/action.yml` and
 | `dispatch` | free-text `workflow_dispatch` inputs pasted into a `run:` body |
 | `second-hop` | a step output built from untrusted text, re-pasted into a later `run:` body |
 | `env-decls` | a `run:` body using `$VAR` that neither its step, its job, nor the workflow declares |
+
+`env-decls` treats `${VAR:-fallback}`, `${VAR:=x}`, `${VAR:?x}` and `${VAR:+x}`
+as deliberate - the code says what happens when the name is unset. It does
+**not** exempt `${VAR:-}`: an empty fallback supplies no value, it only
+silences `set -u`, so a variable that never arrives expands to nothing and
+the command runs on without it. That exemption is how `dotnet-msi` installed
+every WiX extension and passed none of them to `wix build`.
 | `dup-env` | a step carrying two `env:` keys — GitHub rejects the workflow, PyYAML hides it |
 
 ### On the three trust levels
