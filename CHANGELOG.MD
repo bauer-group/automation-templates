@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.0.1](https://github.com/bauer-group/automation-templates/compare/v11.0.0...v11.0.1) (2026-09-04)
+
+### 🐛 Bug Fixes
+
+* **msi:** pass wix-extensions through to wix build ([babd02d](https://github.com/bauer-group/automation-templates/commit/babd02d0efdcaf411a9a2f10d77cb6ef0412575b))
+
 ## [11.0.0](https://github.com/bauer-group/automation-templates/compare/v10.3.0...v11.0.0) (2026-09-02)
 
 ### ⚠ BREAKING CHANGES
