@@ -162,6 +162,11 @@ inputs:
     required: false
     default: ''
 
+  pack-msbuild-properties:
+    description: 'Additional MSBuild properties appended to `dotnet pack` ONLY — not to restore or build (e.g., "-p:PackageValidationBaselineVersion=3.0.0"). Use for properties that must not reach restore, typically because they pull a package from an authenticated feed that other jobs restoring the same projects cannot reach.'
+    required: false
+    default: ''
+
 outputs:
   version:
     description: 'Package version'
@@ -616,6 +621,21 @@ runs:
         EXTRA_PROPS="${{ inputs.extra-msbuild-properties }}"
         if [ -n "$EXTRA_PROPS" ]; then
           PACK_ARGS="$PACK_ARGS $EXTRA_PROPS"
+        fi
+
+        # Pack-only properties. Deliberately NOT applied to restore or build.
+        #
+        # The case this exists for is PackageValidationBaselineVersion. Setting
+        # it in Directory.Build.props makes every packable project download its
+        # baseline package AT RESTORE TIME, so any job that merely restores the
+        # repository — a consumer app publish, an organisation-level dependency
+        # submission — needs the credential for the feed that baseline lives on.
+        # Jobs outside the repository cannot be given one, and they fail with
+        # NU1301 / 401. Package validation is a pack concern; this input lets it
+        # stay one.
+        PACK_ONLY_PROPS="${{ inputs.pack-msbuild-properties }}"
+        if [ -n "$PACK_ONLY_PROPS" ]; then
+          PACK_ARGS="$PACK_ARGS $PACK_ONLY_PROPS"
         fi
 
         echo "Pack command: dotnet pack ${{ inputs.project-path }} $PACK_ARGS"

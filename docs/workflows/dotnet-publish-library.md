@@ -274,6 +274,30 @@ For projects that use build-time codegen (Kiota / OpenAPI / T4 / source generato
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `extra-msbuild-properties` | Additional MSBuild properties appended to `dotnet restore/build/pack` (e.g., `-p:KiotaSkip=true -p:PackAsTool=false`). Use when the project needs flags the standard inputs do not expose. | `''` |
+| `pack-msbuild-properties` | Additional MSBuild properties appended to `dotnet pack` **only** — not to restore or build (e.g., `-p:PackageValidationBaselineVersion=3.0.0`). | `''` |
+
+### When to use `pack-msbuild-properties` instead of `extra-msbuild-properties`
+
+Use it for a property that must **not** reach `restore`.
+
+The case it was added for is `PackageValidationBaselineVersion`. Setting that
+property in `Directory.Build.props` makes every packable project download its
+baseline package **at restore time**, not at pack time. Every job that merely
+restores the repository then needs a credential for the feed the baseline lives
+on — including jobs the repository does not own, such as an organisation-level
+dependency-submission workflow, which cannot be given one. Those fail with
+`NU1301` / `401 Unauthorized`, once per referenced project.
+
+Package validation is a packing concern. Passing the baseline here keeps it one:
+
+```yaml
+with:
+  pack-msbuild-properties: "-p:PackageValidationBaselineVersion=3.0.0"
+```
+
+The rule of thumb: if a property changes what the package **contains or is
+checked against**, it belongs here. If it changes how the code **compiles**, it
+belongs in `extra-msbuild-properties`, which reaches all three commands.
 
 ## Secrets
 

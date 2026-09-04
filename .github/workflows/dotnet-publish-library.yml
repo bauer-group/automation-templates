@@ -253,6 +253,12 @@ on:
         required: false
         default: ''
 
+      pack-msbuild-properties:
+        description: 'Additional MSBuild properties appended to `dotnet pack` ONLY — not to restore or build (e.g., "-p:PackageValidationBaselineVersion=3.0.0"). Use for properties that must not reach restore, typically because they pull a package from an authenticated feed that other jobs restoring the same projects cannot reach.'
+        type: string
+        required: false
+        default: ''
+
     secrets:
       NUGET_API_KEY:
         description: 'NuGet.org API key (fallback if Trusted Publishing not configured)'
@@ -405,6 +411,7 @@ jobs:
           cache-nuget-lockfile: ${{ inputs.cache-nuget-lockfile }}
           generate-summary: 'false'
           extra-msbuild-properties: ${{ inputs.extra-msbuild-properties }}
+          pack-msbuild-properties: ${{ inputs.pack-msbuild-properties }}
 
       - name: 📊 Upload Coverage to Codecov
         if: inputs.run-tests == true && inputs.collect-coverage == true && steps.dotnet-build.outputs.test-skipped != 'true' && env.HAS_CODECOV_TOKEN == 'true'
