@@ -441,6 +441,29 @@ categories and a security score in the **Security** tab. It is advisory only
 > GHCR** images this advisory job may report a pull failure. The build, tags, digests,
 > outputs and deploy gate are unaffected.
 
+### Single-Build Scan — close the scan→push TOCTOU (opt-in)
+
+By default the action builds twice: once locally (`load`ed and scanned) and once more to
+push. That leaves a time-of-check-to-time-of-use gap between the *scanned* artifact and the
+*pushed* one. Enable `single-build-scan` to build **once**, scan it, then `docker push` the
+**exact** scanned image — no rebuild:
+
+```yaml
+single-build-scan: true
+multi-platform: false      # single-platform only (see below)
+```
+
+- **Scope:** applies to **single-platform** builds. With `multi-platform: true` it falls
+  back to the standard two-build flow (scanning every architecture of a pushed multi-arch
+  index still needs the design tracked in the breaking PR).
+- **Mutually exclusive with provenance.** The fast path uses `docker push`, which attaches
+  no SLSA build provenance, and the image it pushes came from a `load: true` build the docker
+  exporter cannot attach attestations to at all. Since `provenance` defaults to `mode=max`,
+  the combination is **refused before the build starts** rather than dropping provenance
+  silently. Pick the property the build needs: `provenance: 'false'` keeps the scan->push
+  window closed, `single-build-scan: false` keeps provenance and accepts the second build.
+  SBOM file attestation (`attest-sbom`) works either way.
+
 ## Outputs
 
 | Output | Description |
