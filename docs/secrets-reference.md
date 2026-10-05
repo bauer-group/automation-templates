@@ -59,6 +59,8 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 
 > **Fork Docker Build** (`fork-docker-build.yml`) benötigt **kein** konfiguriertes Secret — der GHCR-Login läuft über den automatischen `GITHUB_TOKEN`.
 
+> **GitHub Packages im Docker-Build** (`docker-build.yml`) braucht **keinen** PAT: `github-token-secret-id: npm_token` reicht den eigenen `GITHUB_TOKEN` des Workflows als BuildKit-Secret in den Build — auch in Dependabot-Läufen, die keine Actions-Secrets erhalten. Siehe [Docker Build → Build Secrets](./workflows/docker-build.md#build-secrets).
+
 ### Fork-Automation & Wartung (PAT)
 
 | Secret | Workflows | Beschreibung | Einrichtung |

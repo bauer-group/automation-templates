@@ -93,8 +93,60 @@ The `publish-to` input controls where Docker images are published:
 | `DOCKER_PASSWORD` | `publish-to: 'dockerhub'` or `'both'` | Docker Hub password or access token |
 | `COSIGN_PRIVATE_KEY` | `sign-image: true` | Cosign private key for image signing |
 | `COSIGN_PASSWORD` | `sign-image: true` | Cosign key password |
+| `DOCKER_BUILD_SECRETS` | The Dockerfile mounts build secrets | BuildKit secrets, one `id=value` per line. Not needed for a GitHub Packages token - see [Build Secrets](#build-secrets) |
 
 **Note:** For GHCR, `GITHUB_TOKEN` is automatically available and used for authentication.
+
+### Build Secrets
+
+`DOCKER_BUILD_SECRETS` passes BuildKit secrets into the build, one `id=value` per
+line. The Dockerfile reads each one with `RUN --mount=type=secret,id=<id>`, which
+keeps it out of the image layers and the image history (unlike an `ARG`).
+
+#### GitHub Packages dependencies without a PAT
+
+A Dockerfile that installs dependencies from GitHub Packages (for example
+`npm.pkg.github.com`) needs a registry token during the build. Set
+`github-token-secret-id` and the workflow passes **its own** `GITHUB_TOKEN` to the
+build as a secret with that id. Callers no longer need a PAT for this:
+
+```yaml
+jobs:
+  docker:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      github-token-secret-id: npm_token
+    secrets: inherit
+```
+
+```dockerfile
+# .npmrc maps the scope and reads the token from the environment:
+#   @bauer-group:registry=https://npm.pkg.github.com
+#   //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+RUN --mount=type=secret,id=npm_token \
+    NODE_AUTH_TOKEN="$(cat /run/secrets/npm_token)" npm ci
+```
+
+- **Why not `npm_token=${{ github.token }}` in `DOCKER_BUILD_SECRETS`?** The
+  caller's `secrets:` block is evaluated in the caller, and the token it yields
+  there is refused by the registry with a 401 inside the build
+  ([#106](https://github.com/bauer-group/automation-templates/issues/106)). The
+  workflow's own token never crosses the `workflow_call` boundary.
+- **Dependabot:** runs triggered by Dependabot receive no Actions secrets, so a
+  PAT stored as one arrives empty there unless it is also stored as a Dependabot
+  secret. `GITHUB_TOKEN` is always available, so these builds need neither.
+- **Permissions:** the token carries the caller job's permissions. `packages: read`
+  is enough to install; release jobs that push to GHCR already hold
+  `packages: write`. For a private or internal package the calling repository also
+  needs read access to it (package settings → *Manage Actions access*), as for any
+  job that installs it with `GITHUB_TOKEN`.
+- **Alongside other secrets:** lines in `DOCKER_BUILD_SECRETS` are still passed;
+  the token is added as the first line. Use an id that `DOCKER_BUILD_SECRETS` does
+  not also define.
+- **Id format:** letters, digits, `_`, `.` and `-` only. Anything else fails the
+  run before checkout, because the id is written into the secret list next to the
+  token.
+- Unset (default), no token is passed and the build behaves exactly as before.
 
 ## Components
 
@@ -155,6 +207,7 @@ The Docker build action provides:
 | `docker-context` | Docker build context | `'.'` |
 | `build-target` | Docker build target stage | `''` |
 | `build-args` | Build arguments as JSON object | `'{}'` |
+| `github-token-secret-id` | Pass the workflow's own `GITHUB_TOKEN` to the build as a BuildKit secret with this id (e.g. `npm_token`), alongside `DOCKER_BUILD_SECRETS`. Replaces a PAT for GitHub Packages dependencies - see [Build Secrets](#build-secrets) | `''` |
 | `platforms` | Target platforms to build and push (comma-separated). Listing more than one produces a multi-arch manifest list | `'linux/amd64'` |
 | `multi-platform` | **Deprecated** - ignored. `platforms` alone decides what is built | `false` |
 | `checkout-fetch-depth` | Git history depth for the build checkout. `0` = full history (required for Dockerfile-version write-back and semver derivation); set `1` for a faster shallow checkout when neither is used | `0` |
@@ -557,6 +610,12 @@ The repository includes comprehensive examples in `github/workflows/examples/doc
    - Ensure `publish-to` is `'dockerhub'` or `'both'`
    - Verify `DOCKER_USERNAME` and `DOCKER_PASSWORD` are set
    - Check README file exists and is readable
+
+5. **401 from GitHub Packages inside the build** (e.g. `npm ci`)
+   - Do not pass `${{ github.token }}` through `DOCKER_BUILD_SECRETS`; set
+     `github-token-secret-id` instead (see [Build Secrets](#build-secrets))
+   - For a private or internal package, grant the repository read access under the
+     package's *Manage Actions access*
 
 ### Debug Mode
 

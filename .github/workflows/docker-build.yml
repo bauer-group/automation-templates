@@ -46,7 +46,20 @@ on:
         type: string
         required: false
         default: ''
-      
+
+      github-token-secret-id:
+        description: >-
+          If set, pass this workflow's own GITHUB_TOKEN to the build as a BuildKit secret
+          with this id (e.g. npm_token), alongside DOCKER_BUILD_SECRETS. The Dockerfile
+          reads it with RUN --mount=type=secret,id=<id>. Installs GitHub Packages
+          dependencies without a PAT, also in Dependabot runs, which get no Actions
+          secrets. The token carries the caller job's permissions: packages: read is
+          enough to install; release jobs that push to GHCR already hold packages: write.
+          Letters, digits, '_', '.' and '-' only. Empty (default) passes no token.
+        type: string
+        required: false
+        default: ''
+
       # Platform Configuration
       platforms:
         description: 'Target platforms to build and push (comma-separated, e.g. "linux/amd64,linux/arm64"). More than one platform produces a multi-arch manifest list; QEMU is registered automatically for non-native architectures.'
@@ -347,7 +360,7 @@ on:
         required: false
       
       DOCKER_BUILD_SECRETS:
-        description: 'Docker build secrets as JSON'
+        description: 'BuildKit secrets for the build, one id=value per line (e.g. api_key=...). For a GitHub Packages token use the github-token-secret-id input instead of a PAT.'
         required: false
       
     
@@ -458,6 +471,29 @@ jobs:
           fi
           echo "✅ Docker Hub credentials present"
 
+      # The id is spliced into the `id=value` lines handed to docker/build-push-action,
+      # which splits each line at its first '=' and passes `id=<id>,src=<file>` to
+      # buildx. A newline would start a secret line of the caller's choosing, an '='
+      # would move the split, a ',' would add buildx options - so the id is held to a
+      # plain name before Build Docker Image composes anything from it. Read through
+      # env, never pasted into the script.
+      - name: 🔎 Validate GitHub Token Secret ID
+        id: validate-token-secret-id
+        if: inputs.github-token-secret-id != ''
+        shell: bash
+        env:
+          # C collation, so [A-Za-z] means ASCII letters whatever the runner's locale.
+          LC_ALL: C
+          SECRET_ID: ${{ inputs.github-token-secret-id }}
+        run: |
+          ID_PATTERN='^[A-Za-z0-9_.-]+$'
+          if [[ ! "$SECRET_ID" =~ $ID_PATTERN ]]; then
+            # The rejected value is not echoed: it may hold the very newline this rejects.
+            echo "::error::github-token-secret-id may contain only letters, digits, '_', '.' and '-' (e.g. npm_token). It becomes a BuildKit secret id, read with RUN --mount=type=secret,id=<id>."
+            exit 1
+          fi
+          echo "✅ GITHUB_TOKEN will be passed to the build as secret '$SECRET_ID'"
+
       - name: 📥 Checkout Repository
         uses: actions/checkout@v7
         with:
@@ -542,7 +578,25 @@ jobs:
           dockerfile-path: ${{ inputs.dockerfile-path }}
           docker-context: ${{ inputs.docker-context }}
           build-args: ${{ inputs.build-args }}
-          build-secrets: ${{ secrets.DOCKER_BUILD_SECRETS }}
+          # With github-token-secret-id unset this is DOCKER_BUILD_SECRETS, exactly as
+          # before. With it set, this job's own GITHUB_TOKEN becomes the first line,
+          # `<id>=<token>`, followed by the caller's lines when there are any.
+          #
+          # The token has to come from here. A caller's `secrets:` block is evaluated in
+          # the caller, and the `github.token` it yields there was refused by
+          # npm.pkg.github.com with a 401 inside the build (issue #106). This job holds
+          # its own token - the one the GHCR login below uses - and hands it over
+          # without it ever crossing the workflow_call boundary.
+          #
+          # The separating newline is only added when DOCKER_BUILD_SECRETS has content,
+          # so an empty one adds no line at all; fromJSON is how an expression spells a
+          # newline. The token is never written to a step output or a script, and the
+          # runner masks it in the log like any other secret.
+          build-secrets: >-
+            ${{ inputs.github-token-secret-id != '' &&
+            format('{0}={1}{2}{3}', inputs.github-token-secret-id, secrets.GITHUB_TOKEN,
+            secrets.DOCKER_BUILD_SECRETS != '' && fromJSON('"\n"') || '', secrets.DOCKER_BUILD_SECRETS) ||
+            secrets.DOCKER_BUILD_SECRETS }}
           target: ${{ inputs.build-target }}
           platforms: ${{ inputs.enable-matrix && matrix.platform || inputs.platforms }}
           multi-platform: ${{ inputs.enable-matrix && 'false' || inputs.multi-platform }}
