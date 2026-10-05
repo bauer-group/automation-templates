@@ -53,9 +53,13 @@ on:
           with this id (e.g. npm_token), alongside DOCKER_BUILD_SECRETS. The Dockerfile
           reads it with RUN --mount=type=secret,id=<id>. Installs GitHub Packages
           dependencies without a PAT, also in Dependabot runs, which get no Actions
-          secrets. The token carries the caller job's permissions: packages: read is
-          enough to install; release jobs that push to GHCR already hold packages: write.
-          Letters, digits, '_', '.' and '-' only. Empty (default) passes no token.
+          secrets. The token is not read-only: it holds this workflow's permissions
+          (contents, packages, security-events and attestations: write), which every
+          caller must grant, and every process in a RUN that mounts it can read it,
+          dependency install scripts included. Mount it only on the install RUN, use
+          npm ci --ignore-scripts where possible, and never set -x or echo in that RUN:
+          the build record that verbose-build-summary uploads is not masked. Letters,
+          digits, '_', '.' and '-' only. Empty (default) passes no token.
         type: string
         required: false
         default: ''
@@ -591,7 +595,10 @@ jobs:
           # The separating newline is only added when DOCKER_BUILD_SECRETS has content,
           # so an empty one adds no line at all; fromJSON is how an expression spells a
           # newline. The token is never written to a step output or a script, and the
-          # runner masks it in the log like any other secret.
+          # runner masks it in the job log like any other secret. What the Dockerfile does
+          # with it is out of the mask's reach: BuildKit's own logs, kept in the build
+          # record verbose-build-summary uploads, are not masked - hence the input's
+          # advice against set -x in the RUN that reads it.
           build-secrets: >-
             ${{ inputs.github-token-secret-id != '' &&
             format('{0}={1}{2}{3}', inputs.github-token-secret-id, secrets.GITHUB_TOKEN,

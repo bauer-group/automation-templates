@@ -123,8 +123,13 @@ jobs:
 # .npmrc maps the scope and reads the token from the environment:
 #   @bauer-group:registry=https://npm.pkg.github.com
 #   //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+COPY package.json package-lock.json .npmrc ./
+# The token is mounted on this RUN only, and no dependency script runs while
+# it is readable. No `set -x` in this RUN (see below).
 RUN --mount=type=secret,id=npm_token \
-    NODE_AUTH_TOKEN="$(cat /run/secrets/npm_token)" npm ci
+    NODE_AUTH_TOKEN="$(cat /run/secrets/npm_token)" npm ci --ignore-scripts
+# Only if a dependency needs its install script: run it here, without the token.
+RUN npm rebuild
 ```
 
 - **Why not `npm_token=${{ github.token }}` in `DOCKER_BUILD_SECRETS`?** The
@@ -135,11 +140,31 @@ RUN --mount=type=secret,id=npm_token \
 - **Dependabot:** runs triggered by Dependabot receive no Actions secrets, so a
   PAT stored as one arrives empty there unless it is also stored as a Dependabot
   secret. `GITHUB_TOKEN` is always available, so these builds need neither.
-- **Permissions:** the token carries the caller job's permissions. `packages: read`
-  is enough to install; release jobs that push to GHCR already hold
-  `packages: write`. For a private or internal package the calling repository also
-  needs read access to it (package settings → *Manage Actions access*), as for any
-  job that installs it with `GITHUB_TOKEN`.
+- **The token is not read-only.** `docker-build.yml` declares `contents`,
+  `packages`, `security-events`, `attestations` and `id-token: write`, and a called
+  workflow can never hold more than its caller grants - so every caller grants
+  them, and the token in the build carries `contents: write`, `packages: write`,
+  `security-events: write` and `attestations: write` until the job ends. A caller
+  cannot narrow it to `packages: read`. Dependabot runs are no exception: their
+  token starts read-only, and the caller's `permissions:` block raises it to the
+  same set. Inside the build, every process in a `RUN` that mounts the secret can
+  read it, dependency install scripts included - a compromised package could push
+  to the repository or publish packages with it. Without this input, code in the
+  build sees no GitHub token unless `DOCKER_BUILD_SECRETS` passes one (the GHCR
+  login stays in the runner's Docker config, outside the build). So:
+  - mount the secret only on the `RUN` that installs, never on the steps that
+    build or test the project;
+  - install with `npm ci --ignore-scripts` where the project allows it, and give a
+    dependency that needs its install script an `npm rebuild` in a later `RUN`
+    without the mount. This matters most in Dependabot runs, which install freshly
+    bumped versions;
+  - never enable `set -x` or echo anything in that `RUN`. The runner masks the
+    token in the job log, but not in BuildKit's own logs, and with
+    `verbose-build-summary: true` those are uploaded unmasked in the build-record
+    artifact. xtrace prints `NODE_AUTH_TOKEN=<token>` after expansion.
+- **Private packages:** for a private or internal package the calling repository
+  also needs read access to it (package settings → *Manage Actions access*), as for
+  any job that installs it with `GITHUB_TOKEN`.
 - **Alongside other secrets:** lines in `DOCKER_BUILD_SECRETS` are still passed;
   the token is added as the first line. Use an id that `DOCKER_BUILD_SECRETS` does
   not also define.
@@ -207,7 +232,7 @@ The Docker build action provides:
 | `docker-context` | Docker build context | `'.'` |
 | `build-target` | Docker build target stage | `''` |
 | `build-args` | Build arguments as JSON object | `'{}'` |
-| `github-token-secret-id` | Pass the workflow's own `GITHUB_TOKEN` to the build as a BuildKit secret with this id (e.g. `npm_token`), alongside `DOCKER_BUILD_SECRETS`. Replaces a PAT for GitHub Packages dependencies - see [Build Secrets](#build-secrets) | `''` |
+| `github-token-secret-id` | Pass the workflow's own `GITHUB_TOKEN` to the build as a BuildKit secret with this id (e.g. `npm_token`), alongside `DOCKER_BUILD_SECRETS`. Replaces a PAT for GitHub Packages dependencies. The token is write-scoped - see [Build Secrets](#build-secrets) before mounting it | `''` |
 | `platforms` | Target platforms to build and push (comma-separated). Listing more than one produces a multi-arch manifest list | `'linux/amd64'` |
 | `multi-platform` | **Deprecated** - ignored. `platforms` alone decides what is built | `false` |
 | `checkout-fetch-depth` | Git history depth for the build checkout. `0` = full history (required for Dockerfile-version write-back and semver derivation); set `1` for a faster shallow checkout when neither is used | `0` |
