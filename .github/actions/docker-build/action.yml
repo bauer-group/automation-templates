@@ -21,9 +21,9 @@ inputs:
     required: false
     default: '{}'
   build-secrets:
-    description: 'Build secrets as JSON object'
+    description: 'BuildKit secrets for docker/build-push-action, one id=value per line (e.g. api_key=...). Empty (default) passes none.'
     required: false
-    default: '{}'
+    default: ''
   target:
     description: 'Docker build target stage'
     required: false
