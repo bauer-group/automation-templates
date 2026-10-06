@@ -71,6 +71,12 @@ jobs:
         shell: bash
         run: bash .github/actions/docker-build/tests/resolve-platforms.test.sh
 
+      # The id sits next to the workflow's own GITHUB_TOKEN in the build's secret
+      # list; a newline, '=' or ',' in it would let a caller add lines of its own.
+      - name: "🧪 docker-build: GitHub token secret id"
+        shell: bash
+        run: bash .github/actions/docker-build/tests/github-token-secret-id.test.sh
+
       - name: "🧪 dotnet-nuget-auth: private feed credentials"
         shell: bash
         run: bash .github/actions/dotnet-nuget-auth/tests/configure-credentials.test.sh
