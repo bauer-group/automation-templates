@@ -4,6 +4,20 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.1.0](https://github.com/bauer-group/automation-templates/compare/v11.0.1...v11.1.0) (2026-10-06)
+
+### 🚀 Features
+
+* **docker-build:** added github-token-secret-id for GitHub Packages ([1cd4442](https://github.com/bauer-group/automation-templates/commit/1cd4442e3e2a203323d16d91fdabe92187ef1a5c)), closes [#106](https://github.com/bauer-group/automation-templates/issues/106)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** corrected the action's build-secrets default ([461ff38](https://github.com/bauer-group/automation-templates/commit/461ff385a7a7695b94fecd9c9fba85c48a2eaa98))
+
+### 🔧 Maintenance
+
+* **ci:** removed issue AI summary workflow ([ee115a7](https://github.com/bauer-group/automation-templates/commit/ee115a7320dc763d0d9cab19320cc49bd453a61c)), references [#105](https://github.com/bauer-group/automation-templates/issues/105)
+
 ## [11.0.1](https://github.com/bauer-group/automation-templates/compare/v11.0.0...v11.0.1) (2026-09-04)
 
 ### 🐛 Bug Fixes
