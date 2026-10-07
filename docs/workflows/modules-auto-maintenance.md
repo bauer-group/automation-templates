@@ -84,9 +84,12 @@ VORHER (pro Repo, bis zu 3 Workflows):        NACHHER (pro Repo):
                         v         v
                   Verwerfen    Commit & Push
                   (Rollback)   + Release-Trigger
+                               + Digests speichern
 ```
 
 **Wenn nichts zu tun ist:** Workflow endet in ~30 Sekunden. Kein Commit, kein Release.
+
+**Digest-Variablen werden zuletzt gespeichert:** erst nachdem der Commit gepusht und der Release-Workflow gestartet wurde. Schlägt einer dieser Schritte fehl oder wird der Commit übersprungen (z. B. fehlgeschlagene Validierung), bleibt der alte Digest stehen und der nächste Lauf erkennt das Update erneut. Der leere Commit für reine Base-Image-Updates endet auf `[skip ci]`, wenn `release.trigger-workflow` gesetzt ist; der per `workflow_dispatch` gestartete Release läuft trotzdem. `docker manifest inspect` wird bei vorübergehenden Registry-Fehlern (z. B. `429`) bis zu 3-mal versucht.
 
 ---
 

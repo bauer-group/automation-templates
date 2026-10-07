@@ -78,6 +78,10 @@ jobs:
   maintenance:
     name: "🔧 Auto Maintenance"
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    # Base-image-only runs finish in under 3 minutes. The cap leaves room for
+    # dependency updates plus build/test validation without letting a hung
+    # step hold a runner for the 6-hour default.
+    timeout-minutes: 60
     outputs:
       updates-found: ${{ steps.detect-changes.outputs.updates-found }}
       summary: ${{ steps.detect-changes.outputs.summary }}
@@ -246,11 +250,42 @@ jobs:
           UPDATED_IMAGES="[]"
           NEW_DIGESTS="{}"
           UPDATE_DETAILS=""
+          # Variable name -> new digest. Only collected here; the
+          # "Persist new digests" step writes them once the commit was pushed and
+          # the release dispatched. Writing them in this step lost the update
+          # whenever a later step failed or the commit was skipped: the next run
+          # read the new digest back and reported "No update".
+          VARIABLE_UPDATES="{}"
 
           # Must be initialised before first read: -u aborts on an unset variable.
           CONFIGURED_COUNT=$(printf '%s' "$BASE_IMAGES" | jq 'length')
           CHECKED_COUNT=0
           UNREACHABLE_IMAGES="[]"
+
+          # Reads a manifest with up to 3 attempts (backoff 10s, 20s). Rate limits,
+          # 5xx answers and network resets are transient; errors that waiting
+          # cannot fix (auth, unknown tag) return at once. Progress goes to
+          # stderr so stdout stays the bare manifest.
+          inspect_manifest() {
+            local ref="$1" out="" attempt
+            for attempt in 1 2 3; do
+              if out=$(docker manifest inspect "$ref" 2>&1); then
+                printf '%s' "$out"
+                return 0
+              fi
+              case "$out" in
+                *unauthorized*|*denied*|*forbidden*|*401*|*403*|*"manifest unknown"*|*"no such manifest"*)
+                  break
+                  ;;
+              esac
+              if [ "$attempt" -lt 3 ]; then
+                echo "⏳ Attempt $attempt/3 for $ref failed (${out%%$'\n'*}), retrying in $((attempt * 10))s" >&2
+                sleep $((attempt * 10))
+              fi
+            done
+            printf '%s' "$out"
+            return 1
+          }
 
           while IFS= read -r img; do
             NAME=$(printf '%s' "$img" | jq -r '.name')
@@ -263,7 +298,7 @@ jobs:
             # Get current digest from registry
             echo "📡 Fetching current digest from registry..."
 
-            if ! MANIFEST_OUTPUT=$(docker manifest inspect "$IMAGE:$TAG" 2>&1); then
+            if ! MANIFEST_OUTPUT=$(inspect_manifest "$IMAGE:$TAG"); then
               # The case split only picks the message; the failure itself is always
               # recorded. Registry error strings vary between implementations and
               # versions, so a grep that silently stops matching must never be what
@@ -327,10 +362,9 @@ jobs:
               UPDATE_DETAILS="${UPDATE_DETAILS}
           - $NAME ($IMAGE:$TAG): ${STORED_DIGEST:+${STORED_DIGEST:0:12}... ->} ${CURRENT_DIGEST:0:12}..."
 
+              VARIABLE_UPDATES=$(printf '%s' "$VARIABLE_UPDATES" | jq -c --arg v "$VARIABLE" --arg d "$CURRENT_DIGEST" '. + {($v): $d}')
               if [ "$DRY_RUN" != "true" ]; then
-                echo "💾 Setting variable $VARIABLE..."
-                gh variable set "$VARIABLE" --body "$CURRENT_DIGEST"
-                echo "✅ Variable updated"
+                echo "💾 Variable $VARIABLE will be stored after the commit was pushed"
               else
                 echo "🔍 DRY RUN: Would set variable $VARIABLE"
               fi
@@ -349,6 +383,7 @@ jobs:
           echo "updates-found=$UPDATES_FOUND" >> "$GITHUB_OUTPUT"
           echo "updated-images=$UPDATED_IMAGES" >> "$GITHUB_OUTPUT"
           echo "new-digests=$NEW_DIGESTS" >> "$GITHUB_OUTPUT"
+          echo "variable-updates=$VARIABLE_UPDATES" >> "$GITHUB_OUTPUT"
           echo "images-configured=$CONFIGURED_COUNT" >> "$GITHUB_OUTPUT"
           echo "images-checked=$CHECKED_COUNT" >> "$GITHUB_OUTPUT"
           echo "unreachable-images=$UNREACHABLE_IMAGES" >> "$GITHUB_OUTPUT"
@@ -714,6 +749,7 @@ jobs:
           BASE_IMAGES_UPDATED: ${{ steps.base-images.outputs.updates-found }}
           UPDATED_IMAGES_JSON: ${{ steps.base-images.outputs.updated-images }}
           HAS_FILE_CHANGES: ${{ steps.detect-changes.outputs.has-file-changes }}
+          TRIGGER_WORKFLOW: ${{ steps.config.outputs.trigger-workflow }}
         shell: bash
         run: |
           set -euo pipefail
@@ -757,8 +793,17 @@ jobs:
           # If only base images changed (no file changes), create empty commit for release trigger
           if [ "$COMMITTED" = "false" ] && [ "$BASE_IMAGES_UPDATED" = "true" ]; then
             UPDATED=$(printf '%s' "$UPDATED_IMAGES_JSON" | jq -r 'join(", ")' 2>/dev/null || echo "images")
+            # With a trigger workflow the release is started by workflow_dispatch
+            # below, so this empty commit only gives semantic-release a commit to
+            # release. [skip ci] stops it from also starting every push workflow
+            # on an unchanged tree; the dispatched run is not affected. A commit
+            # with real dependency changes above deliberately keeps its push CI.
+            SKIP_CI=""
+            if [ -n "$TRIGGER_WORKFLOW" ]; then
+              SKIP_CI=" [skip ci]"
+            fi
             git commit --allow-empty \
-              -m "${COMMIT_PREFIX}: update base image ${UPDATED}" \
+              -m "${COMMIT_PREFIX}: update base image ${UPDATED}${SKIP_CI}" \
               -m "Base image digest changed:
           ${UPDATE_DETAILS:-}
 
@@ -809,12 +854,60 @@ jobs:
           echo "✅ Workflow triggered successfully"
 
       # =====================================================================
-      # Step 17: Job Summary
+      # Step 17: Persist new base image digests
+      # =====================================================================
+      # Last on purpose and only after a pushed commit: success() turns false as
+      # soon as a check, the push or the dispatch failed, and `committed` is not
+      # 'true' when the commit was skipped (e.g. failed validation). The digests
+      # then stay unchanged and the next run detects the same update again
+      # instead of dropping it. Failing here is the cheaper direction: the next
+      # run only repeats a release that was already started.
+      - name: "💾 Persist new digests"
+        id: persist
+        if: |
+          success()
+          && steps.base-images.outputs.updates-found == 'true'
+          && steps.commit.outputs.committed == 'true'
+          && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          VARIABLE_UPDATES: ${{ steps.base-images.outputs.variable-updates }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FAILED=""
+          while IFS=$'\t' read -r VARIABLE DIGEST; do
+            STORED="false"
+            for attempt in 1 2 3; do
+              if gh variable set "$VARIABLE" --body "$DIGEST" < /dev/null; then
+                STORED="true"
+                break
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                sleep $((attempt * 5))
+              fi
+            done
+            if [ "$STORED" = "true" ]; then
+              echo "✅ Stored $VARIABLE = ${DIGEST:0:20}..."
+            else
+              echo "::error::Could not store $VARIABLE - the next run will detect this update again"
+              FAILED="$FAILED $VARIABLE"
+            fi
+          done < <(printf '%s' "$VARIABLE_UPDATES" | jq -r 'to_entries[] | "\(.key)\t\(.value)"')
+
+          if [ -n "$FAILED" ]; then
+            exit 1
+          fi
+
+      # =====================================================================
+      # Step 18: Job Summary
       # =====================================================================
       - name: "📋 Job Summary"
         if: always()
         env:
           DRY_RUN: ${{ inputs.dry-run }}
+          PERSIST_OUTCOME: ${{ steps.persist.outcome }}
           CONFIG_FILE: ${{ inputs.config-file }}
           TOKEN_SOURCE: ${{ steps.auth.outputs.token-source }}
           # Config flags
@@ -881,6 +974,10 @@ jobs:
                 printf '%s' "$NEW_DIGESTS_JSON" | jq '.' 2>/dev/null || echo "{}"
                 echo '```'
                 echo "</details>"
+                if [ "$DRY_RUN" != "true" ] && [ "$PERSIST_OUTCOME" != "success" ]; then
+                  echo ""
+                  echo "> ⚠️ The new digests were **not** stored because no commit was pushed or a step failed. The next run detects this update again."
+                fi
               else
                 echo "ℹ️ All base images are up to date."
               fi

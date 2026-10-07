@@ -6,8 +6,8 @@ Detects when a Docker base image has been rebuilt upstream and triggers a rebuil
 
 Base images like `n8nio/n8n:stable` or `ghcr.io/bauer-group/cs-iamstack/logto` are rebuilt regularly under the same tag. The tag does not change, so nothing signals that your derived image is now stale. This module polls the **digest** behind each tag and reacts when it moves.
 
-- **Digest polling** — `docker manifest inspect` per configured image, multi-arch aware
-- **State in repository variables** — the last seen digest is stored per image, created automatically
+- **Digest polling** — `docker manifest inspect` per configured image, multi-arch aware, with up to 3 attempts (10s/20s backoff) for transient registry errors such as `429 toomanyrequests`; auth errors and unknown tags fail at once
+- **State in repository variables** — the last seen digest is stored per image, created automatically, and written only after the release commit and the dispatch succeeded
 - **Two reaction modes** — an empty commit that lets semantic-release cut a patch, and/or a `workflow_dispatch` of a target workflow
 - **Coverage reporting** — the summary states how many of the configured images were actually verified
 
@@ -146,7 +146,8 @@ The `read:packages` scope is what allows reading manifests of internal or privat
 ## Notes
 
 - **Callers must grant `packages: read`** for internal or private GHCR packages. A reusable workflow can only restrict the caller's permissions, never extend them. A *partial* `permissions:` block that omits `packages` sets it to `none` and breaks the check; having no block at all does not. See [GHCR Internal Visibility](../ghcr-internal-visibility.md).
-- The commit created on an update is **empty** — the actual state lives in repository variables. Its only purpose is to give semantic-release something to release.
+- The commit created on an update is **empty** — the actual state lives in repository variables. Its only purpose is to give semantic-release something to release. When `target-workflow` is set, its subject ends in `[skip ci]`: the release runs through `workflow_dispatch`, so push workflows are not started again on an unchanged tree. `[skip ci]` does not affect the dispatched run.
+- New digests are stored **last**, after commit, push and dispatch. If any of these fails (or an image is unreachable), nothing is stored and the next run detects the same update again instead of reporting "No update". A failure while storing only means the next run repeats an already started release.
 - `modules-auto-maintenance.yml` contains the same base image check as one of several maintenance tasks. Use this module when base image monitoring is all you need.
 
 ## References
