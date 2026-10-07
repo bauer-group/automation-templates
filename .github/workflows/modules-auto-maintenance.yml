@@ -8,7 +8,9 @@
 # with a single workflow controlled by one JSON config file per repository.
 #
 # Features:
-# - Docker base image digest monitoring (floating tags like stable/latest)
+# - Docker base image digest monitoring (floating tags like stable/latest);
+#   new digests are stored only after the commit was pushed and the release
+#   dispatched, so a failed run is retried next time
 # - Multi-ecosystem dependency updates (Node.js, Python, .NET, Go)
 # - Build/Test/Typecheck validation with automatic rollback on failure
 # - Selective staging (only dependency files committed)

@@ -6,7 +6,9 @@
 #
 # Features:
 # - Monitors multiple images via JSON config or inline definition
-# - Auto-creates GitHub variables for digest storage
+# - Retries transient registry errors (3 attempts, 10s/20s backoff)
+# - Auto-creates GitHub variables for digest storage, written only after the
+#   release commit and dispatch succeeded, so a failed run is retried next time
 # - Creates semantic-release compatible commits for automatic versioning
 # - Triggers target workflows via workflow_dispatch (with optional inputs)
 # - Supports dry-run mode for testing
