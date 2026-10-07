@@ -6,7 +6,9 @@
 #
 # Features:
 # - Monitors multiple images via JSON config or inline definition
-# - Auto-creates GitHub variables for digest storage
+# - Retries transient registry errors (3 attempts, 10s/20s backoff)
+# - Auto-creates GitHub variables for digest storage, written only after the
+#   release commit and dispatch succeeded, so a failed run is retried next time
 # - Creates semantic-release compatible commits for automatic versioning
 # - Triggers target workflows via workflow_dispatch (with optional inputs)
 # - Supports dry-run mode for testing
@@ -146,6 +148,10 @@ jobs:
   monitor:
     name: "🔍 Check Base Images"
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    # Typical runs take under a minute and the slowest seen in 1,460 runs took
+    # about 10. The cap leaves room for the manifest retries below without
+    # letting a hung registry call hold a runner for the 6-hour default.
+    timeout-minutes: 20
     outputs:
       updates-found: ${{ steps.check.outputs.updates-found }}
       updated-images: ${{ steps.check.outputs.updated-images }}
@@ -277,12 +283,44 @@ jobs:
           UPDATED_IMAGES="[]"
           NEW_DIGESTS="{}"
           UPDATE_DETAILS=""
+          # Variable name -> new digest. Only collected here; the
+          # "Persist new digests" step writes them once commit, push and dispatch
+          # have succeeded. Writing them in this step made a failed release look
+          # handled: the next run read the new digest back, reported "No update"
+          # and the rebuild never happened.
+          VARIABLE_UPDATES="{}"
 
           # Must be initialised before first read: `set -euo pipefail` above enables
           # -u, which aborts on an unset variable.
           CONFIGURED_COUNT=$(printf '%s' "$IMAGES" | jq 'length')
           CHECKED_COUNT=0
           UNREACHABLE_IMAGES="[]"
+
+          # Reads a manifest with up to 3 attempts (backoff 10s, 20s). Rate limits,
+          # 5xx answers and network resets are transient - a single 429 from
+          # lscr.io with a retry-after of microseconds used to fail the whole run.
+          # Errors that waiting cannot fix (auth, unknown tag) return at once.
+          # Progress goes to stderr so stdout stays the bare manifest.
+          inspect_manifest() {
+            local ref="$1" out="" attempt
+            for attempt in 1 2 3; do
+              if out=$(docker manifest inspect "$ref" 2>&1); then
+                printf '%s' "$out"
+                return 0
+              fi
+              case "$out" in
+                *unauthorized*|*denied*|*forbidden*|*401*|*403*|*"manifest unknown"*|*"no such manifest"*)
+                  break
+                  ;;
+              esac
+              if [ "$attempt" -lt 3 ]; then
+                echo "⏳ Attempt $attempt/3 for $ref failed (${out%%$'\n'*}), retrying in $((attempt * 10))s" >&2
+                sleep $((attempt * 10))
+              fi
+            done
+            printf '%s' "$out"
+            return 1
+          }
 
           # Process each image (using process substitution to preserve variables)
           while IFS= read -r img; do
@@ -298,7 +336,7 @@ jobs:
 
             # Try to get digest, handling multi-arch manifests
             CURRENT_DIGEST=""
-            if ! MANIFEST_OUTPUT=$(docker manifest inspect "$IMAGE:$TAG" 2>&1); then
+            if ! MANIFEST_OUTPUT=$(inspect_manifest "$IMAGE:$TAG"); then
               # The case split only picks the message; the failure itself is always
               # recorded. Registry error strings vary between implementations and
               # versions, so a grep that silently stops matching must never be what
@@ -366,11 +404,9 @@ jobs:
             Old: ${STORED_DIGEST:-<none>}
             New: $CURRENT_DIGEST"
 
+              VARIABLE_UPDATES=$(printf '%s' "$VARIABLE_UPDATES" | jq -c --arg v "$VARIABLE" --arg d "$CURRENT_DIGEST" '. + {($v): $d}')
               if [ "$DRY_RUN" != "true" ]; then
-                # Update or create variable
-                echo "💾 Setting variable $VARIABLE..."
-                gh variable set "$VARIABLE" --body "$CURRENT_DIGEST"
-                echo "✅ Variable updated"
+                echo "💾 Variable $VARIABLE will be stored after the release was triggered"
               else
                 echo "🔍 DRY RUN: Would set variable $VARIABLE"
               fi
@@ -390,6 +426,7 @@ jobs:
           echo "updates-found=$UPDATES_FOUND" >> "$GITHUB_OUTPUT"
           echo "updated-images=$UPDATED_IMAGES" >> "$GITHUB_OUTPUT"
           echo "new-digests=$NEW_DIGESTS" >> "$GITHUB_OUTPUT"
+          echo "variable-updates=$VARIABLE_UPDATES" >> "$GITHUB_OUTPUT"
           echo "images-configured=$CONFIGURED_COUNT" >> "$GITHUB_OUTPUT"
           echo "images-checked=$CHECKED_COUNT" >> "$GITHUB_OUTPUT"
           echo "unreachable-images=$UNREACHABLE_IMAGES" >> "$GITHUB_OUTPUT"
@@ -431,6 +468,7 @@ jobs:
           GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           COMMIT_PREFIX: ${{ steps.check.outputs.commit-prefix }}
           UPDATED_IMAGES_JSON: ${{ steps.check.outputs.updated-images }}
+          TARGET_WORKFLOW: ${{ inputs.target-workflow }}
         shell: bash
         run: |
           set -euo pipefail
@@ -442,9 +480,19 @@ jobs:
           # Get list of updated images for commit message
           UPDATED=$(printf '%s' "$UPDATED_IMAGES_JSON" | jq -r 'join(", ")')
 
+          # With a target workflow the release is started by workflow_dispatch
+          # below, so this commit only gives semantic-release a commit to
+          # release. [skip ci] stops it from also starting every push workflow
+          # on an unchanged tree. It only affects push/pull_request triggers -
+          # the dispatched run is not skipped.
+          SKIP_CI=""
+          if [ -n "$TARGET_WORKFLOW" ]; then
+            SKIP_CI=" [skip ci]"
+          fi
+
           # Create commit message using heredoc for proper formatting
           COMMIT_MSG=$(cat <<COMMIT_EOF
-          ${COMMIT_PREFIX}: update base image ${UPDATED}
+          ${COMMIT_PREFIX}: update base image ${UPDATED}${SKIP_CI}
 
           Base image digest changed:
           ${UPDATE_DETAILS}
@@ -466,7 +514,11 @@ jobs:
 
           echo ""
           echo "✅ Created commit: $COMMIT_SHA"
-          echo "🚀 Semantic release will be triggered by push event"
+          if [ -n "$TARGET_WORKFLOW" ]; then
+            echo "🚀 Release will be started via workflow_dispatch of $TARGET_WORKFLOW"
+          else
+            echo "🚀 Semantic release will be triggered by push event"
+          fi
 
       - name: "🚀 Trigger target workflow"
         id: dispatch
@@ -495,10 +547,50 @@ jobs:
           echo "triggered=true" >> "$GITHUB_OUTPUT"
           echo "✅ Workflow triggered successfully"
 
+      # Last on purpose: success() turns false as soon as the check (e.g. an
+      # unreachable image), the commit, the push or the dispatch failed. The
+      # digests then stay unchanged and the next run detects the same update
+      # again instead of dropping it. Failing here is the cheaper direction:
+      # the next run only repeats a release that was already started.
+      - name: "💾 Persist new digests"
+        id: persist
+        if: success() && steps.check.outputs.updates-found == 'true' && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
+          VARIABLE_UPDATES: ${{ steps.check.outputs.variable-updates }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FAILED=""
+          while IFS=$'\t' read -r VARIABLE DIGEST; do
+            STORED="false"
+            for attempt in 1 2 3; do
+              if gh variable set "$VARIABLE" --body "$DIGEST" < /dev/null; then
+                STORED="true"
+                break
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                sleep $((attempt * 5))
+              fi
+            done
+            if [ "$STORED" = "true" ]; then
+              echo "✅ Stored $VARIABLE = ${DIGEST:0:20}..."
+            else
+              echo "::error::Could not store $VARIABLE - the next run will detect this update again"
+              FAILED="$FAILED $VARIABLE"
+            fi
+          done < <(printf '%s' "$VARIABLE_UPDATES" | jq -r 'to_entries[] | "\(.key)\t\(.value)"')
+
+          if [ -n "$FAILED" ]; then
+            exit 1
+          fi
+
       - name: "📋 Summary"
         if: always()
         env:
           DRY_RUN: ${{ inputs.dry-run }}
+          PERSIST_OUTCOME: ${{ steps.persist.outcome }}
           UPDATES_FOUND: ${{ steps.check.outputs.updates-found }}
           UPDATED_IMAGES_JSON: ${{ steps.check.outputs.updated-images }}
           NEW_DIGESTS_JSON: ${{ steps.check.outputs.new-digests }}
@@ -572,6 +664,11 @@ jobs:
                 echo "### 🚀 Workflow dispatched"
                 echo ""
                 echo "Target workflow \`$TARGET_WORKFLOW\` was triggered via \`workflow_dispatch\`."
+              fi
+
+              if [ "$DRY_RUN" != "true" ] && [ "$PERSIST_OUTCOME" != "success" ]; then
+                echo ""
+                echo "> ⚠️ The new digests were **not** stored because a step failed. The next run detects this update again."
               fi
             elif [ "$UNREACHABLE_COUNT" -gt 0 ]; then
               echo "### ℹ️ No updates among the images that could be read"

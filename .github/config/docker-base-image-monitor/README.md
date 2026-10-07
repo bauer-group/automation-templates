@@ -56,10 +56,11 @@ n8nio/n8n:stable
                     ▼                                   ▼
           ┌─────────────────┐                 ┌─────────────────────────┐
           │  Gleich:        │                 │  Unterschiedlich:       │
-          │  ✅ Nichts tun  │                 │  1. Variable updaten    │
-          └─────────────────┘                 │  2. Commit erstellen    │
-                                              │  3. Semantic Release    │
+          │  ✅ Nichts tun  │                 │  1. Commit erstellen    │
+          └─────────────────┘                 │  2. Semantic Release    │
                                               │     triggern            │
+                                              │  3. Variable updaten    │
+                                              │     (nur wenn 1+2 ok)   │
                                               └─────────────────────────┘
 ```
 
@@ -498,10 +499,7 @@ So sieht der vollständige automatische Release-Flow aus:
        │
        ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  1. GitHub Variable updaten:                                                  │
-│     N8N_STABLE_DIGEST = sha256:newdigest123                                   │
-│                                                                               │
-│  2. Commit erstellen:                                                         │
+│  1. Commit erstellen:                                                         │
 │     "chore(deps): update base image n8n                                       │
 │                                                                               │
 │      Base image digest changed:                                               │
@@ -510,8 +508,12 @@ So sieht der vollständige automatische Release-Flow aus:
 │        New: sha256:newdigest123                                               │
 │                                                                               │
 │      Triggered by: Docker Base Image Monitor"                                 │
+│     (mit target-workflow endet der Betreff auf [skip ci])                     │
 │                                                                               │
-│  3. Push to main                                                              │
+│  2. Push to main (+ workflow_dispatch des target-workflow)                    │
+│                                                                               │
+│  3. GitHub Variable updaten - erst wenn 1 und 2 erfolgreich waren:            │
+│     N8N_STABLE_DIGEST = sha256:newdigest123                                   │
 └──────────────────────────────────────────────────────────────────────────────┘
        │
        ▼
