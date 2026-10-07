@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.1.1](https://github.com/bauer-group/automation-templates/compare/v11.1.0...v11.1.1) (2026-10-07)
+
+### 🐛 Bug Fixes
+
+* **base-images:** stored digests only after the release was triggered ([#110](https://github.com/bauer-group/automation-templates/issues/110)) ([6cf1a1a](https://github.com/bauer-group/automation-templates/commit/6cf1a1a22c393a2834032ea75a47ffdd7be8b784))
+
 ## [11.1.0](https://github.com/bauer-group/automation-templates/compare/v11.0.1...v11.1.0) (2026-10-06)
 
 ### 🚀 Features
