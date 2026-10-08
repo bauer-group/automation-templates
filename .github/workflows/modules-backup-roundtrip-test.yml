@@ -629,8 +629,11 @@ jobs:
           bh show "$SNAPSHOT_ID" > "$MANIFEST"
           jq -e 'type == "object"' "$MANIFEST" > /dev/null || { echo "::error::'show' did not print a JSON manifest"; cat "$MANIFEST"; exit 1; }
 
+          # Warnings as a list of strings, whatever shape a plugin source writes.
+          WARNINGS_DEF='def warnings: (.metadata.warnings // []) | if type == "array" then map(tostring) else [tostring] end;'
+
           echo "components=$(jq -c '[.components[] | {name, kind, size, error}]' "$MANIFEST")" >> "$GITHUB_OUTPUT"
-          jq -r '.components[] | "  \(.name) (\(.kind)): \(.size) bytes, error: \(.error // "none"), warnings: \(.metadata.warnings // [] | length)"' "$MANIFEST"
+          jq -r "$WARNINGS_DEF"'.components[] | "  \(.name) (\(.kind)): \(.size) bytes, error: \(.error // "none"), warnings: \(warnings | length)"' "$MANIFEST"
 
           ERRORS=0
           fail() { echo "::error title=Backup round trip::$1"; ERRORS=$((ERRORS + 1)); }
@@ -639,18 +642,25 @@ jobs:
           [ -n "$(jq -r '.archive_sha256 // empty' "$MANIFEST")" ] || fail "manifest has no archive_sha256 - verify and restore cannot check the archive"
           [ "$(jq '.components | length' "$MANIFEST")" -gt 0 ] || fail "snapshot has no components"
 
+          # Captured first, not read from a process substitution: there a jq
+          # error is ignored and the gate would pass with nothing checked.
+          FAILED=$(jq -r '.components[] | select(.error != null) | "\(.name)\t\(.error)"' "$MANIFEST")
+          WARNED=$(jq -r "$WARNINGS_DEF"'.components[] | select(warnings | length > 0)
+                          | "\(.name)\t\(warnings | join("; "))"' "$MANIFEST")
+
           while IFS=$'\t' read -r NAME ERROR; do
+            [ -n "$NAME" ] || continue
             fail "component '$NAME' failed: $ERROR"
-          done < <(jq -r '.components[] | select(.error != null) | "\(.name)\t\(.error)"' "$MANIFEST")
+          done <<< "$FAILED"
 
           while IFS=$'\t' read -r NAME WARNINGS; do
+            [ -n "$NAME" ] || continue
             if [ "$ALLOW_WARNINGS" = "true" ]; then
               echo "::warning::component '$NAME' reported warnings: $WARNINGS"
             else
               fail "component '$NAME' reported warnings (set allow-component-warnings to accept): $WARNINGS"
             fi
-          done < <(jq -r '.components[] | select((.metadata.warnings // []) | length > 0)
-                          | "\(.name)\t\(.metadata.warnings | join("; "))"' "$MANIFEST")
+          done <<< "$WARNED"
 
           for NAME in ${REQUIRE_COMPONENTS//,/ }; do
             jq -e --arg n "$NAME" 'any(.components[]; .name == $n)' "$MANIFEST" > /dev/null \
