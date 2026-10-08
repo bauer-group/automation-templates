@@ -4,10 +4,13 @@ on:
   workflow_call:
     inputs:
       scan-engine:
-        description: 'Security scan engine (gitleaks, gitguardian, both)'
+        description: >-
+          Secret scan engine: 'gitleaks'. 'both' still works and runs gitleaks.
+          'gitguardian' is deprecated: GitGuardian was removed, so it runs no secret
+          scanner and the run says so with a warning.
         required: false
         type: string
-        default: 'both'
+        default: 'gitleaks'
       scan-type:
         description: 'Type of security scan (secrets, vulnerabilities, all)'
         required: false
@@ -18,8 +21,10 @@ on:
         required: false
         type: boolean
         default: true
+      # Kept so callers that still pass it do not fail: a reusable workflow rejects
+      # undeclared inputs before any job starts.
       minimum-severity:
-        description: 'Minimum severity level for GitGuardian (low, medium, high, critical)'
+        description: 'Deprecated and ignored: it only ever configured GitGuardian, which was removed.'
         required: false
         type: string
         default: 'medium'
@@ -34,8 +39,10 @@ on:
         type: string
         default: 'ubuntu-latest'
     secrets:
+      # Kept for the same reason as minimum-severity: a caller passing it explicitly
+      # (not via `secrets: inherit`) would otherwise be rejected at startup.
       GITGUARDIAN_API_KEY:
-        description: 'GitGuardian API key (required for GitGuardian scanning)'
+        description: 'Deprecated and ignored: GitGuardian scanning was removed.'
         required: false
       GITLEAKS_LICENSE:
         description: 'Gitleaks Pro license key'
@@ -69,9 +76,8 @@ jobs:
     name: 🔐 Security Analysis
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     outputs:
-      # Reads the action's aggregate output. The previous expression compared
-      # gitguardian-secrets-found != '0', which is TRUE for the empty string a skipped
-      # GitGuardian leaves behind - so it claimed secrets on every gitleaks-only run.
+      # Reads the action's aggregate output: 'true', 'false', 'unknown' (scan did not
+      # complete) or 'skipped' (no secret scan ran).
       secrets-found: ${{ steps.security.outputs.secrets-found }}
       secrets-count: ${{ steps.security.outputs.gitleaks-secrets-count }}
       vulnerabilities-found: ${{ steps.security.outputs.vulnerabilities-found }}
@@ -92,9 +98,7 @@ jobs:
           scan-engine: ${{ inputs.scan-engine }}
           scan-type: ${{ inputs.scan-type }}
           fail-on-findings: ${{ inputs.fail-on-findings }}
-          minimum-severity: ${{ inputs.minimum-severity }}
           exclude-paths: ${{ inputs.exclude-paths }}
-          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
           gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -105,7 +109,7 @@ jobs:
         # `[ "$SCORE" -ge 95 ]` came to be evaluated as `[ -ge 95 ]` and log
         # "integer expression expected" twice per run.
         env:
-          SCAN_ENGINE: ${{ inputs.scan-engine }}
+          SCAN_ENGINE: ${{ steps.security.outputs.engines-used || 'none' }}
           SCAN_TYPE: ${{ inputs.scan-type }}
           SECURITY_SCORE: ${{ steps.security.outputs.security-score }}
           SECRETS_FOUND: ${{ steps.security.outputs.secrets-found }}
@@ -124,9 +128,10 @@ jobs:
           SCORE="${SECURITY_SCORE:-}"
 
           case "$SECRETS_FOUND" in
-            true)  SECRETS_CELL="🚨 yes ($SECRETS_COUNT)" ;;
-            false) SECRETS_CELL="✅ no" ;;
-            *)     SECRETS_CELL="❓ unknown - the scan did not complete" ;;
+            true)    SECRETS_CELL="🚨 yes ($SECRETS_COUNT)" ;;
+            false)   SECRETS_CELL="✅ no" ;;
+            skipped) SECRETS_CELL="⏭️ not scanned - no secret scan ran" ;;
+            *)       SECRETS_CELL="❓ unknown - the scan did not complete" ;;
           esac
 
           {
@@ -148,6 +153,8 @@ jobs:
             echo "❓ **No security score was reported - treat this run as unscanned.**" >> "$GITHUB_STEP_SUMMARY"
           elif [ "$SECRETS_FOUND" = "unknown" ]; then
             echo "❓ **The secret scan did not complete - this is not a clean result.**" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$SECRETS_FOUND" = "skipped" ] && [ "$SCAN_TYPE" != "vulnerabilities" ]; then
+            echo "⏭️ **No secret scan ran - the score does not cover secrets.**" >> "$GITHUB_STEP_SUMMARY"
           elif [ "$SCORE" -ge 95 ]; then
             echo "✅ **Excellent security posture!**" >> "$GITHUB_STEP_SUMMARY"
           elif [ "$SCORE" -ge 80 ]; then

@@ -272,7 +272,6 @@ jobs:
           scan-engines: 'both'
           fail-on-findings: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
       
       - name: 🔒 Firmware Security Analysis
         run: |

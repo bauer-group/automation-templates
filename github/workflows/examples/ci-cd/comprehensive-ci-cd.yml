@@ -23,8 +23,8 @@ on:
       security-scan-engine:
         description: 'Security scan engine'
         type: choice
-        default: 'both'
-        options: ['gitleaks', 'gitguardian', 'both']
+        default: 'gitleaks'
+        options: ['gitleaks']
 
 jobs:
   # PR validation for pull requests
@@ -40,7 +40,6 @@ jobs:
       fail-on-security-issues: true
       fail-on-license-issues: false
     secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
   # Comprehensive security scan for main branch
@@ -49,12 +48,10 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: ${{ inputs.security-scan-engine || 'both' }}
+      scan-engine: ${{ inputs.security-scan-engine || 'gitleaks' }}
       scan-type: 'all'
       fail-on-findings: false  # Don't block releases, but report issues
-      minimum-severity: 'medium'
     secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
   # License compliance check
@@ -81,7 +78,6 @@ jobs:
       auto-merge-enabled: true
       cleanup-release-branch: true
     secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
   # Artifact generation for releases

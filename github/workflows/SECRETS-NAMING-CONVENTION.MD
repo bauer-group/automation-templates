@@ -55,7 +55,6 @@ This document defines the naming convention for GitHub Secrets used in our workf
 
 | Secret Name | Description | Scope | Used In |
 |------------|-------------|-------|---------|
-| `GITGUARDIAN_API_KEY` | GitGuardian API key for secret scanning | Global | modules-security-scan.yml |
 | `GITLEAKS_LICENSE_KEY` | Gitleaks license for advanced features | Global | modules-security-scan.yml |
 | `FOSSA_LICENSE_API_KEY` | FOSSA API key for license compliance | Global | modules-license-compliance.yml |
 

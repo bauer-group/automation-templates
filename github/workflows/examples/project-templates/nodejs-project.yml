@@ -59,8 +59,7 @@ jobs:
       security-scan-engine: 'gitleaks'
       fail-on-security-issues: true
       fail-on-license-issues: false
-    secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+    secrets: inherit
 
   # Security scan for Node.js dependencies
   security-scan:
@@ -68,12 +67,11 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: 'both'
+      scan-engine: 'gitleaks'
       scan-type: 'all'
       fail-on-findings: false
       exclude-paths: 'node_modules,dist,build,.nyc_output,coverage'
-    secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+    secrets: inherit
 
   # License compliance for Node.js packages
   license-compliance:

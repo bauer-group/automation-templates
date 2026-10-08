@@ -16,9 +16,8 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 
 | Action | Purpose | Engine | Performance | Modularer Workflow |
 |--------|---------|---------|-------------|---------------------|
-| [`security-scan`](./security-scan/) | Comprehensive secrets detection | Gitleaks + GitGuardian | ⚡⚡⚡ | [modules-security-scan.yml](../workflows/modules-security-scan.yml) |
-| [`security-scan-meta`](./security-scan-meta/) | Advanced multi-engine scanning | Gitleaks + GitGuardian | ⚡⚡⚡ | Erweiterte Sicherheitsanalyse |
-| [`gitguardian-scan`](./gitguardian-scan/) | ML-based policy enforcement | GitGuardian | ⚡⚡ | GitGuardian-spezifisch |
+| [`security-scan`](./security-scan/) | Secrets + dependency vulnerabilities | Gitleaks + Trivy | ⚡⚡⚡ | [modules-security-scan.yml](../workflows/modules-security-scan.yml) |
+| [`security-scan-meta`](./security-scan-meta/) | Secrets + vulnerabilities (gitleaks-scan based) | Gitleaks + Trivy | ⚡⚡⚡ | Erweiterte Sicherheitsanalyse |
 | [`gitleaks-scan`](./gitleaks-scan/) | Fast secrets detection | Gitleaks | ⚡⚡⚡ | Gitleaks-spezifisch |
 | [`trufflehog-scan`](./trufflehog-scan/) | Verified-first secrets detection | TruffleHog | ⚡⚡ | [modules-trufflehog-scan.yml](../workflows/modules-trufflehog-scan.yml) |
 | [`license-compliance`](./license-compliance/) | SPDX license validation | FOSSA + SPDX | ⚡⚡⚡ | [modules-license-compliance.yml](../workflows/modules-license-compliance.yml) |
@@ -63,10 +62,8 @@ jobs:
   security:
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: both
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+      scan-engine: gitleaks
+    secrets: inherit
 ```
 
 **Release Management:**
@@ -121,11 +118,11 @@ jobs:
 - name: 🛡️ Security Scan
   uses: bauer-group/automation-templates/.github/actions/security-scan@main
   with:
-    scan-engine: both
+    scan-engine: gitleaks
     scan-type: all
     fail-on-findings: true
     token: ${{ secrets.GITHUB_TOKEN }}
-    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+    gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
 ```
 
 **Release Management:**
@@ -198,7 +195,7 @@ jobs:
 ```yaml
 secrets:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}           # Always available
-  GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }} # For GitGuardian scanning
+  GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}   # Gitleaks in organization repositories
   FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}         # For license compliance
 ```
 
@@ -215,7 +212,7 @@ permissions:
 ## 🏛️ Enterprise Features
 
 ### Multi-Engine Security Scanning
-- **Dual-engine approach**: Gitleaks (speed) + GitGuardian (accuracy)
+- **Layered secret scanning**: Gitleaks (full history) + TruffleHog (live verification)
 - **Custom rule sets**: Organization-specific security policies
 - **SARIF integration**: Native GitHub Security tab integration
 - **False positive management**: Intelligent filtering and allowlists
@@ -240,9 +237,8 @@ jobs:
   security:
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: both
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      scan-engine: gitleaks
+    secrets: inherit
   
   compliance:
     needs: security

@@ -80,13 +80,6 @@ jobs:
         with:
           fail-on-findings: true
       
-      - name: 🛡️ Advanced Security Scan
-        uses: bauer-group/automation-templates/.github/actions/gitguardian-scan@main
-        with:
-          api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
-          fail-on-findings: false  # Don't block on enterprise scan
-        continue-on-error: true
-      
       - name: 📋 License Compliance
         uses: bauer-group/automation-templates/.github/actions/license-compliance@main
         with:

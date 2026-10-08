@@ -4,8 +4,8 @@ Verified-first secret detection using [TruffleHog](https://github.com/trufflesec
 
 ## Overview
 
-TruffleHog complements the existing Gitleaks + GitGuardian scanners. Where Gitleaks uses
-regex + entropy (fast, but noisy) and GitGuardian adds ML, TruffleHog's differentiator is
+TruffleHog complements the existing Gitleaks scanner. Where Gitleaks uses
+regex + entropy (fast, but noisy), TruffleHog's differentiator is
 **verification**: it calls the provider's API to confirm a detected secret actually works.
 A *verified* finding is a confirmed live exposure — not a maybe.
 
@@ -81,7 +81,6 @@ jobs:
 | Scanner | Method | Strength | Module |
 |---------|--------|----------|--------|
 | **Gitleaks** | Regex + entropy | Fast, custom rules | [modules-security-scan.yml](../../.github/workflows/modules-security-scan.yml) |
-| **GitGuardian** | ML + policies | Enterprise policy, IaC | (same module) |
 | **TruffleHog** | Detectors + **live verification** | Confirms real exposure | this module |
 | **Native push protection** | Pre-receive hook | Blocks before push | [native-secret-scanning.md](../security/native-secret-scanning.md) |
 

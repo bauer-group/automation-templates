@@ -123,6 +123,10 @@ jobs:
         shell: bash
         run: bash .github/actions/security-scan/tests/declared-outputs.test.sh
 
+      - name: "🧪 security-scan: old engine names keep working after the GitGuardian removal"
+        shell: bash
+        run: bash .github/actions/security-scan/tests/scan-engine.test.sh
+
       # Same failure class as the security-scan test above: the run stays green and
       # the release looks correct, only the version inside the artifacts stops
       # advancing. That went unnoticed for four releases across three repositories.

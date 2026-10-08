@@ -116,7 +116,7 @@ jobs:
   security-scan:
     uses: ./.github/workflows/modules-security-scan.yml
     with:
-      scan-engine: 'both'
+      scan-engine: 'gitleaks'
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

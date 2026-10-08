@@ -11,7 +11,6 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 | `CODECOV_TOKEN` | Empfohlen | Global Upload Token für Code Coverage |
 | `DOCKER_USERNAME` | Optional | Docker Hub Benutzername |
 | `DOCKER_PASSWORD` | Optional | Docker Hub Passwort/Token |
-| `GITGUARDIAN_API_KEY` | Optional | GitGuardian Secret Scanning |
 | `GITLEAKS_LICENSE` | Optional | Gitleaks Enterprise License |
 | `NUGET_API_KEY` | Optional | NuGet.org API Key (Publishing) |
 | `DOTNET_NUGET_RESTORE_CREDENTIALS` | Optional | PAT (`read:packages`) für Restore aus privaten NuGet-Feeds |
@@ -124,9 +123,13 @@ Nur nötig, wenn Dependabot **interne oder private** Base-Images aktualisieren s
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
-| `GITGUARDIAN_API_KEY` | security-scan-meta, gitleaks-scan | GitGuardian API Key | [gitguardian.com](https://dashboard.gitguardian.com) → API → Personal Access Tokens |
 | `GITLEAKS_LICENSE` | gitleaks-scan | Gitleaks Enterprise License Key | Gitleaks Enterprise Subscription |
 | `FOSSA_API_KEY` | license-compliance | FOSSA License Scanning | [fossa.com](https://fossa.com) → Account Settings |
+
+> **`GITGUARDIAN_API_KEY` wird nicht mehr verwendet.** GitGuardian wurde im Oktober 2026 aus
+> den Security-Workflows entfernt (im CI wurde nur der letzte Commit gescannt, Funde konnten
+> nicht gemeldet werden). Die Workflows nehmen das Secret noch an, damit kein Aufrufer bricht,
+> lesen es aber nicht. Das Organization Secret kann gelöscht werden.
 
 > **Kein Secret nötig:** `modules-trufflehog-scan`, `modules-codeql` und `modules-dependency-review` benötigen **kein** zusätzliches Secret — sie laufen mit dem automatischen `GITHUB_TOKEN`. (TruffleHog verifiziert nur die *gefundenen* Credentials, es gibt keinen TruffleHog-Service-Key.)
 
@@ -218,7 +221,6 @@ GitHub Organization → Settings → Secrets and variables → Actions → New o
 **Empfohlene Organization Secrets:**
 - `CODECOV_TOKEN` (Global Upload Token)
 - `DOCKER_USERNAME` / `DOCKER_PASSWORD`
-- `GITGUARDIAN_API_KEY`
 - `GITLEAKS_LICENSE`
 - `SONARQUBE_TOKEN` / `SONARQUBE_HOST_URL`
 - `NUGET_API_KEY`

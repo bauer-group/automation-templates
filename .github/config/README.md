@@ -15,8 +15,7 @@ Organized configuration files for GitHub Actions workflows and modules.
 │   ├── label-actions.yml
 │   └── ai-prompts.yml
 ├── 📁 security/         # Security scanning configurations (future)
-│   ├── gitleaks.toml
-│   └── gitguardian.yml
+│   └── gitleaks.toml
 ├── 📁 license/          # License compliance configurations (future)
 │   └── allowed-licenses.yml
 ├── 📁 claude-code/      # Claude Code Assistant configurations
@@ -73,7 +72,6 @@ Organized configuration files for GitHub Actions workflows and modules.
 **Modules:** `modules-security-scan.yml`
 
 - **`gitleaks.toml`** - Gitleaks secret detection patterns
-- **`gitguardian.yml`** - GitGuardian scanning rules
 
 ### 📋 License (future) (`license/`)
 **Module:** `modules-license-compliance.yml`
