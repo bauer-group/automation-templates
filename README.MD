@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-10-08 01:27:48 UTC -->
+<!-- Generated on 2026-10-08 03:25:29 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -33,14 +33,14 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 ### Comprehensive Security Action
 
 ```yaml
-- name: 🛡️ Multi-Engine Security Scan
+- name: 🛡️ Security Scan
   uses: bauer-group/automation-templates/.github/actions/security-scan@main
   with:
-    scan-engines: 'gitleaks,gitguardian'
-    scan-scope: 'all'
-    fail-on-findings: true
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+    scan-engine: 'gitleaks'
+    scan-type: 'all'
+    fail-on-findings: 'true'
+    gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+    token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### Individual Engines
@@ -52,16 +52,6 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
   uses: gitleaks/gitleaks-action@v3
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-#### GitGuardian (Enterprise)
-
-```yaml
-- name: 🛡️ Advanced Security Scan
-  uses: GitGuardian/ggshield-action@v1
-  with:
-    api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
-    args: secret scan path .
 ```
 
 ## 📦 Release Management
@@ -78,8 +68,8 @@ on:
     inputs:
       security-scan-engines:
         type: choice
-        default: 'both'
-        options: ['gitleaks', 'gitguardian', 'both']
+        default: 'gitleaks'
+        options: ['gitleaks']
 
 jobs:
   release:
@@ -108,7 +98,6 @@ jobs:
 │   │   ├── claude-code/          # AI-powered code assistant
 │   │   ├── docker-build/         # Docker build with security scanning
 │   │   ├── generate-changelog/   # Changelog generation
-│   │   ├── gitguardian-scan/     # GitGuardian security scanning
 │   │   ├── gitleaks-scan/        # Gitleaks secret detection
 │   │   ├── labeler-triage/       # Issue/PR labeling and triage
 │   │   ├── license-compliance/   # SPDX license compliance
@@ -315,7 +304,7 @@ Enterprise-grade security scanning and compliance automation.
 
 | Component | Purpose | Usage |
 |-----------|---------|-------|
-| **🛡️ security-scan action** | Multi-engine security scanning | Gitleaks, GitGuardian, Trivy |
+| **🛡️ security-scan action** | Secret and dependency vulnerability scanning | Gitleaks, Trivy |
 | **📋 license-compliance action** | License compliance checks | SPDX, FOSSA integration |
 | **🔍 Release Management** | Automated releases | Semantic versioning, changelog generation |
 
@@ -663,24 +652,6 @@ regexes = [
 ]
 ```
 
-#### GitGuardian Configuration (.gitguardian.yaml)
-
-```yaml
-version: 2
-
-paths-ignore:
-  - .git/**
-  - node_modules/**
-  - vendor/**
-  
-secret:
-  minimum-severity: medium
-  ignore-known-secrets: false
-  
-policies:
-  all-policies: true
-```
-
 ### Commit Lint Configuration
 
 **.github/config/commitlint.config.mjs**
@@ -743,9 +714,6 @@ export default {
    # Python publishing
    gh secret set PYPI_API_TOKEN --body "your-pypi-token"
    gh secret set CODECOV_TOKEN --body "your-codecov-token"
-   
-   # Security scanning
-   gh secret set GITGUARDIAN_API_KEY --body "your-gitguardian-key"
 
    # Shopware 5 plugins
    gh secret set SHOPWARE_ACCOUNT_EMAIL --body "your-shopware-email"
@@ -900,10 +868,10 @@ jobs:
 - name: Security Scan
   uses: bauer-group/automation-templates/.github/actions/security-scan@main
   with:
-    scan-engines: 'both'
-    fail-on-findings: true
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+    scan-engine: 'gitleaks'
+    fail-on-findings: 'true'
+    gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+    token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 #### ⚡ Zephyr Build Action
@@ -926,7 +894,6 @@ jobs:
 
 - **Layered approach**: Use multiple scanning engines for comprehensive coverage
 - **Pre-commit hooks**: Implement client-side scanning with Gitleaks
-- **Continuous monitoring**: Enable GitGuardian for production environments
 - **Secret management**: Store all sensitive data in GitHub Secrets
 
 ### Release Management
@@ -1002,8 +969,9 @@ jobs:
       - name: Security scan
         uses: bauer-group/automation-templates/.github/actions/security-scan@main
         with:
-          scan-engines: 'both'
-          report-format: 'sarif'
+          scan-engine: 'gitleaks'
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### Policy Enforcement
@@ -1063,7 +1031,6 @@ docker-compose up -d
 ```bash
 # Test security scan configuration
 cat .gitleaks.toml
-cat .gitguardian.yaml
 
 # Validate commit format
 git log --oneline -10
@@ -1125,7 +1092,6 @@ gh auth status --show-token
 
 - [🛡️ **security-scan**](.github/actions/security-scan/README.md) - Multi-engine security scanning
 - [🔒 **gitleaks-scan**](.github/actions/gitleaks-scan/README.md) - Gitleaks secret detection
-- [🛡️ **gitguardian-scan**](.github/actions/gitguardian-scan/README.md) - GitGuardian security scanning
 - [📋 **license-compliance**](.github/actions/license-compliance/README.md) - SPDX license compliance
 
 #### AI & Automation Actions
@@ -1226,5 +1192,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-10-08 01:27:48 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-10-08 03:25:29 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
