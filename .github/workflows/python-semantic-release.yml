@@ -92,7 +92,7 @@ jobs:
   pr-validation:
     name: PR Quality Gate
     if: github.event_name == 'pull_request'
-    uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@fix/security-scan-gitguardian-trivy
+    uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@main
     with:
       enable-security-scan: ${{ inputs.run-security-scan }}
       enable-license-check: true
@@ -471,7 +471,7 @@ jobs:
   security-scan:
     name: 🔐 Security Analysis
     if: inputs.run-security-scan == true && github.event_name != 'pull_request'
-    uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@fix/security-scan-gitguardian-trivy
+    uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
       scan-engine: ${{ inputs.security-engine }}
       scan-type: 'all'

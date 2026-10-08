@@ -96,7 +96,7 @@ jobs:
         id: security
         if: inputs.enable-security-scan == true
         continue-on-error: ${{ inputs.fail-on-security-issues == false }}
-        uses: bauer-group/automation-templates/.github/actions/security-scan@fix/security-scan-gitguardian-trivy
+        uses: bauer-group/automation-templates/.github/actions/security-scan@main
         with:
           scan-engine: ${{ inputs.security-scan-engine }}
           scan-type: 'secrets'
