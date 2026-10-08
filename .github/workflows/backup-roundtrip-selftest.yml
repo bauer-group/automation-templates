@@ -7,8 +7,9 @@ name: "🧪 Backup Round-Trip Self-Test"
 # actionlint proves the module is well-formed; only a real run proves that it
 # builds, seeds, backs up, deletes, restores and finds the data again. The fixture
 # uses every input class a consumer needs: profiles, env-overrides that disable
-# an external source, generated secrets, an image built from the repository,
-# required components and a service stopped for the restore.
+# an external source, generated secrets, a prepare script for a secret with its
+# own format, an image built from the repository, required components and a
+# service stopped for the restore.
 #
 # Path-filtered on purpose: a stack round trip costs a few runner minutes and
 # is only worth spending when the module or its fixture changes.
@@ -45,6 +46,7 @@ jobs:
       env-overrides: |
         SAAS_EXPORT_ENABLED=false
       generated-secrets: 'DATABASE_PASSWORD'
+      prepare-script: 'prepare.sh'
       build-images: '[{"service": "backup", "context": "backup"}]'
       backup-service: 'backup'
       require-components: 'database files'

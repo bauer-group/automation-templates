@@ -93,6 +93,11 @@ on:
         required: false
         type: string
         default: ""
+      prepare-script:
+        description: "Bash script (relative to working-directory) run once the .env exists and before env-overrides and generated-secrets are applied - for secrets with a specific format, typically the repository's own generator (e.g. 'python3 scripts/generate-env.py --update'). Every value it adds or changes is masked."
+        required: false
+        type: string
+        default: ""
 
       # -- Images under test --------------------------------------------------
       build-images:
@@ -274,6 +279,7 @@ jobs:
           ENV_OVERRIDES: ${{ inputs.env-overrides }}
           GENERATED_SECRETS: ${{ inputs.generated-secrets }}
           BUILD_IMAGES: ${{ inputs.build-images }}
+          PREPARE_SCRIPT: ${{ inputs.prepare-script }}
           SEED_SCRIPT: ${{ inputs.seed-script }}
           MUTATE_SCRIPT: ${{ inputs.mutate-script }}
           CHECK_SCRIPT: ${{ inputs.check-script }}
@@ -327,7 +333,7 @@ jobs:
               || fail "build-images must be a JSON array of objects with 'service' and 'context'"
           fi
 
-          for SCRIPT in "$SEED_SCRIPT" "$MUTATE_SCRIPT" "$CHECK_SCRIPT"; do
+          for SCRIPT in "$PREPARE_SCRIPT" "$SEED_SCRIPT" "$MUTATE_SCRIPT" "$CHECK_SCRIPT"; do
             [ -z "$SCRIPT" ] || [ -f "$SCRIPT" ] || fail "script '$SCRIPT' not found in $(pwd)"
           done
           if { [ -n "$SEED_SCRIPT" ] || [ -n "$MUTATE_SCRIPT" ]; } && [ -z "$CHECK_SCRIPT" ]; then
@@ -349,6 +355,7 @@ jobs:
           ENV_TEMPLATE: ${{ inputs.env-template }}
           ENV_OVERRIDES: ${{ inputs.env-overrides }}
           GENERATED_SECRETS: ${{ inputs.generated-secrets }}
+          PREPARE_SCRIPT: ${{ inputs.prepare-script }}
         run: |
           set -euo pipefail
           set -f # inputs are split on whitespace below, never globbed
@@ -356,13 +363,33 @@ jobs:
           mkdir -p "$ROUNDTRIP_DIR/diagnostics"
           echo "ROUNDTRIP_DIR=$ROUNDTRIP_DIR" >> "$GITHUB_ENV"
 
-          # -- .env: template, then overrides, then generated secrets -----------
+          # -- .env: template, prepare script, overrides, generated secrets ------
           if [ -f "$ENV_TEMPLATE" ]; then
             cp "$ENV_TEMPLATE" .env
             echo "📄 .env created from $ENV_TEMPLATE"
           else
             : > .env
             echo "::notice::env-template '$ENV_TEMPLATE' not found - starting from an empty .env"
+          fi
+
+          # The repository's own generator knows formats a generic one cannot
+          # (RSA keys, base64 of N bytes, exact lengths). Everything it adds or
+          # changes is treated as secret and masked.
+          if [ -n "$PREPARE_SCRIPT" ]; then
+            cp .env "$ROUNDTRIP_DIR/env.before"
+            echo "▶ prepare: $PREPARE_SCRIPT"
+            ROUNDTRIP_PHASE=prepare timeout --kill-after=10 "$SCRIPT_TIMEOUT" bash "$PREPARE_SCRIPT"
+            [ -f .env ] || { echo "::error title=Backup round trip::prepare-script removed the .env"; exit 1; }
+            MASKED=0
+            while IFS= read -r LINE; do
+              VALUE="${LINE#*=}"
+              [[ "$LINE" == *=* ]] && [ "${#VALUE}" -ge 8 ] || continue
+              grep -qxF -- "$LINE" "$ROUNDTRIP_DIR/env.before" && continue
+              echo "::add-mask::$VALUE"
+              MASKED=$((MASKED + 1))
+            done < .env
+            rm -f "$ROUNDTRIP_DIR/env.before"
+            echo "🔐 prepare-script set $MASKED value(s), all masked"
           fi
 
           # Sets KEY=VALUE in .env. An existing key is replaced IN PLACE: a .env
