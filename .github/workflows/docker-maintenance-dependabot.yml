@@ -1,19 +1,31 @@
 # =============================================================================
 # Docker Maintenance with Dependabot
 # =============================================================================
-# Automatically merges Dependabot PRs when all checks pass.
-# This enables fully automated Docker base image updates using GitHub's
-# native Dependabot - no external app installation required.
+# Approves Dependabot PRs and enables GitHub's native auto-merge, so a PR is
+# merged once the checks the base branch requires have passed. This enables
+# fully automated Docker base image updates using GitHub's native Dependabot -
+# no external app installation required.
 #
-# Uses GitHub's native auto-merge: the PR is approved and auto-merge is
-# enabled immediately. GitHub waits for all required status checks to pass
-# before actually merging.
+# Merge guard - auto-merge is only enabled when it actually waits for CI:
+# - semver-major updates are never merged automatically (unless the caller sets
+#   allow-major); the PR stays open for review.
+# - The base branch must require status checks, through a ruleset or a classic
+#   branch protection rule. Without required checks GitHub treats the PR as
+#   mergeable right away and `gh pr merge --auto` merges it immediately, before
+#   CI has finished and even when a check has already failed. In that case the
+#   PR is left open with a notice.
+# - "Allow auto-merge" must be enabled in the repository settings.
+# The decision is shown as an annotation and in the job summary.
 #
 # Usage in your repository:
 #   name: Docker Maintenance
 #   on:
 #     pull_request:
 #       types: [opened, synchronize, reopened, ready_for_review]
+#
+#   permissions:
+#     contents: write
+#     pull-requests: write
 #
 #   jobs:
 #     maintenance:
@@ -24,7 +36,8 @@
 # - Dependabot must be enabled in repository settings
 # - .github/dependabot.yml must include docker ecosystem
 # - Repository setting "Allow auto-merge" must be enabled
-# - Branch protection with required status checks configured
+# - A ruleset (or branch protection rule) on the base branch that requires the
+#   status checks of your PR CI - without it, Dependabot PRs stay open
 # =============================================================================
 
 name: 🐳 Docker Maintenance (Dependabot)
@@ -44,6 +57,12 @@ on:
         required: false
         default: true
 
+      allow-major:
+        description: 'Also auto-merge semver-major updates. Off by default: major updates stay open for review.'
+        type: boolean
+        required: false
+        default: false
+
       runs-on:
         description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         type: string
@@ -59,6 +78,7 @@ jobs:
     name: Docker Maintenance
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     if: github.actor == 'dependabot[bot]'
+    timeout-minutes: 10
 
     steps:
       - name: 🔍 Check Actor
@@ -74,13 +94,86 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Decides whether approving and enabling auto-merge is safe. Reads the
+      # rules of the base branch with the job token: the rules endpoint needs
+      # only metadata access and the branch endpoint only contents read, so no
+      # permission beyond what callers already grant is required. Every path
+      # that does not end in ok=true leaves the PR open and the job green.
+      # Tested by .github/workflows/tests/docker-maintenance-dependabot-guard.test.sh
+      - name: 🛡️ Merge guard
+        id: guard
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          ALLOW_MAJOR: ${{ inputs.allow-major }}
+        run: |
+          set -uo pipefail
+
+          decide() {
+            echo "ok=$1" >> "$GITHUB_OUTPUT"
+            echo "reason=$2" >> "$GITHUB_OUTPUT"
+            echo "Decision: ok=$1 reason=$2"
+          }
+
+          echo "Base branch: $BASE"
+          echo "Update type: ${UPDATE_TYPE:-unknown}"
+
+          if [ "$UPDATE_TYPE" = "version-update:semver-major" ] && [ "$ALLOW_MAJOR" != "true" ]; then
+            echo "::notice title=Dependabot PR left open::Major update - left open for review. Major updates are not merged automatically (allow-major is off)."
+            decide false major
+            exit 0
+          fi
+
+          # Active rulesets on the branch, repository and organization level.
+          # Rulesets in evaluate or disabled mode are not returned.
+          if ! RULESET_CHECKS=$(gh api "repos/$REPO/rules/branches/$BASE" \
+                --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context // empty'); then
+            echo "::warning title=Dependabot PR left open::Could not read the rulesets of '$BASE'. Without knowing whether CI is required, auto-merge is not enabled."
+            decide false api-error
+            exit 0
+          fi
+
+          # Classic branch protection rule.
+          if ! PROTECTION_CHECKS=$(gh api "repos/$REPO/branches/$BASE" \
+                --jq '.protection.required_status_checks.contexts[]? // empty'); then
+            echo "::warning title=Dependabot PR left open::Could not read the branch protection of '$BASE'. Without knowing whether CI is required, auto-merge is not enabled."
+            decide false api-error
+            exit 0
+          fi
+
+          REQUIRED=$(printf '%s\n%s\n' "$RULESET_CHECKS" "$PROTECTION_CHECKS" | sed '/^$/d' | sort -u)
+          if [ -z "$REQUIRED" ]; then
+            echo "::notice title=Dependabot PR left open::'$BASE' has no required status checks, so auto-merge would merge this PR immediately, before CI finishes. Add a ruleset with required status checks to '$BASE' to merge Dependabot PRs automatically after green CI."
+            decide false no-required-checks
+            exit 0
+          fi
+          echo "Required status checks on $BASE:"
+          while IFS= read -r check; do echo "  - $check"; done <<< "$REQUIRED"
+
+          # Without "Allow auto-merge", `gh pr merge --auto` fails on a PR that is
+          # still waiting for its checks. Only an explicit false stops here; if the
+          # setting cannot be read, the merge step reports the real error.
+          AUTO_MERGE=$(gh api "repos/$REPO" --jq '.allow_auto_merge' 2>/dev/null || echo unknown)
+          echo "Allow auto-merge: $AUTO_MERGE"
+          if [ "$AUTO_MERGE" = "false" ]; then
+            echo "::warning title=Dependabot PR left open::'$BASE' requires status checks, but 'Allow auto-merge' is disabled in the repository settings (Settings > General > Pull Requests)."
+            decide false auto-merge-disabled
+            exit 0
+          fi
+
+          decide true required-checks
+
       - name: ✅ Auto-approve Dependabot PR
-        if: inputs.auto-approve
+        if: inputs.auto-approve && steps.guard.outputs.ok == 'true'
         uses: hmarr/auto-approve-action@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🔀 Enable auto-merge
+        if: steps.guard.outputs.ok == 'true'
         uses: peter-evans/enable-pull-request-automerge@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -88,18 +181,44 @@ jobs:
           merge-method: ${{ inputs.merge-method }}
 
       - name: 📊 Summary
+        if: always()
         shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          DEPENDENCIES: ${{ steps.metadata.outputs.dependency-names }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          PREVIOUS_VERSION: ${{ steps.metadata.outputs.previous-version }}
+          NEW_VERSION: ${{ steps.metadata.outputs.new-version }}
+          MERGE_METHOD: ${{ inputs.merge-method }}
+          AUTO_APPROVE: ${{ inputs.auto-approve && '✅ Yes' || '❌ No' }}
+          GUARD_OK: ${{ steps.guard.outputs.ok }}
+          GUARD_REASON: ${{ steps.guard.outputs.reason }}
+          JOB_STATUS: ${{ job.status }}
         run: |
-          echo "## 🐳 Docker Maintenance (Dependabot)" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **PR** | #${{ github.event.pull_request.number }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Dependency** | \`${{ steps.metadata.outputs.dependency-names }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Update Type** | ${{ steps.metadata.outputs.update-type }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **From** | \`${{ steps.metadata.outputs.previous-version }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **To** | \`${{ steps.metadata.outputs.new-version }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Merge Method** | ${{ inputs.merge-method }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Auto-Approve** | ${{ inputs.auto-approve && '✅ Yes' || '❌ No' }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "✅ Auto-merge enabled. GitHub will merge once all required checks pass." >> "$GITHUB_STEP_SUMMARY"
+          case "$GUARD_REASON" in
+            required-checks)     DECISION="✅ Auto-merge enabled. GitHub merges once the required checks on \`$BASE\` pass." ;;
+            major)               DECISION="⏸️ Left open: semver-major update, review and merge it by hand." ;;
+            no-required-checks)  DECISION="⏸️ Left open: \`$BASE\` has no required status checks, auto-merge would not wait for CI." ;;
+            auto-merge-disabled) DECISION="⏸️ Left open: 'Allow auto-merge' is disabled in the repository settings." ;;
+            api-error)           DECISION="⏸️ Left open: the rules of \`$BASE\` could not be read." ;;
+            *)                   DECISION="❌ Not completed (job status: $JOB_STATUS)." ;;
+          esac
+          if [ "$GUARD_OK" = "true" ] && [ "$JOB_STATUS" != "success" ]; then
+            DECISION="❌ Approve or enabling auto-merge failed (job status: $JOB_STATUS)."
+          fi
+          {
+            echo "## 🐳 Docker Maintenance (Dependabot)"
+            echo ""
+            echo "| Property | Value |"
+            echo "|----------|-------|"
+            echo "| **PR** | #$PR_NUMBER |"
+            echo "| **Dependency** | \`$DEPENDENCIES\` |"
+            echo "| **Update Type** | $UPDATE_TYPE |"
+            echo "| **From** | \`$PREVIOUS_VERSION\` |"
+            echo "| **To** | \`$NEW_VERSION\` |"
+            echo "| **Merge Method** | $MERGE_METHOD |"
+            echo "| **Auto-Approve** | $AUTO_APPROVE |"
+            echo ""
+            echo "$DECISION"
+          } >> "$GITHUB_STEP_SUMMARY"

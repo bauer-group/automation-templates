@@ -12,7 +12,8 @@
 # 1. Dependabot scans Dockerfiles for base image updates (Sundays 06:30 UTC)
 # 2. Creates a PR with commit prefix "fix(docker):" for semantic release
 # 3. CI runs your Docker build workflow on the PR
-# 4. If all checks pass, PR is automatically merged
+# 4. If all required checks pass, PR is automatically merged
+#    (semver-major updates stay open for review)
 # 5. Semantic release creates a PATCH version (e.g., 1.0.0 → 1.0.1)
 # 6. Docker image is rebuilt and pushed
 #
@@ -20,6 +21,9 @@
 # 1. Enable Dependabot in repository settings
 # 2. Add .github/dependabot.yml (see below)
 # 3. Enable "Allow auto-merge" in repository settings
+# 4. Add a ruleset on main that requires the status checks of your PR CI.
+#    Without required checks the PR is left open: auto-merge would not wait
+#    for CI and would merge immediately.
 #
 # Required .github/dependabot.yml in your repo:
 # -----------------------------------------------------------------------------

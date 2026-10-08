@@ -87,6 +87,13 @@ jobs:
         shell: bash
         run: bash .github/actions/docker-build/tests/primary-tag.test.sh
 
+      # Without required status checks, `gh pr merge --auto` merges at once, before
+      # CI finishes - that is how a Dependabot PR with a red check got merged. Pins
+      # the guard that only enables auto-merge when the base branch requires CI.
+      - name: "🧪 docker-maintenance-dependabot: merge guard"
+        shell: bash
+        run: bash .github/workflows/tests/docker-maintenance-dependabot-guard.test.sh
+
       - name: "🧪 dotnet-nuget-auth: private feed credentials"
         shell: bash
         run: bash .github/actions/dotnet-nuget-auth/tests/configure-credentials.test.sh
