@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.1.4](https://github.com/bauer-group/automation-templates/compare/v11.1.3...v11.1.4) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **docker-maintenance:** guarded Dependabot auto-merge behind CI ([#113](https://github.com/bauer-group/automation-templates/issues/113)) ([fe9edd8](https://github.com/bauer-group/automation-templates/commit/fe9edd88c5c85128fd1593327ee9e26beaf1e1f1)), references [CS-BillingStack#12](https://github.com/CS-BillingStack/issues/12) [#9](https://github.com/bauer-group/automation-templates/issues/9) [#10](https://github.com/bauer-group/automation-templates/issues/10) [#14](https://github.com/bauer-group/automation-templates/issues/14) [#19](https://github.com/bauer-group/automation-templates/issues/19) [#39](https://github.com/bauer-group/automation-templates/issues/39)
+
 ## [11.1.3](https://github.com/bauer-group/automation-templates/compare/v11.1.2...v11.1.3) (2026-10-08)
 
 ### 🐛 Bug Fixes
