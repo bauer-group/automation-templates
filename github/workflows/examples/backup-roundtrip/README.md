@@ -22,7 +22,7 @@ Full reference: [`docs/workflows/modules-backup-roundtrip-test.md`](../../../../
 
    The CI-tested reference for PostgreSQL plus a file volume is the module's own fixture in [`.github/workflows/tests/backup-roundtrip/`](../../../../.github/workflows/tests/backup-roundtrip/); a MySQL/MariaDB variant is in the [script contract](../../../../docs/workflows/modules-backup-roundtrip-test.md#example-mysql--mariadb).
 3. **Copy an example** to `.github/workflows/` and adjust compose file, profiles, `build-images`, `backup-service`, `require-components` and the services to stop for the restore.
-4. **Generate every password** with `generated-secrets` and lower memory limits with `env-overrides` — never commit credentials to make the stack start.
+4. **Generate every password** with `generated-secrets` — or, for secrets with a format of their own (RSA keys, exact lengths, base64), call the repository's generator from a `prepare-script` — and lower memory limits with `env-overrides`. Never commit credentials to make the stack start.
 5. **Grant `packages: read`** on the calling job, so internal images can be pulled.
 
 ## What a run proves

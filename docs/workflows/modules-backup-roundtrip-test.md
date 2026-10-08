@@ -39,7 +39,7 @@ This reusable workflow runs the complete cycle against the caller's own compose 
 └──────────────────┘   └──────────────────┘   └──────────────────┘
 ```
 
-1. **Prepare** — `.env` is created from `env-template`, then `env-overrides` and `generated-secrets` are written over it. `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME` and `COMPOSE_PROFILES` are exported, so every later step — and your scripts — reach the stack with a plain `docker compose`.
+1. **Prepare** — `.env` is created from `env-template`; `prepare-script` (if set) fills secrets with a format of their own, then `env-overrides` and `generated-secrets` are written over it. `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME` and `COMPOSE_PROFILES` are exported, so every later step — and your scripts — reach the stack with a plain `docker compose`.
 2. **Build** — each `build-images` entry is built with `--pull` and tagged with the image reference its compose service resolves to. Compose then starts that build instead of pulling the released image.
 3. **Start** — the remaining images are pulled and `docker compose up -d --wait` waits until every service is running or healthy and one-shot dependencies have completed.
 4. **Seed** — `seed-script` writes marker data; `check-script` must then report it **present**.
@@ -96,6 +96,7 @@ Ready-to-copy callers are in [`github/workflows/examples/backup-roundtrip/`](../
 | `env-template` | File the `.env` is created from. A missing file starts from an empty `.env` | `'.env.example'` |
 | `env-overrides` | Multiline `KEY=VALUE` pairs written over the template: CI memory limits, disabled sources, test settings. Existing keys are replaced at their position, so later lines that interpolate them still work. Lines starting with `#` are ignored. **Never real secrets** | `''` |
 | `generated-secrets` | Variable names (spaces, commas or newlines) that receive a random 48-character hex value, masked in the log | `''` |
+| `prepare-script` | Bash script run once the `.env` exists, before `env-overrides` and `generated-secrets` — for secrets with a format of their own, usually the repository's generator. Every value it adds or changes is masked. See [Secrets with a format of their own](#secrets-with-a-format-of-their-own) | `''` |
 
 ### Images under test
 
@@ -214,12 +215,14 @@ The scripts are plain bash files in the caller repository, run with `bash <scrip
 
 | Variable | Set for | Content |
 |----------|---------|---------|
-| `ROUNDTRIP_MARKER` | all | Unique token per run, `rt-<run id>-<attempt>-<8 hex>` — only `[a-z0-9-]`. Tag everything you write with it |
-| `ROUNDTRIP_PHASE` | all | `seed`, `mutate` or `check` |
+| `ROUNDTRIP_MARKER` | seed, mutate, check | Unique token per run, `rt-<run id>-<attempt>-<8 hex>` — only `[a-z0-9-]`. Tag everything you write with it |
+| `ROUNDTRIP_PHASE` | all | `prepare`, `seed`, `mutate` or `check` |
 | `ROUNDTRIP_EXPECT` | check | `present` or `absent` |
 | `ROUNDTRIP_SNAPSHOT_ID` | mutate, check after the backup | Id of the snapshot under test |
-| `ROUNDTRIP_BACKUP_SERVICE` | all | The `backup-service` input |
-| `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`, `COMPOSE_PROFILES` | all | Set, so `docker compose exec -T <service> …` reaches the stack |
+| `ROUNDTRIP_BACKUP_SERVICE` | seed, mutate, check | The `backup-service` input |
+| `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`, `COMPOSE_PROFILES` | seed, mutate, check | Set, so `docker compose exec -T <service> …` reaches the stack |
+
+`prepare-script` runs before the stack exists, from `working-directory`, with only `ROUNDTRIP_PHASE=prepare`; it edits `.env` in place.
 
 The `.env` is **not** sourced into the scripts — compose `.env` syntax is not shell syntax. Run commands inside the containers instead; they already have their credentials.
 
@@ -381,6 +384,23 @@ env-overrides: |
 The engine skips a source with `"enabled": false`, and an `s3` source or destination with an empty bucket. Pair this with `require-components` for everything that **must** be in the snapshot, so a toggle cannot hide a source you meant to test. If the compose file has no toggle, add a CI-only override file through `compose-files`.
 
 A stack whose **only** source is external (for example a Cloudflare configuration export) cannot seed data on a runner; the module can then only test the mechanics, or not be used.
+
+### Secrets with a format of their own
+
+`generated-secrets` produces 48 hex characters, which fits passwords and most keys. Some applications want more: an RSA private key as base64 PEM (Lago), exactly 32 characters (a Zitadel master key), base64 of 32 bytes (a LogTo vault key). Repositories that need those usually ship a generator already — let it fill the `.env`:
+
+```bash
+#!/usr/bin/env bash
+# tests/backup-roundtrip/prepare.sh
+set -euo pipefail
+python3 scripts/generate-env.py --update   # fills the remaining CHANGE_ME values in .env
+```
+
+```yaml
+prepare-script: 'tests/backup-roundtrip/prepare.sh'
+```
+
+The script runs once the `.env` has been created from the template and before `env-overrides` and `generated-secrets`, so both still win over it. Every `.env` line it adds or changes is masked in the log (values of 8 characters or more). It should not print secrets itself — anything it prints before the masks are registered stays in the log.
 
 ### Plugin sources inside the stack
 

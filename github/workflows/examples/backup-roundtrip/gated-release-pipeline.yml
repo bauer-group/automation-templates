@@ -16,7 +16,8 @@
 #   .env.example                  APP_IMAGE/APP_VERSION, APP_BACKUP_IMAGE/..._VERSION
 #   src/app/Dockerfile            application image
 #   src/app-backup/Dockerfile     FROM ghcr.io/bauer-group/cs-backuphelper/backuphelper:latest
-#   tests/backup-roundtrip/       seed.sh, mutate.sh, check.sh
+#   scripts/generate-env.py       fills CHANGE_ME secrets (called by prepare.sh)
+#   tests/backup-roundtrip/       prepare.sh, seed.sh, mutate.sh, check.sh
 # =============================================================================
 
 name: 🚀 Release & Docker Build
@@ -92,6 +93,9 @@ jobs:
         STACK_NAME=app_roundtrip
         PG_SHARED_BUFFERS=256MB
         APP_WORKERS=1
+      # The repository's own generator fills secrets with a format of their
+      # own (e.g. an RSA key); everything it writes is masked.
+      prepare-script: 'tests/backup-roundtrip/prepare.sh'
       generated-secrets: |
         DATABASE_PASSWORD
         APP_SECRET_KEY
