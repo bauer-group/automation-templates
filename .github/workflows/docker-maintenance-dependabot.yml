@@ -77,7 +77,7 @@ jobs:
   maintenance:
     name: Docker Maintenance
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
-    if: github.actor == 'dependabot[bot]' || startsWith(github.base_ref, 'canary/')
+    if: github.actor == 'dependabot[bot]'
     timeout-minutes: 10
 
     steps:
@@ -93,7 +93,6 @@ jobs:
         uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          skip-verification: ${{ startsWith(github.base_ref, 'canary/') }}
 
       # Decides whether approving and enabling auto-merge is safe. Reads the
       # rules of the base branch with the job token: the rules endpoint needs
