@@ -161,6 +161,37 @@ secrets: inherit   # liefert SONARQUBE_TOKEN + SONARQUBE_HOST_URL (Org-Secrets)
 
 > Auch direkt in `dotnet/nodejs/python/php-build.yml` via `enable-sonar: true` verfügbar. Fehlen Token/URL, gibt der Job nur eine Warnung aus statt zu scheitern. Projekt-Config (projectKey, Coverage-Pfade) gehört in `sonar-project.properties` im Consumer-Repo.
 
+### 🧪 [Backup Round-Trip Test](./modules-backup-roundtrip-test.yml)
+**Zweck:** Beweist vor dem Release, dass der BackupHelper-Sidecar eines Compose-Stacks echte Daten sichern **und** wiederherstellen kann
+
+Startet den Stack des Consumers mit den Images aus dem Commit, legt Testdaten an, erstellt ein Backup, löscht die Daten, stellt den Snapshot wieder her und prüft, dass die Daten zurück sind. Läuft im Consumer-Repository, Logs privater Stacks bleiben dort.
+
+```yaml
+backup-roundtrip:
+  permissions:
+    contents: read
+    packages: read
+  uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+  with:
+    compose-file: 'docker-compose.local.yml'
+    profiles: 'backup'
+    generated-secrets: 'DATABASE_PASSWORD'
+    build-images: '[{"service": "app-backup", "context": "src/app-backup"}]'
+    backup-service: 'app-backup'
+    require-components: 'app files'
+    seed-script: 'tests/backup-roundtrip/seed.sh'
+    mutate-script: 'tests/backup-roundtrip/mutate.sh'
+    check-script: 'tests/backup-roundtrip/check.sh'
+  secrets: inherit   # kein Secret nötig: Passwörter werden pro Lauf generiert
+```
+
+**Ausgaben:**
+- `snapshot-id`: Id des erstellten und wiederhergestellten Snapshots
+- `components`: Komponenten des Snapshots als JSON (`name`, `kind`, `size`, `error`)
+- `result`: Ergebnis des Jobs (`success`/`failure`/`cancelled`)
+
+> Das Check-Skript muss die Daten vor dem Backup sehen, nach dem Löschen **nicht** sehen und nach dem Restore wieder sehen — ein Restore, der nichts schreibt, kann so nicht bestehen. Doku und Skript-Vertrag: [docs/workflows/modules-backup-roundtrip-test.md](../../docs/workflows/modules-backup-roundtrip-test.md).
+
 ### 🚀 [Semantic Release](./modules-semantic-release.yml)
 **Zweck:** Automatisierte Release-Erstellung mit Semantic Release
 
@@ -291,6 +322,26 @@ jobs:
     with:
       fail-on-security-issues: true
       fail-on-license-issues: false
+```
+
+### 4. Release erst nach erfolgreichem Backup-Round-Trip
+```yaml
+jobs:
+  backup-roundtrip:
+    permissions:
+      contents: read
+      packages: read
+    uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+    with:
+      backup-service: 'app-backup'
+      # ... siehe Modul-Doku
+    secrets: inherit
+
+  release:
+    needs: backup-roundtrip
+    if: needs.backup-roundtrip.result == 'success' && github.event_name != 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    secrets: inherit
 ```
 
 ## 🛠️ Anpassung und Konfiguration

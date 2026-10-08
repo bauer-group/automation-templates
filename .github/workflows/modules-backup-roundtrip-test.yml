@@ -84,7 +84,7 @@ on:
         type: string
         default: ".env.example"
       env-overrides:
-        description: "Multiline KEY=VALUE pairs written over the template - lower memory limits for CI, disable sources that need external services, fixed test settings. Never put real secrets here."
+        description: "Multiline KEY=VALUE pairs written over the template - lower memory limits for CI, disable sources that need external services, fixed test settings. Existing keys are replaced in place; lines starting with # are ignored. Never put real secrets here."
         required: false
         type: string
         default: ""
