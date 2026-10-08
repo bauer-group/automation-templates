@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-10-08 05:15:32 UTC -->
+<!-- Generated on 2026-10-08 11:00:25 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -169,6 +169,7 @@ jobs:
 │       ├── modules-validate-dockerfile.yml # Dockerfile validation (Hadolint)
 │       ├── modules-validate-compose.yml    # Docker Compose validation
 │       ├── modules-validate-shellscript.yml # Shell script validation (ShellCheck)
+│       ├── modules-backup-roundtrip-test.yml # Backup round trip of a compose stack
 │       └── modules-*.yml              # Additional module workflows
 ├── github/                    # 🛠️ Repository Management Tools
 │   ├── branch-protect/           # Branch protection automation
@@ -177,6 +178,7 @@ jobs:
 │   ├── runner/                   # Self-hosted runner management
 │   └── workflows/                # Workflow examples & documentation
 │       └── examples/             # 📋 Usage Examples
+│           ├── backup-roundtrip/     # Backup round-trip test examples
 │           ├── ci-cd/                # General CI/CD examples
 │           ├── claude-code/          # Claude Code assistant examples
 │           ├── coolify-deploy/       # Coolify deployment examples
@@ -213,6 +215,7 @@ jobs:
 │   │   ├── dotnet-desktop-build.md   # .NET desktop builds
 │   │   ├── makefile-build.md         # Makefile build system
 │   │   ├── meta-repository-sync.md   # Meta repository sync
+│   │   ├── modules-backup-roundtrip-test.md # Backup round-trip test
 │   │   ├── modules-validate-compose.md # Compose validation
 │   │   ├── modules-validate-dockerfile.md # Dockerfile validation (Hadolint)
 │   │   ├── modules-validate-shellscript.md # Shell validation
@@ -1069,6 +1072,7 @@ gh auth status --show-token
 
 #### 🔍 Validation Modules
 
+- [🧪 **Backup Round-Trip Test**](docs/workflows/modules-backup-roundtrip-test.md) - Backup, delete, restore and verify real data of a compose stack before release
 - [🔍 **Docker Base Image Monitor**](docs/workflows/modules-docker-base-image-monitor.md) - Base image digest drift detection
 - [🐳 **Dockerfile Validation**](docs/workflows/modules-validate-dockerfile.md) - Dockerfile linting with Hadolint
 - [📋 **Docker Compose Validation**](docs/workflows/modules-validate-compose.md) - Docker Compose validation
@@ -1192,5 +1196,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-10-08 05:15:32 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-10-08 11:00:25 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
