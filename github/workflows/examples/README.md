@@ -6,6 +6,11 @@ This directory contains example workflows demonstrating how to use the reusable 
 
 ```
 github/workflows/examples/
+├── backup-roundtrip/        # Backup round trip of a compose stack before release
+│   ├── README.md
+│   ├── minimal-postgres-filesystem.yml
+│   ├── gated-release-pipeline.yml
+│   └── plugin-and-external-sources.yml
 ├── ci-cd/                   # CI/CD pipeline examples
 │   ├── comprehensive-ci-cd.yml
 │   └── security-focused.yml
@@ -109,6 +114,15 @@ For building and releasing Python packages with comprehensive CI/CD
 - `python-release/nocodb-simpleclient-example.yml` - Complete Python package release
 - `python-release/README.MD` - Detailed documentation and GitHub Packages installation guide
 
+### Backup Round-Trip Test (`modules-backup-roundtrip-test.yml`)
+Starts a compose stack with its BackupHelper sidecar, seeds data, backs it up, deletes it, restores it and proves it is back — before an image is released
+
+**Examples:**
+- `backup-roundtrip/minimal-postgres-filesystem.yml` - PostgreSQL + file volume, on pull requests
+- `backup-roundtrip/gated-release-pipeline.yml` - Complete `docker-release.yml` gated on the round trip
+- `backup-roundtrip/plugin-and-external-sources.yml` - In-stack plugin source tested, external SaaS source switched off
+- `backup-roundtrip/README.md` - Setup and what a run proves
+
 ### CI/CD Pipelines
 Complete CI/CD pipeline configurations
 
@@ -184,6 +198,7 @@ Most workflows support configuration through:
 
 ### Build Workflow Documentation
 - [Docker Build Documentation](../../../docs/workflows/docker-build.md)
+- [Backup Round-Trip Test Documentation](../../../docs/workflows/modules-backup-roundtrip-test.md)
 - [Python Build Documentation](../../../docs/workflows/python-build.md)
 - [.NET Desktop Build Documentation](../../../docs/workflows/dotnet-desktop-build.md)
 - [.NET Build Documentation](../../../docs/workflows/dotnet-build.md)

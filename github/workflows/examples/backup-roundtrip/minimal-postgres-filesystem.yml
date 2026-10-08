@@ -1,0 +1,61 @@
+# =============================================================================
+# Backup Round Trip - Minimal Consumer (PostgreSQL + file volume)
+# =============================================================================
+# The smallest useful round trip for a stack with a BackupHelper sidecar that
+# backs up one PostgreSQL database and one file volume. Runs on pull requests
+# that touch the stack and on demand; see gated-release-pipeline.yml for gating
+# a release on it.
+#
+# Assumed repository layout:
+#   docker-compose.yml            database, app, app-backup (profile: backup)
+#   .env.example                  production defaults, DATABASE_PASSWORD empty
+#   src/app-backup/Dockerfile     FROM ghcr.io/bauer-group/cs-backuphelper/backuphelper:latest
+#   tests/backup-roundtrip/       seed.sh, mutate.sh, check.sh
+#
+# Script contract and example scripts:
+#   docs/workflows/modules-backup-roundtrip-test.md#script-contract
+# =============================================================================
+
+name: 🧪 Backup Round Trip
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'docker-compose*.yml'
+      - '.env.example'
+      - 'tests/backup-roundtrip/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup-roundtrip:
+    name: 🧪 Backup Round Trip
+    # The module pulls internal/private images; a reusable workflow cannot
+    # grant itself more than the caller does.
+    permissions:
+      contents: read
+      packages: read
+    uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+    with:
+      compose-file: 'docker-compose.yml'
+      # The sidecar sits behind the backup profile.
+      profiles: 'backup'
+      # Every password the stack needs, generated per run and masked.
+      generated-secrets: 'DATABASE_PASSWORD'
+      # The sidecar image from this commit, tagged as the image the
+      # app-backup service resolves to - Compose uses it instead of pulling.
+      build-images: '[{"service": "app-backup", "context": "src/app-backup"}]'
+      backup-service: 'app-backup'
+      # "app" is the database name (default component name), "files" the
+      # name of the filesystem source.
+      require-components: 'app files'
+      # The application writes to both components; stop it for the restore.
+      services-to-stop-before-restore: 'app'
+      seed-script: 'tests/backup-roundtrip/seed.sh'
+      mutate-script: 'tests/backup-roundtrip/mutate.sh'
+      check-script: 'tests/backup-roundtrip/check.sh'
+    secrets: inherit
