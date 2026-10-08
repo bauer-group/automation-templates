@@ -1,0 +1,882 @@
+# =============================================================================
+# Backup Round-Trip Test - Reusable Workflow
+# =============================================================================
+# Proves that a BackupHelper sidecar can back up AND restore a real stack, with
+# real data, before the stack's images are released.
+#
+# The backup engine (bauer-group/CS-BackupHelper) has its own unit and e2e
+# tests, but each consumer wires it differently: its own compose file, its own
+# BACKUP_CONFIG_JSON, plugin sources, volumes and uid 1000 permissions. A green
+# engine release says nothing about whether THIS stack's backup restores. This
+# module runs the full cycle against the caller's own compose stack:
+#
+#   prepare .env -> build images under test -> up --wait -> seed -> create
+#   -> show (every component error-free) -> verify -> delete the seeded data
+#   -> restore -> data is back -> healthcheck -> logs on failure -> down -v
+#
+# It runs in the CALLER's repository, so logs and artifacts of private stacks
+# stay where they belong.
+#
+# Usage (see docs/workflows/modules-backup-roundtrip-test.md):
+#   jobs:
+#     backup-roundtrip:
+#       permissions:
+#         contents: read
+#         packages: read
+#       uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+#       with:
+#         compose-file: 'docker-compose.local.yml'
+#         profiles: 'backup'
+#         generated-secrets: 'DATABASE_PASSWORD'
+#         build-images: '[{"service": "app-backup", "context": "src/app-backup"}]'
+#         backup-service: 'app-backup'
+#         seed-script: 'tests/backup-roundtrip/seed.sh'
+#         mutate-script: 'tests/backup-roundtrip/mutate.sh'
+#         check-script: 'tests/backup-roundtrip/check.sh'
+#       secrets: inherit
+#
+# Images are pulled from GHCR with the automatic GITHUB_TOKEN. Internal or
+# private packages need 'packages: read' in the CALLING workflow - a reusable
+# workflow can only restrict the caller's permissions, never extend them.
+# =============================================================================
+
+name: "🐳 Module | Backup Round-Trip Test"
+
+on:
+  workflow_call:
+    inputs:
+      # -- Stack --------------------------------------------------------------
+      compose-file:
+        description: "Compose file of the stack under test, relative to working-directory"
+        required: false
+        type: string
+        default: "docker-compose.yml"
+      compose-files:
+        description: 'Several compose files as a JSON array, merged in order (e.g. ["docker-compose.local.yml", "tests/backup-roundtrip/ci.override.yml"]). Takes precedence over compose-file.'
+        required: false
+        type: string
+        default: ""
+      working-directory:
+        description: "Directory the stack is started from. The generated .env is written here and the caller scripts run here."
+        required: false
+        type: string
+        default: "."
+      project-name:
+        description: "Compose project name (COMPOSE_PROJECT_NAME)"
+        required: false
+        type: string
+        default: "backup-roundtrip"
+      profiles:
+        description: "Comma-separated Compose profiles to activate (COMPOSE_PROFILES), usually the one that enables the backup sidecar, e.g. 'backup'"
+        required: false
+        type: string
+        default: ""
+      services:
+        description: "Services to start, separated by spaces or newlines. Empty starts every service of the active profiles. Dependencies are started automatically."
+        required: false
+        type: string
+        default: ""
+
+      # -- Environment --------------------------------------------------------
+      env-template:
+        description: "File the .env is created from (relative to working-directory). A missing file starts from an empty .env."
+        required: false
+        type: string
+        default: ".env.example"
+      env-overrides:
+        description: "Multiline KEY=VALUE pairs written over the template - lower memory limits for CI, disable sources that need external services, fixed test settings. Existing keys are replaced in place; lines starting with # are ignored. Never put real secrets here."
+        required: false
+        type: string
+        default: ""
+      generated-secrets:
+        description: "Names of variables (separated by spaces, commas or newlines) that receive a random 48-character hex value at runtime, masked in the log. Use it for every password the stack needs."
+        required: false
+        type: string
+        default: ""
+      prepare-script:
+        description: "Bash script (relative to working-directory) run once the .env exists and before env-overrides and generated-secrets are applied - for secrets with a specific format, typically the repository's own generator (e.g. 'python3 scripts/generate-env.py --update'). Every value it adds or changes is masked."
+        required: false
+        type: string
+        default: ""
+
+      # -- Images under test --------------------------------------------------
+      build-images:
+        description: >-
+          JSON array of images to build from the caller repository before the stack
+          starts. Each entry: service (required - the compose service whose image
+          reference the build is tagged as, so Compose uses it instead of pulling),
+          context (required), dockerfile, target, build-args (newline-separated
+          KEY=VALUE string or a JSON object). Base images are always pulled fresh.
+          Example: '[{"service": "app-backup", "context": "src/app-backup"}]'
+        required: false
+        type: string
+        default: ""
+      registry-login:
+        description: "Log in to ghcr.io with the automatic GITHUB_TOKEN before building and pulling (needed for internal or private images)"
+        required: false
+        type: boolean
+        default: true
+
+      # -- Backup -------------------------------------------------------------
+      backup-service:
+        description: "Compose service of the BackupHelper sidecar. It must run as a daemon - the engine CLI is executed inside it with 'docker compose exec'."
+        required: true
+        type: string
+      require-components:
+        description: "Component names (separated by spaces, commas or newlines) that the snapshot must contain. Catches a source that is silently disabled or skipped."
+        required: false
+        type: string
+        default: ""
+      allow-component-warnings:
+        description: "Accept components that report warnings (e.g. unreadable files skipped by a filesystem source). Off by default: a skipped file is data that would not come back."
+        required: false
+        type: boolean
+        default: false
+      services-to-stop-before-restore:
+        description: "Services to stop before the restore (separated by spaces or newlines), typically the application containers that hold database connections. They are started again afterwards."
+        required: false
+        type: string
+        default: ""
+      restore-command:
+        description: "Engine subcommand that restores a snapshot. Change it only for a consumer plugin that wraps restore (e.g. 'documenso restore')."
+        required: false
+        type: string
+        default: "restore"
+      restore-args:
+        description: "Arguments after the snapshot id, e.g. '--force --only database'. Keep --force: there is no terminal to confirm the prompt."
+        required: false
+        type: string
+        default: "--force"
+      run-healthcheck:
+        description: "Run 'backuphelper healthcheck' at the end (must report the new snapshot as fresh)"
+        required: false
+        type: boolean
+        default: true
+
+      # -- Test data ----------------------------------------------------------
+      seed-script:
+        description: "Bash script (relative to working-directory) that writes marker data into the running stack. Without seed and check scripts only the backup mechanics are tested, not the data."
+        required: false
+        type: string
+        default: ""
+      mutate-script:
+        description: "Bash script that deletes or damages the seeded data after the backup, so the restore has something to bring back"
+        required: false
+        type: string
+        default: ""
+      check-script:
+        description: "Bash script that exits 0 when the seeded data is in the state given by ROUNDTRIP_EXPECT (present or absent)"
+        required: false
+        type: string
+        default: ""
+
+      # -- Timeouts -----------------------------------------------------------
+      wait-timeout:
+        description: "Seconds 'docker compose up --wait' may take until every service is running or healthy (initial start and restart after the restore)"
+        required: false
+        type: number
+        default: 600
+      script-timeout:
+        description: "Seconds each seed, mutate or check script may run"
+        required: false
+        type: number
+        default: 600
+      timeout-minutes:
+        description: "Timeout of the whole job in minutes"
+        required: false
+        type: number
+        default: 45
+
+      # -- Runner and diagnostics ---------------------------------------------
+      free-disk-space:
+        description: "Remove unused preinstalled toolchains from the runner first. Turn it on for large stacks (several GB of images). GitHub-hosted Linux runners only - ignored on self-hosted runners."
+        required: false
+        type: boolean
+        default: false
+      artifact-name:
+        description: "Name of the diagnostics artifact uploaded on failure. Set a distinct name when the module is called more than once in a workflow run."
+        required: false
+        type: string
+        default: "backup-roundtrip-diagnostics"
+      artifact-retention-days:
+        description: "Days the diagnostics artifact is kept"
+        required: false
+        type: number
+        default: 7
+      runs-on:
+        description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
+        required: false
+        type: string
+        default: "ubuntu-latest"
+
+    outputs:
+      snapshot-id:
+        description: "Id of the snapshot the round trip created and restored"
+        value: ${{ jobs.roundtrip.outputs.snapshot-id }}
+      components:
+        description: "JSON array of the snapshot's components ({name, kind, size, error})"
+        value: ${{ jobs.roundtrip.outputs.components }}
+      result:
+        description: "Result of the round trip job: success, failure or cancelled"
+        value: ${{ jobs.roundtrip.result }}
+
+permissions:
+  contents: read
+  packages: read # Pull internal/private images from GHCR
+
+jobs:
+  roundtrip:
+    name: "🧪 Backup Round Trip"
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    outputs:
+      snapshot-id: ${{ steps.create.outputs.snapshot-id }}
+      components: ${{ steps.inspect.outputs.components }}
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+
+    # Shared by several steps and by the caller scripts (inherited through the
+    # environment). Inputs are routed through env and never pasted into a script.
+    env:
+      BACKUP_SERVICE: ${{ inputs.backup-service }}
+      SCRIPT_TIMEOUT: ${{ inputs.script-timeout }}
+      WAIT_TIMEOUT: ${{ inputs.wait-timeout }}
+      START_SERVICES: ${{ inputs.services }}
+
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v7
+
+      - name: "🧹 Free Disk Space"
+        # Never on self-hosted runners: the rm -rf would hit a persistent host.
+        if: inputs.free-disk-space && runner.os == 'Linux' && runner.environment == 'github-hosted'
+        working-directory: .
+        run: |
+          BEFORE=$(df --output=avail -BM / | tail -1 | tr -dc '0-9')
+          echo "Before: $(df -h / | tail -1)"
+
+          # Each removed with `|| true`: a runner image that drops one of these
+          # must not fail the run over its absence. Only the CodeQL bundle out of
+          # /opt/hostedtoolcache - the rest holds versions a setup-* step may expect.
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /usr/local/lib/android /usr/share/dotnet \
+            /usr/local/.ghcup /usr/share/swift /usr/local/share/powershell /opt/ghc || true
+
+          AFTER=$(df --output=avail -BM / | tail -1 | tr -dc '0-9')
+          echo "After:  $(df -h / | tail -1)"
+          echo "🧹 Freed $(( (AFTER - BEFORE) / 1024 )) GB - ${AFTER} MB now available"
+
+      # Everything that can be wrong with the inputs fails here, in seconds,
+      # instead of after ten minutes of image pulls.
+      - name: "🔍 Validate Inputs"
+        env:
+          COMPOSE_FILE_INPUT: ${{ inputs.compose-file }}
+          COMPOSE_FILES_INPUT: ${{ inputs.compose-files }}
+          PROFILES_INPUT: ${{ inputs.profiles }}
+          PROJECT_NAME: ${{ inputs.project-name }}
+          ENV_OVERRIDES: ${{ inputs.env-overrides }}
+          GENERATED_SECRETS: ${{ inputs.generated-secrets }}
+          BUILD_IMAGES: ${{ inputs.build-images }}
+          PREPARE_SCRIPT: ${{ inputs.prepare-script }}
+          SEED_SCRIPT: ${{ inputs.seed-script }}
+          MUTATE_SCRIPT: ${{ inputs.mutate-script }}
+          CHECK_SCRIPT: ${{ inputs.check-script }}
+          STOP_SERVICES: ${{ inputs.services-to-stop-before-restore }}
+        run: |
+          set -euo pipefail
+          set -f # inputs are split on whitespace below, never globbed
+          ERRORS=0
+          fail() { echo "::error title=Backup round trip::$1"; ERRORS=$((ERRORS + 1)); }
+
+          NAME_RE='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+          [[ "$BACKUP_SERVICE" =~ $NAME_RE ]] || fail "backup-service '$BACKUP_SERVICE' is not a valid service name"
+          [[ "$PROJECT_NAME" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail "project-name must be lowercase letters, digits, '-' or '_'"
+          [[ "${PROFILES_INPUT// /}" =~ ^[A-Za-z0-9_.,-]*$ ]] || fail "profiles must be a comma-separated list of profile names"
+          for VALUE in "$SCRIPT_TIMEOUT" "$WAIT_TIMEOUT"; do
+            [[ "$VALUE" =~ ^[1-9][0-9]*$ ]] || fail "timeouts must be positive integers (got '$VALUE')"
+          done
+          for NAME in $START_SERVICES $STOP_SERVICES; do
+            [[ "$NAME" =~ $NAME_RE ]] || fail "'$NAME' is not a valid service name"
+          done
+          for NAME in $STOP_SERVICES; do
+            [ "$NAME" != "$BACKUP_SERVICE" ] || fail "services-to-stop-before-restore must not contain the backup service - the restore runs inside it"
+          done
+
+          if [ -n "$COMPOSE_FILES_INPUT" ]; then
+            jq -e 'type == "array" and length > 0 and all(.[]; type == "string")' <<< "$COMPOSE_FILES_INPUT" > /dev/null \
+              || fail "compose-files must be a non-empty JSON array of paths"
+            mapfile -t FILES < <(jq -r '.[]' <<< "$COMPOSE_FILES_INPUT" 2>/dev/null || true)
+          else
+            FILES=("$COMPOSE_FILE_INPUT")
+          fi
+          for FILE in "${FILES[@]}"; do
+            [ -f "$FILE" ] || fail "compose file '$FILE' not found in $(pwd)"
+            [[ "$FILE" != *:* ]] || fail "compose file '$FILE' must not contain ':'"
+          done
+
+          # Same trimming as Prepare Environment: leading whitespace is dropped.
+          while IFS= read -r LINE; do
+            LINE="${LINE#"${LINE%%[![:space:]]*}"}"
+            [ -n "$LINE" ] || continue
+            [[ "$LINE" == \#* ]] && continue
+            [[ "$LINE" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || fail "env-overrides line is not KEY=VALUE: '${LINE%%=*}…'"
+          done <<< "$ENV_OVERRIDES"
+
+          for NAME in ${GENERATED_SECRETS//,/ }; do
+            [[ "$NAME" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || fail "generated-secrets entry '$NAME' is not a variable name"
+          done
+
+          if [ -n "$BUILD_IMAGES" ]; then
+            jq -e 'type == "array" and all(.[]; type == "object"
+                     and (.service | type == "string" and length > 0)
+                     and (.context | type == "string" and length > 0))' <<< "$BUILD_IMAGES" > /dev/null \
+              || fail "build-images must be a JSON array of objects with 'service' and 'context'"
+          fi
+
+          for SCRIPT in "$PREPARE_SCRIPT" "$SEED_SCRIPT" "$MUTATE_SCRIPT" "$CHECK_SCRIPT"; do
+            [ -z "$SCRIPT" ] || [ -f "$SCRIPT" ] || fail "script '$SCRIPT' not found in $(pwd)"
+          done
+          if { [ -n "$SEED_SCRIPT" ] || [ -n "$MUTATE_SCRIPT" ]; } && [ -z "$CHECK_SCRIPT" ]; then
+            fail "seed-script and mutate-script need a check-script that proves the data state"
+          fi
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "❌ $ERRORS input error(s) - nothing was started"
+            exit 1
+          fi
+          echo "✅ Inputs are valid"
+
+      - name: "🔧 Prepare Environment"
+        env:
+          COMPOSE_FILE_INPUT: ${{ inputs.compose-file }}
+          COMPOSE_FILES_INPUT: ${{ inputs.compose-files }}
+          PROFILES_INPUT: ${{ inputs.profiles }}
+          PROJECT_NAME: ${{ inputs.project-name }}
+          ENV_TEMPLATE: ${{ inputs.env-template }}
+          ENV_OVERRIDES: ${{ inputs.env-overrides }}
+          GENERATED_SECRETS: ${{ inputs.generated-secrets }}
+          PREPARE_SCRIPT: ${{ inputs.prepare-script }}
+        run: |
+          set -euo pipefail
+          set -f # inputs are split on whitespace below, never globbed
+          ROUNDTRIP_DIR="$RUNNER_TEMP/backup-roundtrip"
+          mkdir -p "$ROUNDTRIP_DIR/diagnostics"
+          echo "ROUNDTRIP_DIR=$ROUNDTRIP_DIR" >> "$GITHUB_ENV"
+
+          # A key appended to a last line without a newline would be glued onto
+          # it, so the .env always ends with one - also after the prepare script.
+          end_with_newline() { [ ! -s .env ] || [ -z "$(tail -c 1 .env)" ] || echo >> .env; }
+
+          # -- .env: template, prepare script, overrides, generated secrets ------
+          if [ -f "$ENV_TEMPLATE" ]; then
+            cp "$ENV_TEMPLATE" .env
+            end_with_newline
+            echo "📄 .env created from $ENV_TEMPLATE"
+          else
+            : > .env
+            echo "::notice::env-template '$ENV_TEMPLATE' not found - starting from an empty .env"
+          fi
+
+          # The repository's own generator knows formats a generic one cannot
+          # (RSA keys, base64 of N bytes, exact lengths). Everything it adds or
+          # changes is treated as secret and masked.
+          if [ -n "$PREPARE_SCRIPT" ]; then
+            cp .env "$ROUNDTRIP_DIR/env.before"
+            echo "▶ prepare: $PREPARE_SCRIPT"
+            ROUNDTRIP_PHASE=prepare timeout --kill-after=10 "$SCRIPT_TIMEOUT" bash "$PREPARE_SCRIPT"
+            [ -f .env ] || { echo "::error title=Backup round trip::prepare-script removed the .env"; exit 1; }
+            end_with_newline
+            MASKED=0
+            while IFS= read -r LINE; do
+              [[ "$LINE" == *=* ]] || continue
+              grep -qxF -- "$LINE" "$ROUNDTRIP_DIR/env.before" && continue
+              VALUE="${LINE#*=}"
+              # Masked without its quotes: the application prints the bare
+              # value, and masking it also covers the quoted form.
+              if [[ "$VALUE" =~ ^\"(.*)\"$ || "$VALUE" =~ ^\'(.*)\'$ ]]; then
+                VALUE="${BASH_REMATCH[1]}"
+              fi
+              [ "${#VALUE}" -ge 8 ] || continue
+              echo "::add-mask::$VALUE"
+              MASKED=$((MASKED + 1))
+            done < .env
+            rm -f "$ROUNDTRIP_DIR/env.before"
+            echo "🔐 prepare-script set $MASKED value(s), all masked"
+          fi
+
+          # Sets KEY=VALUE in .env. An existing key is replaced IN PLACE: a .env
+          # may interpolate earlier lines (APP_NAME=${STACK_NAME}), and moving
+          # STACK_NAME to the end would leave APP_NAME empty. A new key is
+          # appended. Values pass through ENVIRON, so awk never unescapes them.
+          set_env() {
+            if grep -q -E "^[[:space:]]*${1}=" .env; then
+              SET_KEY="$1" SET_VALUE="$2" awk '
+                BEGIN { key = ENVIRON["SET_KEY"]; value = ENVIRON["SET_VALUE"] }
+                $0 ~ "^[[:space:]]*" key "=" { if (!done) print key "=" value; done = 1; next }
+                { print }
+              ' .env > .env.tmp
+              mv .env.tmp .env
+            else
+              printf '%s=%s\n' "$1" "$2" >> .env
+            fi
+          }
+
+          OVERRIDDEN=0
+          while IFS= read -r LINE; do
+            LINE="${LINE#"${LINE%%[![:space:]]*}"}"
+            [ -n "$LINE" ] || continue
+            [[ "$LINE" == \#* ]] && continue
+            set_env "${LINE%%=*}" "${LINE#*=}"
+            OVERRIDDEN=$((OVERRIDDEN + 1))
+          done <<< "$ENV_OVERRIDES"
+          echo "🔧 $OVERRIDDEN override(s) applied"
+
+          # Hex only: safe in JSON, URLs, connection strings and compose
+          # interpolation, so no consumer has to escape a generated value.
+          GENERATED=0
+          for NAME in ${GENERATED_SECRETS//,/ }; do
+            VALUE=$(openssl rand -hex 24)
+            echo "::add-mask::$VALUE"
+            set_env "$NAME" "$VALUE"
+            GENERATED=$((GENERATED + 1))
+          done
+          echo "🔐 $GENERATED secret(s) generated"
+
+          # -- Compose context for every later step and the caller scripts ------
+          if [ -n "$COMPOSE_FILES_INPUT" ]; then
+            COMPOSE_FILE_LIST=$(jq -r 'join(":")' <<< "$COMPOSE_FILES_INPUT")
+          else
+            COMPOSE_FILE_LIST="$COMPOSE_FILE_INPUT"
+          fi
+          PROFILES="${PROFILES_INPUT// /}"
+          MARKER="rt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$(openssl rand -hex 4)"
+          echo "COMPOSE_FILE=$COMPOSE_FILE_LIST" >> "$GITHUB_ENV"
+          echo "COMPOSE_PROJECT_NAME=$PROJECT_NAME" >> "$GITHUB_ENV"
+          echo "ROUNDTRIP_MARKER=$MARKER" >> "$GITHUB_ENV"
+          echo "ROUNDTRIP_BACKUP_SERVICE=$BACKUP_SERVICE" >> "$GITHUB_ENV"
+          # Only when set: an exported empty value would override the .env file.
+          if [ -n "$PROFILES" ]; then
+            echo "COMPOSE_PROFILES=$PROFILES" >> "$GITHUB_ENV"
+          fi
+
+          # Engine CLI and phase runner shared by the steps below.
+          cat > "$ROUNDTRIP_DIR/lib.sh" << 'LIB'
+          # Runs the BackupHelper CLI inside the running backup sidecar.
+          bh() { docker compose exec -T "$BACKUP_SERVICE" backuphelper "$@"; }
+
+          # Runs one caller script with the documented contract.
+          run_phase() {
+            local phase="$1" script="$2" expect="${3:-}"
+            echo "▶ ${phase}: ${script}${expect:+ (expect ${expect})}"
+            ROUNDTRIP_PHASE="$phase" ROUNDTRIP_EXPECT="$expect" \
+              timeout --kill-after=10 "$SCRIPT_TIMEOUT" bash "$script"
+          }
+          LIB
+
+          echo "::group::Tool versions"
+          docker version --format 'Docker {{.Server.Version}}'
+          docker compose version
+          df -h / | tail -1
+          echo "::endgroup::"
+
+      - name: "🔍 Validate Compose Configuration"
+        run: |
+          set -euo pipefail
+          # Fails on undefined required variables and syntax errors before
+          # anything is built or pulled.
+          docker compose config --quiet
+          # Captured first: piped straight into 'grep -q', compose can be
+          # killed by SIGPIPE once grep has its match, and pipefail would
+          # report the service as missing - depending on the service order.
+          SERVICES=$(docker compose config --services)
+          if ! grep -qxF "$BACKUP_SERVICE" <<< "$SERVICES"; then
+            echo "::error title=Backup round trip::backup-service '$BACKUP_SERVICE' is not part of the configuration - is its profile activated (profiles input)?"
+            echo "Services: $(tr '\n' ' ' <<< "$SERVICES")"
+            exit 1
+          fi
+          docker compose config --format json > "$ROUNDTRIP_DIR/compose-config.json"
+          echo "✅ $(jq '.services | length' "$ROUNDTRIP_DIR/compose-config.json") service(s) configured, profiles: ${COMPOSE_PROFILES:-<none>}"
+
+      - name: "🔐 Log in to GitHub Container Registry"
+        if: inputs.registry-login
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Each image is tagged with the exact reference its compose service
+      # resolves to, so Compose starts the build instead of pulling the
+      # released image - whether the reference comes from an env variable or is
+      # written literally in the compose file.
+      - name: "🐳 Build Images Under Test"
+        if: inputs.build-images != ''
+        env:
+          BUILD_IMAGES: ${{ inputs.build-images }}
+        run: |
+          set -euo pipefail
+          CONFIG="$ROUNDTRIP_DIR/compose-config.json"
+          : > "$ROUNDTRIP_DIR/built-images.txt"
+
+          COUNT=$(jq 'length' <<< "$BUILD_IMAGES")
+          for ((i = 0; i < COUNT; i++)); do
+            ENTRY=$(jq -c --argjson i "$i" '.[$i]' <<< "$BUILD_IMAGES")
+            SERVICE=$(jq -r '.service' <<< "$ENTRY")
+            CONTEXT=$(jq -r '.context' <<< "$ENTRY")
+            DOCKERFILE=$(jq -r '.dockerfile // empty' <<< "$ENTRY")
+            TARGET=$(jq -r '.target // empty' <<< "$ENTRY")
+            IMAGE_REF=$(jq -r --arg s "$SERVICE" '.services[$s].image // empty' "$CONFIG")
+
+            if [ -z "$IMAGE_REF" ]; then
+              echo "::error title=Backup round trip::build-images: service '$SERVICE' has no image reference in the active configuration (unknown service, inactive profile, or no 'image:' key)"
+              exit 1
+            fi
+
+            ARGS=(--pull --tag "$IMAGE_REF")
+            [ -z "$DOCKERFILE" ] || ARGS+=(--file "$DOCKERFILE")
+            [ -z "$TARGET" ] || ARGS+=(--target "$TARGET")
+            while IFS= read -r BUILD_ARG; do
+              [ -z "$BUILD_ARG" ] || ARGS+=(--build-arg "$BUILD_ARG")
+            done < <(jq -r '."build-args" // empty
+                            | if type == "object" then to_entries[] | "\(.key)=\(.value)"
+                              else split("\n")[] end' <<< "$ENTRY")
+
+            echo "::group::🐳 $SERVICE -> $IMAGE_REF"
+            docker build "${ARGS[@]}" "$CONTEXT"
+            echo "::endgroup::"
+            echo "$IMAGE_REF" >> "$ROUNDTRIP_DIR/built-images.txt"
+            echo "✅ Built $IMAGE_REF from $CONTEXT"
+          done
+
+      - name: "📥 Pull Images"
+        run: |
+          set -euo pipefail
+          touch "$ROUNDTRIP_DIR/built-images.txt"
+          BUILT=$(jq -R -s 'split("\n") | map(select(length > 0))' "$ROUNDTRIP_DIR/built-images.txt")
+          # Everything except what was just built (pulling those references would
+          # replace the images under test with the released ones) and services
+          # with a build section, which 'up' builds itself when the image is missing.
+          mapfile -t PULL < <(jq -r --argjson built "$BUILT" '.services | to_entries[]
+                                     | select(.value.image != null and .value.build == null)
+                                     | select(.value.image as $image | $built | index($image) | not)
+                                     | .key' "$ROUNDTRIP_DIR/compose-config.json")
+          if [ ${#PULL[@]} -eq 0 ]; then
+            echo "Nothing to pull"
+            exit 0
+          fi
+          echo "Pulling: ${PULL[*]}"
+          docker compose pull --quiet "${PULL[@]}"
+
+      - name: "🚀 Start Stack"
+        run: |
+          set -euo pipefail
+          read -r -a SERVICES <<< "$(echo "$START_SERVICES" | tr '\n' ' ')"
+          # --wait returns once every started service is running (or healthy, if
+          # it has a healthcheck) and one-shot dependencies have completed.
+          docker compose up -d --wait --wait-timeout "$WAIT_TIMEOUT" "${SERVICES[@]}"
+          docker compose ps
+
+          STATE=$(docker compose ps --format '{{.Service}} {{.State}}' | awk -v s="$BACKUP_SERVICE" '$1 == s {print $2}')
+          if [ "$STATE" != "running" ]; then
+            echo "::error title=Backup round trip::backup service '$BACKUP_SERVICE' is not running (state: ${STATE:-not started}). It must run as a daemon."
+            exit 1
+          fi
+
+      - name: "🧪 Seed Test Data"
+        id: seed
+        if: inputs.seed-script != ''
+        env:
+          SEED_SCRIPT: ${{ inputs.seed-script }}
+          CHECK_SCRIPT: ${{ inputs.check-script }}
+        run: |
+          set -euo pipefail
+          source "$ROUNDTRIP_DIR/lib.sh"
+          run_phase seed "$SEED_SCRIPT"
+          # The check must see the data before anything else counts.
+          run_phase check "$CHECK_SCRIPT" present
+          echo "✅ Seeded data is present (marker $ROUNDTRIP_MARKER)"
+
+      - name: "💾 Create Backup"
+        id: create
+        run: |
+          set -euo pipefail
+          source "$ROUNDTRIP_DIR/lib.sh"
+          SID_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$'
+
+          # Local snapshots only (size > 0); off-site-only rows report 0 bytes.
+          local_ids() { awk -v re="$SID_RE" '$1 ~ re && $2 > 0 {print $1}' | sort; }
+
+          LIST_BEFORE=$(bh list)
+          local_ids <<< "$LIST_BEFORE" > "$ROUNDTRIP_DIR/ids-before.txt"
+
+          bh create 2>&1 | tee "$ROUNDTRIP_DIR/diagnostics/create.log"
+
+          LIST_AFTER=$(bh list)
+          echo "$LIST_AFTER"
+          local_ids <<< "$LIST_AFTER" > "$ROUNDTRIP_DIR/ids-after.txt"
+          mapfile -t NEW_IDS < <(comm -13 "$ROUNDTRIP_DIR/ids-before.txt" "$ROUNDTRIP_DIR/ids-after.txt")
+
+          if [ ${#NEW_IDS[@]} -eq 0 ]; then
+            echo "::error title=Backup round trip::'backuphelper create' exited 0 but no new local snapshot appeared. Check that the config defines at least one job (a config the engine does not recognise runs zero jobs) and that keep_local is not dropping it."
+            exit 1
+          fi
+          if [ ${#NEW_IDS[@]} -gt 1 ]; then
+            echo "::warning::${#NEW_IDS[@]} new snapshots (a scheduled run fired as well) - using the newest"
+          fi
+          SNAPSHOT_ID="${NEW_IDS[-1]}"
+          if [[ ! "$SNAPSHOT_ID" =~ $SID_RE ]]; then
+            echo "::error::unexpected snapshot id format"; exit 1
+          fi
+          echo "snapshot-id=$SNAPSHOT_ID" >> "$GITHUB_OUTPUT"
+          echo "ROUNDTRIP_SNAPSHOT_ID=$SNAPSHOT_ID" >> "$GITHUB_ENV"
+          echo "✅ Snapshot $SNAPSHOT_ID created"
+
+      - name: "📋 Inspect Snapshot"
+        id: inspect
+        env:
+          REQUIRE_COMPONENTS: ${{ inputs.require-components }}
+          ALLOW_WARNINGS: ${{ inputs.allow-component-warnings }}
+          SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
+        run: |
+          set -euo pipefail
+          set -f # require-components is split on whitespace below, never globbed
+          source "$ROUNDTRIP_DIR/lib.sh"
+          MANIFEST="$ROUNDTRIP_DIR/diagnostics/manifest.json"
+          bh show "$SNAPSHOT_ID" > "$MANIFEST"
+          jq -e 'type == "object"' "$MANIFEST" > /dev/null || { echo "::error::'show' did not print a JSON manifest"; cat "$MANIFEST"; exit 1; }
+
+          # Warnings as a list of strings, whatever shape a plugin source writes.
+          WARNINGS_DEF='def warnings: (.metadata.warnings // []) | if type == "array" then map(tostring) else [tostring] end;'
+
+          echo "components=$(jq -c '[.components[] | {name, kind, size, error}]' "$MANIFEST")" >> "$GITHUB_OUTPUT"
+          jq -r "$WARNINGS_DEF"'.components[] | "  \(.name) (\(.kind)): \(.size) bytes, error: \(.error // "none"), warnings: \(warnings | length)"' "$MANIFEST"
+
+          ERRORS=0
+          fail() { echo "::error title=Backup round trip::$1"; ERRORS=$((ERRORS + 1)); }
+
+          [ "$(jq -r '.snapshot_id' "$MANIFEST")" = "$SNAPSHOT_ID" ] || fail "manifest belongs to another snapshot"
+          [ -n "$(jq -r '.archive_sha256 // empty' "$MANIFEST")" ] || fail "manifest has no archive_sha256 - verify and restore cannot check the archive"
+          [ "$(jq '.components | length' "$MANIFEST")" -gt 0 ] || fail "snapshot has no components"
+
+          # Captured first, not read from a process substitution: there a jq
+          # error is ignored and the gate would pass with nothing checked.
+          FAILED=$(jq -r '.components[] | select(.error != null) | "\(.name)\t\(.error)"' "$MANIFEST")
+          WARNED=$(jq -r "$WARNINGS_DEF"'.components[] | select(warnings | length > 0)
+                          | "\(.name)\t\(warnings | join("; "))"' "$MANIFEST")
+
+          while IFS=$'\t' read -r NAME ERROR; do
+            [ -n "$NAME" ] || continue
+            fail "component '$NAME' failed: $ERROR"
+          done <<< "$FAILED"
+
+          while IFS=$'\t' read -r NAME WARNINGS; do
+            [ -n "$NAME" ] || continue
+            if [ "$ALLOW_WARNINGS" = "true" ]; then
+              echo "::warning::component '$NAME' reported warnings: $WARNINGS"
+            else
+              fail "component '$NAME' reported warnings (set allow-component-warnings to accept): $WARNINGS"
+            fi
+          done <<< "$WARNED"
+
+          for NAME in ${REQUIRE_COMPONENTS//,/ }; do
+            jq -e --arg n "$NAME" 'any(.components[]; .name == $n)' "$MANIFEST" > /dev/null \
+              || fail "required component '$NAME' is missing - its source is disabled, skipped or misnamed (components: $(jq -r '[.components[].name] | join(", ")' "$MANIFEST"))"
+          done
+
+          [ "$ERRORS" -eq 0 ] || exit 1
+          echo "✅ All $(jq '.components | length' "$MANIFEST") component(s) were backed up without errors"
+
+      - name: "🔍 Verify Snapshot"
+        env:
+          SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
+        run: |
+          set -euo pipefail
+          source "$ROUNDTRIP_DIR/lib.sh"
+          OUTPUT=$(bh verify "$SNAPSHOT_ID")
+          echo "$OUTPUT"
+          [ "$OUTPUT" = "OK $SNAPSHOT_ID" ] || { echo "::error::verify did not confirm the archive checksum"; exit 1; }
+
+      - name: "🗑️ Remove Seeded Data"
+        id: mutate
+        if: inputs.mutate-script != ''
+        env:
+          MUTATE_SCRIPT: ${{ inputs.mutate-script }}
+          CHECK_SCRIPT: ${{ inputs.check-script }}
+        run: |
+          set -euo pipefail
+          source "$ROUNDTRIP_DIR/lib.sh"
+          run_phase mutate "$MUTATE_SCRIPT"
+          # Proves the check can tell the difference - otherwise a restore that
+          # does nothing would pass.
+          run_phase check "$CHECK_SCRIPT" absent
+          echo "✅ Seeded data is gone"
+
+      - name: "🔄 Restore Snapshot"
+        id: restore
+        env:
+          SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
+          STOP_SERVICES: ${{ inputs.services-to-stop-before-restore }}
+          RESTORE_COMMAND: ${{ inputs.restore-command }}
+          RESTORE_ARGS: ${{ inputs.restore-args }}
+        run: |
+          set -euo pipefail
+          source "$ROUNDTRIP_DIR/lib.sh"
+          read -r -a STOP <<< "$(echo "$STOP_SERVICES" | tr '\n' ' ')"
+          read -r -a COMMAND <<< "$RESTORE_COMMAND"
+          read -r -a ARGS <<< "$RESTORE_ARGS"
+          read -r -a SERVICES <<< "$(echo "$START_SERVICES" | tr '\n' ' ')"
+
+          if [ ${#STOP[@]} -gt 0 ]; then
+            echo "⏹️ Stopping ${STOP[*]}"
+            docker compose stop "${STOP[@]}"
+          fi
+
+          bh "${COMMAND[@]}" "$SNAPSHOT_ID" "${ARGS[@]}" 2>&1 | tee "$ROUNDTRIP_DIR/diagnostics/restore.log"
+
+          echo "🚀 Starting the stack again"
+          docker compose up -d --wait --wait-timeout "$WAIT_TIMEOUT" "${SERVICES[@]}"
+          docker compose ps
+
+      - name: "🧪 Check Restored Data"
+        id: check
+        if: inputs.check-script != ''
+        env:
+          CHECK_SCRIPT: ${{ inputs.check-script }}
+        run: |
+          set -euo pipefail
+          source "$ROUNDTRIP_DIR/lib.sh"
+          run_phase check "$CHECK_SCRIPT" present
+          echo "✅ Restored data matches the seeded data"
+
+      - name: "🔍 Backup Healthcheck"
+        id: healthcheck
+        if: inputs.run-healthcheck
+        run: |
+          set -euo pipefail
+          source "$ROUNDTRIP_DIR/lib.sh"
+          bh healthcheck
+          echo "✅ Sidecar reports the newest snapshot as fresh"
+
+      - name: "📋 Collect Diagnostics"
+        if: failure() || cancelled()
+        continue-on-error: true
+        run: |
+          # Best effort: the shell runs with -e, and the typical failure (a
+          # sidecar that crashed or never started) makes 'exec' fail - which
+          # must not cost the files collected after it.
+          set +e
+          if [ -z "${ROUNDTRIP_DIR:-}" ]; then
+            echo "Nothing was started - no diagnostics to collect"
+            exit 0
+          fi
+          DIAG="$ROUNDTRIP_DIR/diagnostics"
+          mkdir -p "$DIAG/logs"
+          docker compose ps -a > "$DIAG/ps.txt" 2>&1
+          for SERVICE in $(docker compose config --services 2>/dev/null); do
+            docker compose logs --no-color --timestamps "$SERVICE" > "$DIAG/logs/$SERVICE.log" 2>&1
+          done
+          timeout 60 docker compose exec -T "$BACKUP_SERVICE" backuphelper list > "$DIAG/snapshots.txt" 2>&1
+          { df -h /; echo; free -m; echo; docker system df; } > "$DIAG/runner.txt" 2>&1
+          # The .env holds the generated secrets and is never collected.
+          ls -la "$DIAG" "$DIAG/logs"
+
+      - name: "📤 Upload Diagnostics"
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ runner.temp }}/backup-roundtrip/diagnostics
+          retention-days: ${{ inputs.artifact-retention-days }}
+          if-no-files-found: ignore
+
+      - name: "🧹 Tear Down Stack"
+        if: always()
+        continue-on-error: true
+        run: |
+          if [ -f .env ]; then
+            docker compose down --volumes --remove-orphans --timeout 30
+            rm -f .env
+          fi
+
+      - name: "📊 Summary"
+        if: always()
+        env:
+          SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
+          JOB_STATUS: ${{ job.status }}
+          HAS_SEED: ${{ inputs.seed-script != '' }}
+          HAS_MUTATE: ${{ inputs.mutate-script != '' }}
+          HAS_CHECK: ${{ inputs.check-script != '' }}
+          OUTCOME_SEED: ${{ steps.seed.outcome }}
+          OUTCOME_CREATE: ${{ steps.create.outcome }}
+          OUTCOME_INSPECT: ${{ steps.inspect.outcome }}
+          OUTCOME_MUTATE: ${{ steps.mutate.outcome }}
+          OUTCOME_RESTORE: ${{ steps.restore.outcome }}
+          OUTCOME_CHECK: ${{ steps.check.outcome }}
+          OUTCOME_HEALTH: ${{ steps.healthcheck.outcome }}
+          RUN_HEALTHCHECK: ${{ inputs.run-healthcheck }}
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        run: |
+          # outcome, configured -> status cell
+          cell() {
+            case "$1" in
+              success) echo "✅ Passed" ;;
+              failure) echo "❌ Failed" ;;
+              cancelled) echo "⏹️ Cancelled" ;;
+              *) if [ "$2" = "true" ]; then echo "⏭️ Not reached"; else echo "⚪ Not configured"; fi ;;
+            esac
+          }
+
+          {
+            echo "## 🧪 Backup Round-Trip Test"
+            echo ""
+            if [ "$JOB_STATUS" = "success" ]; then
+              echo "✅ **Passed** - snapshot \`$SNAPSHOT_ID\` was created, verified and restored."
+            else
+              echo "❌ **Failed** - see the failed step below. Diagnostics are attached as the \`$ARTIFACT_NAME\` artifact."
+            fi
+            echo ""
+            echo "| Phase | Result |"
+            echo "|-------|--------|"
+            echo "| Seed test data | $(cell "$OUTCOME_SEED" "$HAS_SEED") |"
+            echo "| Create backup | $(cell "$OUTCOME_CREATE" true) |"
+            echo "| Inspect snapshot | $(cell "$OUTCOME_INSPECT" true) |"
+            echo "| Remove seeded data | $(cell "$OUTCOME_MUTATE" "$HAS_MUTATE") |"
+            echo "| Restore snapshot | $(cell "$OUTCOME_RESTORE" true) |"
+            echo "| Check restored data | $(cell "$OUTCOME_CHECK" "$HAS_CHECK") |"
+            echo "| Backup healthcheck | $(cell "$OUTCOME_HEALTH" "$RUN_HEALTHCHECK") |"
+            echo ""
+            if [ "$HAS_CHECK" != "true" ]; then
+              echo "> ⚠️ No check-script: only the backup mechanics were tested, not whether the data comes back."
+              echo ""
+            elif [ "$HAS_MUTATE" != "true" ]; then
+              echo "> ⚠️ No mutate-script: the restore ran over intact data, so a restore that writes nothing would also pass."
+              echo ""
+            fi
+
+            MANIFEST="${ROUNDTRIP_DIR:-/nonexistent}/diagnostics/manifest.json"
+            if [ -s "$MANIFEST" ] && jq -e '.components' "$MANIFEST" > /dev/null 2>&1; then
+              echo "### 📦 Snapshot \`$SNAPSHOT_ID\`"
+              echo ""
+              echo "| Component | Kind | Size | Status |"
+              echo "|-----------|------|------|--------|"
+              jq -r '.components[] | "| `\(.name)` | \(.kind) | \(.size) bytes | \(if .error then "❌ " + .error elif ((.metadata.warnings // []) | length) > 0 then "⚠️ Warnings" else "✅ OK" end) |"' "$MANIFEST"
+              echo ""
+            fi
+
+            if [ -s "${ROUNDTRIP_DIR:-/nonexistent}/built-images.txt" ]; then
+              echo "### 🐳 Images under test"
+              echo ""
+              sed 's/^/- `/; s/$/`/' "$ROUNDTRIP_DIR/built-images.txt"
+              echo ""
+            fi
+
+            echo "| Setting | Value |"
+            echo "|---------|-------|"
+            echo "| Compose files | \`${COMPOSE_FILE:-}\` |"
+            echo "| Profiles | \`${COMPOSE_PROFILES:-none}\` |"
+            echo "| Backup service | \`$BACKUP_SERVICE\` |"
+            echo "| Marker | \`${ROUNDTRIP_MARKER:-}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

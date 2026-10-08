@@ -1,0 +1,97 @@
+# =============================================================================
+# Fixture stack for the self-test of modules-backup-roundtrip-test.yml
+# =============================================================================
+# Shaped like a consumer stack, small enough to run in under a minute:
+#
+#   database     PostgreSQL (component "database")
+#   app          stands in for the application: owns a file volume as uid 1000
+#   files-init   one-shot, hands the file volume to uid 1000 (like zammad-init)
+#   backup       thin meta image FROM the public BackupHelper engine, behind the
+#                "backup" profile like every consumer sidecar
+#
+# APP_SIGNING_KEY has a format of its own (base64 of 32 bytes); prepare.sh fills
+# it, standing in for a repository's env generator.
+#
+# The "saas-export" source points at an external endpoint that does not exist
+# in CI. Production keeps it enabled (.env.example); the self-test switches it
+# off through env-overrides - the pattern consumers use for Cloudflare, an app
+# API that needs a token, and similar sources.
+# =============================================================================
+
+services:
+  database:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U app -d app"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - database:/var/lib/postgresql
+
+  files-init:
+    image: alpine:3
+    command: ["chown", "1000:1000", "/srv/files"]
+    volumes:
+      - files:/srv/files
+
+  app:
+    image: alpine:3
+    user: "1000:1000"
+    init: true
+    command: ["sleep", "infinity"]
+    environment:
+      # base64 of 32 bytes - a format generated-secrets cannot produce, filled
+      # by prepare.sh the way a repository's own env generator would.
+      APP_SIGNING_KEY: ${APP_SIGNING_KEY:?APP_SIGNING_KEY must be set (prepare.sh)}
+      # Not in .env.example: env-overrides appends it right after the line
+      # prepare.sh left without a trailing newline.
+      APP_MODE: ${APP_MODE:?APP_MODE must be set (env-overrides)}
+    volumes:
+      - files:/srv/files
+    depends_on:
+      files-init:
+        condition: service_completed_successfully
+
+  backup:
+    image: ${BACKUP_IMAGE:-roundtrip-fixture/backup}:${BACKUP_VERSION:-ci}
+    profiles: ["backup"]
+    environment:
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      BACKUP_CONFIG_JSON: |
+        {
+          "instance_name": "roundtrip-fixture",
+          "jobs": [{
+            "name": "main",
+            "sources": [
+              {"type": "postgres", "name": "database", "host": "database", "database": "app",
+               "user": "app", "password": "$${DATABASE_PASSWORD}"},
+              {"type": "filesystem", "name": "files", "path": "/srv/files"},
+              {"type": "s3", "name": "saas-export", "enabled": ${SAAS_EXPORT_ENABLED:-true},
+               "endpoint": "https://saas-export.invalid", "bucket": "exports"}
+            ],
+            "destinations": [
+              {"type": "local"},
+              {"type": "s3", "bucket": "${BACKUP_S3_BUCKET:-}"}
+            ],
+            "schedule": {"mode": "cron", "cron": "15 3 * * *"},
+            "retention": {"count": 5}
+          }]
+        }
+    volumes:
+      - backup-data:/data
+      - files:/srv/files
+    depends_on:
+      database:
+        condition: service_healthy
+      files-init:
+        condition: service_completed_successfully
+
+volumes:
+  database:
+  files:
+  backup-data:

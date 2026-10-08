@@ -58,6 +58,8 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 
 > **Fork Docker Build** (`fork-docker-build.yml`) benötigt **kein** konfiguriertes Secret — der GHCR-Login läuft über den automatischen `GITHUB_TOKEN`.
 
+> **Backup Round-Trip Test** (`modules-backup-roundtrip-test.yml`) benötigt **kein** Secret: Der GHCR-Login nutzt den automatischen `GITHUB_TOKEN` (der aufrufende Job muss `packages: read` gewähren), und jedes Passwort, das der Stack braucht, wird pro Lauf über `generated-secrets` erzeugt und maskiert. Produktions-Credentials gehören weder in `env-overrides` noch ins Repository — Quellen, die ein externes Konto brauchen, werden für den Test abgeschaltet. Siehe [Backup Round-Trip Test → Secrets](./workflows/modules-backup-roundtrip-test.md#secrets).
+
 > **GitHub Packages im Docker-Build** (`docker-build.yml`) braucht **keinen** PAT: `github-token-secret-id: npm_token` reicht den eigenen `GITHUB_TOKEN` des Workflows als BuildKit-Secret in den Build — auch in Dependabot-Läufen, die keine Actions-Secrets erhalten. Der Token ist dabei **nicht** nur lesend: Er trägt die Rechte von `docker-build.yml` (u. a. `contents: write` und `packages: write`) und ist für jeden Prozess im `RUN` lesbar, der ihn mountet. Deshalb nur im Install-`RUN` mounten, wo möglich `npm ci --ignore-scripts`, dort kein `set -x`. Siehe [Docker Build → Build Secrets](./workflows/docker-build.md#build-secrets).
 
 ### Fork-Automation & Wartung (PAT)

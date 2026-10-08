@@ -53,6 +53,12 @@ billed to the organization".
 **Zweck:** Issue Management Automatisierung  
 **Module verwendet:** modules-issue-automation
 
+#### 🧪 [backup-roundtrip-selftest.yml](./backup-roundtrip-selftest.yml) - Backup Round-Trip Self-Test
+**Zweck:** Führt das Modul `modules-backup-roundtrip-test.yml` gegen einen Fixture-Stack aus ([tests/backup-roundtrip/](./tests/backup-roundtrip/): PostgreSQL, Datei-Volume als uid 1000, Meta-Image auf der öffentlichen BackupHelper-Engine) — Backup, Löschen, Restore und Datenprüfung laufen echt durch  
+**Module verwendet:** modules-backup-roundtrip-test  
+**Trigger:** Nur Änderungen am Modul, am Self-Test oder an der Fixture (pfadgefiltert)  
+**Doku:** [docs/workflows/modules-backup-roundtrip-test.md](../../docs/workflows/modules-backup-roundtrip-test.md)
+
 ### Reusable Workflows (Neu)
 
 #### 🔷 [dotnet-build.yml](./dotnet-build.yml) - .NET Build & Test
@@ -140,6 +146,7 @@ jobs:
 | **ai-issue-summary.yml** | Issue Events | modules-ai-issue-summary | AI Zusammenfassungen |
 | **pr-labeler.yml** | Pull Request | modules-pr-labeler | PR Labeling |
 | **issue-automation.yml** | Issue/PR Events | modules-issue-automation | Issue Management |
+| **backup-roundtrip-selftest.yml** | PR/Push (Modul + Fixture) | modules-backup-roundtrip-test | Self-Test des Backup-Round-Trip-Moduls |
 
 ### Reusable Workflows
 | Workflow | Type | Hauptfunktionen | Plattformen |

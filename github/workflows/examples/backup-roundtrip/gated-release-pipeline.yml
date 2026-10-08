@@ -1,0 +1,175 @@
+# =============================================================================
+# Release & Docker Build - Gated on a Backup Round Trip
+# =============================================================================
+# The complete docker-release.yml of a Container-Solution stack: validation,
+# the backup round trip, semantic release and the image builds. No release is
+# created - and no image is published - unless the full stack, built from this
+# commit, backed up and restored its data.
+#
+# Every release rebuilds the images FROM the newest bases. The base image
+# monitor (check-base-images.yml) dispatches this workflow when the BackupHelper
+# engine image moves, so an engine update reaches production only after it
+# restored this stack's data.
+#
+# Assumed repository layout:
+#   docker-compose.local.yml      app, worker, database, app-backup (profile: backup)
+#   .env.example                  APP_IMAGE/APP_VERSION, APP_BACKUP_IMAGE/..._VERSION
+#   src/app/Dockerfile            application image
+#   src/app-backup/Dockerfile     FROM ghcr.io/bauer-group/cs-backuphelper/backuphelper:latest
+#   scripts/generate-env.py       fills CHANGE_ME secrets (called by prepare.sh)
+#   tests/backup-roundtrip/       prepare.sh, seed.sh, mutate.sh, check.sh
+# =============================================================================
+
+name: 🚀 Release & Docker Build
+
+on:
+  push:
+    branches: [main]
+    # Documentation-only pushes never start the stack.
+    paths-ignore:
+      - '.github/**'
+      - '*.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'docker-compose*.yml'
+      - '.env.example'
+      - 'tests/backup-roundtrip/**'
+  workflow_dispatch:
+    inputs:
+      force-release:
+        description: 'force create release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+  actions: read
+
+jobs:
+  # ============================================
+  # Validation
+  # ============================================
+
+  validate-compose:
+    name: 🔍 Validate Docker Compose
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-compose.yml@main
+    with:
+      compose-file: 'docker-compose.local.yml'
+      env-file: '.env.example'
+
+  validate-scripts:
+    name: 🔍 Validate Shell Scripts
+    uses: bauer-group/automation-templates/.github/workflows/modules-validate-shellscript.yml@main
+    with:
+      scan-directory: '.'
+      severity: 'error'
+
+  # ============================================
+  # Backup round trip (gates every release)
+  # ============================================
+
+  backup-roundtrip:
+    name: 🧪 Backup Round Trip
+    needs: [validate-compose, validate-scripts]
+    # Least privilege: the round trip only reads the repository and images.
+    permissions:
+      contents: read
+      packages: read
+    uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+    with:
+      compose-file: 'docker-compose.local.yml'
+      profiles: 'backup'
+      # A 2-core runner, not a production host.
+      env-overrides: |
+        STACK_NAME=app_roundtrip
+        PG_SHARED_BUFFERS=256MB
+        APP_WORKERS=1
+      # The repository's own generator fills secrets with a format of their
+      # own (e.g. an RSA key); everything it writes is masked.
+      prepare-script: 'tests/backup-roundtrip/prepare.sh'
+      generated-secrets: |
+        DATABASE_PASSWORD
+        APP_SECRET_KEY
+      # Both images the release publishes, built from this commit. Services
+      # that share an image (app and worker) need a single entry.
+      build-images: |
+        [
+          {"service": "app",        "context": "src/app"},
+          {"service": "app-backup", "context": "src/app-backup"}
+        ]
+      backup-service: 'app-backup'
+      require-components: 'app uploads'
+      services-to-stop-before-restore: 'app worker'
+      seed-script: 'tests/backup-roundtrip/seed.sh'
+      mutate-script: 'tests/backup-roundtrip/mutate.sh'
+      check-script: 'tests/backup-roundtrip/check.sh'
+      # First boot runs the application's migrations.
+      wait-timeout: 900
+      free-disk-space: true
+    secrets: inherit
+
+  # ============================================
+  # Release (push / dispatch only)
+  # ============================================
+
+  release:
+    name: 📦 Create Semantic Release
+    needs: [validate-compose, validate-scripts, backup-roundtrip]
+    if: |
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.validate-compose.result == 'success' &&
+      needs.validate-scripts.result == 'success' &&
+      needs.backup-roundtrip.result == 'success'
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      target-branch: 'main'
+      dry-run: false
+      force-release: ${{ inputs.force-release || false }}
+    secrets: inherit
+
+  # ============================================
+  # Image builds (only after a release)
+  # ============================================
+
+  docker-build-app:
+    name: 🐳 Build & Push App Image
+    needs: release
+    if: needs.release.outputs.release-created == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      publish-to: 'ghcr'
+      ghcr-image-name: 'acme/cs-app/app'
+      release-version: ${{ needs.release.outputs.version }}
+      image-tags: 'stable'
+      latest-tag: true
+      dockerfile-path: './src/app/Dockerfile'
+      docker-context: './src/app'
+      platforms: 'linux/amd64'
+      push: true
+    secrets: inherit
+
+  docker-build-backup:
+    name: 🐳 Build & Push Backup Image
+    needs: release
+    if: needs.release.outputs.release-created == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      publish-to: 'ghcr'
+      ghcr-image-name: 'acme/cs-app/app-backup'
+      release-version: ${{ needs.release.outputs.version }}
+      image-tags: 'stable'
+      latest-tag: true
+      dockerfile-path: './src/app-backup/Dockerfile'
+      docker-context: './src/app-backup'
+      platforms: 'linux/amd64'
+      push: true
+    secrets: inherit

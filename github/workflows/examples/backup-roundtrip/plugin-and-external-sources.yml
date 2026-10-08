@@ -1,0 +1,74 @@
+# =============================================================================
+# Backup Round Trip - Plugin Source and an External Source Switched Off
+# =============================================================================
+# A stack whose sidecar uses more than the generic sources:
+#
+#   database      postgres source                 -> tested
+#   app-data      filesystem source               -> tested
+#   app-export    plugin source that talks to the -> tested: the application
+#                 application's API in the stack     runs in the stack, and the
+#                                                    seed script creates the
+#                                                    API token it needs
+#   saas-config   plugin source that exports an   -> switched off: needs a real
+#                 external SaaS account (e.g.        account a runner must not
+#                 Cloudflare)                        have
+#
+# The compose file exposes each source's "enabled" flag as a .env toggle, e.g.
+#   {"type": "saas-config", "enabled": ${APP_BACKUP_SAAS_EXPORT:-true}, ...}
+# so env-overrides can switch a source off without a CI-only compose file.
+# require-components lists everything that MUST be in the snapshot - a toggle
+# can then never silently remove a source that is meant to be tested.
+# =============================================================================
+
+name: 🧪 Backup Round Trip
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'docker-compose*.yml'
+      - '.env.example'
+      - 'tests/backup-roundtrip/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup-roundtrip:
+    name: 🧪 Backup Round Trip
+    permissions:
+      contents: read
+      packages: read
+    uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+    with:
+      compose-file: 'docker-compose.local.yml'
+      # The sidecar and the object storage the app uses both sit behind
+      # profiles; the mail relay (profile mta) stays off.
+      profiles: 'backup,storage'
+      env-overrides: |
+        # No external account on a runner: export switched off, nothing else.
+        APP_BACKUP_SAAS_EXPORT=false
+        # The plugin reads the token the seed script creates (see below).
+        APP_API_TOKEN_FILE=/shared/roundtrip-token
+        # Local only: the off-site bucket stays empty.
+        APP_BACKUP_S3_BUCKET=
+      generated-secrets: 'DATABASE_PASSWORD MINIO_ROOT_PASSWORD APP_SECRET_KEY'
+      build-images: |
+        [
+          {"service": "app",        "context": "src/app"},
+          {"service": "app-backup", "context": "src/app-backup",
+           "build-args": {"BACKUPHELPER_VERSION": "latest"}}
+        ]
+      backup-service: 'app-backup'
+      # saas-config is deliberately absent.
+      require-components: 'app app-data app-export'
+      services-to-stop-before-restore: 'app'
+      # seed.sh creates an API token through the application before writing
+      # its marker data, so the app-export plugin can authenticate.
+      seed-script: 'tests/backup-roundtrip/seed.sh'
+      mutate-script: 'tests/backup-roundtrip/mutate.sh'
+      check-script: 'tests/backup-roundtrip/check.sh'
+      wait-timeout: 600
+    secrets: inherit
