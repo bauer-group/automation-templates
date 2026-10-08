@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Regression test for how the 'Security Vulnerability Scan', 'Collect Build
-# Information' and 'Generate SBOM' steps in ../action.yml pick their image.
+# Information' and 'Generate SBOM' steps in ../action.yml pick their image, and for
+# the image's org.opencontainers.image.created label.
 #
 # All three steps used `PRIMARY_TAG=$(echo "<tags>" | head -1)`. Composite steps run
 # under `bash -eo pipefail`, and head exits after the first line: when it did so
@@ -9,6 +10,11 @@
 # pipe" and took the step down with it - OT-CAN2IP-WebUI, 2026-10-05, 0.1s after its
 # image had been pushed. The steps now read the tags from env and cut the first line
 # with parameter expansion, which has no pipe to break.
+#
+# The created label used to be overridden with a Go reference-time layout that
+# docker/metadata-action reads as a Moment.js format, so every image claimed
+# 2006-01-02T15:04:05+00:0007:00 (issue #107). metadata-action's own label carries
+# the real build time; nothing may override it with a {{date}} expression again.
 #
 # Usage: bash .github/actions/docker-build/tests/primary-tag.test.sh
 
@@ -88,6 +94,13 @@ for STEP_ID in security build-info sbom; do
   assert_first_tag "$STEP_ID" "$LINE" "1400 tags" "$LONG_TAGS"
   assert_first_tag "$STEP_ID" "$LINE" "a single tag" "$FIRST"
 done
+
+OVERRIDES=$(grep -nE '^[^#]*org\.opencontainers\.image\.created=' "$ACTION_FILE")
+if [ -z "$OVERRIDES" ]; then
+  pass "created label is left to docker/metadata-action"
+else
+  fail "created label is left to docker/metadata-action" "found an override: $OVERRIDES"
+fi
 
 echo
 echo "$PASSED passed, $FAILED failed"

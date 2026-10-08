@@ -586,10 +586,13 @@ runs:
           ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-major-minor-tag || '' }}
           ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-major-tag || '' }}
           ${{ inputs.image-tags }}
+        # org.opencontainers.image.created is left to metadata-action's own OCI labels,
+        # which carry the real build time. It used to be overridden here with a Go
+        # layout ({{date "2006-01-02T15:04:05Z07:00"}}) that metadata-action reads as a
+        # Moment.js format, so every image claimed 2006-01-02T15:04:05+00:0007:00 (#107).
         labels: |
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.source={0}/{1}', github.server_url, github.repository) || '' }}
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.revision={0}', github.sha) || '' }}
-          ${{ inputs.add-git-labels == 'true' && 'org.opencontainers.image.created={{date "2006-01-02T15:04:05Z07:00"}}' || '' }}
           ${{ inputs.custom-labels }}
 
     - name: 🏷️ Extract Metadata for Secondary Registry (Docker Hub)
@@ -618,7 +621,6 @@ runs:
         labels: |
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.source={0}/{1}', github.server_url, github.repository) || '' }}
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.revision={0}', github.sha) || '' }}
-          ${{ inputs.add-git-labels == 'true' && 'org.opencontainers.image.created={{date "2006-01-02T15:04:05Z07:00"}}' || '' }}
           ${{ inputs.custom-labels }}
 
     - name: 🏷️ Combine Tags for Multi-Registry Push

@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: bash .github/actions/docker-build/tests/dockerfile-writeback.test.sh
 
-      - name: "🧪 docker-build: primary tag"
+      - name: "🧪 docker-build: primary tag and created label"
         shell: bash
         run: bash .github/actions/docker-build/tests/primary-tag.test.sh
 
