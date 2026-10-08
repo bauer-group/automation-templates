@@ -363,9 +363,14 @@ jobs:
           mkdir -p "$ROUNDTRIP_DIR/diagnostics"
           echo "ROUNDTRIP_DIR=$ROUNDTRIP_DIR" >> "$GITHUB_ENV"
 
+          # A key appended to a last line without a newline would be glued onto
+          # it, so the .env always ends with one - also after the prepare script.
+          end_with_newline() { [ ! -s .env ] || [ -z "$(tail -c 1 .env)" ] || echo >> .env; }
+
           # -- .env: template, prepare script, overrides, generated secrets ------
           if [ -f "$ENV_TEMPLATE" ]; then
             cp "$ENV_TEMPLATE" .env
+            end_with_newline
             echo "📄 .env created from $ENV_TEMPLATE"
           else
             : > .env
@@ -380,11 +385,18 @@ jobs:
             echo "▶ prepare: $PREPARE_SCRIPT"
             ROUNDTRIP_PHASE=prepare timeout --kill-after=10 "$SCRIPT_TIMEOUT" bash "$PREPARE_SCRIPT"
             [ -f .env ] || { echo "::error title=Backup round trip::prepare-script removed the .env"; exit 1; }
+            end_with_newline
             MASKED=0
             while IFS= read -r LINE; do
-              VALUE="${LINE#*=}"
-              [[ "$LINE" == *=* ]] && [ "${#VALUE}" -ge 8 ] || continue
+              [[ "$LINE" == *=* ]] || continue
               grep -qxF -- "$LINE" "$ROUNDTRIP_DIR/env.before" && continue
+              VALUE="${LINE#*=}"
+              # Masked without its quotes: the application prints the bare
+              # value, and masking it also covers the quoted form.
+              if [[ "$VALUE" =~ ^\"(.*)\"$ || "$VALUE" =~ ^\'(.*)\'$ ]]; then
+                VALUE="${BASH_REMATCH[1]}"
+              fi
+              [ "${#VALUE}" -ge 8 ] || continue
               echo "::add-mask::$VALUE"
               MASKED=$((MASKED + 1))
             done < .env

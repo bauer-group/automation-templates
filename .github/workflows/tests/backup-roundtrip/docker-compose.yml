@@ -48,6 +48,9 @@ services:
       # base64 of 32 bytes - a format generated-secrets cannot produce, filled
       # by prepare.sh the way a repository's own env generator would.
       APP_SIGNING_KEY: ${APP_SIGNING_KEY:?APP_SIGNING_KEY must be set (prepare.sh)}
+      # Not in .env.example: env-overrides appends it right after the line
+      # prepare.sh left without a trailing newline.
+      APP_MODE: ${APP_MODE:?APP_MODE must be set (env-overrides)}
     volumes:
       - files:/srv/files
     depends_on:

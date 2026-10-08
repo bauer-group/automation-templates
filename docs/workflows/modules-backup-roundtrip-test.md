@@ -400,7 +400,7 @@ python3 scripts/generate-env.py --update   # fills the remaining CHANGE_ME value
 prepare-script: 'tests/backup-roundtrip/prepare.sh'
 ```
 
-The script runs once the `.env` has been created from the template and before `env-overrides` and `generated-secrets`, so both still win over it. Every `.env` line it adds or changes is masked in the log (values of 8 characters or more). It should not print secrets itself — anything it prints before the masks are registered stays in the log.
+The script runs once the `.env` has been created from the template and before `env-overrides` and `generated-secrets`, so both still win over it. Every `.env` line it adds or changes is masked in the log (values of 8 characters or more, without surrounding quotes). It should not print secrets itself — anything it prints before the masks are registered stays in the log.
 
 ### Plugin sources inside the stack
 
