@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.1.2](https://github.com/bauer-group/automation-templates/compare/v11.1.1...v11.1.2) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** retried write-back, fixed SBOM pipe and label ([#111](https://github.com/bauer-group/automation-templates/issues/111)) ([19b6686](https://github.com/bauer-group/automation-templates/commit/19b66867827b6a7fa3ec79aefe67593ca22d218e)), closes [#107](https://github.com/bauer-group/automation-templates/issues/107)
+
 ## [11.1.1](https://github.com/bauer-group/automation-templates/compare/v11.1.0...v11.1.1) (2026-10-07)
 
 ### 🐛 Bug Fixes
