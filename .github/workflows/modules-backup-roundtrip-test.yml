@@ -488,9 +488,13 @@ jobs:
           # Fails on undefined required variables and syntax errors before
           # anything is built or pulled.
           docker compose config --quiet
-          if ! docker compose config --services | grep -qxF "$BACKUP_SERVICE"; then
+          # Captured first: piped straight into 'grep -q', compose can be
+          # killed by SIGPIPE once grep has its match, and pipefail would
+          # report the service as missing - depending on the service order.
+          SERVICES=$(docker compose config --services)
+          if ! grep -qxF "$BACKUP_SERVICE" <<< "$SERVICES"; then
             echo "::error title=Backup round trip::backup-service '$BACKUP_SERVICE' is not part of the configuration - is its profile activated (profiles input)?"
-            echo "Services: $(docker compose config --services | tr '\n' ' ')"
+            echo "Services: $(tr '\n' ' ' <<< "$SERVICES")"
             exit 1
           fi
           docker compose config --format json > "$ROUNDTRIP_DIR/compose-config.json"
