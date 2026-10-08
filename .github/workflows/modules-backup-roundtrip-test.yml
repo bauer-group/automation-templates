@@ -735,6 +735,14 @@ jobs:
         if: failure() || cancelled()
         continue-on-error: true
         run: |
+          # Best effort: the shell runs with -e, and the typical failure (a
+          # sidecar that crashed or never started) makes 'exec' fail - which
+          # must not cost the files collected after it.
+          set +e
+          if [ -z "${ROUNDTRIP_DIR:-}" ]; then
+            echo "Nothing was started - no diagnostics to collect"
+            exit 0
+          fi
           DIAG="$ROUNDTRIP_DIR/diagnostics"
           mkdir -p "$DIAG/logs"
           docker compose ps -a > "$DIAG/ps.txt" 2>&1
