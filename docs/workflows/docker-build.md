@@ -437,6 +437,8 @@ When `update-dockerfile-version: true` and a Git tag is pushed (e.g., `v1.2.3`):
 
 This ensures the Dockerfile version stays in sync with release tags.
 
+In a release that builds several images, each image job writes back its own Dockerfile at almost the same moment. A push that loses that race, or that GitHub answers with a server error, is retried up to 5 times with backoff after rebasing onto the latest default branch. If the last attempt fails too, or the rebase hits a real conflict, the job fails: the image is already published, but the default branch would otherwise silently lag behind it.
+
 **Note:** The workflow requires `contents: write` permission to commit the Dockerfile update:
 
 ```yaml
