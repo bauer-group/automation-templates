@@ -58,8 +58,19 @@ outputs:
     description: 'Number of secrets found by Gitleaks, or unknown if the scan did not complete'
     value: ${{ steps.process-gitleaks.outputs.secrets-count }}
   vulnerabilities-found:
-    description: 'Whether vulnerabilities were found'
+    description: >-
+      Whether vulnerabilities were found: 'true', 'false', or 'unknown' when Trivy found
+      no dependency file to scan (or wrote no readable report). 'unknown' is NOT clean.
     value: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found }}
+  vulnerability-targets:
+    description: 'Number of dependency files (lock files, manifests) Trivy scanned'
+    value: ${{ steps.vulnerability-scan.outputs.trivy-targets }}
+  vulnerability-packages:
+    description: 'Number of packages Trivy checked for known vulnerabilities'
+    value: ${{ steps.vulnerability-scan.outputs.trivy-packages }}
+  python-projects-resolved:
+    description: 'Number of pyproject.toml files without a lock file whose dependencies were resolved for Trivy'
+    value: ${{ steps.python-deps.outputs.resolved }}
   scan-results:
     description: 'Summary of scan results'
     value: ${{ steps.summary.outputs.scan-results }}
@@ -200,6 +211,165 @@ runs:
       shell: bash
       run: mkdir -p security-reports/vulnerabilities
 
+    - name: 🐍 Resolve Python Dependencies for Trivy
+      id: python-deps
+      if: inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities'
+      # Best effort by design: nothing in here may fail the scan. Whatever happens,
+      # Trivy still runs, and the evaluation below reports what it really scanned.
+      continue-on-error: true
+      shell: bash
+      env:
+        EXCLUDE_PATHS: ${{ inputs.exclude-paths }}
+        OUT_ROOT: security-reports/python-deps
+        UV_NO_PROGRESS: '1'
+      run: |
+        set -uo pipefail
+
+        # Trivy reads Python dependencies only from requirements.txt, Pipfile.lock,
+        # poetry.lock, uv.lock and pylock.toml - never from pyproject.toml. A project
+        # that declares version ranges in pyproject.toml and commits no lock file was
+        # therefore not scanned at all: "num=0" in the Trivy log, `Results: null` in
+        # the report, and "0 vulnerabilities, 100/100" in the summary.
+        #
+        # For each such pyproject.toml, `uv pip compile` resolves the runtime
+        # dependencies ([project].dependencies) to exact versions and writes them as a
+        # requirements.txt under security-reports/python-deps/, where Trivy's
+        # filesystem scan picks them up. These are the NEWEST versions the ranges
+        # allow, not necessarily what a given installation runs; a committed lock
+        # file is still the exact answer and always takes precedence.
+        LOCK_FILES="requirements.txt Pipfile.lock poetry.lock uv.lock pylock.toml"
+
+        PRUNE=( -name .git -o -name node_modules -o -name .venv -o -name venv
+                -o -name site-packages -o -name __pypackages__ -o -name .tox
+                -o -name .nox -o -path ./security-reports )
+        IFS=',' read -r -a EXTRA <<< "${EXCLUDE_PATHS:-}"
+        for e in "${EXTRA[@]}"; do
+          e="${e#"${e%%[![:space:]]*}"}"
+          e="${e%"${e##*[![:space:]]}"}"
+          e="${e#./}"
+          e="${e%/}"
+          [ -n "$e" ] || continue
+          case "$e" in
+            */*) PRUNE+=( -o -path "./$e" ) ;;
+            *)   PRUNE+=( -o -name "$e" ) ;;
+          esac
+        done
+
+        # A lock file in the same directory, or in a parent directory (a uv or Poetry
+        # workspace locks all its members at the root), already gives Trivy exact
+        # versions; resolving the project again would only add guessed duplicates.
+        locked_by() {
+          local d="$1" l
+          while :; do
+            for l in $LOCK_FILES; do
+              if [ -f "$d/$l" ]; then
+                echo "$d/$l"
+                return 0
+              fi
+            done
+            if compgen -G "$d/pylock.*.toml" > /dev/null; then
+              echo "$d/pylock.*.toml"
+              return 0
+            fi
+            [ "$d" = "." ] && return 1
+            d="$(dirname "$d")"
+          done
+        }
+
+        CANDIDATES=()
+        while IFS= read -r f; do
+          dir="$(dirname "$f")"
+          if lock="$(locked_by "$dir")"; then
+            echo "  • ${f#./}: covered by ${lock#./}"
+          elif ! grep -qE '^\[(project|tool\.poetry)\]' "$f"; then
+            echo "  • ${f#./}: no [project] metadata (tool configuration only), skipped"
+          else
+            CANDIDATES+=( "$f" )
+          fi
+        done < <(find . \( "${PRUNE[@]}" \) -prune -o -type f -name pyproject.toml -print | sort | head -n 50)
+
+        if [ "${#CANDIDATES[@]}" -eq 0 ]; then
+          echo "🐍 No Python project without a lock file - nothing to resolve."
+          {
+            echo "resolved=0"
+            echo "failed=0"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # uv: already on the runner, else a throwaway venv, else pipx, else the release
+        # binary. Deliberately no third-party action: an "action not allowed" policy
+        # would stop the whole job before it starts, where this step can only degrade.
+        UV_DIR="${RUNNER_TEMP:-/tmp}/security-scan-uv"
+        UV=()
+        if command -v uv > /dev/null 2>&1; then
+          UV=( uv )
+        elif python3 -m venv "$UV_DIR" > /dev/null 2>&1 \
+          && "$UV_DIR/bin/python" -m pip install --quiet --disable-pip-version-check uv > /dev/null 2>&1; then
+          UV=( "$UV_DIR/bin/uv" )
+        elif command -v pipx > /dev/null 2>&1; then
+          UV=( pipx run uv )
+        else
+          case "$(uname -s)-$(uname -m)" in
+            Linux-x86_64)                UV_ASSET="uv-x86_64-unknown-linux-gnu" ;;
+            Linux-aarch64 | Linux-arm64) UV_ASSET="uv-aarch64-unknown-linux-gnu" ;;
+            *)                           UV_ASSET="" ;;
+          esac
+          if [ -n "$UV_ASSET" ] && mkdir -p "$UV_DIR/bin" \
+            && curl -sSfL --max-time 120 "https://github.com/astral-sh/uv/releases/latest/download/${UV_ASSET}.tar.gz" \
+              | tar xz --strip-components=1 -C "$UV_DIR/bin"; then
+            UV=( "$UV_DIR/bin/uv" )
+          fi
+        fi
+        if [ "${#UV[@]}" -eq 0 ]; then
+          echo "::warning title=Python dependencies not resolved::uv could not be installed, so ${#CANDIDATES[@]} pyproject.toml without a lock file stay invisible to Trivy."
+          {
+            echo "resolved=0"
+            echo "failed=${#CANDIDATES[@]}"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        TIMEOUT=()
+        if command -v timeout > /dev/null 2>&1; then
+          TIMEOUT=( timeout 300 )
+        fi
+
+        RESOLVED=0
+        FAILED=0
+        for f in "${CANDIDATES[@]}"; do
+          rel="$(dirname "${f#./}")"
+          if [ "$rel" = "." ]; then
+            out="$OUT_ROOT/requirements.txt"
+          else
+            out="$OUT_ROOT/$rel/requirements.txt"
+          fi
+          mkdir -p "$(dirname "$out")"
+          log="$(dirname "$out")/uv-pip-compile.log"
+          # --universal resolves for every platform and Python version the project
+          # allows, so the runner's own interpreter cannot make it fail; the plain
+          # resolution is the fallback for projects that only resolve per platform.
+          if ${TIMEOUT[@]+"${TIMEOUT[@]}"} "${UV[@]}" pip compile "$f" --universal --quiet -o "$out" > "$log" 2>&1 \
+            || ${TIMEOUT[@]+"${TIMEOUT[@]}"} "${UV[@]}" pip compile "$f" --quiet -o "$out" >> "$log" 2>&1; then
+            COUNT=$( { grep -cE '^[A-Za-z0-9._-]+(\[[^]]*\])?==' "$out" || true; } )
+            echo "  • ${f#./}: resolved ${COUNT} pinned package(s) -> $out"
+            RESOLVED=$((RESOLVED + 1))
+          else
+            rm -f "$out"
+            REASON="$(grep -v '^[[:space:]]*$' "$log" | tail -n 1 | tr -d '\r' | cut -c1-300)"
+            REASON="${REASON//%/%25}"
+            echo "::warning title=Python dependencies not resolved::${f#./}: uv pip compile failed, so Trivy cannot see these dependencies. ${REASON}"
+            FAILED=$((FAILED + 1))
+          fi
+        done
+
+        {
+          echo "resolved=$RESOLVED"
+          echo "failed=$FAILED"
+        } >> "$GITHUB_OUTPUT"
+        if [ "$RESOLVED" -gt 0 ]; then
+          echo "::notice title=Python dependencies resolved for Trivy::${RESOLVED} pyproject.toml without a lock file resolved with uv pip compile (security-reports/python-deps). Trivy checks the newest versions the declared ranges allow; commit a lock file (uv lock) to scan exact versions."
+        fi
+
     - name: 🛡️ Trivy Vulnerability Scan
       id: trivy-vuln-scan
       if: inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities'
@@ -211,48 +381,68 @@ runs:
         output: 'security-reports/vulnerabilities/trivy-results.json'
         severity: 'CRITICAL,HIGH,MEDIUM'
         scanners: 'vuln'
+        # Lists every package in the report, not only vulnerable ones, so the
+        # evaluation can show how much was actually checked.
+        list-all-pkgs: 'true'
         exit-code: '0'
 
     - name: 📊 Evaluate Vulnerability Results
       id: vulnerability-scan
       if: inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities'
       shell: bash
+      env:
+        REPORT: security-reports/vulnerabilities/trivy-results.json
       run: |
+        set -uo pipefail
         echo "🔍 Evaluating Trivy vulnerability scan results..."
         VULNERABILITIES_FOUND=false
         CRITICAL=0
         HIGH=0
         MEDIUM=0
+        TARGETS=0
+        PACKAGES=0
 
-        REPORT="security-reports/vulnerabilities/trivy-results.json"
-        if [ -f "$REPORT" ]; then
-          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$REPORT" 2>/dev/null || echo "0")
-          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$REPORT" 2>/dev/null || echo "0")
-          MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "$REPORT" 2>/dev/null || echo "0")
+        num() { case "$1" in ''|*[!0-9]*) echo 0 ;; *) echo "$1" ;; esac; }
 
-          TOTAL=$((CRITICAL + HIGH + MEDIUM))
-          if [ $TOTAL -gt 0 ]; then
-            VULNERABILITIES_FOUND=true
-          fi
+        if [ -f "$REPORT" ] && jq -e 'type == "object"' "$REPORT" > /dev/null 2>&1; then
+          TARGETS=$(num "$(jq '[.Results[]?] | length' "$REPORT" 2>/dev/null)")
+          PACKAGES=$(num "$(jq '[.Results[]?.Packages[]?] | length' "$REPORT" 2>/dev/null)")
+          CRITICAL=$(num "$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$REPORT" 2>/dev/null)")
+          HIGH=$(num "$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$REPORT" 2>/dev/null)")
+          MEDIUM=$(num "$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "$REPORT" 2>/dev/null)")
 
-          echo "🛡️ Trivy Vulnerability Results:"
+          echo "🛡️ Trivy scanned ${TARGETS} dependency file(s) with ${PACKAGES} package(s):"
+          jq -r '.Results[]? | "  • \(.Target) (\(.Type // .Class)): \([.Packages[]?] | length) package(s), \([.Vulnerabilities[]?] | length) finding(s)"' "$REPORT" 2>/dev/null || true
           echo "  • Critical: $CRITICAL"
           echo "  • High: $HIGH"
           echo "  • Medium: $MEDIUM"
+
+          if [ $((CRITICAL + HIGH + MEDIUM)) -gt 0 ]; then
+            VULNERABILITIES_FOUND=true
+            echo "⚠️ Vulnerabilities detected - review required"
+          elif [ "$TARGETS" -eq 0 ]; then
+            # No target is not a clean result: Trivy found nothing it can read, so no
+            # dependency was checked. That used to print "No vulnerabilities detected"
+            # and score 100/100. It is no failure either (plenty of repositories have
+            # no dependencies), so it is reported as 'unknown' and said out loud.
+            VULNERABILITIES_FOUND=unknown
+            echo "::notice title=Trivy scanned no dependencies::No lock file or dependency manifest Trivy can read was found (for example package-lock.json, pnpm-lock.yaml, go.sum, Cargo.lock, poetry.lock, uv.lock, requirements.txt), so this run checked NO dependencies for known vulnerabilities."
+          else
+            echo "✅ No vulnerabilities detected by Trivy"
+          fi
         else
-          echo "ℹ️ No Trivy report found, skipping evaluation"
+          VULNERABILITIES_FOUND=unknown
+          echo "::warning title=No readable Trivy report::${REPORT} is missing or not JSON - dependencies were NOT checked for vulnerabilities."
         fi
 
-        if [ "$VULNERABILITIES_FOUND" == "false" ]; then
-          echo "✅ No vulnerabilities detected by Trivy"
-        else
-          echo "⚠️ Vulnerabilities detected - review required"
-        fi
-
-        echo "vulnerabilities-found=$VULNERABILITIES_FOUND" >> "$GITHUB_OUTPUT"
-        echo "trivy-critical=$CRITICAL" >> "$GITHUB_OUTPUT"
-        echo "trivy-high=$HIGH" >> "$GITHUB_OUTPUT"
-        echo "trivy-medium=$MEDIUM" >> "$GITHUB_OUTPUT"
+        {
+          echo "vulnerabilities-found=$VULNERABILITIES_FOUND"
+          echo "trivy-critical=$CRITICAL"
+          echo "trivy-high=$HIGH"
+          echo "trivy-medium=$MEDIUM"
+          echo "trivy-targets=$TARGETS"
+          echo "trivy-packages=$PACKAGES"
+        } >> "$GITHUB_OUTPUT"
 
     - name: 📊 Generate Security Summary
       id: summary
@@ -265,6 +455,10 @@ runs:
         TRIVY_CRITICAL: ${{ steps.vulnerability-scan.outputs.trivy-critical || '0' }}
         TRIVY_HIGH: ${{ steps.vulnerability-scan.outputs.trivy-high || '0' }}
         TRIVY_MEDIUM: ${{ steps.vulnerability-scan.outputs.trivy-medium || '0' }}
+        TRIVY_TARGETS: ${{ steps.vulnerability-scan.outputs.trivy-targets || '0' }}
+        TRIVY_PACKAGES: ${{ steps.vulnerability-scan.outputs.trivy-packages || '0' }}
+        PYTHON_RESOLVED: ${{ steps.python-deps.outputs.resolved || '0' }}
+        PYTHON_FAILED: ${{ steps.python-deps.outputs.failed || '0' }}
       run: |
         set -uo pipefail
         echo "📊 Generating security summary..."
@@ -308,11 +502,17 @@ runs:
               SECRETS_CELL="⏭️ not scanned - no secret engine ran"
             fi ;;
         esac
+        SCANNED="${TRIVY_TARGETS} file(s), ${TRIVY_PACKAGES} package(s) checked"
         case "$VULNS_FOUND" in
-          true)  VULNS_CELL="⚠️ critical ${TRIVY_CRITICAL}, high ${TRIVY_HIGH}, medium ${TRIVY_MEDIUM}" ;;
-          false) VULNS_CELL="✅ none found" ;;
-          *)     VULNS_CELL="⏭️ not scanned" ;;
+          true)    VULNS_CELL="⚠️ critical ${TRIVY_CRITICAL}, high ${TRIVY_HIGH}, medium ${TRIVY_MEDIUM} (${SCANNED})" ;;
+          false)   VULNS_CELL="✅ none found (${SCANNED})" ;;
+          unknown) VULNS_CELL="❓ NOT scanned - no dependency file Trivy can read; the score covers secrets only" ;;
+          *)       VULNS_CELL="⏭️ not requested (scan-type)" ;;
         esac
+        PYTHON_LINE=""
+        if [ "$PYTHON_RESOLVED" != "0" ] || [ "$PYTHON_FAILED" != "0" ]; then
+          PYTHON_LINE="🐍 Python projects without a lock file: ${PYTHON_RESOLVED} resolved for Trivy (newest versions the ranges allow), ${PYTHON_FAILED} could not be resolved."
+        fi
 
         {
           echo "security-score=$SCORE"
@@ -332,6 +532,8 @@ runs:
         |------|--------|
         | **Secrets (Gitleaks)** | $SECRETS_CELL |
         | **Vulnerabilities (Trivy)** | $VULNS_CELL |
+
+        $PYTHON_LINE
 
         EOF
 
@@ -369,7 +571,8 @@ runs:
         echo "  • Secret Engine: ${SECRET_ENGINE}"
         echo "  • Score: $SCORE/100"
         echo "  • Gitleaks Secrets: $GITLEAKS_SECRETS ($GITLEAKS_COUNT)"
-        echo "  • Vulnerabilities: $VULNS_FOUND"
+        echo "  • Vulnerabilities: $VULNS_FOUND (${SCANNED})"
+        [ -z "$PYTHON_LINE" ] || echo "  • $PYTHON_LINE"
         echo "  • Status: $SUMMARY"
 
     - name: 📤 Upload Security Reports

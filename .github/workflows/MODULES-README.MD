@@ -25,9 +25,21 @@ secrets: inherit   # GITLEAKS_LICENSE
 > `'gitguardian'` scannt keine Secrets mehr (mit Warnung im Lauf). `minimum-severity` und
 > das Secret `GITGUARDIAN_API_KEY` werden noch angenommen, aber ignoriert.
 
+**Python ohne Lock-Datei:** Trivy liest bei Python nur `requirements.txt`, `poetry.lock`,
+`uv.lock`, `Pipfile.lock` und `pylock.toml`, nie `pyproject.toml`. Für jedes `pyproject.toml`
+ohne solche Datei (auch nicht in einem übergeordneten Workspace) löst der Scan die
+Laufzeit-Abhängigkeiten vorher mit `uv pip compile` auf und legt sie unter
+`security-reports/python-deps/` ab, wo Trivy sie scannt. Gescannt werden die neuesten
+Versionen, die die Versionsbereiche erlauben; eine committete Lock-Datei (`uv lock`) hat
+immer Vorrang und ist genauer.
+
+**Nichts gescannt ist nicht sauber:** Findet Trivy keine Datei, die es lesen kann, meldet
+der Scan `vulnerabilities-found: unknown` statt `false`, und die Zusammenfassung zeigt
+„NOT scanned“ statt „Excellent“. Das lässt den Lauf nicht scheitern.
+
 **Ausgaben:**
 - `secrets-found`: Ob Secrets gefunden wurden
-- `vulnerabilities-found`: Ob Schwachstellen entdeckt wurden (via Trivy)
+- `vulnerabilities-found`: Ob Schwachstellen entdeckt wurden (via Trivy; `unknown` = nichts gescannt)
 - `security-score`: Sicherheitsbewertung (0-100)
 - `scan-results`: Zusammenfassung der Ergebnisse
 

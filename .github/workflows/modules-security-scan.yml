@@ -115,6 +115,9 @@ jobs:
           SECRETS_FOUND: ${{ steps.security.outputs.secrets-found }}
           SECRETS_COUNT: ${{ steps.security.outputs.gitleaks-secrets-count }}
           VULNERABILITIES_FOUND: ${{ steps.security.outputs.vulnerabilities-found }}
+          VULN_TARGETS: ${{ steps.security.outputs.vulnerability-targets }}
+          VULN_PACKAGES: ${{ steps.security.outputs.vulnerability-packages }}
+          PYTHON_RESOLVED: ${{ steps.security.outputs.python-projects-resolved }}
           SCAN_RESULTS: ${{ steps.security.outputs.scan-results }}
         run: |
           set -uo pipefail
@@ -134,6 +137,23 @@ jobs:
             *)       SECRETS_CELL="❓ unknown - the scan did not complete" ;;
           esac
 
+          # 'unknown' from Trivy means it found no dependency file it can read, so no
+          # dependency was checked. That used to show as "false" and 100/100.
+          VULNS_SCANNED=false
+          SCANNED="${VULN_TARGETS:-0} file(s), ${VULN_PACKAGES:-0} package(s)"
+          if [ "${PYTHON_RESOLVED:-0}" != "0" ]; then
+            SCANNED="${SCANNED}; ${PYTHON_RESOLVED} Python project(s) resolved from pyproject.toml"
+          fi
+          if [ "$SCAN_TYPE" = "secrets" ]; then
+            VULNS_CELL="⏭️ not requested"
+          else
+            case "$VULNERABILITIES_FOUND" in
+              true)  VULNS_CELL="⚠️ yes (${SCANNED})"; VULNS_SCANNED=true ;;
+              false) VULNS_CELL="✅ no (${SCANNED})"; VULNS_SCANNED=true ;;
+              *)     VULNS_CELL="❓ NOT scanned - no dependency file Trivy can read" ;;
+            esac
+          fi
+
           {
             echo "### 🛡️ Security Scan Results"
             echo ""
@@ -143,7 +163,7 @@ jobs:
             echo "| **Scan Type** | ${SCAN_TYPE} |"
             echo "| **Security Score** | ${SCORE:-unknown}/100 |"
             echo "| **Secrets Found** | ${SECRETS_CELL} |"
-            echo "| **Vulnerabilities (Trivy)** | ${VULNERABILITIES_FOUND} |"
+            echo "| **Vulnerabilities (Trivy)** | ${VULNS_CELL} |"
             echo "| **Status** | ${SCAN_RESULTS:-Incomplete} |"
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
@@ -155,6 +175,8 @@ jobs:
             echo "❓ **The secret scan did not complete - this is not a clean result.**" >> "$GITHUB_STEP_SUMMARY"
           elif [ "$SECRETS_FOUND" = "skipped" ] && [ "$SCAN_TYPE" != "vulnerabilities" ]; then
             echo "⏭️ **No secret scan ran - the score does not cover secrets.**" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$SCAN_TYPE" != "secrets" ] && [ "$VULNS_SCANNED" != "true" ]; then
+            echo "❓ **Trivy scanned no dependencies - the score covers the secret scan only.**" >> "$GITHUB_STEP_SUMMARY"
           elif [ "$SCORE" -ge 95 ]; then
             echo "✅ **Excellent security posture!**" >> "$GITHUB_STEP_SUMMARY"
           elif [ "$SCORE" -ge 80 ]; then
