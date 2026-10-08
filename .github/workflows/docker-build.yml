@@ -576,7 +576,7 @@ jobs:
       
       - name: 🐳 Build Docker Image
         id: docker-build
-        uses: bauer-group/automation-templates/.github/actions/docker-build@fix/docker-build-writeback-retry
+        uses: bauer-group/automation-templates/.github/actions/docker-build@main
         with:
           working-directory: ${{ inputs.working-directory }}
           dockerfile-path: ${{ inputs.dockerfile-path }}
