@@ -33,10 +33,11 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 - name: 🛡️ Security Scan
   uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
   with:
-    scan-engines: 'gitleaks'
-    scan-scope: 'all'
-    fail-on-findings: true
-    github-token: ${{ secrets.GITHUB_TOKEN }}
+    scan-engine: 'gitleaks'
+    scan-type: 'all'
+    fail-on-findings: 'true'
+    gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+    token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### Individual Engines
@@ -864,9 +865,10 @@ jobs:
 - name: Security Scan
   uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
   with:
-    scan-engines: 'both'
-    fail-on-findings: true
-    github-token: ${{ secrets.GITHUB_TOKEN }}
+    scan-engine: 'gitleaks'
+    fail-on-findings: 'true'
+    gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+    token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 #### ⚡ Zephyr Build Action
@@ -964,8 +966,9 @@ jobs:
       - name: Security scan
         uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
         with:
-          scan-engines: 'both'
-          report-format: 'sarif'
+          scan-engine: 'gitleaks'
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### Policy Enforcement

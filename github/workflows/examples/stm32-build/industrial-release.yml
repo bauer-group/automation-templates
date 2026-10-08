@@ -50,9 +50,11 @@ jobs:
       - name: Security Scan
         uses: bauer-group/automation-templates/.github/actions/security-scan@main
         with:
-          scan-engines: 'gitleaks'
-          fail-on-findings: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          scan-engine: 'gitleaks'
+          scan-type: 'secrets'
+          fail-on-findings: 'true'
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   # Main build with full analysis
   build:

@@ -177,6 +177,12 @@ on:
         description: 'OTA server API key'
         required: false
 
+      # Gitleaks needs a licence in organization repositories; without it the
+      # security job ends with "missing gitleaks license" and scans nothing.
+      GITLEAKS_LICENSE:
+        description: 'Gitleaks license key (required for repositories owned by an organization)'
+        required: false
+
 env:
   DOCKER_IMAGE: espressif/idf
   CCACHE_DIR: /tmp/ccache
@@ -269,9 +275,14 @@ jobs:
       - name: Security Scan
         uses: bauer-group/automation-templates/.github/actions/security-scan@main
         with:
-          scan-engines: 'gitleaks'
-          fail-on-findings: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # The action's inputs are scan-engine and token. The old names
+          # (scan-engines, github-token) were silently ignored, so the scan ran
+          # with its defaults and without a token.
+          scan-engine: 'gitleaks'
+          scan-type: 'secrets'
+          fail-on-findings: 'true'
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   # Main Build Job
   build:

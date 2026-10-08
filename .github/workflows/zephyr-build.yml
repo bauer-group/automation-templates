@@ -146,9 +146,14 @@ jobs:
       - name: 🛡️ Security Scan
         uses: bauer-group/automation-templates/.github/actions/security-scan@main
         with:
-          scan-engines: 'gitleaks'
-          fail-on-findings: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # The action's inputs are scan-engine and token. The old names
+          # (scan-engines, github-token) were silently ignored, so the scan ran
+          # with its defaults and without a token.
+          scan-engine: 'gitleaks'
+          scan-type: 'secrets'
+          fail-on-findings: 'true'
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📝 License Compliance
         uses: bauer-group/automation-templates/.github/actions/license-compliance@main
