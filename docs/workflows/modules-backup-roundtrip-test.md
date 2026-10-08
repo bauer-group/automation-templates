@@ -402,6 +402,8 @@ prepare-script: 'tests/backup-roundtrip/prepare.sh'
 
 The script runs once the `.env` has been created from the template and before `env-overrides` and `generated-secrets`, so both still win over it. Every `.env` line it adds or changes is masked in the log (values of 8 characters or more, without surrounding quotes). It should not print secrets itself — anything it prints before the masks are registered stays in the log.
 
+Use whatever mode your generator has for "fill the open values": `--update` where it exists, otherwise regenerate the file (`--force`). At this point the `.env` is a fresh copy of the template, so regenerating it loses nothing.
+
 ### Plugin sources inside the stack
 
 Plugin sources that talk to the application in the same stack (an n8n workflow export, a NocoDB REST export) work as long as the application is up — `up --wait` ensures that when the application has a healthcheck. If the plugin needs credentials that are created after the first start (an API token), either create them in the seed script or disable the source as above.
@@ -485,6 +487,7 @@ The calling job does not grant `packages: read`, or the package is private to an
 - **Encryption is tested only if the stack enables it in CI.** A stack that encrypts in production needs a throwaway key pair in the test configuration to exercise decryption.
 - **Linux runners with Docker Engine and a Compose v2 release that supports `up --wait --wait-timeout`.** `bash`, `jq` and `openssl` must be available — they are on GitHub-hosted runners.
 - **One snapshot per run.** Retention, GFS pruning and the scheduler are not exercised.
+- **One backup job per configuration.** `create` runs every job of `BACKUP_CONFIG_JSON`, but the module tests only the newest snapshot it produced, and the engine's `list`, `verify` and `restore` use the first job unless `--job` is given. A configuration with several jobs is therefore not covered completely; every consumer on the `jobs` schema defines exactly one today.
 - **Restore is a full restore** unless `restore-args` narrows it with `--only`.
 
 ## Related Modules
