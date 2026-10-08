@@ -189,7 +189,7 @@ on:
 
       # -- Runner and diagnostics ---------------------------------------------
       free-disk-space:
-        description: "Remove unused preinstalled toolchains from the runner first. Turn it on for large stacks (several GB of images). Linux runners only."
+        description: "Remove unused preinstalled toolchains from the runner first. Turn it on for large stacks (several GB of images). GitHub-hosted Linux runners only - ignored on self-hosted runners."
         required: false
         type: boolean
         default: false
@@ -252,7 +252,8 @@ jobs:
         uses: actions/checkout@v7
 
       - name: "🧹 Free Disk Space"
-        if: inputs.free-disk-space && runner.os == 'Linux'
+        # Never on self-hosted runners: the rm -rf would hit a persistent host.
+        if: inputs.free-disk-space && runner.os == 'Linux' && runner.environment == 'github-hosted'
         working-directory: .
         run: |
           BEFORE=$(df --output=avail -BM / | tail -1 | tr -dc '0-9')

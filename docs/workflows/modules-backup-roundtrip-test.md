@@ -139,7 +139,7 @@ Without scripts the module still tests the backup mechanics (create, show, verif
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `free-disk-space` | Remove unused preinstalled toolchains first (frees 10+ GB). Turn it on for stacks with several GB of images. Linux only | `false` |
+| `free-disk-space` | Remove unused preinstalled toolchains first (frees 10+ GB). Turn it on for stacks with several GB of images. GitHub-hosted Linux runners only; ignored on self-hosted runners, whose disk is persistent | `false` |
 | `artifact-name` | Name of the diagnostics artifact. Set a distinct name when the module is called more than once per run | `'backup-roundtrip-diagnostics'` |
 | `artifact-retention-days` | Days the diagnostics artifact is kept | `7` |
 | `runs-on` | Runner. String, or a JSON array for self-hosted | `'ubuntu-latest'` |
