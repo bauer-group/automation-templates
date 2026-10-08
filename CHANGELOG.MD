@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.2.0](https://github.com/bauer-group/automation-templates/compare/v11.1.4...v11.2.0) (2026-10-08)
+
+### 🚀 Features
+
+* **backup-roundtrip:** added reusable backup round-trip test module ([#114](https://github.com/bauer-group/automation-templates/issues/114)) ([b030d9a](https://github.com/bauer-group/automation-templates/commit/b030d9a38d425fb2fd14843f856628977ffc3f3c))
+
 ## [11.1.4](https://github.com/bauer-group/automation-templates/compare/v11.1.3...v11.1.4) (2026-10-08)
 
 ### 🐛 Bug Fixes
