@@ -108,18 +108,43 @@ jobs:
     secrets: inherit
 ```
 
-#### 3. Enable Auto-Merge and Branch Protection
+#### 3. Enable Auto-Merge and Required Status Checks
 
 1. Go to **Settings** → **General** → **Pull Requests** → Enable **"Allow auto-merge"**
-2. Go to **Settings** → **Branches** → Add branch protection rule for `main`
-3. Enable **"Require status checks to pass before merging"** and select relevant checks
+2. Go to **Settings** → **Rules** → **Rulesets** → add a branch ruleset for `main`
+   (or a classic branch protection rule under **Settings** → **Branches**)
+3. Enable **"Require status checks to pass"** and add the checks of your PR CI.
+   Use the exact check names, and only checks that run on every Dependabot PR -
+   a required check that is skipped by a `paths:` filter blocks the PR for good.
+
+Both steps are required. Without required status checks, GitHub treats a PR as
+mergeable immediately, and enabling auto-merge would merge it before CI has
+finished - even with a check that already failed.
+
+### Merge Guard
+
+Before approving and enabling auto-merge, the workflow checks the base branch with
+the job token and leaves the PR **open** (job stays green, decision shown as an
+annotation and in the job summary) when:
+
+| Situation | Annotation |
+|-----------|------------|
+| The update is semver-major and `allow-major` is off | notice |
+| No ruleset or branch protection rule requires a status check | notice |
+| Status checks are required, but "Allow auto-merge" is disabled | warning |
+| The rules of the base branch could not be read | warning |
+
+Otherwise the PR is approved (if `auto-approve` is on) and auto-merge is enabled;
+GitHub merges it once the required checks pass. No permission beyond
+`contents: write` and `pull-requests: write` is needed.
 
 ### Workflow Options
 
-| Input            | Description                | Default  |
-|------------------|----------------------------|----------|
-| `merge-method`   | squash, merge, or rebase   | `squash` |
-| `auto-approve`   | Automatically approve PRs  | `true`   |
+| Input            | Description                                    | Default  |
+|------------------|------------------------------------------------|----------|
+| `merge-method`   | squash, merge, or rebase                       | `squash` |
+| `auto-approve`   | Automatically approve PRs                      | `true`   |
+| `allow-major`    | Also auto-merge semver-major updates           | `false`  |
 
 ### Examples
 
