@@ -95,8 +95,10 @@ on:
       - 'src/Dockerfile'
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: write       # merge
+  pull-requests: write  # approve, read the PR
+  checks: read          # read CI results - needed in private repositories
+  statuses: read        # read commit statuses - needed in private repositories
 
 jobs:
   maintenance:
@@ -105,46 +107,71 @@ jobs:
     with:
       merge-method: 'squash'
       auto-approve: true
+      # merge-update-types: 'patch,minor'  # default: patch
     secrets: inherit
 ```
 
-#### 3. Enable Auto-Merge and Required Status Checks
+#### 3. Have a PR CI
 
-1. Go to **Settings** → **General** → **Pull Requests** → Enable **"Allow auto-merge"**
-2. Go to **Settings** → **Rules** → **Rulesets** → add a branch ruleset for `main`
-   (or a classic branch protection rule under **Settings** → **Branches**)
-3. Enable **"Require status checks to pass"** and add the checks of your PR CI.
-   Use the exact check names, and only checks that run on every Dependabot PR -
-   a required check that is skipped by a `paths:` filter blocks the PR for good.
+Nothing else to configure - no ruleset, no branch protection, no "Allow auto-merge".
+The workflow waits for the CI of the PR itself, so a CI workflow that runs on
+Dependabot PRs is all it needs. A PR on which no check runs is never merged.
 
-Both steps are required. Without required status checks, GitHub treats a PR as
-mergeable immediately, and enabling auto-merge would merge it before CI has
-finished - even with a check that already failed.
+The workflow declares no permissions of its own; the job token has exactly what
+the calling workflow grants. In **public** repositories CI results are readable
+without `checks`/`statuses`. In **private** repositories they are not: a caller
+that grants only `contents` and `pull-requests` still runs, but every PR stays
+open with a notice that names the two missing permissions.
 
-### Merge Guard
+> Rulesets with required status checks are **not** the way to gate this:
+> GitHub Actions cannot be a ruleset bypass actor, so such a ruleset on `main`
+> also blocks semantic-release, which pushes the release commit with the
+> `GITHUB_TOKEN`.
 
-Before approving and enabling auto-merge, the workflow checks the base branch with
-the job token and leaves the PR **open** (job stays green, decision shown as an
-annotation and in the job summary) when:
+### How Merging Works
 
-| Situation | Annotation |
-|-----------|------------|
-| The update is semver-major and `allow-major` is off | notice |
-| No ruleset or branch protection rule requires a status check | notice |
-| Status checks are required, but "Allow auto-merge" is disabled | warning |
-| The rules of the base branch could not be read | warning |
+1. **Update type** - only the semver types in `merge-update-types` are merged
+   (default `patch`). A `minor` or `major` update, or one whose type cannot be
+   determined (digest, non-semver tag), stays open for review. The redpanda
+   `26.1 → 26.2` bump that took a production stack down was a semver-*minor*.
+2. **Wait for CI** - the job polls the check runs, check suites and commit
+   statuses on the PR head commit (every 30 s, later every 1-2 min), leaving out
+   its own job. It waits while anything is still running, including a workflow
+   whose later jobs have not been created yet, and never decides within the
+   first two minutes.
+3. **Merge** - only when every check concluded `success`, `neutral` or
+   `skipped`: the PR is approved (if `auto-approve` is on) and merged with
+   `gh pr merge --match-head-commit`, so only the commit whose CI was checked can
+   be merged. Where GitHub Actions may not approve pull requests (an org or repo
+   setting), the rejected approval is a notice and the merge goes ahead; it only
+   fails if the base branch requires a review.
 
-Otherwise the PR is approved (if `auto-approve` is on) and auto-merge is enabled;
-GitHub merges it once the required checks pass. No permission beyond
-`contents: write` and `pull-requests: write` is needed.
+Every other outcome leaves the PR **open** with the job green, the decision as an
+annotation and in the job summary:
+
+| Situation                                                                | Annotation |
+|--------------------------------------------------------------------------|------------|
+| Update type not in `merge-update-types`, or unknown                      | notice     |
+| A check failed (or was cancelled, timed out, needs action)               | notice     |
+| No check ran on the PR                                                   | notice     |
+| CI still running after `ci-wait-minutes`                                 | notice     |
+| CI results not readable (private repo without `checks`/`statuses: read`) | notice     |
+| The PR got a new head commit or was closed meanwhile                     | notice     |
+| CI passed, but the merge was rejected (e.g. a required review)           | warning    |
+
+A newer event on the same PR (e.g. Dependabot rebased it) cancels the run that is
+still waiting. The merge is made with the job's `GITHUB_TOKEN`, so - as for every
+push by that token - it does not start `push` workflows on `main` by itself.
 
 ### Workflow Options
 
-| Input            | Description                                    | Default  |
-|------------------|------------------------------------------------|----------|
-| `merge-method`   | squash, merge, or rebase                       | `squash` |
-| `auto-approve`   | Automatically approve PRs                      | `true`   |
-| `allow-major`    | Also auto-merge semver-major updates           | `false`  |
+| Input                | Description                                                              | Default  |
+|----------------------|--------------------------------------------------------------------------|----------|
+| `merge-method`       | squash, merge, or rebase                                                 | `squash` |
+| `auto-approve`       | Approve the PR before merging it                                         | `true`   |
+| `merge-update-types` | Semver update types to merge, comma separated: `patch`, `minor`, `major` | `patch`  |
+| `ci-wait-minutes`    | How long to wait for CI (1-60) before leaving the PR open                | `60`     |
+| `allow-major`        | Deprecated: `true` equals `merge-update-types: patch,minor,major`        | `false`  |
 
 ### Examples
 
@@ -328,17 +355,23 @@ jobs:
 
 ## Troubleshooting
 
-### Auto-Merge Not Triggering
+### Dependabot PR Not Merged
 
-The workflow completes but the PR is not merged.
+The workflow completes but the PR stays open.
 
-**Cause:** GitHub's auto-merge requires **branch protection with required status checks**. Without required checks, auto-merge has nothing to wait for and may not behave as expected.
+**Cause:** the job left it open on purpose. The annotation and the job summary
+say why - see the table under [How Merging Works](#how-merging-works). The
+usual ones:
 
-**Fix:**
+| Annotation says                         | Fix                                                                                  |
+|-----------------------------------------|--------------------------------------------------------------------------------------|
+| update type is not merged automatically | Expected for minor/major; merge by hand, or widen `merge-update-types`               |
+| no check ran on this PR                 | Add a PR CI workflow whose `paths:` cover the files Dependabot changes               |
+| job token cannot read the CI results    | Private repo: add `checks: read` and `statuses: read` to the caller's `permissions:` |
+| CI was still running after N min        | Raise `ci-wait-minutes`, or merge by hand once CI is green                           |
 
-1. Go to **Settings** → **Branches** → **Branch protection rules** for `main`
-2. Enable **"Require status checks to pass before merging"**
-3. Select the relevant checks (e.g., Docker build validation)
+Do **not** add a ruleset with required status checks for this - it is not needed
+and blocks semantic-release (see above).
 
 ### No Semantic Release Created
 
@@ -347,7 +380,10 @@ The workflow completes but the PR is not merged.
 | Commit prefix is `chore(docker)` | Change to `fix(docker)` in dependabot.yml or renovate.json |
 | Semantic release not configured | Add `modules-semantic-release.yml` workflow |
 
-### Auto-Merge Not Working
+### Renovate Auto-Merge Not Working
+
+The Renovate workflow uses GitHub's native auto-merge, which only waits for
+**required** status checks:
 
 1. Enable auto-merge in repository settings
 2. Check branch protection rules allow auto-merge
@@ -371,10 +407,11 @@ The workflow completes but the PR is not merged.
 
 ## Security Considerations
 
-- **CI must pass**: Auto-merge only after all checks succeed
+- **CI must pass**: Auto-merge only after all checks succeed - and a PR without any check is not merged (Dependabot)
+- **Pinned merge**: the Dependabot merge names the head commit whose CI was checked
 - **Auto-approve optional**: Can be disabled for manual review
 - **Audit trail**: All updates tracked in PRs and git history
-- **Major updates**: Require manual review (Renovate only)
+- **Update types**: Dependabot merges patch updates only unless `merge-update-types` widens it; Renovate leaves majors for review
 
 ## Related Documentation
 

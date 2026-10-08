@@ -12,18 +12,18 @@
 # 1. Dependabot scans Dockerfiles for base image updates (Sundays 06:30 UTC)
 # 2. Creates a PR with commit prefix "fix(docker):" for semantic release
 # 3. CI runs your Docker build workflow on the PR
-# 4. If all required checks pass, PR is automatically merged
-#    (semver-major updates stay open for review)
+# 4. This workflow waits for that CI and merges the PR once every check has
+#    passed - patch updates only by default (merge-update-types); minor and
+#    major updates, failed CI and PRs without any check stay open
 # 5. Semantic release creates a PATCH version (e.g., 1.0.0 → 1.0.1)
 # 6. Docker image is rebuilt and pushed
 #
 # Prerequisites:
 # 1. Enable Dependabot in repository settings
 # 2. Add .github/dependabot.yml (see below)
-# 3. Enable "Allow auto-merge" in repository settings
-# 4. Add a ruleset on main that requires the status checks of your PR CI.
-#    Without required checks the PR is left open: auto-merge would not wait
-#    for CI and would merge immediately.
+# 3. A PR CI that runs on Dependabot PRs. No ruleset, branch protection or
+#    "Allow auto-merge" is needed - a ruleset with required checks would also
+#    block semantic-release from pushing to main.
 #
 # Required .github/dependabot.yml in your repo:
 # -----------------------------------------------------------------------------
@@ -56,8 +56,10 @@ on:
       - 'src/Dockerfile'
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: write       # merge
+  pull-requests: write  # approve, read the PR
+  checks: read          # read CI results - needed in private repositories
+  statuses: read        # read commit statuses - needed in private repositories
 
 jobs:
   maintenance:
@@ -66,4 +68,5 @@ jobs:
     with:
       merge-method: 'squash'
       auto-approve: true
+      merge-update-types: 'patch'   # e.g. 'patch,minor' to merge minor updates too
     secrets: inherit

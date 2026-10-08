@@ -1,21 +1,27 @@
 # =============================================================================
 # Docker Maintenance with Dependabot
 # =============================================================================
-# Approves Dependabot PRs and enables GitHub's native auto-merge, so a PR is
-# merged once the checks the base branch requires have passed. This enables
-# fully automated Docker base image updates using GitHub's native Dependabot -
-# no external app installation required.
+# Merges Dependabot PRs after their CI has passed - no ruleset, no required
+# status checks and no "Allow auto-merge" setting needed:
 #
-# Merge guard - auto-merge is only enabled when it actually waits for CI:
-# - semver-major updates are never merged automatically (unless the caller sets
-#   allow-major); the PR stays open for review.
-# - The base branch must require status checks, through a ruleset or a classic
-#   branch protection rule. Without required checks GitHub treats the PR as
-#   mergeable right away and `gh pr merge --auto` merges it immediately, before
-#   CI has finished and even when a check has already failed. In that case the
-#   PR is left open with a notice.
-# - "Allow auto-merge" must be enabled in the repository settings.
-# The decision is shown as an annotation and in the job summary.
+# 1. Update type: only the types listed in `merge-update-types` are merged
+#    (default: patch). Everything else stays open for review.
+# 2. CI: the job waits until every other check run, check suite and commit
+#    status on the PR head commit has completed. It merges only if all of them
+#    concluded success, neutral or skipped. A failed check, a PR without any
+#    check, and CI still running after `ci-wait-minutes` leave the PR open.
+# 3. Merge: optional approval, then `gh pr merge --match-head-commit`, so only
+#    the commit whose CI was checked can be merged. Where GitHub Actions may
+#    not approve PRs, the rejected approval is a notice and the merge goes
+#    ahead (it only fails if the base branch requires a review).
+#
+# Why not GitHub's native auto-merge: without required status checks GitHub
+# merges an auto-merge PR at once, before CI has finished. Required checks need
+# a ruleset or branch protection, which blocks semantic-release from pushing to
+# main with the GITHUB_TOKEN (GitHub Actions cannot be a bypass actor).
+#
+# Every path that does not merge leaves the PR open with an annotation and the
+# job green. The decision is shown in the job summary.
 #
 # Usage in your repository:
 #   name: Docker Maintenance
@@ -24,20 +30,26 @@
 #       types: [opened, synchronize, reopened, ready_for_review]
 #
 #   permissions:
-#     contents: write
-#     pull-requests: write
+#     contents: write       # merge
+#     pull-requests: write  # approve, read the PR
+#     checks: read          # read CI results - needed in private repositories
+#     statuses: read        # read commit statuses - needed in private repositories
 #
 #   jobs:
 #     maintenance:
 #       uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
 #       secrets: inherit
 #
+# Permissions: this workflow declares none of its own, so the job token has
+# exactly what the calling workflow grants. In public repositories CI results
+# are readable without `checks`/`statuses`; in private repositories a caller
+# that grants only contents and pull-requests leaves every PR open with a
+# notice naming the missing permissions.
+#
 # Requirements:
 # - Dependabot must be enabled in repository settings
-# - .github/dependabot.yml must include docker ecosystem
-# - Repository setting "Allow auto-merge" must be enabled
-# - A ruleset (or branch protection rule) on the base branch that requires the
-#   status checks of your PR CI - without it, Dependabot PRs stay open
+# - .github/dependabot.yml must include the ecosystems to update
+# - A PR CI that runs on Dependabot PRs - without any check, nothing is merged
 # =============================================================================
 
 name: 🐳 Docker Maintenance (Dependabot)
@@ -52,16 +64,28 @@ on:
         default: 'squash'
 
       auto-approve:
-        description: 'Automatically approve Dependabot PRs'
+        description: 'Approve the PR before merging it'
         type: boolean
         required: false
         default: true
 
+      merge-update-types:
+        description: 'Semver update types that are merged, comma separated: patch, minor, major. Other updates stay open for review.'
+        type: string
+        required: false
+        default: 'patch'
+
       allow-major:
-        description: 'Also auto-merge semver-major updates. Off by default: major updates stay open for review.'
+        description: 'Deprecated, use merge-update-types. true is the same as merge-update-types: patch, minor, major.'
         type: boolean
         required: false
         default: false
+
+      ci-wait-minutes:
+        description: 'How long to wait for CI to finish (1-60). If it is still running then, the PR stays open.'
+        type: number
+        required: false
+        default: 60
 
       runs-on:
         description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
@@ -69,46 +93,37 @@ on:
         required: false
         default: 'ubuntu-latest'
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
   maintenance:
     name: Docker Maintenance
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     if: github.actor == 'dependabot[bot]'
-    timeout-minutes: 10
+    # ci-wait-minutes is at most 60; the rest covers setup and the merge.
+    timeout-minutes: 75
+    # One decision per PR: a newer event (e.g. Dependabot rebased the PR)
+    # replaces the run that is still waiting for the old head commit.
+    concurrency:
+      group: docker-maintenance-dependabot-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
 
     steps:
-      - name: 🔍 Check Actor
-        id: check-actor
-        shell: bash
-        run: |
-          echo "🤖 PR opened by: ${{ github.actor }}"
-          echo "✅ Actor is dependabot[bot]"
-
       - name: 📦 Fetch Dependabot Metadata
         id: metadata
         uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Decides whether approving and enabling auto-merge is safe. Reads the
-      # rules of the base branch with the job token: the rules endpoint needs
-      # only metadata access and the branch endpoint only contents read, so no
-      # permission beyond what callers already grant is required. Every path
-      # that does not end in ok=true leaves the PR open and the job green.
-      # Tested by .github/workflows/tests/docker-maintenance-dependabot-guard.test.sh
+      # Decides from the inputs and the update type alone - no API call.
+      # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
       - name: 🛡️ Merge guard
         id: guard
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          BASE: ${{ github.event.pull_request.base.ref }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          MERGE_UPDATE_TYPES: ${{ inputs.merge-update-types }}
           ALLOW_MAJOR: ${{ inputs.allow-major }}
+          MERGE_METHOD: ${{ inputs.merge-method }}
+          WAIT_MINUTES: ${{ inputs.ci-wait-minutes }}
         run: |
           set -uo pipefail
 
@@ -118,95 +133,306 @@ jobs:
             echo "Decision: ok=$1 reason=$2"
           }
 
-          echo "Base branch: $BASE"
+          case "$MERGE_METHOD" in
+            squash|merge|rebase) ;;
+            *) echo "::error title=Invalid input::merge-method must be squash, merge or rebase, got '$MERGE_METHOD'."; exit 1 ;;
+          esac
+          case "$WAIT_MINUTES" in
+            ''|*[!0-9]*) echo "::error title=Invalid input::ci-wait-minutes must be a whole number from 1 to 60, got '$WAIT_MINUTES'."; exit 1 ;;
+          esac
+          if [ "$WAIT_MINUTES" -lt 1 ] || [ "$WAIT_MINUTES" -gt 60 ]; then
+            echo "::error title=Invalid input::ci-wait-minutes must be from 1 to 60, got '$WAIT_MINUTES'."
+            exit 1
+          fi
+
+          ALLOWED=""
+          for t in $(printf '%s' "$MERGE_UPDATE_TYPES" | tr ',' ' ' | tr '[:upper:]' '[:lower:]'); do
+            case "$t" in
+              patch|minor|major) ALLOWED="$ALLOWED $t" ;;
+              *) echo "::error title=Invalid input::merge-update-types accepts patch, minor and major, got '$t'."; exit 1 ;;
+            esac
+          done
+          # allow-major predates merge-update-types and merged every update type.
+          if [ "$ALLOW_MAJOR" = "true" ]; then
+            ALLOWED="$ALLOWED minor major"
+          fi
+          if [ -z "$ALLOWED" ]; then
+            echo "::error title=Invalid input::merge-update-types is empty. List at least one of patch, minor, major."
+            exit 1
+          fi
+          echo "Merged update types:$ALLOWED"
+          echo "allowed=${ALLOWED# }" >> "$GITHUB_OUTPUT"
           echo "Update type: ${UPDATE_TYPE:-unknown}"
 
-          if [ "$UPDATE_TYPE" = "version-update:semver-major" ] && [ "$ALLOW_MAJOR" != "true" ]; then
-            echo "::notice title=Dependabot PR left open::Major update - left open for review. Major updates are not merged automatically (allow-major is off)."
-            decide false major
-            exit 0
-          fi
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch) TYPE="patch" ;;
+            version-update:semver-minor) TYPE="minor" ;;
+            version-update:semver-major) TYPE="major" ;;
+            *)
+              echo "::notice title=Dependabot PR left open::The update type could not be determined (no semver versions, e.g. a digest or a non-semver tag), so it cannot be shown to be one of:$ALLOWED. Review and merge it by hand."
+              decide false unknown-update-type
+              exit 0
+              ;;
+          esac
 
-          # Active rulesets on the branch, repository and organization level.
-          # Rulesets in evaluate or disabled mode are not returned.
-          if ! RULESET_CHECKS=$(gh api "repos/$REPO/rules/branches/$BASE" \
-                --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]?.context // empty'); then
-            echo "::warning title=Dependabot PR left open::Could not read the rulesets of '$BASE'. Without knowing whether CI is required, auto-merge is not enabled."
-            decide false api-error
-            exit 0
-          fi
+          case " $ALLOWED " in
+            *" $TYPE "*) decide true "$TYPE" ;;
+            *)
+              echo "::notice title=Dependabot PR left open::semver-$TYPE update - left open for review. Merged automatically:$ALLOWED (input merge-update-types)."
+              decide false update-type
+              ;;
+          esac
 
-          # Classic branch protection rule.
-          if ! PROTECTION_CHECKS=$(gh api "repos/$REPO/branches/$BASE" \
-                --jq '.protection.required_status_checks.contexts[]? // empty'); then
-            echo "::warning title=Dependabot PR left open::Could not read the branch protection of '$BASE'. Without knowing whether CI is required, auto-merge is not enabled."
-            decide false api-error
-            exit 0
-          fi
-
-          REQUIRED=$(printf '%s\n%s\n' "$RULESET_CHECKS" "$PROTECTION_CHECKS" | sed '/^$/d' | sort -u)
-          if [ -z "$REQUIRED" ]; then
-            echo "::notice title=Dependabot PR left open::'$BASE' has no required status checks, so auto-merge would merge this PR immediately, before CI finishes. Add a ruleset with required status checks to '$BASE' to merge Dependabot PRs automatically after green CI."
-            decide false no-required-checks
-            exit 0
-          fi
-          echo "Required status checks on $BASE:"
-          while IFS= read -r check; do echo "  - $check"; done <<< "$REQUIRED"
-
-          # Without "Allow auto-merge", `gh pr merge --auto` fails on a PR that is
-          # still waiting for its checks. Only an explicit false stops here; if the
-          # setting cannot be read, the merge step reports the real error.
-          AUTO_MERGE=$(gh api "repos/$REPO" --jq '.allow_auto_merge' 2>/dev/null || echo unknown)
-          echo "Allow auto-merge: $AUTO_MERGE"
-          if [ "$AUTO_MERGE" = "false" ]; then
-            echo "::warning title=Dependabot PR left open::'$BASE' requires status checks, but 'Allow auto-merge' is disabled in the repository settings (Settings > General > Pull Requests)."
-            decide false auto-merge-disabled
-            exit 0
-          fi
-
-          decide true required-checks
-
-      - name: ✅ Auto-approve Dependabot PR
-        if: inputs.auto-approve && steps.guard.outputs.ok == 'true'
-        uses: hmarr/auto-approve-action@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 🔀 Enable auto-merge
+      # Waits for the CI of the PR head commit. Reads check runs, check suites
+      # and commit statuses with the job token. Leaves out this job (by its
+      # check run id) and every other run of it ('<caller job> / Docker
+      # Maintenance', so SELF_JOB_NAME must match the job name), so two runs for
+      # one PR never wait for each other. Check suites catch workflows whose
+      # later jobs have not been created yet.
+      # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
+      - name: ⏳ Wait for CI
+        id: ci
         if: steps.guard.outputs.ok == 'true'
-        uses: peter-evans/enable-pull-request-automerge@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          pull-request-number: ${{ github.event.pull_request.number }}
-          merge-method: ${{ inputs.merge-method }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          OWN_CHECK_RUN_ID: ${{ job.check_run_id }}
+          SELF_JOB_NAME: Docker Maintenance
+          WAIT_MINUTES: ${{ inputs.ci-wait-minutes }}
+        run: |
+          set -uo pipefail
+
+          # Overridable for the test only.
+          POLL="${POLL_SECONDS:-30}"
+          SETTLE="${SETTLE_SECONDS:-120}"
+          LIMIT="${WAIT_SECONDS:-$((WAIT_MINUTES * 60))}"
+          if [ "$SETTLE" -gt "$LIMIT" ]; then SETTLE=$LIMIT; fi
+
+          WORK=$(mktemp -d)
+          ERRORS=0
+
+          finish() {
+            echo "result=$1" >> "$GITHUB_OUTPUT"
+            echo "detail=$2" >> "$GITHUB_OUTPUT"
+            echo "Result: $1 - $2"
+            # The checks seen last, for the job summary.
+            if [ -s "$WORK/eval" ]; then
+              awk -F'\t' '$1 != "SUMMARY" { printf "- %s %s: %s\n", $1, $2, $3 }' "$WORK/eval" > "$RUNNER_TEMP/dependabot-ci-checks.md"
+            fi
+          }
+
+          # "Resource not accessible" (private repository, permission not
+          # granted) is final. Anything else - including a rate limit - is
+          # retried; three failures in a row give up.
+          api_failed() {
+            local err
+            err=$(head -n 1 "$WORK/err")
+            if grep -qE 'Resource not accessible|HTTP 404' "$WORK/err"; then
+              echo "::notice title=Dependabot PR left open::The job token cannot read the CI results of this PR ($err). In private repositories the calling workflow has to grant 'checks: read' and 'statuses: read'."
+              finish unreadable "CI results not readable"
+              exit 0
+            fi
+            ERRORS=$((ERRORS + 1))
+            echo "API error $ERRORS/3: $err"
+            if [ "$ERRORS" -ge 3 ]; then
+              echo "::warning title=Dependabot PR left open::The CI results could not be read: $err"
+              finish api-error "$err"
+              exit 0
+            fi
+          }
+
+          evaluate() {
+            awk -v own="$OWN_CHECK_RUN_ID" -v job="$SELF_JOB_NAME" \
+                -v runs_f="$WORK/runs" -v suites_f="$WORK/suites" -v statuses_f="$WORK/statuses" '
+              BEGIN { FS = "\t"; tail = " / " job }
+              function is_self(id, name,   n) {
+                if (own != "" && id == own) return 1
+                if (name == job) return 1
+                n = length(name)
+                return n > length(tail) && substr(name, n - length(tail) + 1) == tail
+              }
+              function good(c) { return c == "success" || c == "neutral" || c == "skipped" }
+              # check runs: id, suite id, status, conclusion, name
+              FILENAME == runs_f {
+                if ($0 == "") next
+                if (is_self($1, $5)) { self_suite[$2] = 1; next }
+                # A re-run adds a check run with the same name; the newest counts.
+                if (!($5 in best) || $1 + 0 > best[$5] + 0) { best[$5] = $1; st[$5] = $3; co[$5] = $4 }
+                next
+              }
+              # check suites: id, status, conclusion, check run count, app
+              FILENAME == suites_f {
+                if ($0 == "") next
+                ns++; sid[ns] = $1; sst[ns] = $2; sco[ns] = $3; scnt[ns] = $4; sapp[ns] = $5
+                next
+              }
+              # commit statuses (latest per context): state, context
+              FILENAME == statuses_f {
+                if ($0 == "") next
+                nc++; cst[nc] = $1; cnm[nc] = $2
+                next
+              }
+              END {
+                for (n in best) {
+                  total++
+                  if (st[n] != "completed")  { pending++; print "PENDING\tcheck\t" n " (" st[n] ")" }
+                  else if (!good(co[n]))     { failed++;  print "FAILED\tcheck\t" n " (" co[n] ")" }
+                  else                       {            print "OK\tcheck\t" n " (" co[n] ")" }
+                }
+                for (i = 1; i <= ns; i++) {
+                  if (sid[i] in self_suite) continue
+                  # A GitHub Actions suite is a workflow run: pending until all of
+                  # its jobs are done, even before they exist. Suites of other apps
+                  # that never create a check run stay queued forever - ignored.
+                  if (sst[i] != "completed") {
+                    if (sapp[i] == "github-actions" || scnt[i] + 0 > 0) { pending++; print "PENDING\tsuite\t" sapp[i] " " sid[i] " (" sst[i] ")" }
+                  } else if (scnt[i] + 0 == 0 && sco[i] ~ /^(failure|startup_failure|timed_out|action_required)$/) {
+                    # A workflow that failed before any job ran (e.g. invalid file).
+                    failed++; print "FAILED\tsuite\t" sapp[i] " " sid[i] " (" sco[i] ")"
+                  }
+                }
+                for (i = 1; i <= nc; i++) {
+                  total++
+                  if (cst[i] == "pending")       { pending++; print "PENDING\tstatus\t" cnm[i] }
+                  else if (cst[i] != "success")  { failed++;  print "FAILED\tstatus\t" cnm[i] " (" cst[i] ")" }
+                  else                           {            print "OK\tstatus\t" cnm[i] }
+                }
+                printf "SUMMARY\t%d\t%d\t%d\n", total, pending, failed
+              }
+            ' "$WORK/runs" "$WORK/suites" "$WORK/statuses"
+          }
+
+          echo "Waiting up to $((LIMIT / 60)) min for CI on $HEAD_SHA (own check run: ${OWN_CHECK_RUN_ID:-unknown})"
+          while :; do
+            if ! PR=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '[.state, .head.sha] | @tsv' 2> "$WORK/err"); then
+              api_failed
+            elif ! gh api --paginate "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" \
+                   --jq '.check_runs[] | [.id, .check_suite.id, .status, (.conclusion // "-"), .name] | @tsv' > "$WORK/runs" 2> "$WORK/err"; then
+              api_failed
+            elif ! gh api --paginate "repos/$REPO/commits/$HEAD_SHA/check-suites?per_page=100" \
+                   --jq '.check_suites[] | [.id, .status, (.conclusion // "-"), .latest_check_runs_count, (.app.slug // "-")] | @tsv' > "$WORK/suites" 2> "$WORK/err"; then
+              api_failed
+            elif ! gh api "repos/$REPO/commits/$HEAD_SHA/status?per_page=100" \
+                   --jq '.statuses[] | [.state, .context] | @tsv' > "$WORK/statuses" 2> "$WORK/err"; then
+              api_failed
+            else
+              ERRORS=0
+              IFS=$'\t' read -r PR_STATE PR_HEAD <<< "$PR"
+              if [ "$PR_STATE" != "open" ]; then
+                echo "::notice title=Dependabot PR not merged::The PR is $PR_STATE."
+                finish closed "PR is $PR_STATE"
+                exit 0
+              fi
+              if [ "$PR_HEAD" != "$HEAD_SHA" ]; then
+                echo "::notice title=Dependabot PR not merged by this run::The PR has a new head commit ($PR_HEAD). The run for that commit decides."
+                finish superseded "new head $PR_HEAD"
+                exit 0
+              fi
+
+              evaluate > "$WORK/eval"
+              IFS=$'\t' read -r _ TOTAL PENDING FAILED < <(grep '^SUMMARY' "$WORK/eval")
+              echo "[$((SECONDS / 60))m$((SECONDS % 60))s] checks: $TOTAL, pending: $PENDING, failed: $FAILED"
+
+              if [ "$FAILED" -gt 0 ]; then
+                FAILED_LIST=$(awk -F'\t' '$1 == "FAILED" { printf "%s%s", sep, $3; sep = ", " }' "$WORK/eval")
+                echo "::notice title=Dependabot PR left open::CI did not pass: $FAILED_LIST"
+                finish failed "$FAILED_LIST"
+                exit 0
+              fi
+              # Nothing is decided before the PR has been watched for SETTLE
+              # seconds, so checks that are about to start are not missed.
+              if [ "$PENDING" -eq 0 ] && [ "$SECONDS" -ge "$SETTLE" ]; then
+                if [ "$TOTAL" -eq 0 ]; then
+                  echo "::notice title=Dependabot PR left open::No check ran on this PR, so nothing shows that the update works. Merge it by hand, or add a CI workflow that runs on pull requests."
+                  finish no-checks "no checks on the head commit"
+                  exit 0
+                fi
+                finish green "$TOTAL checks passed"
+                exit 0
+              fi
+            fi
+
+            if [ "$SECONDS" -ge "$LIMIT" ]; then
+              echo "::notice title=Dependabot PR left open::CI was still running after $((LIMIT / 60)) min (ci-wait-minutes). Merge it by hand once CI is green."
+              finish timeout "CI still running after $((LIMIT / 60)) min"
+              exit 0
+            fi
+            # Every 30 s, after 5 min every 60 s, after 15 min every 2 min: keeps
+            # a few PRs waiting at once well below the job token's rate limit.
+            if [ "$SECONDS" -lt 300 ]; then sleep "$POLL"
+            elif [ "$SECONDS" -lt 900 ]; then sleep $((POLL * 2))
+            else sleep $((POLL * 4)); fi
+          done
+
+      - name: 🔀 Approve and merge
+        id: merge
+        if: steps.ci.outputs.result == 'green'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AUTO_APPROVE: ${{ inputs.auto-approve }}
+          MERGE_METHOD: ${{ inputs.merge-method }}
+        run: |
+          set -uo pipefail
+          ERR=$(mktemp)
+
+          if [ "$AUTO_APPROVE" = "true" ]; then
+            if gh pr review "$PR_NUMBER" --repo "$REPO" --approve 2> "$ERR"; then
+              echo "Approved."
+            else
+              echo "::notice title=Approval skipped::Approving was rejected ($(head -n 1 "$ERR")). Merging without approval - this only fails if the base branch requires a review."
+            fi
+          fi
+
+          if gh pr merge "$PR_NUMBER" --repo "$REPO" "--$MERGE_METHOD" --match-head-commit "$HEAD_SHA" 2> "$ERR"; then
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=Dependabot PR left open::CI passed, but merging failed: $(head -n 1 "$ERR")"
+            echo "merged=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: 📊 Summary
         if: always()
         shell: bash
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE: ${{ github.event.pull_request.base.ref }}
           DEPENDENCIES: ${{ steps.metadata.outputs.dependency-names }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
           PREVIOUS_VERSION: ${{ steps.metadata.outputs.previous-version }}
           NEW_VERSION: ${{ steps.metadata.outputs.new-version }}
           MERGE_METHOD: ${{ inputs.merge-method }}
-          AUTO_APPROVE: ${{ inputs.auto-approve && '✅ Yes' || '❌ No' }}
-          GUARD_OK: ${{ steps.guard.outputs.ok }}
+          ALLOWED: ${{ steps.guard.outputs.allowed }}
           GUARD_REASON: ${{ steps.guard.outputs.reason }}
+          CI_RESULT: ${{ steps.ci.outputs.result }}
+          CI_DETAIL: ${{ steps.ci.outputs.detail }}
+          MERGED: ${{ steps.merge.outputs.merged }}
           JOB_STATUS: ${{ job.status }}
         run: |
           case "$GUARD_REASON" in
-            required-checks)     DECISION="✅ Auto-merge enabled. GitHub merges once the required checks on \`$BASE\` pass." ;;
-            major)               DECISION="⏸️ Left open: semver-major update, review and merge it by hand." ;;
-            no-required-checks)  DECISION="⏸️ Left open: \`$BASE\` has no required status checks, auto-merge would not wait for CI." ;;
-            auto-merge-disabled) DECISION="⏸️ Left open: 'Allow auto-merge' is disabled in the repository settings." ;;
-            api-error)           DECISION="⏸️ Left open: the rules of \`$BASE\` could not be read." ;;
-            *)                   DECISION="❌ Not completed (job status: $JOB_STATUS)." ;;
+            update-type)         DECISION="⏸️ Left open: only $ALLOWED updates are merged automatically (merge-update-types)." ;;
+            unknown-update-type) DECISION="⏸️ Left open: the update type could not be determined." ;;
+            patch|minor|major)
+              case "$CI_RESULT" in
+                green)
+                  if [ "$MERGED" = "true" ]; then DECISION="✅ Merged after CI passed ($CI_DETAIL)."
+                  else DECISION="⚠️ Left open: CI passed, but the merge failed - see the annotation."; fi ;;
+                failed)     DECISION="⏸️ Left open: CI did not pass ($CI_DETAIL)." ;;
+                no-checks)  DECISION="⏸️ Left open: no check ran on this PR." ;;
+                timeout)    DECISION="⏸️ Left open: $CI_DETAIL." ;;
+                unreadable) DECISION="⏸️ Left open: the job token cannot read CI results (grant checks: read and statuses: read)." ;;
+                api-error)  DECISION="⏸️ Left open: CI results could not be read ($CI_DETAIL)." ;;
+                closed)     DECISION="⏹️ Not merged: $CI_DETAIL." ;;
+                superseded) DECISION="⏹️ Not merged by this run: the PR got a new head commit." ;;
+                *)          DECISION="❌ Not completed (job status: $JOB_STATUS)." ;;
+              esac ;;
+            *) DECISION="❌ Not completed (job status: $JOB_STATUS)." ;;
           esac
-          if [ "$GUARD_OK" = "true" ] && [ "$JOB_STATUS" != "success" ]; then
-            DECISION="❌ Approve or enabling auto-merge failed (job status: $JOB_STATUS)."
-          fi
           {
             echo "## 🐳 Docker Maintenance (Dependabot)"
             echo ""
@@ -218,7 +444,12 @@ jobs:
             echo "| **From** | \`$PREVIOUS_VERSION\` |"
             echo "| **To** | \`$NEW_VERSION\` |"
             echo "| **Merge Method** | $MERGE_METHOD |"
-            echo "| **Auto-Approve** | $AUTO_APPROVE |"
             echo ""
             echo "$DECISION"
+            if [ -s "$RUNNER_TEMP/dependabot-ci-checks.md" ]; then
+              echo ""
+              echo "**Checks on the head commit** (last poll):"
+              echo ""
+              cat "$RUNNER_TEMP/dependabot-ci-checks.md"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
