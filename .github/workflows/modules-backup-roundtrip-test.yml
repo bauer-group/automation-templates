@@ -316,9 +316,11 @@ jobs:
             [[ "$FILE" != *:* ]] || fail "compose file '$FILE' must not contain ':'"
           done
 
+          # Same trimming as Prepare Environment: leading whitespace is dropped.
           while IFS= read -r LINE; do
-            [ -n "${LINE//[[:space:]]/}" ] || continue
-            [[ "$LINE" =~ ^[[:space:]]*# ]] && continue
+            LINE="${LINE#"${LINE%%[![:space:]]*}"}"
+            [ -n "$LINE" ] || continue
+            [[ "$LINE" == \#* ]] && continue
             [[ "$LINE" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || fail "env-overrides line is not KEY=VALUE: '${LINE%%=*}…'"
           done <<< "$ENV_OVERRIDES"
 
