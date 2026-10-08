@@ -93,7 +93,7 @@ jobs:
 
       - name: 🛡️ Run Security Scan
         id: security
-        uses: bauer-group/automation-templates/.github/actions/security-scan@main
+        uses: bauer-group/automation-templates/.github/actions/security-scan@fix/security-scan-gitguardian-trivy
         with:
           scan-engine: ${{ inputs.scan-engine }}
           scan-type: ${{ inputs.scan-type }}
