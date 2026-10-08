@@ -365,12 +365,21 @@ jobs:
             echo "::notice::env-template '$ENV_TEMPLATE' not found - starting from an empty .env"
           fi
 
-          # Replaces KEY in .env (all occurrences) with exactly one KEY=VALUE line.
+          # Sets KEY=VALUE in .env. An existing key is replaced IN PLACE: a .env
+          # may interpolate earlier lines (APP_NAME=${STACK_NAME}), and moving
+          # STACK_NAME to the end would leave APP_NAME empty. A new key is
+          # appended. Values pass through ENVIRON, so awk never unescapes them.
           set_env() {
-            local key="$1" value="$2"
-            grep -v -E "^[[:space:]]*${key}=" .env > .env.tmp || true
-            printf '%s=%s\n' "$key" "$value" >> .env.tmp
-            mv .env.tmp .env
+            if grep -q -E "^[[:space:]]*${1}=" .env; then
+              SET_KEY="$1" SET_VALUE="$2" awk '
+                BEGIN { key = ENVIRON["SET_KEY"]; value = ENVIRON["SET_VALUE"] }
+                $0 ~ "^[[:space:]]*" key "=" { if (!done) print key "=" value; done = 1; next }
+                { print }
+              ' .env > .env.tmp
+              mv .env.tmp .env
+            else
+              printf '%s=%s\n' "$1" "$2" >> .env
+            fi
           }
 
           OVERRIDDEN=0
