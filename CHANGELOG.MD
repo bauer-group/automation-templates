@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.1.3](https://github.com/bauer-group/automation-templates/compare/v11.1.2...v11.1.3) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **security-scan:** removed GitGuardian and scanned unlocked Python ([a5ef672](https://github.com/bauer-group/automation-templates/commit/a5ef67288dc33eadb85357ca8c12c2ed4f6ee8eb))
+
 ## [11.1.2](https://github.com/bauer-group/automation-templates/compare/v11.1.1...v11.1.2) (2026-10-08)
 
 ### 🐛 Bug Fixes
