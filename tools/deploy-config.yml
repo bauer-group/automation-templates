@@ -18,7 +18,6 @@ profiles:
       - "semantic-release"
     secrets_required:
       - "TEAMS_WEBHOOK_URL"
-      - "GITGUARDIAN_API_KEY"
     variables_recommended:
       - "TEAMS_NOTIFICATION_LEVEL"
 
@@ -48,7 +47,6 @@ profiles:
     secrets_required:
       - "TEAMS_WEBHOOK_URL"
       - "DOCKER_PASSWORD"
-      - "GITGUARDIAN_API_KEY"
       - "PYPI_API_TOKEN"
     variables_recommended:
       - "TEAMS_NOTIFICATION_LEVEL"
@@ -66,7 +64,6 @@ profiles:
       - "teams-notification"
     secrets_required:
       - "TEAMS_WEBHOOK_URL"
-      - "GITGUARDIAN_API_KEY"
     variables_recommended:
       - "TEAMS_NOTIFICATION_LEVEL"
 
@@ -87,7 +84,6 @@ profiles:
       - "readme-generate"
     secrets_required:
       - "PYPI_API_TOKEN"
-      - "GITGUARDIAN_API_KEY"
     variables_recommended:
       - "PYTHON_VERSION"
 
@@ -120,7 +116,6 @@ profiles:
     secrets_required:
       - "TEAMS_WEBHOOK_URL"
       - "DOCKER_PASSWORD"
-      - "GITGUARDIAN_API_KEY"
       - "PYPI_API_TOKEN"
       - "OPENAI_API_KEY"
     variables_recommended:
@@ -146,7 +141,6 @@ workflows:
     description: "Main CI/CD pipeline with semantic release and modular components"
     file: "automatic-release.yml"
     secrets_used:
-      - "GITGUARDIAN_API_KEY"
       - "GITLEAKS_LICENSE"
     triggers:
       - "push"
@@ -160,7 +154,6 @@ workflows:
     type: "workflow_call"
     secrets_used:
       - "PYPI_API_TOKEN"
-      - "GITGUARDIAN_API_KEY"
       - "GITLEAKS_LICENSE"
     triggers:
       - "workflow_call"
@@ -169,8 +162,7 @@ workflows:
     name: "Security Policy Management"
     description: "Automated security policy generation and validation"
     file: "security-management.yml"
-    secrets_used:
-      - "GITGUARDIAN_API_KEY"
+    secrets_used: []
     triggers:
       - "push"
       - "pull_request"
@@ -385,7 +377,6 @@ actions:
     path: ".github/actions/security-scan"
     inputs:
       - "scan-engine"
-      - "gitguardian-api-key"
       - "gitleaks-license"
       - "fail-on-findings"
 
@@ -397,15 +388,6 @@ actions:
       - "config-path"
       - "fail-on-findings"
       - "license"
-
-  gitguardian-scan:
-    name: "GitGuardian Scan"
-    description: "Secrets detection with GitGuardian"
-    path: ".github/actions/gitguardian-scan"
-    inputs:
-      - "api-key"
-      - "minimum-severity"
-      - "fail-on-findings"
 
   license-compliance:
     name: "License Compliance"
@@ -490,14 +472,6 @@ secrets:
       - "docker-build"
     setup_url: "https://docs.docker.com/docker-hub/access-tokens/"
 
-  GITGUARDIAN_API_KEY:
-    description: "GitGuardian API key for secrets scanning"
-    required_for:
-      - "automatic-release"
-      - "python-automatic-release"
-      - "security-management"
-    setup_url: "https://dashboard.gitguardian.com/api/v1/docs"
-
   GITLEAKS_LICENSE:
     description: "Gitleaks Pro license key (optional)"
     required_for:
@@ -546,8 +520,8 @@ variables:
 
   SECURITY_SCAN_ENGINE:
     description: "Security scanning engine to use"
-    default: "both"
-    values: ["gitleaks", "gitguardian", "both"]
+    default: "gitleaks"
+    values: ["gitleaks"]
 
   MINIMUM_COVERAGE:
     description: "Minimum test coverage percentage"

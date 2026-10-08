@@ -18,8 +18,8 @@ on:
       security-engine:
         description: 'Security scan engine'
         type: choice
-        default: 'both'
-        options: ['gitleaks', 'gitguardian', 'both']
+        default: 'gitleaks'
+        options: ['gitleaks']
       force-release:
         description: 'Force create release'
         type: boolean
@@ -51,10 +51,9 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/modules-security-scan.yml
     with:
-      scan-engine: ${{ inputs.security-engine || 'both' }}
+      scan-engine: ${{ inputs.security-engine || 'gitleaks' }}
       scan-type: 'all'
       fail-on-findings: false
-      minimum-severity: 'medium'
     secrets: inherit
 
   # License compliance check

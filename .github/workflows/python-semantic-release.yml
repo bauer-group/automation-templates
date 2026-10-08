@@ -11,9 +11,9 @@ on:
       
       # Security Configuration  
       security-engine:
-        description: 'Security scan engine (gitleaks, gitguardian, both)'
+        description: "Secret scan engine: 'gitleaks' ('both' still works and runs gitleaks; GitGuardian was removed)"
         type: string
-        default: 'both'
+        default: 'gitleaks'
         
       # Testing Configuration
       run-tests:
@@ -59,8 +59,9 @@ on:
       PYPI_API_TOKEN:
         description: 'PyPI API token (optional if using Trusted Publishing)'
         required: false
+      # Kept so a caller passing it explicitly is not rejected at startup.
       GITGUARDIAN_API_KEY:
-        description: 'GitGuardian API key for security scanning'
+        description: 'Deprecated and ignored: GitGuardian scanning was removed.'
         required: false
       GITLEAKS_LICENSE:
         description: 'Gitleaks Pro license key'
@@ -475,7 +476,6 @@ jobs:
       scan-engine: ${{ inputs.security-engine }}
       scan-type: 'all'
       fail-on-findings: false
-      minimum-severity: 'medium'
     secrets: inherit
 
   # License compliance check

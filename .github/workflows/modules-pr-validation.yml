@@ -19,10 +19,10 @@ on:
         type: boolean
         default: true
       security-scan-engine:
-        description: 'Security scan engine for PR validation'
+        description: "Secret scan engine for PR validation: 'gitleaks' ('both' still works and runs gitleaks)"
         required: false
         type: string
-        default: 'both'
+        default: 'gitleaks'
       fail-on-security-issues:
         description: 'Fail PR validation on security issues'
         required: false
@@ -39,8 +39,9 @@ on:
         type: string
         default: 'ubuntu-latest'
     secrets:
+      # Kept so a caller passing it explicitly is not rejected at startup.
       GITGUARDIAN_API_KEY:
-        description: 'GitGuardian API key'
+        description: 'Deprecated and ignored: GitGuardian scanning was removed.'
         required: false
       GITLEAKS_LICENSE:
         description: 'Gitleaks Pro license key'
@@ -101,7 +102,6 @@ jobs:
           scan-type: 'secrets'
           fail-on-findings: ${{ inputs.fail-on-security-issues }}
           exclude-paths: '.git,node_modules,vendor'
-          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
           gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
           token: ${{ secrets.GITHUB_TOKEN }}
 

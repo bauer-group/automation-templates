@@ -1,12 +1,15 @@
-name: 'Dual Security Scan'
-description: 'Comprehensive security scanning with Gitleaks and GitGuardian ggshield options'
+name: 'Security Scan'
+description: 'Secret scanning with Gitleaks and dependency vulnerability scanning with Trivy'
 author: 'BAUER GROUP'
 
 inputs:
   scan-engine:
-    description: 'Security scan engine (gitleaks, gitguardian, both)'
+    description: >-
+      Secret scan engine: 'gitleaks'. 'both' is still accepted and runs gitleaks.
+      'gitguardian' is deprecated: GitGuardian was removed, so it runs NO secret scanner
+      and the run says so with a warning.
     required: false
-    default: 'both'
+    default: 'gitleaks'
   scan-type:
     description: 'Type of security scan (secrets, vulnerabilities, all)'
     required: false
@@ -24,17 +27,19 @@ inputs:
     required: false
     default: ''
   gitguardian-api-key:
-    description: 'GitGuardian API key (required for GitGuardian scanning)'
+    description: 'Deprecated and ignored: GitGuardian scanning was removed.'
     required: false
     default: ''
+    deprecationMessage: 'GitGuardian scanning was removed from automation-templates; gitguardian-api-key is ignored and can be dropped.'
   gitleaks-license:
     description: 'Gitleaks Pro license key (required for Organizations)'
     required: false
     default: ''
   minimum-severity:
-    description: 'Minimum severity level for GitGuardian (low, medium, high, critical)'
+    description: 'Deprecated and ignored: it only ever configured GitGuardian.'
     required: false
     default: 'medium'
+    deprecationMessage: 'minimum-severity only configured GitGuardian, which was removed; it is ignored and can be dropped.'
   token:
     description: 'GitHub Token for API access'
     required: true
@@ -42,25 +47,30 @@ inputs:
 outputs:
   secrets-found:
     description: >-
-      Aggregate secret state across engines: 'true', 'false', or 'unknown' when a scan
-      did not complete. Consumers were already reading this name while it did not
-      exist, so an empty value rendered as 'false' in their summaries.
-    value: ${{ steps.process-gitleaks.outputs.secrets-found == 'unknown' && 'unknown' || (steps.process-gitleaks.outputs.secrets-found == 'true' || (steps.gitguardian-scan.outputs.secrets-found != '' && steps.gitguardian-scan.outputs.secrets-found != '0')) }}
+      Secret scan state: 'true', 'false', 'unknown' when the scan did not complete, or
+      'skipped' when no secret scan ran (scan-type 'vulnerabilities', or the removed
+      'gitguardian' engine). Only 'false' means scanned and clean.
+    value: ${{ steps.process-gitleaks.outputs.secrets-found || 'skipped' }}
   gitleaks-secrets-found:
     description: 'Whether secrets were found by Gitleaks: true, false, or unknown'
     value: ${{ steps.process-gitleaks.outputs.secrets-found }}
   gitleaks-secrets-count:
     description: 'Number of secrets found by Gitleaks, or unknown if the scan did not complete'
     value: ${{ steps.process-gitleaks.outputs.secrets-count }}
-  gitguardian-secrets-found:
-    description: 'Number of secrets found by GitGuardian'
-    value: ${{ steps.gitguardian-scan.outputs.secrets-found }}
-  gitguardian-policy-violations:
-    description: 'Number of policy violations found by GitGuardian'
-    value: ${{ steps.gitguardian-scan.outputs.policy-violations }}
   vulnerabilities-found:
-    description: 'Whether vulnerabilities were found'
+    description: >-
+      Whether vulnerabilities were found: 'true', 'false', or 'unknown' when Trivy found
+      no dependency file to scan (or wrote no readable report). 'unknown' is NOT clean.
     value: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found }}
+  vulnerability-targets:
+    description: 'Number of dependency files (lock files, manifests) Trivy scanned'
+    value: ${{ steps.vulnerability-scan.outputs.trivy-targets }}
+  vulnerability-packages:
+    description: 'Number of packages Trivy checked for known vulnerabilities'
+    value: ${{ steps.vulnerability-scan.outputs.trivy-packages }}
+  python-projects-resolved:
+    description: 'Number of pyproject.toml files without a lock file whose dependencies were resolved for Trivy'
+    value: ${{ steps.python-deps.outputs.resolved }}
   scan-results:
     description: 'Summary of scan results'
     value: ${{ steps.summary.outputs.scan-results }}
@@ -68,43 +78,65 @@ outputs:
     description: 'Overall security score (0-100)'
     value: ${{ steps.summary.outputs.security-score }}
   best-engine-score:
-    description: 'Best security score from available engines'
+    description: 'Kept for compatibility: equals security-score since only one secret engine remains'
     value: ${{ steps.summary.outputs.best-engine-score }}
   engines-used:
-    description: 'List of security engines used'
+    description: "Secret scan engine that ran: 'gitleaks', or empty when none ran"
     value: ${{ steps.summary.outputs.engines-used }}
 
 runs:
   using: 'composite'
   steps:
-    - name: �️ Setup Dual Security Scanning
+    - name: 🛡️ Setup Security Scan
+      id: engine
       shell: bash
+      env:
+        SCAN_ENGINE: ${{ inputs.scan-engine }}
+        SCAN_TYPE: ${{ inputs.scan-type }}
+        FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+        EXCLUDE_PATHS: ${{ inputs.exclude-paths }}
       run: |
-        echo "🛡️ Initializing Dual Security Scan"
-        echo "Scan Engine: ${{ inputs.scan-engine }}"
-        echo "Scan Type: ${{ inputs.scan-type }}"
-        echo "Fail on Findings: ${{ inputs.fail-on-findings }}"
-        echo "Excluded Paths: ${{ inputs.exclude-paths }}"
-        echo "Minimum Severity: ${{ inputs.minimum-severity }}"
-        
+        set -uo pipefail
+
+        # GitGuardian was removed (2026-10). In CI it scanned only the last commit
+        # (ggshield's `ci` mode reads the commit range from env vars this action never
+        # set), its findings were read from the wrong file under a field name ggshield
+        # does not emit, so the count always fell back to 0, and its generated config
+        # used keys ggshield ignores. It reported "0 secrets, 100/100" without being
+        # able to report anything else. Gitleaks (full history) and the TruffleHog
+        # module (live verification) cover secret scanning.
+        #
+        # The old engine names stay accepted so no caller breaks:
+        #   both        -> gitleaks, exactly what 'both' ran besides GitGuardian
+        #   gitguardian -> no secret scanner. Mapping it to gitleaks would override a
+        #                  caller that chose it to keep gitleaks off (e.g. because the
+        #                  Gitleaks licence is not available to Dependabot runs).
+        case "$SCAN_ENGINE" in
+          gitleaks)
+            SECRET_ENGINE="gitleaks" ;;
+          both)
+            SECRET_ENGINE="gitleaks"
+            echo "::notice title=GitGuardian removed::scan-engine 'both' now runs Gitleaks only, because GitGuardian was removed from automation-templates. Set scan-engine: 'gitleaks' to silence this notice." ;;
+          gitguardian)
+            SECRET_ENGINE="none"
+            echo "::warning title=No secret scan ran::scan-engine 'gitguardian' is deprecated: GitGuardian was removed from automation-templates (it only ever scanned the last commit and could not report findings). This run scanned NO secrets. Use scan-engine: 'gitleaks', or the modules-trufflehog-scan workflow." ;;
+          *)
+            SECRET_ENGINE="none"
+            echo "::warning title=No secret scan ran::Unknown scan-engine '${SCAN_ENGINE}' - this run scanned NO secrets. Valid value: 'gitleaks'." ;;
+        esac
+
+        echo "🛡️ Initializing Security Scan"
+        echo "Scan Engine: ${SCAN_ENGINE} (secret scanner: ${SECRET_ENGINE})"
+        echo "Scan Type: ${SCAN_TYPE}"
+        echo "Fail on Findings: ${FAIL_ON_FINDINGS}"
+        echo "Excluded Paths: ${EXCLUDE_PATHS}"
+
         mkdir -p security-reports
-        
-        # Validate GitGuardian API key if needed
-        if [[ "${{ inputs.scan-engine }}" == "gitguardian" || "${{ inputs.scan-engine }}" == "both" ]]; then
-          if [ -z "${{ inputs.gitguardian-api-key }}" ]; then
-            echo "⚠️ GitGuardian API key not provided - skipping GitGuardian scan"
-            echo "SKIP_GITGUARDIAN=true" >> "$GITHUB_ENV"
-          else
-            echo "✅ GitGuardian API key provided"
-            echo "SKIP_GITGUARDIAN=false" >> "$GITHUB_ENV"
-          fi
-        else
-          echo "SKIP_GITGUARDIAN=true" >> "$GITHUB_ENV"
-        fi
+        echo "secret-engine=${SECRET_ENGINE}" >> "$GITHUB_OUTPUT"
 
     - name: 🔐 Gitleaks Secrets Detection
       id: gitleaks-scan
-      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both')
+      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && steps.engine.outputs.secret-engine == 'gitleaks'
       # gitleaks exits 2 when it finds something, which without this fails the step
       # and aborts the whole composite action - taking the result processing, the
       # summary AND the deliberate `fail-on-findings` gate down with it. That is how
@@ -124,7 +156,7 @@ runs:
       id: process-gitleaks
       # always(): this must still run when the scan step failed, which is precisely
       # when there is something to report.
-      if: always() && (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitleaks' || inputs.scan-engine == 'both')
+      if: always() && (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && steps.engine.outputs.secret-engine == 'gitleaks'
       shell: bash
       env:
         GITLEAKS_OUTCOME: ${{ steps.gitleaks-scan.outcome }}
@@ -174,46 +206,169 @@ runs:
           cp "$SARIF" security-reports/gitleaks/ 2>/dev/null || true
         fi
 
-    - name: 🛡️ GitGuardian Security Scan
-      id: gitguardian-scan
-      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && (inputs.scan-engine == 'gitguardian' || inputs.scan-engine == 'both') && env.SKIP_GITGUARDIAN != 'true'
-      uses: bauer-group/automation-templates/.github/actions/gitguardian-scan@main
-      with:
-        scan-mode: 'ci'
-        fail-on-findings: 'false'
-        minimum-severity: ${{ inputs.minimum-severity }}
-        exclude-paths: ${{ inputs.exclude-paths }}
-        gitguardian-api-key: ${{ inputs.gitguardian-api-key }}
-        all-policies: 'true'
-        verbose: 'false'
-        output-format: 'json'
-        token: ${{ inputs.token }}
-
-    - name: 📋 Copy GitGuardian Reports
-      if: steps.gitguardian-scan.outputs.report-path != ''
-      shell: bash
-      run: |
-        echo "📋 Copying GitGuardian reports..."
-        GITGUARDIAN_REPORT_PATH="${{ steps.gitguardian-scan.outputs.report-path }}"
-        TARGET_PATH="security-reports/gitguardian"
-        
-        if [ -d "$GITGUARDIAN_REPORT_PATH" ] && [ "$GITGUARDIAN_REPORT_PATH" != "$TARGET_PATH" ]; then
-          mkdir -p "$TARGET_PATH"
-          # Only copy if source and target are different
-          if [ "$(readlink -f "$GITGUARDIAN_REPORT_PATH")" != "$(readlink -f "$TARGET_PATH")" ]; then
-            cp -r "$GITGUARDIAN_REPORT_PATH"/* "$TARGET_PATH/" 2>/dev/null || echo "No files to copy"
-            echo "✅ GitGuardian reports copied from $GITGUARDIAN_REPORT_PATH to $TARGET_PATH"
-          else
-            echo "ℹ️ Source and target are the same, skipping copy"
-          fi
-        elif [ -d "$GITGUARDIAN_REPORT_PATH" ]; then
-          echo "ℹ️ Reports already in target location: $GITGUARDIAN_REPORT_PATH"
-        fi
-
     - name: 📁 Prepare Vulnerability Report Directory
       if: inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities'
       shell: bash
       run: mkdir -p security-reports/vulnerabilities
+
+    - name: 🐍 Resolve Python Dependencies for Trivy
+      id: python-deps
+      if: inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities'
+      # Best effort by design: nothing in here may fail the scan. Whatever happens,
+      # Trivy still runs, and the evaluation below reports what it really scanned.
+      continue-on-error: true
+      shell: bash
+      env:
+        EXCLUDE_PATHS: ${{ inputs.exclude-paths }}
+        OUT_ROOT: security-reports/python-deps
+        UV_NO_PROGRESS: '1'
+      run: |
+        set -uo pipefail
+
+        # Trivy reads Python dependencies only from requirements.txt, Pipfile.lock,
+        # poetry.lock, uv.lock and pylock.toml - never from pyproject.toml. A project
+        # that declares version ranges in pyproject.toml and commits no lock file was
+        # therefore not scanned at all: "num=0" in the Trivy log, `Results: null` in
+        # the report, and "0 vulnerabilities, 100/100" in the summary.
+        #
+        # For each such pyproject.toml, `uv pip compile` resolves the runtime
+        # dependencies ([project].dependencies) to exact versions and writes them as a
+        # requirements.txt under security-reports/python-deps/, where Trivy's
+        # filesystem scan picks them up. These are the NEWEST versions the ranges
+        # allow, not necessarily what a given installation runs; a committed lock
+        # file is still the exact answer and always takes precedence.
+        LOCK_FILES="requirements.txt Pipfile.lock poetry.lock uv.lock pylock.toml"
+
+        PRUNE=( -name .git -o -name node_modules -o -name .venv -o -name venv
+                -o -name site-packages -o -name __pypackages__ -o -name .tox
+                -o -name .nox -o -path ./security-reports )
+        IFS=',' read -r -a EXTRA <<< "${EXCLUDE_PATHS:-}"
+        for e in "${EXTRA[@]}"; do
+          e="${e#"${e%%[![:space:]]*}"}"
+          e="${e%"${e##*[![:space:]]}"}"
+          e="${e#./}"
+          e="${e%/}"
+          [ -n "$e" ] || continue
+          case "$e" in
+            */*) PRUNE+=( -o -path "./$e" ) ;;
+            *)   PRUNE+=( -o -name "$e" ) ;;
+          esac
+        done
+
+        # A lock file in the same directory, or in a parent directory (a uv or Poetry
+        # workspace locks all its members at the root), already gives Trivy exact
+        # versions; resolving the project again would only add guessed duplicates.
+        locked_by() {
+          local d="$1" l
+          while :; do
+            for l in $LOCK_FILES; do
+              if [ -f "$d/$l" ]; then
+                echo "$d/$l"
+                return 0
+              fi
+            done
+            if compgen -G "$d/pylock.*.toml" > /dev/null; then
+              echo "$d/pylock.*.toml"
+              return 0
+            fi
+            [ "$d" = "." ] && return 1
+            d="$(dirname "$d")"
+          done
+        }
+
+        CANDIDATES=()
+        while IFS= read -r f; do
+          dir="$(dirname "$f")"
+          if lock="$(locked_by "$dir")"; then
+            echo "  • ${f#./}: covered by ${lock#./}"
+          elif ! grep -qE '^\[(project|tool\.poetry)\]' "$f"; then
+            echo "  • ${f#./}: no [project] metadata (tool configuration only), skipped"
+          else
+            CANDIDATES+=( "$f" )
+          fi
+        done < <(find . \( "${PRUNE[@]}" \) -prune -o -type f -name pyproject.toml -print | sort | head -n 50)
+
+        if [ "${#CANDIDATES[@]}" -eq 0 ]; then
+          echo "🐍 No Python project without a lock file - nothing to resolve."
+          {
+            echo "resolved=0"
+            echo "failed=0"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # uv: already on the runner, else a throwaway venv, else pipx, else the release
+        # binary. Deliberately no third-party action: an "action not allowed" policy
+        # would stop the whole job before it starts, where this step can only degrade.
+        UV_DIR="${RUNNER_TEMP:-/tmp}/security-scan-uv"
+        UV=()
+        if command -v uv > /dev/null 2>&1; then
+          UV=( uv )
+        elif python3 -m venv "$UV_DIR" > /dev/null 2>&1 \
+          && "$UV_DIR/bin/python" -m pip install --quiet --disable-pip-version-check uv > /dev/null 2>&1; then
+          UV=( "$UV_DIR/bin/uv" )
+        elif command -v pipx > /dev/null 2>&1; then
+          UV=( pipx run uv )
+        else
+          case "$(uname -s)-$(uname -m)" in
+            Linux-x86_64)                UV_ASSET="uv-x86_64-unknown-linux-gnu" ;;
+            Linux-aarch64 | Linux-arm64) UV_ASSET="uv-aarch64-unknown-linux-gnu" ;;
+            *)                           UV_ASSET="" ;;
+          esac
+          if [ -n "$UV_ASSET" ] && mkdir -p "$UV_DIR/bin" \
+            && curl -sSfL --max-time 120 "https://github.com/astral-sh/uv/releases/latest/download/${UV_ASSET}.tar.gz" \
+              | tar xz --strip-components=1 -C "$UV_DIR/bin"; then
+            UV=( "$UV_DIR/bin/uv" )
+          fi
+        fi
+        if [ "${#UV[@]}" -eq 0 ]; then
+          echo "::warning title=Python dependencies not resolved::uv could not be installed, so ${#CANDIDATES[@]} pyproject.toml without a lock file stay invisible to Trivy."
+          {
+            echo "resolved=0"
+            echo "failed=${#CANDIDATES[@]}"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        TIMEOUT=()
+        if command -v timeout > /dev/null 2>&1; then
+          TIMEOUT=( timeout 300 )
+        fi
+
+        RESOLVED=0
+        FAILED=0
+        for f in "${CANDIDATES[@]}"; do
+          rel="$(dirname "${f#./}")"
+          if [ "$rel" = "." ]; then
+            out="$OUT_ROOT/requirements.txt"
+          else
+            out="$OUT_ROOT/$rel/requirements.txt"
+          fi
+          mkdir -p "$(dirname "$out")"
+          log="$(dirname "$out")/uv-pip-compile.log"
+          # --universal resolves for every platform and Python version the project
+          # allows, so the runner's own interpreter cannot make it fail; the plain
+          # resolution is the fallback for projects that only resolve per platform.
+          if ${TIMEOUT[@]+"${TIMEOUT[@]}"} "${UV[@]}" pip compile "$f" --universal --quiet -o "$out" > "$log" 2>&1 \
+            || ${TIMEOUT[@]+"${TIMEOUT[@]}"} "${UV[@]}" pip compile "$f" --quiet -o "$out" >> "$log" 2>&1; then
+            COUNT=$( { grep -cE '^[A-Za-z0-9._-]+(\[[^]]*\])?==' "$out" || true; } )
+            echo "  • ${f#./}: resolved ${COUNT} pinned package(s) -> $out"
+            RESOLVED=$((RESOLVED + 1))
+          else
+            rm -f "$out"
+            REASON="$(grep -v '^[[:space:]]*$' "$log" | tail -n 1 | tr -d '\r' | cut -c1-300)"
+            REASON="${REASON//%/%25}"
+            echo "::warning title=Python dependencies not resolved::${f#./}: uv pip compile failed, so Trivy cannot see these dependencies. ${REASON}"
+            FAILED=$((FAILED + 1))
+          fi
+        done
+
+        {
+          echo "resolved=$RESOLVED"
+          echo "failed=$FAILED"
+        } >> "$GITHUB_OUTPUT"
+        if [ "$RESOLVED" -gt 0 ]; then
+          echo "::notice title=Python dependencies resolved for Trivy::${RESOLVED} pyproject.toml without a lock file resolved with uv pip compile (security-reports/python-deps). Trivy checks the newest versions the declared ranges allow; commit a lock file (uv lock) to scan exact versions."
+        fi
 
     - name: 🛡️ Trivy Vulnerability Scan
       id: trivy-vuln-scan
@@ -226,301 +381,198 @@ runs:
         output: 'security-reports/vulnerabilities/trivy-results.json'
         severity: 'CRITICAL,HIGH,MEDIUM'
         scanners: 'vuln'
+        # Lists every package in the report, not only vulnerable ones, so the
+        # evaluation can show how much was actually checked.
+        list-all-pkgs: 'true'
         exit-code: '0'
 
     - name: 📊 Evaluate Vulnerability Results
       id: vulnerability-scan
       if: inputs.scan-type == 'all' || inputs.scan-type == 'vulnerabilities'
       shell: bash
+      env:
+        REPORT: security-reports/vulnerabilities/trivy-results.json
       run: |
+        set -uo pipefail
         echo "🔍 Evaluating Trivy vulnerability scan results..."
         VULNERABILITIES_FOUND=false
         CRITICAL=0
         HIGH=0
         MEDIUM=0
+        TARGETS=0
+        PACKAGES=0
 
-        REPORT="security-reports/vulnerabilities/trivy-results.json"
-        if [ -f "$REPORT" ]; then
-          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$REPORT" 2>/dev/null || echo "0")
-          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$REPORT" 2>/dev/null || echo "0")
-          MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "$REPORT" 2>/dev/null || echo "0")
+        num() { case "$1" in ''|*[!0-9]*) echo 0 ;; *) echo "$1" ;; esac; }
 
-          TOTAL=$((CRITICAL + HIGH + MEDIUM))
-          if [ $TOTAL -gt 0 ]; then
-            VULNERABILITIES_FOUND=true
-          fi
+        if [ -f "$REPORT" ] && jq -e 'type == "object"' "$REPORT" > /dev/null 2>&1; then
+          TARGETS=$(num "$(jq '[.Results[]?] | length' "$REPORT" 2>/dev/null)")
+          PACKAGES=$(num "$(jq '[.Results[]?.Packages[]?] | length' "$REPORT" 2>/dev/null)")
+          CRITICAL=$(num "$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "$REPORT" 2>/dev/null)")
+          HIGH=$(num "$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "$REPORT" 2>/dev/null)")
+          MEDIUM=$(num "$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "$REPORT" 2>/dev/null)")
 
-          echo "🛡️ Trivy Vulnerability Results:"
+          echo "🛡️ Trivy scanned ${TARGETS} dependency file(s) with ${PACKAGES} package(s):"
+          jq -r '.Results[]? | "  • \(.Target) (\(.Type // .Class)): \([.Packages[]?] | length) package(s), \([.Vulnerabilities[]?] | length) finding(s)"' "$REPORT" 2>/dev/null || true
           echo "  • Critical: $CRITICAL"
           echo "  • High: $HIGH"
           echo "  • Medium: $MEDIUM"
+
+          if [ $((CRITICAL + HIGH + MEDIUM)) -gt 0 ]; then
+            VULNERABILITIES_FOUND=true
+            echo "⚠️ Vulnerabilities detected - review required"
+          elif [ "$TARGETS" -eq 0 ]; then
+            # No target is not a clean result: Trivy found nothing it can read, so no
+            # dependency was checked. That used to print "No vulnerabilities detected"
+            # and score 100/100. It is no failure either (plenty of repositories have
+            # no dependencies), so it is reported as 'unknown' and said out loud.
+            VULNERABILITIES_FOUND=unknown
+            echo "::notice title=Trivy scanned no dependencies::No lock file or dependency manifest Trivy can read was found (for example package-lock.json, pnpm-lock.yaml, go.sum, Cargo.lock, poetry.lock, uv.lock, requirements.txt), so this run checked NO dependencies for known vulnerabilities."
+          else
+            echo "✅ No vulnerabilities detected by Trivy"
+          fi
         else
-          echo "ℹ️ No Trivy report found, skipping evaluation"
+          VULNERABILITIES_FOUND=unknown
+          echo "::warning title=No readable Trivy report::${REPORT} is missing or not JSON - dependencies were NOT checked for vulnerabilities."
         fi
 
-        if [ "$VULNERABILITIES_FOUND" == "false" ]; then
-          echo "✅ No vulnerabilities detected by Trivy"
-        else
-          echo "⚠️ Vulnerabilities detected - review required"
-        fi
+        {
+          echo "vulnerabilities-found=$VULNERABILITIES_FOUND"
+          echo "trivy-critical=$CRITICAL"
+          echo "trivy-high=$HIGH"
+          echo "trivy-medium=$MEDIUM"
+          echo "trivy-targets=$TARGETS"
+          echo "trivy-packages=$PACKAGES"
+        } >> "$GITHUB_OUTPUT"
 
-        echo "vulnerabilities-found=$VULNERABILITIES_FOUND" >> "$GITHUB_OUTPUT"
-        echo "trivy-critical=$CRITICAL" >> "$GITHUB_OUTPUT"
-        echo "trivy-high=$HIGH" >> "$GITHUB_OUTPUT"
-        echo "trivy-medium=$MEDIUM" >> "$GITHUB_OUTPUT"
-
-    - name: 📊 Generate Dual Security Summary
+    - name: 📊 Generate Security Summary
       id: summary
       shell: bash
+      env:
+        SECRET_ENGINE: ${{ steps.engine.outputs.secret-engine }}
+        GITLEAKS_SECRETS: ${{ steps.process-gitleaks.outputs.secrets-found || 'skipped' }}
+        GITLEAKS_COUNT: ${{ steps.process-gitleaks.outputs.secrets-count || 'n/a' }}
+        VULNS_FOUND: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found || 'skipped' }}
+        TRIVY_CRITICAL: ${{ steps.vulnerability-scan.outputs.trivy-critical || '0' }}
+        TRIVY_HIGH: ${{ steps.vulnerability-scan.outputs.trivy-high || '0' }}
+        TRIVY_MEDIUM: ${{ steps.vulnerability-scan.outputs.trivy-medium || '0' }}
+        TRIVY_TARGETS: ${{ steps.vulnerability-scan.outputs.trivy-targets || '0' }}
+        TRIVY_PACKAGES: ${{ steps.vulnerability-scan.outputs.trivy-packages || '0' }}
+        PYTHON_RESOLVED: ${{ steps.python-deps.outputs.resolved || '0' }}
+        PYTHON_FAILED: ${{ steps.python-deps.outputs.failed || '0' }}
       run: |
-        echo "📊 Generating dual security summary..."
-        
-        GITLEAKS_SECRETS="${{ steps.process-gitleaks.outputs.secrets-found || 'false' }}"
-        GITGUARDIAN_SECRETS="${{ steps.gitguardian-scan.outputs.secrets-found || '0' }}"
-        GITGUARDIAN_POLICIES="${{ steps.gitguardian-scan.outputs.policy-violations || '0' }}"
-        VULNS_FOUND="${{ steps.vulnerability-scan.outputs.vulnerabilities-found || 'false' }}"
-        
-        # Determine which engines were used
+        set -uo pipefail
+        echo "📊 Generating security summary..."
+
         ENGINES_USED=""
-        if [[ "${{ inputs.scan-engine }}" == "gitleaks" || "${{ inputs.scan-engine }}" == "both" ]]; then
+        if [ "$GITLEAKS_SECRETS" != "skipped" ]; then
           ENGINES_USED="gitleaks"
         fi
-        if [[ "${{ inputs.scan-engine }}" == "gitguardian" || "${{ inputs.scan-engine }}" == "both" ]] && [ "${{ env.SKIP_GITGUARDIAN }}" != "true" ]; then
-          if [ -n "$ENGINES_USED" ]; then
-            ENGINES_USED="$ENGINES_USED,gitguardian"
-          else
-            ENGINES_USED="gitguardian"
-          fi
-        fi
-        
-        # Calculate overall security score
-        GITLEAKS_SCORE=100
-        GITGUARDIAN_SCORE=100
-        
-        # Gitleaks scoring
+
+        # One score: 100, minus 50 for a secret finding, minus the vulnerability
+        # penalty. With GitGuardian gone there is no second engine to average with,
+        # so best-engine-score is the same number.
+        SCORE=100
         if [ "$GITLEAKS_SECRETS" == "true" ]; then
-          GITLEAKS_SCORE=50
+          SCORE=50
         fi
-        
-        # GitGuardian scoring (from action output or calculate)
-        if [ -n "${{ steps.gitguardian-scan.outputs.security-score }}" ]; then
-          GITGUARDIAN_SCORE="${{ steps.gitguardian-scan.outputs.security-score }}"
-        else
-          # Calculate based on findings
-          if [ "$GITGUARDIAN_SECRETS" != "0" ]; then
-            SECRETS_PENALTY=$((GITGUARDIAN_SECRETS * 20))
-            if [ $SECRETS_PENALTY -gt 60 ]; then
-              SECRETS_PENALTY=60
-            fi
-            GITGUARDIAN_SCORE=$((GITGUARDIAN_SCORE - SECRETS_PENALTY))
-          fi
-          
-          if [ "$GITGUARDIAN_POLICIES" != "0" ]; then
-            POLICY_PENALTY=$((GITGUARDIAN_POLICIES * 10))
-            if [ $POLICY_PENALTY -gt 30 ]; then
-              POLICY_PENALTY=30
-            fi
-            GITGUARDIAN_SCORE=$((GITGUARDIAN_SCORE - POLICY_PENALTY))
-          fi
-        fi
-        
-        # Vulnerability penalty (granular based on Trivy findings)
-        TRIVY_CRITICAL="${{ steps.vulnerability-scan.outputs.trivy-critical || '0' }}"
-        TRIVY_HIGH="${{ steps.vulnerability-scan.outputs.trivy-high || '0' }}"
-        TRIVY_MEDIUM="${{ steps.vulnerability-scan.outputs.trivy-medium || '0' }}"
         VULN_PENALTY=$((TRIVY_CRITICAL * 30 + TRIVY_HIGH * 15 + TRIVY_MEDIUM * 5))
         if [ $VULN_PENALTY -gt 50 ]; then
           VULN_PENALTY=50
         fi
         if [ "$VULNS_FOUND" == "true" ]; then
-          GITLEAKS_SCORE=$((GITLEAKS_SCORE - VULN_PENALTY))
-          GITGUARDIAN_SCORE=$((GITGUARDIAN_SCORE - VULN_PENALTY))
+          SCORE=$((SCORE - VULN_PENALTY))
         fi
-        
-        # Ensure scores don't go below 0
-        if [ $GITLEAKS_SCORE -lt 0 ]; then
-          GITLEAKS_SCORE=0
+        if [ $SCORE -lt 0 ]; then
+          SCORE=0
         fi
-        if [ $GITGUARDIAN_SCORE -lt 0 ]; then
-          GITGUARDIAN_SCORE=0
-        fi
-        
-        # Calculate combined score (average of available engines)
-        COMBINED_SCORE=0
-        ENGINE_COUNT=0
-        
-        if [[ "$ENGINES_USED" == *"gitleaks"* ]]; then
-          COMBINED_SCORE=$((COMBINED_SCORE + GITLEAKS_SCORE))
-          ENGINE_COUNT=$((ENGINE_COUNT + 1))
-        fi
-        
-        if [[ "$ENGINES_USED" == *"gitguardian"* ]]; then
-          COMBINED_SCORE=$((COMBINED_SCORE + GITGUARDIAN_SCORE))
-          ENGINE_COUNT=$((ENGINE_COUNT + 1))
-        fi
-        
-        if [ $ENGINE_COUNT -gt 0 ]; then
-          COMBINED_SCORE=$((COMBINED_SCORE / ENGINE_COUNT))
-        else
-          COMBINED_SCORE=100
-        fi
-        
-        # Determine best engine score
-        BEST_SCORE=$COMBINED_SCORE
-        if [[ "$ENGINES_USED" == *"gitleaks"* ]] && [[ "$ENGINES_USED" == *"gitguardian"* ]]; then
-          if [ $GITLEAKS_SCORE -gt $GITGUARDIAN_SCORE ]; then
-            BEST_SCORE=$GITLEAKS_SCORE
-          else
-            BEST_SCORE=$GITGUARDIAN_SCORE
-          fi
-        fi
-        
-        # Generate summary
-        SUMMARY="Dual Security Scan Complete"
-        if [[ "$GITLEAKS_SECRETS" == "true" || "$GITGUARDIAN_SECRETS" != "0" || "$GITGUARDIAN_POLICIES" != "0" || "$VULNS_FOUND" == "true" ]]; then
+
+        SUMMARY="Security Scan Complete"
+        if [[ "$GITLEAKS_SECRETS" == "true" || "$VULNS_FOUND" == "true" ]]; then
           SUMMARY="Security Issues Found"
         fi
-        
-        echo "security-score=$COMBINED_SCORE" >> "$GITHUB_OUTPUT"
-        echo "best-engine-score=$BEST_SCORE" >> "$GITHUB_OUTPUT"
-        echo "scan-results=$SUMMARY" >> "$GITHUB_OUTPUT"
-        echo "engines-used=$ENGINES_USED" >> "$GITHUB_OUTPUT"
-        
-        # Create comprehensive summary report
+
+        case "$GITLEAKS_SECRETS" in
+          true)    SECRETS_CELL="🚨 ${GITLEAKS_COUNT} secret(s) found" ;;
+          false)   SECRETS_CELL="✅ none found" ;;
+          unknown) SECRETS_CELL="❓ scan did not complete - NOT a clean result" ;;
+          *)
+            if [ "$SECRET_ENGINE" == "gitleaks" ]; then
+              SECRETS_CELL="⏭️ not requested (scan-type)"
+            else
+              SECRETS_CELL="⏭️ not scanned - no secret engine ran"
+            fi ;;
+        esac
+        SCANNED="${TRIVY_TARGETS} file(s), ${TRIVY_PACKAGES} package(s) checked"
+        case "$VULNS_FOUND" in
+          true)    VULNS_CELL="⚠️ critical ${TRIVY_CRITICAL}, high ${TRIVY_HIGH}, medium ${TRIVY_MEDIUM} (${SCANNED})" ;;
+          false)   VULNS_CELL="✅ none found (${SCANNED})" ;;
+          unknown) VULNS_CELL="❓ NOT scanned - no dependency file Trivy can read; the score covers secrets only" ;;
+          *)       VULNS_CELL="⏭️ not requested (scan-type)" ;;
+        esac
+        PYTHON_LINE=""
+        if [ "$PYTHON_RESOLVED" != "0" ] || [ "$PYTHON_FAILED" != "0" ]; then
+          PYTHON_LINE="🐍 Python projects without a lock file: ${PYTHON_RESOLVED} resolved for Trivy (newest versions the ranges allow), ${PYTHON_FAILED} could not be resolved."
+        fi
+
+        {
+          echo "security-score=$SCORE"
+          echo "best-engine-score=$SCORE"
+          echo "scan-results=$SUMMARY"
+          echo "engines-used=$ENGINES_USED"
+        } >> "$GITHUB_OUTPUT"
+
         cat > security-reports/dual-security-summary.md << EOF
-        # 🛡️ Dual Security Scan Summary
-        
+        # 🛡️ Security Scan Summary
+
         **Scan Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-        **Engines Used:** $ENGINES_USED
-        **Combined Score:** $COMBINED_SCORE/100
-        **Best Engine Score:** $BEST_SCORE/100
-        
-        ## 🔍 Engine Results
-        
-        | Engine | Enabled | Score | Secrets Found | Policy Violations |
-        |--------|---------|-------|---------------|-------------------|
-        | **Gitleaks** | $([[ "$ENGINES_USED" == *"gitleaks"* ]] && echo "✅" || echo "❌") | $GITLEAKS_SCORE/100 | $GITLEAKS_SECRETS | N/A |
-        | **GitGuardian** | $([[ "$ENGINES_USED" == *"gitguardian"* ]] && echo "✅" || echo "❌") | $GITGUARDIAN_SCORE/100 | $GITGUARDIAN_SECRETS | $GITGUARDIAN_POLICIES |
-        
-        ## 📊 Findings Summary
-        
-        ### � Secrets Detection
-        
+        **Score:** $SCORE/100
+        **Status:** $SUMMARY
+
+        | Scan | Result |
+        |------|--------|
+        | **Secrets (Gitleaks)** | $SECRETS_CELL |
+        | **Vulnerabilities (Trivy)** | $VULNS_CELL |
+
+        $PYTHON_LINE
+
         EOF
-        
-        if [ "$GITLEAKS_SECRETS" == "true" ] || [ "$GITGUARDIAN_SECRETS" != "0" ]; then
+
+        if [ "$GITLEAKS_SECRETS" == "true" ]; then
           cat >> security-reports/dual-security-summary.md << EOF
-        **Secrets detected in codebase:**
-        
-        - **Gitleaks:** $([[ "$GITLEAKS_SECRETS" == "true" ]] && echo "Found secrets" || echo "No secrets found")
-        - **GitGuardian:** $GITGUARDIAN_SECRETS secret(s) found
-        
-        **🚨 Immediate Actions Required:**
-        1. Review detailed scan reports in artifacts
+        **🚨 Immediate actions required:**
+        1. Review the Gitleaks report in the artifacts
         2. Rotate any exposed credentials immediately
         3. Remove secrets from code and use secure storage
-        4. Implement secret scanning in CI/CD pipeline
-        
-        EOF
-        else
-          cat >> security-reports/dual-security-summary.md << EOF
-        ✅ **No secrets detected by any engine**
-        
+
         EOF
         fi
-        
-        if [ "$GITGUARDIAN_POLICIES" != "0" ]; then
-          cat >> security-reports/dual-security-summary.md << EOF
-        ### ⚖️ Policy Violations
-        
-        **$GITGUARDIAN_POLICIES policy violation(s) detected by GitGuardian:**
-        
-        **🔧 Recommended Actions:**
-        1. Review GitGuardian policy reports
-        2. Update configurations to comply with security policies
-        3. Implement Infrastructure as Code security scanning
-        
-        EOF
-        fi
-        
+
         if [ "$VULNS_FOUND" == "true" ]; then
           cat >> security-reports/dual-security-summary.md << EOF
-        ### 🛡️ Vulnerabilities
-        
-        **Vulnerabilities detected in dependencies or configurations:**
-        
-        **🔧 Recommended Actions:**
-        1. Update vulnerable dependencies
-        2. Review security configurations
-        3. Apply security patches
-        
+        **🔧 Vulnerabilities in dependencies:** update the affected packages and apply
+        security patches (details in vulnerabilities/trivy-results.json).
+
         EOF
         fi
-        
-        cat >> security-reports/dual-security-summary.md << EOF
-        ## 🔧 Engine Comparison
-        
-        | Aspect | Gitleaks | GitGuardian |
-        |--------|----------|-------------|
-        | **Type** | Open Source | Commercial |
-        | **Secrets Detection** | ✅ Pattern-based | ✅ ML-enhanced |
-        | **Policy Enforcement** | ❌ Limited | ✅ Comprehensive |
-        | **IaC Scanning** | ❌ No | ✅ Yes |
-        | **API Integration** | ❌ Local only | ✅ Cloud-based |
-        | **Custom Rules** | ✅ Yes | ✅ Yes |
-        
-        ## 📋 Recommendations
-        
-        EOF
-        
-        if [[ "$ENGINES_USED" == *"gitleaks"* ]] && [[ "$ENGINES_USED" == *"gitguardian"* ]]; then
-          cat >> security-reports/dual-security-summary.md << EOF
-        **Dual Engine Setup (Recommended):**
-        - Use both engines for comprehensive coverage
-        - Gitleaks for fast local scanning
-        - GitGuardian for advanced policy enforcement
-        - Compare results to eliminate false positives
-        
-        EOF
-        elif [[ "$ENGINES_USED" == *"gitguardian"* ]]; then
-          cat >> security-reports/dual-security-summary.md << EOF
-        **GitGuardian Only:**
-        - Consider adding Gitleaks for additional coverage
-        - Excellent for enterprise policy enforcement
-        - Best for Infrastructure as Code security
-        
-        EOF
-        else
-          cat >> security-reports/dual-security-summary.md << EOF
-        **Gitleaks Only:**
-        - Consider adding GitGuardian for advanced features
-        - Great for basic secrets detection
-        - Perfect for open source projects
-        
-        EOF
-        fi
-        
+
         cat >> security-reports/dual-security-summary.md << EOF
         ## 🔗 Resources
-        
+
         - [Gitleaks Documentation](https://github.com/gitleaks/gitleaks)
-        - [GitGuardian Documentation](https://docs.gitguardian.com/)
-        - [Security Best Practices](https://docs.gitguardian.com/secrets-detection/introduction)
-        
+        - [Trivy Documentation](https://trivy.dev/)
+
         ---
-        
-        *Generated by Dual Security Scan Action*
+
+        *Generated by the BAUER GROUP Security Scan action*
         EOF
-        
+
         echo ""
-        echo "🛡️ Dual Security Scan Summary:"
-        echo "  • Engines Used: $ENGINES_USED"
-        echo "  • Combined Score: $COMBINED_SCORE/100"
-        echo "  • Best Engine Score: $BEST_SCORE/100"
-        echo "  • Gitleaks Secrets: $GITLEAKS_SECRETS"
-        echo "  • GitGuardian Secrets: $GITGUARDIAN_SECRETS"
-        echo "  • GitGuardian Policies: $GITGUARDIAN_POLICIES"
-        echo "  • Vulnerabilities: $VULNS_FOUND"
+        echo "🛡️ Security Scan Summary:"
+        echo "  • Secret Engine: ${SECRET_ENGINE}"
+        echo "  • Score: $SCORE/100"
+        echo "  • Gitleaks Secrets: $GITLEAKS_SECRETS ($GITLEAKS_COUNT)"
+        echo "  • Vulnerabilities: $VULNS_FOUND (${SCANNED})"
+        [ -z "$PYTHON_LINE" ] || echo "  • $PYTHON_LINE"
         echo "  • Status: $SUMMARY"
 
     - name: 📤 Upload Security Reports
@@ -535,26 +587,20 @@ runs:
     - name: 🚨 Fail on Security Issues
       # 'unknown' fails too: a scan that did not run is not a pass. Without this,
       # a broken scanner would be indistinguishable from a clean repository.
-      #
-      # GitGuardian is part of this condition. The gitguardian-scan step is deliberately
-      # invoked with fail-on-findings: 'false' so that this gate decides - but it was not
-      # consulted here, so with scan-engine 'gitguardian' (or 'both' with a clean gitleaks
-      # run) a GitGuardian secret finding never blocked anything. The action's own
-      # secrets-found output already combined both scanners, so a caller reading the output
-      # saw the finding that this gate ignored. The count test mirrors that output exactly.
       if: >-
         inputs.fail-on-findings == 'true' && (
           steps.process-gitleaks.outputs.secrets-found == 'true' ||
           steps.process-gitleaks.outputs.secrets-found == 'unknown' ||
-          steps.vulnerability-scan.outputs.vulnerabilities-found == 'true' ||
-          (steps.gitguardian-scan.outputs.secrets-found != '' && steps.gitguardian-scan.outputs.secrets-found != '0')
+          steps.vulnerability-scan.outputs.vulnerabilities-found == 'true'
         )
       shell: bash
+      env:
+        SECRETS_FOUND: ${{ steps.process-gitleaks.outputs.secrets-found }}
+        VULNS_FOUND: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found }}
       run: |
         echo "❌ Security scan failed due to findings"
-        echo "Secrets found (gitleaks): ${{ steps.process-gitleaks.outputs.secrets-found }}"
-        echo "Secrets found (gitguardian): ${{ steps.gitguardian-scan.outputs.secrets-found || 'n/a' }}"
-        echo "Vulnerabilities found: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found }}"
+        echo "Secrets found (gitleaks): ${SECRETS_FOUND}"
+        echo "Vulnerabilities found: ${VULNS_FOUND}"
         echo ""
         echo "Review the security reports and address the issues before proceeding."
         exit 1

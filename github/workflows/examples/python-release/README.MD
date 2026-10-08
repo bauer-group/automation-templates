@@ -6,7 +6,7 @@ This directory contains examples for using the Python automatic release workflow
 
 The Python automatic release workflow (`python-automatic-release.yml`) provides:
 - 🐍 Full Python CI/CD pipeline with integrated testing
-- 🛡️ Security scanning (Gitleaks, GitGuardian, Bandit, Safety)
+- 🛡️ Security scanning (Gitleaks, Trivy, Bandit, Safety)
 - 🧪 Comprehensive test suite with pytest, coverage, and quality checks
 - 📦 PyPI and GitHub Packages publishing
 - 🚀 Semantic versioning with automatic releases
@@ -47,7 +47,6 @@ PYPI_API_TOKEN       # Your PyPI API token
 GITHUB_TOKEN         # Automatically provided by GitHub
 
 # Optional
-GITGUARDIAN_API_KEY  # GitGuardian API key for enhanced security
 GITLEAKS_LICENSE     # Gitleaks Pro license key
 ```
 
@@ -79,7 +78,7 @@ your-python-project/
 | Input | Description | Default | Required |
 |-------|-------------|---------|----------|
 | `python-version` | Python version to use | `'3.12'` | No |
-| `security-engine` | Security scan engine (`gitleaks`, `gitguardian`, `both`) | `'both'` | No |
+| `security-engine` | Secret scan engine (`gitleaks`; `both` still works and runs gitleaks) | `'gitleaks'` | No |
 | `force-release` | Force create release even without changes | `false` | No |
 | `skip-pypi` | Skip PyPI publishing | `false` | No |
 | `package-source-path` | Path to package source | `'src'` | No |
@@ -93,7 +92,7 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/python-automatic-release.yml@main
     with:
       python-version: '3.12'
-      security-engine: 'both'
+      security-engine: 'gitleaks'
       force-release: false
       skip-pypi: false
       package-source-path: 'src'
@@ -264,7 +263,7 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/python-automatic-release.yml@main
     with:
       python-version: '3.12'
-      security-engine: 'both'
+      security-engine: 'gitleaks'
       force-release: ${{ inputs.force-release || false }}
       version-file: 'src/my_package/__init__.py'
     secrets: inherit
@@ -276,7 +275,7 @@ jobs:
 
 - **Automated Testing**: pytest, coverage reporting, test discovery
 - **Code Quality**: flake8, mypy, black, isort checks
-- **Security Scanning**: Bandit, Safety, Gitleaks, GitGuardian
+- **Security Scanning**: Bandit, Safety, Gitleaks, Trivy
 - **Package Building**: Wheel and source distributions  
 - **Version Management**: Automatic version detection and updating
 - **Release Creation**: Semantic release with changelog

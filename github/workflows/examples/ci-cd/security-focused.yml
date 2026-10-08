@@ -16,8 +16,8 @@ on:
       scan-engine:
         description: 'Security scan engine'
         type: choice
-        default: 'both'
-        options: ['gitleaks', 'gitguardian', 'both']
+        default: 'gitleaks'
+        options: ['gitleaks']
       deep-scan:
         description: 'Enable deep security scan'
         type: boolean
@@ -29,13 +29,11 @@ jobs:
     name: Deep Security Analysis
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: ${{ inputs.scan-engine || 'both' }}
+      scan-engine: ${{ inputs.scan-engine || 'gitleaks' }}
       scan-type: 'all'
       fail-on-findings: ${{ github.event_name == 'pull_request' }}  # Strict for PRs, informative for scheduled runs
-      minimum-severity: ${{ inputs.deep-scan == true && 'low' || 'medium' }}
       exclude-paths: '.git,node_modules,vendor,test/fixtures'
     secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
   # License compliance with strict rules
@@ -61,11 +59,10 @@ jobs:
       enable-security-scan: true
       enable-license-check: true
       enable-commit-lint: true
-      security-scan-engine: 'both'  # Use both engines for maximum coverage
+      security-scan-engine: 'gitleaks'
       fail-on-security-issues: true
       fail-on-license-issues: true  # Strict compliance for security projects
     secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
   # Security-aware release management
@@ -80,7 +77,6 @@ jobs:
       auto-merge-enabled: false  # Manual review required for security projects
       cleanup-release-branch: true
     secrets:
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
       GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
   # Secure artifact generation with signing

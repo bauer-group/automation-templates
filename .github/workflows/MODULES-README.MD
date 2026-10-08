@@ -9,22 +9,37 @@ Diese Sammlung von wiederverwendbaren Workflows ermöglicht es, CI/CD-Pipelines 
 ## 📦 Verfügbare Module
 
 ### 🛡️ [Security Scan](./modules-security-scan.yml)
-**Zweck:** Secrets-Erkennung mit Gitleaks und GitGuardian + Trivy Vulnerability Scan
+**Zweck:** Secrets-Erkennung mit Gitleaks + Trivy Vulnerability Scan
 
 ```yaml
 uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
 with:
-  scan-engine: 'both'
+  scan-engine: 'gitleaks'
   scan-type: 'all'
   fail-on-findings: true
-secrets:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+secrets: inherit   # GITLEAKS_LICENSE
 ```
+
+> GitGuardian wurde entfernt (2026-10): Im CI scannte es nur den letzten Commit und konnte
+> Funde gar nicht melden. `scan-engine: 'both'` läuft weiter und nutzt Gitleaks,
+> `'gitguardian'` scannt keine Secrets mehr (mit Warnung im Lauf). `minimum-severity` und
+> das Secret `GITGUARDIAN_API_KEY` werden noch angenommen, aber ignoriert.
+
+**Python ohne Lock-Datei:** Trivy liest bei Python nur `requirements.txt`, `poetry.lock`,
+`uv.lock`, `Pipfile.lock` und `pylock.toml`, nie `pyproject.toml`. Für jedes `pyproject.toml`
+ohne solche Datei (auch nicht in einem übergeordneten Workspace) löst der Scan die
+Laufzeit-Abhängigkeiten vorher mit `uv pip compile` auf und legt sie unter
+`security-reports/python-deps/` ab, wo Trivy sie scannt. Gescannt werden die neuesten
+Versionen, die die Versionsbereiche erlauben; eine committete Lock-Datei (`uv lock`) hat
+immer Vorrang und ist genauer.
+
+**Nichts gescannt ist nicht sauber:** Findet Trivy keine Datei, die es lesen kann, meldet
+der Scan `vulnerabilities-found: unknown` statt `false`, und die Zusammenfassung zeigt
+„NOT scanned“ statt „Excellent“. Das lässt den Lauf nicht scheitern.
 
 **Ausgaben:**
 - `secrets-found`: Ob Secrets gefunden wurden
-- `vulnerabilities-found`: Ob Schwachstellen entdeckt wurden (via Trivy)
+- `vulnerabilities-found`: Ob Schwachstellen entdeckt wurden (via Trivy; `unknown` = nichts gescannt)
 - `security-score`: Sicherheitsbewertung (0-100)
 - `scan-results`: Zusammenfassung der Ergebnisse
 
@@ -58,7 +73,7 @@ with:
 ### 🐷 [TruffleHog Secret Scan](./modules-trufflehog-scan.yml)
 **Zweck:** Verified-first Secret-Scanning mit TruffleHog (800+ Detektoren mit Live-Verifizierung)
 
-Ergänzt Gitleaks + GitGuardian um **Verifizierung**: TruffleHog prüft per Provider-API, ob ein gefundenes Secret tatsächlich *live* ist. Standalone-Modul (nicht im Meta-Orchestrator), aber output-kompatibel.
+Ergänzt Gitleaks um **Verifizierung**: TruffleHog prüft per Provider-API, ob ein gefundenes Secret tatsächlich *live* ist. Standalone-Modul (nicht im Meta-Orchestrator), aber output-kompatibel.
 
 ```yaml
 uses: bauer-group/automation-templates/.github/workflows/modules-trufflehog-scan.yml@main
@@ -250,7 +265,7 @@ jobs:
   secrets:
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: 'both'
+      scan-engine: 'gitleaks'
 
   vulnerabilities:
     uses: bauer-group/automation-templates/.github/workflows/modules-vulnerability-scan.yml@main

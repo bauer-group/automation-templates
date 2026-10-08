@@ -41,9 +41,11 @@ jobs:
       - name: 🛡️ Security Scan
         uses: bauer-group/automation-templates/.github/actions/security-scan@main
         with:
-          scan-engines: 'gitleaks'
-          fail-on-findings: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          scan-engine: 'gitleaks'
+          scan-type: 'secrets'
+          fail-on-findings: 'true'
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: ⚡ Quick Build Test
         uses: bauer-group/automation-templates/.github/actions/zephyr-build@main
@@ -269,10 +271,11 @@ jobs:
       - name: 🛡️ Comprehensive Security Scan
         uses: bauer-group/automation-templates/.github/actions/security-scan@main
         with:
-          scan-engines: 'both'
-          fail-on-findings: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+          scan-engine: 'gitleaks'
+          scan-type: 'all'
+          fail-on-findings: 'true'
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: 🔒 Firmware Security Analysis
         run: |

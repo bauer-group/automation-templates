@@ -40,7 +40,7 @@ jobs:
       run-security-scan: true
       
       # Security Configuration
-      security-engine: 'both'  # gitleaks, gitguardian, both
+      security-engine: 'gitleaks'
       
       # Build Configuration
       build-local-wheel: true
@@ -99,5 +99,4 @@ jobs:
 # 5. OPTIONAL SECRETS
 # Configure these in your repository settings if needed:
 # - PYPI_API_TOKEN: PyPI API token (if not using Trusted Publishing)
-# - GITGUARDIAN_API_KEY: For enhanced security scanning
 # - GITLEAKS_LICENSE: For Gitleaks Pro features

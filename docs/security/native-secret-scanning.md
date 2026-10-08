@@ -1,13 +1,13 @@
 # GitHub-Native Secret Scanning & Push Protection
 
 GitHub Advanced Security (GHAS) ships two features that complement — not replace —
-our CI scanners (Gitleaks, GitGuardian, TruffleHog):
+our CI scanners (Gitleaks, TruffleHog):
 
 | Layer | Tool | When it acts | What it catches |
 |-------|------|--------------|-----------------|
 | **Pre-receive (push)** | Native **Push Protection** | *Before* a commit reaches the remote | Blocks a known secret pattern at `git push` time |
 | **Repository (post-push)** | Native **Secret Scanning** | Continuously, on the default branch | Alerts on secrets already committed |
-| **CI (pull request / schedule)** | Gitleaks + GitGuardian + **TruffleHog** | On every PR / scheduled run | Depth, custom rules, and **live verification** of found credentials |
+| **CI (pull request / schedule)** | Gitleaks + **TruffleHog** | On every PR / scheduled run | Depth, custom rules, and **live verification** of found credentials |
 
 > **Why keep both?** Native push protection is the cheapest possible gate — it stops a
 > secret before it ever leaves the developer's machine. Our CI scanners add breadth
@@ -74,4 +74,4 @@ documented reason that is audit-logged) — the leak never reaches the remote.
 - [Secret scanning (docs.github.com)](https://docs.github.com/en/code-security/secret-scanning)
 - [Push protection (docs.github.com)](https://docs.github.com/en/code-security/secret-scanning/push-protection-for-repositories-and-organizations)
 - [`modules-trufflehog-scan.yml`](../workflows/modules-trufflehog-scan.md) — CI verification layer
-- [`modules-security-scan.yml`](../../.github/workflows/modules-security-scan.yml) — Gitleaks + GitGuardian
+- [`modules-security-scan.yml`](../../.github/workflows/modules-security-scan.yml) — Gitleaks + Trivy

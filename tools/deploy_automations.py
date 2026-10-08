@@ -114,8 +114,6 @@ on:
         required: false
       DOCKER_PASSWORD:
         required: false
-      GITGUARDIAN_API_KEY:
-        required: false
 
   # Enable manual triggers for testing
   workflow_dispatch:
@@ -312,7 +310,6 @@ Add these secrets to your repository:
 |--------|-------------|--------------|
 | `TEAMS_WEBHOOK_URL` | Microsoft Teams webhook URL | Teams notifications |
 | `DOCKER_PASSWORD` | Docker Hub password/token | Docker workflows |
-| `GITGUARDIAN_API_KEY` | GitGuardian API key | Security scanning |
 
 ### Repository Variables
 Configure these repository variables:
