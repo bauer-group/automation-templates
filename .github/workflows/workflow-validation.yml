@@ -77,6 +77,12 @@ jobs:
         shell: bash
         run: bash .github/actions/docker-build/tests/github-token-secret-id.test.sh
 
+      # Image jobs of a multi-image release write back in parallel; a lost push race
+      # used to fail a release whose images were already published.
+      - name: "🧪 docker-build: Dockerfile version write-back"
+        shell: bash
+        run: bash .github/actions/docker-build/tests/dockerfile-writeback.test.sh
+
       - name: "🧪 dotnet-nuget-auth: private feed credentials"
         shell: bash
         run: bash .github/actions/dotnet-nuget-auth/tests/configure-credentials.test.sh
