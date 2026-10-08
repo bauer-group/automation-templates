@@ -746,6 +746,7 @@ runs:
       env:
         SECURITY_FAIL_ON: ${{ inputs.security-fail-on }}
         SECURITY_SCANNER: ${{ inputs.security-scanner }}
+        META_TAGS: ${{ steps.meta.outputs.tags }}
       run: |
         # Resolve the scanner name ONCE. The dispatch below, the vulnerability counting
         # and the missing-report message each read the raw input separately, so they
@@ -753,8 +754,10 @@ runs:
         SCANNER=$(printf '%s' "$SECURITY_SCANNER" | tr '[:upper:]' '[:lower:]')
         echo "🛡️ Running security scan with $SCANNER..."
 
-        # Use the first tag for scanning (local image)
-        PRIMARY_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+        # Use the first tag for scanning (local image). Parameter expansion, not
+        # `echo | head -1`: under pipefail that pipe fails the step with "echo: write
+        # error: Broken pipe" whenever head exits before echo has written every tag.
+        PRIMARY_TAG="${META_TAGS%%$'\n'*}"
         REPORT_PATH="docker-build-reports/security-report.json"
         SARIF_PATH="docker-build-reports/security-report.sarif"
 
@@ -1060,12 +1063,14 @@ runs:
     - name: 📊 Collect Build Information
       id: build-info
       shell: bash
+      env:
+        META_TAGS: ${{ steps.meta.outputs.tags }}
       run: |
         BUILD_END_TIME=$(date +%s)
         BUILD_DURATION=$((BUILD_END_TIME - BUILD_START_TIME))
 
-        # Get primary image tag
-        PRIMARY_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+        # Get primary image tag - first line, without a pipe (see Security Vulnerability Scan)
+        PRIMARY_TAG="${META_TAGS%%$'\n'*}"
 
         # Check if image was pushed
         IMAGE_PUSHED="${{ inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true') }}"
@@ -1128,10 +1133,14 @@ runs:
       if: inputs.generate-sbom == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        META_TAGS: ${{ steps.meta.outputs.tags }}
       run: |
         echo "📋 Generating Software Bill of Materials..."
-        
-        PRIMARY_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+
+        # First tag, without a pipe: `echo | head -1` under pipefail failed this step
+        # with "echo: write error: Broken pipe" right after a successful push.
+        PRIMARY_TAG="${META_TAGS%%$'\n'*}"
         SBOM_PATH="docker-build-reports/sbom.${{ inputs.sbom-format }}.json"
         
         # Install Syft for SBOM generation
