@@ -273,7 +273,7 @@ The Docker build action provides:
 |-----------|-------------|---------|
 | `cache-enabled` | Enable build caching | `true` |
 | `cache-mode` | Cache mode: `'min'`, `'max'`, `'inline'` | `'max'` |
-| `free-disk-space` | Remove unused runner toolchains before building (Linux only) | `false` |
+| `free-disk-space` | Remove unused runner toolchains before building (GitHub-hosted Linux runners only; ignored on self-hosted runners) | `false` |
 | `builder-driver` | Builder driver: `'docker'`, `'docker-container'`, `'kubernetes'` | `'docker-container'` |
 | `build-timeout` | Build timeout in minutes | `30` |
 
@@ -300,6 +300,10 @@ removes toolchains no Docker build uses - the CodeQL bundle, Android SDK, .NET,
 GHC, Swift, PowerShell - and logs `df -h /` before and after, so the number is in
 the log whether or not it turned out to matter. Over 10 GB on a current
 `ubuntu-24.04` runner, most of it the Android SDK and the CodeQL bundle.
+
+Only on GitHub-hosted Linux runners. On a self-hosted runner the step is skipped
+even when the input is `true`: its disk outlives the job, and the `rm -rf` would
+remove toolchains the host's other jobs rely on.
 
 Deliberately not the whole of `/opt/hostedtoolcache`: only its CodeQL bundle,
 which is the bulk of it and is never used inside a build job. The rest holds the
