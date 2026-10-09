@@ -714,6 +714,7 @@ The calling job does not grant `packages: read`, or the package is private to an
 
 - [modules-docker-base-image-monitor.yml](./modules-docker-base-image-monitor.md) — dispatches the release pipeline when the engine image moves
 - [modules-validate-compose.yml](./modules-validate-compose.md) — static compose validation, run it before the round trip
+- [docker-maintenance-dependabot.yml](./docker-maintenance.md) — merges Dependabot base image PRs only after the PR run of the gated pipeline, round trip included, passed ([example](../../github/workflows/examples/docker-maintenance-dependabot/with-backup-roundtrip-gate.yml))
 - [Semantic Release Config Contract](./semantic-release-config.md) — the release the round trip gates
 - [docker-build.yml](./docker-build.md) — builds and publishes the images afterwards
 

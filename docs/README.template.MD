@@ -1147,6 +1147,7 @@ gh auth status --show-token
 
 - [🐳 **Docker Examples**](github/workflows/examples/docker/) - Complete Docker workflow examples
 - [🐳 **Docker Compose Examples**](github/workflows/examples/docker-compose/) - Docker Compose workflow examples
+- [🧪 **Backup Round-Trip Examples**](github/workflows/examples/backup-roundtrip/) - Minimal, gated release pipeline, plugin sources, upgrade from the previous release, off-site S3, compose variants
 - [🐳 **Docker Maintenance (Dependabot) Examples**](github/workflows/examples/docker-maintenance-dependabot/) - Merge after the PR CI: backup round-trip gate, own CI, several workflows, no PR CI
 - [🔍 **Docker Base Image Monitor Examples**](github/workflows/examples/docker-base-image-monitor/) - Daily check with release dispatch, several images, dry run
 - [🐳 **Dockerfile Validation Examples**](github/workflows/examples/dockerfile-validation/) - Dockerfile linting examples

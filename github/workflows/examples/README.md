@@ -10,7 +10,10 @@ github/workflows/examples/
 │   ├── README.md
 │   ├── minimal-postgres-filesystem.yml
 │   ├── gated-release-pipeline.yml
-│   └── plugin-and-external-sources.yml
+│   ├── plugin-and-external-sources.yml
+│   ├── upgrade-from-previous-release.yml
+│   ├── offsite-s3-new-host.yml
+│   └── compose-variants-matrix.yml
 ├── ci-cd/                   # CI/CD pipeline examples
 │   ├── comprehensive-ci-cd.yml
 │   └── security-focused.yml
