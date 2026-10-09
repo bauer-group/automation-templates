@@ -82,9 +82,9 @@ billed to the organization".
 **Zweck:** Wiederverwendbarer Node.js Build und Publish Workflow  
 **Features:** npm/yarn/pnpm/bun Support, Package Publishing, Docker
 
-### Container-Wartung
+### Container-Wartung & Release-Gate
 
-Reusable Workflows, mit denen sich Container-Repositories selbst aktuell halten — jeweils mit eigener Doku und kopierfertigen Beispielen:
+Reusable Workflows, mit denen sich Container-Repositories selbst aktuell halten, und das Gate, das jedes Release davor bestehen muss — jeweils mit eigener Doku und kopierfertigen Beispielen:
 
 #### 🐳 [docker-maintenance-dependabot.yml](./docker-maintenance-dependabot.yml) - Docker Maintenance (Dependabot)
 **Zweck:** Merged Dependabot-PRs erst, nachdem die in `required-workflows` genannte PR-CI auf dem Head-Commit grün ist (ohne Ruleset/Branch Protection)  
@@ -96,6 +96,11 @@ Reusable Workflows, mit denen sich Container-Repositories selbst aktuell halten 
 **Zweck:** Erkennt neu gebaute Base Images hinter Floating Tags und stößt Release + Rebuild an  
 **Features:** Digest-Speicherung erst nach erfolgreichem Release (`<VAR>_PENDING`), fehlgeschlagene Releases erneut dispatcht (bis zu 3 Läufe pro Digest, `max-release-attempts`), Coverage-Report, Dry Run  
 **Docs:** [docs/workflows/modules-docker-base-image-monitor.md](../../docs/workflows/modules-docker-base-image-monitor.md) ([Operator recovery](../../docs/workflows/modules-docker-base-image-monitor.md#operator-recovery)) · **Beispiele:** [examples/docker-base-image-monitor/](../../github/workflows/examples/docker-base-image-monitor/README.md)
+
+#### 🧪 [modules-backup-roundtrip-test.yml](./modules-backup-roundtrip-test.yml) - Backup Round-Trip Test
+**Zweck:** Release-Gate: Startet den Compose-Stack mit den Images aus dem Commit, sichert echte Daten mit dem BackupHelper-Sidecar, löscht sie und stellt sie wieder her  
+**Features:** Opt-in Upgrade vom vorigen Release, Off-Site-S3 mit "neuem Host", Matrix pro Compose-Variante (Traefik, Coolify); Self-Test: [backup-roundtrip-selftest.yml](./backup-roundtrip-selftest.yml)  
+**Docs:** [docs/workflows/modules-backup-roundtrip-test.md](../../docs/workflows/modules-backup-roundtrip-test.md) · **Beispiele:** [examples/backup-roundtrip/](../../github/workflows/examples/backup-roundtrip/README.md)
 
 ### Fork-Automation
 
@@ -174,6 +179,7 @@ jobs:
 | **dotnet-publish-binaries.yml** | workflow_call | Self-contained Binaries pro RID + Release-Upload | Linux (x64+arm64), Windows (x64); macOS/win-arm64 opt-in |
 | **nodejs-build.yml** | workflow_call | Build, Test, Publish, Docker | Linux, Windows, macOS |
 | **fork-docker-build.yml** | workflow_call | Multi-Image Build, Trivy-Scan, GHCR (Fork-CI) | Linux |
+| **modules-backup-roundtrip-test.yml** | workflow_call (Caller: `pull_request`, `push`, `workflow_dispatch`) | Backup → Löschen → Restore → Prüfen eines Compose-Stacks als Release-Gate | Linux |
 | **docker-maintenance-dependabot.yml** | workflow_call (Caller: `pull_request`) | Dependabot-PRs nach grüner PR-CI mergen | Linux |
 | **modules-docker-base-image-monitor.yml** | workflow_call (Caller: `schedule`) | Digest-Überwachung, Release-Dispatch mit Bestätigung und Retries | Linux |
 | **sync-upstream.yml** | workflow_call | Fork-Sync (merge-upstream API) + Workspace-Merge | Linux |

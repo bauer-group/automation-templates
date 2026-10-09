@@ -200,7 +200,7 @@ backup-roundtrip:
 - `components`: Komponenten des Snapshots als JSON (`name`, `kind`, `size`, `error`)
 - `result`: Ergebnis des Jobs (`success`/`failure`/`cancelled`)
 
-> Das Check-Skript muss die Daten vor dem Backup sehen, nach dem Löschen **nicht** sehen und nach dem Restore wieder sehen — ein Restore, der nichts schreibt, kann so nicht bestehen. Doku und Skript-Vertrag: [docs/workflows/modules-backup-roundtrip-test.md](../../docs/workflows/modules-backup-roundtrip-test.md).
+> Das Check-Skript muss die Daten vor dem Backup sehen, nach dem Löschen **nicht** sehen und nach dem Restore wieder sehen — ein Restore, der nichts schreibt, kann so nicht bestehen. Doku und Skript-Vertrag: [docs/workflows/modules-backup-roundtrip-test.md](../../docs/workflows/modules-backup-roundtrip-test.md). Sechs kopierfertige Caller (minimal, Release-Pipeline, Plugin-Quellen, Upgrade, Off-Site S3, Compose-Varianten): [github/workflows/examples/backup-roundtrip/](../../github/workflows/examples/backup-roundtrip/README.md).
 
 **Optional (Standard: aus):**
 - `upgrade-from: 'latest-release'` testet das Upgrade einer bestehenden Installation: Das vorige Release sichert, der Stack wird wie von einem Operator auf die Images aus dem Commit aktualisiert (Daten und Healthcheck geprüft), und der neue Sidecar stellt den alten Snapshot wieder her ([Upgrade](../../docs/workflows/modules-backup-roundtrip-test.md#upgrade-from-a-previous-release))
