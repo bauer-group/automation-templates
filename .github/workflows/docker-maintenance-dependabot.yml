@@ -6,10 +6,14 @@
 #
 # 1. Update type: only the types listed in `merge-update-types` are merged
 #    (default: patch). Everything else stays open for review.
-# 2. CI: the job waits until every other check run, check suite and commit
-#    status on the PR head commit has completed. It merges only if all of them
-#    concluded success, neutral or skipped. A failed check, a PR without any
-#    check, and CI still running after `ci-wait-minutes` leave the PR open.
+# 2. CI: the job waits until every other check run, check suite, commit status
+#    and workflow run on the PR head commit has completed and nothing has
+#    changed for 3 minutes (5 minutes after the start at the earliest), so a
+#    check that starts late is waited for too. It
+#    merges only if none failed and at least one passed (neutral and skipped
+#    are no failure, but no pass either). A failed or cancelled check, a PR
+#    without a passed check, and CI still running after `ci-wait-minutes`
+#    leave the PR open.
 # 3. Merge: optional approval, then `gh pr merge --match-head-commit`, so only
 #    the commit whose CI was checked can be merged. Where GitHub Actions may
 #    not approve PRs, the rejected approval is a notice and the merge goes
@@ -32,8 +36,9 @@
 #   permissions:
 #     contents: write       # merge
 #     pull-requests: write  # approve, read the PR
-#     checks: read          # read CI results - needed in private repositories
-#     statuses: read        # read commit statuses - needed in private repositories
+#     checks: read          # check runs and suites - private repositories
+#     statuses: read        # commit statuses - private repositories
+#     actions: read         # workflow runs - private repositories
 #
 #   jobs:
 #     maintenance:
@@ -42,9 +47,10 @@
 #
 # Permissions: this workflow declares none of its own, so the job token has
 # exactly what the calling workflow grants. In public repositories CI results
-# are readable without `checks`/`statuses`; in private repositories a caller
-# that grants only contents and pull-requests leaves every PR open with a
-# notice naming the missing permissions.
+# are readable without the three read scopes. In private repositories a caller
+# without `checks: read` and `statuses: read` leaves every PR open with a
+# notice; without `actions: read` the wait works from check suites alone and
+# treats a cancelled workflow run as failed even if a newer run replaced it.
 #
 # Requirements:
 # - Dependabot must be enabled in repository settings
@@ -82,7 +88,7 @@ on:
         default: false
 
       ci-wait-minutes:
-        description: 'How long to wait for CI to finish (1-60). If it is still running then, the PR stays open.'
+        description: 'How long to wait for CI to finish and settle, in minutes (10-60). If it has not by then, the PR stays open.'
         type: number
         required: false
         default: 60
@@ -98,7 +104,8 @@ jobs:
     name: Docker Maintenance
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     if: github.actor == 'dependabot[bot]'
-    # ci-wait-minutes is at most 60; the rest covers setup and the merge.
+    # ci-wait-minutes is at most 60 and the last poll can come up to 3 min
+    # after it; the rest covers setup and the merge.
     timeout-minutes: 75
     # One decision per PR: a newer event (e.g. Dependabot rebased the PR)
     # replaces the run that is still waiting for the old head commit.
@@ -137,11 +144,12 @@ jobs:
             squash|merge|rebase) ;;
             *) echo "::error title=Invalid input::merge-method must be squash, merge or rebase, got '$MERGE_METHOD'."; exit 1 ;;
           esac
+          # At least 10: the wait decides no earlier than after 5 min.
           case "$WAIT_MINUTES" in
-            ''|*[!0-9]*) echo "::error title=Invalid input::ci-wait-minutes must be a whole number from 1 to 60, got '$WAIT_MINUTES'."; exit 1 ;;
+            ''|*[!0-9]*) echo "::error title=Invalid input::ci-wait-minutes must be a whole number from 10 to 60, got '$WAIT_MINUTES'."; exit 1 ;;
           esac
-          if [ "$WAIT_MINUTES" -lt 1 ] || [ "$WAIT_MINUTES" -gt 60 ]; then
-            echo "::error title=Invalid input::ci-wait-minutes must be from 1 to 60, got '$WAIT_MINUTES'."
+          if [ "$WAIT_MINUTES" -lt 10 ] || [ "$WAIT_MINUTES" -gt 60 ]; then
+            echo "::error title=Invalid input::ci-wait-minutes must be from 10 to 60, got '$WAIT_MINUTES'."
             exit 1
           fi
 
@@ -183,12 +191,22 @@ jobs:
               ;;
           esac
 
-      # Waits for the CI of the PR head commit. Reads check runs, check suites
-      # and commit statuses with the job token. Leaves out this job (by its
-      # check run id) and every other run of it ('<caller job> / Docker
-      # Maintenance', so SELF_JOB_NAME must match the job name), so two runs for
-      # one PR never wait for each other. Check suites catch workflows whose
-      # later jobs have not been created yet.
+      # Waits for the CI of the PR head commit and decides whether it passed.
+      # Every poll reads, with the job token:
+      #   check runs     the jobs; per check suite the newest run of a name
+      #   check suites   one per workflow run - there before its jobs are
+      #   commit statuses
+      #   workflow runs  (needs actions: read in private repositories) - which
+      #                  runs are this module's, and whether a cancelled run was
+      #                  replaced by a newer run of the same workflow
+      # This job and other runs of this module are left out, so two runs for
+      # one PR never wait for each other.
+      #
+      # "Green" needs a complete and quiet state: nothing pending or failed,
+      # at least one check passed, 5 min since the wait started and no change
+      # for 3 min. A check that appears late - a workflow GitHub starts with a
+      # delay, a code scanning result posted after its analysis job - restarts
+      # the quiet period and is waited for.
       # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
       - name: ⏳ Wait for CI
         id: ci
@@ -199,20 +217,29 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
           OWN_CHECK_RUN_ID: ${{ job.check_run_id }}
           SELF_JOB_NAME: Docker Maintenance
           WAIT_MINUTES: ${{ inputs.ci-wait-minutes }}
         run: |
           set -uo pipefail
 
-          # Overridable for the test only.
-          POLL="${POLL_SECONDS:-30}"
-          SETTLE="${SETTLE_SECONDS:-120}"
-          LIMIT="${WAIT_SECONDS:-$((WAIT_MINUTES * 60))}"
-          if [ "$SETTLE" -gt "$LIMIT" ]; then SETTLE=$LIMIT; fi
+          # SETTLE: no decision before this many seconds - GitHub may start a
+          # workflow for the same push with a delay. QUIET: the results must
+          # stay unchanged this long - a check may appear only after another
+          # one finished. The test runs this on a simulated clock (it replaces
+          # `date` and `sleep`), so these are the real values.
+          POLL=30
+          SETTLE=300
+          QUIET=180
+          LIMIT=$((WAIT_MINUTES * 60))
+          START=$(date +%s)
+          elapsed() { echo $(( $(date +%s) - START )); }
 
           WORK=$(mktemp -d)
           ERRORS=0
+          RUNS_READABLE=true
+          STABLE_SINCE=""
 
           finish() {
             echo "result=$1" >> "$GITHUB_OUTPUT"
@@ -220,154 +247,224 @@ jobs:
             echo "Result: $1 - $2"
             # The checks seen last, for the job summary.
             if [ -s "$WORK/eval" ]; then
-              awk -F'\t' '$1 != "SUMMARY" { printf "- %s %s: %s\n", $1, $2, $3 }' "$WORK/eval" > "$RUNNER_TEMP/dependabot-ci-checks.md"
+              awk -F'\t' '$1 != "SUMMARY" && $1 != "IDLE" { printf "- %s %s: %s\n", $1, $2, $3 }' "$WORK/eval" > "$RUNNER_TEMP/dependabot-ci-checks.md"
             fi
+            exit 0
           }
 
-          # "Resource not accessible" (private repository, permission not
-          # granted) is final. Anything else - including a rate limit - is
-          # retried; three failures in a row give up.
-          api_failed() {
-            local err
-            err=$(head -n 1 "$WORK/err")
-            if grep -qE 'Resource not accessible|HTTP 404' "$WORK/err"; then
-              echo "::notice title=Dependabot PR left open::The job token cannot read the CI results of this PR ($err). In private repositories the calling workflow has to grant 'checks: read' and 'statuses: read'."
-              finish unreadable "CI results not readable"
-              exit 0
-            fi
+          denied() { grep -qE 'Resource not accessible|HTTP 404' "$WORK/err"; }
+
+          # Anything but a missing permission - a rate limit too - is retried;
+          # three failures in a row give up.
+          transient() {
             ERRORS=$((ERRORS + 1))
-            echo "API error $ERRORS/3: $err"
+            echo "API error $ERRORS/3: $1"
             if [ "$ERRORS" -ge 3 ]; then
-              echo "::warning title=Dependabot PR left open::The CI results could not be read: $err"
-              finish api-error "$err"
-              exit 0
+              echo "::warning title=Dependabot PR left open::The CI results could not be read: $1"
+              finish api-error "$1"
             fi
+            return 1
           }
 
+          # gh api into a file. Not permitted (private repository, permission
+          # not granted) is final: the PR stays open.
+          fetch() {
+            local out="$1"; shift
+            if gh api "$@" > "$out" 2> "$WORK/err"; then return 0; fi
+            if denied; then
+              echo "::notice title=Dependabot PR left open::The job token cannot read the CI results of this PR ($(head -n 1 "$WORK/err")). In private repositories the calling workflow has to grant 'checks: read' and 'statuses: read'."
+              finish unreadable "CI results not readable"
+            fi
+            transient "$(head -n 1 "$WORK/err")"
+          }
+
+          # Workflow runs of the head commit. Without 'actions: read' (private
+          # repositories) the wait goes on with check suites alone, and a
+          # cancelled run counts as failed even if a newer run replaced it.
+          fetch_workflow_runs() {
+            : > "$WORK/workflow-runs"
+            if [ "$RUNS_READABLE" != true ]; then return 0; fi
+            if gh api --paginate "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&exclude_pull_requests=true&per_page=100" \
+                 --jq '.workflow_runs[] | [.id, .check_suite_id, .status, (.conclusion // "-"), .workflow_id, .event, .name,
+                       (if any(.referenced_workflows[]?; .path | contains("/.github/workflows/docker-maintenance-dependabot.yml@")) then 1 else 0 end)] | @tsv' \
+                 > "$WORK/workflow-runs" 2> "$WORK/err"; then
+              return 0
+            fi
+            if denied; then
+              RUNS_READABLE=false
+              : > "$WORK/workflow-runs"
+              echo "Workflow runs not readable ($(head -n 1 "$WORK/err")) - going on with check suites alone. Grant 'actions: read' to tell a replaced run from a cancelled one."
+              return 0
+            fi
+            transient "$(head -n 1 "$WORK/err")"
+          }
+
+          poll() {
+            fetch "$WORK/pr" "repos/$REPO/pulls/$PR_NUMBER" --jq '[.state, .head.sha] | @tsv' || return 1
+            IFS=$'\t' read -r PR_STATE PR_HEAD < "$WORK/pr"
+            if [ "$PR_STATE" != "open" ]; then
+              echo "::notice title=Dependabot PR not merged::The PR is $PR_STATE."
+              finish closed "PR is $PR_STATE"
+            fi
+            if [ "$PR_HEAD" != "$HEAD_SHA" ]; then
+              echo "::notice title=Dependabot PR not merged by this run::The PR has a new head commit ($PR_HEAD). The run for that commit decides."
+              finish superseded "new head $PR_HEAD"
+            fi
+            fetch "$WORK/runs" --paginate "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" \
+              --jq '.check_runs[] | [.id, .check_suite.id, .status, (.conclusion // "-"), .name] | @tsv' || return 1
+            fetch "$WORK/suites" --paginate "repos/$REPO/commits/$HEAD_SHA/check-suites?per_page=100" \
+              --jq '.check_suites[] | [.id, .status, (.conclusion // "-"), .latest_check_runs_count, (.app.slug // "-")] | @tsv' || return 1
+            fetch "$WORK/statuses" "repos/$REPO/commits/$HEAD_SHA/status?per_page=100" \
+              --jq '.statuses[] | [.state, .context] | @tsv' || return 1
+            fetch_workflow_runs
+          }
+
+          # One line per result - OK, PENDING, FAILED, SKIP (a replaced run) or
+          # IDLE (an app's suite without check runs) - then
+          # SUMMARY <checks> <pending> <failed> <passed>.
+          # success, neutral and skipped are no failure (as for required status
+          # checks), but only success counts as passed.
           evaluate() {
-            awk -v own="$OWN_CHECK_RUN_ID" -v job="$SELF_JOB_NAME" \
-                -v runs_f="$WORK/runs" -v suites_f="$WORK/suites" -v statuses_f="$WORK/statuses" '
+            awk -v own="$OWN_CHECK_RUN_ID" -v run_id="$RUN_ID" -v job="$SELF_JOB_NAME" \
+                -v runs_f="$WORK/runs" -v wruns_f="$WORK/workflow-runs" \
+                -v suites_f="$WORK/suites" -v statuses_f="$WORK/statuses" '
               BEGIN { FS = "\t"; tail = " / " job }
-              function is_self(id, name,   n) {
-                if (own != "" && id == own) return 1
+              function good(c) { return c == "success" || c == "neutral" || c == "skipped" }
+              function self_named(name,   n) {
                 if (name == job) return 1
                 n = length(name)
                 return n > length(tail) && substr(name, n - length(tail) + 1) == tail
               }
-              function good(c) { return c == "success" || c == "neutral" || c == "skipped" }
+              $0 == "" { next }
               # check runs: id, suite id, status, conclusion, name
-              FILENAME == runs_f {
-                if ($0 == "") next
-                if (is_self($1, $5)) { self_suite[$2] = 1; next }
-                # A re-run adds a check run with the same name to the same check
-                # suite; the newest counts. Jobs of the same name in different
-                # workflow runs (suites) are different checks and all count.
-                k = $2 SUBSEP $5
-                if (!(k in best) || $1 + 0 > best[k] + 0) { best[k] = $1; st[k] = $3; co[k] = $4; nm[k] = $5 }
+              FILENAME == runs_f { nr++; rid[nr] = $1; rsu[nr] = $2; rst[nr] = $3; rco[nr] = $4; rnm[nr] = $5; next }
+              # workflow runs: id, suite id, status, conclusion, workflow id,
+              # event, name, calls this module (1/0)
+              FILENAME == wruns_f {
+                nw++; wid[nw] = $1; wsu[nw] = $2; wst[nw] = $3; wco[nw] = $4; wwf[nw] = $5; wev[nw] = $6; wnm[nw] = $7; wmod[nw] = $8
+                if ($1 == run_id) runs_known = 1
                 next
               }
               # check suites: id, status, conclusion, check run count, app
-              FILENAME == suites_f {
-                if ($0 == "") next
-                ns++; sid[ns] = $1; sst[ns] = $2; sco[ns] = $3; scnt[ns] = $4; sapp[ns] = $5
-                next
-              }
-              # commit statuses (latest per context): state, context
-              FILENAME == statuses_f {
-                if ($0 == "") next
-                nc++; cst[nc] = $1; cnm[nc] = $2
-                next
-              }
+              FILENAME == suites_f { ns++; sid[ns] = $1; sst[ns] = $2; sco[ns] = $3; scnt[ns] = $4; sapp[ns] = $5; next }
+              # commit statuses, the latest per context: state, context
+              FILENAME == statuses_f { nc++; cst[nc] = $1; cnm[nc] = $2; next }
               END {
-                for (k in best) {
-                  total++
-                  if (st[k] != "completed")  { pending++; print "PENDING\tcheck\t" nm[k] " (" st[k] ")" }
-                  else if (!good(co[k]))     { failed++;  print "FAILED\tcheck\t" nm[k] " (" co[k] ")" }
-                  else                       {            print "OK\tcheck\t" nm[k] " (" co[k] ")" }
+                # This module: this run, runs of other callers, re-runs. The
+                # workflow runs are used only if they include this run.
+                for (i = 1; i <= nw; i++)
+                  if (runs_known && (wid[i] == run_id || wmod[i] == "1")) { self_run[i] = 1; self_suite[wsu[i]] = 1 }
+                # Its jobs: this one by id, others by the job name - inside a
+                # run of this module if the workflow runs are known.
+                for (i = 1; i <= nr; i++)
+                  if (rid[i] == own || (self_named(rnm[i]) && (!runs_known || (rsu[i] in self_suite)))) { self_check[i] = 1; self_suite[rsu[i]] = 1 }
+
+                # Workflow runs. A cancelled run is left out, with its jobs, if
+                # a newer run of the same workflow exists for this commit (a
+                # concurrency group replaced it); otherwise it failed.
+                for (i = 1; runs_known && i <= nw; i++) {
+                  if (i in self_run) continue
+                  if (wst[i] != "completed") { pending++; print "PENDING\tworkflow\t" wnm[i] " (" wev[i] ", " wst[i] ")"; continue }
+                  if (good(wco[i])) { print "OK\tworkflow\t" wnm[i] " (" wev[i] ", " wco[i] ")"; continue }
+                  if (wco[i] == "cancelled") {
+                    for (j = 1; j <= nw; j++) if (!(j in self_run) && wwf[j] == wwf[i] && wid[j] + 0 > wid[i] + 0) break
+                    if (j <= nw) { replaced[wsu[i]] = 1; print "SKIP\tworkflow\t" wnm[i] " (" wev[i] ", cancelled, replaced by a newer run)"; continue }
+                  }
+                  failed++; print "FAILED\tworkflow\t" wnm[i] " (" wev[i] ", " wco[i] ")"
                 }
+
+                # Check runs. A re-run of a job adds a check run with the same
+                # name to the same suite; the newest counts. Same-named jobs of
+                # other workflow runs are other checks.
+                for (i = 1; i <= nr; i++) {
+                  if ((i in self_check) || (rsu[i] in replaced)) continue
+                  k = rsu[i] SUBSEP rnm[i]
+                  if (!(k in best) || rid[i] + 0 > rid[best[k]] + 0) best[k] = i
+                }
+                for (k in best) {
+                  i = best[k]; total++
+                  if (rst[i] != "completed")  { pending++; print "PENDING\tcheck\t" rnm[i] " (" rst[i] ")" }
+                  else if (!good(rco[i]))     { failed++;  print "FAILED\tcheck\t" rnm[i] " (" rco[i] ")" }
+                  else { if (rco[i] == "success") passed++; print "OK\tcheck\t" rnm[i] " (" rco[i] ")" }
+                }
+
+                # Check suites. A GitHub Actions suite is a workflow run: pending
+                # until all of its jobs are done, even before they exist, and
+                # failed if it ended before any job ran (invalid workflow,
+                # cancelled). Suites of other apps without check runs never get
+                # a result (e.g. an app that is installed but not used).
                 for (i = 1; i <= ns; i++) {
-                  if (sid[i] in self_suite) continue
-                  # A GitHub Actions suite is a workflow run: pending until all of
-                  # its jobs are done, even before they exist. Suites of other apps
-                  # that never create a check run stay queued forever - ignored.
+                  if ((sid[i] in self_suite) || (sid[i] in replaced)) continue
                   if (sst[i] != "completed") {
                     if (sapp[i] == "github-actions" || scnt[i] + 0 > 0) { pending++; print "PENDING\tsuite\t" sapp[i] " " sid[i] " (" sst[i] ")" }
-                  } else if (scnt[i] + 0 == 0 && sco[i] ~ /^(failure|startup_failure|timed_out|action_required)$/) {
-                    # A workflow that failed before any job ran (e.g. invalid file).
-                    failed++; print "FAILED\tsuite\t" sapp[i] " " sid[i] " (" sco[i] ")"
+                    else print "IDLE\tsuite\t" sapp[i] " " sid[i] " (" sst[i] ")"
+                  } else if (scnt[i] + 0 == 0) {
+                    if (sapp[i] == "github-actions" && !good(sco[i])) { failed++; print "FAILED\tsuite\t" sapp[i] " " sid[i] " (" sco[i] ", no job ran)" }
+                    else print "IDLE\tsuite\t" sapp[i] " " sid[i] " (" sco[i] ")"
                   }
                 }
+
                 for (i = 1; i <= nc; i++) {
                   total++
-                  if (cst[i] == "pending")       { pending++; print "PENDING\tstatus\t" cnm[i] }
-                  else if (cst[i] != "success")  { failed++;  print "FAILED\tstatus\t" cnm[i] " (" cst[i] ")" }
-                  else                           {            print "OK\tstatus\t" cnm[i] }
+                  if (cst[i] == "pending")      { pending++; print "PENDING\tstatus\t" cnm[i] }
+                  else if (cst[i] == "success") { passed++;  print "OK\tstatus\t" cnm[i] }
+                  else                          { failed++;  print "FAILED\tstatus\t" cnm[i] " (" cst[i] ")" }
                 }
-                printf "SUMMARY\t%d\t%d\t%d\n", total, pending, failed
+                printf "SUMMARY\t%d\t%d\t%d\t%d\n", total, pending, failed, passed
               }
-            ' "$WORK/runs" "$WORK/suites" "$WORK/statuses"
+            ' "$WORK/runs" "$WORK/workflow-runs" "$WORK/suites" "$WORK/statuses"
           }
 
-          echo "Waiting up to $((LIMIT / 60)) min for CI on $HEAD_SHA (own check run: ${OWN_CHECK_RUN_ID:-unknown})"
+          echo "Waiting up to $((LIMIT / 60)) min for CI on $HEAD_SHA (own check run: ${OWN_CHECK_RUN_ID:-unknown}, workflow run: $RUN_ID)"
           while :; do
-            if ! PR=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '[.state, .head.sha] | @tsv' 2> "$WORK/err"); then
-              api_failed
-            elif ! gh api --paginate "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" \
-                   --jq '.check_runs[] | [.id, .check_suite.id, .status, (.conclusion // "-"), .name] | @tsv' > "$WORK/runs" 2> "$WORK/err"; then
-              api_failed
-            elif ! gh api --paginate "repos/$REPO/commits/$HEAD_SHA/check-suites?per_page=100" \
-                   --jq '.check_suites[] | [.id, .status, (.conclusion // "-"), .latest_check_runs_count, (.app.slug // "-")] | @tsv' > "$WORK/suites" 2> "$WORK/err"; then
-              api_failed
-            elif ! gh api "repos/$REPO/commits/$HEAD_SHA/status?per_page=100" \
-                   --jq '.statuses[] | [.state, .context] | @tsv' > "$WORK/statuses" 2> "$WORK/err"; then
-              api_failed
-            else
+            if poll; then
               ERRORS=0
-              IFS=$'\t' read -r PR_STATE PR_HEAD <<< "$PR"
-              if [ "$PR_STATE" != "open" ]; then
-                echo "::notice title=Dependabot PR not merged::The PR is $PR_STATE."
-                finish closed "PR is $PR_STATE"
-                exit 0
-              fi
-              if [ "$PR_HEAD" != "$HEAD_SHA" ]; then
-                echo "::notice title=Dependabot PR not merged by this run::The PR has a new head commit ($PR_HEAD). The run for that commit decides."
-                finish superseded "new head $PR_HEAD"
-                exit 0
-              fi
-
               evaluate > "$WORK/eval"
-              IFS=$'\t' read -r _ TOTAL PENDING FAILED < <(grep '^SUMMARY' "$WORK/eval")
-              echo "[$((SECONDS / 60))m$((SECONDS % 60))s] checks: $TOTAL, pending: $PENDING, failed: $FAILED"
+              IFS=$'\t' read -r _ TOTAL PENDING FAILED PASSED < <(awk -F'\t' '$1 == "SUMMARY"' "$WORK/eval")
+              NOW=$(elapsed)
+              echo "[$((NOW / 60))m$((NOW % 60))s] checks: $TOTAL, passed: $PASSED, pending: $PENDING, failed: $FAILED"
 
               if [ "$FAILED" -gt 0 ]; then
                 FAILED_LIST=$(awk -F'\t' '$1 == "FAILED" { printf "%s%s", sep, $3; sep = ", " }' "$WORK/eval")
                 echo "::notice title=Dependabot PR left open::CI did not pass: $FAILED_LIST"
                 finish failed "$FAILED_LIST"
-                exit 0
               fi
-              # Nothing is decided before the PR has been watched for SETTLE
-              # seconds, so checks that are about to start are not missed.
-              if [ "$PENDING" -eq 0 ] && [ "$SECONDS" -ge "$SETTLE" ]; then
-                if [ "$TOTAL" -eq 0 ]; then
-                  echo "::notice title=Dependabot PR left open::No check ran on this PR, so nothing shows that the update works. Merge it by hand, or add a CI workflow that runs on pull requests."
-                  finish no-checks "no checks on the head commit"
-                  exit 0
+
+              if [ "$PENDING" -gt 0 ]; then
+                STABLE_SINCE=""
+              else
+                # All done - but only a state that stays the same for QUIET
+                # seconds counts. A new or changed result restarts it.
+                awk -F'\t' '$1 != "SUMMARY"' "$WORK/eval" | sort > "$WORK/state"
+                if [ -z "$STABLE_SINCE" ] || ! cmp -s "$WORK/state" "$WORK/state.seen"; then
+                  STABLE_SINCE=$NOW
+                  cp "$WORK/state" "$WORK/state.seen"
                 fi
-                finish green "$TOTAL checks passed"
-                exit 0
+                if [ "$NOW" -ge "$SETTLE" ] && [ $((NOW - STABLE_SINCE)) -ge "$QUIET" ]; then
+                  if [ "$PASSED" -gt 0 ]; then
+                    finish green "$PASSED of $TOTAL checks passed, none failed"
+                  fi
+                  if [ "$TOTAL" -eq 0 ]; then
+                    echo "::notice title=Dependabot PR left open::No check ran on this PR, so nothing shows that the update works. Merge it by hand, or add a CI workflow that runs on pull requests."
+                    finish no-checks "no checks on the head commit"
+                  fi
+                  echo "::notice title=Dependabot PR left open::None of the $TOTAL checks on this PR passed - all were skipped or neutral, so nothing shows that the update works. Merge it by hand."
+                  finish no-checks "all $TOTAL checks skipped or neutral"
+                fi
               fi
             fi
 
-            if [ "$SECONDS" -ge "$LIMIT" ]; then
-              echo "::notice title=Dependabot PR left open::CI was still running after $((LIMIT / 60)) min (ci-wait-minutes). Merge it by hand once CI is green."
-              finish timeout "CI still running after $((LIMIT / 60)) min"
-              exit 0
+            NOW=$(elapsed)
+            if [ "$NOW" -ge "$LIMIT" ]; then
+              echo "::notice title=Dependabot PR left open::CI had not finished and settled after $((LIMIT / 60)) min (ci-wait-minutes). Merge it by hand once CI is green."
+              finish timeout "CI not finished after $((LIMIT / 60)) min"
             fi
-            # Every 30 s, after 5 min every 60 s, after 15 min every 2 min: keeps
-            # a few PRs waiting at once well below the job token's rate limit.
-            if [ "$SECONDS" -lt 300 ]; then sleep "$POLL"
-            elif [ "$SECONDS" -lt 900 ]; then sleep $((POLL * 2))
-            else sleep $((POLL * 4)); fi
+            # Every 30 s, after 5 min every 60 s, after 15 min every 3 min: a
+            # few PRs waiting at once stay well below the job token's limit of
+            # 1,000 requests per hour and repository.
+            if [ "$NOW" -lt 300 ]; then sleep "$POLL"
+            elif [ "$NOW" -lt 900 ]; then sleep $((POLL * 2))
+            else sleep $((POLL * 6)); fi
           done
 
       - name: 🔀 Approve and merge
@@ -426,7 +523,7 @@ jobs:
                   if [ "$MERGED" = "true" ]; then DECISION="✅ Merged after CI passed ($CI_DETAIL)."
                   else DECISION="⚠️ Left open: CI passed, but the merge failed - see the annotation."; fi ;;
                 failed)     DECISION="⏸️ Left open: CI did not pass ($CI_DETAIL)." ;;
-                no-checks)  DECISION="⏸️ Left open: no check ran on this PR." ;;
+                no-checks)  DECISION="⏸️ Left open: no check passed on this PR ($CI_DETAIL)." ;;
                 timeout)    DECISION="⏸️ Left open: $CI_DETAIL." ;;
                 unreadable) DECISION="⏸️ Left open: the job token cannot read CI results (grant checks: read and statuses: read)." ;;
                 api-error)  DECISION="⏸️ Left open: CI results could not be read ($CI_DETAIL)." ;;

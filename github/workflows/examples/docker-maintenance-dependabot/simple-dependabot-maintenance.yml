@@ -12,9 +12,10 @@
 # 1. Dependabot scans Dockerfiles for base image updates (Sundays 06:30 UTC)
 # 2. Creates a PR with commit prefix "fix(docker):" for semantic release
 # 3. CI runs your Docker build workflow on the PR
-# 4. This workflow waits for that CI and merges the PR once every check has
-#    passed - patch updates only by default (merge-update-types); minor and
-#    major updates, failed CI and PRs without any check stay open
+# 4. This workflow waits for that CI - until it is complete and has not
+#    changed for 3 minutes, 5 at the earliest - and merges the PR if no check failed and at least
+#    one passed. Patch updates only by default (merge-update-types); minor and
+#    major updates, failed CI and PRs without a passed check stay open
 # 5. Semantic release creates a PATCH version (e.g., 1.0.0 → 1.0.1)
 # 6. Docker image is rebuilt and pushed
 #
@@ -55,11 +56,16 @@ on:
       - 'Dockerfile'
       - 'src/Dockerfile'
 
+# The reusable workflow declares no permissions of its own - the token has
+# exactly these. The three read scopes are needed in private repositories
+# (public CI results are readable without them); see
+# docs/workflows/docker-maintenance.md#permissions.
 permissions:
   contents: write       # merge
   pull-requests: write  # approve, read the PR
-  checks: read          # read CI results - needed in private repositories
-  statuses: read        # read commit statuses - needed in private repositories
+  checks: read          # check runs and suites
+  statuses: read        # commit statuses
+  actions: read         # workflow runs
 
 jobs:
   maintenance:

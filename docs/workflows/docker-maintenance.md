@@ -97,8 +97,9 @@ on:
 permissions:
   contents: write       # merge
   pull-requests: write  # approve, read the PR
-  checks: read          # read CI results - needed in private repositories
-  statuses: read        # read commit statuses - needed in private repositories
+  checks: read          # check runs and suites - private repositories
+  statuses: read        # commit statuses - private repositories
+  actions: read         # workflow runs - private repositories
 
 jobs:
   maintenance:
@@ -115,13 +116,29 @@ jobs:
 
 Nothing else to configure - no ruleset, no branch protection, no "Allow auto-merge".
 The workflow waits for the CI of the PR itself, so a CI workflow that runs on
-Dependabot PRs is all it needs. A PR on which no check runs is never merged.
+Dependabot PRs is all it needs. A PR on which no check passes is never merged.
 
-The workflow declares no permissions of its own; the job token has exactly what
-the calling workflow grants. In **public** repositories CI results are readable
-without `checks`/`statuses`. In **private** repositories they are not: a caller
-that grants only `contents` and `pull-requests` still runs, but every PR stays
-open with a notice that names the two missing permissions.
+#### Permissions
+
+The workflow declares no permissions of its own, so the job token has exactly
+what the calling workflow grants. A reusable workflow can only narrow its
+caller's permissions: declaring the read scopes itself would make GitHub refuse
+to start every caller that does not grant them.
+
+| Permission             | Used for                                       | Public repository | Private repository                                                                                      |
+|------------------------|------------------------------------------------|-------------------|---------------------------------------------------------------------------------------------------------|
+| `contents: write`      | merging the PR                                 | required          | required                                                                                                |
+| `pull-requests: write` | approving; reading the PR                      | required          | required                                                                                                |
+| `checks: read`         | check runs and check suites of the head commit | not needed        | required - without it every PR stays open with a notice                                                 |
+| `statuses: read`       | commit statuses of the head commit             | not needed        | required - without it every PR stays open with a notice                                                 |
+| `actions: read`        | workflow runs of the head commit               | not needed        | recommended - without it the wait uses check suites alone (see [How Merging Works](#how-merging-works)) |
+
+Public repositories need none of the three read scopes because their CI results
+are public; probed with a job token that had only `contents` and
+`pull-requests`, which read check runs, check suites, statuses and workflow
+runs in a public repository and got HTTP 403 for all of them in private ones.
+Granting the read scopes in public repositories as well does no harm and keeps
+the workflow working if the repository is made private.
 
 > Rulesets with required status checks are **not** the way to gate this:
 > GitHub Actions cannot be a ruleset bypass actor, so such a ruleset on `main`
@@ -134,13 +151,23 @@ open with a notice that names the two missing permissions.
    (default `patch`). A `minor` or `major` update, or one whose type cannot be
    determined (digest, non-semver tag), stays open for review. The redpanda
    `26.1 → 26.2` bump that took a production stack down was a semver-*minor*.
-2. **Wait for CI** - the job polls the check runs, check suites and commit
-   statuses on the PR head commit (every 30 s, later every 1-2 min), leaving out
-   its own job. It waits while anything is still running, including a workflow
-   whose later jobs have not been created yet, and never decides within the
-   first two minutes.
-3. **Merge** - only when every check concluded `success`, `neutral` or
-   `skipped`: the PR is approved (if `auto-approve` is on) and merged with
+2. **Wait for CI** - the job polls the check runs, check suites, commit
+   statuses and workflow runs of the PR head commit (every 30 s, after 5 min
+   every 60 s, after 15 min every 3 min), leaving out its own job and other
+   runs of this workflow. It waits while anything is pending - a queued
+   workflow run, one whose later jobs have not been created yet, a running
+   job, a pending status. It decides only on a **complete and quiet** state:
+   no earlier than 5 min after it started, and only after nothing has changed
+   for 3 min. A check that appears late - a workflow GitHub starts with a
+   delay, a code scanning result posted after its analysis job - restarts the
+   quiet period and is waited for. A cancelled workflow run counts as failed,
+   unless a newer run of the same workflow exists for the same commit (its
+   concurrency group replaced it); telling the two apart needs the workflow
+   runs, i.e. `actions: read` in private repositories.
+3. **Merge** - only when no check failed and at least one passed. `neutral`
+   and `skipped` are no failure (as for required status checks), but no pass
+   either: a PR whose checks were all skipped stays open. Then the PR is
+   approved (if `auto-approve` is on) and merged with
    `gh pr merge --match-head-commit`, so only the commit whose CI was checked can
    be merged. Where GitHub Actions may not approve pull requests (an org or repo
    setting), the rejected approval is a notice and the merge goes ahead; it only
@@ -152,9 +179,10 @@ annotation and in the job summary:
 | Situation                                                                | Annotation |
 |--------------------------------------------------------------------------|------------|
 | Update type not in `merge-update-types`, or unknown                      | notice     |
-| A check failed (or was cancelled, timed out, needs action)               | notice     |
-| No check ran on the PR                                                   | notice     |
-| CI still running after `ci-wait-minutes`                                 | notice     |
+| A check failed, was cancelled, timed out, needs action or went stale     | notice     |
+| A workflow could not start (`startup_failure`)                           | notice     |
+| No check ran on the PR, or all of them were skipped or neutral           | notice     |
+| CI not finished and quiet after `ci-wait-minutes`                        | notice     |
 | CI results not readable (private repo without `checks`/`statuses: read`) | notice     |
 | The PR got a new head commit or was closed meanwhile                     | notice     |
 | CI passed, but the merge was rejected (e.g. a required review)           | warning    |
@@ -165,13 +193,13 @@ push by that token - it does not start `push` workflows on `main` by itself.
 
 ### Workflow Options
 
-| Input                | Description                                                              | Default  |
-|----------------------|--------------------------------------------------------------------------|----------|
-| `merge-method`       | squash, merge, or rebase                                                 | `squash` |
-| `auto-approve`       | Approve the PR before merging it                                         | `true`   |
-| `merge-update-types` | Semver update types to merge, comma separated: `patch`, `minor`, `major` | `patch`  |
-| `ci-wait-minutes`    | How long to wait for CI (1-60) before leaving the PR open                | `60`     |
-| `allow-major`        | Deprecated: `true` equals `merge-update-types: patch,minor,major`        | `false`  |
+| Input                | Description                                                                     | Default  |
+|----------------------|---------------------------------------------------------------------------------|----------|
+| `merge-method`       | squash, merge, or rebase                                                        | `squash` |
+| `auto-approve`       | Approve the PR before merging it                                                | `true`   |
+| `merge-update-types` | Semver update types to merge, comma separated: `patch`, `minor`, `major`        | `patch`  |
+| `ci-wait-minutes`    | How long to wait for CI to finish and settle (10-60) before leaving the PR open | `60`     |
+| `allow-major`        | Deprecated: `true` equals `merge-update-types: patch,minor,major`               | `false`  |
 
 ### Examples
 
@@ -314,6 +342,9 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  checks: read
+  statuses: read
+  actions: read
 
 jobs:
   maintenance:
@@ -363,12 +394,13 @@ The workflow completes but the PR stays open.
 say why - see the table under [How Merging Works](#how-merging-works). The
 usual ones:
 
-| Annotation says                         | Fix                                                                                  |
-|-----------------------------------------|--------------------------------------------------------------------------------------|
-| update type is not merged automatically | Expected for minor/major; merge by hand, or widen `merge-update-types`               |
-| no check ran on this PR                 | Add a PR CI workflow whose `paths:` cover the files Dependabot changes               |
-| job token cannot read the CI results    | Private repo: add `checks: read` and `statuses: read` to the caller's `permissions:` |
-| CI was still running after N min        | Raise `ci-wait-minutes`, or merge by hand once CI is green                           |
+| Annotation says                             | Fix                                                                                                                    |
+|---------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
+| update type is not merged automatically     | Expected for minor/major; merge by hand, or widen `merge-update-types`                                                 |
+| CI did not pass                             | Fix the check, or merge by hand; a re-run of the check alone does not merge - re-run this job, or `@dependabot rebase` |
+| no check ran / none of the checks passed    | Add a PR CI workflow whose `paths:` cover the files Dependabot changes                                                 |
+| job token cannot read the CI results        | Private repo: add `checks: read` and `statuses: read` to the caller's `permissions:`                                   |
+| CI had not finished and settled after N min | Raise `ci-wait-minutes`, or merge by hand once CI is green                                                             |
 
 Do **not** add a ruleset with required status checks for this - it is not needed
 and blocks semantic-release (see above).
@@ -407,7 +439,7 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 
 ## Security Considerations
 
-- **CI must pass**: Auto-merge only after all checks succeed - and a PR without any check is not merged (Dependabot)
+- **CI must pass**: Dependabot PRs are merged only when no check failed and at least one passed, after CI has been complete and unchanged for 3 minutes (5 minutes after the start at the earliest)
 - **Pinned merge**: the Dependabot merge names the head commit whose CI was checked
 - **Auto-approve optional**: Can be disabled for manual review
 - **Audit trail**: All updates tracked in PRs and git history
