@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.3.0](https://github.com/bauer-group/automation-templates/compare/v11.2.4...v11.3.0) (2026-10-09)
+
+### 🚀 Features
+
+* **docker-maintenance:** merged Dependabot PRs after green CI ([#115](https://github.com/bauer-group/automation-templates/issues/115)) ([5d1d506](https://github.com/bauer-group/automation-templates/commit/5d1d5061ab5497f0388bffa8a7c490bb919720de))
+
 ## [11.2.4](https://github.com/bauer-group/automation-templates/compare/v11.2.3...v11.2.4) (2026-10-09)
 
 ### 🐛 Bug Fixes
