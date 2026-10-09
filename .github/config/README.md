@@ -119,12 +119,14 @@ Monitors Docker base images for digest changes and triggers rebuilds. Solves the
 - Monitors multiple images via JSON config or inline definition
 - Auto-creates GitHub variables for digest storage
 - Creates semantic-release compatible commits (`chore(deps):`)
+- With a target workflow, stores a digest only once the dispatched release succeeded and dispatches a failed release again
 - Supports dry-run mode for testing
 
 **Required Secrets:**
 - `PAT_READWRITE_ORGANISATION` - Personal Access Token with:
   - Variables (Read/Write)
   - Contents (Read/Write)
+  - Actions (Read/Write) when a target workflow is dispatched
 
 ## 📝 Naming Convention
 

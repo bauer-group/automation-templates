@@ -7,10 +7,13 @@
 # Features:
 # - Monitors multiple images via JSON config or inline definition
 # - Retries transient registry errors (3 attempts, 10s/20s backoff)
-# - Auto-creates GitHub variables for digest storage, written only after the
-#   release commit and dispatch succeeded, so a failed run is retried next time
+# - Auto-creates GitHub variables for digest storage
 # - Creates semantic-release compatible commits for automatic versioning
 # - Triggers target workflows via workflow_dispatch (with optional inputs)
+# - With a target workflow, a digest counts as handled only once the run
+#   dispatched for it has succeeded: the run is recorded in
+#   <variable>_PENDING, the next check reads its result, stores the digest on
+#   success and dispatches again when the run failed (e.g. a red release gate)
 # - Supports dry-run mode for testing
 #
 # Usage (config file + workflow dispatch):
@@ -32,7 +35,8 @@
 #   - Fine-grained PAT:
 #       - Contents (Read/Write)  - checkout + commit/push
 #       - Variables (Read/Write) - digest storage
-#       - Actions (Read/Write)   - workflow_dispatch (only if target-workflow is used)
+#       - Actions (Read/Write)   - workflow_dispatch and reading the result of
+#                                  the dispatched run (only if target-workflow is used)
 #   No packages scope is needed: the registry login does not use this PAT.
 #
 # Optional Secret: REGISTRY_READ_TOKEN
@@ -70,7 +74,7 @@ on:
         type: string
         default: ""
       target-workflow:
-        description: "Workflow file to trigger on update (optional, uses commit trigger if empty)"
+        description: "Workflow file to trigger on update (optional, uses commit trigger if empty). The new digest is stored once the dispatched run has succeeded; a failed run is dispatched again by the next check."
         required: false
         type: string
         default: ""
@@ -120,11 +124,23 @@ on:
 
     outputs:
       updates-found:
-        description: "True if at least one update was found"
+        description: "True if at least one image needs a release: a new digest, or a digest whose dispatched release failed"
         value: ${{ jobs.monitor.outputs.updates-found }}
       updated-images:
-        description: "JSON array of updated image names"
+        description: "JSON array of image names that need a release (new digests and retried ones)"
         value: ${{ jobs.monitor.outputs.updated-images }}
+      retried-images:
+        description: "JSON array of image names whose previously dispatched release run failed and that were dispatched again"
+        value: ${{ jobs.monitor.outputs.retried-images }}
+      pending-images:
+        description: "JSON array of image names whose dispatched release run has not finished yet"
+        value: ${{ jobs.monitor.outputs.pending-images }}
+      dispatched-run-id:
+        description: "Id of the target workflow run dispatched by this check (empty if none was dispatched or GitHub did not return it)"
+        value: ${{ jobs.monitor.outputs.dispatched-run-id }}
+      dispatched-run-url:
+        description: "URL of the target workflow run dispatched by this check"
+        value: ${{ jobs.monitor.outputs.dispatched-run-url }}
       triggered:
         description: "True if target workflow was triggered or commit was pushed"
         value: ${{ jobs.monitor.outputs.triggered }}
@@ -155,6 +171,10 @@ jobs:
     outputs:
       updates-found: ${{ steps.check.outputs.updates-found }}
       updated-images: ${{ steps.check.outputs.updated-images }}
+      retried-images: ${{ steps.check.outputs.retried-images }}
+      pending-images: ${{ steps.check.outputs.pending-images }}
+      dispatched-run-id: ${{ steps.dispatch.outputs.run-id }}
+      dispatched-run-url: ${{ steps.dispatch.outputs.run-url }}
       triggered: ${{ steps.release.outputs.triggered || steps.dispatch.outputs.triggered || 'false' }}
       commit-sha: ${{ steps.release.outputs.commit-sha }}
       new-digests: ${{ steps.check.outputs.new-digests }}
@@ -237,7 +257,9 @@ jobs:
           COMMIT_PREFIX_INPUT: ${{ inputs.commit-prefix }}
           DRY_RUN: ${{ inputs.dry-run }}
           FAIL_ON_UNREACHABLE: ${{ inputs.fail-on-unreachable-image }}
+          TARGET_WORKFLOW: ${{ inputs.target-workflow }}
         shell: bash
+        # Tested by .github/workflows/tests/docker-base-image-monitor.test.sh
         run: |
           set -euo pipefail
 
@@ -281,14 +303,25 @@ jobs:
 
           UPDATES_FOUND="false"
           UPDATED_IMAGES="[]"
+          NEW_IMAGES="[]"
           NEW_DIGESTS="{}"
           UPDATE_DETAILS=""
-          # Variable name -> new digest. Only collected here; the
-          # "Persist new digests" step writes them once commit, push and dispatch
-          # have succeeded. Writing them in this step made a failed release look
-          # handled: the next run read the new digest back, reported "No update"
-          # and the rebuild never happened.
+          RETRIED="[]"
+          PENDING="[]"
+          CONFIRMED="[]"
+          # Only collected here; the "Persist state" step writes them once
+          # commit, push and dispatch have succeeded.
+          #   VARIABLE_UPDATES  variable -> digest that counts as handled
+          #   DISPATCH_UPDATES  variable -> digest a release is dispatched for;
+          #                     stored as <variable>_PENDING with the run id
+          #   PENDING_DELETES   variables whose <variable>_PENDING is resolved
+          # Storing the digest right after the dispatch made a failed release
+          # look handled: the next run read the new digest back, reported
+          # "No update" and the rebuild never happened. With a target workflow
+          # the digest is therefore stored only once its run has succeeded.
           VARIABLE_UPDATES="{}"
+          DISPATCH_UPDATES="{}"
+          PENDING_DELETES="[]"
 
           # Must be initialised before first read: `set -euo pipefail` above enables
           # -u, which aborts on an unset variable.
@@ -320,6 +353,44 @@ jobs:
             done
             printf '%s' "$out"
             return 1
+          }
+
+          # Result of the release run recorded in a <variable>_PENDING value
+          # ({"digest", "run_id", "run_url"}) for the given digest, as
+          # "<state> <conclusion> <url>":
+          #   none        - no run recorded for this digest
+          #   in_progress - queued, waiting or running
+          #   success     - the run succeeded
+          #   failed      - any other conclusion, or the run no longer exists
+          #   unknown     - the run could not be read right now
+          # Only a completed, successful run counts. "unknown" is never
+          # treated as failed: re-dispatching on a transient API error would
+          # start a second release next to one that may well succeed.
+          release_state() {
+            local record="$1" digest="$2" run_id info status conclusion url
+            run_id=$(printf '%s' "$record" | jq -r --arg d "$digest" \
+              'select(type == "object" and .digest == $d) | .run_id // empty | tostring' 2>/dev/null || true)
+            if [[ ! "$run_id" =~ ^[0-9]+$ ]]; then
+              echo "none - -"
+              return 0
+            fi
+            url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
+            if ! info=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" \
+                          --jq '[.status, (.conclusion // "none"), .html_url] | join(" ")' 2>&1 < /dev/null); then
+              case "$info" in
+                *"HTTP 404"*) echo "failed deleted $url" ;;
+                *) echo "unknown - $url" ;;
+              esac
+              return 0
+            fi
+            read -r status conclusion url <<< "$info"
+            if [ "$status" != "completed" ]; then
+              echo "in_progress - $url"
+            elif [ "$conclusion" = "success" ]; then
+              echo "success success $url"
+            else
+              echo "failed $conclusion $url"
+            fi
           }
 
           # Process each image (using process substitution to preserve variables)
@@ -387,32 +458,80 @@ jobs:
               echo "📦 Stored digest: ${STORED_DIGEST:0:20}..."
             fi
 
-            # Compare digests
-            if [ "$CURRENT_DIGEST" != "$STORED_DIGEST" ]; then
+            if [ "$CURRENT_DIGEST" = "$STORED_DIGEST" ]; then
               echo ""
+              echo "ℹ️  No update for $NAME (digest unchanged)"
+              echo "::endgroup::"
+              continue
+            fi
+
+            # The digest differs from the stored one. With a target workflow a
+            # release may already have been dispatched for exactly this digest;
+            # then the result of that run decides, not the comparison.
+            REASON="new"
+            if [ -n "$TARGET_WORKFLOW" ]; then
+              PENDING_RECORD=$(gh variable get "${VARIABLE}_PENDING" 2>/dev/null < /dev/null || echo "")
+              read -r RUN_STATE RUN_CONCLUSION RUN_URL <<< "$(release_state "$PENDING_RECORD" "$CURRENT_DIGEST")"
+              ENTRY=$(jq -nc --arg name "$NAME" --arg state "$RUN_STATE" --arg conclusion "$RUN_CONCLUSION" --arg url "$RUN_URL" \
+                '{name: $name, state: $state, conclusion: $conclusion, url: $url}')
+              case "$RUN_STATE" in
+                in_progress|unknown)
+                  if [ "$RUN_STATE" = "unknown" ]; then
+                    echo "::warning::Could not read the release run for $NAME ($RUN_URL) - the next check reads it again"
+                  else
+                    echo "⏳ The release dispatched for this digest is still running: $RUN_URL"
+                  fi
+                  PENDING=$(printf '%s' "$PENDING" | jq -c --argjson e "$ENTRY" '. + [$e]')
+                  echo "::endgroup::"
+                  continue
+                  ;;
+                success)
+                  echo "✅ The release dispatched for this digest succeeded: $RUN_URL"
+                  echo "💾 $VARIABLE will be stored"
+                  CONFIRMED=$(printf '%s' "$CONFIRMED" | jq -c --argjson e "$ENTRY" '. + [$e]')
+                  VARIABLE_UPDATES=$(printf '%s' "$VARIABLE_UPDATES" | jq -c --arg v "$VARIABLE" --arg d "$CURRENT_DIGEST" '. + {($v): $d}')
+                  PENDING_DELETES=$(printf '%s' "$PENDING_DELETES" | jq -c --arg v "$VARIABLE" '. + [$v]')
+                  echo "::endgroup::"
+                  continue
+                  ;;
+                failed)
+                  echo "::warning::The release dispatched for $NAME ($IMAGE:$TAG) ended with '$RUN_CONCLUSION' ($RUN_URL) - the image is still built from the old base. Dispatching the release again."
+                  RETRIED=$(printf '%s' "$RETRIED" | jq -c --argjson e "$ENTRY" '. + [$e]')
+                  REASON="retry"
+                  ;;
+              esac
+            fi
+
+            echo ""
+            if [ "$REASON" = "new" ]; then
               echo "✅ Update detected for $NAME!"
               echo "   Old: ${STORED_DIGEST:-<none>}"
               echo "   New: $CURRENT_DIGEST"
-
-              UPDATES_FOUND="true"
-              UPDATED_IMAGES=$(echo "$UPDATED_IMAGES" | jq -c --arg name "$NAME" '. + [$name]')
-              NEW_DIGESTS=$(echo "$NEW_DIGESTS" | jq -c --arg name "$NAME" --arg digest "$CURRENT_DIGEST" '. + {($name): $digest}')
-
+              NEW_IMAGES=$(printf '%s' "$NEW_IMAGES" | jq -c --arg name "$NAME" '. + [$name]')
               # Build update details for commit message
               UPDATE_DETAILS="${UPDATE_DETAILS}
           - $NAME ($IMAGE:$TAG)
             Old: ${STORED_DIGEST:-<none>}
             New: $CURRENT_DIGEST"
-
-              VARIABLE_UPDATES=$(printf '%s' "$VARIABLE_UPDATES" | jq -c --arg v "$VARIABLE" --arg d "$CURRENT_DIGEST" '. + {($v): $d}')
-              if [ "$DRY_RUN" != "true" ]; then
-                echo "💾 Variable $VARIABLE will be stored after the release was triggered"
-              else
-                echo "🔍 DRY RUN: Would set variable $VARIABLE"
-              fi
             else
-              echo ""
-              echo "ℹ️  No update for $NAME (digest unchanged)"
+              echo "🔁 Release retry for $NAME ($CURRENT_DIGEST)"
+            fi
+
+            UPDATES_FOUND="true"
+            UPDATED_IMAGES=$(printf '%s' "$UPDATED_IMAGES" | jq -c --arg name "$NAME" '. + [$name]')
+            NEW_DIGESTS=$(printf '%s' "$NEW_DIGESTS" | jq -c --arg name "$NAME" --arg digest "$CURRENT_DIGEST" '. + {($name): $digest}')
+
+            if [ -n "$TARGET_WORKFLOW" ]; then
+              DISPATCH_UPDATES=$(printf '%s' "$DISPATCH_UPDATES" | jq -c --arg v "$VARIABLE" --arg d "$CURRENT_DIGEST" '. + {($v): $d}')
+              PERSIST_NOTE="${VARIABLE}_PENDING will record the dispatched run; $VARIABLE is stored once that run succeeded"
+            else
+              VARIABLE_UPDATES=$(printf '%s' "$VARIABLE_UPDATES" | jq -c --arg v "$VARIABLE" --arg d "$CURRENT_DIGEST" '. + {($v): $d}')
+              PERSIST_NOTE="$VARIABLE will be stored after the release commit was pushed"
+            fi
+            if [ "$DRY_RUN" != "true" ]; then
+              echo "💾 $PERSIST_NOTE"
+            else
+              echo "🔍 DRY RUN: nothing is stored ($PERSIST_NOTE)"
             fi
 
             echo "::endgroup::"
@@ -423,13 +542,28 @@ jobs:
           # substitution above, not a pipe - a pipe would run the loop in a subshell
           # and discard everything accumulated in it.
           UNREACHABLE_COUNT=$(printf '%s' "$UNREACHABLE_IMAGES" | jq 'length')
-          echo "updates-found=$UPDATES_FOUND" >> "$GITHUB_OUTPUT"
-          echo "updated-images=$UPDATED_IMAGES" >> "$GITHUB_OUTPUT"
-          echo "new-digests=$NEW_DIGESTS" >> "$GITHUB_OUTPUT"
-          echo "variable-updates=$VARIABLE_UPDATES" >> "$GITHUB_OUTPUT"
-          echo "images-configured=$CONFIGURED_COUNT" >> "$GITHUB_OUTPUT"
-          echo "images-checked=$CHECKED_COUNT" >> "$GITHUB_OUTPUT"
-          echo "unreachable-images=$UNREACHABLE_IMAGES" >> "$GITHUB_OUTPUT"
+          NEW_UPDATES_FOUND=$(printf '%s' "$NEW_IMAGES" | jq 'length > 0')
+          STATE_CHANGED=$(jq -n --argjson v "$VARIABLE_UPDATES" --argjson d "$DISPATCH_UPDATES" --argjson p "$PENDING_DELETES" \
+            '($v | length) + ($d | length) + ($p | length) > 0')
+          {
+            echo "updates-found=$UPDATES_FOUND"
+            echo "updated-images=$UPDATED_IMAGES"
+            echo "new-updates-found=$NEW_UPDATES_FOUND"
+            echo "new-images=$NEW_IMAGES"
+            echo "new-digests=$NEW_DIGESTS"
+            echo "retried=$RETRIED"
+            echo "retried-images=$(printf '%s' "$RETRIED" | jq -c 'map(.name)')"
+            echo "pending=$PENDING"
+            echo "pending-images=$(printf '%s' "$PENDING" | jq -c 'map(.name)')"
+            echo "confirmed=$CONFIRMED"
+            echo "variable-updates=$VARIABLE_UPDATES"
+            echo "dispatch-updates=$DISPATCH_UPDATES"
+            echo "pending-deletes=$PENDING_DELETES"
+            echo "state-changed=$STATE_CHANGED"
+            echo "images-configured=$CONFIGURED_COUNT"
+            echo "images-checked=$CHECKED_COUNT"
+            echo "unreachable-images=$UNREACHABLE_IMAGES"
+          } >> "$GITHUB_OUTPUT"
 
           # Store update details for commit message (using delimiter for multiline)
           # This writes to GITHUB_ENV, where a forged entry becomes an environment
@@ -448,8 +582,13 @@ jobs:
           echo "Images checked: $CHECKED_COUNT of $CONFIGURED_COUNT configured"
           echo "Updates found: $UPDATES_FOUND"
           if [ "$UPDATES_FOUND" = "true" ]; then
-            echo "Updated images: $(echo "$UPDATED_IMAGES" | jq -r 'join(", ")')"
+            echo "Updated images: $(printf '%s' "$UPDATED_IMAGES" | jq -r 'join(", ")')"
           fi
+          for LIST in "Release retried:$RETRIED" "Release running:$PENDING" "Release confirmed:$CONFIRMED"; do
+            if [ "$(printf '%s' "${LIST#*:}" | jq 'length')" -gt 0 ]; then
+              echo "${LIST%%:*}: $(printf '%s' "${LIST#*:}" | jq -r 'map(.name) | join(", ")')"
+            fi
+          done
 
           if [ "$UNREACHABLE_COUNT" -gt 0 ]; then
             echo "Unreachable: $(printf '%s' "$UNREACHABLE_IMAGES" | jq -r 'join(", ")')"
@@ -461,13 +600,16 @@ jobs:
             echo "::warning::$UNREACHABLE_COUNT of $CONFIGURED_COUNT base image(s) could not be checked (fail-on-unreachable-image is false). This run did NOT verify them."
           fi
 
+      # Only for new digests. A retry re-dispatches the release of a digest
+      # whose commit is already on the branch; another empty commit would add
+      # nothing but noise.
       - name: "📝 Create release commit"
         id: release
-        if: steps.check.outputs.updates-found == 'true' && inputs.commit-and-release == true && inputs.dry-run != true
+        if: steps.check.outputs.new-updates-found == 'true' && inputs.commit-and-release == true && inputs.dry-run != true
         env:
           GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           COMMIT_PREFIX: ${{ steps.check.outputs.commit-prefix }}
-          UPDATED_IMAGES_JSON: ${{ steps.check.outputs.updated-images }}
+          UPDATED_IMAGES_JSON: ${{ steps.check.outputs.new-images }}
           TARGET_WORKFLOW: ${{ inputs.target-workflow }}
         shell: bash
         run: |
@@ -529,58 +671,140 @@ jobs:
           TARGET_REF: ${{ inputs.target-workflow-ref }}
           TARGET_INPUTS: ${{ inputs.target-workflow-inputs }}
         shell: bash
+        # Tested by .github/workflows/tests/docker-base-image-monitor.test.sh
         run: |
+          set -euo pipefail
           echo "🚀 Triggering workflow: $TARGET_WORKFLOW"
 
-          # Build gh workflow run command with optional inputs
-          ARGS=("gh" "workflow" "run" "$TARGET_WORKFLOW" "--ref" "$TARGET_REF")
-
-          if [ -n "$TARGET_INPUTS" ]; then
-            echo "📋 With inputs:"
-            while IFS= read -r field; do
-              echo "  - $field"
-              ARGS+=("--field" "$field")
-            done < <(printf '%s' "$TARGET_INPUTS" | jq -r 'to_entries[] | "\(.key)=\(.value)"')
+          # The REST endpoint instead of `gh workflow run`: with
+          # return_run_details it answers with the id of the run it created,
+          # which the next check needs to read the run's result. The endpoint
+          # takes a file name or an id; `gh workflow run` also took a workflow
+          # name, which is resolved here so existing callers keep working.
+          WORKFLOW="$TARGET_WORKFLOW"
+          if [[ "$WORKFLOW" =~ \.ya?ml$ ]]; then
+            WORKFLOW="${WORKFLOW##*/}"
+          elif [[ ! "$WORKFLOW" =~ ^[0-9]+$ ]]; then
+            WORKFLOW_ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows" --paginate \
+              | jq -rs --arg name "$WORKFLOW" '[.[].workflows[] | select(.name == $name) | .id] | first // empty')
+            if [ -z "$WORKFLOW_ID" ]; then
+              echo "::error::No workflow named '$TARGET_WORKFLOW' in ${GITHUB_REPOSITORY}"
+              exit 1
+            fi
+            WORKFLOW="$WORKFLOW_ID"
           fi
 
-          "${ARGS[@]}"
+          INPUTS="${TARGET_INPUTS:-}"
+          [ -n "$INPUTS" ] || INPUTS='{}'
+          if ! printf '%s' "$INPUTS" | jq -e 'type == "object"' > /dev/null 2>&1; then
+            echo "::error::target-workflow-inputs must be a JSON object, e.g. '{\"force-release\": \"true\"}'"
+            exit 1
+          fi
+          # Values as strings, exactly as `gh workflow run --field` sent them.
+          BODY=$(jq -nc --arg ref "$TARGET_REF" --argjson inputs "$INPUTS" \
+            '{ref: $ref, inputs: ($inputs | map_values(tostring)), return_run_details: true}')
+          if [ "$(printf '%s' "$INPUTS" | jq 'length')" -gt 0 ]; then
+            echo "📋 With inputs:"
+            printf '%s' "$BODY" | jq -r '.inputs | to_entries[] | "  - \(.key)=\(.value)"'
+          fi
+
+          RESPONSE=$(printf '%s' "$BODY" | gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW}/dispatches" --input -)
           echo "triggered=true" >> "$GITHUB_OUTPUT"
-          echo "✅ Workflow triggered successfully"
+
+          RUN_ID=$(printf '%s' "$RESPONSE" | jq -r '.workflow_run_id // empty' 2>/dev/null || true)
+          RUN_URL=$(printf '%s' "$RESPONSE" | jq -r '.html_url // empty' 2>/dev/null || true)
+          if [[ "$RUN_ID" =~ ^[0-9]+$ ]]; then
+            [ -n "$RUN_URL" ] || RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}"
+            echo "run-id=$RUN_ID" >> "$GITHUB_OUTPUT"
+            echo "run-url=$RUN_URL" >> "$GITHUB_OUTPUT"
+            echo "✅ Workflow triggered successfully: $RUN_URL"
+          else
+            # Only a GitHub without return_run_details (an older GHES) answers
+            # without a run. The digests are then stored right away, as before.
+            echo "::warning::The dispatch did not return a run id, so the result of the release is not tracked - its digests are stored right away"
+            echo "✅ Workflow triggered successfully"
+          fi
 
       # Last on purpose: success() turns false as soon as the check (e.g. an
-      # unreachable image), the commit, the push or the dispatch failed. The
-      # digests then stay unchanged and the next run detects the same update
-      # again instead of dropping it. Failing here is the cheaper direction:
-      # the next run only repeats a release that was already started.
-      - name: "💾 Persist new digests"
+      # unreachable image), the commit, the push or the dispatch failed.
+      # Nothing is stored then and the next run detects the same update again
+      # instead of dropping it. Failing here is the cheaper direction: the next
+      # run only repeats a release that was already started.
+      #
+      # With a target workflow the digest itself is not stored here yet: the
+      # dispatched run is recorded in <variable>_PENDING, and the digest is
+      # stored by the check that finds that run succeeded.
+      - name: "💾 Persist state"
         id: persist
-        if: success() && steps.check.outputs.updates-found == 'true' && inputs.dry-run != true
+        if: success() && steps.check.outputs.state-changed == 'true' && inputs.dry-run != true
         env:
           GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           VARIABLE_UPDATES: ${{ steps.check.outputs.variable-updates }}
+          DISPATCH_UPDATES: ${{ steps.check.outputs.dispatch-updates }}
+          PENDING_DELETES: ${{ steps.check.outputs.pending-deletes }}
+          RUN_ID: ${{ steps.dispatch.outputs.run-id }}
+          RUN_URL: ${{ steps.dispatch.outputs.run-url }}
         shell: bash
+        # Tested by .github/workflows/tests/docker-base-image-monitor.test.sh
         run: |
           set -euo pipefail
 
           FAILED=""
-          while IFS=$'\t' read -r VARIABLE DIGEST; do
-            STORED="false"
+          # Up to 3 attempts (5s/10s backoff) per write.
+          with_retry() {
+            local attempt
             for attempt in 1 2 3; do
-              if gh variable set "$VARIABLE" --body "$DIGEST" < /dev/null; then
-                STORED="true"
-                break
-              fi
-              if [ "$attempt" -lt 3 ]; then
-                sleep $((attempt * 5))
-              fi
+              "$@" < /dev/null && return 0
+              [ "$attempt" -lt 3 ] && sleep $((attempt * 5))
             done
-            if [ "$STORED" = "true" ]; then
-              echo "✅ Stored $VARIABLE = ${DIGEST:0:20}..."
+            return 1
+          }
+          store() {
+            if with_retry gh variable set "$1" --body "$2"; then
+              echo "✅ Stored $1 = ${3:-$2}"
             else
-              echo "::error::Could not store $VARIABLE - the next run will detect this update again"
-              FAILED="$FAILED $VARIABLE"
+              echo "::error::Could not store $1 - the next run will detect this update again"
+              FAILED="$FAILED $1"
             fi
+          }
+          # A record that does not exist is already gone.
+          drop() {
+            local out attempt
+            for attempt in 1 2 3; do
+              if out=$(gh variable delete "$1" 2>&1 < /dev/null); then
+                echo "🧹 Removed $1"
+                return 0
+              fi
+              case "$out" in *"HTTP 404"*|*"not found"*|*"Not Found"*) return 0 ;; esac
+              [ "$attempt" -lt 3 ] && sleep $((attempt * 5))
+            done
+            echo "::warning::Could not remove $1 ($out) - it is left over and ignored once the digest changes"
+          }
+
+          while IFS=$'\t' read -r VARIABLE DIGEST; do
+            if [[ "$RUN_ID" =~ ^[0-9]+$ ]]; then
+              RECORD=$(jq -nc --arg d "$DIGEST" --argjson r "$RUN_ID" --arg u "$RUN_URL" '{digest: $d, run_id: $r, run_url: $u}')
+              store "${VARIABLE}_PENDING" "$RECORD" "run $RUN_ID for ${DIGEST:0:20}..."
+            else
+              # No run to follow up on: store the digest as before.
+              store "$VARIABLE" "$DIGEST" "${DIGEST:0:20}..."
+              drop "${VARIABLE}_PENDING"
+            fi
+          done < <(printf '%s' "$DISPATCH_UPDATES" | jq -r 'to_entries[] | "\(.key)\t\(.value)"')
+
+          while IFS=$'\t' read -r VARIABLE DIGEST; do
+            store "$VARIABLE" "$DIGEST" "${DIGEST:0:20}..."
           done < <(printf '%s' "$VARIABLE_UPDATES" | jq -r 'to_entries[] | "\(.key)\t\(.value)"')
+
+          # Only once the digest is stored: a record removed before that would
+          # turn the confirmed release into a new update on the next run.
+          while IFS= read -r VARIABLE; do
+            case " $FAILED " in
+              *" $VARIABLE "*) ;;
+              *) drop "${VARIABLE}_PENDING" ;;
+            esac
+          done < <(printf '%s' "$PENDING_DELETES" | jq -r '.[]')
 
           if [ -n "$FAILED" ]; then
             exit 1
@@ -591,19 +815,37 @@ jobs:
         env:
           DRY_RUN: ${{ inputs.dry-run }}
           PERSIST_OUTCOME: ${{ steps.persist.outcome }}
+          STATE_CHANGED: ${{ steps.check.outputs.state-changed }}
           UPDATES_FOUND: ${{ steps.check.outputs.updates-found }}
           UPDATED_IMAGES_JSON: ${{ steps.check.outputs.updated-images }}
           NEW_DIGESTS_JSON: ${{ steps.check.outputs.new-digests }}
+          RETRIED_JSON: ${{ steps.check.outputs.retried }}
+          PENDING_JSON: ${{ steps.check.outputs.pending }}
+          CONFIRMED_JSON: ${{ steps.check.outputs.confirmed }}
           RELEASE_TRIGGERED: ${{ steps.release.outputs.triggered }}
           RELEASE_SHA: ${{ steps.release.outputs.commit-sha }}
           RELEASE_PREFIX: ${{ steps.check.outputs.commit-prefix }}
           DISPATCH_TRIGGERED: ${{ steps.dispatch.outputs.triggered }}
+          DISPATCH_RUN_URL: ${{ steps.dispatch.outputs.run-url }}
           TARGET_WORKFLOW: ${{ inputs.target-workflow }}
           IMAGES_CONFIGURED: ${{ steps.check.outputs.images-configured }}
           IMAGES_CHECKED: ${{ steps.check.outputs.images-checked }}
           UNREACHABLE_JSON: ${{ steps.check.outputs.unreachable-images }}
         shell: bash
         run: |
+          # Length of a JSON array output; 0 when the check never wrote it.
+          count() {
+            if [ -n "$1" ]; then printf '%s' "$1" | jq 'length'; else echo 0; fi
+          }
+          UNREACHABLE_COUNT=$(count "$UNREACHABLE_JSON")
+          RETRIED_COUNT=$(count "$RETRIED_JSON")
+          PENDING_COUNT=$(count "$PENDING_JSON")
+          CONFIRMED_COUNT=$(count "$CONFIRMED_JSON")
+          STORED_LABEL="stored"
+          if [ "$DRY_RUN" = "true" ]; then
+            STORED_LABEL="not stored (dry run)"
+          fi
+
           {
             echo "## 🔍 Docker Base Image Monitor Results"
             echo ""
@@ -621,11 +863,6 @@ jobs:
               echo ""
             fi
 
-            UNREACHABLE_COUNT=0
-            if [ -n "$UNREACHABLE_JSON" ]; then
-              UNREACHABLE_COUNT=$(printf '%s' "$UNREACHABLE_JSON" | jq 'length')
-            fi
-
             if [ "$UNREACHABLE_COUNT" -gt 0 ]; then
               echo "### ⚠️ Incomplete check"
               echo ""
@@ -635,6 +872,24 @@ jobs:
               echo ""
               echo "A common cause is an internal or private package: the calling workflow must grant \`packages: read\`."
               echo "See [GHCR Internal Visibility](https://github.com/bauer-group/automation-templates/blob/main/docs/ghcr-internal-visibility.md)."
+              echo ""
+            fi
+
+            # Before the updates: a failed release is the one thing in this
+            # summary that somebody has to look at.
+            if [ "$RETRIED_COUNT" -gt 0 ]; then
+              echo "### ❌ Release failed"
+              echo ""
+              echo "The release dispatched for these digests did not succeed, so the images are still built from the old base."
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "A real run would dispatch the release again."
+              else
+                echo "The release is dispatched again below; every check repeats this until a run succeeds."
+              fi
+              echo ""
+              echo "| Image | Failed run | Result |"
+              echo "|-------|------------|--------|"
+              printf '%s' "$RETRIED_JSON" | jq -r '.[] | "| `\(.name)` | [\(.url | split("/") | last)](\(.url)) | ❌ Failed (\(.conclusion)) |"'
               echo ""
             fi
 
@@ -663,20 +918,50 @@ jobs:
                 echo ""
                 echo "### 🚀 Workflow dispatched"
                 echo ""
-                echo "Target workflow \`$TARGET_WORKFLOW\` was triggered via \`workflow_dispatch\`."
-              fi
-
-              if [ "$DRY_RUN" != "true" ] && [ "$PERSIST_OUTCOME" != "success" ]; then
-                echo ""
-                echo "> ⚠️ The new digests were **not** stored because a step failed. The next run detects this update again."
+                if [ -n "$DISPATCH_RUN_URL" ]; then
+                  echo "Target workflow \`$TARGET_WORKFLOW\` was triggered via \`workflow_dispatch\`: [run ${DISPATCH_RUN_URL##*/}]($DISPATCH_RUN_URL)."
+                  echo ""
+                  echo "The new digests are stored once this run has succeeded. The next check reads its result and dispatches the release again if it failed."
+                else
+                  echo "Target workflow \`$TARGET_WORKFLOW\` was triggered via \`workflow_dispatch\`."
+                  echo ""
+                  echo "> ⚠️ GitHub returned no run id, so the result of this release is not tracked - the new digests were stored right away."
+                fi
               fi
             elif [ "$UNREACHABLE_COUNT" -gt 0 ]; then
               echo "### ℹ️ No updates among the images that could be read"
               echo ""
               echo "This is **not** a clean result - $UNREACHABLE_COUNT image(s) were never checked."
-            else
+            elif [ "$PENDING_COUNT" -eq 0 ] && [ "$CONFIRMED_COUNT" -eq 0 ]; then
               echo "### ℹ️ No updates found"
               echo ""
               echo "All base images are up to date."
+            fi
+
+            if [ "$PENDING_COUNT" -gt 0 ]; then
+              echo ""
+              echo "### ⏳ Release still running"
+              echo ""
+              echo "| Image | Run | Status |"
+              echo "|-------|-----|--------|"
+              printf '%s' "$PENDING_JSON" | jq -r '.[] | "| `\(.name)` | [\(.url | split("/") | last)](\(.url)) | \(if .state == "unknown" then "⚠️ Unknown - the run could not be read" else "⏳ Running" end) |"'
+              echo ""
+              echo "Each digest is stored once its run has succeeded; the next check reads the result again."
+            fi
+
+            if [ "$CONFIRMED_COUNT" -gt 0 ]; then
+              echo ""
+              echo "### ✅ Release confirmed"
+              echo ""
+              echo "| Image | Run | Result |"
+              echo "|-------|-----|--------|"
+              printf '%s' "$CONFIRMED_JSON" | jq -r '.[] | "| `\(.name)` | [\(.url | split("/") | last)](\(.url)) | ✅ Succeeded |"'
+              echo ""
+              echo "The new digests are $STORED_LABEL."
+            fi
+
+            if [ "$DRY_RUN" != "true" ] && [ "$STATE_CHANGED" = "true" ] && [ "$PERSIST_OUTCOME" != "success" ]; then
+              echo ""
+              echo "> ⚠️ The new state was **not** stored because a step failed. The next run detects this update again."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
