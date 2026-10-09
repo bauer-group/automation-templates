@@ -8,7 +8,7 @@
 
 This directory contains modular, reusable GitHub Actions designed for enterprise environments. Each action follows industry best practices for security, reliability, and maintainability.
 
-> **💡 Empfehlung:** Nutze die neuen **[modularen Workflows](../modules/)** für noch bessere Komposition und Wiederverwendbarkeit! Diese Actions werden als Bausteine in den modularen Workflows verwendet.
+> **💡 Empfehlung:** Nutze die neuen **[modularen Workflows](../workflows/MODULES-README.MD)** für noch bessere Komposition und Wiederverwendbarkeit! Diese Actions werden als Bausteine in den modularen Workflows verwendet.
 
 ## 📦 Available Actions
 
@@ -48,7 +48,7 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 
 | Action | Purpose | Scope | Modularer Workflow |
 |--------|---------|-------|---------------------|
-| [`readme-generate`](./readme-generate/) | Dynamic documentation | Repository-wide | [readme.yml](../workflows/examples/readme.yml) |
+| [`readme-generate`](./readme-generate/) | Dynamic documentation | Repository-wide | [readme.yml](../../github/workflows/examples/documentation/readme.yml) |
 
 ### 🐍 Python Development
 
@@ -58,7 +58,7 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 
 ## 🚀 Quick Start
 
-> **💪 Empfehlung:** Verwende die [modularen Workflows](../modules/) für optimale Komposition!
+> **💪 Empfehlung:** Verwende die [modularen Workflows](../workflows/MODULES-README.MD) für optimale Komposition!
 
 ### 🧩 Modulare Workflows (Empfohlen)
 
@@ -309,20 +309,20 @@ act -j test-security-scan --secret-file .env
 ## 📚 Documentation
 
 ### Individual Actions
-- [Security Scanning Action](./security-scan/README.md)
+- [Security Scanning Action](./security-scan/action.yml)
 - [Semantic Release Action](./semantic-release/README.md)
-- [Changelog Generator Action](./generate-changelog/README.md)
-- [Auto-Merge Action](./auto-merge/README.md)
-- [License Compliance Action](./license-compliance/README.md)
-- [Artifact Generator Action](./artifact-generator/README.md)
-- [README Generator Action](./readme-generate/README.md)
+- [Changelog Generator Action](./generate-changelog/action.yml)
+- [Auto-Merge Action](./auto-merge/action.yml)
+- [License Compliance Action](./license-compliance/action.yml)
+- [Artifact Generator Action](./artifact-generator/action.yml)
+- [README Generator Action](./readme-generate/action.yml)
 
 ### Modulare Workflows (Empfohlen)
-- [Modulare Workflow-Komponenten](../modules/README.md)
-- [Workflow-Beispiele](../workflows/examples/README.MD)
-- [Security-Scan Workflow](../modules/security-scan.yml)
-- [Release-Management Workflow](../modules/release-management.yml)
-- [License-Compliance Workflow](../modules/license-compliance.yml)
+- [Modulare Workflow-Komponenten](../workflows/MODULES-README.MD)
+- [Workflow-Beispiele](../../github/workflows/examples/README.md)
+- [Security-Scan Workflow](../workflows/modules-security-scan.yml)
+- [Release-Management Workflow](../workflows/modules-semantic-release.yml)
+- [License-Compliance Workflow](../workflows/modules-license-compliance.yml)
 
 ## 🛠️ Support
 
