@@ -6,6 +6,8 @@
 #
 # 0. Only Dependabot's PRs, on events Dependabot raised, with nothing but
 #    verified Dependabot commits. Nothing from the PR is checked out or run.
+#    A PR that changes CI - a GitHub Actions update, any file under .github/
+#    - is never merged: its own CI cannot vouch for it.
 # 1. Required CI: `required-workflows` names the PR CI workflow files that
 #    build and test the update. Without it nothing is merged - a passed check
 #    alone (GitGuardian, a notification job) tests nothing.
@@ -65,6 +67,10 @@
 # - A PR CI workflow, triggered by `pull_request`, that builds and tests the
 #   files Dependabot changes - listed in `required-workflows`. A PR whose
 #   files do not start it stays open: it was not tested.
+# - GitHub Actions updates and other PRs that change .github/ are merged by
+#   hand: a pull_request run uses the PR's own version of a changed workflow,
+#   and a changed push- or schedule-only workflow does not run before the
+#   merge at all.
 # =============================================================================
 
 name: 🐳 Docker Maintenance (Dependabot)
@@ -140,12 +146,14 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Decides from the inputs and the update type alone - no API call.
+      # Decides from the inputs, the ecosystem and the update type alone - no
+      # API call.
       # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
       - name: 🛡️ Merge guard
         id: guard
         shell: bash
         env:
+          PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
           MERGE_UPDATE_TYPES: ${{ inputs.merge-update-types }}
           ALLOW_MAJOR: ${{ inputs.allow-major }}
@@ -208,7 +216,18 @@ jobs:
           done < <(printf '%s\n' "$REQUIRED_WORKFLOWS" | tr ',' '\n')
           echo "Required workflows: ${REQUIRED:-none}"
           echo "required=$REQUIRED" >> "$GITHUB_OUTPUT"
-          echo "Update type: ${UPDATE_TYPE:-unknown}"
+          echo "Ecosystem: ${PACKAGE_ECOSYSTEM:-unknown}, update type: ${UPDATE_TYPE:-unknown}"
+
+          # A GitHub Actions update changes the CI itself: the PR's run of a
+          # changed workflow uses the PR's own version, and a changed push- or
+          # schedule-only workflow does not run before the merge. fetch-metadata
+          # takes the ecosystem from the branch name (dependabot/github_actions/
+          # ...). The wait also leaves open every PR that changes .github/.
+          if [ "$PACKAGE_ECOSYSTEM" = "github_actions" ]; then
+            echo "::notice title=Dependabot PR left open::GitHub Actions updates change the CI itself, so the CI of this PR cannot vouch for them. Review and merge it by hand."
+            decide false ci-change
+            exit 0
+          fi
 
           # A passed check alone shows nothing - GitGuardian or a notification
           # job pass on every PR. Only the named CI tells that the update works.
@@ -238,9 +257,10 @@ jobs:
           esac
 
       # Waits for the CI of the PR head commit and decides whether it passed.
-      # Every poll reads, with the job token (in private repositories the
-      # caller grants checks, statuses and actions: read - else nothing is
-      # merged):
+      # First, once: every commit must be a verified Dependabot commit, and no
+      # changed file may be under .github/. Then every poll reads, with the
+      # job token (in private repositories the caller grants checks, statuses
+      # and actions: read - else nothing is merged):
       #   check runs     the jobs; per check suite the newest run of a name
       #   check suites   one per workflow run - there before its jobs are
       #   commit statuses
@@ -356,6 +376,22 @@ jobs:
               if [ -n "$FOREIGN" ] || [ ! -s "$WORK/commits" ]; then
                 echo "::notice title=Dependabot PR left open::Not every commit of this PR is a verified commit by Dependabot: ${FOREIGN:-no commits}. Review and merge it by hand."
                 finish foreign-commits "${FOREIGN:-no commits}"
+              fi
+              # Once: a PR that changes CI files is not tested by its CI (see
+              # the guard). A renamed file counts with its old path too.
+              # GitHub lists at most 3000 files, so a list that long may be
+              # cut off - like an empty one, it cannot rule out a CI change.
+              fetch "$WORK/files" --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" \
+                --jq '.[] | [.filename, (.previous_filename // "")] | @tsv' || return 1
+              CI_FILES=$(awk -F'\t' '{ for (i = 1; i <= 2; i++) if ($i ~ /^\.github\// && !seen[$i]++) { printf "%s%s", sep, $i; sep = ", " } }' "$WORK/files")
+              if [ -n "$CI_FILES" ]; then
+                echo "::notice title=Dependabot PR left open::This PR changes CI files ($CI_FILES), so its CI cannot vouch for it. Review and merge it by hand."
+                finish ci-change "$CI_FILES"
+              fi
+              FILE_COUNT=$(awk 'END { print NR }' "$WORK/files")
+              if [ "$FILE_COUNT" -eq 0 ] || [ "$FILE_COUNT" -ge 3000 ]; then
+                echo "::notice title=Dependabot PR left open::The changed files of this PR could not be listed in full ($FILE_COUNT listed), so a change to CI files cannot be ruled out. Review and merge it by hand."
+                finish ci-change "changed files not listed in full ($FILE_COUNT)"
               fi
               COMMITS_CHECKED=true
             fi
@@ -640,6 +676,7 @@ jobs:
         run: |
           case "$GUARD_REASON" in
             no-required-workflows) DECISION="⏸️ Left open: automatic merging is off - set required-workflows to the PR CI workflows that build and test the update." ;;
+            ci-change)           DECISION="⏸️ Left open: a GitHub Actions update changes the CI itself, so its CI cannot vouch for it." ;;
             update-type)         DECISION="⏸️ Left open: only $ALLOWED updates are merged automatically (merge-update-types)." ;;
             unknown-update-type) DECISION="⏸️ Left open: the update type could not be determined." ;;
             patch|minor|major)
@@ -656,6 +693,7 @@ jobs:
                 failed)     DECISION="⏸️ Left open: CI did not pass ($CI_DETAIL)." ;;
                 not-tested) DECISION="⏸️ Left open: not tested by the required CI ($CI_DETAIL)." ;;
                 foreign-commits) DECISION="⏸️ Left open: not every commit is a verified commit by Dependabot ($CI_DETAIL)." ;;
+                ci-change)  DECISION="⏸️ Left open: the PR changes CI files, so its CI cannot vouch for it ($CI_DETAIL)." ;;
                 timeout)    DECISION="⏸️ Left open: $CI_DETAIL." ;;
                 unreadable) DECISION="⏸️ Left open: the job token cannot read CI results (grant checks: read, statuses: read and actions: read)." ;;
                 api-error)  DECISION="⏸️ Left open: CI results could not be read ($CI_DETAIL)." ;;

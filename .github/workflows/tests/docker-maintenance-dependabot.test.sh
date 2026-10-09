@@ -5,11 +5,13 @@
 # The workflow merges a Dependabot PR only after its CI has passed, without
 # rulesets or required status checks:
 #
-#   guard  (id: guard) - required-workflows (empty: nothing is merged), update
-#                        type against merge-update-types / allow-major, input
+#   guard  (id: guard) - GitHub Actions updates (never merged), required-
+#                        workflows (empty: nothing is merged), update type
+#                        against merge-update-types / allow-major, input
 #                        validation
 #   wait   (id: ci)    - checks that every commit is a verified Dependabot
-#                        commit, polls check runs, check suites, commit statuses
+#                        commit and that no changed file is under .github/,
+#                        polls check runs, check suites, commit statuses
 #                        and workflow runs of the PR head commit, leaves out its
 #                        own runs, waits for a complete and quiet state, checks
 #                        that every required workflow ran and passed, decides
@@ -25,7 +27,12 @@
 # not a test: bauer-group/CI-GitHubRunner#13 had only GitGuardian (success) and
 # CodeQL (neutral), CS-GitHubBackup#1 only notification and AI-summary jobs -
 # their build workflows never ran, which is why the named required workflows
-# must have passed.
+# must have passed. And a PR that changes CI is not tested by its CI: the PR's
+# run of a changed workflow uses the PR's own version, and a changed push-only
+# workflow never runs before the merge. GitHub does not stop such a merge -
+# bauer-group/XPD-SonarQube#6, an actions/checkout bump of docker-release.yml
+# alone, was merged by github-actions[bot] - which is why the module never
+# merges a PR that changes CI.
 #
 # Each step body is extracted from the workflow at runtime rather than duplicated
 # here and run the way a `shell: bash` step runs (-eo pipefail). `gh` is replaced
@@ -95,6 +102,8 @@ static_lacks() {
 static_has   "wait is gated by the guard"        "if: steps.guard.outputs.ok == 'true'"
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "guard reads required-workflows"    'REQUIRED_WORKFLOWS: ${{ inputs.required-workflows }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "guard reads the ecosystem"         'PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}'
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "wait gets the checked list"        'REQUIRED: ${{ steps.guard.outputs.required }}'
 static_has   "merge is gated by green CI"        "if: steps.ci.outputs.result == 'green'"
@@ -177,6 +186,7 @@ case "$method $path" in
 esac
 case "$path" in
   repos/*/pulls/*/commits*)        kind=commits ;;
+  repos/*/pulls/*/files*)          kind=files ;;
   repos/*/pulls/*)                 kind=pr ;;
   repos/*/commits/*/check-runs*)   kind=runs ;;
   repos/*/commits/*/check-suites*) kind=suites ;;
@@ -241,6 +251,8 @@ join() { local IFS=,; echo "$*"; }
 # A commit of the PR as GET pulls/{n}/commits returns it (verified: Dependabot
 # commits are signed by GitHub).
 DEPENDABOT_COMMIT='{"sha":"abc","author":{"login":"dependabot[bot]"},"commit":{"verification":{"verified":true}}}'
+# A changed file as GET pulls/{n}/files returns it.
+DOCKERFILE_CHANGE='{"filename":"src/Dockerfile","status":"modified"}'
 
 OWN_RUN=$(run $OWN 10 in_progress - "$SELF")
 OWN_SUITE=$(suite 10 in_progress - 1 github-actions)
@@ -263,14 +275,16 @@ fixture() {
 }
 raw() { echo "$3" > "$1/$2"; }
 
-# A PR whose only check so far is this job, with the required CI workflow run
-# done - its jobs (check runs in suite 20) are up to each case.
+# A PR that changes src/Dockerfile, whose only check so far is this job, with
+# the required CI workflow run done - its jobs (check runs in suite 20) are up
+# to each case.
 new_case() {
   local dir="$WORK/case-$1"
   mkdir -p "$dir/temp"
   : > "$dir/output"; : > "$dir/calls"; echo 0 > "$dir/clock"
   echo '{"state":"open","head":{"sha":"abc"}}' > "$dir/pr.1.json"
   echo "[$DEPENDABOT_COMMIT]" > "$dir/commits.1.json"
+  echo "[$DOCKERFILE_CHANGE]" > "$dir/files.1.json"
   fixture "$dir" runs 1 "$OWN_RUN"
   fixture "$dir" suites 1 "$OWN_SUITE"
   fixture "$dir" status 1
@@ -320,11 +334,13 @@ calls_to() { grep -c -- "$2" "$1/calls"; }
 
 # --- guard ----------------------------------------------------------------------
 # guard_case <name> <update-type> <merge-update-types> <allow-major> <want rc> <ok> <reason> <annotation|-> [merge-method] [wait-minutes]
-# required-workflows is $GUARD_REQUIRED, if set (also empty), else ci.yml.
+# required-workflows is $GUARD_REQUIRED, if set (also empty), else ci.yml; the
+# ecosystem is $GUARD_ECOSYSTEM, if set (also empty), else docker.
 guard_case() {
   local name="$1" dir="$WORK/guard-$1"
   mkdir -p "$dir"; : > "$dir/output"
-  ( cd "$dir" && GITHUB_OUTPUT="$dir/output" UPDATE_TYPE="$2" MERGE_UPDATE_TYPES="$3" ALLOW_MAJOR="$4" \
+  ( cd "$dir" && GITHUB_OUTPUT="$dir/output" PACKAGE_ECOSYSTEM="${GUARD_ECOSYSTEM-docker}" \
+      UPDATE_TYPE="$2" MERGE_UPDATE_TYPES="$3" ALLOW_MAJOR="$4" \
       MERGE_METHOD="${9:-squash}" WAIT_MINUTES="${10:-60}" REQUIRED_WORKFLOWS="${GUARD_REQUIRED-$REQ_CI}" \
       bash --noprofile --norc -eo pipefail -c "$GUARD_BODY" ) > "$dir/log" 2>&1
   local rc=$?
@@ -373,6 +389,19 @@ GUARD_REQUIRED=$' .github/workflows/ci.yml ,\n\t.github/workflows/docker-release
                                                           guard_case required-list        "$P" "patch" false 0 true patch -
 got=$(sed -n 's/^required=//p' "$WORK/guard-required-list/output")
 if [ "$got" = ".github/workflows/ci.yml,.github/workflows/docker-release.yaml" ]; then pass "guard/required-list: normalized"; else fail "guard/required-list: required='$got'"; fi
+
+# A GitHub Actions update changes the CI itself: never merged, whatever the
+# update type and required-workflows say - and without a wait. fetch-metadata
+# names the ecosystem as the branch name does: dependabot/github_actions/...
+GUARD_ECOSYSTEM=github_actions                   guard_case actions-update             "$P"  "patch"             false 0 false ci-change notice
+GUARD_ECOSYSTEM=github_actions                   guard_case actions-update-all-types   "$MA" "patch,minor,major" false 0 false ci-change notice
+GUARD_ECOSYSTEM=github_actions GUARD_REQUIRED="" guard_case actions-update-no-required "$P"  "patch"             false 0 false ci-change notice
+if grep -qF "GitHub Actions updates change the CI itself" "$WORK/guard-actions-update/log"; then pass "guard/actions-update: notice says why"; else fail "guard/actions-update: notice lacks the reason"; fi
+# Invalid input is still an error for a GitHub Actions update.
+GUARD_ECOSYSTEM=github_actions                   guard_case actions-update-bad-input   "$P"  "pach"              false 1 ""    ""        error
+# Other ecosystems, or none known: the wait checks the changed files.
+GUARD_ECOSYSTEM=docker_compose                   guard_case compose-update             "$P"  "patch"             false 0 true  patch     -
+GUARD_ECOSYSTEM=""                               guard_case ecosystem-unknown          "$P"  "patch"             false 0 true  patch     -
 
 # --- wait for CI ----------------------------------------------------------------
 # run_ci <dir> [VAR=value ...]   (REQUIRED: the guard's checked list)
@@ -664,6 +693,7 @@ D=$(new_case commits-checked-once)
 fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
 run_ci "$D"; check ci/commits-checked-once "$D" $? 0 result green -
 if [ "$(calls_to "$D" pulls/7/commits)" -eq 1 ]; then pass "ci/commits-asked-once"; else fail "ci/commits-asked-once: $(calls_to "$D" pulls/7/commits) calls"; fi
+if [ "$(calls_to "$D" pulls/7/files)" -eq 1 ]; then pass "ci/changed-files-asked-once"; else fail "ci/changed-files-asked-once: $(calls_to "$D" pulls/7/files) calls"; fi
 
 D=$(new_case foreign-commit)
 echo "[$DEPENDABOT_COMMIT,{\"sha\":\"0123456789abcdef\",\"author\":{\"login\":\"mallory\"},\"commit\":{\"verification\":{\"verified\":true}}}]" > "$D/commits.1.json"
@@ -814,6 +844,82 @@ if [ ! -s "$D/calls" ]; then pass "ci/no-required-workflow: no API call"; else f
 # behind): nothing passed that shows it - left open.
 D=$(new_case required-jobs-not-listed)
 run_ci "$D"; check ci/required-passed-without-listed-jobs "$D" $? 0 result not-tested notice "No check passed"
+
+# --- CI files ---------------------------------------------------------------------
+# A PR like bauer-group/XPD-SonarQube#6 (dependabot/github_actions/actions/
+# checkout-7), which changed only docker-release.yml - the required workflow,
+# whose pull_request paths now include its own file. Its run uses the PR's own
+# version and passes: it vouches for itself - left open at once, before any
+# wait.
+D=$(new_case ci-change-required-workflow)
+echo '[{"filename":".github/workflows/docker-release.yml","status":"modified"}]' > "$D/files.1.json"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 500 50 completed success build)"
+fixture "$D" actions 1 "$OWN_WFRUN" "$REL_DONE"
+run_ci "$D" REQUIRED="$REQ_REL"; check ci/ci-change-required-workflow-not-merged "$D" $? 0 result ci-change notice "This PR changes CI files (.github/workflows/docker-release.yml)"
+decided_at ci/ci-change-required-workflow-not-merged "$D" 0
+if [ "$(calls_to "$D" check-runs)" -eq 0 ]; then pass "ci/ci-change: no CI read"; else fail "ci/ci-change: $(calls_to "$D" check-runs) CI reads"; fi
+
+# A composite action changed together with a Dockerfile: only the CI file is
+# named.
+D=$(new_case ci-change-action)
+echo "[$DOCKERFILE_CHANGE,{\"filename\":\".github/actions/setup/action.yml\",\"status\":\"modified\"}]" > "$D/files.1.json"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/ci-change-composite-action "$D" $? 0 result ci-change notice "CI files (.github/actions/setup/action.yml)"
+
+# Moved out of .github/: the old path counts.
+D=$(new_case ci-change-renamed)
+echo '[{"filename":"ci/release.yml","status":"renamed","previous_filename":".github/workflows/release.yml"}]' > "$D/files.1.json"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/ci-change-renamed-out-of-github "$D" $? 0 result ci-change notice "CI files (.github/workflows/release.yml)"
+
+# Two pages (gh --paginate applies the filter to each): a CI file on the
+# second one counts too.
+D=$(new_case ci-change-second-page)
+printf '[%s]\n[{"filename":".github/workflows/ci.yml","status":"modified"}]\n' "$DOCKERFILE_CHANGE" > "$D/files.1.json"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/ci-change-on-second-page "$D" $? 0 result ci-change notice "CI files (.github/workflows/ci.yml)"
+
+# Names that only contain .github, not under it: tested as usual.
+D=$(new_case not-ci-similar-name)
+echo '[{"filename":"docs/.github/notes.md","status":"modified"},{"filename":"src/.github.Dockerfile","status":"added"}]' > "$D/files.1.json"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/similar-names-are-no-ci-change "$D" $? 0 result green -
+
+# No file listed, or 3000 - GitHub's maximum, so the list may be cut off: a
+# CI change cannot be ruled out.
+D=$(new_case files-none)
+echo '[]' > "$D/files.1.json"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/no-changed-file-listed "$D" $? 0 result ci-change notice "could not be listed in full (0 listed)"
+
+D=$(new_case files-cut-off)
+jq -cn '[range(3000) | {filename: "src/f\(.)", status: "added"}]' > "$D/files.1.json"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/changed-files-cut-off "$D" $? 0 result ci-change notice "could not be listed in full (3000 listed)"
+
+D=$(new_case files-2999)
+jq -cn '[range(2999) | {filename: "src/f\(.)", status: "added"}]' > "$D/files.1.json"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/changed-files-below-the-limit "$D" $? 0 result green -
+
+# The changed files not readable: closed at once. A server error is retried.
+D=$(new_case files-unreadable)
+raw "$D" files.1.json HTTP403
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/changed-files-403-fails-closed "$D" $? 0 result unreadable notice
+decided_at ci/changed-files-403-fails-closed "$D" 0
+
+D=$(new_case files-transient)
+raw "$D" files.1.json HTTP500
+echo "[$DOCKERFILE_CHANGE]" > "$D/files.2.json"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/changed-files-error-retried "$D" $? 0 result green - "API error 1/3"
+
+D=$(new_case files-transient-ci-change)
+raw "$D" files.1.json HTTP500
+echo '[{"filename":".github/workflows/ci.yml","status":"modified"}]' > "$D/files.2.json"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/ci-change-after-an-error "$D" $? 0 result ci-change notice "CI files (.github/workflows/ci.yml)"
 
 # --- approve and merge ------------------------------------------------------------
 # The PR as read again right before merging: $dir/pr.<n>.json, ready by default.
