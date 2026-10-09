@@ -46,6 +46,10 @@ Both configurations below use `fix(docker)` to ensure automatic releases.
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
+With Dependabot, the step from the merge to the release is not automatic: the
+merge is made with `GITHUB_TOKEN`, which starts no `push` workflow - see
+[Limits](#limits).
+
 ---
 
 ## Option 1: Dependabot (Simple)
@@ -206,8 +210,30 @@ annotation and in the job summary:
 | CI passed, but the merge was rejected (e.g. a required review)           | warning    |
 
 A newer event on the same PR (e.g. Dependabot rebased it) cancels the run that is
-still waiting. The merge is made with the job's `GITHUB_TOKEN`, so - as for every
-push by that token - it does not start `push` workflows on `main` by itself.
+still waiting.
+
+### Limits
+
+- **No release by the merge itself.** The merge is made with the job's
+  `GITHUB_TOKEN`, and GitHub starts no workflow run for a push made with that
+  token. A release workflow on `push` to `main` therefore runs with the next
+  push that is not made by that token, or when it is started by hand.
+- **Base branch moved since CI ran.** The merge does not require the PR to be
+  up to date with its base branch, just like GitHub's auto-merge without
+  "Require branches to be up to date". A PR with a conflict stays open
+  (Dependabot rebases it). Two updates merged one after the other are each
+  tested on their own, not together - a release pipeline that tests `main`
+  before it releases (such as one gated by the backup round trip) catches a
+  combination that breaks.
+- **Workflows started by `workflow_run`** are not waited for: GitHub attaches
+  such a run to the latest commit of the default branch, not to the PR's head
+  commit, so it is not part of the PR's checks. Run the gate in a workflow that
+  is triggered by `pull_request`.
+- **Checks later than the quiet period.** A check that first appears more than
+  3 minutes after everything else on the PR finished is not waited for.
+- **Own workflow.** Call this workflow from a workflow of its own (as in the
+  example). Jobs of the same workflow run that have not started yet are not
+  waited for, because that run is this workflow's own.
 
 ### Workflow Options
 
@@ -399,6 +425,9 @@ jobs:
 ```
 
 **Result:** Base image update → PR merged → PATCH release → Docker image rebuilt and pushed.
+With the Dependabot workflow the release starts with the next push to `main`
+that is not made by `GITHUB_TOKEN`, or when the release workflow is run by hand
+(`workflow_dispatch`) - see [Limits](#limits).
 
 ---
 
