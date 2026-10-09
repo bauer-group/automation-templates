@@ -474,7 +474,15 @@ Setting and variable are separated by whitespace, not `=`: secret scanners read 
 
 **Region and addressing.** The server has no region configured and accepts any; mapping `region` is only needed when your compose file has no default for it. The engine uses path-style addressing by default (`force_path_style`), which MinIO needs; map `path-style` if your compose file makes it configurable.
 
-**With `keep_local: false`** the engine deletes the local copy once the upload is verified, and *Create backup* finds no new local snapshot to inspect and verify. Keep the local copy in CI (`keep_local` through `env-overrides`) — the new-host phase removes it anyway.
+**With `keep_local: false`** the engine deletes the local copy once the upload is verified, and *Create backup* finds no new local snapshot to inspect and verify. Keep the local copy in CI (`keep_local` through `env-overrides`) — the new-host phase removes it anyway. When the compose file hard-codes `"keep_local": false`, set it in a CI-only override file (`compose-files`) with the engine's [discrete env override](https://github.com/bauer-group/CS-BackupHelper/blob/main/docs/configuration.md#discrete-env-overrides) on the sidecar:
+
+```yaml
+# tests/backup-roundtrip/compose.ci.yml
+services:
+  app-backup:
+    environment:
+      BACKUP_JOBS__0__KEEP_LOCAL: "true"
+```
 
 A ready-to-copy caller is in [`offsite-s3-new-host.yml`](../../github/workflows/examples/backup-roundtrip/offsite-s3-new-host.yml).
 
