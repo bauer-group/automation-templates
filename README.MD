@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-10-08 11:01:49 UTC -->
+<!-- Generated on 2026-10-09 11:08:28 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -9,7 +9,7 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 
 **Repository Information:**
 
-- **Version:** 11.2.0 (2026-10-08)
+- **Version:** 11.2.4 (2026-10-09)
 - **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)
 - **Branch:** main
 - **Architecture:** Modular, Reusable, Enterprise-Ready
@@ -139,7 +139,6 @@ jobs:
 │   │   ├── platformio-build/     # PlatformIO build configurations
 │   │   └── commitlint.config.mjs  # Commit linting rules
 │   └── workflows/             # 🚀 Reusable Workflows
-│       ├── ai-issue-summary.yml       # AI-powered issue summarization
 │       ├── automatic-release.yml      # Automated release management
 │       ├── claude-code.yml            # Claude Code AI assistant
 │       ├── coolify-deploy.yml         # Coolify deployment automation
@@ -617,7 +616,7 @@ jobs:
 | **🟢 Teams Notifications** | Available | Microsoft Teams integration | `uses: bauer-group/automation-templates/.github/workflows/teams-notifications.yml@main` |
 | **🟢 Repository Cleanup** | Available | Automated repository maintenance | `uses: bauer-group/automation-templates/.github/workflows/repository-cleanup.yml@main` |
 | **🟢 Coolify Deploy** | Available | Coolify deployment automation | `uses: bauer-group/automation-templates/.github/workflows/coolify-deploy.yml@main` |
-| **🟢 AI Issue Summary** | Available | AI-powered issue summarization | `uses: bauer-group/automation-templates/.github/workflows/ai-issue-summary.yml@main` |
+| **🟡 AI Issue Summary** | Paused - being reworked, see [#105](https://github.com/bauer-group/automation-templates/issues/105) | AI-powered issue summarization | - |
 | **🟢 Issue Automation** | Available | Automated issue management | `uses: bauer-group/automation-templates/.github/workflows/issue-automation.yml@main` |
 | **🟢 PR Labeler** | Available | Automated pull request labeling | `uses: bauer-group/automation-templates/.github/workflows/pr-labeler.yml@main` |
 
@@ -1196,5 +1195,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-10-08 11:01:49 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-10-09 11:08:28 UTC from [docs/README.template.MD](docs/README.template.MD)*
 

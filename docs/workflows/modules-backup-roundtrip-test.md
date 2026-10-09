@@ -41,14 +41,22 @@ This reusable workflow runs the complete cycle against the caller's own compose 
 
 1. **Prepare** — `.env` is created from `env-template`; `prepare-script` (if set) fills secrets with a format of their own, then `env-overrides` and `generated-secrets` are written over it. `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME` and `COMPOSE_PROFILES` are exported, so every later step — and your scripts — reach the stack with a plain `docker compose`.
 2. **Build** — each `build-images` entry is built with `--pull` and tagged with the image reference its compose service resolves to. Compose then starts that build instead of pulling the released image.
-3. **Start** — the remaining images are pulled and `docker compose up -d --wait` waits until every service is running or healthy and one-shot dependencies have completed.
+3. **Start** — the images of the started services are pulled (the `services` input and everything it depends on, or every service when `services` is empty), except the images under test. `docker compose up -d --wait` then waits until every service is running or healthy and one-shot dependencies have completed. On the fresh volumes of a run the sidecar is healthy, see [BackupHelper 1.7.7 and later](#backuphelper-177-and-later).
 4. **Seed** — `seed-script` writes marker data; `check-script` must then report it **present**.
-5. **Back up** — `backuphelper create` runs inside the sidecar. The new snapshot is found by comparing `list` before and after. `show` must report every component without `error`, without warnings (unless allowed) and must include every `require-components` name. `verify` must confirm the archive checksum.
+5. **Back up** — `backuphelper create` runs inside the sidecar and must exit `0`; from BackupHelper 1.7.7 on it exits `1` when a component failed. The new snapshot is found by comparing `list` before and after — also after a non-zero exit, so that *Inspect snapshot* can still name the failed component before the job fails. `show` must report every component without `error`, without warnings (unless allowed) and must include every `require-components` name. `verify` must confirm the archive checksum.
 6. **Mutate** — `mutate-script` deletes the seeded data; `check-script` must now report it **absent**.
 7. **Restore** — `services-to-stop-before-restore` are stopped, the snapshot is restored, and the stack is started again with `up --wait`.
 8. **Check** — `check-script` must report the data **present** again.
 9. **Healthcheck** — `backuphelper healthcheck` must report the new snapshot as fresh.
-10. **Always** — on failure, `docker compose ps`, every service's log, the snapshot list and the manifest are uploaded as an artifact; the stack is removed with `down --volumes`; the step summary shows each phase.
+10. **Always** — on failure, `docker compose ps`, every service's log, the snapshot list and, once the snapshot was inspected, its manifest are uploaded as an artifact; the stack is removed with `down --volumes`; the step summary shows each phase.
+
+### BackupHelper 1.7.7 and later
+
+The sidecar images are built `FROM ghcr.io/bauer-group/cs-backuphelper/backuphelper:latest`, so every round trip after an engine release tests that release. 1.7.7 changed the engine's [run status](https://github.com/bauer-group/CS-BackupHelper/blob/main/docs/cli.md#run-status) and its [healthcheck](https://github.com/bauer-group/CS-BackupHelper/blob/main/docs/deployment.md#the-functional-healthcheck), and with them where a broken backup stops the round trip:
+
+- **A failed component fails *Create backup*.** A component that failed completely — a failed `pg_dump`, `mariadb-dump` or `mysqldump`, a plugin source that raised, a failed S3 source, a missing or unreadable path, a source without output — ends the run in `error`, and `create` exits `1`, which fails *Create backup*. The snapshot is still stored, so the module resolves its id and runs *Inspect snapshot* anyway: the step summary shows the component table with the failed component's error, the artifact contains `manifest.json`, and the `snapshot-id` and `components` outputs are set. The job then ends with `result: failure`; *Verify snapshot* and everything after it do not run. See [`backuphelper create` exits 1](#backuphelper-create-exits-1). Up to 1.7.6 `create` exited `0` as long as one component succeeded and the snapshot was stored, and *Inspect snapshot* reported the failed component.
+- **A fresh stack is healthy.** The daemon records its start in `/data/.state/daemon.json` before the image's first health probe, and "no backup yet" is healthy for `BACKUP_HEALTHCHECK_MAX_AGE_HOURS` (default 26) after that start, so `up --wait` passes on the run's empty volumes. The sidecar is unhealthy, and `up --wait` fails, when its data dir is not writable by the user it runs as or when a run that `on_startup` started at boot failed before the first health probe.
+- **A round trip that passed on 1.7.6 passes on 1.7.7, with two exceptions.** *Inspect snapshot* already demanded error-free components, and after a run that ended in `success` or `warning` the stricter healthcheck passes as before. First, a component without output (size 0, no error text): up to 1.7.6 it did not count as failed and passed `show`; 1.7.7 records it with the error `no output`, and `create` exits `1`. Second, a failed run other than the one under test, which 1.7.6 ignored: a failed component in another job of the same configuration now makes `create` exit `1`, and a failed `on_startup` run can fail `up --wait`, as described above.
 
 ## Quick Start
 
@@ -87,7 +95,7 @@ Ready-to-copy callers are in [`github/workflows/examples/backup-roundtrip/`](../
 | `working-directory` | Directory the stack is started from. The `.env` is written here, scripts and `build-images` paths are relative to it | `'.'` |
 | `project-name` | Compose project name | `'backup-roundtrip'` |
 | `profiles` | Comma-separated Compose profiles to activate — usually the one that enables the sidecar | `''` |
-| `services` | Services to start (spaces or newlines). Empty starts every service of the active profiles; dependencies are always started | `''` |
+| `services` | Services to start (spaces or newlines). Empty starts every service of the active profiles; dependencies are always started. Only these services and their dependencies are pulled, so configured services the round trip does not need (workers, task runners) cost no download | `''` |
 
 ### Environment
 
@@ -148,8 +156,8 @@ Without scripts the module still tests the backup mechanics (create, show, verif
 
 | Output | Description |
 |--------|-------------|
-| `snapshot-id` | Id of the snapshot that was created and restored (`YYYY-MM-DD_HH-MM-SS`) |
-| `components` | JSON array of the snapshot's components: `[{"name", "kind", "size", "error"}]` |
+| `snapshot-id` | Id of the snapshot that was created and restored (`YYYY-MM-DD_HH-MM-SS`). Also set when `create` failed but stored a snapshot |
+| `components` | JSON array of the snapshot's components: `[{"name", "kind", "size", "error"}]`. Also set when `create` failed but stored a snapshot, with the failed component's `error` |
 | `result` | Result of the round-trip job: `success`, `failure` or `cancelled` |
 
 ## Secrets
@@ -364,7 +372,7 @@ jobs:
     secrets: inherit
 ```
 
-**When it runs.** Every release rebuilds the images `FROM` the newest bases, so every run that can release must pass the round trip — including the `workflow_dispatch` the [base image monitor](./modules-docker-base-image-monitor.md) starts when the BackupHelper engine image moves. That is the point: an engine update reaches production only after it restored this stack's data. `paths-ignore` keeps documentation-only pushes from starting the stack at all; on pull requests, limit `paths` to what can change the stack.
+**When it runs.** Every release rebuilds the images `FROM` the newest bases, so every run that can release must pass the round trip — including the `workflow_dispatch` the [base image monitor](./modules-docker-base-image-monitor.md) starts when the BackupHelper engine image moves. That is the point: an engine update reaches production only after it restored this stack's data. When the round trip of such a dispatched run fails, the monitor does not store the new digest and dispatches the release again on its next check, until a run succeeds ([Release confirmation](./modules-docker-base-image-monitor.md#release-confirmation)). `paths-ignore` keeps documentation-only pushes from starting the stack at all; on pull requests, limit `paths` to what can change the stack.
 
 **Cost.** Measured on GitHub-hosted runners: the module's own fixture (PostgreSQL, a file volume, a sidecar) takes under a minute. CS-ZAMMAD's full stack (Zammad's five roles, PostgreSQL, Elasticsearch, Redis, Memcached) takes 7 to 9 minutes: about 1.5 to free disk space, 1 to build both images, 2 to 3 for the first boot with migrations and the search index, 1.5 for the restore and the restart, the rest for seeding and checks through `rails runner`.
 
@@ -442,13 +450,21 @@ Every run writes a summary with the result of each phase, the snapshot's compone
 | Backup healthcheck  | ✅ Passed |
 ```
 
-On failure (or cancellation) the artifact `artifact-name` contains `ps.txt`, `logs/<service>.log` for every service, `snapshots.txt`, `manifest.json`, the output of `create` and `restore`, and the runner's disk and memory state. The `.env` is **never** included. Service logs are uploaded as they are — an application that logs its connection string logs the per-run generated password, which is worthless after the run.
+When `create` exited non-zero, the summary says so, with the exit code and whether a snapshot was stored.
+
+On failure (or cancellation) the artifact `artifact-name` contains `ps.txt`, `logs/<service>.log` for every service, `snapshots.txt`, `manifest.json` (once *Inspect snapshot* has run), the output of `create` and `restore`, and the runner's disk and memory state. The `.env` is **never** included. Service logs are uploaded as they are — an application that logs its connection string logs the per-run generated password, which is worthless after the run.
 
 ## Troubleshooting
 
 ### `backup-service '…' is not part of the configuration`
 
 The sidecar sits behind a profile that is not active. Set `profiles: 'backup'` (or whatever your compose file uses).
+
+### `backuphelper create` exits 1
+
+The run ended in `error`: a component failed (since BackupHelper 1.7.7), the snapshot was stored on no destination, or the run aborted — a `pre_backup` hook raised or the disk filled up while bundling. A snapshot with a failed component is still stored: the module resolves it and runs *Inspect snapshot*, whose annotations, step summary table and `manifest.json` in the artifact name the failed component and its `error`. The summary also states the exit code. When no snapshot was stored at all, the error says so and only `create.log` and the service logs remain.
+
+For a failed component, `create.log` reports `job <job> snapshot <id> finished: error`. A source that raised — a plugin source, a path the sidecar cannot read — also logged `source <name> (<type>) failed: …` there. A failed dump, a missing path, a failed S3 source or a source without output did not; their reason is only in the manifest, which *Inspect snapshot* reads for you.
 
 ### `'backuphelper create' exited 0 but no new local snapshot appeared`
 
@@ -467,6 +483,7 @@ A filesystem source skipped entries it could not read — usually root-owned fil
 - A service without a healthcheck that exits is reported as failed. One-shot services are fine when another service depends on them with `condition: service_completed_successfully`; otherwise exclude them through `services`.
 - First boots of large applications (migrations, search index builds) take minutes. Raise `wait-timeout`.
 - A container killed for memory shows `exit 137` in `ps.txt`. Lower memory limits through `env-overrides`.
+- The backup sidecar is unhealthy (BackupHelper 1.7.7 and later): its data dir is not writable by the user it runs as, or a run started by `on_startup` failed. `docker compose exec <sidecar> backuphelper healthcheck` prints the reason. Empty volumes are not a cause, see [BackupHelper 1.7.7 and later](#backuphelper-177-and-later).
 
 ### The check fails with "expected absent"
 

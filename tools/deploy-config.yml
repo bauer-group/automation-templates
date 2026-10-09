@@ -100,7 +100,6 @@ profiles:
       - "repository-cleanup"
       - "pr-labeler"
       - "issue-automation"
-      - "ai-issue-summary"
     actions:
       - "teams-notification"
       - "security-generate"
@@ -117,7 +116,6 @@ profiles:
       - "TEAMS_WEBHOOK_URL"
       - "DOCKER_PASSWORD"
       - "PYPI_API_TOKEN"
-      - "OPENAI_API_KEY"
     variables_recommended:
       - "TEAMS_NOTIFICATION_LEVEL"
       - "TEAMS_MENTION_ON_FAILURE"
@@ -255,16 +253,6 @@ workflows:
     description: "Automated issue management and triage"
     file: "issue-automation.yml"
     secrets_used: []
-    triggers:
-      - "issues"
-      - "workflow_dispatch"
-
-  ai-issue-summary:
-    name: "AI Issue Summary"
-    description: "AI-powered issue summarization and analysis"
-    file: "ai-issue-summary.yml"
-    secrets_used:
-      - "OPENAI_API_KEY"
     triggers:
       - "issues"
       - "workflow_dispatch"
@@ -484,12 +472,6 @@ secrets:
     required_for:
       - "python-automatic-release"
     setup_url: "https://pypi.org/help/#apitoken"
-
-  OPENAI_API_KEY:
-    description: "OpenAI API key for AI-powered features"
-    required_for:
-      - "ai-issue-summary"
-    setup_url: "https://platform.openai.com/api-keys"
 
 # Repository Variables Documentation
 variables:

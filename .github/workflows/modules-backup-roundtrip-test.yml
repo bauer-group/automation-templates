@@ -552,17 +552,38 @@ jobs:
           done
 
       - name: "📥 Pull Images"
+        id: pull
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
         run: |
           set -euo pipefail
           touch "$ROUNDTRIP_DIR/built-images.txt"
           BUILT=$(jq -R -s 'split("\n") | map(select(length > 0))' "$ROUNDTRIP_DIR/built-images.txt")
-          # Everything except what was just built (pulling those references would
-          # replace the images under test with the released ones) and services
-          # with a build section, which 'up' builds itself when the image is missing.
-          mapfile -t PULL < <(jq -r --argjson built "$BUILT" '.services | to_entries[]
-                                     | select(.value.image != null and .value.build == null)
-                                     | select(.value.image as $image | $built | index($image) | not)
-                                     | .key' "$ROUNDTRIP_DIR/compose-config.json")
+          read -r -a SERVICES <<< "$(echo "$START_SERVICES" | tr '\n' ' ')"
+          STARTED=$(jq -n '$ARGS.positional' --args "${SERVICES[@]}")
+          # Only what Start Stack starts: the 'services' input plus everything
+          # they depend on, transitively - or every service when 'services' is
+          # empty. Pulling the rest costs minutes and disk for images no step
+          # uses (CS-n8n pulled ten worker and runner images it never starts).
+          # Of those, everything except what was just built (pulling those
+          # references would replace the images under test with the released
+          # ones) and services with a build section, which 'up' builds itself
+          # when the image is missing. A dependency missed here is not fatal:
+          # 'up' pulls a missing image itself.
+          mapfile -t PULL < <(jq -r --argjson built "$BUILT" --argjson started "$STARTED" '
+              .services as $all
+              | (if ($started | length) == 0 then ($all | keys)
+                 else {todo: $started, seen: []}
+                      | until(.todo | length == 0;
+                          .seen += .todo
+                          | .todo = (([.todo[] | ($all[.].depends_on // {})
+                                       | if type == "array" then .[] else keys[] end] | unique) - .seen))
+                      | .seen
+                 end) as $needed
+              | $all | to_entries[]
+              | select(.key as $name | $needed | index($name))
+              | select(.value.image != null and .value.build == null)
+              | select(.value.image as $image | $built | index($image) | not)
+              | .key' "$ROUNDTRIP_DIR/compose-config.json")
           if [ ${#PULL[@]} -eq 0 ]; then
             echo "Nothing to pull"
             exit 0
@@ -601,6 +622,7 @@ jobs:
 
       - name: "💾 Create Backup"
         id: create
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
         run: |
           set -euo pipefail
           source "$ROUNDTRIP_DIR/lib.sh"
@@ -612,15 +634,30 @@ jobs:
           LIST_BEFORE=$(bh list)
           local_ids <<< "$LIST_BEFORE" > "$ROUNDTRIP_DIR/ids-before.txt"
 
+          # The exit code is kept rather than ending the step here. Since
+          # BackupHelper 1.7.7 'create' exits 1 when a component failed, but the
+          # snapshot is still stored - its id and manifest are what tells which
+          # component failed and why, so they are resolved before the step fails.
+          set +e
           bh create 2>&1 | tee "$ROUNDTRIP_DIR/diagnostics/create.log"
+          CREATE_EXIT=${PIPESTATUS[0]}
+          set -e
+          echo "create-exit-code=$CREATE_EXIT" >> "$GITHUB_OUTPUT"
 
-          LIST_AFTER=$(bh list)
+          if ! LIST_AFTER=$(bh list); then
+            echo "::error title=Backup round trip::'backuphelper list' failed after 'backuphelper create' (exit code $CREATE_EXIT) - the sidecar is probably no longer running, see the service logs in the diagnostics artifact."
+            exit 1
+          fi
           echo "$LIST_AFTER"
           local_ids <<< "$LIST_AFTER" > "$ROUNDTRIP_DIR/ids-after.txt"
           mapfile -t NEW_IDS < <(comm -13 "$ROUNDTRIP_DIR/ids-before.txt" "$ROUNDTRIP_DIR/ids-after.txt")
 
           if [ ${#NEW_IDS[@]} -eq 0 ]; then
-            echo "::error title=Backup round trip::'backuphelper create' exited 0 but no new local snapshot appeared. Check that the config defines at least one job (a config the engine does not recognise runs zero jobs) and that keep_local is not dropping it."
+            if [ "$CREATE_EXIT" -ne 0 ]; then
+              echo "::error title=Backup round trip::'backuphelper create' exited $CREATE_EXIT and stored no local snapshot - the run aborted (a pre_backup hook, a full disk) or the snapshot was stored on no destination. See create.log in the diagnostics artifact."
+            else
+              echo "::error title=Backup round trip::'backuphelper create' exited 0 but no new local snapshot appeared. Check that the config defines at least one job (a config the engine does not recognise runs zero jobs) and that keep_local is not dropping it."
+            fi
             exit 1
           fi
           if [ ${#NEW_IDS[@]} -gt 1 ]; then
@@ -632,10 +669,20 @@ jobs:
           fi
           echo "snapshot-id=$SNAPSHOT_ID" >> "$GITHUB_OUTPUT"
           echo "ROUNDTRIP_SNAPSHOT_ID=$SNAPSHOT_ID" >> "$GITHUB_ENV"
+
+          if [ "$CREATE_EXIT" -ne 0 ]; then
+            echo "::error title=Backup round trip::'backuphelper create' exited $CREATE_EXIT: snapshot $SNAPSHOT_ID was stored, but the run ended in error - usually a failed component. Inspect Snapshot below names it."
+            exit 1
+          fi
           echo "✅ Snapshot $SNAPSHOT_ID created"
 
+      # Also after a failed create, as long as it stored a snapshot: the
+      # manifest names the failed component and its error, which 'create'
+      # itself does not print for every source type. The job is failed by
+      # Create Backup either way; the steps after this one do not run.
       - name: "📋 Inspect Snapshot"
         id: inspect
+        if: ${{ !cancelled() && steps.create.outputs.snapshot-id != '' }}
         env:
           REQUIRE_COMPONENTS: ${{ inputs.require-components }}
           ALLOW_WARNINGS: ${{ inputs.allow-component-warnings }}
@@ -805,6 +852,7 @@ jobs:
         if: always()
         env:
           SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
+          CREATE_EXIT: ${{ steps.create.outputs.create-exit-code }}
           JOB_STATUS: ${{ job.status }}
           HAS_SEED: ${{ inputs.seed-script != '' }}
           HAS_MUTATE: ${{ inputs.mutate-script != '' }}
@@ -848,6 +896,14 @@ jobs:
             echo "| Check restored data | $(cell "$OUTCOME_CHECK" "$HAS_CHECK") |"
             echo "| Backup healthcheck | $(cell "$OUTCOME_HEALTH" "$RUN_HEALTHCHECK") |"
             echo ""
+            if [ -n "$CREATE_EXIT" ] && [ "$CREATE_EXIT" != "0" ]; then
+              if [ -n "$SNAPSHOT_ID" ]; then
+                echo "> ❌ \`backuphelper create\` exited $CREATE_EXIT. Snapshot \`$SNAPSHOT_ID\` was stored anyway; *Inspect snapshot* and its component table name what failed."
+              else
+                echo "> ❌ \`backuphelper create\` exited $CREATE_EXIT and stored no local snapshot - see \`create.log\` in the diagnostics artifact."
+              fi
+              echo ""
+            fi
             if [ "$HAS_CHECK" != "true" ]; then
               echo "> ⚠️ No check-script: only the backup mechanics were tested, not whether the data comes back."
               echo ""

@@ -35,8 +35,9 @@ Diese Workflows sind speziell für das `automation-templates` Repository entwick
 - Konfigurierbare Artefakt-Generierung
 - Changelog-Generierung mit generate-changelog Action
 
-#### 🤖 [ai-issue-summary.yml](./ai-issue-summary.yml) - AI Issue Zusammenfassungen
+#### 🤖 AI Issue Zusammenfassungen (pausiert)
 **Zweck:** AI-gestützte Issue-Zusammenfassungen  
+**Status:** Der Caller `ai-issue-summary.yml` wurde am 2026-09-28 aus diesem Repository und org-weit entfernt, weil kein Lauf mehr eine echte AI-Zusammenfassung lieferte. Das Modul [modules-ai-issue-summary.yml](./modules-ai-issue-summary.yml) bleibt für die Überarbeitung bestehen; Re-Rollout in [#105](https://github.com/bauer-group/automation-templates/issues/105)  
 **Module verwendet:** modules-ai-issue-summary  
 **Benötigt:** `copilot-requests: write` — im Caller **und** im Modul, da der
 `permissions:`-Block eines `workflow_call`-Workflows eine Obergrenze ist, keine
@@ -54,9 +55,9 @@ billed to the organization".
 **Module verwendet:** modules-issue-automation
 
 #### 🧪 [backup-roundtrip-selftest.yml](./backup-roundtrip-selftest.yml) - Backup Round-Trip Self-Test
-**Zweck:** Führt das Modul `modules-backup-roundtrip-test.yml` gegen einen Fixture-Stack aus ([tests/backup-roundtrip/](./tests/backup-roundtrip/): PostgreSQL, Datei-Volume als uid 1000, Meta-Image auf der öffentlichen BackupHelper-Engine) — Backup, Löschen, Restore und Datenprüfung laufen echt durch  
+**Zweck:** Führt das Modul `modules-backup-roundtrip-test.yml` gegen einen Fixture-Stack aus ([tests/backup-roundtrip/](./tests/backup-roundtrip/): PostgreSQL, Datei-Volume als uid 1000, Meta-Image auf der öffentlichen BackupHelper-Engine) — Backup, Löschen, Restore und Datenprüfung laufen echt durch, einmal mit allen Services und einmal nur mit ausgewählten (neben einem Service, dessen Image nicht gepullt werden kann). Dazu Step-Tests für *Create Backup* (Exit-Code 1 bei fehlgeschlagener Komponente) und *Pull Images* ([tests/backup-roundtrip-module.test.sh](./tests/backup-roundtrip-module.test.sh))  
 **Module verwendet:** modules-backup-roundtrip-test  
-**Trigger:** Nur Änderungen am Modul, am Self-Test oder an der Fixture (pfadgefiltert)  
+**Trigger:** Nur Änderungen am Modul, am Self-Test, an der Fixture oder am Step-Test (pfadgefiltert)  
 **Doku:** [docs/workflows/modules-backup-roundtrip-test.md](../../docs/workflows/modules-backup-roundtrip-test.md)
 
 ### Reusable Workflows (Neu)
@@ -143,7 +144,6 @@ jobs:
 | **automatic-release.yml** | Push (main) | semantic-release | Automatische Releases |
 | **documentation.yml** | Docs-Änderungen | readme-generate | Dokumentations-Management |
 | **manual-release.yml** | Workflow Dispatch | 4 Module | Kontrollierte Releases |
-| **ai-issue-summary.yml** | Issue Events | modules-ai-issue-summary | AI Zusammenfassungen |
 | **pr-labeler.yml** | Pull Request | modules-pr-labeler | PR Labeling |
 | **issue-automation.yml** | Issue/PR Events | modules-issue-automation | Issue Management |
 | **backup-roundtrip-selftest.yml** | PR/Push (Modul + Fixture) | modules-backup-roundtrip-test | Self-Test des Backup-Round-Trip-Moduls |

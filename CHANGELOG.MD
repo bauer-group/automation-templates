@@ -4,6 +4,34 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.2.4](https://github.com/bauer-group/automation-templates/compare/v11.2.3...v11.2.4) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* **base-images:** pushed a new release commit for post-tag retries ([bb75445](https://github.com/bauer-group/automation-templates/commit/bb754454b74906f60f22d373e7bfadf459870b82))
+* **base-images:** stopped retrying a release after three failed runs ([75fe29e](https://github.com/bauer-group/automation-templates/commit/75fe29ea2bffd9b220bd4e59b49f287a3a0d6279))
+* **base-images:** stored digests only after a successful release ([b24e1c4](https://github.com/bauer-group/automation-templates/commit/b24e1c40ef1e090b484330a9f64872c852b04a9b))
+
+## [11.2.3](https://github.com/bauer-group/automation-templates/compare/v11.2.2...v11.2.3) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* **backup-roundtrip:** inspected the snapshot after a failed create ([7bff667](https://github.com/bauer-group/automation-templates/commit/7bff667d16259a1ad2787263c50a924880fbbd3f))
+* **backup-roundtrip:** pulled only the services that are started ([8b3bb83](https://github.com/bauer-group/automation-templates/commit/8b3bb83e86b8877fff56a409bf694f2e8d962467))
+
+## [11.2.2](https://github.com/bauer-group/automation-templates/compare/v11.2.1...v11.2.2) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* **deploy:** removed the deleted ai-issue-summary workflow ([6d35ef4](https://github.com/bauer-group/automation-templates/commit/6d35ef4efb2abe7d6c4424f18d8f259625e59a05))
+
+## [11.2.1](https://github.com/bauer-group/automation-templates/compare/v11.2.0...v11.2.1) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** scoped the disk-space hint to hosted runners ([56b2a4d](https://github.com/bauer-group/automation-templates/commit/56b2a4d1b64dca68aecca21121d7218a7a995100))
+* **docker-build:** skipped free-disk-space on self-hosted runners ([2ac18a3](https://github.com/bauer-group/automation-templates/commit/2ac18a3dfc9f9743a63f5f5a9b5398de77398bec))
+
 ## [11.2.0](https://github.com/bauer-group/automation-templates/compare/v11.1.4...v11.2.0) (2026-10-08)
 
 ### 🚀 Features
