@@ -191,7 +191,7 @@ Complete CI/CD pipeline configurations
 Various automation and documentation workflows
 
 **Examples:**
-- `documentation/ai-issue-summary.yml` - AI-powered issue summaries
+- `documentation/ai-issue-summary.yml` - AI-powered issue summaries (**paused**, being reworked in [#105](https://github.com/bauer-group/automation-templates/issues/105))
 - `documentation/documentation.yml` - Auto-generate documentation
 - `documentation/issue-automation.yml` - Issue management automation
 - `documentation/pr-labeler.yml` - Automatic PR labeling
