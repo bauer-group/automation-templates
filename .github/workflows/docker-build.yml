@@ -170,7 +170,8 @@ on:
           Remove unused preinstalled toolchains from the runner before building.
           Off by default; turn it on for images large enough that the build, the
           `load: true` copy in the daemon and the security scan no longer fit in
-          a GitHub-hosted runner's free space. Linux runners only.
+          a GitHub-hosted runner's free space. GitHub-hosted Linux runners
+          only - ignored on self-hosted runners, whose disk is persistent.
         type: boolean
         required: false
         default: false
@@ -512,8 +513,11 @@ jobs:
       # A curated list rather than a caller-supplied command: every consumer that
       # needs this needs it for the same reason and would otherwise write the same
       # five `rm -rf` lines, each with its own idea of what is safe to remove.
+      #
+      # Never on self-hosted runners: the rm -rf would hit a persistent host and
+      # delete toolchains its other jobs rely on.
       - name: 🧹 Free Disk Space
-        if: inputs.free-disk-space && runner.os == 'Linux'
+        if: inputs.free-disk-space && runner.os == 'Linux' && runner.environment == 'github-hosted'
         shell: bash
         run: |
           BEFORE=$(df --output=avail -BM / | tail -1 | tr -dc '0-9')
