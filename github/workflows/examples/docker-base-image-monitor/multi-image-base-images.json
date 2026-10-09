@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/bauer-group/automation-templates/main/.github/config/docker-base-image-monitor/docker-base-images.schema.json",
+  "images": [
+    {
+      "name": "n8n",
+      "image": "n8nio/n8n",
+      "tag": "stable",
+      "variable": "N8N_STABLE_DIGEST",
+      "description": "Application base image (Docker Hub) - FROM in src/n8n/Dockerfile"
+    },
+    {
+      "name": "runner",
+      "image": "n8nio/runners",
+      "tag": "stable",
+      "variable": "N8N_RUNNERS_STABLE_DIGEST",
+      "description": "Task runner base image (Docker Hub) - FROM in src/runner/Dockerfile"
+    },
+    {
+      "name": "postgres",
+      "image": "library/postgres",
+      "tag": "18-alpine",
+      "variable": "POSTGRES_18_ALPINE_DIGEST",
+      "description": "Database base image (Docker Hub official image) - FROM in src/postgres/Dockerfile"
+    },
+    {
+      "name": "backuphelper",
+      "image": "ghcr.io/bauer-group/cs-backuphelper/backuphelper",
+      "tag": "latest",
+      "variable": "BACKUPHELPER_LATEST_DIGEST",
+      "description": "BackupHelper engine (internal GHCR package) - FROM in src/n8n-backup/Dockerfile; needs packages: read in the caller"
+    }
+  ],
+  "settings": {
+    "commit-prefix": "chore(deps)",
+    "auto-create-variables": true
+  }
+}

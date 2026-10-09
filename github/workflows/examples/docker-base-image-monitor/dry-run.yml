@@ -1,0 +1,51 @@
+# =============================================================================
+# Check Base Image Updates - Dry Run
+# =============================================================================
+# Runs the real check without changing anything: no variable is written, no
+# release commit pushed, no workflow dispatched. The summary shows what a real
+# check would do - which images moved, which release is still running, which
+# would be retried or are exhausted.
+#
+# Two uses:
+# - On a pull request that changes the config file or the caller: proves that
+#   every listed image is readable (a typo in a tag, a private package without
+#   packages: read) before the change reaches the daily schedule.
+# - On demand, before deleting a <VAR>_PENDING record or a digest variable
+#   during recovery, to see what the next real check will do.
+#
+# Keep the inputs identical to the scheduled caller (daily-release-dispatch.yml)
+# apart from dry-run, so the preview matches the real check. Like the real
+# check, the dry run fails when an image cannot be read or when an image's
+# release retries are exhausted.
+#
+# The dry run still needs PAT_READWRITE_ORGANISATION: it reads the digest
+# variables and the recorded release runs. Pull requests from forks and from
+# Dependabot get no secrets, so the job is limited to branches of this
+# repository.
+# =============================================================================
+
+name: 🔍 Check Base Images (Dry Run)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/config/docker-base-image-monitor/**'
+      - '.github/workflows/check-base-images.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  check:
+    name: Dry Run
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
+    with:
+      config-file: '.github/config/docker-base-image-monitor/base-images.json'
+      target-workflow: 'docker-release.yml'
+      target-workflow-inputs: '{"force-release": "true"}'
+      dry-run: true
+    secrets: inherit

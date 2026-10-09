@@ -320,6 +320,9 @@ Die Standard-Konfiguration in `.github/config/release/semantic-release.json` ent
 
 ## 📝 Beispiele
 
+> **Fertige Caller-Workflows** (täglicher Check mit Release-Dispatch, mehrere Images, Dry Run) liegen in
+> [`github/workflows/examples/docker-base-image-monitor/`](../../../github/workflows/examples/docker-base-image-monitor/README.md).
+
 ### Beispiel 1: n8n mit Runner (Multi-Image)
 
 **Konfiguration:** `.github/config/docker-base-image-monitor/base-images.json`
@@ -631,6 +634,9 @@ Check fehlschlagen.
 den Release dann wie für einen neuen Digest. Ein neuerer Digest des Images beginnt
 ohnehin von vorn.
 
+Alle Recovery-Schritte mit `gh`-Befehlen (z.B. Digest nach manuellem Release als erledigt
+markieren): [Operator recovery](../../../docs/workflows/modules-docker-base-image-monitor.md#operator-recovery).
+
 ### Variable `<NAME>_PENDING` im Repository
 
 **Ursache:** Kein Fehler. Sie hält den Release-Run, der für einen neuen Digest dispatcht
@@ -650,6 +656,8 @@ erfolgreich war. Nur nach "Release retries exhausted" von Hand löschen, sonst n
 
 ## 📚 Weiterführende Links
 
+- [Modul-Dokumentation](../../../docs/workflows/modules-docker-base-image-monitor.md) - Release-Bestätigung, Lebenszyklus der Variablen, Operator Recovery
+- [Beispiel-Workflows](../../../github/workflows/examples/docker-base-image-monitor/README.md)
 - [GitHub Actions: Reusable Workflows](https://docs.github.com/en/actions/using-workflows/reusing-workflows)
 - [Semantic Release](https://semantic-release.gitbook.io/)
 - [Docker Manifest](https://docs.docker.com/engine/reference/commandline/manifest/)
