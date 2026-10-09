@@ -14,6 +14,10 @@ Base images like `n8nio/n8n:stable` or `ghcr.io/bauer-group/cs-iamstack/logto` a
 
 > **Requires a PAT.** Digest state lives in repository variables and the commit must trigger downstream workflows, neither of which `GITHUB_TOKEN` can do. See [Secrets](#secrets).
 
+> **A release failed, or the job is red with "Release retries exhausted"?** Go to [Operator recovery](#operator-recovery). How a digest moves from "dispatched" to "stored" is shown in [State variables and lifecycle](#state-variables-and-lifecycle).
+
+**Contents:** [Quick Start](#quick-start) · [Input Parameters](#input-parameters) · [Outputs](#outputs) · [Configuration file](#configuration-file) · [Release confirmation](#release-confirmation) · [State variables and lifecycle](#state-variables-and-lifecycle) · [Operator recovery](#operator-recovery) · [Unreachable images](#unreachable-images) · [Secrets](#secrets) · [Examples](#examples)
+
 ## Quick Start
 
 ```yaml
@@ -58,6 +62,26 @@ jobs:
       target-workflow: 'docker-release.yml'
     secrets: inherit
 ```
+
+### Release commit and dispatch (Container-Solution default)
+
+What the container stacks run: an empty `chore(deps)` release commit gives semantic-release something to release, and the dispatched `docker-release.yml` (`force-release`) releases it and rebuilds the images. The digest is stored once that run has succeeded.
+
+```yaml
+jobs:
+  check:
+    permissions:
+      contents: read
+      packages: read
+    uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
+    with:
+      config-file: '.github/config/docker-base-image-monitor/base-images.json'
+      target-workflow: 'docker-release.yml'
+      target-workflow-inputs: '{"force-release": "true"}'
+    secrets: inherit
+```
+
+Complete callers - daily check, several images, dry run - are in [`github/workflows/examples/docker-base-image-monitor/`](../../github/workflows/examples/docker-base-image-monitor/README.md).
 
 ## Input Parameters
 
@@ -148,6 +172,77 @@ Without `target-workflow` (the release starts from the push of the release commi
 
 **Existing callers** need no change. Digests stored before this behaviour count as handled. If a consumer's last dispatched release failed before this change, its digest was already stored and the monitor does not retry it; delete the digest variable (*Settings → Secrets and variables → Actions → Variables*) to have the next check treat the image as updated, or start the release manually.
 
+## State variables and lifecycle
+
+Each configured image owns up to two repository variables (*Settings → Secrets and variables → Actions → Variables*). Both are written by the monitor with `PAT_READWRITE_ORGANISATION`; a dry run writes neither.
+
+| Variable | Holds | Written | Removed |
+|----------|-------|---------|---------|
+| `<variable>`, e.g. `N8N_STABLE_DIGEST` | The digest whose release is done: confirmed by a successful run, or (without `target-workflow`) whose release commit was pushed | By the check that confirms the release; created on first use | Never |
+| `<variable>_PENDING`, e.g. `N8N_STABLE_DIGEST_PENDING` | `{"digest", "run_id", "run_url", "attempt"}` of the release dispatched for a new digest | On every dispatch for that digest, with the attempt number | By the check that finds the run succeeded |
+
+With `target-workflow`, a new digest goes through these states - one step per scheduled check; the job never waits for the release itself:
+
+```text
+ check N: digest differs from <variable>
+   │  release commit (commit-and-release) + workflow_dispatch of target-workflow
+   ▼
+ <variable>_PENDING = {digest, run_id, attempt: 1}        <variable> = old digest
+   │
+   │  every later check reads the recorded run
+   ├── queued / running / unreadable ──▶ ⏳ nothing changes, read again next check
+   ├── succeeded ─────────────────────▶ ✅ <variable> = new digest, _PENDING removed
+   ├── failed, cancelled, timed out or deleted, attempt < max-release-attempts
+   │      ──▶ ❌ dispatched again (with a new release commit if the failed run
+   │             had already tagged its release), _PENDING attempt + 1
+   └── failed, attempt = max-release-attempts
+          ──▶ 🛑 nothing dispatched; the job fails on every check until
+                 _PENDING is deleted or a newer digest appears
+```
+
+A newer digest of the same image starts over with attempt 1 at any point: the record of the older digest no longer matches and is replaced by the next dispatch.
+
+A new image - no `<variable>` yet - counts as moved: its first real check releases once. To add an image without a release, run a [dry run](../../github/workflows/examples/docker-base-image-monitor/dry-run.yml) first and store the digest from its **New digests** block in `<variable>` (`gh variable set`).
+
+## Operator recovery
+
+The summary of every check names the state of each image and links the release run. What to do:
+
+| Summary / annotation | Meaning | Action |
+|----------------------|---------|--------|
+| ⏳ **Release still running** | The recorded run is queued or running | None. If it hangs in the queue (e.g. no runner picks it up), cancel it: the next check counts it as failed and dispatches the next attempt |
+| ⏳ **Release still running**, ⚠️ Unknown | The run could not be read (API error) | None - a second release is never started on a read error. If it persists, check that the PAT can read workflow runs (fine-grained: Actions) |
+| ❌ **Release failed** and a `::warning::` | The run failed; the monitor has already dispatched attempt *n + 1* | Fix the cause in the linked run (red backup round trip, build or scan failure). Nothing to do on the monitor |
+| 🛑 **Release retries exhausted**, job red | `max-release-attempts` runs failed; nothing is dispatched any more | Fix the cause, then delete `<variable>_PENDING` and run the check: it dispatches attempt 1. Was the last failure transient (a flaky test, a registry outage)? Re-run the linked run instead: the record keeps its run id, and the next check confirms the successful re-run and stores the digest |
+| Released by hand meanwhile, and that run succeeded | The record still points at the failed run, so the next check would dispatch once more | Store the recorded digest as handled and delete the record (commands below) |
+| An upstream digest must not be released (known-bad build) | - | Store that digest as handled (commands below); the next newer digest is detected as usual |
+| A digest was stored although its release failed (stored before release confirmation existed) | The monitor reports "No update" | Delete `<variable>`: the next check treats the image as updated |
+
+Delete a `_PENDING` record only while no release run for it is queued or running: without the record, the next check dispatches a second release.
+
+```bash
+REPO=bauer-group/CS-Example      # your repository
+VAR=N8N_STABLE_DIGEST            # "variable" of the image in the config
+
+# State of every monitored image
+gh variable list --repo "$REPO" | grep _DIGEST
+gh variable get "${VAR}_PENDING" --repo "$REPO"      # {"digest":...,"run_id":...,"attempt":...}
+
+# Start over after "Release retries exhausted" (cause fixed)
+gh variable delete "${VAR}_PENDING" --repo "$REPO"
+gh workflow run check-base-images.yml --repo "$REPO" # or wait for the schedule
+
+# Mark the recorded digest as handled (released by hand, or deliberately skipped)
+DIGEST=$(gh variable get "${VAR}_PENDING" --repo "$REPO" | jq -r .digest)
+gh variable set "$VAR" --body "$DIGEST" --repo "$REPO"
+gh variable delete "${VAR}_PENDING" --repo "$REPO"
+
+# Have the next check treat the image as updated
+gh variable delete "$VAR" --repo "$REPO"
+```
+
+The digest the monitor compares is not always the one `docker pull` prints: for a multi-arch tag it is the first platform manifest (sorted by architecture), for a single-arch tag the image config digest. Take it from the `_PENDING` record or from the **New digests** block of the check summary instead of computing it.
+
 ## Unreachable images
 
 A manifest can be unreadable for several reasons: the package is internal or private and the credentials lack read access, the tag does not exist, or the registry is rate-limiting.
@@ -191,9 +286,21 @@ The PAT is **not** used for the registry login. Manifests of internal or private
 - The dispatch uses the REST endpoint with `return_run_details`, which accepts a workflow file name or id. A workflow **name** in `target-workflow`, which `gh workflow run` accepted, is resolved to its id first.
 - `modules-auto-maintenance.yml` contains the same base image check as one of several maintenance tasks. Use this module when base image monitoring is all you need.
 
+## Examples
+
+Ready-to-copy callers are in [`github/workflows/examples/docker-base-image-monitor/`](../../github/workflows/examples/docker-base-image-monitor/README.md):
+
+| Example | Use case |
+|---------|----------|
+| [daily-release-dispatch.yml](../../github/workflows/examples/docker-base-image-monitor/daily-release-dispatch.yml) | Daily check that dispatches `docker-release.yml` with `force-release`; the digest is stored once the release succeeded |
+| [multi-image-config.yml](../../github/workflows/examples/docker-base-image-monitor/multi-image-config.yml) with [multi-image-base-images.json](../../github/workflows/examples/docker-base-image-monitor/multi-image-base-images.json) | Several images - Docker Hub and internal GHCR packages - in one config file, one release for all of them |
+| [dry-run.yml](../../github/workflows/examples/docker-base-image-monitor/dry-run.yml) | Checks a config change on its pull request and on demand, without storing, committing or dispatching |
+
 ## References
 
 - [GHCR Internal Visibility](../ghcr-internal-visibility.md)
 - [Secrets Reference](../secrets-reference.md)
 - [Module configuration guide](../../.github/config/docker-base-image-monitor/README.md)
 - [Auto Maintenance Module](./modules-auto-maintenance.md)
+- [Backup Round-Trip Test](./modules-backup-roundtrip-test.md) - the release gate whose failures the monitor retries
+- [Docker Maintenance (Dependabot)](./docker-maintenance.md) - updates of pinned tags, merged after the PR CI passed
