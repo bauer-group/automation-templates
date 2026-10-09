@@ -14,6 +14,12 @@
 #   -> show (every component error-free) -> verify -> delete the seeded data
 #   -> restore -> data is back -> healthcheck -> logs on failure -> down -v
 #
+# Opt-in, off unless the caller sets them - every existing caller runs the
+# cycle above unchanged:
+#
+#   external-networks   creates the external networks a Traefik or Coolify
+#                       compose variant expects, so every variant can run
+#
 # It runs in the CALLER's repository, so logs and artifacts of private stacks
 # stay where they belong.
 #
@@ -73,6 +79,11 @@ on:
         default: ""
       services:
         description: "Services to start, separated by spaces or newlines. Empty starts every service of the active profiles. Dependencies are started automatically."
+        required: false
+        type: string
+        default: ""
+      external-networks:
+        description: "Networks to create before the stack starts, separated by spaces, commas or newlines - the proxy network a Traefik or Coolify compose variant declares 'external: true'. 'auto' creates every external network of the configuration. Networks that exist already are left alone; the ones created here are removed at the end."
         required: false
         type: string
         default: ""
@@ -272,6 +283,8 @@ jobs:
       # Everything that can be wrong with the inputs fails here, in seconds,
       # instead of after ten minutes of image pulls.
       - name: "🔍 Validate Inputs"
+        id: validate
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
         env:
           COMPOSE_FILE_INPUT: ${{ inputs.compose-file }}
           COMPOSE_FILES_INPUT: ${{ inputs.compose-files }}
@@ -285,6 +298,7 @@ jobs:
           MUTATE_SCRIPT: ${{ inputs.mutate-script }}
           CHECK_SCRIPT: ${{ inputs.check-script }}
           STOP_SERVICES: ${{ inputs.services-to-stop-before-restore }}
+          EXTERNAL_NETWORKS: ${{ inputs.external-networks }}
         run: |
           set -euo pipefail
           set -f # inputs are split on whitespace below, never globbed
@@ -303,6 +317,9 @@ jobs:
           done
           for NAME in $STOP_SERVICES; do
             [ "$NAME" != "$BACKUP_SERVICE" ] || fail "services-to-stop-before-restore must not contain the backup service - the restore runs inside it"
+          done
+          for NAME in ${EXTERNAL_NETWORKS//,/ }; do
+            [ "$NAME" = "auto" ] || [[ "$NAME" =~ $NAME_RE ]] || fail "external-networks entry '$NAME' is neither 'auto' nor a network name"
           done
 
           if [ -n "$COMPOSE_FILES_INPUT" ]; then
@@ -499,6 +516,47 @@ jobs:
           fi
           docker compose config --format json > "$ROUNDTRIP_DIR/compose-config.json"
           echo "✅ $(jq '.services | length' "$ROUNDTRIP_DIR/compose-config.json") service(s) configured, profiles: ${COMPOSE_PROFILES:-<none>}"
+
+      # A Traefik or Coolify variant joins a proxy network that the proxy owns
+      # on a real host ('external: true'); without it 'up' refuses to start.
+      # The labels for the proxy are inert without one, so the network is all
+      # the variant needs to run on a runner.
+      - name: "🌐 Create External Networks"
+        id: networks
+        if: inputs.external-networks != ''
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
+        env:
+          EXTERNAL_NETWORKS: ${{ inputs.external-networks }}
+        run: |
+          set -euo pipefail
+          set -f # the input is split on whitespace below, never globbed
+          : > "$ROUNDTRIP_DIR/created-networks.txt"
+
+          NAMES=""
+          for NAME in ${EXTERNAL_NETWORKS//,/ }; do
+            if [ "$NAME" = "auto" ]; then
+              # Every network the configuration declares external, by the name
+              # Compose resolved - a name taken from the .env is its value.
+              DECLARED=$(jq -r '(.networks // {}) | to_entries[]
+                                | select(.value.external == true) | .value.name // .key' \
+                         "$ROUNDTRIP_DIR/compose-config.json")
+              [ -n "$DECLARED" ] || echo "::notice::external-networks: 'auto' found no external network in the configuration"
+              NAMES+="$DECLARED"$'\n'
+            else
+              NAMES+="$NAME"$'\n'
+            fi
+          done
+
+          while IFS= read -r NAME; do
+            [ -n "$NAME" ] || continue
+            if docker network inspect "$NAME" > /dev/null 2>&1; then
+              echo "🌐 $NAME exists already - left as it is"
+            else
+              docker network create "$NAME" > /dev/null
+              echo "$NAME" >> "$ROUNDTRIP_DIR/created-networks.txt"
+              echo "🌐 Created $NAME"
+            fi
+          done < <(printf '%s' "$NAMES" | sort -u)
 
       - name: "🔐 Log in to GitHub Container Registry"
         if: inputs.registry-login
@@ -847,6 +905,13 @@ jobs:
             docker compose down --volumes --remove-orphans --timeout 30
             rm -f .env
           fi
+          # Only the networks this run created (external-networks); one that
+          # existed before belongs to someone else.
+          if [ -s "${ROUNDTRIP_DIR:-/nonexistent}/created-networks.txt" ]; then
+            while IFS= read -r NAME; do
+              if docker network rm "$NAME" > /dev/null; then echo "🌐 Removed $NAME"; fi
+            done < "$ROUNDTRIP_DIR/created-networks.txt"
+          fi
 
       - name: "📊 Summary"
         if: always()
@@ -935,4 +1000,7 @@ jobs:
             echo "| Profiles | \`${COMPOSE_PROFILES:-none}\` |"
             echo "| Backup service | \`$BACKUP_SERVICE\` |"
             echo "| Marker | \`${ROUNDTRIP_MARKER:-}\` |"
+            if [ -s "${ROUNDTRIP_DIR:-/nonexistent}/created-networks.txt" ]; then
+              echo "| External networks created | \`$(paste -sd ' ' "$ROUNDTRIP_DIR/created-networks.txt")\` |"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

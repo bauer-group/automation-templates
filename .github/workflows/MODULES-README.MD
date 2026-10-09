@@ -192,6 +192,9 @@ backup-roundtrip:
 
 > Das Check-Skript muss die Daten vor dem Backup sehen, nach dem Löschen **nicht** sehen und nach dem Restore wieder sehen — ein Restore, der nichts schreibt, kann so nicht bestehen. Doku und Skript-Vertrag: [docs/workflows/modules-backup-roundtrip-test.md](../../docs/workflows/modules-backup-roundtrip-test.md).
 
+**Optional (Standard: aus):**
+- `external-networks: 'auto'` legt die externen Proxy-Netzwerke an, die eine Traefik- oder Coolify-Variante erwartet — so läuft der Round Trip per Matrix einmal pro Compose-Variante ([Compose-Varianten](../../docs/workflows/modules-backup-roundtrip-test.md#compose-variants-traefik-coolify))
+
 ### 🚀 [Semantic Release](./modules-semantic-release.yml)
 **Zweck:** Automatisierte Release-Erstellung mit Semantic Release
 

@@ -15,6 +15,9 @@ This reusable workflow runs the complete cycle against the caller's own compose 
 - **No credentials in the repository** — passwords are generated per run and masked
 - **Logs stay private** — runs in the consumer repository; diagnostics are uploaded there on failure only
 - **Release gate** — exposes `result`, `snapshot-id` and `components` for `needs:` conditions
+- **Every compose variant** (opt-in) — creates the external proxy network a Traefik or Coolify file expects, so the round trip runs once per variant in a matrix, see [Compose Variants](#compose-variants-traefik-coolify)
+
+Everything marked opt-in is off by default: a caller that does not set those inputs runs exactly the cycle described below.
 
 > **Not a matrix in the engine repository, on purpose.** Consumer stacks are mostly private. Running the round trip in each consumer keeps their logs and data where they belong, and tests the exact compose file and images that consumer is about to release.
 
@@ -40,7 +43,7 @@ This reusable workflow runs the complete cycle against the caller's own compose 
 ```
 
 1. **Prepare** — `.env` is created from `env-template`; `prepare-script` (if set) fills secrets with a format of their own, then `env-overrides` and `generated-secrets` are written over it. `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME` and `COMPOSE_PROFILES` are exported, so every later step — and your scripts — reach the stack with a plain `docker compose`.
-2. **Build** — each `build-images` entry is built with `--pull` and tagged with the image reference its compose service resolves to. Compose then starts that build instead of pulling the released image.
+2. **Build** — each `build-images` entry is built with `--pull` and tagged with the image reference its compose service resolves to. Compose then starts that build instead of pulling the released image. Before that, `external-networks` (if set) creates the external networks the configuration needs.
 3. **Start** — the images of the started services are pulled (the `services` input and everything it depends on, or every service when `services` is empty), except the images under test. `docker compose up -d --wait` then waits until every service is running or healthy and one-shot dependencies have completed. On the fresh volumes of a run the sidecar is healthy, see [BackupHelper 1.7.7 and later](#backuphelper-177-and-later).
 4. **Seed** — `seed-script` writes marker data; `check-script` must then report it **present**.
 5. **Back up** — `backuphelper create` runs inside the sidecar and must exit `0`; from BackupHelper 1.7.7 on it exits `1` when a component failed. The new snapshot is found by comparing `list` before and after — also after a non-zero exit, so that *Inspect snapshot* can still name the failed component before the job fails. `show` must report every component without `error`, without warnings (unless allowed) and must include every `require-components` name. `verify` must confirm the archive checksum.
@@ -48,7 +51,7 @@ This reusable workflow runs the complete cycle against the caller's own compose 
 7. **Restore** — `services-to-stop-before-restore` are stopped, the snapshot is restored, and the stack is started again with `up --wait`.
 8. **Check** — `check-script` must report the data **present** again.
 9. **Healthcheck** — `backuphelper healthcheck` must report the new snapshot as fresh.
-10. **Always** — on failure, `docker compose ps`, every service's log, the snapshot list and, once the snapshot was inspected, its manifest are uploaded as an artifact; the stack is removed with `down --volumes`; the step summary shows each phase.
+10. **Always** — on failure, `docker compose ps`, every service's log, the snapshot list and, once the snapshot was inspected, its manifest are uploaded as an artifact; the stack is removed with `down --volumes`, together with the networks `external-networks` created; the step summary shows each phase.
 
 ### BackupHelper 1.7.7 and later
 
@@ -96,6 +99,7 @@ Ready-to-copy callers are in [`github/workflows/examples/backup-roundtrip/`](../
 | `project-name` | Compose project name | `'backup-roundtrip'` |
 | `profiles` | Comma-separated Compose profiles to activate — usually the one that enables the sidecar | `''` |
 | `services` | Services to start (spaces or newlines). Empty starts every service of the active profiles; dependencies are always started. Only these services and their dependencies are pulled, so configured services the round trip does not need (workers, task runners) cost no download | `''` |
+| `external-networks` | Networks to create before the stack starts (spaces, commas or newlines) — the proxy network of a Traefik or Coolify variant. `auto` creates every network the configuration declares `external: true`, by the name Compose resolved. Existing networks are left alone; created ones are removed at the end. See [Compose Variants](#compose-variants-traefik-coolify) | `''` |
 
 ### Environment
 
@@ -378,6 +382,58 @@ jobs:
 
 A complete pipeline is in [`gated-release-pipeline.yml`](../../github/workflows/examples/backup-roundtrip/gated-release-pipeline.yml).
 
+## Compose Variants (Traefik, Coolify)
+
+Most stacks ship several compose files: a local one with published ports, one for Traefik, one for Coolify. Operators deploy the variant, not the local file, and the variants differ in exactly the places a backup depends on — volume names, networks, the sidecar's environment. Run the round trip once per variant with a matrix:
+
+```yaml
+jobs:
+  backup-roundtrip:
+    name: 🧪 Backup Round Trip (${{ matrix.variant }})
+    strategy:
+      fail-fast: false            # one broken variant must not hide the others
+      matrix:
+        include:
+          - variant: local
+            compose-file: docker-compose.local.yml
+          - variant: traefik
+            compose-file: docker-compose.traefik.yml
+          - variant: coolify
+            compose-file: docker-compose.coolify.yml
+    permissions:
+      contents: read
+      packages: read
+    uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+    with:
+      compose-file: ${{ matrix.compose-file }}
+      profiles: 'backup'
+      external-networks: 'auto'   # the proxy network the variant declares external
+      env-overrides: |
+        NGINX_SCHEME=http
+      # ... the rest as for a single compose file
+      artifact-name: 'backup-roundtrip-${{ matrix.variant }}-diagnostics'
+    secrets: inherit
+
+  release:
+    needs: [backup-roundtrip]
+    # 'success' only when every leg of the matrix passed
+    if: needs.backup-roundtrip.result == 'success'
+```
+
+What a variant usually needs on a runner:
+
+| Need | How |
+|------|-----|
+| The proxy network (`networks: proxy: {external: true, name: ${PROXY_NETWORK}}`). On a host Traefik or Coolify owns it; without it `up` refuses to start | `external-networks: 'auto'` creates every network the configuration declares external, by its resolved name. Explicit names work too (`external-networks: 'coolify'`) |
+| Variables the variant requires (`${SERVICE_HOSTNAME:?}`, `${PROXY_NETWORK:?}`, Coolify's `SERVICE_FQDN_*` / `SERVICE_PASSWORD_*` that Coolify fills on deployment) | `env-overrides` for plain values, `generated-secrets` for passwords |
+| No published ports — the proxy routes to the container | Nothing: the scripts reach the services with `docker compose exec`, never over a port |
+| Services that only work behind the real proxy or with an external account (a Cloudflare tunnel with its token, an OAuth proxy) | Leave them out with `services`, or switch them off through their toggle |
+| A distinct diagnostics artifact per leg | `artifact-name` with the matrix value |
+
+The proxy itself is not started: Traefik labels, Coolify's routing and TLS are not exercised, only everything behind them. `fail-fast: false` keeps the other legs running when one fails, and `needs.<job>.result` of a matrix job is `success` only when every leg passed — a single `needs` condition gates the release on all variants.
+
+A ready-to-copy caller is in [`compose-variants-matrix.yml`](../../github/workflows/examples/backup-roundtrip/compose-variants-matrix.yml).
+
 ## Fitting a Stack
 
 ### Sources that need external services
@@ -460,6 +516,10 @@ On failure (or cancellation) the artifact `artifact-name` contains `ps.txt`, `lo
 
 The sidecar sits behind a profile that is not active. Set `profiles: 'backup'` (or whatever your compose file uses).
 
+### `network … declared as external, but could not be found`
+
+The compose file — usually a Traefik or Coolify variant — joins a network the proxy owns on a real host. Set `external-networks: 'auto'`, see [Compose Variants](#compose-variants-traefik-coolify).
+
 ### `backuphelper create` exits 1
 
 The run ended in `error`: a component failed (since BackupHelper 1.7.7), the snapshot was stored on no destination, or the run aborted — a `pre_backup` hook raised or the disk filled up while bundling. A snapshot with a failed component is still stored: the module resolves it and runs *Inspect snapshot*, whose annotations, step summary table and `manifest.json` in the artifact name the failed component and its `error`. The summary also states the exit code. When no snapshot was stored at all, the error says so and only `create.log` and the service logs remain.
@@ -506,6 +566,7 @@ The calling job does not grant `packages: read`, or the package is private to an
 - **One snapshot per run.** Retention, GFS pruning and the scheduler are not exercised.
 - **One backup job per configuration.** `create` runs every job of `BACKUP_CONFIG_JSON`, but the module tests only the newest snapshot it produced, and the engine's `list`, `verify` and `restore` use the first job unless `--job` is given. A configuration with several jobs is therefore not covered completely; every consumer on the `jobs` schema defines exactly one today.
 - **Restore is a full restore** unless `restore-args` narrows it with `--only`.
+- **Compose variants run without their proxy.** `external-networks` creates the proxy network, but Traefik or Coolify is not started; routing, labels and TLS are not tested.
 
 ## Related Modules
 

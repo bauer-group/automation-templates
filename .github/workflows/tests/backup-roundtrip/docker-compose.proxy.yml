@@ -1,0 +1,31 @@
+# =============================================================================
+# Fixture: the reverse-proxy variant of the stack
+# =============================================================================
+# Merged over docker-compose.yml by the "Fixture Round Trip (variant)" matrix
+# of backup-roundtrip-selftest.yml. It stands in for the docker-compose.traefik
+# and docker-compose.coolify files of the consumer repositories: the
+# application joins a proxy network that the proxy owns on a real host
+# ('external: true'), and carries the labels the proxy routes by.
+#
+# Without the network, 'docker compose up' refuses to start the stack; the
+# module's external-networks input creates it ('auto': every external network
+# of the configuration). The labels are inert without a proxy.
+# =============================================================================
+
+services:
+  app:
+    networks:
+      default:
+      proxy:
+        aliases:
+          - app.roundtrip.internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.roundtrip-app.rule=Host(`app.roundtrip.invalid`)"
+      - "traefik.http.routers.roundtrip-app.entrypoints=web-secure"
+      - "traefik.http.services.roundtrip-app.loadbalancer.server.port=8080"
+
+networks:
+  proxy:
+    name: ${PROXY_NETWORK:?PROXY_NETWORK must be set}
+    external: true
