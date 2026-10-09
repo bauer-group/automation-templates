@@ -798,6 +798,14 @@ expect_log "previous: asks for the tag instead" "does not give an image tag"
 previous_case unpublished; echo "ghcr.io/acme/app:9.9.9" > "$DIR/unpullable"
 run_previous UPGRADE_FROM=9.9.9; expect_rc "previous: image not published under the tag" $? 1
 expect_log "previous: names the image" "'ghcr.io/acme/app:9.9.9' could not be pulled"
+if grep -q "may not be published yet" "$DIR/log"; then fail "previous: no release hint for a tag given by hand" "$(cat "$DIR/log")"; else pass "previous: no release hint for a tag given by hand"; fi
+
+# The latest release exists, its image jobs have not pushed (yet).
+previous_case release-without-images; echo '{"tag_name": "v0.2.62"}' > "$DIR/release.json"
+echo "registry.example.com:5000/acme/app-backup:0.2.62" > "$DIR/unpullable"
+run_previous UPGRADE_FROM='{"app": "latest-release", "app-backup": "latest-release"}'
+expect_rc "previous: latest release without its images" $? 1
+expect_log "previous: explains the release window and the way out" "v0.2.62 is the latest release, but its images may not be published yet"
 
 previous_case no-image
 jq '.services.app |= del(.image)' "$DIR/compose-config.json" > "$DIR/c.json" && mv "$DIR/c.json" "$DIR/compose-config.json"

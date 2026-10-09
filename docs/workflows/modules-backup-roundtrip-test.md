@@ -434,6 +434,8 @@ Without `upgrade-from` every round trip starts on empty volumes with the images 
 
 Services that share one image (Zammad's five roles on `zammad-railsserver`'s image) are upgraded together — the reference moves for all of them. The release must have published its images under the version tag (`docker-build.yml` does with `auto-tags`); a repository without a release, or with a tag that is no image tag, fails at *Pull previous release* with a message saying so. Private or internal images need `packages: read`, as for every pull.
 
+**A release exists before its images.** `latest-release` reads the newest release when the job runs. The release flow creates the GitHub release first and its image jobs push the version tags afterwards — measured 1 min 40 s (CS-ZAMMAD `v0.2.62`) and 2 min 31 s (CS-n8n `v0.15.48`) later. A run that reaches *Pull previous release* inside that window fails, and so does every run after a release whose image job failed and never pushed. Because the release job needs the round trip, the next release then waits as well. The error says so; the way out is to re-run the failed image job of that release (or wait for the running one), or to set `upgrade-from` to the tag of the release before until its images are published.
+
 **`pull_policy` of the services under test.** The test only means something when Compose runs the images the module tagged: the previous release at the start, the build of this commit after the upgrade. A service with `pull_policy: always` makes `up` pull the reference from the registry, one with `pull_policy: build` builds its own image — either replaces the tagged image, and the containers would then run the registry's or Compose's image while the reference looks right. The module therefore compares the containers with the image ids it tagged, not with whatever the reference holds after `up`, and fails at *Check previous release* or *Upgrade* when `up` replaced one. Keep `missing` (the default) or `never` for the round trip; when the production file sets `always`, override it in a CI-only file through `compose-files` (and `upgrade-from-compose-files`, if set).
 
 **When the previous release has a different shape.** By default the previous release starts from the compose files of **this** commit — it is the *images* that are old. That is exactly right while the compose files and the `.env` stay compatible, which they are between neighbouring releases of most stacks. When they are not:
@@ -626,6 +628,8 @@ The sidecar sits behind a profile that is not active. Set `profiles: 'backup'` (
 ### `upgrade-from: '…' could not be pulled`
 
 The previous release did not publish that image under the tag, or the job may not read it. Check the package's tags (a release tag `v1.4.2` is looked up as image tag `1.4.2`), `registry-login` and `packages: read`. For an image that is published under another name, give the full reference in the JSON form.
+
+With `latest-release`, the error adds that the latest release may not have its images yet: the release is created before its image jobs push the tags, or one of them failed. Re-run the failed image job of that release, or pin `upgrade-from` to the release before until the images are published, see [A release exists before its images](#upgrade-from-a-previous-release).
 
 ### `'up' replaced …, which held the previous release` / `'up' replaced the image under test …`
 
