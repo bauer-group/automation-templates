@@ -82,6 +82,11 @@ billed to the organization".
 **Zweck:** Wiederverwendbarer Node.js Build und Publish Workflow  
 **Features:** npm/yarn/pnpm/bun Support, Package Publishing, Docker
 
+#### 🐳 [docker-build.yml](./docker-build.yml) - Docker Build & Publish
+**Zweck:** Multi-Platform Docker Build mit Security-Scan, SBOM und Push nach GHCR und/oder Docker Hub (Composite Action [`docker-build`](../actions/docker-build/action.yml))  
+**Features:** Trivy/Grype-Gate vor dem Push, Cosign, SBOM-Attestation, Dockerfile-Version-Write-back mit Retry, `free-disk-space` für große Images (nur GitHub-hosted Runner)  
+**Docs:** [docs/workflows/docker-build.md](../../docs/workflows/docker-build.md) · **Beispiele:** [examples/docker/](../../github/workflows/examples/docker/README.md)
+
 ### Container-Wartung & Release-Gate
 
 Reusable Workflows, mit denen sich Container-Repositories selbst aktuell halten, und das Gate, das jedes Release davor bestehen muss — jeweils mit eigener Doku und kopierfertigen Beispielen:
@@ -176,6 +181,7 @@ jobs:
 | **dotnet-publish-library.yml** | workflow_call | Pack & Push NuGet (Libs + Tools) | Linux, Windows, macOS |
 | **dotnet-publish-binaries.yml** | workflow_call | Self-contained Binaries pro RID + Release-Upload | Linux (x64+arm64), Windows (x64); macOS/win-arm64 opt-in |
 | **nodejs-build.yml** | workflow_call | Build, Test, Publish, Docker | Linux, Windows, macOS |
+| **docker-build.yml** | workflow_call | Build, Scan, SBOM, Sign, Push (GHCR/Docker Hub) | Linux (GitHub-hosted oder self-hosted) |
 | **fork-docker-build.yml** | workflow_call | Multi-Image Build, Trivy-Scan, GHCR (Fork-CI) | Linux |
 | **modules-backup-roundtrip-test.yml** | workflow_call (Caller: `pull_request`, `push`, `workflow_dispatch`) | Backup → Löschen → Restore → Prüfen eines Compose-Stacks als Release-Gate | Linux |
 | **docker-maintenance-dependabot.yml** | workflow_call (Caller: `pull_request`) | Dependabot-PRs nach grüner PR-CI mergen | Linux |

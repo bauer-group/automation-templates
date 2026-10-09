@@ -81,6 +81,7 @@ jobs:
       # second full-size copy on a runner that has ~4 GB free to begin with. If
       # this build ever fails with "no space left on device" reported by the
       # scanner, that is the cause and this is the fix - see large-image-build.yml.
+      # GitHub-hosted runners only; ignored on self-hosted runners.
       # free-disk-space: true
 
       # Testing
