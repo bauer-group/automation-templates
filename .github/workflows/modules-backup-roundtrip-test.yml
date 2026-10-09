@@ -205,7 +205,7 @@ on:
         type: boolean
         default: false
       s3-env:
-        description: "Lines 'setting VARIABLE' (separated by whitespace) naming the .env variables the compose file builds its S3 destination from; the module writes the throwaway server's values into them. Settings: endpoint, bucket, access-key, secret-key (required), region, path-style, prefix (optional). Example line: 'endpoint APP_BACKUP_S3_ENDPOINT'. No '=': secret scanners read 'access-key=NAME' as a credential."
+        description: "Lines 'setting VARIABLE' (separated by whitespace) naming the .env variables the compose file builds its S3 destination from; the module writes the throwaway server's values into them. Settings: endpoint, bucket, access-key, secret-key (required), region, path-style, prefix (optional), each with a variable of its own. Example line: 'endpoint APP_BACKUP_S3_ENDPOINT'. No '=': secret scanners read 'access-key=NAME' as a credential."
         required: false
         type: string
         default: ""
@@ -437,6 +437,7 @@ jobs:
           if [ "$S3_DESTINATION" = "true" ]; then
             [ -n "$S3_ENV" ] || fail "s3-destination needs s3-env: the .env variables the compose file builds its S3 destination from"
             MAPPED=" "
+            VARIABLES=" "
             while IFS= read -r LINE; do
               LINE="${LINE#"${LINE%%[![:space:]]*}"}"
               LINE="${LINE%"${LINE##*[![:space:]]}"}"
@@ -447,12 +448,16 @@ jobs:
                 continue
               fi
               SETTING="${BASH_REMATCH[1]}"
+              VARIABLE="${BASH_REMATCH[2]}"
               case "$SETTING" in
                 endpoint|bucket|access-key|secret-key|region|path-style|prefix) ;;
                 *) fail "s3-env: unknown setting '$SETTING' (endpoint, bucket, access-key, secret-key, region, path-style, prefix)"; continue ;;
               esac
               [[ "$MAPPED" != *" $SETTING "* ]] || fail "s3-env maps '$SETTING' twice"
               MAPPED+="$SETTING "
+              # One variable for two settings would silently keep the last value.
+              [[ "$VARIABLES" != *" $VARIABLE "* ]] || fail "s3-env names '$VARIABLE' for two settings - each setting needs a variable of its own"
+              VARIABLES+="$VARIABLE "
             done <<< "$S3_ENV"
             for SETTING in endpoint bucket access-key secret-key; do
               [[ "$MAPPED" == *" $SETTING "* ]] || fail "s3-env must map '$SETTING' - without it the sidecar does not reach the throwaway server"
