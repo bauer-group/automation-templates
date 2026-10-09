@@ -552,17 +552,38 @@ jobs:
           done
 
       - name: "📥 Pull Images"
+        id: pull
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
         run: |
           set -euo pipefail
           touch "$ROUNDTRIP_DIR/built-images.txt"
           BUILT=$(jq -R -s 'split("\n") | map(select(length > 0))' "$ROUNDTRIP_DIR/built-images.txt")
-          # Everything except what was just built (pulling those references would
-          # replace the images under test with the released ones) and services
-          # with a build section, which 'up' builds itself when the image is missing.
-          mapfile -t PULL < <(jq -r --argjson built "$BUILT" '.services | to_entries[]
-                                     | select(.value.image != null and .value.build == null)
-                                     | select(.value.image as $image | $built | index($image) | not)
-                                     | .key' "$ROUNDTRIP_DIR/compose-config.json")
+          read -r -a SERVICES <<< "$(echo "$START_SERVICES" | tr '\n' ' ')"
+          STARTED=$(jq -n '$ARGS.positional' --args "${SERVICES[@]}")
+          # Only what Start Stack starts: the 'services' input plus everything
+          # they depend on, transitively - or every service when 'services' is
+          # empty. Pulling the rest costs minutes and disk for images no step
+          # uses (CS-n8n pulled ten worker and runner images it never starts).
+          # Of those, everything except what was just built (pulling those
+          # references would replace the images under test with the released
+          # ones) and services with a build section, which 'up' builds itself
+          # when the image is missing. A dependency missed here is not fatal:
+          # 'up' pulls a missing image itself.
+          mapfile -t PULL < <(jq -r --argjson built "$BUILT" --argjson started "$STARTED" '
+              .services as $all
+              | (if ($started | length) == 0 then ($all | keys)
+                 else {todo: $started, seen: []}
+                      | until(.todo | length == 0;
+                          .seen += .todo
+                          | .todo = (([.todo[] | ($all[.].depends_on // {})
+                                       | if type == "array" then .[] else keys[] end] | unique) - .seen))
+                      | .seen
+                 end) as $needed
+              | $all | to_entries[]
+              | select(.key as $name | $needed | index($name))
+              | select(.value.image != null and .value.build == null)
+              | select(.value.image as $image | $built | index($image) | not)
+              | .key' "$ROUNDTRIP_DIR/compose-config.json")
           if [ ${#PULL[@]} -eq 0 ]; then
             echo "Nothing to pull"
             exit 0

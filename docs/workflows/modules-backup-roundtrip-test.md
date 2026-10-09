@@ -41,7 +41,7 @@ This reusable workflow runs the complete cycle against the caller's own compose 
 
 1. **Prepare** — `.env` is created from `env-template`; `prepare-script` (if set) fills secrets with a format of their own, then `env-overrides` and `generated-secrets` are written over it. `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME` and `COMPOSE_PROFILES` are exported, so every later step — and your scripts — reach the stack with a plain `docker compose`.
 2. **Build** — each `build-images` entry is built with `--pull` and tagged with the image reference its compose service resolves to. Compose then starts that build instead of pulling the released image.
-3. **Start** — the remaining images are pulled and `docker compose up -d --wait` waits until every service is running or healthy and one-shot dependencies have completed. On the fresh volumes of a run the sidecar is healthy, see [BackupHelper 1.7.7 and later](#backuphelper-177-and-later).
+3. **Start** — the images of the started services are pulled (the `services` input and everything it depends on, or every service when `services` is empty), except the images under test. `docker compose up -d --wait` then waits until every service is running or healthy and one-shot dependencies have completed. On the fresh volumes of a run the sidecar is healthy, see [BackupHelper 1.7.7 and later](#backuphelper-177-and-later).
 4. **Seed** — `seed-script` writes marker data; `check-script` must then report it **present**.
 5. **Back up** — `backuphelper create` runs inside the sidecar and must exit `0`; from BackupHelper 1.7.7 on it exits `1` when a component failed. The new snapshot is found by comparing `list` before and after — also after a non-zero exit, so that *Inspect snapshot* can still name the failed component before the job fails. `show` must report every component without `error`, without warnings (unless allowed) and must include every `require-components` name. `verify` must confirm the archive checksum.
 6. **Mutate** — `mutate-script` deletes the seeded data; `check-script` must now report it **absent**.
@@ -95,7 +95,7 @@ Ready-to-copy callers are in [`github/workflows/examples/backup-roundtrip/`](../
 | `working-directory` | Directory the stack is started from. The `.env` is written here, scripts and `build-images` paths are relative to it | `'.'` |
 | `project-name` | Compose project name | `'backup-roundtrip'` |
 | `profiles` | Comma-separated Compose profiles to activate — usually the one that enables the sidecar | `''` |
-| `services` | Services to start (spaces or newlines). Empty starts every service of the active profiles; dependencies are always started | `''` |
+| `services` | Services to start (spaces or newlines). Empty starts every service of the active profiles; dependencies are always started. Only these services and their dependencies are pulled, so configured services the round trip does not need (workers, task runners) cost no download | `''` |
 
 ### Environment
 

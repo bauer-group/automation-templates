@@ -10,7 +10,8 @@ name: "🧪 Backup Round-Trip Self-Test"
 # an external source and add a key the template lacks, generated secrets, a
 # prepare script for a secret with its own format (left on an unterminated last
 # line), an image built from the repository, required components and a service
-# stopped for the restore.
+# stopped for the restore. A second run starts selected services only, next to
+# a configured service whose image cannot be pulled.
 #
 # What a real stack cannot show without turning this workflow red - a create
 # that exits 1 for a failed component - is covered by the Step Tests job, which
@@ -40,7 +41,8 @@ permissions:
   contents: read
 
 jobs:
-  # Seconds, no stack: the decisions of Create Backup against a stubbed engine.
+  # Seconds, no stack: the decisions of Create Backup and Pull Images against
+  # a stubbed engine and docker.
   step-tests:
     name: "🧪 Step Tests"
     runs-on: ubuntu-latest
@@ -51,7 +53,7 @@ jobs:
       - name: "📥 Checkout Repository"
         uses: actions/checkout@v7
 
-      - name: "🧪 Create Backup"
+      - name: "🧪 Create Backup and Pull Images"
         shell: bash
         run: bash .github/workflows/tests/backup-roundtrip-module.test.sh
 
@@ -83,29 +85,64 @@ jobs:
       artifact-name: 'backup-roundtrip-selftest-diagnostics'
     secrets: inherit
 
+  # Selected services: 'app' and 'backup' plus what they depend on (database,
+  # files-init). The "decoy" profile adds a configured service whose image
+  # cannot be pulled; the run only passes if Pull Images leaves it alone.
+  roundtrip-services:
+    name: "🧪 Fixture Round Trip (Selected Services)"
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/modules-backup-roundtrip-test.yml
+    with:
+      working-directory: '.github/workflows/tests/backup-roundtrip'
+      compose-file: 'docker-compose.yml'
+      profiles: 'backup,decoy'
+      services: 'app backup'
+      env-overrides: |
+        APP_MODE=ci
+        SAAS_EXPORT_ENABLED=false
+      generated-secrets: 'DATABASE_PASSWORD'
+      prepare-script: 'prepare.sh'
+      build-images: '[{"service": "backup", "context": "backup"}]'
+      backup-service: 'backup'
+      require-components: 'database files'
+      services-to-stop-before-restore: 'app'
+      seed-script: 'seed.sh'
+      mutate-script: 'mutate.sh'
+      check-script: 'check.sh'
+      wait-timeout: 180
+      timeout-minutes: 15
+      artifact-name: 'backup-roundtrip-selftest-services-diagnostics'
+    secrets: inherit
+
   # The outputs are part of the module's contract - callers gate on them.
   check-outputs:
     name: "📋 Check Module Outputs"
-    needs: roundtrip
+    needs: [roundtrip, roundtrip-services]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
     steps:
       - name: "🔍 Assert Outputs"
         env:
-          SNAPSHOT_ID: ${{ needs.roundtrip.outputs.snapshot-id }}
-          COMPONENTS: ${{ needs.roundtrip.outputs.components }}
-          RESULT: ${{ needs.roundtrip.outputs.result }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
-          echo "snapshot-id: $SNAPSHOT_ID"
-          echo "components:  $COMPONENTS"
-          echo "result:      $RESULT"
-          [[ "$SNAPSHOT_ID" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]] \
-            || { echo "::error::snapshot-id is not a snapshot id"; exit 1; }
-          jq -e '[.[].name] | sort == ["database", "files"]' <<< "$COMPONENTS" > /dev/null \
-            || { echo "::error::components must list exactly database and files (saas-export is disabled)"; exit 1; }
-          jq -e 'all(.[]; .error == null and .size > 0)' <<< "$COMPONENTS" > /dev/null \
-            || { echo "::error::every component must be error-free and non-empty"; exit 1; }
-          [ "$RESULT" = "success" ] || { echo "::error::result must be success"; exit 1; }
+          for JOB in roundtrip roundtrip-services; do
+            SNAPSHOT_ID=$(jq -r --arg j "$JOB" '.[$j].outputs["snapshot-id"] // ""' <<< "$NEEDS_JSON")
+            COMPONENTS=$(jq -r --arg j "$JOB" '.[$j].outputs.components // ""' <<< "$NEEDS_JSON")
+            RESULT=$(jq -r --arg j "$JOB" '.[$j].outputs.result // ""' <<< "$NEEDS_JSON")
+            echo "== $JOB"
+            echo "snapshot-id: $SNAPSHOT_ID"
+            echo "components:  $COMPONENTS"
+            echo "result:      $RESULT"
+            [[ "$SNAPSHOT_ID" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]] \
+              || { echo "::error::$JOB: snapshot-id is not a snapshot id"; exit 1; }
+            jq -e '[.[].name] | sort == ["database", "files"]' <<< "$COMPONENTS" > /dev/null \
+              || { echo "::error::$JOB: components must list exactly database and files (saas-export is disabled)"; exit 1; }
+            jq -e 'all(.[]; .error == null and .size > 0)' <<< "$COMPONENTS" > /dev/null \
+              || { echo "::error::$JOB: every component must be error-free and non-empty"; exit 1; }
+            [ "$RESULT" = "success" ] || { echo "::error::$JOB: result must be success"; exit 1; }
+          done
           echo "✅ Outputs match the contract"

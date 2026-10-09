@@ -8,6 +8,8 @@
 #   files-init   one-shot, hands the file volume to uid 1000 (like zammad-init)
 #   backup       thin meta image FROM the public BackupHelper engine, behind the
 #                "backup" profile like every consumer sidecar
+#   decoy        never started, behind the "decoy" profile: stands in for the
+#                workers and runners a consumer configures but does not start
 #
 # APP_SIGNING_KEY has a format of its own (base64 of 32 bytes); prepare.sh fills
 # it, standing in for a repository's env generator.
@@ -90,6 +92,15 @@ services:
         condition: service_healthy
       files-init:
         condition: service_completed_successfully
+
+  # Active only in the self-test job that starts 'app' and 'backup' alone. Its
+  # image cannot be pulled (.invalid is a reserved top-level domain), so that
+  # job fails if Pull Images pulls more than the started services and their
+  # dependencies - as it did before, pulling every configured service.
+  decoy:
+    image: registry.invalid/roundtrip-fixture/decoy:never
+    profiles: ["decoy"]
+    command: ["true"]
 
 volumes:
   database:

@@ -55,7 +55,7 @@ billed to the organization".
 **Module verwendet:** modules-issue-automation
 
 #### 🧪 [backup-roundtrip-selftest.yml](./backup-roundtrip-selftest.yml) - Backup Round-Trip Self-Test
-**Zweck:** Führt das Modul `modules-backup-roundtrip-test.yml` gegen einen Fixture-Stack aus ([tests/backup-roundtrip/](./tests/backup-roundtrip/): PostgreSQL, Datei-Volume als uid 1000, Meta-Image auf der öffentlichen BackupHelper-Engine) — Backup, Löschen, Restore und Datenprüfung laufen echt durch. Dazu Step-Tests für *Create Backup* (Exit-Code 1 bei fehlgeschlagener Komponente) ([tests/backup-roundtrip-module.test.sh](./tests/backup-roundtrip-module.test.sh))  
+**Zweck:** Führt das Modul `modules-backup-roundtrip-test.yml` gegen einen Fixture-Stack aus ([tests/backup-roundtrip/](./tests/backup-roundtrip/): PostgreSQL, Datei-Volume als uid 1000, Meta-Image auf der öffentlichen BackupHelper-Engine) — Backup, Löschen, Restore und Datenprüfung laufen echt durch, einmal mit allen Services und einmal nur mit ausgewählten (neben einem Service, dessen Image nicht gepullt werden kann). Dazu Step-Tests für *Create Backup* (Exit-Code 1 bei fehlgeschlagener Komponente) und *Pull Images* ([tests/backup-roundtrip-module.test.sh](./tests/backup-roundtrip-module.test.sh))  
 **Module verwendet:** modules-backup-roundtrip-test  
 **Trigger:** Nur Änderungen am Modul, am Self-Test, an der Fixture oder am Step-Test (pfadgefiltert)  
 **Doku:** [docs/workflows/modules-backup-roundtrip-test.md](../../docs/workflows/modules-backup-roundtrip-test.md)
