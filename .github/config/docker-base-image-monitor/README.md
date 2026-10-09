@@ -60,9 +60,18 @@ n8nio/n8n:stable
           └─────────────────┘                 │  2. Semantic Release    │
                                               │     triggern            │
                                               │  3. Variable updaten    │
-                                              │     (nur wenn 1+2 ok)   │
+                                              │     (nur wenn 1+2 ok;   │
+                                              │     mit target-workflow │
+                                              │     erst nach Erfolg    │
+                                              │     des Release-Runs)   │
                                               └─────────────────────────┘
 ```
+
+Mit `target-workflow` zählt ein neuer Digest erst als erledigt, wenn der dispatchte
+Release-Run **erfolgreich** war. Bis dahin steht der Run in einer zweiten Variable
+`<variable>_PENDING`. Jeder folgende Check liest dessen Ergebnis: erfolgreich → Digest
+speichern; fehlgeschlagen (z.B. rotes Backup-Round-Trip-Gate) → Release erneut
+dispatchen; läuft noch → abwarten. Details: [Release confirmation](../../../docs/workflows/modules-docker-base-image-monitor.md#release-confirmation).
 
 ---
 
@@ -270,11 +279,15 @@ Die Standard-Konfiguration in `.github/config/release/semantic-release.json` ent
 
 | Output | Typ | Beschreibung |
 |--------|-----|--------------|
-| `updates-found` | boolean | `true` wenn Updates gefunden |
-| `updated-images` | JSON array | Liste der aktualisierten Image-Namen |
+| `updates-found` | boolean | `true` wenn ein Image ein Release braucht (neuer Digest oder fehlgeschlagenes Release) |
+| `updated-images` | JSON array | Image-Namen, die ein Release brauchen (neue und wiederholte) |
+| `retried-images` | JSON array | Image-Namen, deren Release fehlschlug und erneut dispatcht wurde |
+| `pending-images` | JSON array | Image-Namen, deren dispatchter Release-Run noch läuft |
 | `triggered` | boolean | `true` wenn Commit/Workflow getriggert |
 | `commit-sha` | string | SHA des erstellten Commits |
 | `new-digests` | JSON object | Neue Digests pro Image |
+| `dispatched-run-id` | string | Id des dispatchten Runs |
+| `dispatched-run-url` | string | URL des dispatchten Runs |
 
 ### JSON-Konfiguration
 
@@ -514,6 +527,8 @@ So sieht der vollständige automatische Release-Flow aus:
 │                                                                               │
 │  3. GitHub Variable updaten - erst wenn 1 und 2 erfolgreich waren:            │
 │     N8N_STABLE_DIGEST = sha256:newdigest123                                   │
+│     Mit target-workflow erst, wenn der dispatchte Run erfolgreich war -       │
+│     bis dahin steht der Run in N8N_STABLE_DIGEST_PENDING                      │
 └──────────────────────────────────────────────────────────────────────────────┘
        │
        ▼
@@ -579,6 +594,22 @@ So sieht der vollständige automatische Release-Flow aus:
 **Lösung:**
 - Fine-grained PAT: "Variables" Permission auf "Read and Write"
 - Classic PAT: `repo` Scope ist ausreichend
+
+### Summary meldet "❌ Release failed"
+
+**Ursache:** Der für den neuen Digest dispatchte Release-Run ist fehlgeschlagen (z.B.
+rotes Backup-Round-Trip-Gate oder Build-Fehler). Das Image basiert noch auf dem alten
+Base Image.
+
+**Verhalten:** Der Digest wird nicht gespeichert, der Release wird bei jedem Check erneut
+dispatcht, bis ein Run erfolgreich ist. Den Fehler im verlinkten Run beheben — kein
+manueller Eingriff am Monitor nötig.
+
+### Variable `<NAME>_PENDING` im Repository
+
+**Ursache:** Kein Fehler. Sie hält den Release-Run, der für einen neuen Digest dispatcht
+wurde (`{"digest", "run_id", "run_url"}`), und wird entfernt, sobald der Run erfolgreich
+war. Nicht von Hand ändern.
 
 ### Workflow läuft, aber findet nie Updates
 
