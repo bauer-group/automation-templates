@@ -50,8 +50,16 @@ jobs:
       # of scopes and has not learned this one as of 1.7.12, so it reports every
       # workflow that declares it. Remove this line once a release knows the scope.
       # https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli-in-actions
+      #
+      # job.check_run_id is a documented property of the job context. actionlint
+      # learned it in 1.7.8 (rhysd/actionlint#576); the pinned 1.7.7 rejects it.
+      # Upgrading is not a drop-in: 1.7.8 to 1.7.12 report unrelated findings in
+      # other workflows. The pattern is anchored to the job context's type, so
+      # only that property is let through. Remove it with the upgrade.
+      # https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#job-context
       ignore-patterns: |
         unknown permission scope "copilot-requests"
+        property "check_run_id" is not defined in object type \{container: \{id: string; network: string\}; services:
 
   action-tests:
     name: "🧪 Action Tests"
