@@ -469,7 +469,7 @@ Setting and variable are separated by whitespace, not `=`: secret scanners read 
 | Prepare | The variables `s3-env` names are set in the `.env` — after `env-overrides` and `generated-secrets`, so they win: `endpoint` `http://roundtrip-s3:9000`, `bucket` `backup-roundtrip`, `access-key`/`secret-key` the server's generated (masked) credentials, `region` `us-east-1`, `path-style` `true`, `prefix` `backup-roundtrip/`. Unmapped optional settings keep your defaults. A generated override file adds the server `roundtrip-s3` to the project, on the networks of `backup-service`, and a client `roundtrip-s3-client` behind a profile of its own |
 | Start | The server starts before the stack; the module creates the bucket (your configuration may set `ensure_bucket: false`, as it would against a real provider) |
 | After *verify* | `<id>.tar.gz` (or `.age`/`.gpg`) and `<id>.manifest.json` must be in the bucket — under any prefix — and the archive must have the local size. A failed upload does **not** fail `create`: the run ends in `warning` and exits `0`, because the local copy exists. Only the bucket shows it |
-| New host | After *mutate*, the sidecar's container is removed and its data dir — the volume or bind mount at `BACKUP_DATA_DIR` (default `/data`) — is emptied with the sidecar's own image, also the run records in `.state/`. The sidecar starts again; `list` must show no local snapshot and the snapshot under test as `(off-site only)` |
+| New host | After *mutate*, the sidecar's container is removed and its data dir `BACKUP_DATA_DIR` (default `/data`) is emptied with the sidecar's own image, also the run records in `.state/` — a volume or bind mount at that path, or the data dir below the deepest one above it (a `/data` volume holding `/data/backups`; the rest of that volume stays). A data dir on no mount went with the container. The sidecar starts again; `list` must show no local snapshot and the snapshot under test as `(off-site only)` |
 | Restore | Unchanged — `restore <id>` finds no local copy and downloads archive and manifest from the bucket first (hydration) |
 | After the restore | The snapshot must be local again and pass `verify` — the hydrated copy, not the one from before |
 
@@ -648,6 +648,10 @@ With `s3-destination`: the sidecar did not upload. `create` exited `0` anyway �
 ### `the new sidecar does not list snapshot … as off-site`
 
 The sidecar that started on the empty data dir cannot see the bucket: `list` reads the off-site copies of the first job's S3 destination. Check that the destination is in the first job and that its settings survive a container restart (they come from the `.env`, not from a file in the data dir).
+
+### `local snapshots survived the wipe`
+
+*Simulate new host* emptied the data dir the sidecar's `BACKUP_DATA_DIR` names (default `/data`) — on its own mount, below a mount, or with the container — but the restarted sidecar still lists local snapshots. The sidecar keeps them somewhere else: `BACKUP_DATA_DIR` is set in a way the container's environment does not show (an entrypoint that exports it), or the data dir lies on a mount type that is not a volume or bind mount. The step log names the data dir and the mount it wiped.
 
 ### `network … declared as external, but could not be found`
 
