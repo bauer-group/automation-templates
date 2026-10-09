@@ -57,7 +57,9 @@ jobs:
       merge-method: 'squash'
       auto-approve: true
       merge-update-types: 'patch'
-      # The slower of the two decides when CI is complete; raise the wait if
-      # the integration tests regularly take longer than about 45 minutes.
+      # The slower of the two decides when CI is complete. 60 is the maximum
+      # (and the default): CI that regularly needs more than about 50 minutes
+      # leaves the PR open with "CI had not finished and settled" - speed up
+      # the tests or merge such PRs by hand.
       ci-wait-minutes: 60
     secrets: inherit
