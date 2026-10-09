@@ -5,13 +5,15 @@
 # The workflow merges a Dependabot PR only after its CI has passed, without
 # rulesets or required status checks:
 #
-#   guard  (id: guard) - update type against merge-update-types / allow-major,
-#                        input validation
+#   guard  (id: guard) - required-workflows (empty: nothing is merged), update
+#                        type against merge-update-types / allow-major, input
+#                        validation
 #   wait   (id: ci)    - checks that every commit is a verified Dependabot
 #                        commit, polls check runs, check suites, commit statuses
 #                        and workflow runs of the PR head commit, leaves out its
-#                        own runs, waits for a complete and quiet state, decides
-#                        green / failed / no-checks / timeout / unreadable / ...
+#                        own runs, waits for a complete and quiet state, checks
+#                        that every required workflow ran and passed, decides
+#                        green / failed / not-tested / timeout / unreadable / ...
 #   merge  (id: merge) - reads the PR again, optional approval of the checked
 #                        commit (a rejection is only a notice), then gh pr merge
 #                        pinned to the head commit
@@ -19,7 +21,11 @@
 # Without this, `gh pr merge --auto` on a branch without required checks merged
 # at once - bauer-group/CS-BillingStack#12 three seconds after its label check
 # went red. That PR was the redpanda 26.1 -> 26.2 bump: a semver-minor, which
-# is why only patch updates are merged by default.
+# is why only patch updates are merged by default. And "any passed check" is
+# not a test: bauer-group/CI-GitHubRunner#13 had only GitGuardian (success) and
+# CodeQL (neutral), CS-GitHubBackup#1 only notification and AI-summary jobs -
+# their build workflows never ran, which is why the named required workflows
+# must have passed.
 #
 # Each step body is extracted from the workflow at runtime rather than duplicated
 # here and run the way a `shell: bash` step runs (-eo pipefail). `gh` is replaced
@@ -87,6 +93,10 @@ static_lacks() {
   if grep -qE -- "$2" "$WORKFLOW_FILE"; then fail "$1: '$2' found"; else pass "$1"; fi
 }
 static_has   "wait is gated by the guard"        "if: steps.guard.outputs.ok == 'true'"
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "guard reads required-workflows"    'REQUIRED_WORKFLOWS: ${{ inputs.required-workflows }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "wait gets the checked list"        'REQUIRED: ${{ steps.guard.outputs.required }}'
 static_has   "merge is gated by green CI"        "if: steps.ci.outputs.result == 'green'"
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "merge is pinned to the head"       '--match-head-commit "$HEAD_SHA"'
@@ -217,10 +227,14 @@ suite() {
 }
 # status <state> <context>
 status() { printf '{"state":"%s","context":"%s"}' "$1" "$2"; }
-# wfrun <id> <suite> <status> <conclusion|-> <workflow id> <event> <name> <calls this module: 1|0>
+# wfrun <id> <suite> <status> <conclusion|-> <workflow id> <event> <name> <calls this module: 1|0> [attempt] [head repository]
+# Its workflow file is the name in lower case, spaces as dashes: "Docker
+# Release" -> .github/workflows/docker-release.yml (GitHub's `path`).
 wfrun() {
-  local c="null" ref="$OTHER_PATH"; [ "$4" = "-" ] || c="\"$4\""; [ "$8" = "1" ] && ref="$MODULE_PATH"
-  printf '{"id":%s,"check_suite_id":%s,"status":"%s","conclusion":%s,"workflow_id":%s,"event":"%s","name":"%s","referenced_workflows":[{"path":"%s","sha":"0"}]}' "$1" "$2" "$3" "$c" "$5" "$6" "$7" "$ref"
+  local c="null" ref="$OTHER_PATH" file="${7,,}"; [ "$4" = "-" ] || c="\"$4\""; [ "$8" = "1" ] && ref="$MODULE_PATH"
+  file=".github/workflows/${file// /-}.yml"
+  printf '{"id":%s,"check_suite_id":%s,"status":"%s","conclusion":%s,"workflow_id":%s,"event":"%s","name":"%s","path":"%s","run_attempt":%s,"head_repository":{"full_name":"%s"},"referenced_workflows":[{"path":"%s","sha":"0"}]}' \
+    "$1" "$2" "$3" "$c" "$5" "$6" "$7" "$file" "${9:-1}" "${10:-o/r}" "$ref"
 }
 join() { local IFS=,; echo "$*"; }
 
@@ -231,6 +245,11 @@ DEPENDABOT_COMMIT='{"sha":"abc","author":{"login":"dependabot[bot]"},"commit":{"
 OWN_RUN=$(run $OWN 10 in_progress - "$SELF")
 OWN_SUITE=$(suite 10 in_progress - 1 github-actions)
 OWN_WFRUN=$(wfrun $RUN 10 in_progress - 1 pull_request "Docker Maintenance" 1)
+# The required workflow of most cases (REQUIRED below): .github/workflows/ci.yml,
+# its jobs in check suite 20.
+REQ_CI=".github/workflows/ci.yml"
+CI_RUN=$(wfrun 20 20 in_progress - 2 pull_request "CI" 0)
+CI_DONE=$(wfrun 20 20 completed success 2 pull_request "CI" 0)
 
 # fixture <case dir> <kind> <n> <json items...>: the response from poll n on
 fixture() {
@@ -244,7 +263,8 @@ fixture() {
 }
 raw() { echo "$3" > "$1/$2"; }
 
-# A PR whose only check so far is this job.
+# A PR whose only check so far is this job, with the required CI workflow run
+# done - its jobs (check runs in suite 20) are up to each case.
 new_case() {
   local dir="$WORK/case-$1"
   mkdir -p "$dir/temp"
@@ -254,7 +274,7 @@ new_case() {
   fixture "$dir" runs 1 "$OWN_RUN"
   fixture "$dir" suites 1 "$OWN_SUITE"
   fixture "$dir" status 1
-  fixture "$dir" actions 1 "$OWN_WFRUN"
+  fixture "$dir" actions 1 "$OWN_WFRUN" "$CI_DONE"
   echo "$dir"
 }
 
@@ -289,15 +309,23 @@ decided_at() {
 listed() {
   if grep -qF -- "$3" "$2/temp/dependabot-ci-checks.md" 2>/dev/null; then pass "$1: lists '$3'"; else fail "$1: summary lacks '$3'"; fi
 }
+# logged / not_logged <name> <dir> <text>: the log has / does not have the text
+logged() {
+  if grep -qF -- "$3" "$2/log"; then pass "$1: log has '$3'"; else fail "$1: log lacks '$3'"; fi
+}
+not_logged() {
+  if grep -qF -- "$3" "$2/log"; then fail "$1: log has '$3'"; else pass "$1: log lacks '$3'"; fi
+}
 calls_to() { grep -c -- "$2" "$1/calls"; }
 
 # --- guard ----------------------------------------------------------------------
 # guard_case <name> <update-type> <merge-update-types> <allow-major> <want rc> <ok> <reason> <annotation|-> [merge-method] [wait-minutes]
+# required-workflows is $GUARD_REQUIRED, if set (also empty), else ci.yml.
 guard_case() {
   local name="$1" dir="$WORK/guard-$1"
   mkdir -p "$dir"; : > "$dir/output"
   ( cd "$dir" && GITHUB_OUTPUT="$dir/output" UPDATE_TYPE="$2" MERGE_UPDATE_TYPES="$3" ALLOW_MAJOR="$4" \
-      MERGE_METHOD="${9:-squash}" WAIT_MINUTES="${10:-60}" \
+      MERGE_METHOD="${9:-squash}" WAIT_MINUTES="${10:-60}" REQUIRED_WORKFLOWS="${GUARD_REQUIRED-$REQ_CI}" \
       bash --noprofile --norc -eo pipefail -c "$GUARD_BODY" ) > "$dir/log" 2>&1
   local rc=$?
   check "guard/$name" "$dir" "$rc" "$5" ok "$6" "$8"
@@ -330,17 +358,31 @@ guard_case wait-ten               "$P"  "patch"               false 0 true  patc
 guard_case wait-too-long          "$P"  "patch"               false 1 ""    ""                   error squash 61
 guard_case wait-not-a-number      "$P"  "patch"               false 1 ""    ""                   error squash abc
 
+# required-workflows: empty means nothing is merged - a notice, the job stays
+# green, and no wait (no runner minutes for a PR that cannot be merged).
+GUARD_REQUIRED=""         guard_case required-empty        "$P"  "patch" false 0 false no-required-workflows notice
+GUARD_REQUIRED=" , "      guard_case required-blank        "$P"  "patch" false 0 false no-required-workflows notice
+GUARD_REQUIRED=""         guard_case required-empty-major  "$MA" "patch" true  0 false no-required-workflows notice
+if grep -qF "required-workflows: .github/workflows/docker-release.yml" "$WORK/guard-required-empty/log"; then pass "guard/required-empty: notice says how to set it"; else fail "guard/required-empty: notice lacks the example"; fi
+# Workflow files as GitHub names them in a run's `path`, directly in
+# .github/workflows - anything else is a typo that would never match.
+GUARD_REQUIRED="docker-release.yml"                       guard_case required-bare-name   "$P" "patch" false 1 "" "" error
+GUARD_REQUIRED=".github/workflows/ci/build.yml"           guard_case required-subdirectory "$P" "patch" false 1 "" "" error
+GUARD_REQUIRED=".github/workflows/ci.json"                guard_case required-not-yaml    "$P" "patch" false 1 "" "" error
+GUARD_REQUIRED=$' .github/workflows/ci.yml ,\n\t.github/workflows/docker-release.yaml \n' \
+                                                          guard_case required-list        "$P" "patch" false 0 true patch -
+got=$(sed -n 's/^required=//p' "$WORK/guard-required-list/output")
+if [ "$got" = ".github/workflows/ci.yml,.github/workflows/docker-release.yaml" ]; then pass "guard/required-list: normalized"; else fail "guard/required-list: required='$got'"; fi
+
 # --- wait for CI ----------------------------------------------------------------
-# run_ci <dir> [VAR=value ...]
+# run_ci <dir> [VAR=value ...]   (REQUIRED: the guard's checked list)
 run_ci() {
   local dir="$1"; shift
   ( cd "$dir" && env PATH="$WORK/bin:$PATH" FAKE="$dir" GITHUB_OUTPUT="$dir/output" RUNNER_TEMP="$dir/temp" \
       GH_TOKEN=test REPO=o/r PR_NUMBER=7 HEAD_SHA=abc RUN_ID=$RUN OWN_CHECK_RUN_ID=$OWN SELF_JOB_NAME="Docker Maintenance" \
-      WAIT_MINUTES=60 "$@" \
+      WAIT_MINUTES=60 REQUIRED="$REQ_CI" "$@" \
       bash --noprofile --norc -eo pipefail -c "$CI_BODY" ) > "$dir/log" 2>&1
 }
-CI_RUN=$(wfrun 20 20 in_progress - 2 pull_request "CI" 0)
-CI_DONE=$(wfrun 20 20 completed success 2 pull_request "CI" 0)
 
 # CI finishes at 30 s. Green needs 300 s since the start and 180 s without a
 # change: the poll at 300 s.
@@ -354,6 +396,7 @@ fixture "$D" actions 2 "$OWN_WFRUN" "$CI_DONE"
 run_ci "$D"; check ci/green-after-wait "$D" $? 0 result green - "checks: 1, passed: 1, pending: 0, failed: 0"
 decided_at ci/green-after-wait "$D" 300
 listed ci/green-after-wait "$D" "OK check: build (success)"
+listed ci/green-after-wait "$D" "OK required: .github/workflows/ci.yml (run 20, attempt 1: success)"
 
 # Everything was done before the job started (e.g. a re-run): the settle time
 # still applies.
@@ -373,6 +416,7 @@ fixture "$D" status 1 "$(status failure ci/external)"
 run_ci "$D"; check ci/failed-status "$D" $? 0 result failed notice "ci/external (failure)"
 
 D=$(new_case status-pending-then-success)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
 fixture "$D" status 1 "$(status pending ci/external)"
 fixture "$D" status 2 "$(status success ci/external)"
 run_ci "$D"; check ci/status-pending-then-success "$D" $? 0 result green -
@@ -392,14 +436,20 @@ decided_at ci/poll-budget-timeout "$D" 3600
 POLLS=$(calls_to "$D" check-runs)
 if [ "$POLLS" -le 36 ]; then pass "ci/poll-budget: $POLLS polls in 60 min"; else fail "ci/poll-budget: $POLLS polls in 60 min, want <= 36"; fi
 
-D=$(new_case no-checks)
-run_ci "$D"; check ci/no-checks "$D" $? 0 result no-checks notice "No check ran"
-decided_at ci/no-checks "$D" 300
+# Nothing ran at all: the required workflow did not run - decided once the
+# settle time is over (a workflow GitHub starts late is still waited for).
+D=$(new_case nothing-ran)
+fixture "$D" actions 1 "$OWN_WFRUN"
+run_ci "$D"; check ci/nothing-ran "$D" $? 0 result not-tested notice "Required workflow .github/workflows/ci.yml did not run for this change - not tested"
+decided_at ci/nothing-ran "$D" 300
 
-# neutral and skipped are no failure, but nothing passed either.
+# neutral and skipped are no failure, but nothing passed either. A workflow
+# run whose jobs were all skipped concludes "skipped" (seen on
+# bauer-group/CS-BackupHelper run 37917566835) - not a test.
 D=$(new_case all-skipped)
 fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed skipped deploy)" "$(run 201 21 completed neutral CodeQL)"
-run_ci "$D"; check ci/all-skipped-or-neutral "$D" $? 0 result no-checks notice "all 2 checks skipped or neutral"
+fixture "$D" actions 1 "$OWN_WFRUN" "$(wfrun 20 20 completed skipped 2 pull_request "CI" 0)"
+run_ci "$D"; check ci/required-workflow-skipped "$D" $? 0 result not-tested notice ".github/workflows/ci.yml (run 20, attempt 1: skipped) - not tested"
 
 D=$(new_case neutral-skipped)
 fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed neutral lint)" "$(run 201 20 completed skipped deploy)" "$(run 202 20 completed success build)"
@@ -441,20 +491,20 @@ decided_at ci/late-result-restarts-quiet-period "$D" 360
 
 # A workflow run that is queued shows in the workflow runs before it has any
 # check run: pending until it is done at 420 s -> green at 600 s, not at 300 s
-# on the strength of lint alone.
+# on the strength of lint alone. Here it is the required workflow.
 D=$(new_case queued-workflow-run)
 fixture "$D" runs 1 "$OWN_RUN" "$(run 201 21 completed success lint)"
 fixture "$D" actions 1 "$OWN_WFRUN" "$(wfrun 40 40 queued - 4 pull_request "Release" 0)"
 fixture "$D" runs 13 "$OWN_RUN" "$(run 201 21 completed success lint)" "$(run 400 40 completed success build)"
 fixture "$D" suites 13 "$OWN_SUITE" "$(suite 40 completed success 1 github-actions)"
 fixture "$D" actions 13 "$OWN_WFRUN" "$(wfrun 40 40 completed success 4 pull_request "Release" 0)"
-run_ci "$D"; check ci/queued-workflow-run-is-waited-for "$D" $? 0 result green - "pending: 1"
+run_ci "$D" REQUIRED=.github/workflows/release.yml; check ci/queued-workflow-run-is-waited-for "$D" $? 0 result green - "pending: 1"
 decided_at ci/queued-workflow-run-is-waited-for "$D" 600
 
-# Without workflow runs (no actions: read): the check suite of a workflow run
-# whose jobs do not exist yet keeps the wait going until it is done at 420 s.
+# The check suite of a workflow run whose jobs do not exist yet - and that
+# the workflow runs do not list yet - keeps the wait going until it is done
+# at 420 s.
 D=$(new_case workflow-without-jobs-yet)
-raw "$D" actions.1.json HTTP403
 fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success labels)"
 fixture "$D" suites 1 "$OWN_SUITE" "$(suite 20 completed success 1 github-actions)" "$(suite 50 queued - 0 github-actions)"
 fixture "$D" runs 13 "$OWN_RUN" "$(run 200 20 completed success labels)" "$(run 500 50 completed success build)"
@@ -462,11 +512,19 @@ fixture "$D" suites 13 "$OWN_SUITE" "$(suite 20 completed success 1 github-actio
 run_ci "$D"; check ci/waits-for-workflow-without-jobs "$D" $? 0 result green - "checks: 2,"
 decided_at ci/waits-for-workflow-without-jobs "$D" 600
 
+# Without the workflow runs (private repository, no actions: read) nothing
+# shows that the required workflows ran: closed at once, not after the wait.
 D=$(new_case actions-not-readable)
 raw "$D" actions.1.json HTTP403
 fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
-run_ci "$D"; check ci/no-actions-read-falls-back "$D" $? 0 result green - "actions: read"
-if [ "$(calls_to "$D" actions/runs)" -eq 1 ]; then pass "ci/no-actions-read-asked-once"; else fail "ci/no-actions-read-asked-once: $(calls_to "$D" actions/runs) calls"; fi
+run_ci "$D"; check ci/workflow-runs-403-fails-closed "$D" $? 0 result unreadable notice "'actions: read'"
+decided_at ci/workflow-runs-403-fails-closed "$D" 0
+if [ "$(calls_to "$D" actions/runs)" -eq 1 ]; then pass "ci/workflow-runs-403-asked-once"; else fail "ci/workflow-runs-403-asked-once: $(calls_to "$D" actions/runs) calls"; fi
+
+D=$(new_case actions-not-found)
+raw "$D" actions.1.json HTTP404
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/workflow-runs-404-fails-closed "$D" $? 0 result unreadable notice "HTTP 404"
 
 # Other runs of this module - another caller workflow, queued without a job yet
 # or running - are not waited for.
@@ -476,18 +534,22 @@ fixture "$D" suites 1 "$OWN_SUITE" "$(suite 30 in_progress - 1 github-actions)" 
 fixture "$D" actions 1 "$OWN_WFRUN" "$(wfrun 30 30 in_progress - 3 pull_request "Actions Maintenance" 1)" "$(wfrun 31 31 queued - 3 pull_request "Actions Maintenance" 1)" "$CI_DONE"
 run_ci "$D"; check ci/other-runs-of-this-module-ignored "$D" $? 0 result green - "checks: 1,"
 
+# A workflow runs list without this run is not trusted (not complete yet): the
+# job names decide which checks are this module's, and the required workflows
+# count as pending until the list has this run.
 D=$(new_case siblings-by-name)
-raw "$D" actions.1.json HTTP403
 fixture "$D" runs 1 "$OWN_RUN" "$(run 300 30 in_progress - "Other caller / Docker Maintenance")" "$(run 400 40 queued - "$SELF")" "$(run 200 20 completed success build)"
 fixture "$D" suites 1 "$OWN_SUITE" "$(suite 30 in_progress - 1 github-actions)" "$(suite 40 queued - 1 github-actions)" "$(suite 20 completed success 1 github-actions)"
-run_ci "$D"; check ci/other-runs-ignored-by-job-name "$D" $? 0 result green - "checks: 1,"
+fixture "$D" actions 1 "$CI_DONE"
+fixture "$D" actions 2 "$OWN_WFRUN" "$(wfrun 30 30 in_progress - 3 pull_request "Actions Maintenance" 1)" "$(wfrun 40 40 queued - 1 pull_request "Docker Maintenance" 1)" "$CI_DONE"
+run_ci "$D"; check ci/other-runs-ignored-by-job-name "$D" $? 0 result green - "checks: 1, passed: 1, pending: 1, failed: 0"
 
-# Workflow runs list without this run: not trusted, names decide.
 D=$(new_case runs-without-own-run)
 fixture "$D" runs 1 "$OWN_RUN" "$(run 300 30 in_progress - "Other caller / Docker Maintenance")" "$(run 200 20 completed success build)"
 fixture "$D" suites 1 "$OWN_SUITE" "$(suite 30 in_progress - 1 github-actions)" "$(suite 20 completed success 1 github-actions)"
 fixture "$D" actions 1 "$CI_DONE"
-run_ci "$D"; check ci/runs-without-this-run-not-trusted "$D" $? 0 result green - "checks: 1,"
+run_ci "$D" WAIT_MINUTES=10; check ci/runs-without-this-run-not-trusted "$D" $? 0 result timeout notice "checks: 1, passed: 1, pending: 1, failed: 0"
+listed ci/runs-without-this-run-not-trusted "$D" "PENDING required: .github/workflows/ci.yml (the workflow runs do not list this run yet)"
 
 # With the workflow runs known, the job name alone does not make a check this
 # module's: a CI job that happens to be called "... / Docker Maintenance".
@@ -528,8 +590,8 @@ fixture "$D" suites 1 "$OWN_SUITE" "$(suite 20 completed success 1 github-action
 fixture "$D" actions 1 "$OWN_WFRUN" "$CI_DONE" "$(wfrun 70 70 completed startup_failure 7 pull_request_target "Issue AI Summary" 0)"
 run_ci "$D"; check ci/startup-failure-counts "$D" $? 0 result failed notice "Issue AI Summary (pull_request_target, startup_failure)"
 
+# The same seen from its check suite alone (the run not listed yet).
 D=$(new_case startup-failure-suites-only)
-raw "$D" actions.1.json HTTP403
 fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
 fixture "$D" suites 1 "$OWN_SUITE" "$(suite 20 completed success 1 github-actions)" "$(suite 70 completed startup_failure 0 github-actions)"
 run_ci "$D"; check ci/startup-failure-counts-from-suites "$D" $? 0 result failed notice "startup_failure, no job ran"
@@ -548,9 +610,9 @@ fixture "$D" runs 1 "$OWN_RUN" "$(run 700 70 completed cancelled build)" "$(run 
 fixture "$D" actions 1 "$OWN_WFRUN" "$(wfrun 70 70 completed cancelled 5 pull_request "CI" 0)" "$(wfrun 20 20 completed success 2 pull_request "Lint" 0)"
 run_ci "$D"; check ci/cancelled-run-fails "$D" $? 0 result failed notice "CI (pull_request, cancelled)"
 
-# Without workflow runs a replaced run cannot be told from a stopped one.
+# A cancelled suite whose run the workflow runs do not list cannot be told
+# from a stopped run: failed.
 D=$(new_case cancelled-suites-only)
-raw "$D" actions.1.json HTTP403
 fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
 fixture "$D" suites 1 "$OWN_SUITE" "$(suite 20 completed success 1 github-actions)" "$(suite 71 completed cancelled 0 github-actions)"
 run_ci "$D"; check ci/cancelled-suite-fails-without-runs "$D" $? 0 result failed notice "cancelled, no job ran"
@@ -587,9 +649,10 @@ run_ci "$D"; check ci/workflow-runs-error-retried "$D" $? 0 result green - "API 
 if [ "$(calls_to "$D" actions/runs)" -gt 1 ]; then pass "ci/workflow-runs-asked-again-after-500"; else fail "ci/workflow-runs-asked-again-after-500"; fi
 
 D=$(new_case rate-limit)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
 raw "$D" status.1.json RATELIMIT
 fixture "$D" status 2
-run_ci "$D"; check ci/rate-limit-is-retried "$D" $? 0 result no-checks notice "API error 1/3"
+run_ci "$D"; check ci/rate-limit-is-retried "$D" $? 0 result green - "API error 1/3"
 
 D=$(new_case persistent-error)
 raw "$D" runs.1.json HTTP500
@@ -628,6 +691,129 @@ fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 in_progress - build)"
 echo '{"state":"open","head":{"sha":"def"}}' > "$D/pr.4.json"
 run_ci "$D"; check ci/new-head-commit "$D" $? 0 result superseded notice
 decided_at ci/new-head-commit "$D" 90
+
+# --- required workflows -----------------------------------------------------------
+REQ_REL=".github/workflows/docker-release.yml"
+REL_DONE=$(wfrun 50 50 completed success 5 pull_request "Docker Release" 0)
+
+# B1 regression, the shape of bauer-group/CI-GitHubRunner#13 (semver-patch):
+# GitGuardian passed, CodeQL neutral, nothing else - the build workflow has no
+# pull_request trigger. Any-passed-check would have merged it at 300 s.
+D=$(new_case b1-gitguardian-only)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 800 80 completed success "GitGuardian Security Checks")" "$(run 810 81 completed neutral CodeQL)"
+fixture "$D" suites 1 "$OWN_SUITE" "$(suite 80 completed success 1 gitguardian)" "$(suite 81 completed neutral 1 github-advanced-security)"
+fixture "$D" actions 1 "$OWN_WFRUN"
+run_ci "$D" REQUIRED="$REQ_REL"; check ci/b1-only-gitguardian-passed-not-merged "$D" $? 0 result not-tested notice "Required workflow .github/workflows/docker-release.yml did not run for this change - not tested"
+decided_at ci/b1-only-gitguardian-passed-not-merged "$D" 300
+logged ci/b1-only-gitguardian-passed-not-merged "$D" "checks: 2, passed: 1, pending: 0, failed: 0"
+
+# B1 regression, the shape of bauer-group/CS-GitHubBackup#1 (root Dockerfile,
+# not in the release workflow's paths): Teams notification, AI summary and
+# GitGuardian passed, all on pull_request.
+D=$(new_case b1-notifications-only)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 820 82 completed success "Notify")" "$(run 821 82 completed skipped "Notify Teams (closed)")" \
+  "$(run 830 83 completed success "Generate AI Summary")" "$(run 800 80 completed success "GitGuardian Security Checks")"
+fixture "$D" suites 1 "$OWN_SUITE" "$(suite 82 completed success 2 github-actions)" "$(suite 83 completed success 1 github-actions)" "$(suite 80 completed success 1 gitguardian)"
+fixture "$D" actions 1 "$OWN_WFRUN" "$(wfrun 82 82 completed success 8 pull_request "Pull Request Notifications" 0)" "$(wfrun 83 83 completed success 9 pull_request "AI Summary" 0)"
+run_ci "$D" REQUIRED="$REQ_REL"; check ci/b1-only-notifications-passed-not-merged "$D" $? 0 result not-tested notice "docker-release.yml did not run for this change"
+logged ci/b1-only-notifications-passed-not-merged "$D" "checks: 4, passed: 3, pending: 0, failed: 0"
+listed ci/b1-only-notifications-passed-not-merged "$D" "UNTESTED required: .github/workflows/docker-release.yml did not run for this change"
+
+# Runs of the required workflow that do not test this PR: a push run on the
+# Dependabot branch, and a fork PR's pull_request run on the same commit.
+D=$(new_case required-push-run-only)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 500 50 completed success build)"
+fixture "$D" actions 1 "$OWN_WFRUN" "$(wfrun 50 50 completed success 5 push "Docker Release" 0)"
+run_ci "$D" REQUIRED="$REQ_REL"; check ci/required-push-run-does-not-count "$D" $? 0 result not-tested notice "docker-release.yml did not run for this change"
+
+D=$(new_case required-fork-run-only)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 500 50 completed success build)"
+fixture "$D" actions 1 "$OWN_WFRUN" "$(wfrun 50 50 completed success 5 pull_request "Docker Release" 0 1 mallory/r)"
+run_ci "$D" REQUIRED="$REQ_REL"; check ci/required-fork-pr-run-does-not-count "$D" $? 0 result not-tested notice "docker-release.yml did not run for this change"
+
+# The required workflow appears late (GitHub started it with a delay): waited
+# for, then green.
+D=$(new_case required-late)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success lint)"
+fixture "$D" runs 8 "$OWN_RUN" "$(run 200 20 completed success lint)" "$(run 500 50 in_progress - build)"
+fixture "$D" actions 8 "$OWN_WFRUN" "$CI_DONE" "$(wfrun 50 50 in_progress - 5 pull_request "Docker Release" 0)"
+fixture "$D" runs 10 "$OWN_RUN" "$(run 200 20 completed success lint)" "$(run 500 50 completed success build)"
+fixture "$D" actions 10 "$OWN_WFRUN" "$CI_DONE" "$REL_DONE"
+run_ci "$D" REQUIRED="$REQ_REL"; check ci/required-workflow-started-late "$D" $? 0 result green -
+decided_at ci/required-workflow-started-late "$D" 480
+
+# The required workflow failed or was cancelled: failed at once.
+for c in failure cancelled; do
+  D=$(new_case "required-$c")
+  fixture "$D" runs 1 "$OWN_RUN" "$(run 500 50 completed "$c" build)"
+  fixture "$D" actions 1 "$OWN_WFRUN" "$(wfrun 50 50 completed "$c" 5 pull_request "Docker Release" 0)"
+  run_ci "$D" REQUIRED="$REQ_REL"; check "ci/required-workflow-$c" "$D" $? 0 result failed notice "Docker Release (pull_request, $c)"
+  decided_at "ci/required-workflow-$c" "$D" 0
+done
+
+# Its pull_request run was cancelled and a push run of the same workflow
+# replaced it: no failure, but the PR is still not tested.
+D=$(new_case required-replaced-by-push)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 500 50 completed cancelled build)" "$(run 510 51 completed success build)"
+fixture "$D" actions 1 "$OWN_WFRUN" "$(wfrun 50 50 completed cancelled 5 pull_request "Docker Release" 0)" "$(wfrun 51 51 completed success 5 push "Docker Release" 0)"
+run_ci "$D" REQUIRED="$REQ_REL"; check ci/required-replaced-by-push-run "$D" $? 0 result not-tested notice "docker-release.yml (run 50, attempt 1: cancelled) - not tested"
+
+# Still running: the PR is not merged before it is done.
+D=$(new_case required-running)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 500 50 in_progress - build)"
+fixture "$D" actions 1 "$OWN_WFRUN" "$(wfrun 50 50 in_progress - 5 pull_request "Docker Release" 0)"
+run_ci "$D" REQUIRED="$REQ_REL" WAIT_MINUTES=10; check ci/required-workflow-still-running "$D" $? 0 result timeout notice
+decided_at ci/required-workflow-still-running "$D" 600
+listed ci/required-workflow-still-running "$D" "PENDING required: .github/workflows/docker-release.yml (run 50, attempt 1: in_progress)"
+
+# A re-run: attempt 1 failed, attempt 2 runs and passes. The runs list shows
+# the run with its latest attempt (seen on bauer-group/CS-ZAMMAD run
+# 37835873163: run_attempt 2, same check suite), the new jobs are newer check
+# runs in the same suite.
+D=$(new_case required-rerun)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 500 50 completed failure build)" "$(run 501 50 in_progress - build)"
+fixture "$D" actions 1 "$OWN_WFRUN" "$(wfrun 50 50 in_progress - 5 pull_request "Docker Release" 0 2)"
+fixture "$D" runs 3 "$OWN_RUN" "$(run 500 50 completed failure build)" "$(run 501 50 completed success build)"
+fixture "$D" actions 3 "$OWN_WFRUN" "$(wfrun 50 50 completed success 5 pull_request "Docker Release" 0 2)"
+run_ci "$D" REQUIRED="$REQ_REL"; check ci/required-rerun-latest-attempt-wins "$D" $? 0 result green -
+decided_at ci/required-rerun-latest-attempt-wins "$D" 300
+listed ci/required-rerun-latest-attempt-wins "$D" "OK required: .github/workflows/docker-release.yml (run 50, attempt 2: success)"
+
+# Two runs of the required workflow for the commit (e.g. reopened): the newest
+# counts - here it is still running, so the older success is not enough.
+D=$(new_case required-newest-run)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 500 50 completed success build)" "$(run 520 52 in_progress - build)"
+fixture "$D" actions 1 "$OWN_WFRUN" "$REL_DONE" "$(wfrun 52 52 in_progress - 5 pull_request "Docker Release" 0)"
+fixture "$D" runs 13 "$OWN_RUN" "$(run 500 50 completed success build)" "$(run 520 52 completed success build)"
+fixture "$D" actions 13 "$OWN_WFRUN" "$REL_DONE" "$(wfrun 52 52 completed success 5 pull_request "Docker Release" 0)"
+run_ci "$D" REQUIRED="$REQ_REL"; check ci/required-newest-run-counts "$D" $? 0 result green -
+decided_at ci/required-newest-run-counts "$D" 600
+listed ci/required-newest-run-counts "$D" "OK required: .github/workflows/docker-release.yml (run 52, attempt 1: success)"
+
+# Several required workflows: all of them must have passed.
+D=$(new_case required-two-passed)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success lint)" "$(run 500 50 completed success build)"
+fixture "$D" actions 1 "$OWN_WFRUN" "$CI_DONE" "$REL_DONE"
+run_ci "$D" REQUIRED="$REQ_CI,$REQ_REL"; check ci/required-two-both-passed "$D" $? 0 result green -
+listed ci/required-two-both-passed "$D" "OK required: .github/workflows/ci.yml (run 20, attempt 1: success)"
+listed ci/required-two-both-passed "$D" "OK required: .github/workflows/docker-release.yml (run 50, attempt 1: success)"
+
+D=$(new_case required-two-one-missing)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success lint)"
+run_ci "$D" REQUIRED="$REQ_CI,$REQ_REL"; check ci/required-two-one-missing "$D" $? 0 result not-tested notice "Required workflow .github/workflows/docker-release.yml did not run for this change - not tested"
+not_logged ci/required-two-one-missing "$D" "ci.yml did not run"
+
+# Without a required workflow the wait does not start (the guard stops first;
+# the step is closed on its own too).
+D=$(new_case required-none)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D" REQUIRED=""; check ci/no-required-workflow-not-merged "$D" $? 0 result not-tested notice "required-workflows"
+if [ ! -s "$D/calls" ]; then pass "ci/no-required-workflow: no API call"; else fail "ci/no-required-workflow: $(wc -l < "$D/calls") API calls"; fi
+
+# The required run passed, but its jobs are not listed (the check runs lag
+# behind): nothing passed that shows it - left open.
+D=$(new_case required-jobs-not-listed)
+run_ci "$D"; check ci/required-passed-without-listed-jobs "$D" $? 0 result not-tested notice "No check passed"
 
 # --- approve and merge ------------------------------------------------------------
 # The PR as read again right before merging: $dir/pr.<n>.json, ready by default.
