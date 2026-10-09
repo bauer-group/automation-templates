@@ -4,6 +4,13 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.2.1](https://github.com/bauer-group/automation-templates/compare/v11.2.0...v11.2.1) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** scoped the disk-space hint to hosted runners ([56b2a4d](https://github.com/bauer-group/automation-templates/commit/56b2a4d1b64dca68aecca21121d7218a7a995100))
+* **docker-build:** skipped free-disk-space on self-hosted runners ([2ac18a3](https://github.com/bauer-group/automation-templates/commit/2ac18a3dfc9f9743a63f5f5a9b5398de77398bec))
+
 ## [11.2.0](https://github.com/bauer-group/automation-templates/compare/v11.1.4...v11.2.0) (2026-10-08)
 
 ### 🚀 Features

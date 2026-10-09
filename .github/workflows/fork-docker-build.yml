@@ -128,7 +128,8 @@ on:
           Remove unused preinstalled toolchains from the runner before building.
           Off by default; turn it on for images large enough that the build, the
           `load: true` copy in the daemon and the Trivy scan no longer fit in a
-          GitHub-hosted runner's free space. Linux runners only.
+          GitHub-hosted runner's free space. GitHub-hosted Linux runners only -
+          ignored on self-hosted runners, whose disk is persistent.
         required: false
         type: boolean
         default: false
@@ -161,9 +162,10 @@ jobs:
       # Same step, same list and same reasoning as docker-build.yml. It has to run
       # here because a caller cannot inject a step into this job, and everything
       # after this point - the local build, the daemon copy, the cache export and
-      # Trivy's export tarball - competes for the same few gigabytes.
+      # Trivy's export tarball - competes for the same few gigabytes. Never on
+      # self-hosted runners: the rm -rf would hit a persistent host.
       - name: "🧹 Free Disk Space"
-        if: inputs.free-disk-space && runner.os == 'Linux'
+        if: inputs.free-disk-space && runner.os == 'Linux' && runner.environment == 'github-hosted'
         shell: bash
         run: |
           BEFORE=$(df --output=avail -BM / | tail -1 | tr -dc '0-9')
