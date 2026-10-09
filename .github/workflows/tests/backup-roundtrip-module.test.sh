@@ -37,10 +37,12 @@
 # upgrade-from: Pull Previous Release (id: previous) resolves 'latest-release',
 # tags and full references per service and gives the previous release the
 # references the services resolve to; Build Images Under Test (id: build)
-# keeps an upgraded service's build under a staging tag; Upgrade Stack (id:
-# upgrade) runs the hook first, switches to the compose files of this commit,
-# hands the references to the builds and fails when a container still runs
-# the previous image.
+# keeps an upgraded service's build under a staging tag; Check Previous
+# Release (id: previous-running) fails unless the started stack runs the
+# previous release; Upgrade Stack (id: upgrade) runs the hook first, switches
+# to the compose files of this commit, hands the references to the builds and
+# fails when a container does not run the build afterwards - also when 'up'
+# pulled or built over a reference (pull_policy: always or build).
 #
 # The step bodies are extracted from the workflow at runtime and run the way a
 # `shell: bash` step runs (-eo pipefail). The engine CLI ('bh' from lib.sh) and
@@ -77,7 +79,7 @@ extract_step() {
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-for STEP in validate prepare networks s3-prepare previous build create pull s3-upload upgrade new-host; do
+for STEP in validate prepare networks s3-prepare previous build create pull previous-running s3-upload upgrade new-host; do
   extract_step "$STEP" > "$WORK/$STEP.sh"
   if [ ! -s "$WORK/$STEP.sh" ]; then
     echo "FATAL: could not extract the '$STEP' run block from the workflow."
@@ -792,6 +794,8 @@ expect_eq "pull: the previous release's images are local, not pulled" "$(pulled)
 # container runs (running/). 'tag' moves a reference to the staged image,
 # 'up' recreates the containers of every service whose reference moved -
 # unless keep-running names the service, to fake Compose missing the change.
+# Lines "REF ID" in pull-over make 'up' first point REF at ID, the way
+# Compose pulls (pull_policy: always) or builds (pull_policy: build) over it.
 cat > "$WORK/bin/docker" <<'STUB'
 #!/usr/bin/env bash
 echo "docker $*" >> "$DIR/docker.log"
@@ -803,6 +807,9 @@ case "$*" in
   "compose ps -a -q "*) cat "$DIR/containers/${*: -1}" 2>/dev/null || true ;;
   "compose up "*)
     echo "up" >> "$DIR/order"
+    if [ -f "$DIR/pull-over" ]; then
+      while read -r REF ID; do echo "$ID" > "$DIR/images/$(key "$REF")"; done < "$DIR/pull-over"
+    fi
     for f in "$DIR"/containers/*; do
       SERVICE=$(basename "$f")
       grep -qxF "$SERVICE" "$DIR/keep-running" && continue
@@ -856,8 +863,26 @@ if grep -q "^COMPOSE_FILE=docker-compose.yml$" "$DIR/env"; then pass "upgrade: o
 
 upgrade_case stale; echo worker > "$DIR/keep-running"
 run_upgrade; expect_rc "upgrade: a container kept the previous image" $? 1
-expect_log "upgrade: names the service" "'worker' still runs the previous image"
+expect_log "upgrade: names the service and both images" "'worker' runs old-app after 'up -d', not the build of this commit new-app (ghcr.io/acme/app:stable)"
 if grep -q "phase check" "$DIR/order"; then fail "upgrade: no data check on a half-upgraded stack" "check ran"; else pass "upgrade: no data check on a half-upgraded stack"; fi
+
+# pull_policy: always - 'up' pulls the released image over the reference and
+# recreates the containers with it. They match the reference, but not the
+# build: compared with the reference after 'up', this passed.
+upgrade_case pull-always; echo "ghcr.io/acme/app:stable sha256:released-app" > "$DIR/pull-over"
+run_upgrade; expect_rc "upgrade: 'up' pulled the released image over the build" $? 1
+expect_log "upgrade: names the replaced reference" "'up' replaced the image under test ghcr.io/acme/app:stable (new-app -> released-app)"
+expect_log "upgrade: names the cause" "pull_policy: always"
+expect_log "upgrade: the containers run the pulled image, not the build" "'app' runs released-app after 'up -d', not the build of this commit new-app"
+if grep -q "phase check" "$DIR/order"; then fail "upgrade: no data check on the released image" "check ran"; else pass "upgrade: no data check on the released image"; fi
+
+# Two builds on one reference: the last tag holds it, and that is the build
+# the containers must run.
+upgrade_case shared-reference
+echo "sha256:new-worker" > "$DIR/images/roundtrip-staged_image-2_build"
+printf 'worker\troundtrip-staged/image-2:build\n' >> "$DIR/staged-images.txt"
+run_upgrade; expect_rc "upgrade: two builds tagged as one reference" $? 0
+expect_eq "upgrade: the containers run the build tagged last" "$(cat "$DIR/running/c-app")" "sha256:new-worker"
 
 upgrade_case no-healthcheck
 run_upgrade RUN_HEALTHCHECK=false UPGRADE_SCRIPT="" CHECK_SCRIPT=""
@@ -868,6 +893,55 @@ upgrade_case lost-reference
 echo '{"services": {"worker": {"image": "ghcr.io/acme/app:stable"}}}' > "$DIR/target-config.json"
 run_upgrade; expect_rc "upgrade: a built service missing from this commit's configuration" $? 1
 expect_log "upgrade: names the service" "service 'app' has no image reference in the configuration of this commit"
+
+# === Check Previous Release =====================================================
+# Same fake docker. The stack has started: every reference of the plan holds
+# the previous image, and the containers run what 'up' found there.
+previous_running_case() {
+  reset "$1"
+  mkdir -p "$DIR/images" "$DIR/running" "$DIR/containers"
+  echo "sha256:old-app"    > "$DIR/images/ghcr.io_acme_app_1.0"
+  echo "sha256:old-app"    > "$DIR/images/ghcr.io_acme_app_stable"
+  echo "sha256:old-backup" > "$DIR/images/ghcr.io_acme_app-backup_1.0"
+  echo "sha256:old-backup" > "$DIR/images/ghcr.io_acme_app-backup_stable"
+  printf 'app\tghcr.io/acme/app:1.0\tghcr.io/acme/app:stable\napp-backup\tghcr.io/acme/app-backup:1.0\tghcr.io/acme/app-backup:stable\n' > "$DIR/upgrade-plan.tsv"
+  echo '{"services": {"app": {"image": "ghcr.io/acme/app:stable"}, "worker": {"image": "ghcr.io/acme/app:stable"},
+                      "app-backup": {"image": "ghcr.io/acme/app-backup:stable"}, "database": {"image": "postgres:18"}}}' > "$DIR/compose-config.json"
+  echo c-app > "$DIR/containers/app"; printf 'c-worker-1\nc-worker-2\n' > "$DIR/containers/worker"; echo c-backup > "$DIR/containers/app-backup"
+  for C in c-app c-worker-1 c-worker-2; do echo "sha256:old-app" > "$DIR/running/$C"; done
+  echo "sha256:old-backup" > "$DIR/running/c-backup"
+}
+
+previous_running_case ok
+run_step previous-running; expect_rc "previous running: step passes" $? 0
+expect_log "previous running: every container of a shared reference counted" "3 container(s) on ghcr.io/acme/app:stable run the previous release ghcr.io/acme/app:1.0"
+expect_log "previous running: the sidecar too" "1 container(s) on ghcr.io/acme/app-backup:stable run the previous release ghcr.io/acme/app-backup:1.0"
+
+# pull_policy: always at the first 'up': the registry's image replaced the
+# previous release before anything was seeded.
+previous_running_case pulled-at-start
+echo "sha256:released-app" > "$DIR/images/ghcr.io_acme_app_stable"
+for C in c-app c-worker-1 c-worker-2; do echo "sha256:released-app" > "$DIR/running/$C"; done
+run_step previous-running; expect_rc "previous running: 'up' replaced the previous release" $? 1
+expect_log "previous running: names the reference and the cause" "'up' replaced ghcr.io/acme/app:stable, which held the previous release ghcr.io/acme/app:1.0 (old-app -> released-app)"
+
+previous_running_case other-container; echo "sha256:something-else" > "$DIR/running/c-worker-2"
+run_step previous-running; expect_rc "previous running: a container runs another image" $? 1
+expect_log "previous running: names the service" "'worker' runs something-el, not the previous release ghcr.io/acme/app:1.0 (old-app)"
+
+previous_running_case not-started; : > "$DIR/containers/app-backup"
+run_step previous-running; expect_rc "previous running: a reference no started service uses" $? 0
+expect_log "previous running: warns that its upgrade is not tested" "::warning::upgrade-from: no started service runs ghcr.io/acme/app-backup:stable"
+
+# Two plan rows for one reference ({"app": "1.0", "worker": "0.9"} with both
+# built): the image tagged last holds it.
+previous_running_case shared-reference
+echo "sha256:older-app" > "$DIR/images/ghcr.io_acme_app_0.9"
+echo "sha256:older-app" > "$DIR/images/ghcr.io_acme_app_stable"
+for C in c-app c-worker-1 c-worker-2; do echo "sha256:older-app" > "$DIR/running/$C"; done
+printf 'worker\tghcr.io/acme/app:0.9\tghcr.io/acme/app:stable\n' >> "$DIR/upgrade-plan.tsv"
+run_step previous-running; expect_rc "previous running: the image tagged last holds a shared reference" $? 0
+expect_log "previous running: checked against it" "run the previous release ghcr.io/acme/app:0.9"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"
