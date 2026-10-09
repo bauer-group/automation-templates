@@ -11,6 +11,7 @@ Full reference: [`docs/workflows/modules-backup-roundtrip-test.md`](../../../../
 | [minimal-postgres-filesystem.yml](minimal-postgres-filesystem.yml) | Smallest useful round trip: one PostgreSQL database and one file volume, on pull requests and on demand |
 | [gated-release-pipeline.yml](gated-release-pipeline.yml) | Complete `docker-release.yml`: validation, round trip, semantic release and image builds — no release unless the round trip passed |
 | [plugin-and-external-sources.yml](plugin-and-external-sources.yml) | A plugin source that talks to the application in the stack (tested) and one that needs an external SaaS account (switched off), with `require-components` guarding the rest |
+| [compose-variants-matrix.yml](compose-variants-matrix.yml) | One round trip per compose variant (local, Traefik, Coolify) in a matrix; `external-networks: 'auto'` creates the proxy networks the variants declare external |
 
 ## Setup
 

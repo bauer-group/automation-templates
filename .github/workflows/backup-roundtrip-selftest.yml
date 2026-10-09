@@ -11,7 +11,9 @@ name: "🧪 Backup Round-Trip Self-Test"
 # prepare script for a secret with its own format (left on an unterminated last
 # line), an image built from the repository, required components and a service
 # stopped for the restore. A second run starts selected services only, next to
-# a configured service whose image cannot be pulled.
+# a configured service whose image cannot be pulled. A matrix runs one round
+# trip per compose variant; the proxy variant needs an external network the
+# module creates.
 #
 # What a real stack cannot show without turning this workflow red - a create
 # that exits 1 for a failed component - is covered by the Step Tests job, which
@@ -116,10 +118,50 @@ jobs:
       artifact-name: 'backup-roundtrip-selftest-services-diagnostics'
     secrets: inherit
 
+  # One round trip per compose variant, the pattern consumers use for their
+  # local, Traefik and Coolify files. The proxy variant joins an external
+  # network that only exists because external-networks creates it ('auto'
+  # finds it in the configuration); on the base variant 'auto' finds none.
+  roundtrip-variants:
+    name: "🧪 Fixture Round Trip (${{ matrix.variant }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: base
+            compose-files: '["docker-compose.yml"]'
+          - variant: proxy
+            compose-files: '["docker-compose.yml", "docker-compose.proxy.yml"]'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/modules-backup-roundtrip-test.yml
+    with:
+      working-directory: '.github/workflows/tests/backup-roundtrip'
+      compose-files: ${{ matrix.compose-files }}
+      profiles: 'backup'
+      external-networks: 'auto'
+      env-overrides: |
+        APP_MODE=ci
+        SAAS_EXPORT_ENABLED=false
+      generated-secrets: 'DATABASE_PASSWORD'
+      prepare-script: 'prepare.sh'
+      build-images: '[{"service": "backup", "context": "backup"}]'
+      backup-service: 'backup'
+      require-components: 'database files'
+      services-to-stop-before-restore: 'app'
+      seed-script: 'seed.sh'
+      mutate-script: 'mutate.sh'
+      check-script: 'check.sh'
+      wait-timeout: 180
+      timeout-minutes: 15
+      artifact-name: 'backup-roundtrip-selftest-${{ matrix.variant }}-diagnostics'
+    secrets: inherit
+
   # The outputs are part of the module's contract - callers gate on them.
   check-outputs:
     name: "📋 Check Module Outputs"
-    needs: [roundtrip, roundtrip-services]
+    needs: [roundtrip, roundtrip-services, roundtrip-variants]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -129,7 +171,9 @@ jobs:
           NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
-          for JOB in roundtrip roundtrip-services; do
+          # A matrix job reports the outputs of one of its legs and the
+          # result of all of them.
+          for JOB in roundtrip roundtrip-services roundtrip-variants; do
             SNAPSHOT_ID=$(jq -r --arg j "$JOB" '.[$j].outputs["snapshot-id"] // ""' <<< "$NEEDS_JSON")
             COMPONENTS=$(jq -r --arg j "$JOB" '.[$j].outputs.components // ""' <<< "$NEEDS_JSON")
             RESULT=$(jq -r --arg j "$JOB" '.[$j].outputs.result // ""' <<< "$NEEDS_JSON")

@@ -121,6 +121,7 @@ Starts a compose stack with its BackupHelper sidecar, seeds data, backs it up, d
 - `backup-roundtrip/minimal-postgres-filesystem.yml` - PostgreSQL + file volume, on pull requests
 - `backup-roundtrip/gated-release-pipeline.yml` - Complete `docker-release.yml` gated on the round trip
 - `backup-roundtrip/plugin-and-external-sources.yml` - In-stack plugin source tested, external SaaS source switched off
+- `backup-roundtrip/compose-variants-matrix.yml` - One round trip per compose variant (local, Traefik, Coolify), external proxy networks created
 - `backup-roundtrip/README.md` - Setup and what a run proves
 
 ### CI/CD Pipelines

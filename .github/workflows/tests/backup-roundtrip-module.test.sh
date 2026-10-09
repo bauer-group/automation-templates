@@ -18,6 +18,13 @@
 # Pull Images: only the services Start Stack starts (the 'services' input and
 # their dependencies, transitively) are pulled, never an image under test.
 #
+# Validate Inputs (id: validate): the opt-in inputs are checked before anything
+# is pulled or started.
+#
+# Create External Networks (id: networks): 'auto' creates every external
+# network of the configuration, explicit names are created once, networks that
+# exist already are left alone and are not removed at the end.
+#
 # The step bodies are extracted from the workflow at runtime and run the way a
 # `shell: bash` step runs (-eo pipefail). The engine CLI ('bh' from lib.sh) and
 # `docker` are stubs.
@@ -53,7 +60,7 @@ extract_step() {
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-for STEP in create pull; do
+for STEP in validate networks create pull; do
   extract_step "$STEP" > "$WORK/$STEP.sh"
   if [ ! -s "$WORK/$STEP.sh" ]; then
     echo "FATAL: could not extract the '$STEP' run block from the workflow."
@@ -253,6 +260,79 @@ pull_case unknown
 run_step pull START_SERVICES="app not-configured"
 expect_rc "unknown service: left to 'up'" $? 0
 expect_eq "unknown service: the known ones still pulled" "$(pulled)" "app files-init"
+
+# === Validate Inputs ============================================================
+# Runs in a directory that holds the files the inputs name. Every input has
+# its default unless the case sets it.
+validate_case() {
+  reset "$1"; shift
+  touch "$DIR/docker-compose.yml"
+  (cd "$DIR" && run_step validate \
+    COMPOSE_FILE_INPUT=docker-compose.yml COMPOSE_FILES_INPUT="" PROFILES_INPUT=backup \
+    PROJECT_NAME=backup-roundtrip ENV_OVERRIDES="" GENERATED_SECRETS="" BUILD_IMAGES="" \
+    PREPARE_SCRIPT="" SEED_SCRIPT="" MUTATE_SCRIPT="" CHECK_SCRIPT="" STOP_SERVICES="" \
+    SCRIPT_TIMEOUT=600 WAIT_TIMEOUT=600 EXTERNAL_NETWORKS="" "$@")
+}
+
+validate_case defaults
+expect_rc "validate: defaults pass" $? 0
+
+validate_case networks EXTERNAL_NETWORKS=$'auto, proxy\ncoolify'
+expect_rc "validate: external-networks 'auto' and names" $? 0
+
+validate_case bad-network EXTERNAL_NETWORKS='proxy bad/name'
+expect_rc "validate: external-networks with an invalid name" $? 1
+expect_log "validate: names the invalid network" "external-networks entry 'bad/name' is neither 'auto' nor a network name"
+
+# === Create External Networks ===================================================
+# The fake docker: 'network inspect' succeeds for the names in
+# existing-networks, 'network create' records the name.
+cat > "$WORK/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+echo "docker $*" >> "$DIR/docker.log"
+case "$1 $2" in
+  "network inspect") grep -qxF "$3" "$DIR/existing-networks" ;;
+  "network create")  echo "$3" >> "$DIR/created.log" ;;
+  *) echo "unexpected docker call: $*" >&2; exit 2 ;;
+esac
+STUB
+networks_case() {
+  reset "$1"
+  : > "$DIR/existing-networks"; : > "$DIR/created.log"
+  cat > "$DIR/compose-config.json" <<'JSON'
+{
+  "networks": {
+    "default": {"name": "rt_default", "ipam": {}},
+    "local":   {"name": "rt-local", "driver": "bridge"},
+    "proxy":   {"name": "roundtrip-proxy", "external": true},
+    "coolify": {"name": "coolify", "external": true}
+  },
+  "services": {}
+}
+JSON
+}
+created() { sort "$DIR/created.log" | tr '\n' ' ' | sed 's/ $//'; }
+recorded() { sort "$DIR/created-networks.txt" | tr '\n' ' ' | sed 's/ $//'; }
+
+networks_case auto; echo coolify > "$DIR/existing-networks"
+run_step networks EXTERNAL_NETWORKS=auto; expect_rc "networks auto: step passes" $? 0
+expect_eq "networks auto: the missing external network is created" "$(created)" "roundtrip-proxy"
+expect_eq "networks auto: only the created one is removed at the end" "$(recorded)" "roundtrip-proxy"
+expect_log "networks auto: an existing one is left alone" "coolify exists already - left as it is"
+
+networks_case explicit
+run_step networks EXTERNAL_NETWORKS=$'edge, edge\nproxy-b'; expect_rc "networks explicit: step passes" $? 0
+expect_eq "networks explicit: each name created once" "$(created)" "edge proxy-b"
+
+networks_case mixed
+run_step networks EXTERNAL_NETWORKS="auto coolify"
+expect_eq "networks auto plus a name it also finds: created once" "$(created)" "coolify roundtrip-proxy"
+
+networks_case none
+echo '{"networks": {"default": {"name": "rt_default"}}, "services": {}}' > "$DIR/compose-config.json"
+run_step networks EXTERNAL_NETWORKS=auto; expect_rc "networks auto without external networks: step passes" $? 0
+expect_eq "networks auto without external networks: nothing created" "$(created)" ""
+expect_log "networks auto without external networks: says so" "'auto' found no external network"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"
