@@ -97,7 +97,7 @@ jobs:
   maintenance:
     name: Docker Maintenance
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
-    if: github.actor == 'dependabot[bot]' || startsWith(github.base_ref, 'canary-base/')
+    if: github.actor == 'dependabot[bot]'
     # ci-wait-minutes is at most 60; the rest covers setup and the merge.
     timeout-minutes: 75
     # One decision per PR: a newer event (e.g. Dependabot rebased the PR)
@@ -112,7 +112,6 @@ jobs:
         uses: dependabot/fetch-metadata@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          skip-verification: ${{ startsWith(github.base_ref, 'canary-base/') }}
 
       # Decides from the inputs and the update type alone - no API call.
       # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
