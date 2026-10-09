@@ -51,14 +51,14 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
-| `DOCKER_USERNAME` | docker-build, dotnet-build, nodejs-build | Docker Hub Benutzername | [hub.docker.com](https://hub.docker.com) Account Settings |
-| `DOCKER_PASSWORD` | docker-build, dotnet-build, nodejs-build | Docker Hub Access Token | Docker Hub → Account Settings → Security → Access Tokens |
+| `DOCKER_USERNAME` | docker-build, dotnet-build, nodejs-build, backup-roundtrip (optional) | Docker Hub Benutzername | [hub.docker.com](https://hub.docker.com) Account Settings |
+| `DOCKER_PASSWORD` | docker-build, dotnet-build, nodejs-build, backup-roundtrip (optional) | Docker Hub Access Token | Docker Hub → Account Settings → Security → Access Tokens |
 | `COSIGN_PRIVATE_KEY` | docker-build | Sigstore Cosign Private Key | `cosign generate-key-pair` |
 | `COSIGN_PASSWORD` | docker-build | Passwort für Cosign Key | Selbst festlegen |
 
 > **Fork Docker Build** (`fork-docker-build.yml`) benötigt **kein** konfiguriertes Secret — der GHCR-Login läuft über den automatischen `GITHUB_TOKEN`.
 
-> **Backup Round-Trip Test** (`modules-backup-roundtrip-test.yml`) benötigt **kein** Secret: Der GHCR-Login nutzt den automatischen `GITHUB_TOKEN` (der aufrufende Job muss `packages: read` gewähren), und jedes Passwort, das der Stack braucht, wird pro Lauf über `generated-secrets` erzeugt und maskiert — ebenso die Zugangsdaten des Wegwerf-S3-Servers (`s3-destination`). Produktions-Credentials gehören weder in `env-overrides` noch ins Repository — Quellen, die ein externes Konto brauchen, werden für den Test abgeschaltet. Siehe [Backup Round-Trip Test → Secrets](./workflows/modules-backup-roundtrip-test.md#secrets).
+> **Backup Round-Trip Test** (`modules-backup-roundtrip-test.yml`) benötigt **kein** Secret. `DOCKER_USERNAME` / `DOCKER_PASSWORD` sind optional: Mit `secrets: inherit` übergeben, zieht das Modul von Docker Hub angemeldet statt anonym und läuft nicht in Docker Hubs Pull-Limit pro Runner-IP (`429 toomanyrequests`). Der GHCR-Login nutzt den automatischen `GITHUB_TOKEN` (der aufrufende Job muss `packages: read` gewähren), und jedes Passwort, das der Stack braucht, wird pro Lauf über `generated-secrets` erzeugt und maskiert — ebenso die Zugangsdaten des Wegwerf-S3-Servers (`s3-destination`). Produktions-Credentials gehören weder in `env-overrides` noch ins Repository — Quellen, die ein externes Konto brauchen, werden für den Test abgeschaltet. Siehe [Backup Round-Trip Test → Secrets](./workflows/modules-backup-roundtrip-test.md#secrets).
 
 > **GitHub Packages im Docker-Build** (`docker-build.yml`) braucht **keinen** PAT: `github-token-secret-id: npm_token` reicht den eigenen `GITHUB_TOKEN` des Workflows als BuildKit-Secret in den Build — auch in Dependabot-Läufen, die keine Actions-Secrets erhalten. Der Token ist dabei **nicht** nur lesend: Er trägt die Rechte von `docker-build.yml` (u. a. `contents: write` und `packages: write`) und ist für jeden Prozess im `RUN` lesbar, der ihn mountet. Deshalb nur im Install-`RUN` mounten, wo möglich `npm ci --ignore-scripts`, dort kein `set -x`. Siehe [Docker Build → Build Secrets](./workflows/docker-build.md#build-secrets).
 

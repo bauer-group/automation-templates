@@ -53,6 +53,9 @@
 # Images are pulled from GHCR with the automatic GITHUB_TOKEN. Internal or
 # private packages need 'packages: read' in the CALLING workflow - a reusable
 # workflow can only restrict the caller's permissions, never extend them.
+# With DOCKER_USERNAME and DOCKER_PASSWORD passed (secrets: inherit), Docker
+# Hub is pulled under that account's quota instead of the runner's anonymous
+# one; without them it is pulled anonymously as before.
 # =============================================================================
 
 name: "🐳 Module | Backup Round-Trip Test"
@@ -275,6 +278,14 @@ on:
         required: false
         type: string
         default: "ubuntu-latest"
+
+    secrets:
+      DOCKER_USERNAME:
+        description: "Docker Hub user. Optional: with DOCKER_PASSWORD, images and base images are pulled from Docker Hub logged in, under the account's pull quota instead of the runner IP's anonymous one"
+        required: false
+      DOCKER_PASSWORD:
+        description: "Docker Hub password or access token (read-only is enough) for DOCKER_USERNAME"
+        required: false
 
     outputs:
       snapshot-id:
@@ -850,6 +861,43 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Docker Hub limits anonymous pulls per IP, and GitHub-hosted runners
+      # share their IPs: when several round trips run at once, pulls of
+      # postgres, redis or a base image fail with 429 'toomanyrequests'.
+      # Logged in, the account's own quota applies. Optional - without the
+      # secrets (forks, Dependabot runs, callers without a Docker Hub account)
+      # Docker Hub is pulled anonymously as before. A failed login only warns:
+      # the anonymous pull may still succeed, and the pull says so if not.
+      - name: "🔎 Check Docker Hub Credentials"
+        id: dockerhub
+        env:
+          # Presence only - the secret values are not referenced here.
+          HAS_DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME != '' }}
+          HAS_DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD != '' }}
+        run: |
+          if [ "$HAS_DOCKER_USERNAME" = "true" ] && [ "$HAS_DOCKER_PASSWORD" = "true" ]; then
+            echo "login=true" >> "$GITHUB_OUTPUT"
+            echo "🔑 Docker Hub credentials present - pulls run under the account's quota"
+          else
+            echo "login=false" >> "$GITHUB_OUTPUT"
+            echo "⚪ No DOCKER_USERNAME/DOCKER_PASSWORD - Docker Hub is pulled anonymously (rate-limited per runner IP)"
+          fi
+
+      - name: "🔐 Log in to Docker Hub"
+        id: dockerhub-login
+        if: steps.dockerhub.outputs.login == 'true'
+        continue-on-error: true
+        uses: docker/login-action@v4
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: "⚠️ Docker Hub Login Failed"
+        if: steps.dockerhub-login.outcome == 'failure'
+        run: |
+          echo "::warning title=Backup round trip::Docker Hub login failed - DOCKER_USERNAME or DOCKER_PASSWORD is wrong or expired. Docker Hub is pulled anonymously and may hit its rate limit (429 toomanyrequests)."
 
       # upgrade-from: the previous release takes the image references the
       # services resolve to, so Compose starts it like an installed release.

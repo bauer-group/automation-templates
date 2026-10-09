@@ -189,7 +189,24 @@ Without scripts the module still tests the backup mechanics (create, show, verif
 
 ## Secrets
 
-None. Registry access uses the automatic `GITHUB_TOKEN`; every password the stack needs is generated at runtime through `generated-secrets`, and the credentials of the throwaway S3 server (`s3-destination`) are generated and masked the same way. Callers pass `secrets: inherit` for consistency with the rest of the toolkit.
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `DOCKER_USERNAME` | No | Docker Hub user. With `DOCKER_PASSWORD`, the module logs in to Docker Hub before it builds and pulls |
+| `DOCKER_PASSWORD` | No | Password or access token of `DOCKER_USERNAME` — a read-only token is enough |
+
+None of them is needed to run the module. GHCR access uses the automatic `GITHUB_TOKEN`; every password the stack needs is generated at runtime through `generated-secrets`, and the credentials of the throwaway S3 server (`s3-destination`) are generated and masked the same way.
+
+The Docker Hub login matters once several round trips run at the same time. Docker Hub limits anonymous pulls per IP address, and GitHub-hosted runners share theirs, so pulls of `postgres`, `redis` or a base image of `build-images` start to fail with `429 toomanyrequests`. Logged in, the account's own quota applies. Pass the secrets with `secrets: inherit` — the same `DOCKER_USERNAME` / `DOCKER_PASSWORD` that [Docker Build](./docker-build.md) uses to publish to Docker Hub:
+
+```yaml
+  backup-roundtrip:
+    uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+    with:
+      # ...
+    secrets: inherit
+```
+
+Without the secrets — a fork, a Dependabot run (Dependabot has its own secret store), a caller without a Docker Hub account — the step *Check Docker Hub Credentials* says so and Docker Hub is pulled anonymously. A login that fails, for example with an expired token, only adds a warning; the pull itself then reports whether the anonymous quota was enough.
 
 > Do not put production credentials into `env-overrides` or the repository to make a source work in CI. A source that needs a real external account is switched off for the test instead — see [Sources that need external services](#sources-that-need-external-services).
 
@@ -697,6 +714,10 @@ This is the failure the module exists for. Compare `manifest.json` (was the comp
 ### Pulls fail with `denied` or `unauthorized`
 
 The calling job does not grant `packages: read`, or the package is private to another organisation. See [Permissions](#permissions).
+
+### Pulls fail with `429 Too Many Requests` / `toomanyrequests`
+
+Docker Hub's anonymous pull limit for the runner's IP address is used up — typically when several round trips or builds run at the same time. Pass `DOCKER_USERNAME` and `DOCKER_PASSWORD` with `secrets: inherit`, see [Secrets](#secrets). If the step *Check Docker Hub Credentials* reports none although the repository has them, the calling job is missing `secrets: inherit`. A warning *Docker Hub login failed* means the credentials are wrong or expired.
 
 ## Limitations
 
