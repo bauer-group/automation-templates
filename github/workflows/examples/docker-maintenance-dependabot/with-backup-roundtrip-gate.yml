@@ -1,0 +1,81 @@
+# =============================================================================
+# Docker Maintenance (Dependabot) - Gated on the Backup Round Trip
+# =============================================================================
+# For a Container-Solution stack whose docker-release.yml runs the backup
+# round trip on pull requests - see
+# ../backup-roundtrip/gated-release-pipeline.yml for that pipeline.
+#
+# A Dependabot base image PR is merged only after the pull_request run of
+# docker-release.yml has passed on the PR head commit. That run validates the
+# compose files, builds both images from the PR and backs up and restores real
+# data with them - so a new BackupHelper engine or application base image is
+# merged only once it restored this stack's data.
+#
+# Flow:
+#   Dependabot opens "fix(docker): bump ..."           (.github/dependabot.yml)
+#     -> docker-release.yml runs on pull_request       (validate, build, round trip)
+#     -> this workflow waits for that run              (complete and quiet CI)
+#     -> merged with --match-head-commit               (patch updates only)
+#     -> released with the next push to main that is not made by GITHUB_TOKEN,
+#        or when docker-release.yml is run by hand: the merge itself starts no
+#        workflow (see docs/workflows/docker-maintenance.md, "Limits")
+#
+# Trigger scope: the paths below are the Dockerfiles Dependabot updates. They
+# decide which Dependabot PRs reach this workflow at all, and they must stay
+# within docker-release.yml's pull_request paths (src/**): a PR that starts
+# this workflow but not the gate stays open as "not tested". npm or pip
+# updates under src/ change no listed file, never reach this workflow and are
+# merged by hand.
+#
+# Required .github/dependabot.yml (excerpt):
+# -----------------------------------------------------------------------------
+# version: 2
+# updates:
+#   - package-ecosystem: "docker"
+#     directories:
+#       - "/src/app"
+#       - "/src/app-backup"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "fix(docker)"           # releases a PATCH version
+# -----------------------------------------------------------------------------
+# =============================================================================
+
+name: 🐳 Docker Maintenance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'src/app/Dockerfile'
+      - 'src/app-backup/Dockerfile'
+
+# The reusable workflow declares no permissions of its own: the job token has
+# exactly these. Container-Solution repositories are usually private, where the
+# three read scopes are required to see the PR's CI - without them every PR
+# stays open with a notice. In public repositories they do no harm.
+permissions:
+  contents: write       # merge
+  pull-requests: write  # approve, read the PR
+  checks: read          # check runs and suites - private repositories
+  statuses: read        # commit statuses - private repositories
+  actions: read         # workflow runs - private repositories
+
+jobs:
+  maintenance:
+    name: Auto-merge Dependabot PRs
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
+    with:
+      # The PR run of the release pipeline: image builds and the backup round
+      # trip. Every job it runs on the PR must pass, the round trip included.
+      required-workflows: .github/workflows/docker-release.yml
+      merge-method: 'squash'
+      auto-approve: true
+      # Minor bumps of a database or broker image are not harmless - keep them
+      # for review.
+      merge-update-types: 'patch'
+      # The round trip boots the full stack, often 7 to 10 minutes after the
+      # run was queued. 60 is the maximum and the default.
+      ci-wait-minutes: 60
+    secrets: inherit
