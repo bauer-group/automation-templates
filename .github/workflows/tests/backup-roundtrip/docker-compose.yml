@@ -18,6 +18,10 @@
 # in CI. Production keeps it enabled (.env.example); the self-test switches it
 # off through env-overrides - the pattern consumers use for Cloudflare, an app
 # API that needs a token, and similar sources.
+#
+# The S3 destination is skipped while BACKUP_S3_BUCKET is empty (.env.example).
+# The s3-destination self-tests point it at the module's throwaway MinIO by
+# naming its variables in s3-env, the way a consumer maps its own.
 # =============================================================================
 
 services:
@@ -64,6 +68,8 @@ services:
     profiles: ["backup"]
     environment:
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      # Resolved by the engine, kept out of the rendered config.
+      S3_SECRET_KEY: ${BACKUP_S3_SECRET_KEY:-}
       BACKUP_CONFIG_JSON: |
         {
           "instance_name": "roundtrip-fixture",
@@ -78,7 +84,10 @@ services:
             ],
             "destinations": [
               {"type": "local"},
-              {"type": "s3", "bucket": "${BACKUP_S3_BUCKET:-}"}
+              {"type": "s3", "endpoint": "${BACKUP_S3_ENDPOINT:-}", "bucket": "${BACKUP_S3_BUCKET:-}",
+               "access_key": "${BACKUP_S3_ACCESS_KEY:-}", "secret_key": "$${S3_SECRET_KEY}",
+               "region": "${BACKUP_S3_REGION:-eu-central-1}", "prefix": "${BACKUP_S3_PREFIX:-fixture/}",
+               "force_path_style": ${BACKUP_S3_PATH_STYLE:-true}}
             ],
             "schedule": {"mode": "cron", "cron": "15 3 * * *"},
             "retention": {"count": 5}

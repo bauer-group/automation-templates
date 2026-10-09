@@ -17,6 +17,10 @@
 # Opt-in, off unless the caller sets them - every existing caller runs the
 # cycle above unchanged:
 #
+#   s3-destination      a throwaway S3 server (MinIO) becomes the sidecar's S3
+#                       destination: the snapshot must reach the bucket, the
+#                       sidecar's local data is wiped like on a new host, and
+#                       the restore pulls the snapshot back from S3
 #   external-networks   creates the external networks a Traefik or Coolify
 #                       compose variant expects, so every variant can run
 #
@@ -164,6 +168,28 @@ on:
         type: boolean
         default: true
 
+      # -- Off-site S3 destination (opt-in) ------------------------------------
+      s3-destination:
+        description: "Start a throwaway S3 server (MinIO) on the networks of the backup service and make it the sidecar's S3 destination through s3-env. The snapshot must reach the bucket; then the sidecar's local data is wiped like on a new host, and the restore pulls the snapshot back from S3."
+        required: false
+        type: boolean
+        default: false
+      s3-env:
+        description: "Lines 'setting=VARIABLE' naming the .env variables the compose file builds its S3 destination from; the module writes the throwaway server's values into them. Settings: endpoint, bucket, access-key, secret-key (required), region, path-style, prefix (optional). Example: 'endpoint=APP_BACKUP_S3_ENDPOINT'."
+        required: false
+        type: string
+        default: ""
+      s3-image:
+        description: "Image of the throwaway S3 server (s3-destination): MinIO-compatible, with curl for its healthcheck"
+        required: false
+        type: string
+        default: "ghcr.io/bauer-group/cs-minio/minio:latest"
+      s3-client-image:
+        description: "Image that provides the MinIO client 'mc', used to create the bucket and to list what the sidecar uploaded (s3-destination)"
+        required: false
+        type: string
+        default: "ghcr.io/bauer-group/cs-minio/minio-init:latest"
+
       # -- Test data ----------------------------------------------------------
       seed-script:
         description: "Bash script (relative to working-directory) that writes marker data into the running stack. Without seed and check scripts only the backup mechanics are tested, not the data."
@@ -257,6 +283,12 @@ jobs:
       SCRIPT_TIMEOUT: ${{ inputs.script-timeout }}
       WAIT_TIMEOUT: ${{ inputs.wait-timeout }}
       START_SERVICES: ${{ inputs.services }}
+      # s3-destination: the throwaway server, its client and the bucket.
+      # Prefixed, because Compose reads the process environment before the
+      # .env - a plain S3_BUCKET would override the caller's own variable.
+      ROUNDTRIP_S3_SERVICE: roundtrip-s3
+      ROUNDTRIP_S3_CLIENT: roundtrip-s3-client
+      ROUNDTRIP_S3_BUCKET: backup-roundtrip
 
     steps:
       - name: "📥 Checkout Repository"
@@ -299,6 +331,10 @@ jobs:
           CHECK_SCRIPT: ${{ inputs.check-script }}
           STOP_SERVICES: ${{ inputs.services-to-stop-before-restore }}
           EXTERNAL_NETWORKS: ${{ inputs.external-networks }}
+          S3_DESTINATION: ${{ inputs.s3-destination }}
+          S3_ENV: ${{ inputs.s3-env }}
+          S3_IMAGE: ${{ inputs.s3-image }}
+          S3_CLIENT_IMAGE: ${{ inputs.s3-client-image }}
         run: |
           set -euo pipefail
           set -f # inputs are split on whitespace below, never globbed
@@ -360,6 +396,39 @@ jobs:
             fail "seed-script and mutate-script need a check-script that proves the data state"
           fi
 
+          # Characters of an image reference: [registry[:port]/]name[:tag][@digest]
+          REF_RE='^[A-Za-z0-9][A-Za-z0-9._/:@-]*$'
+
+          # s3-env is only read with s3-destination, so a matrix can switch
+          # the S3 leg on and off without touching the mapping.
+          if [ "$S3_DESTINATION" = "true" ]; then
+            [ -n "$S3_ENV" ] || fail "s3-destination needs s3-env: the .env variables the compose file builds its S3 destination from"
+            MAPPED=" "
+            while IFS= read -r LINE; do
+              LINE="${LINE#"${LINE%%[![:space:]]*}"}"
+              LINE="${LINE%"${LINE##*[![:space:]]}"}"
+              [ -n "$LINE" ] || continue
+              [[ "$LINE" == \#* ]] && continue
+              if [[ ! "$LINE" =~ ^([a-z-]+)=([A-Za-z_][A-Za-z0-9_]*)$ ]]; then
+                fail "s3-env line is not setting=VARIABLE: '$LINE'"
+                continue
+              fi
+              SETTING="${BASH_REMATCH[1]}"
+              case "$SETTING" in
+                endpoint|bucket|access-key|secret-key|region|path-style|prefix) ;;
+                *) fail "s3-env: unknown setting '$SETTING' (endpoint, bucket, access-key, secret-key, region, path-style, prefix)"; continue ;;
+              esac
+              [[ "$MAPPED" != *" $SETTING "* ]] || fail "s3-env maps '$SETTING' twice"
+              MAPPED+="$SETTING "
+            done <<< "$S3_ENV"
+            for SETTING in endpoint bucket access-key secret-key; do
+              [[ "$MAPPED" == *" $SETTING "* ]] || fail "s3-env must map '$SETTING' - without it the sidecar does not reach the throwaway server"
+            done
+            for IMAGE in "$S3_IMAGE" "$S3_CLIENT_IMAGE"; do
+              [[ "$IMAGE" =~ $REF_RE ]] || fail "'$IMAGE' is not an image reference (s3-image, s3-client-image)"
+            done
+          fi
+
           if [ "$ERRORS" -gt 0 ]; then
             echo "❌ $ERRORS input error(s) - nothing was started"
             exit 1
@@ -367,6 +436,8 @@ jobs:
           echo "✅ Inputs are valid"
 
       - name: "🔧 Prepare Environment"
+        id: prepare
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
         env:
           COMPOSE_FILE_INPUT: ${{ inputs.compose-file }}
           COMPOSE_FILES_INPUT: ${{ inputs.compose-files }}
@@ -376,6 +447,10 @@ jobs:
           ENV_OVERRIDES: ${{ inputs.env-overrides }}
           GENERATED_SECRETS: ${{ inputs.generated-secrets }}
           PREPARE_SCRIPT: ${{ inputs.prepare-script }}
+          S3_DESTINATION: ${{ inputs.s3-destination }}
+          S3_ENV: ${{ inputs.s3-env }}
+          S3_IMAGE: ${{ inputs.s3-image }}
+          S3_CLIENT_IMAGE: ${{ inputs.s3-client-image }}
         run: |
           set -euo pipefail
           set -f # inputs are split on whitespace below, never globbed
@@ -462,6 +537,42 @@ jobs:
           done
           echo "🔐 $GENERATED secret(s) generated"
 
+          # -- s3-destination: the throwaway server's settings -----------------
+          # Written last, so they win over the template and env-overrides. The
+          # server and its client read the ROUNDTRIP_S3_* keys (Prepare S3
+          # Destination); the caller's compose file reads its own variables,
+          # named by s3-env.
+          if [ "$S3_DESTINATION" = "true" ]; then
+            S3_ACCESS_KEY="roundtrip-$(openssl rand -hex 6)"
+            S3_SECRET_KEY=$(openssl rand -hex 24)
+            echo "::add-mask::$S3_ACCESS_KEY"
+            echo "::add-mask::$S3_SECRET_KEY"
+            set_env ROUNDTRIP_S3_ACCESS_KEY "$S3_ACCESS_KEY"
+            set_env ROUNDTRIP_S3_SECRET_KEY "$S3_SECRET_KEY"
+            set_env ROUNDTRIP_S3_IMAGE "$S3_IMAGE"
+            set_env ROUNDTRIP_S3_CLIENT_IMAGE "$S3_CLIENT_IMAGE"
+            MAPPED=0
+            while IFS= read -r LINE; do
+              LINE="${LINE#"${LINE%%[![:space:]]*}"}"
+              LINE="${LINE%"${LINE##*[![:space:]]}"}"
+              [ -n "$LINE" ] || continue
+              [[ "$LINE" == \#* ]] && continue
+              VARIABLE="${LINE#*=}"
+              case "${LINE%%=*}" in
+                endpoint)   set_env "$VARIABLE" "http://$ROUNDTRIP_S3_SERVICE:9000" ;;
+                bucket)     set_env "$VARIABLE" "$ROUNDTRIP_S3_BUCKET" ;;
+                access-key) set_env "$VARIABLE" "$S3_ACCESS_KEY" ;;
+                secret-key) set_env "$VARIABLE" "$S3_SECRET_KEY" ;;
+                # MinIO accepts any region while it has none configured.
+                region)     set_env "$VARIABLE" "us-east-1" ;;
+                path-style) set_env "$VARIABLE" "true" ;;
+                prefix)     set_env "$VARIABLE" "backup-roundtrip/" ;;
+              esac
+              MAPPED=$((MAPPED + 1))
+            done <<< "$S3_ENV"
+            echo "🪣 s3-destination: $MAPPED variable(s) point at http://$ROUNDTRIP_S3_SERVICE:9000, bucket $ROUNDTRIP_S3_BUCKET"
+          fi
+
           # -- Compose context for every later step and the caller scripts ------
           if [ -n "$COMPOSE_FILES_INPUT" ]; then
             COMPOSE_FILE_LIST=$(jq -r 'join(":")' <<< "$COMPOSE_FILES_INPUT")
@@ -491,6 +602,10 @@ jobs:
             ROUNDTRIP_PHASE="$phase" ROUNDTRIP_EXPECT="$expect" \
               timeout --kill-after=10 "$SCRIPT_TIMEOUT" bash "$script"
           }
+
+          # Runs the MinIO client against the throwaway S3 server
+          # (s3-destination); its alias is "rt".
+          s3c() { docker compose run --rm --no-deps -T "$ROUNDTRIP_S3_CLIENT" "$@"; }
           LIB
 
           echo "::group::Tool versions"
@@ -516,6 +631,62 @@ jobs:
           fi
           docker compose config --format json > "$ROUNDTRIP_DIR/compose-config.json"
           echo "✅ $(jq '.services | length' "$ROUNDTRIP_DIR/compose-config.json") service(s) configured, profiles: ${COMPOSE_PROFILES:-<none>}"
+
+      # The throwaway S3 server joins the project through a generated override
+      # file, on the networks of the backup service, so the sidecar reaches it
+      # by service name whatever the caller's network layout is. Its client
+      # sits behind a profile of its own: it only runs on demand ('run').
+      - name: "🪣 Prepare S3 Destination"
+        id: s3-prepare
+        if: inputs.s3-destination
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
+        run: |
+          set -euo pipefail
+          CONFIG="$ROUNDTRIP_DIR/compose-config.json"
+          for NAME in "$ROUNDTRIP_S3_SERVICE" "$ROUNDTRIP_S3_CLIENT"; do
+            if jq -e --arg s "$NAME" '.services | has($s)' "$CONFIG" > /dev/null; then
+              echo "::error title=Backup round trip::s3-destination: the configuration already has a service '$NAME'"
+              exit 1
+            fi
+          done
+          if [ -n "$(jq -r --arg s "$BACKUP_SERVICE" '.services[$s].network_mode // empty' "$CONFIG")" ]; then
+            echo "::error title=Backup round trip::s3-destination: '$BACKUP_SERVICE' uses network_mode - the S3 server joins the networks of the backup service, and it has none of its own"
+            exit 1
+          fi
+          # A service without 'networks' is on the project's default network.
+          NETWORKS=$(jq -c --arg s "$BACKUP_SERVICE" '.services[$s].networks // {"default": null} | keys' "$CONFIG")
+
+          OVERRIDE="$ROUNDTRIP_DIR/s3-destination.compose.yml"
+          cat > "$OVERRIDE" << YAML
+          # Generated by modules-backup-roundtrip-test.yml (s3-destination).
+          # Image names and credentials come from the .env (ROUNDTRIP_S3_*).
+          services:
+            ${ROUNDTRIP_S3_SERVICE}:
+              image: \${ROUNDTRIP_S3_IMAGE}
+              command: ["server", "--address", ":9000", "/data"]
+              environment:
+                MINIO_ROOT_USER: \${ROUNDTRIP_S3_ACCESS_KEY}
+                MINIO_ROOT_PASSWORD: \${ROUNDTRIP_S3_SECRET_KEY}
+              healthcheck:
+                test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+                interval: 5s
+                timeout: 5s
+                retries: 24
+              networks: ${NETWORKS}
+            ${ROUNDTRIP_S3_CLIENT}:
+              image: \${ROUNDTRIP_S3_CLIENT_IMAGE}
+              profiles: ["${ROUNDTRIP_S3_CLIENT}"]
+              entrypoint: ["mc"]
+              environment:
+                MC_HOST_rt: http://\${ROUNDTRIP_S3_ACCESS_KEY}:\${ROUNDTRIP_S3_SECRET_KEY}@${ROUNDTRIP_S3_SERVICE}:9000
+              networks: ${NETWORKS}
+          YAML
+
+          COMPOSE_FILE="$COMPOSE_FILE:$OVERRIDE"
+          echo "COMPOSE_FILE=$COMPOSE_FILE" >> "$GITHUB_ENV"
+          docker compose config --quiet
+          docker compose config --format json > "$CONFIG"
+          echo "✅ $ROUNDTRIP_S3_SERVICE joins $(jq -r 'join(", ")' <<< "$NETWORKS") next to $BACKUP_SERVICE"
 
       # A Traefik or Coolify variant joins a proxy network that the proxy owns
       # on a real host ('external: true'); without it 'up' refuses to start.
@@ -648,6 +819,19 @@ jobs:
           fi
           echo "Pulling: ${PULL[*]}"
           docker compose pull --quiet "${PULL[@]}"
+
+      # Before the stack, so the sidecar finds its destination from its first
+      # run on. The bucket is created here: a caller's config may set
+      # ensure_bucket to false, as it would against a real provider.
+      - name: "🪣 Start S3 Server"
+        id: s3-start
+        if: inputs.s3-destination
+        run: |
+          set -euo pipefail
+          source "$ROUNDTRIP_DIR/lib.sh"
+          docker compose up -d --wait --wait-timeout "$WAIT_TIMEOUT" "$ROUNDTRIP_S3_SERVICE"
+          s3c mb --ignore-existing "rt/$ROUNDTRIP_S3_BUCKET"
+          echo "✅ $ROUNDTRIP_S3_SERVICE is up, bucket $ROUNDTRIP_S3_BUCKET is empty"
 
       - name: "🚀 Start Stack"
         run: |
@@ -804,6 +988,48 @@ jobs:
           echo "$OUTPUT"
           [ "$OUTPUT" = "OK $SNAPSHOT_ID" ] || { echo "::error::verify did not confirm the archive checksum"; exit 1; }
 
+      # A failed S3 upload does not fail 'create': the run ends in 'warning'
+      # and exits 0, because the local copy exists. Only the bucket shows
+      # whether the off-site copy is there.
+      - name: "🪣 Check Off-Site Copy"
+        id: s3-upload
+        if: inputs.s3-destination
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
+        env:
+          SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
+        run: |
+          set -euo pipefail
+          source "$ROUNDTRIP_DIR/lib.sh"
+          OBJECTS="$ROUNDTRIP_DIR/diagnostics/s3-objects.json"
+          LISTING=$(s3c ls --recursive --json "rt/$ROUNDTRIP_S3_BUCKET")
+          # One JSON object per line; anything else the client prints is not
+          # an object.
+          grep '^{' <<< "$LISTING" > "$OBJECTS" || true
+          # name<TAB>size of every object, the name without the caller's prefix
+          OBJECT_SIZES=$(jq -r 'select(.key != null and (.type // "file") == "file")
+                                | "\(.key | split("/") | last)\t\(.size)"' "$OBJECTS")
+          echo "Objects in s3://$ROUNDTRIP_S3_BUCKET:"
+          while IFS= read -r LINE; do echo "  $LINE"; done <<< "${OBJECT_SIZES:-<none>}"
+
+          LOCAL_SIZE=$(bh list | awk -v id="$SNAPSHOT_ID" '$1 == id {print $2}')
+          ARCHIVE=$(awk -F '\t' -v id="$SNAPSHOT_ID" \
+            '$1 == id ".tar.gz" || $1 == id ".tar.gz.age" || $1 == id ".tar.gz.gpg"' <<< "$OBJECT_SIZES")
+          MANIFEST=$(awk -F '\t' -v name="$SNAPSHOT_ID.manifest.json" '$1 == name && $2 > 0' <<< "$OBJECT_SIZES")
+
+          ERRORS=0
+          fail() { echo "::error title=Backup round trip::$1"; ERRORS=$((ERRORS + 1)); }
+          [ -n "$MANIFEST" ] || fail "the manifest $SNAPSHOT_ID.manifest.json is not in the bucket"
+          if [ -z "$ARCHIVE" ]; then
+            fail "the archive of snapshot $SNAPSHOT_ID is not in the bucket"
+          elif [ "$(cut -f 2 <<< "$ARCHIVE")" != "$LOCAL_SIZE" ]; then
+            fail "the archive in the bucket has $(cut -f 2 <<< "$ARCHIVE") bytes, the local one ${LOCAL_SIZE:-?}"
+          fi
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "The upload failed or was skipped - 'create' exits 0 in that case. The reason is in create.log and the sidecar's log (artifact). Check that s3-env names the variables the compose file builds the S3 destination from."
+            exit 1
+          fi
+          echo "✅ Snapshot $SNAPSHOT_ID is in s3://$ROUNDTRIP_S3_BUCKET: $(cut -f 1 <<< "$ARCHIVE") ($LOCAL_SIZE bytes, same as the local copy) and its manifest"
+
       - name: "🗑️ Remove Seeded Data"
         id: mutate
         if: inputs.mutate-script != ''
@@ -818,6 +1044,65 @@ jobs:
           # does nothing would pass.
           run_phase check "$CHECK_SCRIPT" absent
           echo "✅ Seeded data is gone"
+
+      # Disaster recovery onto a new host: the sidecar's container and its
+      # data dir are gone, only the bucket is left. The restore below then has
+      # to pull the snapshot back from S3 (hydration) - the local copy that
+      # every other round trip restores from no longer exists.
+      - name: "🖥️ Simulate New Host"
+        id: new-host
+        if: inputs.s3-destination
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
+        env:
+          SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
+        run: |
+          set -euo pipefail
+          source "$ROUNDTRIP_DIR/lib.sh"
+          CONTAINER=$(docker compose ps -q "$BACKUP_SERVICE")
+          if [ -z "$CONTAINER" ]; then
+            echo "::error title=Backup round trip::'$BACKUP_SERVICE' is not running"
+            exit 1
+          fi
+          IMAGE=$(docker inspect --format '{{.Image}}' "$CONTAINER")
+          DATA_DIR=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER" \
+            | sed -n 's/^BACKUP_DATA_DIR=//p' | tail -n 1)
+          DATA_DIR="${DATA_DIR:-/data}"
+          MOUNT=$(docker inspect --format '{{json .Mounts}}' "$CONTAINER" \
+            | jq -c --arg d "$DATA_DIR" 'map(select(.Destination == $d)) | first // empty')
+
+          docker compose rm --stop --force "$BACKUP_SERVICE"
+          if [ -z "$MOUNT" ]; then
+            echo "🧹 $DATA_DIR is not a mount - it went with the container"
+          else
+            case "$(jq -r '.Type' <<< "$MOUNT")" in
+              volume) SOURCE=$(jq -r '.Name' <<< "$MOUNT") ;;
+              bind)   SOURCE=$(jq -r '.Source' <<< "$MOUNT") ;;
+              *)
+                echo "::error title=Backup round trip::the data dir $DATA_DIR of '$BACKUP_SERVICE' is a $(jq -r '.Type' <<< "$MOUNT") mount - only volumes and bind mounts can be wiped"
+                exit 1 ;;
+            esac
+            # The volume may be mounted elsewhere too (read-only into the
+            # application), so it is emptied rather than removed. The sidecar's
+            # own image does it, as root: nothing else has to be pulled.
+            docker run --rm --user 0:0 --entrypoint sh -v "$SOURCE:/wipe" "$IMAGE" \
+              -c 'rm -rf /wipe/* /wipe/.[!.]* /wipe/..?* && [ -z "$(ls -A /wipe)" ]'
+            echo "🧹 $DATA_DIR ($SOURCE) wiped"
+          fi
+          docker compose up -d --no-deps --wait --wait-timeout "$WAIT_TIMEOUT" "$BACKUP_SERVICE"
+
+          LIST=$(bh list)
+          echo "$LIST"
+          # Rows: <id> <size> bytes [(off-site only)]
+          LOCAL=$(awk '$3 == "bytes" && $2 > 0 {print $1}' <<< "$LIST")
+          if [ -n "$LOCAL" ]; then
+            echo "::error title=Backup round trip::local snapshots survived the wipe: $(tr '\n' ' ' <<< "$LOCAL")"
+            exit 1
+          fi
+          if ! awk -v id="$SNAPSHOT_ID" '$1 == id && $3 == "bytes" && $2 == 0 {found = 1} END {exit !found}' <<< "$LIST"; then
+            echo "::error title=Backup round trip::the new sidecar does not list snapshot $SNAPSHOT_ID as off-site - it does not reach the bucket"
+            exit 1
+          fi
+          echo "✅ New host: no local snapshot, $SNAPSHOT_ID is listed off-site only"
 
       - name: "🔄 Restore Snapshot"
         id: restore
@@ -844,6 +1129,26 @@ jobs:
           echo "🚀 Starting the stack again"
           docker compose up -d --wait --wait-timeout "$WAIT_TIMEOUT" "${SERVICES[@]}"
           docker compose ps
+
+      - name: "🪣 Check Hydrated Snapshot"
+        id: s3-hydrated
+        if: inputs.s3-destination
+        env:
+          SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
+        run: |
+          set -euo pipefail
+          source "$ROUNDTRIP_DIR/lib.sh"
+          LIST=$(bh list)
+          echo "$LIST"
+          # Local again only because the restore downloaded it.
+          if ! awk -v id="$SNAPSHOT_ID" '$1 == id && $3 == "bytes" && $2 > 0 {found = 1} END {exit !found}' <<< "$LIST"; then
+            echo "::error title=Backup round trip::snapshot $SNAPSHOT_ID is not local after the restore - it was not hydrated from S3"
+            exit 1
+          fi
+          OUTPUT=$(bh verify "$SNAPSHOT_ID")
+          echo "$OUTPUT"
+          [ "$OUTPUT" = "OK $SNAPSHOT_ID" ] || { echo "::error::the snapshot hydrated from S3 does not match its checksum"; exit 1; }
+          echo "✅ Snapshot $SNAPSHOT_ID was pulled back from s3://$ROUNDTRIP_S3_BUCKET and matches its checksum"
 
       - name: "🧪 Check Restored Data"
         id: check
@@ -885,6 +1190,8 @@ jobs:
           done
           timeout 60 docker compose exec -T "$BACKUP_SERVICE" backuphelper list > "$DIAG/snapshots.txt" 2>&1
           { df -h /; echo; free -m; echo; docker system df; } > "$DIAG/runner.txt" 2>&1
+          # Generated override files hold .env references, never credentials.
+          cp -f "$ROUNDTRIP_DIR"/*.compose.yml "$DIAG/" 2> /dev/null
           # The .env holds the generated secrets and is never collected.
           ls -la "$DIAG" "$DIAG/logs"
 
@@ -931,6 +1238,10 @@ jobs:
           OUTCOME_HEALTH: ${{ steps.healthcheck.outcome }}
           RUN_HEALTHCHECK: ${{ inputs.run-healthcheck }}
           ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          HAS_S3: ${{ inputs.s3-destination }}
+          OUTCOME_S3_UPLOAD: ${{ steps.s3-upload.outcome }}
+          OUTCOME_NEW_HOST: ${{ steps.new-host.outcome }}
+          OUTCOME_S3_HYDRATED: ${{ steps.s3-hydrated.outcome }}
         run: |
           # outcome, configured -> status cell
           cell() {
@@ -946,7 +1257,11 @@ jobs:
             echo "## 🧪 Backup Round-Trip Test"
             echo ""
             if [ "$JOB_STATUS" = "success" ]; then
-              echo "✅ **Passed** - snapshot \`$SNAPSHOT_ID\` was created, verified and restored."
+              PASSED="✅ **Passed** - snapshot \`$SNAPSHOT_ID\` was created, verified and restored."
+              if [ "$HAS_S3" = "true" ]; then
+                PASSED+=" It reached the S3 bucket, and the restore pulled it back from there after the sidecar's local data was wiped."
+              fi
+              echo "$PASSED"
             else
               echo "❌ **Failed** - see the failed step below. Diagnostics are attached as the \`$ARTIFACT_NAME\` artifact."
             fi
@@ -956,8 +1271,12 @@ jobs:
             echo "| Seed test data | $(cell "$OUTCOME_SEED" "$HAS_SEED") |"
             echo "| Create backup | $(cell "$OUTCOME_CREATE" true) |"
             echo "| Inspect snapshot | $(cell "$OUTCOME_INSPECT" true) |"
+            # Rows of opt-in phases only when they are configured.
+            [ "$HAS_S3" != "true" ] || echo "| Off-site copy in S3 | $(cell "$OUTCOME_S3_UPLOAD" true) |"
             echo "| Remove seeded data | $(cell "$OUTCOME_MUTATE" "$HAS_MUTATE") |"
+            [ "$HAS_S3" != "true" ] || echo "| New host: local data wiped | $(cell "$OUTCOME_NEW_HOST" true) |"
             echo "| Restore snapshot | $(cell "$OUTCOME_RESTORE" true) |"
+            [ "$HAS_S3" != "true" ] || echo "| Snapshot pulled back from S3 | $(cell "$OUTCOME_S3_HYDRATED" true) |"
             echo "| Check restored data | $(cell "$OUTCOME_CHECK" "$HAS_CHECK") |"
             echo "| Backup healthcheck | $(cell "$OUTCOME_HEALTH" "$RUN_HEALTHCHECK") |"
             echo ""
@@ -984,6 +1303,16 @@ jobs:
               echo "| Component | Kind | Size | Status |"
               echo "|-----------|------|------|--------|"
               jq -r '.components[] | "| `\(.name)` | \(.kind) | \(.size) bytes | \(if .error then "❌ " + .error elif ((.metadata.warnings // []) | length) > 0 then "⚠️ Warnings" else "✅ OK" end) |"' "$MANIFEST"
+              echo ""
+            fi
+
+            OBJECTS="${ROUNDTRIP_DIR:-/nonexistent}/diagnostics/s3-objects.json"
+            if [ -s "$OBJECTS" ] && jq -e -s 'length > 0' "$OBJECTS" > /dev/null 2>&1; then
+              echo "### 🪣 Objects in \`s3://$ROUNDTRIP_S3_BUCKET\`"
+              echo ""
+              echo "| Object | Size |"
+              echo "|--------|------|"
+              jq -r 'select(.key != null) | "| `\(.key)` | \(.size) bytes |"' "$OBJECTS"
               echo ""
             fi
 

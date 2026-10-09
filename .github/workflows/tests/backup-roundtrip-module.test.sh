@@ -25,6 +25,14 @@
 # network of the configuration, explicit names are created once, networks that
 # exist already are left alone and are not removed at the end.
 #
+# s3-destination: Prepare Environment (id: prepare) writes the throwaway
+# server's values into exactly the variables s3-env names; Prepare S3
+# Destination (id: s3-prepare) puts the server on the backup service's
+# networks; Check Off-Site Copy (id: s3-upload) fails unless archive and
+# manifest are in the bucket with the local size - a failed upload does not
+# fail 'create'; Simulate New Host (id: new-host) wipes the data dir and
+# demands that the snapshot is listed off-site only.
+#
 # The step bodies are extracted from the workflow at runtime and run the way a
 # `shell: bash` step runs (-eo pipefail). The engine CLI ('bh' from lib.sh) and
 # `docker` are stubs.
@@ -60,7 +68,7 @@ extract_step() {
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-for STEP in validate networks create pull; do
+for STEP in validate prepare networks s3-prepare create pull s3-upload new-host; do
   extract_step "$STEP" > "$WORK/$STEP.sh"
   if [ ! -s "$WORK/$STEP.sh" ]; then
     echo "FATAL: could not extract the '$STEP' run block from the workflow."
@@ -271,7 +279,8 @@ validate_case() {
     COMPOSE_FILE_INPUT=docker-compose.yml COMPOSE_FILES_INPUT="" PROFILES_INPUT=backup \
     PROJECT_NAME=backup-roundtrip ENV_OVERRIDES="" GENERATED_SECRETS="" BUILD_IMAGES="" \
     PREPARE_SCRIPT="" SEED_SCRIPT="" MUTATE_SCRIPT="" CHECK_SCRIPT="" STOP_SERVICES="" \
-    SCRIPT_TIMEOUT=600 WAIT_TIMEOUT=600 EXTERNAL_NETWORKS="" "$@")
+    SCRIPT_TIMEOUT=600 WAIT_TIMEOUT=600 EXTERNAL_NETWORKS="" \
+    S3_DESTINATION=false S3_ENV="" S3_IMAGE="" S3_CLIENT_IMAGE="" "$@")
 }
 
 validate_case defaults
@@ -283,6 +292,85 @@ expect_rc "validate: external-networks 'auto' and names" $? 0
 validate_case bad-network EXTERNAL_NETWORKS='proxy bad/name'
 expect_rc "validate: external-networks with an invalid name" $? 1
 expect_log "validate: names the invalid network" "external-networks entry 'bad/name' is neither 'auto' nor a network name"
+
+S3_MAPPING=$'# the stack\'s names\nendpoint=APP_S3_ENDPOINT\nbucket=APP_S3_BUCKET\n  access-key=APP_S3_ACCESS_KEY  \nsecret-key=APP_S3_SECRET_KEY\nregion=APP_S3_REGION\npath-style=APP_S3_PATH_STYLE\nprefix=APP_S3_PREFIX'
+S3_IMAGES=(S3_IMAGE=ghcr.io/bauer-group/cs-minio/minio:latest S3_CLIENT_IMAGE=ghcr.io/bauer-group/cs-minio/minio-init:latest)
+
+validate_case s3-ok S3_DESTINATION=true S3_ENV="$S3_MAPPING" "${S3_IMAGES[@]}"
+expect_rc "validate: s3-env with every setting, a comment and padding" $? 0
+
+validate_case s3-off S3_DESTINATION=false S3_ENV='nonsense' "${S3_IMAGES[@]}"
+expect_rc "validate: s3-env is ignored without s3-destination" $? 0
+
+validate_case s3-missing S3_DESTINATION=true S3_ENV=$'endpoint=A\nbucket=B' "${S3_IMAGES[@]}"
+expect_rc "validate: s3-env without credentials" $? 1
+expect_log "validate: names the missing access-key" "s3-env must map 'access-key'"
+expect_log "validate: names the missing secret-key" "s3-env must map 'secret-key'"
+
+validate_case s3-empty S3_DESTINATION=true S3_ENV="" "${S3_IMAGES[@]}"
+expect_rc "validate: s3-destination without s3-env" $? 1
+expect_log "validate: says s3-env is needed" "s3-destination needs s3-env"
+
+validate_case s3-bad S3_DESTINATION=true "${S3_IMAGES[@]}" \
+  S3_ENV=$'endpoint=A\nbucket=B\naccess-key=C\nsecret-key=D\nsecret-key=E\nregion=1BAD\ntoken=F'
+expect_rc "validate: broken s3-env lines" $? 1
+expect_log "validate: duplicate setting" "s3-env maps 'secret-key' twice"
+expect_log "validate: invalid variable name" "s3-env line is not setting=VARIABLE: 'region=1BAD'"
+expect_log "validate: unknown setting" "s3-env: unknown setting 'token'"
+
+validate_case s3-image S3_DESTINATION=true S3_ENV="$S3_MAPPING" S3_IMAGE='minio:latest; rm -rf /' S3_CLIENT_IMAGE=mc
+expect_rc "validate: s3-image that is no image reference" $? 1
+expect_log "validate: names the bad image" "is not an image reference"
+
+# === Prepare Environment (s3-destination) ======================================
+cat > "$WORK/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+  version) echo "Docker 28.0.0" ;;
+  compose) echo "Docker Compose version v2.40.0" ;;
+  *) echo "unexpected docker call: $*" >&2; exit 2 ;;
+esac
+STUB
+prepare_case() {
+  reset "$1"; shift
+  cat > "$DIR/.env.example" <<'ENV'
+STACK_NAME=app
+APP_S3_ENDPOINT=
+APP_S3_BUCKET=
+APP_S3_ACCESS_KEY=
+APP_S3_SECRET_KEY=
+APP_S3_REGION=
+APP_S3_PREFIX=app/
+OTHER_S3_BUCKET=untouched
+ENV
+  (cd "$DIR" && run_step prepare \
+    COMPOSE_FILE_INPUT=docker-compose.yml COMPOSE_FILES_INPUT="" PROFILES_INPUT=backup \
+    PROJECT_NAME=backup-roundtrip ENV_TEMPLATE=.env.example ENV_OVERRIDES="" GENERATED_SECRETS="" \
+    PREPARE_SCRIPT="" SCRIPT_TIMEOUT=600 RUNNER_TEMP="$DIR/runner" GITHUB_RUN_ID=1 GITHUB_RUN_ATTEMPT=1 \
+    ROUNDTRIP_S3_SERVICE=roundtrip-s3 ROUNDTRIP_S3_CLIENT=roundtrip-s3-client ROUNDTRIP_S3_BUCKET=backup-roundtrip \
+    S3_IMAGE=ghcr.io/bauer-group/cs-minio/minio:latest S3_CLIENT_IMAGE=ghcr.io/bauer-group/cs-minio/minio-init:latest "$@")
+}
+env_value() { grep "^$1=" "$DIR/.env" | tail -n 1 | cut -d= -f2-; }
+
+prepare_case s3-env S3_DESTINATION=true S3_ENV="$S3_MAPPING"
+expect_rc "prepare s3: step passes" $? 0
+expect_eq "prepare s3: endpoint" "$(env_value APP_S3_ENDPOINT)" "http://roundtrip-s3:9000"
+expect_eq "prepare s3: bucket" "$(env_value APP_S3_BUCKET)" "backup-roundtrip"
+expect_eq "prepare s3: region" "$(env_value APP_S3_REGION)" "us-east-1"
+expect_eq "prepare s3: path style" "$(env_value APP_S3_PATH_STYLE)" "true"
+expect_eq "prepare s3: prefix" "$(env_value APP_S3_PREFIX)" "backup-roundtrip/"
+expect_eq "prepare s3: the caller's access key is the server's" "$(env_value APP_S3_ACCESS_KEY)" "$(env_value ROUNDTRIP_S3_ACCESS_KEY)"
+expect_eq "prepare s3: the caller's secret key is the server's" "$(env_value APP_S3_SECRET_KEY)" "$(env_value ROUNDTRIP_S3_SECRET_KEY)"
+if [[ "$(env_value ROUNDTRIP_S3_SECRET_KEY)" =~ ^[0-9a-f]{48}$ ]]; then pass "prepare s3: secret key generated"; else fail "prepare s3: secret key generated" "'$(env_value ROUNDTRIP_S3_SECRET_KEY)'"; fi
+expect_log "prepare s3: secret key masked" "::add-mask::$(env_value ROUNDTRIP_S3_SECRET_KEY)"
+expect_eq "prepare s3: server image" "$(env_value ROUNDTRIP_S3_IMAGE)" "ghcr.io/bauer-group/cs-minio/minio:latest"
+expect_eq "prepare s3: unmapped variables untouched" "$(env_value OTHER_S3_BUCKET)" "untouched"
+expect_eq "prepare s3: a key is replaced in place, not repeated" "$(grep -c '^APP_S3_BUCKET=' "$DIR/.env")" 1
+
+prepare_case s3-off S3_DESTINATION=false S3_ENV="$S3_MAPPING"
+expect_rc "prepare without s3-destination: step passes" $? 0
+expect_eq "prepare without s3-destination: endpoint untouched" "$(env_value APP_S3_ENDPOINT)" ""
+expect_eq "prepare without s3-destination: no server keys" "$(grep -c '^ROUNDTRIP_S3_' "$DIR/.env")" 0
 
 # === Create External Networks ===================================================
 # The fake docker: 'network inspect' succeeds for the names in
@@ -333,6 +421,180 @@ echo '{"networks": {"default": {"name": "rt_default"}}, "services": {}}' > "$DIR
 run_step networks EXTERNAL_NETWORKS=auto; expect_rc "networks auto without external networks: step passes" $? 0
 expect_eq "networks auto without external networks: nothing created" "$(created)" ""
 expect_log "networks auto without external networks: says so" "'auto' found no external network"
+
+# === Prepare S3 Destination =====================================================
+# The fake docker renders the configuration with the override, as Compose
+# merges it: the fixture's own services plus the two the override adds.
+cat > "$WORK/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+echo "docker $*" >> "$DIR/docker.log"
+case "$*" in
+  "compose config --quiet") ;;
+  "compose config --format json")
+    jq --arg s3 "$ROUNDTRIP_S3_SERVICE" --arg client "$ROUNDTRIP_S3_CLIENT" \
+      '.services[$s3] = {"image": "minio"} | .services[$client] = {"image": "mc"}' "$DIR/config.in" ;;
+  *) echo "unexpected docker call: $*" >&2; exit 2 ;;
+esac
+STUB
+s3_prepare_case() {
+  reset "$1"
+  printf '%s\n' "$2" > "$DIR/config.in"
+  cp "$DIR/config.in" "$DIR/compose-config.json"
+}
+run_s3_prepare() {
+  run_step s3-prepare COMPOSE_FILE=docker-compose.yml \
+    ROUNDTRIP_S3_SERVICE=roundtrip-s3 ROUNDTRIP_S3_CLIENT=roundtrip-s3-client
+}
+OVERRIDE_FILE() { echo "$DIR/s3-destination.compose.yml"; }
+
+s3_prepare_case networks '{"services": {"backup": {"image": "b", "networks": {"local": null, "proxy": {"aliases": ["x"]}}}}}'
+run_s3_prepare; expect_rc "s3-prepare: step passes" $? 0
+expect_eq "s3-prepare: the server joins the backup service's networks" \
+  "$(grep -c '^    networks: \["local","proxy"\]$' "$(OVERRIDE_FILE)")" 2
+if grep -q "^COMPOSE_FILE=docker-compose.yml:$(OVERRIDE_FILE)$" "$DIR/env"; then pass "s3-prepare: the override joins COMPOSE_FILE"; else fail "s3-prepare: the override joins COMPOSE_FILE" "$(cat "$DIR/env")"; fi
+if grep -q '^      MINIO_ROOT_PASSWORD: \${ROUNDTRIP_S3_SECRET_KEY}$' "$(OVERRIDE_FILE)"; then pass "s3-prepare: credentials stay .env references"; else fail "s3-prepare: credentials stay .env references" "$(cat "$(OVERRIDE_FILE)")"; fi
+expect_eq "s3-prepare: the client only runs on demand" "$(grep -c '^    profiles: \["roundtrip-s3-client"\]$' "$(OVERRIDE_FILE)")" 1
+if jq -e '.services | has("roundtrip-s3")' "$DIR/compose-config.json" > /dev/null; then pass "s3-prepare: configuration re-rendered with the server"; else fail "s3-prepare: configuration re-rendered with the server" "missing"; fi
+
+s3_prepare_case default '{"services": {"backup": {"image": "b"}}}'
+run_s3_prepare; expect_rc "s3-prepare: backup service on the default network" $? 0
+expect_eq "s3-prepare: the server joins the default network" "$(grep -c '^    networks: \["default"\]$' "$(OVERRIDE_FILE)")" 2
+
+s3_prepare_case collision '{"services": {"backup": {"image": "b"}, "roundtrip-s3": {"image": "x"}}}'
+run_s3_prepare; expect_rc "s3-prepare: a service named like the server" $? 1
+expect_log "s3-prepare: names the collision" "the configuration already has a service 'roundtrip-s3'"
+
+s3_prepare_case network-mode '{"services": {"backup": {"image": "b", "network_mode": "host"}}}'
+run_s3_prepare; expect_rc "s3-prepare: backup service with network_mode" $? 1
+expect_log "s3-prepare: explains network_mode" "uses network_mode"
+
+# === Check Off-Site Copy ========================================================
+# The fake engine lists the local snapshot; the fake client prints the bucket
+# listing the way 'mc ls --recursive --json' does, one object per line.
+cat > "$WORK/lib.sh" <<'LIB'
+bh() { [ "$1" = list ] || { echo "unexpected bh call: $*" >&2; return 2; }; cat "$DIR/list"; }
+s3c() { echo "$*" >> "$DIR/s3c.log"; cat "$DIR/bucket"; }
+LIB
+SID="2026-10-09_09-14-46"
+upload_case() {
+  reset "$1"
+  cp "$WORK/lib.sh" "$DIR/lib.sh"
+  mkdir -p "$DIR/diagnostics"
+  printf '%-24s %12d bytes\n' "$SID" 4096 > "$DIR/list"
+  : > "$DIR/bucket"
+}
+object() { printf '{"status":"success","type":"file","size":%d,"key":"%s","storageClass":"STANDARD"}\n' "$2" "$1" >> "$DIR/bucket"; }
+run_upload() { run_step s3-upload SNAPSHOT_ID="$SID" ROUNDTRIP_S3_BUCKET=backup-roundtrip; }
+
+upload_case ok; object "app/$SID.tar.gz" 4096; object "app/$SID.manifest.json" 900
+run_upload; expect_rc "s3-upload: archive and manifest in the bucket" $? 0
+expect_eq "s3-upload: the bucket is listed recursively" "$(cat "$DIR/s3c.log")" "ls --recursive --json rt/backup-roundtrip"
+if [ -s "$DIR/diagnostics/s3-objects.json" ]; then pass "s3-upload: listing kept for the summary and artifact"; else fail "s3-upload: listing kept for the summary and artifact" "empty"; fi
+
+upload_case encrypted; object "$SID.tar.gz.age" 4096; object "$SID.manifest.json" 900
+run_upload; expect_rc "s3-upload: encrypted archive without prefix" $? 0
+
+upload_case noise; echo "Container backup-roundtrip-roundtrip-s3-client-run-1 Creating" >> "$DIR/bucket"
+object "app/$SID.tar.gz" 4096; object "app/$SID.manifest.json" 900
+run_upload; expect_rc "s3-upload: client chatter is not an object" $? 0
+
+upload_case no-manifest; object "app/$SID.tar.gz" 4096
+run_upload; expect_rc "s3-upload: manifest missing" $? 1
+expect_log "s3-upload: names the missing manifest" "the manifest $SID.manifest.json is not in the bucket"
+
+upload_case empty-manifest; object "app/$SID.tar.gz" 4096; object "app/$SID.manifest.json" 0
+run_upload; expect_rc "s3-upload: empty manifest object" $? 1
+expect_log "s3-upload: an empty manifest does not count" "the manifest $SID.manifest.json is not in the bucket"
+
+upload_case truncated; object "app/$SID.tar.gz" 1024; object "app/$SID.manifest.json" 900
+run_upload; expect_rc "s3-upload: archive smaller than the local one" $? 1
+expect_log "s3-upload: names both sizes" "the archive in the bucket has 1024 bytes, the local one 4096"
+
+upload_case empty
+run_upload; expect_rc "s3-upload: empty bucket" $? 1
+expect_log "s3-upload: archive missing" "the archive of snapshot $SID is not in the bucket"
+expect_log "s3-upload: explains why create passed" "'create' exits 0 in that case"
+
+upload_case other-snapshot; object "app/2026-10-08_03-15-00.tar.gz" 4096; object "app/2026-10-08_03-15-00.manifest.json" 900
+run_upload; expect_rc "s3-upload: only another snapshot in the bucket" $? 1
+
+# === Simulate New Host ==========================================================
+# The fake docker answers the inspections from files and records what is
+# removed, wiped and started; once the sidecar is started again, the fake
+# engine lists list.after.
+cat > "$WORK/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+echo "docker $*" >> "$DIR/docker.log"
+case "$1 $2" in
+  "compose ps") cat "$DIR/container" ;;
+  "inspect --format")
+    case "$3" in
+      "{{.Image}}") echo "sha256:sidecar" ;;
+      "{{range .Config.Env}}{{println .}}{{end}}") cat "$DIR/container-env" ;;
+      "{{json .Mounts}}") cat "$DIR/mounts.json" ;;
+      *) echo "unexpected inspect: $*" >&2; exit 2 ;;
+    esac ;;
+  "compose rm") echo "removed ${*: -1}" >> "$DIR/actions" ;;
+  "run --rm") echo "wiped $(printf '%s\n' "$@" | grep ':/wipe$') with $(printf '%s\n' "$@" | grep '^sha256:')" >> "$DIR/actions" ;;
+  "compose up") echo "started ${*: -1}" >> "$DIR/actions"; touch "$DIR/restarted" ;;
+  *) echo "unexpected docker call: $*" >&2; exit 2 ;;
+esac
+STUB
+cat > "$WORK/lib.sh" <<'LIB'
+bh() {
+  [ "$1" = list ] || { echo "unexpected bh call: $*" >&2; return 2; }
+  if [ -f "$DIR/restarted" ]; then cat "$DIR/list.after"; else cat "$DIR/list.before"; fi
+}
+LIB
+host_case() {
+  reset "$1"
+  cp "$WORK/lib.sh" "$DIR/lib.sh"
+  echo "0123456789ab" > "$DIR/container"
+  printf 'PATH=/usr/bin\nBACKUP_DATA_DIR=/data\n' > "$DIR/container-env"
+  echo '[{"Type": "volume", "Name": "rt-backup-data", "Source": "/var/lib/docker/volumes/rt-backup-data/_data", "Destination": "/data"},
+         {"Type": "volume", "Name": "rt-files", "Destination": "/srv/files"}]' > "$DIR/mounts.json"
+  printf '%-24s %12d bytes\n' "$SID" 4096 > "$DIR/list.before"
+  printf '%-24s %12d bytes  (off-site only)\n' "$SID" 0 > "$DIR/list.after"
+  : > "$DIR/actions"
+}
+run_host() { run_step new-host SNAPSHOT_ID="$SID" WAIT_TIMEOUT=60; }
+actions() { tr '\n' '|' < "$DIR/actions" | sed 's/|$//'; }
+
+host_case volume
+run_host; expect_rc "new-host: data volume wiped, snapshot off-site only" $? 0
+expect_eq "new-host: removes the container, wipes the data volume with the sidecar image, starts it again" \
+  "$(actions)" "removed backup|wiped rt-backup-data:/wipe with sha256:sidecar|started backup"
+
+host_case bind
+echo '[{"Type": "bind", "Source": "/srv/backup", "Destination": "/backup"}]' > "$DIR/mounts.json"
+printf 'BACKUP_DATA_DIR=/backup\n' > "$DIR/container-env"
+run_host; expect_rc "new-host: bind mount at BACKUP_DATA_DIR" $? 0
+expect_eq "new-host: wipes the bind mount" "$(actions)" "removed backup|wiped /srv/backup:/wipe with sha256:sidecar|started backup"
+
+host_case no-mount
+echo '[]' > "$DIR/mounts.json"
+run_host; expect_rc "new-host: data dir inside the container" $? 0
+expect_eq "new-host: nothing to wipe besides the container" "$(actions)" "removed backup|started backup"
+
+host_case tmpfs
+echo '[{"Type": "tmpfs", "Destination": "/data"}]' > "$DIR/mounts.json"
+run_host; expect_rc "new-host: a tmpfs data dir" $? 1
+expect_log "new-host: names the mount type" "is a tmpfs mount"
+
+host_case survived
+printf '%-24s %12d bytes\n' "$SID" 4096 > "$DIR/list.after"
+run_host; expect_rc "new-host: a local snapshot survived" $? 1
+expect_log "new-host: names the surviving snapshot" "local snapshots survived the wipe: $SID"
+
+host_case unreachable
+echo "no snapshots found" > "$DIR/list.after"
+run_host; expect_rc "new-host: the new sidecar does not see the bucket" $? 1
+expect_log "new-host: says the snapshot is not listed off-site" "does not list snapshot $SID as off-site"
+
+host_case not-running
+: > "$DIR/container"
+run_host; expect_rc "new-host: sidecar not running" $? 1
+expect_log "new-host: says so" "'backup' is not running"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"

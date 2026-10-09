@@ -1,0 +1,74 @@
+# =============================================================================
+# Backup Round Trip - Off-Site S3 Copy and Restore on a New Host
+# =============================================================================
+# Proves the disaster-recovery path: the snapshot reaches an S3 bucket, and a
+# sidecar with an empty data dir - a new host - brings it back from there.
+#
+# The module starts a throwaway MinIO next to the stack and writes its
+# endpoint, bucket and generated credentials into the .env variables named
+# in s3-env - the ones the compose file builds its S3 destination from. After
+# the backup, archive and manifest must be in the bucket (a failed upload
+# does not fail 'create'); before the restore, the sidecar's container and
+# data volume are wiped; the restore then has to download the snapshot.
+#
+# Assumed repository layout:
+#   docker-compose.yml   app-backup's BACKUP_CONFIG_JSON has an S3 destination
+#                        built from .env variables, e.g.
+#                        {"type": "s3", "endpoint": "${APP_BACKUP_S3_ENDPOINT:-}",
+#                         "bucket": "${APP_BACKUP_S3_BUCKET:-}",
+#                         "access_key": "${APP_BACKUP_S3_ACCESS_KEY:-}",
+#                         "secret_key": "$${S3_SECRET_KEY}"}
+#                        with S3_SECRET_KEY: ${APP_BACKUP_S3_SECRET_KEY:-}
+#   tests/backup-roundtrip/   seed.sh, mutate.sh, check.sh
+#
+# Docs: docs/workflows/modules-backup-roundtrip-test.md#off-site-s3-and-a-new-host
+# =============================================================================
+
+name: 🧪 Backup Round Trip (S3)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'docker-compose*.yml'
+      - '.env.example'
+      - 'tests/backup-roundtrip/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup-roundtrip-s3:
+    name: 🧪 Backup Round Trip (S3, new host)
+    permissions:
+      contents: read
+      packages: read
+    uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+    with:
+      compose-file: 'docker-compose.yml'
+      profiles: 'backup'
+      generated-secrets: 'DATABASE_PASSWORD'
+      # The test needs the local copy for show/verify; the new-host phase
+      # removes it before the restore anyway.
+      env-overrides: |
+        APP_BACKUP_KEEP_LOCAL=true
+      build-images: '[{"service": "app-backup", "context": "src/app-backup"}]'
+      backup-service: 'app-backup'
+      require-components: 'app files'
+      services-to-stop-before-restore: 'app'
+      seed-script: 'tests/backup-roundtrip/seed.sh'
+      mutate-script: 'tests/backup-roundtrip/mutate.sh'
+      check-script: 'tests/backup-roundtrip/check.sh'
+      s3-destination: true
+      # setting=VARIABLE: which .env variable carries which setting. The
+      # module fills them with the throwaway server's values; the credentials
+      # are generated per run and masked.
+      s3-env: |
+        endpoint=APP_BACKUP_S3_ENDPOINT
+        bucket=APP_BACKUP_S3_BUCKET
+        access-key=APP_BACKUP_S3_ACCESS_KEY
+        secret-key=APP_BACKUP_S3_SECRET_KEY
+      artifact-name: 'backup-roundtrip-s3-diagnostics'
+    secrets: inherit
