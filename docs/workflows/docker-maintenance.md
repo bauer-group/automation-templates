@@ -417,7 +417,7 @@ jobs:
 
   docker:
     needs: release
-    if: needs.release.outputs.new-release-published == 'true'
+    if: needs.release.outputs.release-created == 'true'
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
     with:
       push: true
