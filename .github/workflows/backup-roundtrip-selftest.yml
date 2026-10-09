@@ -20,6 +20,9 @@ name: "🧪 Backup Round-Trip Self-Test"
 # What a real stack cannot show without turning this workflow red - a create
 # that exits 1 for a failed component - is covered by the Step Tests job, which
 # runs tests/backup-roundtrip-module.test.sh against the module's step bodies.
+# The Compose Pull Policy job runs the two upgrade checks against the real
+# Compose: a service with pull_policy always or build replaces the image the
+# module tagged at 'up', and both checks must fail on it.
 #
 # Path-filtered on purpose: a stack round trip costs a few runner minutes and
 # is only worth spending when the module or its fixture changes.
@@ -32,6 +35,7 @@ on:
       - '.github/workflows/backup-roundtrip-selftest.yml'
       - '.github/workflows/tests/backup-roundtrip/**'
       - '.github/workflows/tests/backup-roundtrip-module.test.sh'
+      - '.github/workflows/tests/backup-roundtrip-pull-policy.test.sh'
   pull_request:
     branches: [main]
     paths:
@@ -39,6 +43,7 @@ on:
       - '.github/workflows/backup-roundtrip-selftest.yml'
       - '.github/workflows/tests/backup-roundtrip/**'
       - '.github/workflows/tests/backup-roundtrip-module.test.sh'
+      - '.github/workflows/tests/backup-roundtrip-pull-policy.test.sh'
   workflow_dispatch:
 
 permissions:
@@ -60,6 +65,23 @@ jobs:
       - name: "🧪 Create Backup and Pull Images"
         shell: bash
         run: bash .github/workflows/tests/backup-roundtrip-module.test.sh
+
+  # A minute, real Docker, no stack: what 'docker compose up' does with
+  # pull_policy always and build to a reference the module tagged - the
+  # step tests only fake it - and that the upgrade checks fail on both.
+  pull-policy:
+    name: "🧪 Compose Pull Policy"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v7
+
+      - name: "🧪 Upgrade Checks Against the Real Compose"
+        shell: bash
+        run: bash .github/workflows/tests/backup-roundtrip-pull-policy.test.sh
 
   roundtrip:
     name: "🧪 Fixture Round Trip"
