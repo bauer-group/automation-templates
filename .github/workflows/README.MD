@@ -102,6 +102,11 @@ Reusable Workflows, mit denen sich Container-Repositories selbst aktuell halten,
 **Features:** Digest-Speicherung erst nach erfolgreichem Release (`<VAR>_PENDING`), fehlgeschlagene Releases erneut dispatcht (bis zu 3 Läufe pro Digest, `max-release-attempts`), Coverage-Report, Dry Run  
 **Docs:** [docs/workflows/modules-docker-base-image-monitor.md](../../docs/workflows/modules-docker-base-image-monitor.md) ([Operator recovery](../../docs/workflows/modules-docker-base-image-monitor.md#operator-recovery)) · **Beispiele:** [examples/docker-base-image-monitor/](../../github/workflows/examples/docker-base-image-monitor/README.md)
 
+#### 🔧 [modules-auto-maintenance.yml](./modules-auto-maintenance.yml) - Auto Maintenance
+**Zweck:** Base-Image-Digests und Dependency-Updates (npm, pip, .NET, Go) in einem Lauf, validiert mit Build/Test und bei Fehlern zurückgerollt  
+**Features:** Eine JSON-Konfiguration, Commit + Release-Dispatch, Digests erst nach Push und Dispatch gespeichert, Dry Run  
+**Docs:** [docs/workflows/modules-auto-maintenance.md](../../docs/workflows/modules-auto-maintenance.md) · **Beispiele:** [examples/auto-maintenance/](../../github/workflows/examples/auto-maintenance/README.md)
+
 #### 🧪 [modules-backup-roundtrip-test.yml](./modules-backup-roundtrip-test.yml) - Backup Round-Trip Test
 **Zweck:** Release-Gate: Startet den Compose-Stack mit den Images aus dem Commit, sichert echte Daten mit dem BackupHelper-Sidecar, löscht sie und stellt sie wieder her  
 **Features:** Opt-in Upgrade vom vorigen Release, Off-Site-S3 mit "neuem Host", Matrix pro Compose-Variante (Traefik, Coolify); Self-Test: [backup-roundtrip-selftest.yml](./backup-roundtrip-selftest.yml)  
@@ -183,6 +188,7 @@ jobs:
 | **nodejs-build.yml** | workflow_call | Build, Test, Publish, Docker | Linux, Windows, macOS |
 | **docker-build.yml** | workflow_call | Build, Scan, SBOM, Sign, Push (GHCR/Docker Hub) | Linux (GitHub-hosted oder self-hosted) |
 | **fork-docker-build.yml** | workflow_call | Multi-Image Build, Trivy-Scan, GHCR (Fork-CI) | Linux |
+| **modules-auto-maintenance.yml** | workflow_call (Caller: `schedule`) | Base Images + Dependency-Updates mit Validierung und Rollback | Linux |
 | **modules-backup-roundtrip-test.yml** | workflow_call (Caller: `pull_request`, `push`, `workflow_dispatch`) | Backup → Löschen → Restore → Prüfen eines Compose-Stacks als Release-Gate | Linux |
 | **docker-maintenance-dependabot.yml** | workflow_call (Caller: `pull_request`) | Dependabot-PRs nach grüner PR-CI mergen | Linux |
 | **modules-docker-base-image-monitor.yml** | workflow_call (Caller: `schedule`) | Digest-Überwachung, Release-Dispatch mit Bestätigung und Retries | Linux |

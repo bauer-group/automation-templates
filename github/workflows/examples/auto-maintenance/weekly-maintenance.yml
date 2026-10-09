@@ -1,0 +1,62 @@
+# =============================================================================
+# Auto Maintenance - Weekly Dependency and Base Image Updates
+# =============================================================================
+# One caller, one config file (maintenance-config.json in this folder - copy it
+# to .github/config/maintenance/config.json): base image digests, npm and pip
+# updates, build/test/typecheck validation with rollback, then a commit to
+# main and a dispatch of the release workflow.
+#
+# Order of a run:
+#   1. read the digest of every base image and update every ecosystem
+#   2. nothing changed            -> done, no commit, no release
+#   3. validation fails           -> every change is rolled back, no commit
+#   4. validation passes          -> commit + push, dispatch of
+#                                    release.trigger-workflow
+#   5. only then                  -> new digests are stored in their
+#                                    repository variables
+# A failed push or dispatch stores nothing, so the next run finds the same
+# update again. Unlike modules-docker-base-image-monitor.yml, the digest does
+# not wait for the dispatched release to succeed: use the monitor where a
+# release gate (e.g. the backup round trip) has to pass before a base image
+# counts as done.
+#
+# Token: MAINTENANCE_TOKEN (preferred) or PAT_READWRITE_ORGANISATION, a PAT
+# with Contents, Variables and Actions read/write (classic: repo, plus
+# read:packages for internal or private GHCR base images - the registry login
+# uses this PAT). See docs/secrets-reference.md.
+# =============================================================================
+
+name: 🔧 Auto Maintenance
+
+on:
+  schedule:
+    # Weekly, Monday 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Only check - no commit, no release'
+        type: boolean
+        default: false
+
+# A run commits to main: never two at the same time.
+concurrency:
+  group: maintenance-${{ github.repository }}
+  cancel-in-progress: false
+
+# What the job token needs when no PAT is set: dependency updates only -
+# GITHUB_TOKEN cannot write the digest variables, and without actions: write
+# it cannot dispatch the release either. With a PAT set, checkout, push,
+# registry login and dispatch all use the PAT instead of the job token.
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  maintenance:
+    name: Auto Maintenance
+    uses: bauer-group/automation-templates/.github/workflows/modules-auto-maintenance.yml@main
+    with:
+      config-file: '.github/config/maintenance/config.json'
+      dry-run: ${{ inputs.dry-run || false }}
+    secrets: inherit

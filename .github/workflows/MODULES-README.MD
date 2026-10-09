@@ -251,6 +251,25 @@ jobs:
 
 > **Trigger-Umfang:** Die `paths:` des Callers bestimmen, welche Dependabot-PRs das Modul überhaupt erreichen. Mit reinen Dockerfile-Pfaden bleiben npm-, pip- und Composer-Updates manuelle Merges — ohne Annotation. Entscheidungstabelle, Trigger-Umfang und Beispiele (Backup-Round-Trip-Gate, eigener Build-/Test-Workflow, mehrere Workflows, bewusst ohne PR-CI): [docs/workflows/docker-maintenance.md](../../docs/workflows/docker-maintenance.md#option-1-dependabot-simple) · [github/workflows/examples/docker-maintenance-dependabot/](../../github/workflows/examples/docker-maintenance-dependabot/README.md).
 
+### 🔧 [Auto Maintenance](./modules-auto-maintenance.yml)
+**Zweck:** Base-Image-Digests und Dependency-Updates (npm, pip, .NET, Go) in einem geplanten Lauf — validiert mit Build/Test/Typecheck des Repositories, bei Fehlern zurückgerollt
+
+Eine JSON-Konfiguration pro Repository. Ein Lauf mit Änderungen committet nach `main` und dispatcht den Release-Workflow; die neuen Digests werden erst danach gespeichert, ein fehlgeschlagener Push oder Dispatch speichert nichts. Anders als beim Base Image Monitor wartet der Digest nicht auf den Erfolg des Releases.
+
+```yaml
+maintenance:
+  uses: bauer-group/automation-templates/.github/workflows/modules-auto-maintenance.yml@main
+  with:
+    config-file: '.github/config/maintenance/config.json'
+  secrets: inherit        # MAINTENANCE_TOKEN oder PAT_READWRITE_ORGANISATION
+```
+
+**Ausgaben:**
+- `updates-found`: Ob Updates gefunden wurden
+- `summary`: Zusammenfassung der Änderungen
+
+> Doku: [docs/workflows/modules-auto-maintenance.md](../../docs/workflows/modules-auto-maintenance.md) · Beispiele: [github/workflows/examples/auto-maintenance/](../../github/workflows/examples/auto-maintenance/README.md)
+
 ### 🚀 [Semantic Release](./modules-semantic-release.yml)
 **Zweck:** Automatisierte Release-Erstellung mit Semantic Release
 
