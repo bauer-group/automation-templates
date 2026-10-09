@@ -11,9 +11,14 @@ on:
       
       # Security Configuration  
       security-engine:
-        description: "Secret scan engine: 'gitleaks' ('both' still works and runs gitleaks; GitGuardian was removed)"
+        description: >-
+          Secret scan engine for the PR validation and the security scan. 'none'
+          (default): Gitleaks is opt-in and does not run; Trivy still scans the
+          dependencies. 'gitleaks': enable it in repositories without GitHub secret
+          scanning and push protection (organization repositories also need
+          GITLEAKS_LICENSE). 'both' still works and runs gitleaks; GitGuardian was removed.
         type: string
-        default: 'gitleaks'
+        default: 'none'
         
       # Testing Configuration
       run-tests:
@@ -64,7 +69,10 @@ on:
         description: 'Deprecated and ignored: GitGuardian scanning was removed.'
         required: false
       GITLEAKS_LICENSE:
-        description: 'Gitleaks Pro license key'
+        description: >-
+          Gitleaks license key (free from gitleaks.io). Needed only when security-engine
+          is 'gitleaks' in an organization repository; Dependabot runs read it from the
+          Dependabot secrets, not the Actions secrets.
         required: false
 
     outputs:
@@ -610,7 +618,7 @@ jobs:
           fi
           
           echo "| **Build Wheel** | ${{ needs.release.outputs.wheel-built == 'true' && '✅ PASS' || needs.release.outputs.released != 'true' && '⏭️ SKIP' || '❌ FAIL' }} | $BUILD_DETAILS |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || needs.security-scan.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Engine: ${{ inputs.security-engine }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Security Scan** | ${{ needs.security-scan.result == 'success' && '✅ PASS' || needs.security-scan.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | Engine: ${{ (inputs.security-engine == 'none' || inputs.security-engine == '') && 'Trivy only - Gitleaks disabled (opt-in)' || inputs.security-engine }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **License Compliance** | ${{ needs.license-compliance.result == 'success' && '✅ PASS' || needs.license-compliance.result == 'skipped' && '⏭️ SKIP' || '❌ FAIL' }} | SBOM generated |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Semantic Release** | ${{ needs.release.result == 'success' && '✅ PASS' || '❌ FAIL' }} | Released: ${{ needs.release.outputs.released || 'false' }} |" >> "$GITHUB_STEP_SUMMARY"
           # PyPI Publishing details with proper skip handling

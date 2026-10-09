@@ -43,6 +43,10 @@ jobs:
       - name: Security Scan
         uses: bauer-group/automation-templates/.github/actions/security-scan@main
         with:
+          # Gitleaks is opt-in (default 'none'); enabled here on purpose. Drop it in
+          # repositories that have GitHub secret scanning and push protection.
+          # Organization repositories need GITLEAKS_LICENSE (for Dependabot runs as a
+          # Dependabot secret).
           scan-engine: 'gitleaks'
           scan-type: 'secrets'
           fail-on-findings: 'true'

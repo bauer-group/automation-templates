@@ -5,12 +5,15 @@ on:
     inputs:
       scan-engine:
         description: >-
-          Secret scan engine: 'gitleaks'. 'both' still works and runs gitleaks.
+          Secret scan engine. 'none' (default): Gitleaks is opt-in and does not run.
+          'gitleaks': scan the git history with Gitleaks - enable it in repositories
+          without GitHub secret scanning and push protection (organization repositories
+          also need the GITLEAKS_LICENSE secret). 'both' still works and runs gitleaks.
           'gitguardian' is deprecated: GitGuardian was removed, so it runs no secret
           scanner and the run says so with a warning.
         required: false
         type: string
-        default: 'gitleaks'
+        default: 'none'
       scan-type:
         description: 'Type of security scan (secrets, vulnerabilities, all)'
         required: false
@@ -45,13 +48,17 @@ on:
         description: 'Deprecated and ignored: GitGuardian scanning was removed.'
         required: false
       GITLEAKS_LICENSE:
-        description: 'Gitleaks Pro license key'
+        description: >-
+          Gitleaks license key (free from gitleaks.io). Needed only when scan-engine
+          is 'gitleaks' in an organization repository; Dependabot runs read it from
+          the Dependabot secrets, not the Actions secrets.
         required: false
     outputs:
       secrets-found:
         description: >-
-          Whether secrets were found: 'true', 'false', or 'unknown' when the scan did
-          not complete. Treat 'unknown' as unscanned, never as clean.
+          Whether secrets were found: 'true', 'false', 'unknown' when the scan did not
+          complete, or 'skipped' when no secret scan ran (Gitleaks not enabled, which
+          is the default). Only 'false' means scanned and clean.
         value: ${{ jobs.security-scan.outputs.secrets-found }}
       secrets-count:
         description: 'Number of secrets found, or unknown if the scan did not complete'
@@ -110,6 +117,7 @@ jobs:
         # "integer expression expected" twice per run.
         env:
           SCAN_ENGINE: ${{ steps.security.outputs.engines-used || 'none' }}
+          SCAN_ENGINE_INPUT: ${{ inputs.scan-engine }}
           SCAN_TYPE: ${{ inputs.scan-type }}
           SECURITY_SCORE: ${{ steps.security.outputs.security-score }}
           SECRETS_FOUND: ${{ steps.security.outputs.secrets-found }}
@@ -130,10 +138,23 @@ jobs:
           SECRETS_COUNT="${SECRETS_COUNT:-unknown}"
           SCORE="${SECURITY_SCORE:-}"
 
+          # Gitleaks is opt-in. Not enabling it is a configuration, not a gap the
+          # run should alarm about - but it is not a clean secret scan either.
+          GITLEAKS_DISABLED=false
+          case "${SCAN_ENGINE_INPUT:-}" in
+            none | '') GITLEAKS_DISABLED=true ;;
+          esac
+
           case "$SECRETS_FOUND" in
             true)    SECRETS_CELL="🚨 yes ($SECRETS_COUNT)" ;;
             false)   SECRETS_CELL="✅ no" ;;
-            skipped) SECRETS_CELL="⏭️ not scanned - no secret scan ran" ;;
+            skipped)
+              if [ "$GITLEAKS_DISABLED" = true ]; then
+                SECRETS_CELL="⏭️ disabled - Gitleaks is opt-in (enable with scan-engine: 'gitleaks')"
+                SCAN_ENGINE="none (Gitleaks disabled)"
+              else
+                SECRETS_CELL="⏭️ not scanned - no secret scan ran"
+              fi ;;
             *)       SECRETS_CELL="❓ unknown - the scan did not complete" ;;
           esac
 
@@ -173,14 +194,28 @@ jobs:
             echo "❓ **No security score was reported - treat this run as unscanned.**" >> "$GITHUB_STEP_SUMMARY"
           elif [ "$SECRETS_FOUND" = "unknown" ]; then
             echo "❓ **The secret scan did not complete - this is not a clean result.**" >> "$GITHUB_STEP_SUMMARY"
-          elif [ "$SECRETS_FOUND" = "skipped" ] && [ "$SCAN_TYPE" != "vulnerabilities" ]; then
+          elif [ "$SECRETS_FOUND" = "skipped" ] && [ "$SCAN_TYPE" = "secrets" ] && [ "$GITLEAKS_DISABLED" = true ]; then
+            echo "⏭️ **Nothing was scanned: scan-type is 'secrets' and Gitleaks is disabled (opt-in, enable with \`scan-engine: 'gitleaks'\`).**" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$SECRETS_FOUND" = "skipped" ] && [ "$SCAN_TYPE" != "vulnerabilities" ] && [ "$GITLEAKS_DISABLED" != true ]; then
             echo "⏭️ **No secret scan ran - the score does not cover secrets.**" >> "$GITHUB_STEP_SUMMARY"
           elif [ "$SCAN_TYPE" != "secrets" ] && [ "$VULNS_SCANNED" != "true" ]; then
-            echo "❓ **Trivy scanned no dependencies - the score covers the secret scan only.**" >> "$GITHUB_STEP_SUMMARY"
-          elif [ "$SCORE" -ge 95 ]; then
-            echo "✅ **Excellent security posture!**" >> "$GITHUB_STEP_SUMMARY"
-          elif [ "$SCORE" -ge 80 ]; then
-            echo "⚠️ **Good security with room for improvement.**" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$SECRETS_FOUND" != "skipped" ]; then
+              echo "❓ **Trivy scanned no dependencies - the score covers the secret scan only.**" >> "$GITHUB_STEP_SUMMARY"
+            elif [ "$GITLEAKS_DISABLED" = true ] && [ "$SCAN_TYPE" != "vulnerabilities" ]; then
+              echo "❓ **Nothing was scanned: Trivy found no dependency file and Gitleaks is disabled (opt-in).**" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "❓ **Nothing was scanned: Trivy found no dependency file it can read.**" >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
-            echo "❌ **Security issues require attention.**" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$SECRETS_FOUND" = "skipped" ] && [ "$SCAN_TYPE" != "vulnerabilities" ]; then
+              echo "⏭️ **Gitleaks is disabled (opt-in) - the score covers dependencies only.** Enable it with \`scan-engine: 'gitleaks'\` in repositories without GitHub secret scanning and push protection." >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            if [ "$SCORE" -ge 95 ]; then
+              echo "✅ **Excellent security posture!**" >> "$GITHUB_STEP_SUMMARY"
+            elif [ "$SCORE" -ge 80 ]; then
+              echo "⚠️ **Good security with room for improvement.**" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "❌ **Security issues require attention.**" >> "$GITHUB_STEP_SUMMARY"
+            fi
           fi

@@ -138,9 +138,20 @@ jobs:
         shell: bash
         run: bash .github/actions/security-scan/tests/declared-outputs.test.sh
 
-      - name: "🧪 security-scan: old engine names keep working after the GitGuardian removal"
+      - name: "🧪 security-scan: engine names map as documented (Gitleaks opt-in, GitGuardian removed)"
         shell: bash
         run: bash .github/actions/security-scan/tests/scan-engine.test.sh
+
+      # Gitleaks is opt-in: the templates also serve repositories with GitHub secret
+      # scanning, where its licence secret fails every Dependabot run. These pin the
+      # default to 'none' everywhere and "disabled" (never "clean") in the summaries.
+      - name: "🧪 security-scan: Gitleaks stays opt-in in every template"
+        shell: bash
+        run: bash .github/actions/security-scan/tests/opt-in-defaults.test.sh
+
+      - name: "🧪 security-scan: a disabled Gitleaks is reported as disabled, not clean"
+        shell: bash
+        run: bash .github/actions/security-scan/tests/summaries.test.sh
 
       # Trivy reported "0 vulnerabilities, 100/100" for Python projects it never read.
       # These pin "nothing scanned" as unknown and the pyproject.toml resolution.
