@@ -631,12 +631,16 @@ and blocks semantic-release (see above).
 The PR has no `Docker Maintenance` check at all - no annotation, no summary.
 
 **Cause:** the caller workflow never started: the PR changes no file in its
-`on.pull_request.paths` (rows 1 and 2 of the [decision table](#decision-table)).
+`on.pull_request.paths` (row 1 of the [decision table](#decision-table)).
 With Dockerfile-only paths this is expected for npm, pip, Composer and GitHub
 Actions updates - they are merged by hand. To let an ecosystem through, add its
 manifest and lock files to the caller's `paths:` and to the `pull_request`
 `paths:` of every required workflow, see
 [Decide which PRs reach it](#3-decide-which-prs-reach-it-trigger-scope).
+
+A `Docker Maintenance` check that is there but *skipped* is row 2 instead: the
+PR was not opened by Dependabot, or the event was raised by someone else (a
+person pushed to the branch).
 
 ### No Semantic Release Created
 
