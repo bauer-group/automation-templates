@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-10-09 19:15:23 UTC -->
+<!-- Generated on 2026-10-09 22:25:32 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -36,12 +36,18 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 - name: 🛡️ Security Scan
   uses: bauer-group/automation-templates/.github/actions/security-scan@main
   with:
-    scan-engine: 'gitleaks'
+    scan-engine: 'gitleaks'   # opt-in; the default 'none' runs Trivy only
     scan-type: 'all'
     fail-on-findings: 'true'
     gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
     token: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+> **Gitleaks is opt-in.** Every template defaults to `'none'`: Trivy scans the
+> dependencies and the summaries report Gitleaks as *disabled*. Enable it in repositories
+> without GitHub secret scanning and push protection; organization repositories then need
+> `GITLEAKS_LICENSE`, for Dependabot runs as a Dependabot secret. See
+> [Gitleaks is opt-in](docs/security/native-secret-scanning.md#gitleaks-is-opt-in).
 
 ### Individual Engines
 
@@ -68,8 +74,8 @@ on:
     inputs:
       security-scan-engines:
         type: choice
-        default: 'gitleaks'
-        options: ['gitleaks']
+        default: 'none'
+        options: ['none', 'gitleaks']
 
 jobs:
   release:
@@ -306,7 +312,7 @@ Enterprise-grade security scanning and compliance automation.
 
 | Component | Purpose | Usage |
 |-----------|---------|-------|
-| **🛡️ security-scan action** | Secret and dependency vulnerability scanning | Gitleaks, Trivy |
+| **🛡️ security-scan action** | Dependency vulnerability scanning, secret scanning (opt-in) | Trivy, Gitleaks (opt-in) |
 | **📋 license-compliance action** | License compliance checks | SPDX, FOSSA integration |
 | **🔍 Release Management** | Automated releases | Semantic versioning, changelog generation |
 
@@ -870,7 +876,7 @@ jobs:
 - name: Security Scan
   uses: bauer-group/automation-templates/.github/actions/security-scan@main
   with:
-    scan-engine: 'gitleaks'
+    scan-engine: 'gitleaks'   # opt-in, default 'none'
     fail-on-findings: 'true'
     gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
     token: ${{ secrets.GITHUB_TOKEN }}
@@ -971,7 +977,7 @@ jobs:
       - name: Security scan
         uses: bauer-group/automation-templates/.github/actions/security-scan@main
         with:
-          scan-engine: 'gitleaks'
+          scan-engine: 'gitleaks'   # opt-in, default 'none'
           gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
           token: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -1195,5 +1201,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-10-09 19:15:23 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-10-09 22:25:32 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
