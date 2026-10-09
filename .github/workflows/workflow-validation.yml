@@ -85,6 +85,14 @@ jobs:
         shell: bash
         run: bash .github/actions/docker-build/tests/github-token-secret-id.test.sh
 
+      # GHCR builds log in to Docker Hub for pulls when DOCKER_USERNAME/PASSWORD are
+      # passed. ~80 callers mostly pass none (or run as Dependabot / from forks), so
+      # this pins that the login is skipped cleanly then, only warns when it fails,
+      # never puts a secret value into the script and runs before anything pulls.
+      - name: "🧪 docker-build: Docker Hub pull login"
+        shell: bash
+        run: bash .github/actions/docker-build/tests/dockerhub-pull-login.test.sh
+
       # Image jobs of a multi-image release write back in parallel; a lost push race
       # used to fail a release whose images were already published.
       - name: "🧪 docker-build: Dockerfile version write-back"
