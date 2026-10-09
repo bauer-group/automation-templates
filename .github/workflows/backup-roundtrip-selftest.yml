@@ -13,7 +13,8 @@ name: "🧪 Backup Round-Trip Self-Test"
 # stopped for the restore. A second run starts selected services only, next to
 # a configured service whose image cannot be pulled. A matrix runs one round
 # trip per compose variant; the proxy variant needs an external network the
-# module creates.
+# module creates. Two runs use a throwaway MinIO as the S3 destination and
+# restore from it after the sidecar's local data was wiped.
 #
 # What a real stack cannot show without turning this workflow red - a create
 # that exits 1 for a failed component - is covered by the Step Tests job, which
@@ -118,10 +119,50 @@ jobs:
       artifact-name: 'backup-roundtrip-selftest-services-diagnostics'
     secrets: inherit
 
+  # The off-site path: the throwaway MinIO as the fixture's S3 destination,
+  # mapped through s3-env like a consumer maps its own variables. The region
+  # is left at the fixture's default (eu-central-1), which MinIO must accept.
+  # The restore runs after the sidecar's data volume was wiped, so it only
+  # passes when the snapshot comes back from the bucket.
+  roundtrip-s3:
+    name: "🧪 Fixture Round Trip (S3, new host)"
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/modules-backup-roundtrip-test.yml
+    with:
+      working-directory: '.github/workflows/tests/backup-roundtrip'
+      compose-file: 'docker-compose.yml'
+      profiles: 'backup'
+      env-overrides: |
+        APP_MODE=ci
+        SAAS_EXPORT_ENABLED=false
+      generated-secrets: 'DATABASE_PASSWORD'
+      prepare-script: 'prepare.sh'
+      build-images: '[{"service": "backup", "context": "backup"}]'
+      backup-service: 'backup'
+      require-components: 'database files'
+      services-to-stop-before-restore: 'app'
+      seed-script: 'seed.sh'
+      mutate-script: 'mutate.sh'
+      check-script: 'check.sh'
+      s3-destination: true
+      s3-env: |
+        endpoint=BACKUP_S3_ENDPOINT
+        bucket=BACKUP_S3_BUCKET
+        access-key=BACKUP_S3_ACCESS_KEY
+        secret-key=BACKUP_S3_SECRET_KEY
+      wait-timeout: 180
+      timeout-minutes: 15
+      artifact-name: 'backup-roundtrip-selftest-s3-diagnostics'
+    secrets: inherit
+
   # One round trip per compose variant, the pattern consumers use for their
   # local, Traefik and Coolify files. The proxy variant joins an external
   # network that only exists because external-networks creates it ('auto'
   # finds it in the configuration); on the base variant 'auto' finds none.
+  # Both legs also use the S3 destination with every optional setting
+  # mapped, so the opt-in capabilities are proven together.
   roundtrip-variants:
     name: "🧪 Fixture Round Trip (${{ matrix.variant }})"
     strategy:
@@ -153,6 +194,16 @@ jobs:
       seed-script: 'seed.sh'
       mutate-script: 'mutate.sh'
       check-script: 'check.sh'
+      s3-destination: true
+      s3-env: |
+        # The fixture's names for its S3 destination settings
+        endpoint=BACKUP_S3_ENDPOINT
+        bucket=BACKUP_S3_BUCKET
+        access-key=BACKUP_S3_ACCESS_KEY
+        secret-key=BACKUP_S3_SECRET_KEY
+        region=BACKUP_S3_REGION
+        path-style=BACKUP_S3_PATH_STYLE
+        prefix=BACKUP_S3_PREFIX
       wait-timeout: 180
       timeout-minutes: 15
       artifact-name: 'backup-roundtrip-selftest-${{ matrix.variant }}-diagnostics'
@@ -161,7 +212,7 @@ jobs:
   # The outputs are part of the module's contract - callers gate on them.
   check-outputs:
     name: "📋 Check Module Outputs"
-    needs: [roundtrip, roundtrip-services, roundtrip-variants]
+    needs: [roundtrip, roundtrip-services, roundtrip-s3, roundtrip-variants]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -173,7 +224,7 @@ jobs:
           set -euo pipefail
           # A matrix job reports the outputs of one of its legs and the
           # result of all of them.
-          for JOB in roundtrip roundtrip-services roundtrip-variants; do
+          for JOB in roundtrip roundtrip-services roundtrip-s3 roundtrip-variants; do
             SNAPSHOT_ID=$(jq -r --arg j "$JOB" '.[$j].outputs["snapshot-id"] // ""' <<< "$NEEDS_JSON")
             COMPONENTS=$(jq -r --arg j "$JOB" '.[$j].outputs.components // ""' <<< "$NEEDS_JSON")
             RESULT=$(jq -r --arg j "$JOB" '.[$j].outputs.result // ""' <<< "$NEEDS_JSON")

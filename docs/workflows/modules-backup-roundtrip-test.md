@@ -15,6 +15,7 @@ This reusable workflow runs the complete cycle against the caller's own compose 
 - **No credentials in the repository** — passwords are generated per run and masked
 - **Logs stay private** — runs in the consumer repository; diagnostics are uploaded there on failure only
 - **Release gate** — exposes `result`, `snapshot-id` and `components` for `needs:` conditions
+- **Off-site copy and a new host** (opt-in) — a throwaway S3 server becomes the sidecar's S3 destination; the snapshot must reach the bucket, then the sidecar's local data is wiped and the restore has to pull it back from S3, see [Off-Site S3 and a New Host](#off-site-s3-and-a-new-host)
 - **Every compose variant** (opt-in) — creates the external proxy network a Traefik or Coolify file expects, so the round trip runs once per variant in a matrix, see [Compose Variants](#compose-variants-traefik-coolify)
 
 Everything marked opt-in is off by default: a caller that does not set those inputs runs exactly the cycle described below.
@@ -51,6 +52,8 @@ Everything marked opt-in is off by default: a caller that does not set those inp
 7. **Restore** — `services-to-stop-before-restore` are stopped, the snapshot is restored, and the stack is started again with `up --wait`.
 8. **Check** — `check-script` must report the data **present** again.
 9. **Healthcheck** — `backuphelper healthcheck` must report the new snapshot as fresh.
+
+With `s3-destination`, three phases join the cycle: after *verify* the archive and its manifest must be in the bucket with the local size; before the restore the sidecar's container and data dir are removed like on a new host, and its `list` must show the snapshot as off-site only; after the restore the snapshot must be local again — pulled back from S3 — and pass `verify`. See [Off-Site S3 and a New Host](#off-site-s3-and-a-new-host).
 10. **Always** — on failure, `docker compose ps`, every service's log, the snapshot list and, once the snapshot was inspected, its manifest are uploaded as an artifact; the stack is removed with `down --volumes`, together with the networks `external-networks` created; the step summary shows each phase.
 
 ### BackupHelper 1.7.7 and later
@@ -129,6 +132,15 @@ Ready-to-copy callers are in [`github/workflows/examples/backup-roundtrip/`](../
 | `restore-args` | Arguments after the snapshot id. Keep `--force` — there is no terminal for the confirmation | `'--force'` |
 | `run-healthcheck` | Run `backuphelper healthcheck` at the end | `true` |
 
+### Off-site S3 destination (opt-in)
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `s3-destination` | Start a throwaway S3 server (MinIO) on the networks of the backup service and make it the sidecar's S3 destination. The snapshot must reach the bucket; the restore then runs on a "new host" and pulls it back from S3. See [Off-Site S3 and a New Host](#off-site-s3-and-a-new-host) | `false` |
+| `s3-env` | Lines `setting=VARIABLE` naming the `.env` variables your compose file builds its S3 destination from. The module writes the server's values into them. Required: `endpoint`, `bucket`, `access-key`, `secret-key`; optional: `region`, `path-style`, `prefix`. Read only with `s3-destination`, so a matrix can switch S3 per leg | `''` |
+| `s3-image` | Image of the S3 server: MinIO-compatible, with `curl` for the healthcheck | `'ghcr.io/bauer-group/cs-minio/minio:latest'` |
+| `s3-client-image` | Image that provides the MinIO client `mc` (bucket creation, listing) | `'ghcr.io/bauer-group/cs-minio/minio-init:latest'` |
+
 ### Test data
 
 | Parameter | Description | Default |
@@ -166,7 +178,7 @@ Without scripts the module still tests the backup mechanics (create, show, verif
 
 ## Secrets
 
-None. Registry access uses the automatic `GITHUB_TOKEN`; every password the stack needs is generated at runtime through `generated-secrets`. Callers pass `secrets: inherit` for consistency with the rest of the toolkit.
+None. Registry access uses the automatic `GITHUB_TOKEN`; every password the stack needs is generated at runtime through `generated-secrets`, and the credentials of the throwaway S3 server (`s3-destination`) are generated and masked the same way. Callers pass `secrets: inherit` for consistency with the rest of the toolkit.
 
 > Do not put production credentials into `env-overrides` or the repository to make a source work in CI. A source that needs a real external account is switched off for the test instead — see [Sources that need external services](#sources-that-need-external-services).
 
@@ -382,6 +394,39 @@ jobs:
 
 A complete pipeline is in [`gated-release-pipeline.yml`](../../github/workflows/examples/backup-roundtrip/gated-release-pipeline.yml).
 
+## Off-Site S3 and a New Host
+
+Without `s3-destination` every round trip restores from the copy in the sidecar's own data volume — the one copy that is gone when the host is gone. With it, the round trip proves the disaster-recovery path: the snapshot reaches an S3 bucket, and a sidecar with an empty data dir brings it back from there.
+
+```yaml
+      s3-destination: true
+      # setting=VARIABLE - the .env variables your compose file builds the
+      # S3 destination from (here CS-ZAMMAD's)
+      s3-env: |
+        endpoint=ZAMMAD_BACKUP_S3_ENDPOINT_URL
+        bucket=ZAMMAD_BACKUP_S3_BUCKET
+        access-key=ZAMMAD_BACKUP_S3_ACCESS_KEY
+        secret-key=ZAMMAD_BACKUP_S3_SECRET_KEY
+        region=ZAMMAD_BACKUP_S3_REGION
+```
+
+| Phase | What happens |
+|-------|--------------|
+| Prepare | The variables `s3-env` names are set in the `.env` — after `env-overrides` and `generated-secrets`, so they win: `endpoint` `http://roundtrip-s3:9000`, `bucket` `backup-roundtrip`, `access-key`/`secret-key` the server's generated (masked) credentials, `region` `us-east-1`, `path-style` `true`, `prefix` `backup-roundtrip/`. Unmapped optional settings keep your defaults. A generated override file adds the server `roundtrip-s3` to the project, on the networks of `backup-service`, and a client `roundtrip-s3-client` behind a profile of its own |
+| Start | The server starts before the stack; the module creates the bucket (your configuration may set `ensure_bucket: false`, as it would against a real provider) |
+| After *verify* | `<id>.tar.gz` (or `.age`/`.gpg`) and `<id>.manifest.json` must be in the bucket — under any prefix — and the archive must have the local size. A failed upload does **not** fail `create`: the run ends in `warning` and exits `0`, because the local copy exists. Only the bucket shows it |
+| New host | After *mutate*, the sidecar's container is removed and its data dir — the volume or bind mount at `BACKUP_DATA_DIR` (default `/data`) — is emptied with the sidecar's own image, also the run records in `.state/`. The sidecar starts again; `list` must show no local snapshot and the snapshot under test as `(off-site only)` |
+| Restore | Unchanged — `restore <id>` finds no local copy and downloads archive and manifest from the bucket first (hydration) |
+| After the restore | The snapshot must be local again and pass `verify` — the hydrated copy, not the one from before |
+
+**What your stack needs:** an S3 destination in its `BACKUP_CONFIG_JSON` whose settings come from `.env` variables — the way every consumer exposes its off-site copy (`"bucket": "${APP_BACKUP_S3_BUCKET:-}"`, `"secret_key": "$${S3_SECRET_KEY}"` with `S3_SECRET_KEY: ${APP_BACKUP_S3_SECRET_KEY:-}`). A setting your compose file hard-codes cannot be pointed at the server; an empty bucket variable keeps the destination skipped in every run without `s3-destination`, so nothing changes there. The data volume may also be mounted into other services (read-only into the application): it is emptied, not removed.
+
+**Region and addressing.** The server has no region configured and accepts any; mapping `region` is only needed when your compose file has no default for it. The engine uses path-style addressing by default (`force_path_style`), which MinIO needs; map `path-style` if your compose file makes it configurable.
+
+**With `keep_local: false`** the engine deletes the local copy once the upload is verified, and *Create backup* finds no new local snapshot to inspect and verify. Keep the local copy in CI (`keep_local` through `env-overrides`) — the new-host phase removes it anyway.
+
+A ready-to-copy caller is in [`offsite-s3-new-host.yml`](../../github/workflows/examples/backup-roundtrip/offsite-s3-new-host.yml).
+
 ## Compose Variants (Traefik, Coolify)
 
 Most stacks ship several compose files: a local one with published ports, one for Traefik, one for Coolify. Operators deploy the variant, not the local file, and the variants differ in exactly the places a backup depends on — volume names, networks, the sidecar's environment. Run the round trip once per variant with a matrix:
@@ -482,7 +527,7 @@ The engine runs as uid 1000. A filesystem source can only back up what uid 1000 
 
 ### No local data volume, `keep_local: false`
 
-The snapshot must exist locally in the sidecar for `show`, `verify` and `restore`. With an empty S3 bucket the engine keeps the local copy even when `keep_local` is `false`. A sidecar without a `/data` volume keeps the snapshot in the container's own filesystem, which is enough as long as the container is not recreated during the test.
+The snapshot must exist locally in the sidecar for `show`, `verify` and `restore`. With an empty S3 bucket the engine keeps the local copy even when `keep_local` is `false`. A sidecar without a `/data` volume keeps the snapshot in the container's own filesystem, which is enough as long as the container is not recreated during the test. With `s3-destination` the bucket is set: keep `keep_local` at `true` for the test, see [Off-Site S3 and a New Host](#off-site-s3-and-a-new-host).
 
 ### One-shot backup services
 
@@ -506,15 +551,23 @@ Every run writes a summary with the result of each phase, the snapshot's compone
 | Backup healthcheck  | ✅ Passed |
 ```
 
-When `create` exited non-zero, the summary says so, with the exit code and whether a snapshot was stored.
+When `create` exited non-zero, the summary says so, with the exit code and whether a snapshot was stored. Opt-in phases add their rows only when they are configured — with `s3-destination` *Off-site copy in S3*, *New host: local data wiped* and *Snapshot pulled back from S3*, plus a table of the objects in the bucket.
 
-On failure (or cancellation) the artifact `artifact-name` contains `ps.txt`, `logs/<service>.log` for every service, `snapshots.txt`, `manifest.json` (once *Inspect snapshot* has run), the output of `create` and `restore`, and the runner's disk and memory state. The `.env` is **never** included. Service logs are uploaded as they are — an application that logs its connection string logs the per-run generated password, which is worthless after the run.
+On failure (or cancellation) the artifact `artifact-name` contains `ps.txt`, `logs/<service>.log` for every service, `snapshots.txt`, `manifest.json` (once *Inspect snapshot* has run), the output of `create` and `restore`, and the runner's disk and memory state; with `s3-destination` also `s3-objects.json` (the bucket listing) and the generated `s3-destination.compose.yml`, which holds `.env` references only. The `.env` is **never** included. Service logs are uploaded as they are — an application that logs its connection string logs the per-run generated password, which is worthless after the run.
 
 ## Troubleshooting
 
 ### `backup-service '…' is not part of the configuration`
 
 The sidecar sits behind a profile that is not active. Set `profiles: 'backup'` (or whatever your compose file uses).
+
+### `the archive of snapshot … is not in the bucket`
+
+With `s3-destination`: the sidecar did not upload. `create` exited `0` anyway — a failed upload ends the run in `warning`. The sidecar's log (artifact) has the upload error. Usual causes: `s3-env` names a variable your compose file does not read for the destination (check `docker compose config` with the mapped values), the compose file hard-codes the endpoint or the bucket, or the sidecar is not on a network it shares with `roundtrip-s3`.
+
+### `the new sidecar does not list snapshot … as off-site`
+
+The sidecar that started on the empty data dir cannot see the bucket: `list` reads the off-site copies of the first job's S3 destination. Check that the destination is in the first job and that its settings survive a container restart (they come from the `.env`, not from a file in the data dir).
 
 ### `network … declared as external, but could not be found`
 
@@ -560,7 +613,7 @@ The calling job does not grant `packages: read`, or the package is private to an
 ## Limitations
 
 - **The images are built, not the released artifacts.** The release job rebuilds the images after the round trip; a base image digest can move in the minutes between the two builds. The window is small, but it exists.
-- **Off-site storage is not tested.** S3 destinations are skipped when the bucket is empty, which is the CI default. Restoring from S3 (hydration) is covered by the engine's own end-to-end tests, not by this module.
+- **Off-site storage is tested against MinIO only, and only with `s3-destination`.** Without it S3 destinations are skipped (empty bucket, the CI default). With it, upload and hydration run against a MinIO server over plain HTTP: provider specifics (AWS virtual-host addressing, R2 or B2 quirks), TLS and `ca_bundle` are not exercised.
 - **Encryption is tested only if the stack enables it in CI.** A stack that encrypts in production needs a throwaway key pair in the test configuration to exercise decryption.
 - **Linux runners with Docker Engine and a Compose v2 release that supports `up --wait --wait-timeout`.** `bash`, `jq` and `openssl` must be available — they are on GitHub-hosted runners.
 - **One snapshot per run.** Retention, GFS pruning and the scheduler are not exercised.

@@ -193,6 +193,7 @@ backup-roundtrip:
 > Das Check-Skript muss die Daten vor dem Backup sehen, nach dem Löschen **nicht** sehen und nach dem Restore wieder sehen — ein Restore, der nichts schreibt, kann so nicht bestehen. Doku und Skript-Vertrag: [docs/workflows/modules-backup-roundtrip-test.md](../../docs/workflows/modules-backup-roundtrip-test.md).
 
 **Optional (Standard: aus):**
+- `s3-destination: true` + `s3-env` startet einen Wegwerf-S3-Server (MinIO) als S3-Ziel des Sidecars: Der Snapshot muss im Bucket liegen, danach werden die lokalen Daten des Sidecars wie auf einem neuen Host gelöscht, und der Restore muss ihn aus S3 zurückholen ([Off-Site S3](../../docs/workflows/modules-backup-roundtrip-test.md#off-site-s3-and-a-new-host))
 - `external-networks: 'auto'` legt die externen Proxy-Netzwerke an, die eine Traefik- oder Coolify-Variante erwartet — so läuft der Round Trip per Matrix einmal pro Compose-Variante ([Compose-Varianten](../../docs/workflows/modules-backup-roundtrip-test.md#compose-variants-traefik-coolify))
 
 ### 🚀 [Semantic Release](./modules-semantic-release.yml)
