@@ -241,6 +241,7 @@ build-images: |
 - Builds always run with `--pull`, so a meta image `FROM ghcr.io/bauer-group/cs-backuphelper/backuphelper:latest` is tested against the newest engine.
 - The sidecar is the minimum. Build the application images too when your release builds them: the round trip then tests the application version you are about to ship.
 - Services with a `build:` section that are **not** listed are built by `docker compose up` itself — a development compose file works without `build-images`.
+- The reference must be a tag. A service pinned by digest (`ghcr.io/acme/app@sha256:…`) names one exact registry image: no build can be tagged as it, so *Build images under test* (and *Pull previous release* for `upgrade-from`) fails with a message saying so. Give the service a tag for the round trip through `env-overrides` or a CI-only override file.
 
 ## Script Contract
 
