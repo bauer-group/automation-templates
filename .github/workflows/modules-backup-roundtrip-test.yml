@@ -871,6 +871,7 @@ jobs:
           else
             PLAN=$(jq -c --arg v "$UPGRADE_FROM" 'map({key: .service, value: $v}) | from_entries' <<< "$BUILD_IMAGES")
           fi
+          REQUESTED="$PLAN"
 
           RELEASE=""
           if jq -e 'any(.[]; . == "latest-release")' <<< "$PLAN" > /dev/null; then
@@ -918,7 +919,14 @@ jobs:
             echo "::group::⏮️ $SERVICE: $OLD"
             if ! docker pull "$OLD"; then
               echo "::endgroup::"
-              echo "::error title=Backup round trip::upgrade-from: '$OLD' could not be pulled - is the previous release published under that tag, and may this job read it (registry-login, packages: read)?"
+              # A release exists before its images do: the release is created
+              # first and its image jobs push the tags minutes later - or
+              # never, when one of them failed.
+              HINT=""
+              if [ "$(jq -r --arg s "$SERVICE" '.[$s]' <<< "$REQUESTED")" = "latest-release" ]; then
+                HINT=" $RELEASE is the latest release, but its images may not be published yet - its image jobs push them after the release is created, or failed to. Re-run once they are published (re-run a failed image job), or set upgrade-from to the release before until then."
+              fi
+              echo "::error title=Backup round trip::upgrade-from: '$OLD' could not be pulled - is the previous release published under that tag, and may this job read it (registry-login, packages: read)?$HINT"
               exit 1
             fi
             echo "::endgroup::"
