@@ -17,7 +17,9 @@
 #    merges the PR if no check failed and every workflow in
 #    required-workflows ran on the PR and passed. Patch updates only by
 #    default (merge-update-types); minor and major updates, failed CI and
-#    PRs the required workflow did not test stay open
+#    PRs the required workflow did not test stay open. So do GitHub Actions
+#    updates and every other PR that changes .github/ - CI that the PR
+#    itself changes cannot vouch for it
 # 5. Semantic release creates a PATCH version (e.g., 1.0.0 → 1.0.1) and the
 #    Docker image is rebuilt and pushed - with the next push to main that is
 #    not made by GITHUB_TOKEN, or when the release workflow is run by hand:

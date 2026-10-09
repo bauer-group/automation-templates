@@ -149,9 +149,17 @@ The required workflow must start for every file this caller's `paths:` lists,
 so keep the caller's `paths:` within the required workflow's `pull_request`
 `paths:`. A Dependabot PR that changes a file the required workflow does not
 watch stays open with "did not run for this change - not tested" - nothing
-tested it. For a GitHub Actions ecosystem caller (updates of
-`.github/workflows/*`) there is usually no workflow that tests every other
-workflow; leave `required-workflows` empty there and merge those PRs by hand.
+tested it.
+
+A PR that changes CI is never merged automatically, whatever
+`required-workflows` says: a GitHub Actions update
+(`package-ecosystem: "github-actions"`) and any PR that changes a file under
+`.github/`. A `pull_request` run uses the PR's own version of a changed
+workflow, so it would vouch for itself, and a changed workflow that runs only
+on `push` or `schedule` does not run before the merge at all. Such PRs stay
+open with a notice; review and merge them by hand. A caller that only handles
+GitHub Actions updates (e.g. filtered on `.github/workflows/**`) merges
+nothing.
 
 An existing caller of this workflow merges nothing until it sets
 `required-workflows`; in private repositories it also needs the three read
@@ -198,13 +206,19 @@ keeps the actor and the privileges of the first run and replays its event, so
 it can only merge that event's head commit - and only while it is still the
 PR's head.
 
-1. **Required workflows set** - with `required-workflows` empty nothing is
+1. **No CI change** - a GitHub Actions update stays open at once. So does
+   any PR with a changed file under `.github/` - also the old path of a file
+   moved out of it - or whose changed files cannot be listed in full (none,
+   or GitHub's maximum of 3000); the files are read before the wait starts.
+   Its CI cannot vouch for such a PR (see
+   [Choosing `required-workflows`](#choosing-required-workflows)).
+2. **Required workflows set** - with `required-workflows` empty nothing is
    merged: the job ends at once with a notice, without waiting for CI.
-2. **Update type** - only the semver types in `merge-update-types` are merged
+3. **Update type** - only the semver types in `merge-update-types` are merged
    (default `patch`). A `minor` or `major` update, or one whose type cannot be
    determined (digest, non-semver tag), stays open for review. The redpanda
    `26.1 → 26.2` bump that took a production stack down was a semver-*minor*.
-3. **Wait for CI** - the job polls the check runs, check suites, commit
+4. **Wait for CI** - the job polls the check runs, check suites, commit
    statuses and workflow runs of the PR head commit (every 30 s, after 5 min
    every 60 s, after 15 min every 3 min), leaving out its own job and other
    runs of this workflow. It waits while anything is pending - a queued
@@ -216,7 +230,7 @@ PR's head.
    quiet period and is waited for. A cancelled workflow run counts as failed,
    unless a newer run of the same workflow exists for the same commit (its
    concurrency group replaced it).
-4. **Required workflows passed** - on that complete and quiet state, every
+5. **Required workflows passed** - on that complete and quiet state, every
    workflow in `required-workflows` must have a run for the PR's head commit,
    triggered by `pull_request` on a branch of this repository (not a fork PR
    on the same commit), whose latest attempt concluded `success`; of several
@@ -224,7 +238,7 @@ PR's head.
    that did not run - its `paths:` do not match the changed files - or that
    concluded `skipped` (all of its jobs were skipped) or `neutral` leaves the
    PR open: it was not tested. Other checks that passed do not replace it.
-5. **Merge** - only when, in addition, no check failed. `neutral` and
+6. **Merge** - only when, in addition, no check failed. `neutral` and
    `skipped` checks are no failure (as for required status checks). Right
    before the merge the PR is read again: if it was closed, got a new head
    commit, was turned into a draft or cannot be merged (a conflict) in the
@@ -244,6 +258,7 @@ annotation and in the job summary:
 | `required-workflows` is not set - automatic merging is off                         | notice     |
 | Update type not in `merge-update-types`, or unknown                                | notice     |
 | Not every commit of the PR is a verified commit by Dependabot                      | notice     |
+| The PR changes CI: a GitHub Actions update, or a changed file under `.github/`     | notice     |
 | A check failed, was cancelled, timed out, needs action or went stale               | notice     |
 | A workflow could not start (`startup_failure`)                                     | notice     |
 | A required workflow did not run for this change, or concluded `skipped`/`neutral`  | notice     |
@@ -260,6 +275,11 @@ still waiting.
 
 ### Limits
 
+- **Only `.github/` counts as CI.** A GitHub Actions update and a PR that
+  changes a file under `.github/` stay open. CI code elsewhere - a local action
+  used as `uses: ./actions/build`, a script the workflow runs - is tested by
+  the PR's own run like any other file. Keep workflows and their actions
+  under `.github/`.
 - **A required workflow counts as a whole.** Its run must conclude
   `success`; which of its jobs run is up to the workflow. A job it skips by
   its own `if:` (e.g. a round trip that runs only for some paths) does not
@@ -529,6 +549,7 @@ usual ones:
 |---------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
 | automatic merging is off: required-workflows      | Set `required-workflows`, see [Choosing `required-workflows`](#choosing-required-workflows)                                 |
 | update type is not merged automatically           | Expected for minor/major; merge by hand, or widen `merge-update-types`                                                      |
+| change the CI itself / changes CI files           | Expected: review and merge by hand. GitHub Actions updates and PRs that change `.github/` are never merged automatically    |
 | CI did not pass                                   | Fix the check, or merge by hand; a re-run of the check alone does not merge - re-run this job, or `@dependabot rebase`      |
 | required workflow ... did not run for this change | Its `pull_request` `paths:` miss the changed files: merge by hand, and keep the caller's `paths:` within the workflow's     |
 | required workflow ... (run N, attempt M: skipped) | All of its jobs were skipped on the PR, so it tested nothing: merge by hand, or fix its `if:` conditions                    |
@@ -573,6 +594,7 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 ## Security Considerations
 
 - **Tested by the named CI**: Dependabot PRs are merged only when every workflow in `required-workflows` ran on the PR's head commit and passed and no other check failed, after CI has been complete and unchanged for 3 minutes (5 minutes after the start at the earliest). A passed check that tests nothing (e.g. GitGuardian) is not enough, and without `required-workflows` nothing is merged
+- **CI changes stay open**: a GitHub Actions update or a PR that changes `.github/` is never merged automatically - a `pull_request` run uses the PR's own version of a changed workflow, and push- or schedule-only workflows do not run before the merge
 - **Pinned merge**: the Dependabot merge and its approval name the head commit whose CI was checked
 - **Dependabot only**: the Dependabot job acts only on Dependabot's PRs, on events Dependabot raised, with verified Dependabot commits only; it never checks out PR code
 - **Auto-approve optional**: Can be disabled for manual review
