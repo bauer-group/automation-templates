@@ -272,6 +272,7 @@ Die Standard-Konfiguration in `.github/config/release/semantic-release.json` ent
 | `commit-and-release` | boolean | `true` | Commit erstellen für Semantic Release |
 | `target-workflow` | string | - | Alternativer Workflow zum Triggern |
 | `target-workflow-ref` | string | `main` | Branch für workflow_dispatch |
+| `max-release-attempts` | number | `3` | Release-Runs pro Digest, danach gibt der Monitor auf und schlägt fehl (`0` = unbegrenzt) |
 | `dry-run` | boolean | `false` | Nur prüfen, keine Änderungen |
 | `runs-on` | string | `ubuntu-latest` | Runner-Konfiguration |
 
@@ -283,6 +284,7 @@ Die Standard-Konfiguration in `.github/config/release/semantic-release.json` ent
 | `updated-images` | JSON array | Image-Namen, die ein Release brauchen (neue und wiederholte) |
 | `retried-images` | JSON array | Image-Namen, deren Release fehlschlug und erneut dispatcht wurde |
 | `pending-images` | JSON array | Image-Namen, deren dispatchter Release-Run noch läuft |
+| `exhausted-images` | JSON array | Image-Namen, deren Release `max-release-attempts`-mal fehlschlug; nicht mehr dispatcht, Job rot |
 | `triggered` | boolean | `true` wenn Commit/Workflow getriggert |
 | `commit-sha` | string | SHA des erstellten Commits |
 | `new-digests` | JSON object | Neue Digests pro Image |
@@ -602,8 +604,9 @@ rotes Backup-Round-Trip-Gate oder Build-Fehler). Das Image basiert noch auf dem 
 Base Image.
 
 **Verhalten:** Der Digest wird nicht gespeichert, der Release wird bei jedem Check erneut
-dispatcht, bis ein Run erfolgreich ist. Den Fehler im verlinkten Run beheben — kein
-manueller Eingriff am Monitor nötig.
+dispatcht, bis ein Run erfolgreich ist oder `max-release-attempts` Runs (Standard 3)
+fehlgeschlagen sind. Den Fehler im verlinkten Run beheben — solange das Limit nicht
+erreicht ist, kein manueller Eingriff am Monitor nötig.
 
 Hatte der fehlgeschlagene Run sein Release schon getaggt (Release-Job grün, danach Build,
 Scan oder Push rot), pusht der Retry vorher einen neuen leeren Release-Commit
@@ -612,11 +615,23 @@ semantic-release nichts zu releasen, der Run übersprünge alle Builds und endet
 grün. Ist der Base-Image-Commit noch unreleased (z.B. rotes Gate vor dem Release), wird
 ohne neuen Commit erneut dispatcht. Details: [Retry commit](../../../docs/workflows/modules-docker-base-image-monitor.md#retry-commit).
 
+### Summary meldet "🛑 Release retries exhausted", Job ist rot
+
+**Ursache:** Der Release für diesen Digest ist `max-release-attempts`-mal (Standard 3)
+fehlgeschlagen. Der Monitor dispatcht ihn nicht mehr — jeder Retry nach einem getaggten
+Release würde sonst ein weiteres Patch-Release erzeugen — und lässt den Job bei jedem
+Check fehlschlagen.
+
+**Lösung:** Ursache im verlinkten Run beheben, dann die Variable `<NAME>_PENDING` löschen
+(*Settings → Secrets and variables → Actions → Variables*). Der nächste Check dispatcht
+den Release dann wie für einen neuen Digest. Ein neuerer Digest des Images beginnt
+ohnehin von vorn.
+
 ### Variable `<NAME>_PENDING` im Repository
 
 **Ursache:** Kein Fehler. Sie hält den Release-Run, der für einen neuen Digest dispatcht
-wurde (`{"digest", "run_id", "run_url"}`), und wird entfernt, sobald der Run erfolgreich
-war. Nicht von Hand ändern.
+wurde (`{"digest", "run_id", "run_url", "attempt"}`), und wird entfernt, sobald der Run
+erfolgreich war. Nur nach "Release retries exhausted" von Hand löschen, sonst nicht ändern.
 
 ### Workflow läuft, aber findet nie Updates
 

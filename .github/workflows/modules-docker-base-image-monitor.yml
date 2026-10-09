@@ -15,6 +15,8 @@
 #   <variable>_PENDING, the next check reads its result, stores the digest on
 #   success and dispatches again when the run failed (e.g. a red release gate),
 #   with a new release commit if the failed run had already tagged its release
+# - Stops after max-release-attempts failed release runs for one digest and
+#   fails the job, instead of cutting a new release on every check
 # - Supports dry-run mode for testing
 #
 # Usage (config file + workflow dispatch):
@@ -89,6 +91,11 @@ on:
         required: false
         type: string
         default: ""
+      max-release-attempts:
+        description: "With target-workflow: release runs dispatched for one digest before the monitor gives up. When the last one failed too, it stops dispatching and fails the job until the cause is fixed. 0 = no limit."
+        required: false
+        type: number
+        default: 3
       commit-prefix:
         description: "Commit message prefix for semantic release"
         required: false
@@ -136,6 +143,9 @@ on:
       pending-images:
         description: "JSON array of image names whose dispatched release run has not finished yet"
         value: ${{ jobs.monitor.outputs.pending-images }}
+      exhausted-images:
+        description: "JSON array of image names whose release failed max-release-attempts times; they are no longer dispatched and the job fails"
+        value: ${{ jobs.monitor.outputs.exhausted-images }}
       dispatched-run-id:
         description: "Id of the target workflow run dispatched by this check (empty if none was dispatched or GitHub did not return it)"
         value: ${{ jobs.monitor.outputs.dispatched-run-id }}
@@ -174,6 +184,7 @@ jobs:
       updated-images: ${{ steps.check.outputs.updated-images }}
       retried-images: ${{ steps.check.outputs.retried-images }}
       pending-images: ${{ steps.check.outputs.pending-images }}
+      exhausted-images: ${{ steps.check.outputs.exhausted-images }}
       dispatched-run-id: ${{ steps.dispatch.outputs.run-id }}
       dispatched-run-url: ${{ steps.dispatch.outputs.run-url }}
       triggered: ${{ steps.release.outputs.triggered || steps.dispatch.outputs.triggered || 'false' }}
@@ -259,10 +270,18 @@ jobs:
           DRY_RUN: ${{ inputs.dry-run }}
           FAIL_ON_UNREACHABLE: ${{ inputs.fail-on-unreachable-image }}
           TARGET_WORKFLOW: ${{ inputs.target-workflow }}
+          MAX_ATTEMPTS: ${{ inputs.max-release-attempts }}
         shell: bash
         # Tested by .github/workflows/tests/docker-base-image-monitor.test.sh
         run: |
           set -euo pipefail
+
+          if [[ ! "$MAX_ATTEMPTS" =~ ^[0-9]+$ ]]; then
+            echo "::error::max-release-attempts must be a whole number (0 = no limit), got '$MAX_ATTEMPTS'"
+            exit 1
+          fi
+          MAX_LABEL=""
+          [ "$MAX_ATTEMPTS" -eq 0 ] || MAX_LABEL=" of $MAX_ATTEMPTS"
 
           # Load configuration directly in this step to avoid JSON escaping issues
           echo "::group::📄 Loading Configuration"
@@ -311,11 +330,13 @@ jobs:
           RETRIED="[]"
           PENDING="[]"
           CONFIRMED="[]"
+          EXHAUSTED="[]"
           # Only collected here; the "Persist state" step writes them once
           # commit, push and dispatch have succeeded.
           #   VARIABLE_UPDATES  variable -> digest that counts as handled
           #   DISPATCH_UPDATES  variable -> digest a release is dispatched for;
           #                     stored as <variable>_PENDING with the run id
+          #   DISPATCH_ATTEMPTS variable -> attempt number of that run
           #   PENDING_DELETES   variables whose <variable>_PENDING is resolved
           # Storing the digest right after the dispatch made a failed release
           # look handled: the next run read the new digest back, reported
@@ -323,6 +344,7 @@ jobs:
           # the digest is therefore stored only once its run has succeeded.
           VARIABLE_UPDATES="{}"
           DISPATCH_UPDATES="{}"
+          DISPATCH_ATTEMPTS="{}"
           PENDING_DELETES="[]"
 
           # Must be initialised before first read: `set -euo pipefail` above enables
@@ -358,7 +380,7 @@ jobs:
           }
 
           # Result of the release run recorded in a <variable>_PENDING value
-          # ({"digest", "run_id", "run_url"}) for the given digest, as
+          # ({"digest", "run_id", "run_url", "attempt"}) for the given digest, as
           # "<state> <conclusion> <url>":
           #   none        - no run recorded for this digest
           #   in_progress - queued, waiting or running
@@ -471,6 +493,8 @@ jobs:
             # release may already have been dispatched for exactly this digest;
             # then the result of that run decides, not the comparison.
             REASON="new"
+            # Attempt number of the release run this check dispatches.
+            ATTEMPT=1
             if [ -n "$TARGET_WORKFLOW" ]; then
               PENDING_RECORD=$(gh variable get "${VARIABLE}_PENDING" 2>/dev/null < /dev/null || echo "")
               read -r RUN_STATE RUN_CONCLUSION RUN_URL <<< "$(release_state "$PENDING_RECORD" "$CURRENT_DIGEST")"
@@ -497,7 +521,21 @@ jobs:
                   continue
                   ;;
                 failed)
-                  echo "::warning::The release dispatched for $NAME ($IMAGE:$TAG) ended with '$RUN_CONCLUSION' ($RUN_URL) - the image is still built from the old base. Dispatching the release again."
+                  # Records without an attempt count as the first one.
+                  FAILED_ATTEMPT=$(printf '%s' "$PENDING_RECORD" | \
+                    jq -r '.attempt | if type == "number" and . >= 1 then floor else 1 end' 2>/dev/null || echo 1)
+                  [[ "$FAILED_ATTEMPT" =~ ^[0-9]+$ ]] || FAILED_ATTEMPT=1
+                  ENTRY=$(printf '%s' "$ENTRY" | jq -c --argjson a "$FAILED_ATTEMPT" '. + {attempt: $a}')
+                  # Every retry after a tagged release cuts another release, so
+                  # a failure that persists must not be retried on every check.
+                  if [ "$MAX_ATTEMPTS" -gt 0 ] && [ "$FAILED_ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
+                    echo "::error::The release for $NAME ($IMAGE:$TAG) failed $FAILED_ATTEMPT time(s), the last run ended with '$RUN_CONCLUSION' ($RUN_URL). It is not dispatched again: fix the cause, then delete the repository variable ${VARIABLE}_PENDING so the next check starts over."
+                    EXHAUSTED=$(printf '%s' "$EXHAUSTED" | jq -c --argjson e "$ENTRY" '. + [$e]')
+                    echo "::endgroup::"
+                    continue
+                  fi
+                  ATTEMPT=$((FAILED_ATTEMPT + 1))
+                  echo "::warning::The release dispatched for $NAME ($IMAGE:$TAG) ended with '$RUN_CONCLUSION' ($RUN_URL) - the image is still built from the old base. Dispatching the release again (attempt $ATTEMPT$MAX_LABEL)."
                   RETRIED=$(printf '%s' "$RETRIED" | jq -c --argjson e "$ENTRY" '. + [$e]')
                   REASON="retry"
                   ;;
@@ -530,6 +568,7 @@ jobs:
 
             if [ -n "$TARGET_WORKFLOW" ]; then
               DISPATCH_UPDATES=$(printf '%s' "$DISPATCH_UPDATES" | jq -c --arg v "$VARIABLE" --arg d "$CURRENT_DIGEST" '. + {($v): $d}')
+              DISPATCH_ATTEMPTS=$(printf '%s' "$DISPATCH_ATTEMPTS" | jq -c --arg v "$VARIABLE" --argjson a "$ATTEMPT" '. + {($v): $a}')
               PERSIST_NOTE="${VARIABLE}_PENDING will record the dispatched run; $VARIABLE is stored once that run succeeded"
             else
               VARIABLE_UPDATES=$(printf '%s' "$VARIABLE_UPDATES" | jq -c --arg v "$VARIABLE" --arg d "$CURRENT_DIGEST" '. + {($v): $d}')
@@ -599,6 +638,9 @@ jobs:
             echo "pending=$PENDING"
             echo "pending-images=$(printf '%s' "$PENDING" | jq -c 'map(.name)')"
             echo "confirmed=$CONFIRMED"
+            echo "exhausted=$EXHAUSTED"
+            echo "exhausted-images=$(printf '%s' "$EXHAUSTED" | jq -c 'map(.name)')"
+            echo "dispatch-attempts=$DISPATCH_ATTEMPTS"
             echo "variable-updates=$VARIABLE_UPDATES"
             echo "dispatch-updates=$DISPATCH_UPDATES"
             echo "pending-deletes=$PENDING_DELETES"
@@ -627,7 +669,7 @@ jobs:
           if [ "$UPDATES_FOUND" = "true" ]; then
             echo "Updated images: $(printf '%s' "$UPDATED_IMAGES" | jq -r 'join(", ")')"
           fi
-          for LIST in "Release retried:$RETRIED" "Release running:$PENDING" "Release confirmed:$CONFIRMED"; do
+          for LIST in "Release retries exhausted:$EXHAUSTED" "Release retried:$RETRIED" "Release running:$PENDING" "Release confirmed:$CONFIRMED"; do
             if [ "$(printf '%s' "${LIST#*:}" | jq 'length')" -gt 0 ]; then
               echo "${LIST%%:*}: $(printf '%s' "${LIST#*:}" | jq -r 'map(.name) | join(", ")')"
             fi
@@ -789,6 +831,7 @@ jobs:
           GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           VARIABLE_UPDATES: ${{ steps.check.outputs.variable-updates }}
           DISPATCH_UPDATES: ${{ steps.check.outputs.dispatch-updates }}
+          DISPATCH_ATTEMPTS: ${{ steps.check.outputs.dispatch-attempts }}
           PENDING_DELETES: ${{ steps.check.outputs.pending-deletes }}
           RUN_ID: ${{ steps.dispatch.outputs.run-id }}
           RUN_URL: ${{ steps.dispatch.outputs.run-url }}
@@ -831,8 +874,11 @@ jobs:
 
           while IFS=$'\t' read -r VARIABLE DIGEST; do
             if [[ "$RUN_ID" =~ ^[0-9]+$ ]]; then
-              RECORD=$(jq -nc --arg d "$DIGEST" --argjson r "$RUN_ID" --arg u "$RUN_URL" '{digest: $d, run_id: $r, run_url: $u}')
-              store "${VARIABLE}_PENDING" "$RECORD" "run $RUN_ID for ${DIGEST:0:20}..."
+              ATTEMPT=$(printf '%s' "${DISPATCH_ATTEMPTS:-}" | jq -r --arg v "$VARIABLE" '.[$v] // 1' 2>/dev/null || true)
+              [[ "$ATTEMPT" =~ ^[0-9]+$ ]] || ATTEMPT=1
+              RECORD=$(jq -nc --arg d "$DIGEST" --argjson r "$RUN_ID" --arg u "$RUN_URL" --argjson a "$ATTEMPT" \
+                '{digest: $d, run_id: $r, run_url: $u, attempt: $a}')
+              store "${VARIABLE}_PENDING" "$RECORD" "run $RUN_ID for ${DIGEST:0:20}... (attempt $ATTEMPT)"
             else
               # No run to follow up on: store the digest as before.
               store "$VARIABLE" "$DIGEST" "${DIGEST:0:20}..."
@@ -869,6 +915,8 @@ jobs:
           RETRIED_JSON: ${{ steps.check.outputs.retried }}
           PENDING_JSON: ${{ steps.check.outputs.pending }}
           CONFIRMED_JSON: ${{ steps.check.outputs.confirmed }}
+          EXHAUSTED_JSON: ${{ steps.check.outputs.exhausted }}
+          MAX_ATTEMPTS: ${{ inputs.max-release-attempts }}
           RETRY_COMMIT: ${{ steps.check.outputs.retry-commit }}
           RELEASE_TRIGGERED: ${{ steps.release.outputs.triggered }}
           RELEASE_SHA: ${{ steps.release.outputs.commit-sha }}
@@ -889,6 +937,7 @@ jobs:
           RETRIED_COUNT=$(count "$RETRIED_JSON")
           PENDING_COUNT=$(count "$PENDING_JSON")
           CONFIRMED_COUNT=$(count "$CONFIRMED_JSON")
+          EXHAUSTED_COUNT=$(count "$EXHAUSTED_JSON")
           STORED_LABEL="stored"
           if [ "$DRY_RUN" = "true" ]; then
             STORED_LABEL="not stored (dry run)"
@@ -925,6 +974,19 @@ jobs:
 
             # Before the updates: a failed release is the one thing in this
             # summary that somebody has to look at.
+            if [ "$EXHAUSTED_COUNT" -gt 0 ]; then
+              echo "### 🛑 Release retries exhausted"
+              echo ""
+              echo "The release for these digests failed in each of its $MAX_ATTEMPTS attempt(s). It is no longer dispatched, and this job fails on every check until the cause is fixed."
+              echo ""
+              echo "| Image | Last failed run | Result |"
+              echo "|-------|-----------------|--------|"
+              printf '%s' "$EXHAUSTED_JSON" | jq -r '.[] | "| `\(.name)` | [\(.url | split("/") | last)](\(.url)) | ❌ Failed (\(.conclusion)), attempt \(.attempt) |"'
+              echo ""
+              echo "Fix the cause in the failed run, then delete the image's \`<variable>_PENDING\` repository variable: the next check dispatches the release again. A newer digest of the image starts over by itself."
+              echo ""
+            fi
+
             if [ "$RETRIED_COUNT" -gt 0 ]; then
               echo "### ❌ Release failed"
               echo ""
@@ -932,7 +994,7 @@ jobs:
               if [ "$DRY_RUN" = "true" ]; then
                 echo "A real run would dispatch the release again."
               else
-                echo "The release is dispatched again below; every check repeats this until a run succeeds."
+                echo "The release is dispatched again below; every check repeats this until a run succeeds or \`max-release-attempts\` runs have failed."
               fi
               if [ "$RETRY_COMMIT" = "true" ] && [ "$RELEASE_TRIGGERED" = "true" ]; then
                 echo "The failed run had already released the base image commit, so the retry comes with a new release commit - otherwise the run would find nothing to release and skip every build."
@@ -940,7 +1002,7 @@ jobs:
               echo ""
               echo "| Image | Failed run | Result |"
               echo "|-------|------------|--------|"
-              printf '%s' "$RETRIED_JSON" | jq -r '.[] | "| `\(.name)` | [\(.url | split("/") | last)](\(.url)) | ❌ Failed (\(.conclusion)) |"'
+              printf '%s' "$RETRIED_JSON" | jq -r '.[] | "| `\(.name)` | [\(.url | split("/") | last)](\(.url)) | ❌ Failed (\(.conclusion)), attempt \(.attempt) |"'
               echo ""
             fi
 
@@ -983,7 +1045,7 @@ jobs:
               echo "### ℹ️ No updates among the images that could be read"
               echo ""
               echo "This is **not** a clean result - $UNREACHABLE_COUNT image(s) were never checked."
-            elif [ "$PENDING_COUNT" -eq 0 ] && [ "$CONFIRMED_COUNT" -eq 0 ]; then
+            elif [ "$PENDING_COUNT" -eq 0 ] && [ "$CONFIRMED_COUNT" -eq 0 ] && [ "$EXHAUSTED_COUNT" -eq 0 ]; then
               echo "### ℹ️ No updates found"
               echo ""
               echo "All base images are up to date."
@@ -1016,3 +1078,14 @@ jobs:
               echo "> ⚠️ The new state was **not** stored because a step failed. The next run detects this update again."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Last, after the summary. Failing the check itself would also hold
+      # back the updates and confirmations of every other image.
+      - name: "🛑 Fail on exhausted release retries"
+        if: steps.check.outputs.exhausted-images != '' && steps.check.outputs.exhausted-images != '[]'
+        env:
+          EXHAUSTED_IMAGES: ${{ steps.check.outputs.exhausted-images }}
+        shell: bash
+        run: |
+          echo "::error::The release of $(printf '%s' "$EXHAUSTED_IMAGES" | jq -r 'join(", ")') failed max-release-attempts times and is no longer dispatched - see the summary"
+          exit 1
