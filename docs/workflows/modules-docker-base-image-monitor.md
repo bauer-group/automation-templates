@@ -68,6 +68,7 @@ jobs:
 | `target-workflow` | Workflow file to dispatch when an update is found. The digest is stored once that run has succeeded, see [Release confirmation](#release-confirmation) | `''` |
 | `target-workflow-ref` | Ref used for the dispatch | `'main'` |
 | `target-workflow-inputs` | JSON object of inputs passed to the dispatch | `''` |
+| `max-release-attempts` | Release runs dispatched for one digest before the monitor gives up and fails the job, see [Release confirmation](#release-confirmation). `0` = no limit | `3` |
 | `commit-prefix` | Commit type prefix, drives the semantic-release bump | `'chore(deps)'` |
 | `commit-and-release` | Create an empty commit to trigger a release | `true` |
 | `dry-run` | Only check; do not write variables, commit or dispatch | `false` |
@@ -82,6 +83,7 @@ jobs:
 | `updated-images` | JSON array of image names that need a release (changed and retried) |
 | `retried-images` | JSON array of image names whose dispatched release failed and that were dispatched again |
 | `pending-images` | JSON array of image names whose dispatched release has not finished yet |
+| `exhausted-images` | JSON array of image names whose release failed `max-release-attempts` times; they are no longer dispatched and the job fails |
 | `new-digests` | JSON object mapping image name to its new digest |
 | `triggered` | `true` if a commit was pushed or a workflow dispatched |
 | `commit-sha` | SHA of the created commit |
@@ -118,7 +120,7 @@ Each image requires `name`, `image`, `tag` and `variable`. The `variable` name m
 
 With `target-workflow` set, dispatching the release is not the end of it. The release can still fail — a red [backup round-trip gate](./modules-backup-roundtrip-test.md), a failed build — and the image then stays on the old base. If the monitor stored the new digest at dispatch time, the next check would read it back, report "No update" and never try again.
 
-So the digest variable is written only once the dispatched run has **succeeded**. In between, the run is recorded in a second variable, `<variable>_PENDING` (for example `ZAMMAD_DIGEST_PENDING`), as `{"digest": "…", "run_id": 123, "run_url": "…"}`. Every check that sees the changed digest reads that run:
+So the digest variable is written only once the dispatched run has **succeeded**. In between, the run is recorded in a second variable, `<variable>_PENDING` (for example `ZAMMAD_DIGEST_PENDING`), as `{"digest": "…", "run_id": 123, "run_url": "…", "attempt": 1}`. Every check that sees the changed digest reads that run:
 
 | Run of the recorded digest | Check does | Summary |
 |----------------------------|------------|---------|
@@ -126,9 +128,10 @@ So the digest variable is written only once the dispatched run has **succeeded**
 | Queued or running | Nothing | ⏳ Release still running |
 | Could not be read (API error) | Nothing — a second release is never started on a transient error | ⏳ Release still running, ⚠️ Unknown |
 | Succeeded | Stores the digest, removes `<variable>_PENDING` | ✅ Release confirmed |
-| Failed, cancelled, timed out or deleted | Dispatches the release again and records the new run; pushes a new release commit first if the failed run had already tagged its release, see [Retry commit](#retry-commit) | ❌ Release failed, with a link to the failed run and a `::warning::` annotation |
+| Failed, cancelled, timed out or deleted | Dispatches the release again and records the new run with the next attempt number; pushes a new release commit first if the failed run had already tagged its release, see [Retry commit](#retry-commit) | ❌ Release failed, with a link to the failed run and a `::warning::` annotation |
+| Failed, and it was attempt `max-release-attempts` | Nothing is dispatched or committed; an `::error::` annotation, and the job fails | 🛑 Release retries exhausted |
 
-The state is only read and written by the check, so the job does not wait for the release: with a daily schedule the digest is stored by the check after the successful run. A release that keeps failing is dispatched again by every check until it succeeds or a newer digest replaces it, which keeps the failure visible in the consumer's Actions instead of losing it. A newer digest of the same image is a new update, whatever happened to the recorded run.
+The state is only read and written by the check, so the job does not wait for the release: with a daily schedule the digest is stored by the check after the successful run. A failed release is dispatched again by every check until it succeeds, a newer digest replaces it, or `max-release-attempts` runs (default 3) have failed. The limit matters because a retry after a tagged release cuts a new patch release each time: a build that stays broken would otherwise produce one per check. Once the limit is reached, the monitor stops dispatching and fails its job on every check, which keeps the problem visible instead of losing it. To start over after fixing the cause, delete the `<variable>_PENDING` variable; the next check then dispatches the release as for a new digest. A newer digest of the same image is a new update with attempt 1, whatever happened to the recorded run.
 
 ### Retry commit
 

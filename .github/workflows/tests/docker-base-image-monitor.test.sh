@@ -16,6 +16,7 @@
 #   recorded run failed or deleted          -> dispatched again
 #     ... before it tagged the release      -> no new commit, the run releases the old one
 #     ... after it tagged the release       -> new release commit, else nothing to release
+#     ... for the max-release-attempts'th time -> not dispatched again, the job fails
 #   no target workflow (commit mode)        -> digest stored after the push, as before
 #
 # The step bodies are extracted from the workflow at runtime rather than
@@ -88,6 +89,9 @@ static_check "the commit names the images the check chose" "UPDATED_IMAGES_JSON:
 static_check "state is persisted only after every earlier step succeeded" \
   "if: success() && steps.check.outputs.state-changed == 'true' && inputs.dry-run != true"
 static_check "persist reads the dispatched run id" "RUN_ID: \${{ steps.dispatch.outputs.run-id }}"
+static_check "persist reads the attempt numbers" "DISPATCH_ATTEMPTS: \${{ steps.check.outputs.dispatch-attempts }}"
+static_check "exhausted retries fail the job" \
+  "if: steps.check.outputs.exhausted-images != '' && steps.check.outputs.exhausted-images != '[]'"
 static_check "job has a timeout" "    timeout-minutes: "
 
 # --- stubs --------------------------------------------------------------------
@@ -192,7 +196,9 @@ has_var() { [ -f "$FAKE/vars/$1" ]; }
 manifest() { printf '{"schemaVersion": 2, "config": {"digest": "%s"}}' "$2" > "$FAKE/manifests/$(printf '%s' "$1" | tr '/:' '__')"; }
 run_fixture() { printf '{"id": %s, "status": "%s", "conclusion": %s, "html_url": "%s/%s/actions/runs/%s"}' \
   "$1" "$2" "$3" "$SERVER" "$REPO" "$1" > "$FAKE/runs/$1"; }
-pending() { jq -nc --arg d "$2" --argjson r "$3" '{digest: $d, run_id: $r, run_url: "x"}' > "$FAKE/vars/$1_PENDING"; }
+# pending VARIABLE DIGEST RUN_ID [ATTEMPT] - without ATTEMPT the record has none.
+pending() { jq -nc --arg d "$2" --argjson r "$3" --arg a "${4:-}" \
+  '{digest: $d, run_id: $r, run_url: "x"} + (if $a == "" then {} else {attempt: ($a | tonumber)} end)' > "$FAKE/vars/$1_PENDING"; }
 out() { grep "^$1=" "$FAKE/output" | tail -n 1 | cut -d= -f2-; }
 
 # Runs a step with the environment of the workflow. Extra VAR=value pairs
@@ -204,10 +210,10 @@ run_step() {
     GITHUB_OUTPUT="$FAKE/output" GITHUB_ENV="$FAKE/env" \
     GITHUB_REPOSITORY="$REPO" GITHUB_SERVER_URL="$SERVER" \
     CONFIG_FILE="" INLINE_IMAGES="$IMAGES" COMMIT_PREFIX_INPUT="chore(deps)" \
-    DRY_RUN=false FAIL_ON_UNREACHABLE=true TARGET_WORKFLOW="docker-release.yml" \
+    DRY_RUN=false FAIL_ON_UNREACHABLE=true TARGET_WORKFLOW="docker-release.yml" MAX_ATTEMPTS=3 \
     TARGET_REF=main TARGET_INPUTS='{"force-release": "true"}' \
     COMMIT_PREFIX="chore(deps)" UPDATED_IMAGES_JSON='[]' UPDATE_DETAILS="" \
-    VARIABLE_UPDATES='{}' DISPATCH_UPDATES='{}' PENDING_DELETES='[]' RUN_ID="" RUN_URL="" \
+    VARIABLE_UPDATES='{}' DISPATCH_UPDATES='{}' DISPATCH_ATTEMPTS='{}' PENDING_DELETES='[]' RUN_ID="" RUN_URL="" \
     "$@" bash -eo pipefail "$WORK/$step.sh") > "$FAKE/log" 2>&1
 }
 
@@ -242,6 +248,7 @@ expect_eq "new: new-images" "$(out new-images)" '["app"]'
 expect_eq "new: committed images" "$(out commit-images)" '["app"]'
 expect_eq "new: dispatched, not stored" "$(out dispatch-updates)" "{\"APP_DIGEST\":\"$D_NEW\"}"
 expect_eq "new: digest not stored yet" "$(out variable-updates)" '{}'
+expect_eq "new: first attempt" "$(out dispatch-attempts)" '{"APP_DIGEST":1}'
 expect_eq "new: no retry" "$(out retried-images)" '[]'
 if grep -q "New: $D_NEW" "$FAKE/env"; then pass "new: commit details"; else fail "new: commit details" "UPDATE_DETAILS lacks the new digest"; fi
 expect_eq "new: details start with the heading" "$(details "$FAKE/env" | head -n 1)" "Base image digest changed:"
@@ -282,6 +289,8 @@ run_step check; expect_rc "failed: step succeeds" $? 0
 expect_eq "failed: release needed" "$(out updates-found)" true
 expect_eq "failed before the tag: no new commit" "$(out commit-needed)" false
 expect_eq "failed before the tag: retry-commit" "$(out retry-commit)" false
+expect_eq "failed: a record without attempt counts as the first" "$(out dispatch-attempts)" '{"APP_DIGEST":2}'
+expect_eq "failed: failed attempt reported" "$(out retried | jq -r '.[0].attempt')" 1
 expect_eq "failed: retried" "$(out retried-images)" '["app"]'
 expect_eq "failed: conclusion reported" "$(out retried | jq -r '.[0].conclusion')" failure
 expect_eq "failed: dispatched again" "$(out dispatch-updates)" "{\"APP_DIGEST\":\"$D_NEW\"}"
@@ -326,6 +335,39 @@ pending APP_DIGEST "$D_NEW" 112; run_fixture 112 completed '"failure"'
 run_step check
 expect_eq "failed without any tag: no new commit" "$(out commit-needed)" false
 
+# Attempt 2 of 3 failed: one more.
+reset attempt-2
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"
+pending APP_DIGEST "$D_NEW" 120 2; run_fixture 120 completed '"failure"'
+run_step check
+expect_eq "attempt 2 failed: dispatched as attempt 3" "$(out dispatch-attempts)" '{"APP_DIGEST":3}'
+if grep -q "attempt 3 of 3" "$FAKE/log"; then pass "attempt 2 failed: warning names the attempt"; else fail "attempt 2 failed: warning names the attempt" "missing"; fi
+
+# Attempt 3 of 3 failed: give up, loudly.
+reset exhausted
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"
+release_tagged 1.0.0; base_commit app; release_tagged 1.0.1
+pending APP_DIGEST "$D_NEW" 121 3; run_fixture 121 completed '"failure"'
+run_step check; expect_rc "exhausted: the check itself succeeds" $? 0
+expect_eq "exhausted: reported" "$(out exhausted-images)" '["app"]'
+expect_eq "exhausted: attempt reported" "$(out exhausted | jq -r '.[0].attempt')" 3
+expect_eq "exhausted: not dispatched" "$(out dispatch-updates)" '{}'
+expect_eq "exhausted: no release needed" "$(out updates-found)" false
+expect_eq "exhausted: no commit" "$(out commit-needed)" false
+expect_eq "exhausted: nothing stored" "$(out state-changed)" false
+if grep -q "::error::The release for app" "$FAKE/log"; then pass "exhausted: error annotation"; else fail "exhausted: error annotation" "missing"; fi
+
+reset unlimited
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"
+pending APP_DIGEST "$D_NEW" 122 50; run_fixture 122 completed '"failure"'
+run_step check MAX_ATTEMPTS=0
+expect_eq "no limit: dispatched again" "$(out dispatch-attempts)" '{"APP_DIGEST":51}'
+expect_eq "no limit: not exhausted" "$(out exhausted-images)" '[]'
+
+reset bad-max
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"
+run_step check MAX_ATTEMPTS=-1; expect_rc "max-release-attempts not a whole number: fails" $? 1
+
 reset cancelled
 manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"
 pending APP_DIGEST "$D_NEW" 104; run_fixture 104 completed '"cancelled"'
@@ -350,6 +392,7 @@ manifest ghcr.io/acme/base:stable "$D_NEWER"; set_var APP_DIGEST "$D_OLD"
 pending APP_DIGEST "$D_NEW" 107; run_fixture 107 in_progress null
 run_step check
 expect_eq "record for an older digest: a newer digest is a new update" "$(out new-images)" '["app"]'
+expect_eq "record for an older digest: attempts start over" "$(out dispatch-attempts)" '{"APP_DIGEST":1}'
 if grep -q "actions/runs/107" "$FAKE/calls.log"; then fail "older record: run not read" "read run 107"; else pass "older record: run not read"; fi
 
 reset garbage-record
@@ -461,7 +504,11 @@ set_var APP_DIGEST "$D_OLD"
 run_step persist DISPATCH_UPDATES="{\"APP_DIGEST\": \"$D_NEW\"}" RUN_ID=4711 RUN_URL="$SERVER/$REPO/actions/runs/4711"
 expect_rc "persist pending: step succeeds" $? 0
 expect_eq "persist pending: digest untouched" "$(var APP_DIGEST)" "$D_OLD"
-expect_eq "persist pending: record" "$(var APP_DIGEST_PENDING | jq -c '[.digest, .run_id]')" "[\"$D_NEW\",4711]"
+expect_eq "persist pending: record" "$(var APP_DIGEST_PENDING | jq -c '[.digest, .run_id, .attempt]')" "[\"$D_NEW\",4711,1]"
+
+reset persist-attempt
+run_step persist DISPATCH_UPDATES="{\"APP_DIGEST\": \"$D_NEW\"}" DISPATCH_ATTEMPTS='{"APP_DIGEST": 2}' RUN_ID=4712 RUN_URL="u"
+expect_eq "persist: attempt recorded" "$(var APP_DIGEST_PENDING | jq -r .attempt)" 2
 
 reset persist-untracked
 set_var APP_DIGEST "$D_OLD"; pending APP_DIGEST "$D_NEW" 1
@@ -491,9 +538,9 @@ cycle() {
   run_step check || return 1
   # Kept for the assertions: the later steps overwrite the step output files.
   cp "$FAKE/output" "$FAKE/check-output"; cp "$FAKE/env" "$FAKE/check-env"
-  local dispatch_updates variable_updates pending_deletes run_id="" run_url=""
+  local dispatch_updates dispatch_attempts variable_updates pending_deletes run_id="" run_url=""
   dispatch_updates=$(out dispatch-updates); variable_updates=$(out variable-updates)
-  pending_deletes=$(out pending-deletes)
+  pending_deletes=$(out pending-deletes); dispatch_attempts=$(out dispatch-attempts)
   local updates_found commit_needed commit_images
   updates_found=$(out updates-found); commit_needed=$(out commit-needed); commit_images=$(out commit-images)
   if [ "$commit_needed" = "true" ]; then
@@ -503,8 +550,8 @@ cycle() {
     run_step dispatch || return 1
     run_id=$(out run-id); run_url=$(out run-url)
   fi
-  run_step persist DISPATCH_UPDATES="$dispatch_updates" VARIABLE_UPDATES="$variable_updates" \
-    PENDING_DELETES="$pending_deletes" RUN_ID="$run_id" RUN_URL="$run_url"
+  run_step persist DISPATCH_UPDATES="$dispatch_updates" DISPATCH_ATTEMPTS="$dispatch_attempts" \
+    VARIABLE_UPDATES="$variable_updates" PENDING_DELETES="$pending_deletes" RUN_ID="$run_id" RUN_URL="$run_url"
 }
 dispatch_returns() {
   printf '{"workflow_run_id": %s, "html_url": "%s/%s/actions/runs/%s"}' "$1" "$SERVER" "$REPO" "$1" > "$FAKE/dispatch-response"
@@ -521,7 +568,7 @@ cycle; expect_rc "cycle 1 (new digest): succeeds" $? 0
 expect_eq "cycle 1: base image commit pushed" "$(origin_subject)" "$BASE_SUBJECT"
 expect_eq "cycle 1: dispatched" "$(cat "$FAKE/dispatch-path" 2>/dev/null)" "repos/$REPO/actions/workflows/docker-release.yml/dispatches"
 expect_eq "cycle 1: old digest kept" "$(var APP_DIGEST)" "$D_OLD"
-expect_eq "cycle 1: run recorded" "$(var APP_DIGEST_PENDING | jq -r .run_id)" 201
+expect_eq "cycle 1: run recorded" "$(var APP_DIGEST_PENDING | jq -c '[.run_id, .attempt]')" '[201,1]'
 
 # The release gate is red: the run fails before it tags anything.
 run_fixture 201 completed '"failure"'; dispatch_returns 202
@@ -530,7 +577,7 @@ cycle; expect_rc "cycle 2 (failed before the tag): succeeds" $? 0
 expect_eq "cycle 2: dispatched again" "$(cat "$FAKE/dispatch-path" 2>/dev/null)" "repos/$REPO/actions/workflows/docker-release.yml/dispatches"
 expect_eq "cycle 2: no new commit, the base image commit is still unreleased" "$(origin_count)" "$COMMITS"
 expect_eq "cycle 2: old digest still kept" "$(var APP_DIGEST)" "$D_OLD"
-expect_eq "cycle 2: new run recorded" "$(var APP_DIGEST_PENDING | jq -r .run_id)" 202
+expect_eq "cycle 2: new run recorded" "$(var APP_DIGEST_PENDING | jq -c '[.run_id, .attempt]')" '[202,2]'
 
 # Run 202 passes the gate and tags 1.0.1, then a build fails. Dispatching
 # again without a commit would find nothing to release.
@@ -546,7 +593,7 @@ else
   fail "cycle 3: failed run named in the commit" "$(git -C "$FAKE/origin.git" log -1 --format=%B | tr '\n' '|')"
 fi
 expect_eq "cycle 3: dispatched after the commit" "$(cat "$FAKE/dispatch-path" 2>/dev/null)" "repos/$REPO/actions/workflows/docker-release.yml/dispatches"
-expect_eq "cycle 3: new run recorded" "$(var APP_DIGEST_PENDING | jq -r .run_id)" 203
+expect_eq "cycle 3: new run recorded" "$(var APP_DIGEST_PENDING | jq -c '[.run_id, .attempt]')" '[203,3]'
 
 run_fixture 203 in_progress null; dispatch_returns 299
 cycle; expect_rc "cycle 4 (release running): succeeds" $? 0
@@ -563,6 +610,19 @@ cycle; expect_rc "cycle 6 (nothing new): succeeds" $? 0
 expect_eq "cycle 6: up to date" "$(grep '^updates-found=' "$FAKE/check-output" | cut -d= -f2-)" false
 if [ -f "$FAKE/dispatch-path" ]; then fail "cycle 6: nothing dispatched" "dispatched"; else pass "cycle 6: nothing dispatched"; fi
 expect_eq "cycle 6: no commit" "$(origin_count)" "$COMMITS"
+
+# The last allowed run failed as well: no further release, no commit.
+reset cycle-exhausted
+set_var APP_DIGEST "$D_OLD"; manifest ghcr.io/acme/base:stable "$D_NEW"
+base_commit app; release_tagged 1.0.1; git -C "$FAKE/repo" push -q origin HEAD
+pending APP_DIGEST "$D_NEW" 301 3; run_fixture 301 completed '"failure"'; dispatch_returns 302
+COMMITS=$(origin_count)
+cycle; expect_rc "exhausted cycle: steps succeed (the last step fails the job)" $? 0
+expect_eq "exhausted cycle: reported" "$(grep '^exhausted-images=' "$FAKE/check-output" | cut -d= -f2-)" '["app"]'
+if [ -f "$FAKE/dispatch-path" ]; then fail "exhausted cycle: nothing dispatched" "dispatched"; else pass "exhausted cycle: nothing dispatched"; fi
+expect_eq "exhausted cycle: no commit" "$(origin_count)" "$COMMITS"
+expect_eq "exhausted cycle: record kept" "$(var APP_DIGEST_PENDING | jq -r .run_id)" 301
+expect_eq "exhausted cycle: digest not stored" "$(var APP_DIGEST)" "$D_OLD"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"
