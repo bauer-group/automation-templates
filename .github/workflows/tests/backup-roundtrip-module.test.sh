@@ -637,7 +637,8 @@ case "$1 $2" in
       *) echo "unexpected inspect: $*" >&2; exit 2 ;;
     esac ;;
   "compose rm") echo "removed ${*: -1}" >> "$DIR/actions" ;;
-  "run --rm") echo "wiped $(printf '%s\n' "$@" | grep ':/wipe$') with $(printf '%s\n' "$@" | grep '^sha256:')" >> "$DIR/actions" ;;
+  # The last argument is the data dir below the mount point (empty: the mount).
+  "run --rm") echo "wiped $(printf '%s\n' "$@" | grep ':/wipe$')${!#} with $(printf '%s\n' "$@" | grep '^sha256:')" >> "$DIR/actions" ;;
   "compose up") echo "started ${*: -1}" >> "$DIR/actions"; touch "$DIR/restarted" ;;
   *) echo "unexpected docker call: $*" >&2; exit 2 ;;
 esac
@@ -678,10 +679,31 @@ echo '[]' > "$DIR/mounts.json"
 run_host; expect_rc "new-host: data dir inside the container" $? 0
 expect_eq "new-host: nothing to wipe besides the container" "$(actions)" "removed backup|started backup"
 
+# A data dir below a mount: only the data dir on that volume is emptied.
+host_case nested
+printf 'BACKUP_DATA_DIR=/data/backups/\n' > "$DIR/container-env"
+run_host; expect_rc "new-host: data dir below a volume" $? 0
+expect_eq "new-host: wipes only the data dir on the volume above it" "$(actions)" \
+  "removed backup|wiped rt-backup-data:/wipe/backups with sha256:sidecar|started backup"
+expect_log "new-host: says where the data dir was" "/data/backups wiped (rt-backup-data, /backups below the mount at /data)"
+
+host_case deepest
+printf 'BACKUP_DATA_DIR=/data/backups/daily\n' > "$DIR/container-env"
+echo '[{"Type": "volume", "Name": "rt-app-data", "Destination": "/data"},
+       {"Type": "volume", "Name": "rt-backups", "Destination": "/data/backups"},
+       {"Type": "volume", "Name": "rt-data2", "Destination": "/data/backups-old"}]' > "$DIR/mounts.json"
+run_host; expect_rc "new-host: nested mounts" $? 0
+expect_eq "new-host: the deepest mount above the data dir" "$(actions)" "removed backup|wiped rt-backups:/wipe/daily with sha256:sidecar|started backup"
+
+host_case name-prefix
+echo '[{"Type": "volume", "Name": "rt-dat", "Destination": "/dat"}]' > "$DIR/mounts.json"
+run_host; expect_rc "new-host: a mount whose path only starts like the data dir" $? 0
+expect_eq "new-host: /dat is not above /data" "$(actions)" "removed backup|started backup"
+
 host_case tmpfs
 echo '[{"Type": "tmpfs", "Destination": "/data"}]' > "$DIR/mounts.json"
 run_host; expect_rc "new-host: a tmpfs data dir" $? 1
-expect_log "new-host: names the mount type" "is a tmpfs mount"
+expect_log "new-host: names the mount type" "is on a tmpfs mount"
 
 host_case survived
 printf '%-24s %12d bytes\n' "$SID" 4096 > "$DIR/list.after"

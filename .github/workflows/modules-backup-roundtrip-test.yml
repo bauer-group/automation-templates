@@ -1436,26 +1436,36 @@ jobs:
           DATA_DIR=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER" \
             | sed -n 's/^BACKUP_DATA_DIR=//p' | tail -n 1)
           DATA_DIR="${DATA_DIR:-/data}"
+          [ "$DATA_DIR" = "/" ] || DATA_DIR="${DATA_DIR%/}"
+          # The mount the data dir lives on: its own, or the deepest one above
+          # it (a /data volume that holds the data dir /data/backups).
           MOUNT=$(docker inspect --format '{{json .Mounts}}' "$CONTAINER" \
-            | jq -c --arg d "$DATA_DIR" 'map(select(.Destination == $d)) | first // empty')
+            | jq -c --arg d "$DATA_DIR" 'map(select(.Destination as $m | $m == $d or ($d | startswith(($m | rtrimstr("/")) + "/"))))
+                                         | max_by(.Destination | length) // empty')
 
           docker compose rm --stop --force "$BACKUP_SERVICE"
           if [ -z "$MOUNT" ]; then
-            echo "🧹 $DATA_DIR is not a mount - it went with the container"
+            echo "🧹 $DATA_DIR is not on a mount - it went with the container"
           else
+            DESTINATION=$(jq -r '.Destination' <<< "$MOUNT")
+            # The data dir below the mount point: empty, or e.g. /backups.
+            SUBPATH="${DATA_DIR#"${DESTINATION%/}"}"
             case "$(jq -r '.Type' <<< "$MOUNT")" in
               volume) SOURCE=$(jq -r '.Name' <<< "$MOUNT") ;;
               bind)   SOURCE=$(jq -r '.Source' <<< "$MOUNT") ;;
               *)
-                echo "::error title=Backup round trip::the data dir $DATA_DIR of '$BACKUP_SERVICE' is a $(jq -r '.Type' <<< "$MOUNT") mount - only volumes and bind mounts can be wiped"
+                echo "::error title=Backup round trip::the data dir $DATA_DIR of '$BACKUP_SERVICE' is on a $(jq -r '.Type' <<< "$MOUNT") mount - only volumes and bind mounts can be wiped"
                 exit 1 ;;
             esac
             # The volume may be mounted elsewhere too (read-only into the
-            # application), so it is emptied rather than removed. The sidecar's
-            # own image does it, as root: nothing else has to be pulled.
+            # application), so the data dir is emptied rather than the volume
+            # removed - and only the data dir, not what else is on the mount.
+            # The sidecar's own image does it, as root: nothing else has to be
+            # pulled.
             docker run --rm --user 0:0 --entrypoint sh -v "$SOURCE:/wipe" "$IMAGE" \
-              -c 'rm -rf /wipe/* /wipe/.[!.]* /wipe/..?* && [ -z "$(ls -A /wipe)" ]'
-            echo "🧹 $DATA_DIR ($SOURCE) wiped"
+              -c 'D="/wipe$1"; [ -d "$D" ] || exit 0; rm -rf "$D"/* "$D"/.[!.]* "$D"/..?* && [ -z "$(ls -A "$D")" ]' \
+              wipe "$SUBPATH"
+            echo "🧹 $DATA_DIR wiped (${SOURCE}${SUBPATH:+, $SUBPATH below the mount at $DESTINATION})"
           fi
           docker compose up -d --no-deps --wait --wait-timeout "$WAIT_TIMEOUT" "$BACKUP_SERVICE"
 
@@ -1464,7 +1474,7 @@ jobs:
           # Rows: <id> <size> bytes [(off-site only)]
           LOCAL=$(awk '$3 == "bytes" && $2 > 0 {print $1}' <<< "$LIST")
           if [ -n "$LOCAL" ]; then
-            echo "::error title=Backup round trip::local snapshots survived the wipe: $(tr '\n' ' ' <<< "$LOCAL")"
+            echo "::error title=Backup round trip::local snapshots survived the wipe: $(tr '\n' ' ' <<< "$LOCAL")- the sidecar keeps them outside $DATA_DIR (its BACKUP_DATA_DIR), or on a mount this step did not find"
             exit 1
           fi
           if ! awk -v id="$SNAPSHOT_ID" '$1 == id && $3 == "bytes" && $2 == 0 {found = 1} END {exit !found}' <<< "$LIST"; then
