@@ -94,6 +94,7 @@ name: Docker Maintenance
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    # Only files whose change also starts your PR CI - see Limits
     paths:
       - 'Dockerfile'
       - 'src/Dockerfile'
@@ -120,7 +121,10 @@ jobs:
 
 Nothing else to configure - no ruleset, no branch protection, no "Allow auto-merge".
 The workflow waits for the CI of the PR itself, so a CI workflow that runs on
-Dependabot PRs is all it needs. A PR on which no check passes is never merged.
+Dependabot PRs is all it needs. A PR on which no check passes is never merged -
+but **any** passed check counts, also one that builds and tests nothing, such
+as GitGuardian or a notification job. So keep this workflow's `paths:` within
+the `pull_request` `paths:` of your PR CI, see [Limits](#limits).
 
 #### Permissions
 
@@ -180,7 +184,8 @@ PR's head.
    unless a newer run of the same workflow exists for the same commit (its
    concurrency group replaced it); telling the two apart needs the workflow
    runs, i.e. `actions: read` in private repositories.
-3. **Merge** - only when no check failed and at least one passed. `neutral`
+3. **Merge** - only when no check failed and at least one passed - any check,
+   it need not be a build or a test (see [Limits](#limits)). `neutral`
    and `skipped` are no failure (as for required status checks), but no pass
    either: a PR whose checks were all skipped stays open. Right before the
    merge the PR is read again: if it was closed, got a new head commit, was
@@ -214,6 +219,16 @@ still waiting.
 
 ### Limits
 
+- **Any passed check counts.** The workflow cannot tell a build or a test
+  from a check that tests nothing - GitGuardian, a notification job, an AI
+  summary. If no build workflow runs on the files Dependabot changed, such a
+  check alone lets the update merge untested. Where such a check passes on
+  every PR (GitGuardian does), the "No check ran" notice never shows, so
+  nothing points to the missing CI. Keep this workflow's `paths:` within the
+  `pull_request` `paths:` of your PR CI, as the example under
+  [Combining with Docker Release](#combining-with-docker-release) does. A
+  caller without `paths:` runs on every Dependabot PR, also on updates of
+  files no build covers (e.g. GitHub Actions updates of other workflows).
 - **No release by the merge itself.** The merge is made with the job's
   `GITHUB_TOKEN`, and GitHub starts no workflow run for a push made with that
   token. A release workflow on `push` to `main` therefore runs with the next
@@ -401,7 +416,8 @@ jobs:
 ```
 
 ```yaml
-# .github/workflows/docker-release.yml (triggered after merge)
+# .github/workflows/docker-release.yml - builds the PR (the check the
+# maintenance workflow waits for) and releases after the merge
 name: Docker Release
 
 on:
@@ -409,9 +425,14 @@ on:
     branches: [main]
     paths:
       - 'src/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'  # covers the maintenance workflow's paths
 
 jobs:
   release:
+    if: github.event_name == 'push'
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     secrets: inherit
 
@@ -422,9 +443,16 @@ jobs:
     with:
       push: true
     secrets: inherit
+
+  docker-pr:
+    if: github.event_name == 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      push: false
+    secrets: inherit
 ```
 
-**Result:** Base image update → PR merged → PATCH release → Docker image rebuilt and pushed.
+**Result:** Base image update → PR built → PR merged → PATCH release → Docker image rebuilt and pushed.
 With the Dependabot workflow the release starts with the next push to `main`
 that is not made by `GITHUB_TOKEN`, or when the release workflow is run by hand
 (`workflow_dispatch`) - see [Limits](#limits).
@@ -448,6 +476,10 @@ usual ones:
 | no check ran / none of the checks passed    | Add a PR CI workflow whose `paths:` cover the files Dependabot changes                                                 |
 | job token cannot read the CI results        | Private repo: add `checks: read` and `statuses: read` to the caller's `permissions:`                                   |
 | CI had not finished and settled after N min | Raise `ci-wait-minutes`, or merge by hand once CI is green                                                             |
+
+"No check ran" does not catch every missing PR CI: where a check passes on
+every PR (GitGuardian does), a PR whose files no build covers is merged
+instead of left open - see [Limits](#limits).
 
 Do **not** add a ruleset with required status checks for this - it is not needed
 and blocks semantic-release (see above).
@@ -486,7 +518,7 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 
 ## Security Considerations
 
-- **CI must pass**: Dependabot PRs are merged only when no check failed and at least one passed, after CI has been complete and unchanged for 3 minutes (5 minutes after the start at the earliest)
+- **CI must pass**: Dependabot PRs are merged only when no check failed and at least one passed, after CI has been complete and unchanged for 3 minutes (5 minutes after the start at the earliest). Any passed check counts, also one that tests nothing (e.g. GitGuardian), so the caller's `paths:` must stay within those of the PR CI - see [Limits](#limits)
 - **Pinned merge**: the Dependabot merge and its approval name the head commit whose CI was checked
 - **Dependabot only**: the Dependabot job acts only on Dependabot's PRs, on events Dependabot raised, with verified Dependabot commits only; it never checks out PR code
 - **Auto-approve optional**: Can be disabled for manual review

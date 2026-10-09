@@ -28,6 +28,9 @@
 # 3. A PR CI that runs on Dependabot PRs. No ruleset, branch protection or
 #    "Allow auto-merge" is needed - a ruleset with required checks would also
 #    block semantic-release from pushing to main.
+#    Keep the `paths:` below within the `pull_request` `paths:` of that CI:
+#    any passed check counts, also one that tests nothing (e.g. GitGuardian),
+#    so a change to a file no build covers would be merged untested.
 #
 # Required .github/dependabot.yml in your repo:
 # -----------------------------------------------------------------------------
@@ -55,6 +58,7 @@ name: Docker Maintenance
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    # Only files whose change also starts your PR CI (Prerequisites 3)
     paths:
       - 'Dockerfile'
       - 'src/Dockerfile'

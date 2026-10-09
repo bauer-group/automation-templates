@@ -13,7 +13,8 @@
 #    changed for 3 minutes (5 minutes after the start at the earliest), so a
 #    check that starts late is waited for too. It
 #    merges only if none failed and at least one passed (neutral and skipped
-#    are no failure, but no pass either). A failed or cancelled check, a PR
+#    are no failure, but no pass either). Any check counts - also one that
+#    tests nothing, such as GitGuardian. A failed or cancelled check, a PR
 #    without a passed check, and CI still running after `ci-wait-minutes`
 #    leave the PR open.
 # 3. Merge: optional approval, then `gh pr merge --match-head-commit`, so only
@@ -57,7 +58,9 @@
 # Requirements:
 # - Dependabot must be enabled in repository settings
 # - .github/dependabot.yml must include the ecosystems to update
-# - A PR CI that runs on Dependabot PRs - without any check, nothing is merged
+# - A PR CI that runs on Dependabot PRs - without any check, nothing is merged.
+#   Keep the caller's `paths:` within the `pull_request` `paths:` of that CI:
+#   for a file no build covers, a check that tests nothing is enough to merge.
 # =============================================================================
 
 name: 🐳 Docker Maintenance (Dependabot)
