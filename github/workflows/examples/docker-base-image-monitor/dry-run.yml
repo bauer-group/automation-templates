@@ -20,8 +20,8 @@
 #
 # The dry run still needs PAT_READWRITE_ORGANISATION: it reads the digest
 # variables and the recorded release runs. Pull requests from forks and from
-# Dependabot get no secrets, so the job is limited to branches of this
-# repository.
+# Dependabot get no Actions secrets, so on pull requests the job runs only for
+# branches of this repository that Dependabot did not push.
 # =============================================================================
 
 name: 🔍 Check Base Images (Dry Run)
@@ -41,7 +41,10 @@ permissions:
 jobs:
   check:
     name: Dry Run
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.actor != 'dependabot[bot]')
     uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
     with:
       config-file: '.github/config/docker-base-image-monitor/base-images.json'
