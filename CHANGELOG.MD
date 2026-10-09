@@ -4,6 +4,28 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.4.0](https://github.com/bauer-group/automation-templates/compare/v11.3.0...v11.4.0) (2026-10-09)
+
+### 🚀 Features
+
+* **backup-roundtrip:** added an off-site S3 destination test ([2807f32](https://github.com/bauer-group/automation-templates/commit/2807f32dac1f04448728c40902a2679f00fa59e0))
+* **backup-roundtrip:** added an upgrade test from a previous release ([941df4c](https://github.com/bauer-group/automation-templates/commit/941df4c09045087cd729a68e394d4a94b7546bf9))
+* **backup-roundtrip:** added external networks for compose variants ([7dff260](https://github.com/bauer-group/automation-templates/commit/7dff260652dd5f02e27f58cf62f6c4a54ba0b6b3))
+
+### 🐛 Bug Fixes
+
+* **backup-roundtrip:** checked the upgrade against the tagged image ids ([316fe04](https://github.com/bauer-group/automation-templates/commit/316fe0403c27068125f60e7c59b3a5402c443427))
+* **backup-roundtrip:** explained a latest release without its images ([c498370](https://github.com/bauer-group/automation-templates/commit/c4983700644113b780cd6b64f9bfd29720fc0194))
+* **backup-roundtrip:** kept s3-env clear of secret scanner matches ([0c7a0af](https://github.com/bauer-group/automation-templates/commit/0c7a0afdc6f16778865ec7af9f0b9f8cda017fc2))
+* **backup-roundtrip:** masked the .env values upgrade-script changes ([0446986](https://github.com/bauer-group/automation-templates/commit/044698684570528ab8d7152eaf01a259e6ffd03f))
+* **backup-roundtrip:** rejected images under test pinned by digest ([8f9d1e0](https://github.com/bauer-group/automation-templates/commit/8f9d1e0613aceeead83871041dad43398b19b0a9))
+* **backup-roundtrip:** rejected one s3-env variable for two settings ([4e44c2d](https://github.com/bauer-group/automation-templates/commit/4e44c2dc9520f3815f903be05d24acc5bb5d1eb2))
+* **backup-roundtrip:** wiped a sidecar data dir that lies below a mount ([d3078e5](https://github.com/bauer-group/automation-templates/commit/d3078e589b6a2a14200f7bd2bb15911ef0fc9996))
+
+### 💄 UI/UX Improvements
+
+* **backup-roundtrip:** cleared the module's two shellcheck notes ([e523382](https://github.com/bauer-group/automation-templates/commit/e523382e6d58549f2a3c799f067ba6f710c8243b))
+
 ## [11.3.0](https://github.com/bauer-group/automation-templates/compare/v11.2.4...v11.3.0) (2026-10-09)
 
 ### 🚀 Features
