@@ -1,13 +1,14 @@
 # =============================================================================
-# Auto Maintenance - Weekly Dependency and Base Image Updates
+# Auto Maintenance - Weekly Base Image Check
 # =============================================================================
 # One caller, one config file (maintenance-config.json in this folder - copy it
-# to .github/config/maintenance/config.json): base image digests, npm and pip
-# updates, build/test/typecheck validation with rollback, then a commit to
-# main and a dispatch of the release workflow.
+# to .github/config/maintenance/config.json): when the digest behind a floating
+# base image tag moved, an empty release commit to main and a dispatch of the
+# release workflow, which rebuilds the images FROM the new base.
 #
 # Order of a run:
-#   1. read the digest of every base image and update every ecosystem
+#   1. read the digest of every base image and update every configured
+#      ecosystem
 #   2. nothing changed            -> done, no commit, no release
 #   3. validation fails           -> every change is rolled back, no commit
 #   4. validation passes          -> commit + push, dispatch of
@@ -19,6 +20,10 @@
 # not wait for the dispatched release to succeed: use the monitor where a
 # release gate (e.g. the backup round trip) has to pass before a base image
 # counts as done.
+#
+# The config lists base images only. npm, pip and .NET updates from the
+# ecosystems block are validated but currently not committed - see "Known
+# limitation" in README.md in this folder.
 #
 # Token: MAINTENANCE_TOKEN (preferred) or PAT_READWRITE_ORGANISATION, a PAT
 # with Contents, Variables and Actions read/write (classic: repo, plus
@@ -44,10 +49,10 @@ concurrency:
   group: maintenance-${{ github.repository }}
   cancel-in-progress: false
 
-# What the job token needs when no PAT is set: dependency updates only -
-# GITHUB_TOKEN cannot write the digest variables, and without actions: write
-# it cannot dispatch the release either. With a PAT set, checkout, push,
-# registry login and dispatch all use the PAT instead of the job token.
+# With the PAT set - base images need it - checkout, push, registry login,
+# dispatch and the digest variables all use the PAT. The job token only stands
+# in without one: GITHUB_TOKEN cannot write the digest variables, and without
+# actions: write it cannot dispatch the release either.
 permissions:
   contents: write
   packages: read

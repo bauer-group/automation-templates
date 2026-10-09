@@ -278,6 +278,8 @@ maintenance:
 - `updates-found`: Ob Updates gefunden wurden
 - `summary`: Zusammenfassung der Änderungen
 
+> **Bekannte Einschränkung:** npm-, pip- und .NET-Updates werden derzeit validiert, aber nicht committet; Base Images und Go-Module im Root sind nicht betroffen ([Details](../../docs/workflows/modules-auto-maintenance.md#bekannte-einschraenkung-dependency-updates-werden-nicht-committet)).
+>
 > Doku: [docs/workflows/modules-auto-maintenance.md](../../docs/workflows/modules-auto-maintenance.md) · Beispiele: [github/workflows/examples/auto-maintenance/](../../github/workflows/examples/auto-maintenance/README.md)
 
 ### 🚀 [Semantic Release](./modules-semantic-release.yml)
