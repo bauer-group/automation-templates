@@ -4,6 +4,13 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.2.3](https://github.com/bauer-group/automation-templates/compare/v11.2.2...v11.2.3) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* **backup-roundtrip:** inspected the snapshot after a failed create ([7bff667](https://github.com/bauer-group/automation-templates/commit/7bff667d16259a1ad2787263c50a924880fbbd3f))
+* **backup-roundtrip:** pulled only the services that are started ([8b3bb83](https://github.com/bauer-group/automation-templates/commit/8b3bb83e86b8877fff56a409bf694f2e8d962467))
+
 ## [11.2.2](https://github.com/bauer-group/automation-templates/compare/v11.2.1...v11.2.2) (2026-10-09)
 
 ### 🐛 Bug Fixes
