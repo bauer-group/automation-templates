@@ -690,6 +690,9 @@ jobs:
           fi
           PROFILES="${PROFILES_INPUT// /}"
           MARKER="rt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$(openssl rand -hex 4)"
+          # One append per variable: tools/workflow-audit finds the variables
+          # a step exports by these lines.
+          # shellcheck disable=SC2129
           echo "COMPOSE_FILE=$COMPOSE_FILE_LIST" >> "$GITHUB_ENV"
           echo "COMPOSE_PROJECT_NAME=$PROJECT_NAME" >> "$GITHUB_ENV"
           echo "ROUNDTRIP_MARKER=$MARKER" >> "$GITHUB_ENV"
@@ -1730,6 +1733,7 @@ jobs:
             if [ -s "${ROUNDTRIP_DIR:-/nonexistent}/built-images.txt" ]; then
               echo "### 🐳 Images under test"
               echo ""
+              # shellcheck disable=SC2016 # sed's $ anchor and Markdown backticks, not an expansion
               sed 's/^/- `/; s/$/`/' "$ROUNDTRIP_DIR/built-images.txt"
               echo ""
             fi
