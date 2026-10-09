@@ -35,8 +35,9 @@ Diese Workflows sind speziell für das `automation-templates` Repository entwick
 - Konfigurierbare Artefakt-Generierung
 - Changelog-Generierung mit generate-changelog Action
 
-#### 🤖 [ai-issue-summary.yml](./ai-issue-summary.yml) - AI Issue Zusammenfassungen
+#### 🤖 AI Issue Zusammenfassungen (pausiert)
 **Zweck:** AI-gestützte Issue-Zusammenfassungen  
+**Status:** Der Caller `ai-issue-summary.yml` wurde am 2026-09-28 aus diesem Repository und org-weit entfernt, weil kein Lauf mehr eine echte AI-Zusammenfassung lieferte. Das Modul [modules-ai-issue-summary.yml](./modules-ai-issue-summary.yml) bleibt für die Überarbeitung bestehen; Re-Rollout in [#105](https://github.com/bauer-group/automation-templates/issues/105)  
 **Module verwendet:** modules-ai-issue-summary  
 **Benötigt:** `copilot-requests: write` — im Caller **und** im Modul, da der
 `permissions:`-Block eines `workflow_call`-Workflows eine Obergrenze ist, keine
@@ -143,7 +144,6 @@ jobs:
 | **automatic-release.yml** | Push (main) | semantic-release | Automatische Releases |
 | **documentation.yml** | Docs-Änderungen | readme-generate | Dokumentations-Management |
 | **manual-release.yml** | Workflow Dispatch | 4 Module | Kontrollierte Releases |
-| **ai-issue-summary.yml** | Issue Events | modules-ai-issue-summary | AI Zusammenfassungen |
 | **pr-labeler.yml** | Pull Request | modules-pr-labeler | PR Labeling |
 | **issue-automation.yml** | Issue/PR Events | modules-issue-automation | Issue Management |
 | **backup-roundtrip-selftest.yml** | PR/Push (Modul + Fixture) | modules-backup-roundtrip-test | Self-Test des Backup-Round-Trip-Moduls |
