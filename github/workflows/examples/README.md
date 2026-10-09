@@ -55,6 +55,19 @@ github/workflows/examples/
 │   ├── simple-docker-build.yml
 │   ├── dockerhub-with-readme-sync.yml
 │   └── ...
+├── docker-base-image-monitor/      # Rebuild when a floating base image tag moves
+│   ├── README.md
+│   ├── daily-release-dispatch.yml
+│   ├── multi-image-config.yml
+│   ├── multi-image-base-images.json
+│   └── dry-run.yml
+├── docker-maintenance-dependabot/  # Merge Dependabot PRs after their PR CI passed
+│   ├── README.md
+│   ├── simple-dependabot-maintenance.yml
+│   ├── with-backup-roundtrip-gate.yml
+│   ├── own-build-and-test-workflow.yml
+│   ├── multiple-required-workflows.yml
+│   └── no-pr-ci-manual-merge.yml
 └── claude-code/            # Claude Code Assistant examples
     ├── basic-claude-assistant.yml
     ├── code-review-assistant.yml
@@ -125,6 +138,26 @@ Starts a compose stack with its BackupHelper sidecar, seeds data, backs it up, d
 - `backup-roundtrip/offsite-s3-new-host.yml` - Off-site copy in a throwaway S3 bucket, restored on a "new host" with a wiped data dir
 - `backup-roundtrip/compose-variants-matrix.yml` - One round trip per compose variant (local, Traefik, Coolify), external proxy networks created
 - `backup-roundtrip/README.md` - Setup and what a run proves
+
+### Docker Maintenance with Dependabot (`docker-maintenance-dependabot.yml`)
+Merges a Dependabot PR only after every workflow in `required-workflows` has run on its head commit and passed. The caller's `on.pull_request.paths` decide which Dependabot PRs reach it at all
+
+**Examples:**
+- `docker-maintenance-dependabot/simple-dependabot-maintenance.yml` - Smallest caller: Dockerfile updates, one PR CI workflow
+- `docker-maintenance-dependabot/with-backup-roundtrip-gate.yml` - Container stack: merged after the PR run of `docker-release.yml`, backup round trip included; private-repository permissions
+- `docker-maintenance-dependabot/own-build-and-test-workflow.yml` - Image without backup: the repository's own `ci.yml` vouches; Docker and npm updates
+- `docker-maintenance-dependabot/multiple-required-workflows.yml` - Image build and a separate test suite, both required
+- `docker-maintenance-dependabot/no-pr-ci-manual-merge.yml` - No PR CI: `required-workflows` deliberately unset, nothing is merged
+- `docker-maintenance-dependabot/README.md` - Setup, trigger scope and what decides a merge
+
+### Docker Base Image Monitor (`modules-docker-base-image-monitor.yml`)
+Reads the digest behind floating tags (`stable`, `latest`) and releases a rebuild when it moves; the digest is stored once the dispatched release succeeded, failed releases are retried
+
+**Examples:**
+- `docker-base-image-monitor/daily-release-dispatch.yml` - Daily check that dispatches `docker-release.yml` with `force-release`
+- `docker-base-image-monitor/multi-image-config.yml` + `multi-image-base-images.json` - Several images (Docker Hub and internal GHCR) in one config
+- `docker-base-image-monitor/dry-run.yml` - Config changes checked on their PR; preview before recovery
+- `docker-base-image-monitor/README.md` - Setup, what a check does and what to do when a release keeps failing
 
 ### CI/CD Pipelines
 Complete CI/CD pipeline configurations
@@ -202,6 +235,8 @@ Most workflows support configuration through:
 ### Build Workflow Documentation
 - [Docker Build Documentation](../../../docs/workflows/docker-build.md)
 - [Backup Round-Trip Test Documentation](../../../docs/workflows/modules-backup-roundtrip-test.md)
+- [Docker Maintenance Documentation](../../../docs/workflows/docker-maintenance.md)
+- [Docker Base Image Monitor Documentation](../../../docs/workflows/modules-docker-base-image-monitor.md)
 - [Python Build Documentation](../../../docs/workflows/python-build.md)
 - [.NET Desktop Build Documentation](../../../docs/workflows/dotnet-desktop-build.md)
 - [.NET Build Documentation](../../../docs/workflows/dotnet-build.md)

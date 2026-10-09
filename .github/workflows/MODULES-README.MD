@@ -197,6 +197,60 @@ backup-roundtrip:
 - `s3-destination: true` + `s3-env` startet einen Wegwerf-S3-Server (MinIO) als S3-Ziel des Sidecars: Der Snapshot muss im Bucket liegen, danach werden die lokalen Daten des Sidecars wie auf einem neuen Host gelöscht, und der Restore muss ihn aus S3 zurückholen ([Off-Site S3](../../docs/workflows/modules-backup-roundtrip-test.md#off-site-s3-and-a-new-host))
 - `external-networks: 'auto'` legt die externen Proxy-Netzwerke an, die eine Traefik- oder Coolify-Variante erwartet — so läuft der Round Trip per Matrix einmal pro Compose-Variante ([Compose-Varianten](../../docs/workflows/modules-backup-roundtrip-test.md#compose-variants-traefik-coolify))
 
+### 🔍 [Docker Base Image Monitor](./modules-docker-base-image-monitor.yml)
+**Zweck:** Erkennt, wenn ein Base Image unter demselben Tag neu gebaut wurde (`stable`, `latest`, `7`), und stößt den Rebuild an — der neue Digest zählt erst als erledigt, wenn der Release erfolgreich war
+
+Liest den Digest hinter jedem Tag der Konfiguration (`docker manifest inspect`, multi-arch, 3 Versuche bei Registry-Fehlern). Hat er sich bewegt: leerer Release-Commit und/oder `workflow_dispatch` des Release-Workflows. Mit `target-workflow` wird der Digest erst gespeichert, wenn der dispatchte Run erfolgreich war; bis dahin steht der Run in `<VAR>_PENDING`, ein fehlgeschlagener Release (z.B. rotes Backup-Round-Trip-Gate) wird beim nächsten Check erneut dispatcht, bis `max-release-attempts` (Standard 3) Läufe fehlgeschlagen sind; danach schlägt der Job fehl.
+
+```yaml
+check:
+  permissions:
+    contents: read
+    packages: read        # interne/private GHCR-Images
+  uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
+  with:
+    config-file: '.github/config/docker-base-image-monitor/base-images.json'
+    target-workflow: 'docker-release.yml'
+    target-workflow-inputs: '{"force-release": "true"}'
+  secrets: inherit        # PAT_READWRITE_ORGANISATION (Pflicht)
+```
+
+**Ausgaben:**
+- `updates-found`: Ob ein Image ein Release braucht (neuer Digest oder fehlgeschlagener Release)
+- `updated-images` / `retried-images` / `pending-images` / `exhausted-images`: Image-Namen je Zustand (JSON)
+- `new-digests`: Neue Digests pro Image (JSON)
+- `dispatched-run-id` / `dispatched-run-url`: Der in diesem Check dispatchte Release-Run
+- `images-configured` / `images-checked` / `unreachable-images`: Abdeckung des Checks
+
+> Release fehlgeschlagen oder „Release retries exhausted“? Lebenszyklus der Variablen und alle Recovery-Schritte mit `gh`-Befehlen: [State variables and lifecycle](../../docs/workflows/modules-docker-base-image-monitor.md#state-variables-and-lifecycle) · [Operator recovery](../../docs/workflows/modules-docker-base-image-monitor.md#operator-recovery). Beispiele: [github/workflows/examples/docker-base-image-monitor/](../../github/workflows/examples/docker-base-image-monitor/README.md).
+
+### 🐳 [Docker Maintenance (Dependabot)](./docker-maintenance-dependabot.yml)
+**Zweck:** Merged Dependabot-PRs erst, nachdem die genannte PR-CI auf dem Head-Commit gelaufen und grün ist — ohne Ruleset, Branch Protection oder „Allow auto-merge“
+
+Wartet, bis die CI des PRs vollständig und 3 Minuten unverändert ist, und merged nur, wenn jeder Workflow aus `required-workflows` per `pull_request` auf dem Head-Commit erfolgreich lief und kein Check fehlschlug (`gh pr merge --match-head-commit`). Standardmäßig nur Patch-Updates. GitHub-Actions-Updates und PRs, die `.github/` ändern, bleiben immer offen. Ohne `required-workflows` wird nichts gemerged.
+
+```yaml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: ['src/app/Dockerfile']   # entscheidet, welche Dependabot-PRs das Modul erreichen
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read            # private Repositories
+  statuses: read          # private Repositories
+  actions: read           # private Repositories
+jobs:
+  maintenance:
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
+    with:
+      required-workflows: .github/workflows/docker-release.yml
+      merge-update-types: 'patch'
+    secrets: inherit      # kein Secret nötig
+```
+
+> **Trigger-Umfang:** Die `paths:` des Callers bestimmen, welche Dependabot-PRs das Modul überhaupt erreichen. Mit reinen Dockerfile-Pfaden bleiben npm-, pip- und Composer-Updates manuelle Merges — ohne Annotation. Entscheidungstabelle, Trigger-Umfang und Beispiele (Backup-Round-Trip-Gate, eigener Build-/Test-Workflow, mehrere Workflows, bewusst ohne PR-CI): [docs/workflows/docker-maintenance.md](../../docs/workflows/docker-maintenance.md#option-1-dependabot-simple) · [github/workflows/examples/docker-maintenance-dependabot/](../../github/workflows/examples/docker-maintenance-dependabot/README.md).
+
 ### 🚀 [Semantic Release](./modules-semantic-release.yml)
 **Zweck:** Automatisierte Release-Erstellung mit Semantic Release
 
@@ -348,6 +402,13 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     secrets: inherit
 ```
+
+### 5. Wartungskreislauf eines Container-Stacks
+Drei Caller, ein Gate: Der Base Image Monitor dispatcht `docker-release.yml`, wenn ein Floating Tag sich bewegt; Dependabot-PRs für fixierte Tags werden erst gemerged, wenn der PR-Lauf desselben `docker-release.yml` grün ist. In beiden Fällen entscheidet der Backup-Round-Trip, ob ein Release entsteht.
+
+- `check-base-images.yml` → [daily-release-dispatch.yml](../../github/workflows/examples/docker-base-image-monitor/daily-release-dispatch.yml)
+- `docker-maintenance.yml` → [with-backup-roundtrip-gate.yml](../../github/workflows/examples/docker-maintenance-dependabot/with-backup-roundtrip-gate.yml)
+- `docker-release.yml` → [gated-release-pipeline.yml](../../github/workflows/examples/backup-roundtrip/gated-release-pipeline.yml)
 
 ## 🛠️ Anpassung und Konfiguration
 
