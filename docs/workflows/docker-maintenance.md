@@ -166,12 +166,16 @@ the workflow working if the repository is made private.
    runs, i.e. `actions: read` in private repositories.
 3. **Merge** - only when no check failed and at least one passed. `neutral`
    and `skipped` are no failure (as for required status checks), but no pass
-   either: a PR whose checks were all skipped stays open. Then the PR is
-   approved (if `auto-approve` is on) and merged with
-   `gh pr merge --match-head-commit`, so only the commit whose CI was checked can
-   be merged. Where GitHub Actions may not approve pull requests (an org or repo
-   setting), the rejected approval is a notice and the merge goes ahead; it only
-   fails if the base branch requires a review.
+   either: a PR whose checks were all skipped stays open. Right before the
+   merge the PR is read again: if it was closed, got a new head commit, was
+   turned into a draft or cannot be merged (a conflict) in the meantime, it is
+   not merged. Then the PR is approved (if `auto-approve` is on) and merged
+   with `gh pr merge --match-head-commit`, so only the commit whose CI was
+   checked can be merged. The approval names that commit too: approving
+   without it would approve whatever commit is the PR's latest at that
+   moment. Where GitHub Actions may not approve pull requests (an org or repo
+   setting), the rejected approval is a notice and the merge goes ahead; it
+   only fails if the base branch requires a review.
 
 Every other outcome leaves the PR **open** with the job green, the decision as an
 annotation and in the job summary:
@@ -185,6 +189,7 @@ annotation and in the job summary:
 | CI not finished and quiet after `ci-wait-minutes`                        | notice     |
 | CI results not readable (private repo without `checks`/`statuses: read`) | notice     |
 | The PR got a new head commit or was closed meanwhile                     | notice     |
+| CI passed, but the PR is a draft or cannot be merged (e.g. a conflict)   | notice     |
 | CI passed, but the merge was rejected (e.g. a required review)           | warning    |
 
 A newer event on the same PR (e.g. Dependabot rebased it) cancels the run that is

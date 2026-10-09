@@ -89,6 +89,9 @@ static_has   "merge is gated by green CI"        "if: steps.ci.outputs.result ==
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "merge is pinned to the head"       '--match-head-commit "$HEAD_SHA"'
 # shellcheck disable=SC2016 # literal workflow text
+static_has   "approval is pinned to the head"    '-f commit_id="$HEAD_SHA"'
+static_lacks "no gh pr review (it approves the latest commit)" 'gh pr review'
+# shellcheck disable=SC2016 # literal workflow text
 static_has   "own check run is passed in"        'OWN_CHECK_RUN_ID: ${{ job.check_run_id }}'
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "own workflow run is passed in"     'RUN_ID: ${{ github.run_id }}'
@@ -116,25 +119,32 @@ cat > "$WORK/bin/gh" <<'STUB'
 # gh api [--paginate] <path> --jq <filter>: answers from $FAKE/<kind>.<n>.json, n
 # counting the calls per kind (the highest file is reused once n runs past it).
 # A file holding HTTP403, HTTP404, HTTP500 or RATELIMIT simulates that error.
-# gh pr review|merge: logged to $FAKE/calls; FAKE_REVIEW_FAIL / FAKE_MERGE_FAIL fail them.
+# gh api --method POST .../reviews and gh pr merge: logged to $FAKE/calls;
+# FAKE_REVIEW_FAIL / FAKE_MERGE_FAIL fail them.
 echo "$*" >> "$FAKE/calls"
-if [ "${1:-}" = "pr" ]; then
-  case "${2:-}" in
-    review) [ -n "${FAKE_REVIEW_FAIL:-}" ] && { echo "failed to create review: GitHub Actions is not permitted to approve pull requests." >&2; exit 1; } ;;
-    merge)  [ -n "${FAKE_MERGE_FAIL:-}" ]  && { echo "X Pull request o/r#7 is not mergeable: the base branch policy prohibits the merge." >&2; exit 1; } ;;
-  esac
+if [ "${1:-}" = "pr" ] && [ "${2:-}" = "merge" ]; then
+  [ -n "${FAKE_MERGE_FAIL:-}" ] && { echo "X Pull request o/r#7 is not mergeable: the base branch policy prohibits the merge." >&2; exit 1; }
   exit 0
 fi
 [ "${1:-}" = "api" ] || { echo "unexpected gh call: $*" >&2; exit 2; }
 shift
-path="" filter="."
+path="" filter="." method=GET
 while [ $# -gt 0 ]; do
   case "$1" in
     --jq) filter="$2"; shift 2 ;;
-    --paginate) shift ;;
+    --method) method="$2"; shift 2 ;;
+    -f) shift 2 ;;
+    --paginate|--silent) shift ;;
     *) path="$1"; shift ;;
   esac
 done
+case "$method $path" in
+  "POST repos/"*"/pulls/"*"/reviews")
+    [ -n "${FAKE_REVIEW_FAIL:-}" ] && { echo "gh: GitHub Actions is not permitted to approve pull requests. (HTTP 422)" >&2; exit 1; }
+    exit 0 ;;
+  "GET "*) ;;
+  *) echo "unexpected gh api call: $*" >&2; exit 2 ;;
+esac
 case "$path" in
   repos/*/pulls/*)                 kind=pr ;;
   repos/*/commits/*/check-runs*)   kind=runs ;;
@@ -571,26 +581,102 @@ run_ci "$D"; check ci/new-head-commit "$D" $? 0 result superseded notice
 decided_at ci/new-head-commit "$D" 90
 
 # --- approve and merge ------------------------------------------------------------
-# merge_case <name> <auto-approve> <merge-method> <merged> <annotation|-> [VAR=value ...]
-merge_case() {
-  local name="$1" dir="$WORK/merge-$1"; shift
-  local approve="$1" method="$2" want="$3" annotation="$4"; shift 4
-  mkdir -p "$dir"; : > "$dir/output"; : > "$dir/calls"
+# The PR as read again right before merging: $dir/pr.<n>.json, ready by default.
+PR_READY='{"state":"open","head":{"sha":"abc"},"draft":false,"mergeable":true,"mergeable_state":"clean"}'
+APPROVAL="api --method POST repos/o/r/pulls/7/reviews -f event=APPROVE -f commit_id=abc --silent"
+merge_dir() {
+  local dir="$WORK/merge-$1"
+  mkdir -p "$dir"; : > "$dir/output"; : > "$dir/calls"; echo 0 > "$dir/clock"
+  echo "$PR_READY" > "$dir/pr.1.json"
+  echo "$dir"
+}
+# merge_run <dir> <auto-approve> <merge-method> [VAR=value ...]
+merge_run() {
+  local dir="$1" approve="$2" method="$3"; shift 3
   ( cd "$dir" && env PATH="$WORK/bin:$PATH" FAKE="$dir" GITHUB_OUTPUT="$dir/output" \
       GH_TOKEN=test REPO=o/r PR_NUMBER=7 HEAD_SHA=abc AUTO_APPROVE="$approve" MERGE_METHOD="$method" "$@" \
       bash --noprofile --norc -eo pipefail -c "$MERGE_BODY" ) > "$dir/log" 2>&1
-  check "merge/$name" "$dir" $? 0 merged "$want" "$annotation" "pr merge 7 --repo o/r --$method --match-head-commit abc"
-  if [ "$approve" = "true" ]; then
-    grep -qx "pr review 7 --repo o/r --approve" "$dir/calls" || fail "merge/$name: no approval"
-  else
-    grep -q "pr review" "$dir/calls" && fail "merge/$name: approved although auto-approve is off"
-  fi
 }
-merge_case approve-and-merge   true  squash true  -
-merge_case approve-rejected    true  squash true  notice  FAKE_REVIEW_FAIL=1
-merge_case no-approve          false squash true  -
-merge_case rebase              true  rebase true  -
-merge_case merge-rejected      true  squash false warning FAKE_REVIEW_FAIL=1 FAKE_MERGE_FAIL=1
+reason_is() {
+  local got; got=$(sed -n 's/^reason=//p' "$2/output")
+  if [ "$got" = "$3" ]; then pass "$1: reason $3"; else fail "$1: reason '$got', want '$3'"; fi
+}
+called() {
+  if grep -qxF -- "$3" "$2/calls"; then pass "$1: called '$3'"; else fail "$1: '$3' not called"; fi
+}
+not_called() {
+  if grep -qF -- "$3" "$2/calls"; then fail "$1: '$3' was called"; else pass "$1: no '$3'"; fi
+}
+
+# The approval names the checked commit: without commit_id GitHub approves the
+# PR's latest commit, which could be one pushed after CI was checked.
+D=$(merge_dir approve-and-merge); merge_run "$D" true squash
+check merge/approve-and-merge "$D" $? 0 merged true -
+reason_is merge/approve-and-merge "$D" merged
+called merge/approve-and-merge "$D" "$APPROVAL"
+called merge/approve-and-merge "$D" "pr merge 7 --repo o/r --squash --match-head-commit abc"
+
+D=$(merge_dir approve-rejected); merge_run "$D" true squash FAKE_REVIEW_FAIL=1
+check merge/approval-rejected-still-merges "$D" $? 0 merged true notice "not permitted to approve"
+
+D=$(merge_dir no-approve); merge_run "$D" false squash
+check merge/no-approve "$D" $? 0 merged true -
+not_called merge/no-approve "$D" "pulls/7/reviews"
+
+D=$(merge_dir rebase); merge_run "$D" true rebase
+check merge/rebase "$D" $? 0 merged true -
+called merge/rebase "$D" "pr merge 7 --repo o/r --rebase --match-head-commit abc"
+
+D=$(merge_dir merge-rejected); merge_run "$D" true squash FAKE_MERGE_FAIL=1
+check merge/merge-rejected "$D" $? 0 merged false warning "base branch policy prohibits the merge"
+reason_is merge/merge-rejected "$D" merge-failed
+
+# Re-read right before merging: whatever changed since the CI decision wins.
+D=$(merge_dir closed); echo '{"state":"closed","head":{"sha":"abc"},"draft":false,"mergeable":null,"mergeable_state":"unknown"}' > "$D/pr.1.json"
+merge_run "$D" true squash
+check merge/closed-meanwhile "$D" $? 0 merged false notice
+reason_is merge/closed-meanwhile "$D" closed
+not_called merge/closed-meanwhile "$D" "pulls/7/reviews"
+not_called merge/closed-meanwhile "$D" "pr merge"
+
+D=$(merge_dir new-head); echo '{"state":"open","head":{"sha":"def"},"draft":false,"mergeable":true,"mergeable_state":"clean"}' > "$D/pr.1.json"
+merge_run "$D" true squash
+check merge/new-head-meanwhile "$D" $? 0 merged false notice "new head commit (def)"
+reason_is merge/new-head-meanwhile "$D" superseded
+not_called merge/new-head-meanwhile "$D" "pulls/7/reviews"
+not_called merge/new-head-meanwhile "$D" "pr merge"
+
+D=$(merge_dir draft); echo '{"state":"open","head":{"sha":"abc"},"draft":true,"mergeable":true,"mergeable_state":"draft"}' > "$D/pr.1.json"
+merge_run "$D" true squash
+check merge/draft "$D" $? 0 merged false notice
+reason_is merge/draft "$D" draft
+not_called merge/draft "$D" "pr merge"
+
+D=$(merge_dir conflict); echo '{"state":"open","head":{"sha":"abc"},"draft":false,"mergeable":false,"mergeable_state":"dirty"}' > "$D/pr.1.json"
+merge_run "$D" true squash
+check merge/conflict "$D" $? 0 merged false notice "dirty"
+reason_is merge/conflict "$D" not-mergeable
+not_called merge/conflict "$D" "pulls/7/reviews"
+not_called merge/conflict "$D" "pr merge"
+
+# GitHub computes `mergeable` in the background (null until then).
+D=$(merge_dir mergeability-computing)
+echo '{"state":"open","head":{"sha":"abc"},"draft":false,"mergeable":null,"mergeable_state":"unknown"}' > "$D/pr.1.json"
+echo "$PR_READY" > "$D/pr.3.json"
+merge_run "$D" true squash
+check merge/waits-for-mergeability "$D" $? 0 merged true -
+if [ "$(grep -c 'pulls/7 ' "$D/calls")" -eq 3 ] && [ "$(cat "$D/clock")" -eq 10 ]; then pass "merge/waits-for-mergeability: 3 reads, 10 s"; else fail "merge/waits-for-mergeability: $(grep -c 'pulls/7 ' "$D/calls") reads, $(cat "$D/clock") s"; fi
+
+D=$(merge_dir mergeability-unknown)
+echo '{"state":"open","head":{"sha":"abc"},"draft":false,"mergeable":null,"mergeable_state":"unknown"}' > "$D/pr.1.json"
+merge_run "$D" true squash
+check merge/unknown-mergeability-merge-call-decides "$D" $? 0 merged true - "the merge call decides"
+if [ "$(cat "$D/clock")" -eq 30 ]; then pass "merge/unknown-mergeability: gave up after 30 s"; else fail "merge/unknown-mergeability: $(cat "$D/clock") s"; fi
+
+D=$(merge_dir pr-unreadable); raw "$D" pr.1.json HTTP500
+merge_run "$D" true squash
+check merge/pr-unreadable "$D" $? 0 merged false warning
+not_called merge/pr-unreadable "$D" "pr merge"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"
