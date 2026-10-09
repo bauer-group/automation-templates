@@ -60,6 +60,12 @@ billed to the organization".
 **Trigger:** Nur Änderungen am Modul, am Self-Test, an der Fixture oder am Step-Test (pfadgefiltert)  
 **Doku:** [docs/workflows/modules-backup-roundtrip-test.md](../../docs/workflows/modules-backup-roundtrip-test.md)
 
+#### ✅ [workflow-validation.yml](./workflow-validation.yml) - Workflow Validation
+**Zweck:** Prüft jede Änderung an Workflows, Actions und den ausgelieferten Beispielen, bevor sie Consumer erreicht  
+**Module verwendet:** modules-validate-workflows (actionlint + shellcheck über `.github/workflows/` und `github/workflows/examples/`, Permission-Ceiling)  
+**Step-Tests:** führen die echten Step-Bodies aus, u. a. docker-build (Plattformen, Token-Secret, Dockerfile-Write-back, Primary Tag), docker-maintenance-dependabot (Merge nach grüner CI), security-scan, docker-base-image-monitor (Digest erst nach erfolgreichem Release) und semantic-release; dazu der workflow-audit (Script-Injection, nicht deklarierte Variablen)  
+**Trigger:** PR/Push mit Änderungen unter `.github/workflows/`, `.github/actions/` oder `github/workflows/examples/`
+
 ### Reusable Workflows (Neu)
 
 #### 🔷 [dotnet-build.yml](./dotnet-build.yml) - .NET Build & Test
@@ -179,6 +185,7 @@ jobs:
 | **pr-labeler.yml** | Pull Request | modules-pr-labeler | PR Labeling |
 | **issue-automation.yml** | Issue/PR Events | modules-issue-automation | Issue Management |
 | **backup-roundtrip-selftest.yml** | PR/Push (Modul + Fixture) | modules-backup-roundtrip-test | Self-Test des Backup-Round-Trip-Moduls |
+| **workflow-validation.yml** | PR/Push (Workflows, Actions, Beispiele) | modules-validate-workflows | actionlint, Step-Tests, workflow-audit |
 
 ### Reusable Workflows
 | Workflow | Type | Hauptfunktionen | Plattformen |
