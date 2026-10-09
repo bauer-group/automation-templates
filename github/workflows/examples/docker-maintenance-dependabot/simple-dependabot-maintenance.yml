@@ -14,9 +14,10 @@
 # 3. CI runs your Docker build workflow on the PR
 # 4. This workflow waits for that CI - until it is complete and has not
 #    changed for 3 minutes, 5 minutes after the start at the earliest - and
-#    merges the PR if no check failed and at least one passed. Patch updates
-#    only by default (merge-update-types); minor and major updates, failed CI
-#    and PRs without a passed check stay open
+#    merges the PR if no check failed and every workflow in
+#    required-workflows ran on the PR and passed. Patch updates only by
+#    default (merge-update-types); minor and major updates, failed CI and
+#    PRs the required workflow did not test stay open
 # 5. Semantic release creates a PATCH version (e.g., 1.0.0 → 1.0.1) and the
 #    Docker image is rebuilt and pushed - with the next push to main that is
 #    not made by GITHUB_TOKEN, or when the release workflow is run by hand:
@@ -25,12 +26,14 @@
 # Prerequisites:
 # 1. Enable Dependabot in repository settings
 # 2. Add .github/dependabot.yml (see below)
-# 3. A PR CI that runs on Dependabot PRs. No ruleset, branch protection or
-#    "Allow auto-merge" is needed - a ruleset with required checks would also
-#    block semantic-release from pushing to main.
+# 3. A PR CI workflow that builds and tests the update on `pull_request`,
+#    named in required-workflows below - without it nothing is merged. No
+#    ruleset, branch protection or "Allow auto-merge" is needed - a ruleset
+#    with required checks would also block semantic-release from pushing to
+#    main.
 #    Keep the `paths:` below within the `pull_request` `paths:` of that CI:
-#    any passed check counts, also one that tests nothing (e.g. GitGuardian),
-#    so a change to a file no build covers would be merged untested.
+#    a PR that does not start it stays open, as it was not tested. A passed
+#    check that tests nothing (e.g. GitGuardian) is not enough.
 #
 # Required .github/dependabot.yml in your repo:
 # -----------------------------------------------------------------------------
@@ -58,15 +61,15 @@ name: Docker Maintenance
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    # Only files whose change also starts your PR CI (Prerequisites 3)
+    # Only files whose change also starts the required workflow (Prerequisites 3)
     paths:
       - 'Dockerfile'
       - 'src/Dockerfile'
 
 # The reusable workflow declares no permissions of its own - the token has
 # exactly these. The three read scopes are needed in private repositories
-# (public CI results are readable without them); see
-# docs/workflows/docker-maintenance.md#permissions.
+# (public CI results are readable without them) - without them every PR stays
+# open; see docs/workflows/docker-maintenance.md#permissions.
 permissions:
   contents: write       # merge
   pull-requests: write  # approve, read the PR
@@ -79,6 +82,9 @@ jobs:
     name: Auto-merge Dependabot PRs
     uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
     with:
+      # The PR CI workflow(s) that must have run on the PR and passed, comma
+      # separated. Empty: nothing is merged.
+      required-workflows: .github/workflows/docker-release.yml
       merge-method: 'squash'
       auto-approve: true
       merge-update-types: 'patch'   # e.g. 'patch,minor' to merge minor updates too
