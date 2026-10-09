@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.2.2](https://github.com/bauer-group/automation-templates/compare/v11.2.1...v11.2.2) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* **deploy:** removed the deleted ai-issue-summary workflow ([6d35ef4](https://github.com/bauer-group/automation-templates/commit/6d35ef4efb2abe7d6c4424f18d8f259625e59a05))
+
 ## [11.2.1](https://github.com/bauer-group/automation-templates/compare/v11.2.0...v11.2.1) (2026-10-09)
 
 ### 🐛 Bug Fixes
