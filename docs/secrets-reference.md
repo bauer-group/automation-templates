@@ -16,7 +16,7 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 | `DOTNET_NUGET_RESTORE_CREDENTIALS` | Optional | PAT (`read:packages`) für Restore aus privaten NuGet-Feeds |
 | `PYPI_API_TOKEN` | Optional | PyPI Publishing Token |
 | `TEAMS_WEBHOOK_URL` | Optional | Microsoft Teams Notifications |
-| `PAT_READWRITE_ORGANISATION` | Optional | PAT für Fork-Sync & Auto-Wartung (triggert Folge-Workflows) |
+| `PAT_READWRITE_ORGANISATION` | Optional | PAT für Fork-Sync, Auto-Wartung und Base-Image-Monitor (triggert Folge-Workflows, schreibt Digest-Variablen) |
 
 ## Secrets nach Kategorie
 
@@ -58,7 +58,7 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 
 > **Fork Docker Build** (`fork-docker-build.yml`) benötigt **kein** konfiguriertes Secret — der GHCR-Login läuft über den automatischen `GITHUB_TOKEN`.
 
-> **Backup Round-Trip Test** (`modules-backup-roundtrip-test.yml`) benötigt **kein** Secret: Der GHCR-Login nutzt den automatischen `GITHUB_TOKEN` (der aufrufende Job muss `packages: read` gewähren), und jedes Passwort, das der Stack braucht, wird pro Lauf über `generated-secrets` erzeugt und maskiert. Produktions-Credentials gehören weder in `env-overrides` noch ins Repository — Quellen, die ein externes Konto brauchen, werden für den Test abgeschaltet. Siehe [Backup Round-Trip Test → Secrets](./workflows/modules-backup-roundtrip-test.md#secrets).
+> **Backup Round-Trip Test** (`modules-backup-roundtrip-test.yml`) benötigt **kein** Secret: Der GHCR-Login nutzt den automatischen `GITHUB_TOKEN` (der aufrufende Job muss `packages: read` gewähren), und jedes Passwort, das der Stack braucht, wird pro Lauf über `generated-secrets` erzeugt und maskiert — ebenso die Zugangsdaten des Wegwerf-S3-Servers (`s3-destination`). Produktions-Credentials gehören weder in `env-overrides` noch ins Repository — Quellen, die ein externes Konto brauchen, werden für den Test abgeschaltet. Siehe [Backup Round-Trip Test → Secrets](./workflows/modules-backup-roundtrip-test.md#secrets).
 
 > **GitHub Packages im Docker-Build** (`docker-build.yml`) braucht **keinen** PAT: `github-token-secret-id: npm_token` reicht den eigenen `GITHUB_TOKEN` des Workflows als BuildKit-Secret in den Build — auch in Dependabot-Läufen, die keine Actions-Secrets erhalten. Der Token ist dabei **nicht** nur lesend: Er trägt die Rechte von `docker-build.yml` (u. a. `contents: write` und `packages: write`) und ist für jeden Prozess im `RUN` lesbar, der ihn mountet. Deshalb nur im Install-`RUN` mounten, wo möglich `npm ci --ignore-scripts`, dort kein `set -x`. Siehe [Docker Build → Build Secrets](./workflows/docker-build.md#build-secrets).
 
@@ -66,9 +66,13 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
-| `PAT_READWRITE_ORGANISATION` | sync-upstream, modules-auto-maintenance, modules-docker-base-image-monitor | PAT für Pushes/Commits, die **Folge-Workflows triggern** (ein `GITHUB_TOKEN`-Push tut das nicht). Bei `sync-upstream` nötig, damit der `workspace`-Push den Build startet. Bei den Base-Image-Monitoren zusätzlich für den GHCR-Login. | [github.com/settings/tokens](https://github.com/settings/tokens) → Classic: Scopes `repo` + `workflow` + `read:packages` · Fine-grained: **Contents** + **Workflows** + **Issues** (Read/Write) + **Packages** (Read) |
+| `PAT_READWRITE_ORGANISATION` | sync-upstream, modules-auto-maintenance, modules-docker-base-image-monitor | PAT für Pushes/Commits, die **Folge-Workflows triggern** (ein `GITHUB_TOKEN`-Push tut das nicht). Bei `sync-upstream` nötig, damit der `workspace`-Push den Build startet. Beim Base-Image-Monitor (Pflicht) zusätzlich für die Digest-Variablen `<VAR>` und `<VAR>_PENDING`, den `workflow_dispatch` des Release-Workflows und das Lesen von dessen Ergebnis. In `modules-auto-maintenance` auch für den GHCR-Login, wenn kein `MAINTENANCE_TOKEN` gesetzt ist. | [github.com/settings/tokens](https://github.com/settings/tokens) → Classic: Scopes `repo` + `workflow` (+ `read:packages`, siehe unten) · Fine-grained: **Contents** + **Variables** + **Actions** + **Workflows** + **Issues** (Read/Write) |
+| `MAINTENANCE_TOKEN` | modules-auto-maintenance | Empfohlener Name für den PAT der Auto-Wartung. Reihenfolge: `MAINTENANCE_TOKEN` → `PAT_READWRITE_ORGANISATION` → `GITHUB_TOKEN` (ohne Variablen-Schreibzugriff und Dispatch, also ohne Base-Image-Monitoring). Wird auch für den GHCR-Login genutzt. | Classic: `repo` (+ `read:packages`, siehe unten) · Fine-grained: **Contents** + **Variables** + **Actions** (Read/Write) |
+| `REGISTRY_READ_TOKEN` | modules-docker-base-image-monitor | **Optional.** GHCR-Login für Registries **außerhalb** dieser Enterprise. Ohne ihn liest der Monitor die Manifeste mit `github.token`. | Classic: `read:packages` |
 
-> **`read:packages` / Packages (Read)** wird nur für die Base-Image-Monitore benötigt, und dort nur, wenn **interne oder private** Images überwacht werden. Fehlt der Scope, gelingt der Login und der anschließende Manifest-Zugriff wird abgelehnt — ein lauter, aber leicht fehlzudeutender Fehler. Siehe [GHCR Internal Visibility](./ghcr-internal-visibility.md).
+> **Registry-Login der Base-Image-Checks:** `modules-docker-base-image-monitor` nutzt für den GHCR-Login **nicht** den PAT, sondern `github.token` — der **aufrufende** Workflow muss dafür `packages: read` gewähren (auch org-übergreifend innerhalb der Enterprise); `PAT_READWRITE_ORGANISATION` braucht dort keinen Packages-Scope. `modules-auto-maintenance` loggt sich dagegen mit `MAINTENANCE_TOKEN` bzw. `PAT_READWRITE_ORGANISATION` ein: Dieser PAT braucht `read:packages`, wenn **interne oder private** Images überwacht werden. Fehlt der Scope, gelingt der Login und der anschließende Manifest-Zugriff wird abgelehnt — ein lauter, aber leicht fehlzudeutender Fehler. Siehe [GHCR Internal Visibility](./ghcr-internal-visibility.md) und [Docker Base Image Monitor → Secrets](./workflows/modules-docker-base-image-monitor.md#secrets).
+
+> **Docker Maintenance (Dependabot)** (`docker-maintenance-dependabot.yml`) benötigt **kein** Secret: Es merged mit dem `GITHUB_TOKEN` des Jobs, dessen Rechte allein der aufrufende Workflow festlegt (`contents: write`, `pull-requests: write`, in privaten Repositories zusätzlich `checks: read`, `statuses: read`, `actions: read`). Siehe [Docker Maintenance → Permissions](./workflows/docker-maintenance.md#permissions). Dependabots eigene Registry-Secrets: nächster Abschnitt.
 
 > Als **Organization Secret** hinterlegen (gilt dann für alle Repos) — oder als **Repository-Secret** pro Fork, falls dieser unter einem **persönlichen Account** liegt (dort gibt es keine Org-Secrets). Fehlt der PAT, laufen Sync & Merge weiterhin, aber der nachgelagerte Build wird **nicht** automatisch getriggert (Warnung im Log).
 
@@ -338,6 +342,18 @@ secrets:
   PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}           # PyPI Publishing
   TEST_PYPI_API_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }} # TestPyPI Publishing
   CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}             # Coverage Upload
+```
+
+### modules-docker-base-image-monitor.yml
+
+```yaml
+permissions:
+  contents: read
+  packages: read                  # GHCR-Login mit github.token (interne/private Images)
+jobs:
+  check:
+    uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
+    secrets: inherit              # PAT_READWRITE_ORGANISATION (Pflicht), REGISTRY_READ_TOKEN (optional)
 ```
 
 ### docker-build.yml

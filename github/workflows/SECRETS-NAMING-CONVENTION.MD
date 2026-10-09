@@ -43,6 +43,17 @@ This document defines the naming convention for GitHub Secrets used in our workf
 | `DOCKER_REGISTRY_USERNAME` | Username for Docker registry authentication | Global | All build workflows |
 | `DOCKER_REGISTRY_PASSWORD` | Password for Docker registry authentication | Global | All build workflows |
 
+### 🔧 Maintenance & Base Images
+
+| Secret Name | Description | Scope | Used In |
+|------------|-------------|-------|---------|
+| `PAT_READWRITE_ORGANISATION` | PAT whose pushes start follow-up workflows; writes the base image digest variables (`<VAR>`, `<VAR>_PENDING`), dispatches the release and reads its result. Required by the base image monitor | Global | sync-upstream.yml, modules-docker-base-image-monitor.yml, modules-auto-maintenance.yml |
+| `MAINTENANCE_TOKEN` | Preferred name of the auto-maintenance PAT; takes precedence over `PAT_READWRITE_ORGANISATION` | Project | modules-auto-maintenance.yml |
+| `REGISTRY_READ_TOKEN` | **Optional.** GHCR login for registries outside this enterprise; without it the monitor reads manifests with `github.token` (`packages: read` in the caller) | Global | modules-docker-base-image-monitor.yml |
+| `DEPENDABOT_GHCR_USER` / `DEPENDABOT_GHCR_TOKEN` | Registry credentials for Dependabot itself (Dependabot secret store, not Actions) for internal or private base images | Project | `.github/dependabot.yml` |
+
+`docker-maintenance-dependabot.yml` and `modules-backup-roundtrip-test.yml` need no secret: they run on the job's `GITHUB_TOKEN` with the permissions the caller grants. See [Secrets Reference](../../docs/secrets-reference.md).
+
 ### 📊 Code Quality & Analysis
 
 | Secret Name | Description | Scope | Used In |
