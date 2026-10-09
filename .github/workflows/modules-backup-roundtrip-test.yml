@@ -900,12 +900,18 @@ jobs:
               echo "::error title=Backup round trip::upgrade-from: service '$SERVICE' has no image reference in the configuration the previous release starts from"
               exit 1
             fi
+            # A digest names one exact registry image: Docker refuses to tag
+            # another image as it, so the previous release cannot take it.
+            if [[ "$REF" == *@* ]]; then
+              echo "::error title=Backup round trip::upgrade-from: service '$SERVICE' pins its image by digest ($REF) - no other image can be tagged as a digest reference. Give the service a tag for the round trip (env-overrides or a CI-only override file)."
+              exit 1
+            fi
             if [[ "$SPEC" == *[/:@]* ]]; then
               OLD="$SPEC"
             else
               # The repository of the reference the service resolves to, with
               # the release's tag: ghcr.io/acme/app:stable -> ghcr.io/acme/app:1.4.2
-              REPOSITORY="${REF%%@*}"
+              REPOSITORY="$REF"
               [[ "${REPOSITORY##*/}" != *:* ]] || REPOSITORY="${REPOSITORY%:*}"
               OLD="$REPOSITORY:$SPEC"
             fi
@@ -954,6 +960,12 @@ jobs:
 
             if [ -z "$IMAGE_REF" ]; then
               echo "::error title=Backup round trip::build-images: service '$SERVICE' has no image reference in the active configuration (unknown service, inactive profile, or no 'image:' key)"
+              exit 1
+            fi
+            # A digest names one exact registry image; no build can be tagged
+            # as it, and Compose would start the registry's image instead.
+            if [[ "$IMAGE_REF" == *@* ]]; then
+              echo "::error title=Backup round trip::build-images: service '$SERVICE' pins its image by digest ($IMAGE_REF) - a build cannot be tagged as a digest reference, so the stack would run the registry's image. Give the service a tag for the round trip (env-overrides or a CI-only override file)."
               exit 1
             fi
 

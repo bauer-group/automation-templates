@@ -724,7 +724,7 @@ previous_case() {
 {"services": {
   "app":        {"image": "ghcr.io/acme/app:stable"},
   "worker":     {"image": "ghcr.io/acme/app:stable"},
-  "app-backup": {"image": "registry.example.com:5000/acme/app-backup@sha256:0123"},
+  "app-backup": {"image": "registry.example.com:5000/acme/app-backup:stable"},
   "cache":      {"image": "redis:8"}
 }}
 JSON
@@ -739,9 +739,9 @@ tags() { tr '\n' '|' < "$DIR/tags" | sed 's/|$//'; }
 previous_case latest; echo '{"tag_name": "v0.2.61", "name": "v0.2.61"}' > "$DIR/release.json"
 run_previous UPGRADE_FROM=latest-release; expect_rc "previous latest-release: step passes" $? 0
 expect_eq "previous latest-release: asks the releases API of this repository" "$(cat "$DIR/curl.log")" "curl https://api.github.test/repos/acme/stack/releases/latest"
-expect_eq "previous latest-release: the release's images take over the references (leading v dropped, tag and digest replaced, registry port kept)" \
-  "$(tags)" "ghcr.io/acme/app:0.2.61 -> ghcr.io/acme/app:stable|registry.example.com:5000/acme/app-backup:0.2.61 -> registry.example.com:5000/acme/app-backup@sha256:0123"
-expect_eq "previous latest-release: references kept out of Pull Images" "$(sort "$DIR/previous-images.txt" | tr '\n' ' ')" "ghcr.io/acme/app:stable registry.example.com:5000/acme/app-backup@sha256:0123 "
+expect_eq "previous latest-release: the release's images take over the references (leading v dropped, tag replaced, registry port kept)" \
+  "$(tags)" "ghcr.io/acme/app:0.2.61 -> ghcr.io/acme/app:stable|registry.example.com:5000/acme/app-backup:0.2.61 -> registry.example.com:5000/acme/app-backup:stable"
+expect_eq "previous latest-release: references kept out of Pull Images" "$(sort "$DIR/previous-images.txt" | tr '\n' ' ')" "ghcr.io/acme/app:stable registry.example.com:5000/acme/app-backup:stable "
 if grep -q '^ROUNDTRIP_PREVIOUS_RELEASE=v0.2.61$' "$DIR/env"; then pass "previous latest-release: release exported for the scripts"; else fail "previous latest-release: release exported for the scripts" "$(cat "$DIR/env")"; fi
 expect_eq "previous latest-release: images exported for the scripts" \
   "$(sed -n 's/^ROUNDTRIP_PREVIOUS_IMAGES=//p' "$DIR/env" | jq -c .)" \
@@ -759,7 +759,7 @@ previous_case object; echo '{"tag_name": "2.0.0"}' > "$DIR/release.json"
 run_previous UPGRADE_FROM='{"app-backup": "ghcr.io/acme/legacy-backup:0.17.29", "app": "latest-release"}'
 expect_rc "previous per service: step passes" $? 0
 expect_eq "previous per service: a full reference is used as given, latest-release resolved" "$(tags)" \
-  "ghcr.io/acme/legacy-backup:0.17.29 -> registry.example.com:5000/acme/app-backup@sha256:0123|ghcr.io/acme/app:2.0.0 -> ghcr.io/acme/app:stable"
+  "ghcr.io/acme/legacy-backup:0.17.29 -> registry.example.com:5000/acme/app-backup:stable|ghcr.io/acme/app:2.0.0 -> ghcr.io/acme/app:stable"
 
 previous_case only-one
 run_previous UPGRADE_FROM='{"app": "1.0.0"}'
@@ -781,6 +781,13 @@ previous_case no-image
 jq '.services.app |= del(.image)' "$DIR/compose-config.json" > "$DIR/c.json" && mv "$DIR/c.json" "$DIR/compose-config.json"
 run_previous UPGRADE_FROM=1.0.0; expect_rc "previous: service without an image reference" $? 1
 expect_log "previous: names the service" "service 'app' has no image reference"
+
+# Docker refuses to tag an image as a digest reference.
+previous_case digest
+jq '.services["app-backup"].image = "registry.example.com:5000/acme/app-backup@sha256:0123"' "$DIR/compose-config.json" > "$DIR/c.json" && mv "$DIR/c.json" "$DIR/compose-config.json"
+run_previous UPGRADE_FROM=1.0.0; expect_rc "previous: a service pinned by digest" $? 1
+expect_log "previous: names the digest reference" "service 'app-backup' pins its image by digest (registry.example.com:5000/acme/app-backup@sha256:0123)"
+if grep -q "@sha256" "$DIR/tags"; then fail "previous: never tags a digest reference" "$(cat "$DIR/tags")"; else pass "previous: never tags a digest reference"; fi
 rm -f "$WORK/bin/curl"
 
 # === Build Images Under Test ====================================================
@@ -810,6 +817,12 @@ expect_eq "build with upgrade-from: the upgraded service waits under a staging t
 expect_eq "build with upgrade-from: only the image running from the start is under test yet" "$(cat "$DIR/built-images.txt")" "ghcr.io/acme/worker:stable"
 expect_eq "build with upgrade-from: every build is staged for the upgrade" "$(tr '\t\n' ' |' < "$DIR/staged-images.txt")" \
   "app roundtrip-staged/image-0:build|worker roundtrip-staged/image-1:build|"
+
+build_case digest
+echo '{"services": {"app": {"image": "ghcr.io/acme/app@sha256:0123"}}}' > "$DIR/compose-config.json"
+run_step build BUILD_IMAGES='[{"service": "app", "context": "."}]'; expect_rc "build: a service pinned by digest" $? 1
+expect_log "build: names the digest reference" "service 'app' pins its image by digest (ghcr.io/acme/app@sha256:0123)"
+if [ -s "$DIR/builds" ]; then fail "build: nothing built for a digest reference" "$(cat "$DIR/builds")"; else pass "build: nothing built for a digest reference"; fi
 
 # === Pull Images (upgrade-from) =================================================
 cat > "$WORK/bin/docker" <<'STUB'
