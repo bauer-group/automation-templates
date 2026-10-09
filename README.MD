@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-10-09 22:26:40 UTC -->
+<!-- Generated on 2026-10-09 22:32:40 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -124,10 +124,13 @@ jobs:
 │   │   └── platformio-build/     # PlatformIO cross-platform builds
 │   ├── config/                # 📋 Configuration Templates
 │   │   ├── claude-code/          # Claude Code Assistant configurations
+│   │   ├── docker-base-image-monitor/ # Base image monitor config schema + example
 │   │   ├── docker-build/         # Docker build configurations
+│   │   ├── docker-maintenance-dependabot/ # dependabot.yml template for base image updates
 │   │   ├── dotnet-build/         # .NET build configurations
 │   │   ├── dotnet-desktop-build/ # .NET desktop build configurations
 │   │   ├── issues/               # Issue template configurations
+│   │   ├── maintenance/          # Auto maintenance config schema
 │   │   ├── makefile-build/       # Makefile build configurations
 │   │   ├── meta-repository/      # Meta repository sync configurations
 │   │   ├── nodejs-build/         # Node.js build configurations
@@ -149,11 +152,13 @@ jobs:
 │       ├── claude-code.yml            # Claude Code AI assistant
 │       ├── coolify-deploy.yml         # Coolify deployment automation
 │       ├── docker-build.yml           # Docker build & deploy
+│       ├── docker-maintenance-dependabot.yml # Merge Dependabot PRs after their PR CI passed
 │       ├── documentation.yml          # Documentation automation
 │       ├── dotnet-build.yml           # .NET build & test
 │       ├── dotnet-desktop-build.yml   # .NET desktop builds
 │       ├── dotnet-package-msi.yml    # .NET MSI packaging (WiX)
 │       ├── dotnet-publish-library.yml # .NET library NuGet publishing
+│       ├── fork-docker-build.yml      # Multi-image build for forks
 │       ├── issue-automation.yml       # Automated issue management
 │       ├── makefile-build.yml         # Makefile-based builds
 │       ├── manual-release.yml         # Manual release workflow
@@ -174,7 +179,9 @@ jobs:
 │       ├── modules-validate-dockerfile.yml # Dockerfile validation (Hadolint)
 │       ├── modules-validate-compose.yml    # Docker Compose validation
 │       ├── modules-validate-shellscript.yml # Shell script validation (ShellCheck)
+│       ├── modules-auto-maintenance.yml # Base images + dependency updates with rollback
 │       ├── modules-backup-roundtrip-test.yml # Backup round trip of a compose stack
+│       ├── modules-docker-base-image-monitor.yml # Rebuild when a floating base image tag moves
 │       └── modules-*.yml              # Additional module workflows
 ├── github/                    # 🛠️ Repository Management Tools
 │   ├── branch-protect/           # Branch protection automation
@@ -183,18 +190,22 @@ jobs:
 │   ├── runner/                   # Self-hosted runner management
 │   └── workflows/                # Workflow examples & documentation
 │       └── examples/             # 📋 Usage Examples
+│           ├── auto-maintenance/     # Auto maintenance caller + config
 │           ├── backup-roundtrip/     # Backup round-trip test examples
 │           ├── ci-cd/                # General CI/CD examples
 │           ├── claude-code/          # Claude Code assistant examples
 │           ├── coolify-deploy/       # Coolify deployment examples
 │           ├── docker/               # Docker build examples
+│           ├── docker-base-image-monitor/ # Base image monitor callers
 │           ├── docker-compose/       # Docker Compose examples
+│           ├── docker-maintenance-dependabot/ # Dependabot merge callers
 │           ├── dockerfile-validation/ # Dockerfile linting examples
 │           ├── documentation/        # Documentation examples
 │           ├── dotnet-build/         # .NET project examples
 │           ├── dotnet-desktop-build/ # .NET desktop examples
 │           ├── dotnet-nuget/         # .NET NuGet publishing examples
 │           ├── dotnet-package-msi/  # .NET MSI packaging examples
+│           ├── fork-docker-build/    # Fork image build caller
 │           ├── makefile-build/       # Makefile project examples
 │           ├── meta-repository/      # Meta repository examples
 │           ├── nodejs-build/         # Node.js project examples
@@ -216,11 +227,15 @@ jobs:
 │   │   ├── claude-code.md            # Claude Code AI assistant
 │   │   ├── coolify-deploy.md         # Coolify deployment
 │   │   ├── docker-build.md           # Docker build system
+│   │   ├── docker-maintenance.md     # Docker image maintenance (Dependabot / Renovate)
 │   │   ├── dotnet-build.md           # .NET build system
 │   │   ├── dotnet-desktop-build.md   # .NET desktop builds
+│   │   ├── fork-docker-build.md      # Fork Docker build
 │   │   ├── makefile-build.md         # Makefile build system
 │   │   ├── meta-repository-sync.md   # Meta repository sync
+│   │   ├── modules-auto-maintenance.md # Auto maintenance
 │   │   ├── modules-backup-roundtrip-test.md # Backup round-trip test
+│   │   ├── modules-docker-base-image-monitor.md # Base image monitor
 │   │   ├── modules-validate-compose.md # Compose validation
 │   │   ├── modules-validate-dockerfile.md # Dockerfile validation (Hadolint)
 │   │   ├── modules-validate-shellscript.md # Shell validation
@@ -235,7 +250,7 @@ jobs:
 │   │   ├── stm32-build.md            # STM32 microcontroller builds
 │   │   └── platformio-build.md       # PlatformIO builds
 │   ├── README.template.MD        # This template file
-│   └── SECRETS-NAMING-CONVENTION.md # Secret naming standards
+│   └── secrets-reference.md      # Every secret, its workflows and scopes
 └── scripts/                   # 🔨 Utility Scripts
 ```
 
@@ -252,6 +267,8 @@ Complete Docker automation with multi-platform builds, security scanning, and en
 | **🔧 docker-build action** | Multi-platform Docker builds | Composite action with security scanning |
 | **🚀 docker-build workflow** | Complete Docker CI/CD | `uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main` |
 | **📋 Configuration Templates** | Pre-configured setups | `default`, `web-application`, `microservice`, `enterprise` |
+| **🐳 Docker maintenance (Dependabot)** | Merge Dependabot base image PRs only after the named PR CI passed | `uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main` |
+| **🔍 Base image monitor** | Release a rebuild when a floating tag (`stable`, `latest`) moves; stored once the release succeeded | `uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main` |
 
 **Quick Start - Docker:**
 ```yaml
@@ -1052,6 +1069,9 @@ gh auth status --show-token
 ### 🚀 Workflow Systems Documentation
 
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
+- [🐳 **Fork Docker Build**](docs/workflows/fork-docker-build.md) - Multi-image build, Trivy gate and GHCR push for forked repositories
+- [🔧 **Auto Maintenance**](docs/workflows/modules-auto-maintenance.md) - Base image digests and dependency updates (npm, pip, .NET, Go) in one scheduled run, validated and rolled back on failure; npm, pip and .NET updates are not committed yet ([known limitation](docs/workflows/modules-auto-maintenance.md#bekannte-einschraenkung-dependency-updates-werden-nicht-committet))
+- [🐳 **Docker Image Maintenance**](docs/workflows/docker-maintenance.md) - Dependabot PRs merged after their PR CI passed (trigger scope, decision table), or Renovate
 - [🐍 **Python Build System**](docs/workflows/python-build.md) - Python application builds and testing
 - [🐍 **Python Semantic Release System**](docs/workflows/python-semantic-release.md) - Modern Python CI/CD with semantic versioning
 - [📦 **Semantic Release Config Contract**](docs/workflows/semantic-release-config.md) - What a repository's `semantic-release.json` actually controls, and what is silently ignored
@@ -1078,7 +1098,7 @@ gh auth status --show-token
 #### 🔍 Validation Modules
 
 - [🧪 **Backup Round-Trip Test**](docs/workflows/modules-backup-roundtrip-test.md) - Backup, delete, restore and verify real data of a compose stack before release, per compose variant (local, Traefik, Coolify), after an upgrade from the previous release and from an off-site S3 copy on a new host
-- [🔍 **Docker Base Image Monitor**](docs/workflows/modules-docker-base-image-monitor.md) - Base image digest drift detection
+- [🔍 **Docker Base Image Monitor**](docs/workflows/modules-docker-base-image-monitor.md) - Base image digest drift detection; digests stored once the release succeeded, failed releases retried, [operator recovery](docs/workflows/modules-docker-base-image-monitor.md#operator-recovery)
 - [🐳 **Dockerfile Validation**](docs/workflows/modules-validate-dockerfile.md) - Dockerfile linting with Hadolint
 - [📋 **Docker Compose Validation**](docs/workflows/modules-validate-compose.md) - Docker Compose validation
 - [🐚 **Shell Script Validation**](docs/workflows/modules-validate-shellscript.md) - Shell script linting with ShellCheck
@@ -1087,7 +1107,7 @@ gh auth status --show-token
 
 #### Build Actions
 
-- [🐳 **docker-build**](.github/actions/docker-build/README.md) - Multi-platform Docker builds with security
+- [🐳 **docker-build**](docs/workflows/docker-build.md#2-composite-action) - Multi-platform Docker builds with security ([action.yml](.github/actions/docker-build/action.yml))
 - [📦 **dotnet-nuget**](.github/actions/dotnet-nuget/action.yml) - .NET NuGet build, sign, and pack
 - [🔐 **dotnet-nuget-auth**](.github/actions/dotnet-nuget-auth/action.yml) - Authenticated restore from private NuGet feeds
 - [🪟 **dotnet-msi**](.github/actions/dotnet-msi/action.yml) - WiX MSI packaging for Windows deployment
@@ -1095,33 +1115,35 @@ gh auth status --show-token
 - [📟 **esp32-build**](.github/actions/esp32-build/README.md) - ESP32 microcontroller build automation with ESP-IDF
 - [🔧 **stm32-build**](.github/actions/stm32-build/README.md) - STM32 microcontroller build automation
 - [⚡ **platformio-build**](.github/actions/platformio-build/README.md) - PlatformIO cross-platform build automation
-- [🔧 **makefile-build**](.github/actions/makefile-build/README.md) - Makefile-based build automation
+- [🔧 **makefile-build**](.github/actions/makefile-build/README.MD) - Makefile-based build automation
 
 #### Security & Compliance Actions
 
-- [🛡️ **security-scan**](.github/actions/security-scan/README.md) - Multi-engine security scanning
-- [🔒 **gitleaks-scan**](.github/actions/gitleaks-scan/README.md) - Gitleaks secret detection
-- [📋 **license-compliance**](.github/actions/license-compliance/README.md) - SPDX license compliance
+- [🛡️ **security-scan**](.github/actions/security-scan/action.yml) - Multi-engine security scanning
+- [🔒 **gitleaks-scan**](.github/actions/gitleaks-scan/action.yml) - Gitleaks secret detection
+- [📋 **license-compliance**](.github/actions/license-compliance/action.yml) - SPDX license compliance
 
 #### AI & Automation Actions
 
-- [🤖 **claude-code**](.github/actions/claude-code/README.md) - AI-powered code assistant
-- [🔨 **artifact-generator**](.github/actions/artifact-generator/README.md) - Multi-format artifact generation
-- [🏷️ **labeler-triage**](.github/actions/labeler-triage/README.md) - Issue/PR labeling and triage
-- [🔀 **auto-merge**](.github/actions/auto-merge/README.md) - Automated PR merging
+- [🤖 **claude-code**](.github/actions/claude-code/action.yml) - AI-powered code assistant
+- [🔨 **artifact-generator**](.github/actions/artifact-generator/action.yml) - Multi-format artifact generation
+- [🏷️ **labeler-triage**](.github/actions/labeler-triage/action.yml) - Issue/PR labeling and triage
+- [🔀 **auto-merge**](.github/actions/auto-merge/action.yml) - Automated PR merging
 
 #### Utility Actions
 
-- [📝 **readme-generate**](.github/actions/readme-generate/README.md) - Professional README generation
-- [🛡️ **security-generate**](.github/actions/security-generate/README.md) - Security policy generation
+- [📝 **readme-generate**](.github/actions/readme-generate/action.yml) - Professional README generation
+- [🛡️ **security-generate**](.github/actions/security-generate/README.MD) - Security policy generation
 - [🚀 **semantic-release**](.github/actions/semantic-release/README.md) - Automated release management
-- [📋 **generate-changelog**](.github/actions/generate-changelog/README.md) - Changelog generation
+- [📋 **generate-changelog**](.github/actions/generate-changelog/action.yml) - Changelog generation
 - [🔔 **teams-notification**](.github/actions/teams-notification/README.md) - Microsoft Teams integration
 - [🧹 **repository-cleanup**](.github/actions/repository-cleanup/README.md) - Repository maintenance automation
 
 ### 📋 Configuration References
 
 - [🐳 **Docker Configurations**](.github/config/docker-build/) - Docker build configuration templates
+- [🔍 **Docker Base Image Monitor Configuration**](.github/config/docker-base-image-monitor/README.md) - Config schema, example and setup guide
+- [🐳 **Dependabot Configuration**](.github/config/docker-maintenance-dependabot/dependabot.yml) - `dependabot.yml` template for base image updates
 - [⚡ **Zephyr Configurations**](.github/config/zephyr-build/) - Zephyr RTOS build configuration templates
 - [📟 **ESP32 Configurations**](.github/config/esp32-build/) - ESP32 build configuration templates
 - [🔧 **STM32 Configurations**](.github/config/stm32-build/) - STM32 build configuration templates
@@ -1130,11 +1152,12 @@ gh auth status --show-token
 - [🛒 **Shopware 5 Configurations**](.github/config/shopware5-build/) - Shopware 5 plugin build configuration templates
 - [🔄 **Meta Repository Configurations**](.github/config/meta-repository/) - Meta repository sync configurations
 - [⚙️ **Workflow Configuration**](.github/config/README.md) - General workflow configuration guide
-- [🔒 **Secrets Naming Convention**](docs/SECRETS-NAMING-CONVENTION.md) - Standardized secret naming
+- [🔒 **Secrets Naming Convention**](github/workflows/SECRETS-NAMING-CONVENTION.MD) - Standardized secret naming
+- [🔑 **Secrets Reference**](docs/secrets-reference.md) - Every secret, the workflows that use it and the scopes it needs
 
 ### 🛠️ Repository Management Tools
 
-- [🔐 **Branch Protection Tools**](github/branch-protect/README.md) - Automated branch protection
+- [🔐 **Branch Protection Tools**](github/branch-protect/README.MD) - Automated branch protection
 - [🤖 **Claude Code Documentation**](github/claude-code/README.md) - AI-powered code assistant documentation
 - [🧹 **Repository Cleanup Tools**](github/cleanup/README.md) - Repository maintenance utilities
 - [🏃 **Self-Hosted Runner Setup**](github/runner/README.md) - Runner deployment and management
@@ -1143,6 +1166,11 @@ gh auth status --show-token
 
 - [🐳 **Docker Examples**](github/workflows/examples/docker/) - Complete Docker workflow examples
 - [🐳 **Docker Compose Examples**](github/workflows/examples/docker-compose/) - Docker Compose workflow examples
+- [🔧 **Auto Maintenance Examples**](github/workflows/examples/auto-maintenance/) - Weekly caller and a base image config
+- [🧪 **Backup Round-Trip Examples**](github/workflows/examples/backup-roundtrip/) - Minimal, gated release pipeline, plugin sources, upgrade from the previous release, off-site S3, compose variants
+- [🐳 **Fork Docker Build Examples**](github/workflows/examples/fork-docker-build/) - Drop-in caller for a fork's `workspace` branch
+- [🐳 **Docker Maintenance (Dependabot) Examples**](github/workflows/examples/docker-maintenance-dependabot/) - Merge after the PR CI: backup round-trip gate, own CI, several workflows, no PR CI
+- [🔍 **Docker Base Image Monitor Examples**](github/workflows/examples/docker-base-image-monitor/) - Daily check with release dispatch, several images, dry run
 - [🐳 **Dockerfile Validation Examples**](github/workflows/examples/dockerfile-validation/) - Dockerfile linting examples
 - [🐍 **Python Examples**](github/workflows/examples/python-build/) - Python build and test examples
 - [🐍 **Python Release Examples**](github/workflows/examples/python-release/) - Python semantic release examples
@@ -1184,7 +1212,7 @@ gh auth status --show-token
 
 - **💬 Discussions:** [GitHub Discussions](https://github.com/bauer-group/automation-templates/discussions) - Ask questions and share ideas
 - **🛠️ Contributing:** [Contributing Guide](CONTRIBUTING.MD) - Learn how to contribute
-- **📋 Code of Conduct:** [Code of Conduct](CODE_OF_CONDUCT.MD) - Community standards
+- **📋 Code of Conduct:** [Code of Conduct](CODE_OF_CONDUCT.md) - Community standards
 - **📧 Enterprise Support:** [support@bauer-group.com](mailto:support@bauer-group.com)
 - **🌐 Support Portal:** [https://support.bauer-group.com](https://support.bauer-group.com)
 
@@ -1201,5 +1229,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-10-09 22:26:40 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-10-09 22:32:40 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
