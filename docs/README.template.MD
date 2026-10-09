@@ -144,12 +144,12 @@ jobs:
 │       ├── coolify-deploy.yml         # Coolify deployment automation
 │       ├── docker-build.yml           # Docker build & deploy
 │       ├── docker-maintenance-dependabot.yml # Merge Dependabot PRs after their PR CI passed
-│       ├── fork-docker-build.yml      # Multi-image build for forks
 │       ├── documentation.yml          # Documentation automation
 │       ├── dotnet-build.yml           # .NET build & test
 │       ├── dotnet-desktop-build.yml   # .NET desktop builds
 │       ├── dotnet-package-msi.yml    # .NET MSI packaging (WiX)
 │       ├── dotnet-publish-library.yml # .NET library NuGet publishing
+│       ├── fork-docker-build.yml      # Multi-image build for forks
 │       ├── issue-automation.yml       # Automated issue management
 │       ├── makefile-build.yml         # Makefile-based builds
 │       ├── manual-release.yml         # Manual release workflow
@@ -190,13 +190,13 @@ jobs:
 │           ├── docker-base-image-monitor/ # Base image monitor callers
 │           ├── docker-compose/       # Docker Compose examples
 │           ├── docker-maintenance-dependabot/ # Dependabot merge callers
-│           ├── fork-docker-build/    # Fork image build caller
 │           ├── dockerfile-validation/ # Dockerfile linting examples
 │           ├── documentation/        # Documentation examples
 │           ├── dotnet-build/         # .NET project examples
 │           ├── dotnet-desktop-build/ # .NET desktop examples
 │           ├── dotnet-nuget/         # .NET NuGet publishing examples
 │           ├── dotnet-package-msi/  # .NET MSI packaging examples
+│           ├── fork-docker-build/    # Fork image build caller
 │           ├── makefile-build/       # Makefile project examples
 │           ├── meta-repository/      # Meta repository examples
 │           ├── nodejs-build/         # Node.js project examples
@@ -219,9 +219,9 @@ jobs:
 │   │   ├── coolify-deploy.md         # Coolify deployment
 │   │   ├── docker-build.md           # Docker build system
 │   │   ├── docker-maintenance.md     # Docker image maintenance (Dependabot / Renovate)
-│   │   ├── fork-docker-build.md      # Fork Docker build
 │   │   ├── dotnet-build.md           # .NET build system
 │   │   ├── dotnet-desktop-build.md   # .NET desktop builds
+│   │   ├── fork-docker-build.md      # Fork Docker build
 │   │   ├── makefile-build.md         # Makefile build system
 │   │   ├── meta-repository-sync.md   # Meta repository sync
 │   │   ├── modules-auto-maintenance.md # Auto maintenance
