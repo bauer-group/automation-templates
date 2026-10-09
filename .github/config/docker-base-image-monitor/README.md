@@ -73,6 +73,10 @@ Release-Run **erfolgreich** war. Bis dahin steht der Run in einer zweiten Variab
 speichern; fehlgeschlagen (z.B. rotes Backup-Round-Trip-Gate) → Release erneut
 dispatchen; läuft noch → abwarten. Details: [Release confirmation](../../../docs/workflows/modules-docker-base-image-monitor.md#release-confirmation).
 
+Bestätigt wird nur das Ergebnis des dispatchten Runs. Baut ein anderer Workflow die Images
+(z.B. ausgelöst durch das veröffentlichte Release, während `target-workflow` nur
+semantic-release ausführt), sieht der Monitor einen Fehler dieses Builds nicht.
+
 ---
 
 ## 🚀 Schnellstart
