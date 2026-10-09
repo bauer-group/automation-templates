@@ -247,7 +247,7 @@ jobs:
 │   │   ├── stm32-build.md            # STM32 microcontroller builds
 │   │   └── platformio-build.md       # PlatformIO builds
 │   ├── README.template.MD        # This template file
-│   └── SECRETS-NAMING-CONVENTION.md # Secret naming standards
+│   └── secrets-reference.md      # Every secret, its workflows and scopes
 └── scripts/                   # 🔨 Utility Scripts
 ```
 
@@ -1112,27 +1112,27 @@ gh auth status --show-token
 - [📟 **esp32-build**](.github/actions/esp32-build/README.md) - ESP32 microcontroller build automation with ESP-IDF
 - [🔧 **stm32-build**](.github/actions/stm32-build/README.md) - STM32 microcontroller build automation
 - [⚡ **platformio-build**](.github/actions/platformio-build/README.md) - PlatformIO cross-platform build automation
-- [🔧 **makefile-build**](.github/actions/makefile-build/README.md) - Makefile-based build automation
+- [🔧 **makefile-build**](.github/actions/makefile-build/README.MD) - Makefile-based build automation
 
 #### Security & Compliance Actions
 
-- [🛡️ **security-scan**](.github/actions/security-scan/README.md) - Multi-engine security scanning
-- [🔒 **gitleaks-scan**](.github/actions/gitleaks-scan/README.md) - Gitleaks secret detection
-- [📋 **license-compliance**](.github/actions/license-compliance/README.md) - SPDX license compliance
+- [🛡️ **security-scan**](.github/actions/security-scan/action.yml) - Multi-engine security scanning
+- [🔒 **gitleaks-scan**](.github/actions/gitleaks-scan/action.yml) - Gitleaks secret detection
+- [📋 **license-compliance**](.github/actions/license-compliance/action.yml) - SPDX license compliance
 
 #### AI & Automation Actions
 
-- [🤖 **claude-code**](.github/actions/claude-code/README.md) - AI-powered code assistant
-- [🔨 **artifact-generator**](.github/actions/artifact-generator/README.md) - Multi-format artifact generation
-- [🏷️ **labeler-triage**](.github/actions/labeler-triage/README.md) - Issue/PR labeling and triage
-- [🔀 **auto-merge**](.github/actions/auto-merge/README.md) - Automated PR merging
+- [🤖 **claude-code**](.github/actions/claude-code/action.yml) - AI-powered code assistant
+- [🔨 **artifact-generator**](.github/actions/artifact-generator/action.yml) - Multi-format artifact generation
+- [🏷️ **labeler-triage**](.github/actions/labeler-triage/action.yml) - Issue/PR labeling and triage
+- [🔀 **auto-merge**](.github/actions/auto-merge/action.yml) - Automated PR merging
 
 #### Utility Actions
 
-- [📝 **readme-generate**](.github/actions/readme-generate/README.md) - Professional README generation
-- [🛡️ **security-generate**](.github/actions/security-generate/README.md) - Security policy generation
+- [📝 **readme-generate**](.github/actions/readme-generate/action.yml) - Professional README generation
+- [🛡️ **security-generate**](.github/actions/security-generate/README.MD) - Security policy generation
 - [🚀 **semantic-release**](.github/actions/semantic-release/README.md) - Automated release management
-- [📋 **generate-changelog**](.github/actions/generate-changelog/README.md) - Changelog generation
+- [📋 **generate-changelog**](.github/actions/generate-changelog/action.yml) - Changelog generation
 - [🔔 **teams-notification**](.github/actions/teams-notification/README.md) - Microsoft Teams integration
 - [🧹 **repository-cleanup**](.github/actions/repository-cleanup/README.md) - Repository maintenance automation
 
@@ -1149,11 +1149,12 @@ gh auth status --show-token
 - [🛒 **Shopware 5 Configurations**](.github/config/shopware5-build/) - Shopware 5 plugin build configuration templates
 - [🔄 **Meta Repository Configurations**](.github/config/meta-repository/) - Meta repository sync configurations
 - [⚙️ **Workflow Configuration**](.github/config/README.md) - General workflow configuration guide
-- [🔒 **Secrets Naming Convention**](docs/SECRETS-NAMING-CONVENTION.md) - Standardized secret naming
+- [🔒 **Secrets Naming Convention**](github/workflows/SECRETS-NAMING-CONVENTION.MD) - Standardized secret naming
+- [🔑 **Secrets Reference**](docs/secrets-reference.md) - Every secret, the workflows that use it and the scopes it needs
 
 ### 🛠️ Repository Management Tools
 
-- [🔐 **Branch Protection Tools**](github/branch-protect/README.md) - Automated branch protection
+- [🔐 **Branch Protection Tools**](github/branch-protect/README.MD) - Automated branch protection
 - [🤖 **Claude Code Documentation**](github/claude-code/README.md) - AI-powered code assistant documentation
 - [🧹 **Repository Cleanup Tools**](github/cleanup/README.md) - Repository maintenance utilities
 - [🏃 **Self-Hosted Runner Setup**](github/runner/README.md) - Runner deployment and management
@@ -1208,7 +1209,7 @@ gh auth status --show-token
 
 - **💬 Discussions:** [GitHub Discussions]({{REPO_URL}}/discussions) - Ask questions and share ideas
 - **🛠️ Contributing:** [Contributing Guide](CONTRIBUTING.MD) - Learn how to contribute
-- **📋 Code of Conduct:** [Code of Conduct](CODE_OF_CONDUCT.MD) - Community standards
+- **📋 Code of Conduct:** [Code of Conduct](CODE_OF_CONDUCT.md) - Community standards
 - **📧 Enterprise Support:** [support@bauer-group.com](mailto:support@bauer-group.com)
 - **🌐 Support Portal:** [https://support.bauer-group.com](https://support.bauer-group.com)
 
