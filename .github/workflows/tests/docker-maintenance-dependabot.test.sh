@@ -7,12 +7,14 @@
 #
 #   guard  (id: guard) - update type against merge-update-types / allow-major,
 #                        input validation
-#   wait   (id: ci)    - polls check runs, check suites, commit statuses and
-#                        workflow runs of the PR head commit, leaves out its own
-#                        runs, waits for a complete and quiet state, decides
+#   wait   (id: ci)    - checks that every commit is a verified Dependabot
+#                        commit, polls check runs, check suites, commit statuses
+#                        and workflow runs of the PR head commit, leaves out its
+#                        own runs, waits for a complete and quiet state, decides
 #                        green / failed / no-checks / timeout / unreadable / ...
-#   merge  (id: merge) - optional approval (a rejection is only a notice), then
-#                        gh pr merge pinned to the head commit
+#   merge  (id: merge) - reads the PR again, optional approval of the checked
+#                        commit (a rejection is only a notice), then gh pr merge
+#                        pinned to the head commit
 #
 # Without this, `gh pr merge --auto` on a branch without required checks merged
 # at once - bauer-group/CS-BillingStack#12 three seconds after its label check
@@ -111,6 +113,24 @@ if [ -n "$TIMEOUT" ] && [ "$TIMEOUT" -ge 65 ]; then pass "job timeout covers the
 static_has   "self filter matches the job name"  'SELF_JOB_NAME: Docker Maintenance'
 static_has   "job name is what the filter uses"  '    name: Docker Maintenance'
 static_has   "module filter matches this file"   "contains(\"/.github/workflows/$(basename "$WORKFLOW_FILE")@\")"
+# Only Dependabot's PRs, and only events Dependabot raised.
+static_has   "job runs for Dependabot's PRs and events only" "if: github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'"
+# fetch-metadata's own author and signature checks stay on.
+static_lacks "fetch-metadata verification is not skipped" 'skip-verification|skip-commit-verification'
+# The job runs with a write token: nothing from the PR is checked out or run.
+static_lacks "nothing is checked out"            'actions/checkout|git (clone|fetch|checkout)'
+# Event data (PR title, branch, labels, ...) reaches the scripts only through
+# env, never as an expression inside a run block, where it would become code.
+EXPR_IN_RUN=$(awk '
+  /^ *run: \|$/ { match($0, /^ */); ind = RLENGTH; inrun = 1; next }
+  inrun {
+    if ($0 ~ /^ *$/) next
+    match($0, /^ */)
+    if (RLENGTH <= ind) inrun = 0
+    else if (index($0, "${{")) print NR ": " $0
+  }
+' "$WORKFLOW_FILE")
+if [ -z "$EXPR_IN_RUN" ]; then pass "no expressions inside run blocks"; else fail "expressions inside run blocks: $EXPR_IN_RUN"; fi
 
 # --- gh, date and sleep stubs -------------------------------------------------------
 mkdir -p "$WORK/bin"
@@ -146,6 +166,7 @@ case "$method $path" in
   *) echo "unexpected gh api call: $*" >&2; exit 2 ;;
 esac
 case "$path" in
+  repos/*/pulls/*/commits*)        kind=commits ;;
   repos/*/pulls/*)                 kind=pr ;;
   repos/*/commits/*/check-runs*)   kind=runs ;;
   repos/*/commits/*/check-suites*) kind=suites ;;
@@ -203,6 +224,10 @@ wfrun() {
 }
 join() { local IFS=,; echo "$*"; }
 
+# A commit of the PR as GET pulls/{n}/commits returns it (verified: Dependabot
+# commits are signed by GitHub).
+DEPENDABOT_COMMIT='{"sha":"abc","author":{"login":"dependabot[bot]"},"commit":{"verification":{"verified":true}}}'
+
 OWN_RUN=$(run $OWN 10 in_progress - "$SELF")
 OWN_SUITE=$(suite 10 in_progress - 1 github-actions)
 OWN_WFRUN=$(wfrun $RUN 10 in_progress - 1 pull_request "Docker Maintenance" 1)
@@ -225,6 +250,7 @@ new_case() {
   mkdir -p "$dir/temp"
   : > "$dir/output"; : > "$dir/calls"; echo 0 > "$dir/clock"
   echo '{"state":"open","head":{"sha":"abc"}}' > "$dir/pr.1.json"
+  echo "[$DEPENDABOT_COMMIT]" > "$dir/commits.1.json"
   fixture "$dir" runs 1 "$OWN_RUN"
   fixture "$dir" suites 1 "$OWN_SUITE"
   fixture "$dir" status 1
@@ -568,6 +594,29 @@ run_ci "$D"; check ci/rate-limit-is-retried "$D" $? 0 result no-checks notice "A
 D=$(new_case persistent-error)
 raw "$D" runs.1.json HTTP500
 run_ci "$D"; check ci/three-errors-give-up "$D" $? 0 result api-error warning
+
+# Every commit of the PR must be a verified commit by Dependabot -
+# fetch-metadata checks only the first one. Asked once per run.
+D=$(new_case commits-checked-once)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/commits-checked-once "$D" $? 0 result green -
+if [ "$(calls_to "$D" pulls/7/commits)" -eq 1 ]; then pass "ci/commits-asked-once"; else fail "ci/commits-asked-once: $(calls_to "$D" pulls/7/commits) calls"; fi
+
+D=$(new_case foreign-commit)
+echo "[$DEPENDABOT_COMMIT,{\"sha\":\"0123456789abcdef\",\"author\":{\"login\":\"mallory\"},\"commit\":{\"verification\":{\"verified\":true}}}]" > "$D/commits.1.json"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/commit-by-someone-else "$D" $? 0 result foreign-commits notice "0123456789ab (mallory, verified: true)"
+decided_at ci/commit-by-someone-else "$D" 0
+
+D=$(new_case unverified-commit)
+echo '[{"sha":"abc","author":{"login":"dependabot[bot]"},"commit":{"verification":{"verified":false}}}]' > "$D/commits.1.json"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/unverified-commit "$D" $? 0 result foreign-commits notice "(dependabot[bot], verified: false)"
+
+D=$(new_case unknown-author)
+echo '[{"sha":"abc","author":null,"commit":{"verification":{"verified":true}}}]' > "$D/commits.1.json"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)"
+run_ci "$D"; check ci/commit-without-github-author "$D" $? 0 result foreign-commits notice "(-, verified: true)"
 
 D=$(new_case pr-closed)
 echo '{"state":"closed","head":{"sha":"abc"}}' > "$D/pr.1.json"

@@ -147,6 +147,18 @@ the workflow working if the repository is made private.
 
 ### How Merging Works
 
+The job runs only for PRs opened by `dependabot[bot]`, and only on events
+Dependabot raised (it opened the PR or pushed to it): a person pushing to the
+branch never starts a merge. Every commit of the PR must be a verified commit
+by `dependabot[bot]`; `dependabot/fetch-metadata` checks only the first one.
+Nothing from the PR is checked out or run, and PR data reaches the scripts
+only through environment variables.
+
+A maintainer may re-run the job, e.g. after CI was fixed by a re-run. A re-run
+keeps the actor and the privileges of the first run and replays its event, so
+it can only merge that event's head commit - and only while it is still the
+PR's head.
+
 1. **Update type** - only the semver types in `merge-update-types` are merged
    (default `patch`). A `minor` or `major` update, or one whose type cannot be
    determined (digest, non-semver tag), stays open for review. The redpanda
@@ -183,6 +195,7 @@ annotation and in the job summary:
 | Situation                                                                | Annotation |
 |--------------------------------------------------------------------------|------------|
 | Update type not in `merge-update-types`, or unknown                      | notice     |
+| Not every commit of the PR is a verified commit by Dependabot            | notice     |
 | A check failed, was cancelled, timed out, needs action or went stale     | notice     |
 | A workflow could not start (`startup_failure`)                           | notice     |
 | No check ran on the PR, or all of them were skipped or neutral           | notice     |
@@ -445,7 +458,8 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 ## Security Considerations
 
 - **CI must pass**: Dependabot PRs are merged only when no check failed and at least one passed, after CI has been complete and unchanged for 3 minutes (5 minutes after the start at the earliest)
-- **Pinned merge**: the Dependabot merge names the head commit whose CI was checked
+- **Pinned merge**: the Dependabot merge and its approval name the head commit whose CI was checked
+- **Dependabot only**: the Dependabot job acts only on Dependabot's PRs, on events Dependabot raised, with verified Dependabot commits only; it never checks out PR code
 - **Auto-approve optional**: Can be disabled for manual review
 - **Audit trail**: All updates tracked in PRs and git history
 - **Update types**: Dependabot merges patch updates only unless `merge-update-types` widens it; Renovate leaves majors for review

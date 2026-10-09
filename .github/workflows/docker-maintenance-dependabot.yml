@@ -4,6 +4,8 @@
 # Merges Dependabot PRs after their CI has passed - no ruleset, no required
 # status checks and no "Allow auto-merge" setting needed:
 #
+# 0. Only Dependabot's PRs, on events Dependabot raised, with nothing but
+#    verified Dependabot commits. Nothing from the PR is checked out or run.
 # 1. Update type: only the types listed in `merge-update-types` are merged
 #    (default: patch). Everything else stays open for review.
 # 2. CI: the job waits until every other check run, check suite, commit status
@@ -103,7 +105,12 @@ jobs:
   maintenance:
     name: Docker Maintenance
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
-    if: github.actor == 'dependabot[bot]'
+    # Only Dependabot's PRs, and only events Dependabot raised - it opened
+    # the PR or pushed to it; a person pushing to the branch never starts a
+    # merge. A re-run keeps github.actor of the first run (who re-ran it is
+    # github.triggering_actor), its privileges and its event: it can only
+    # merge that event's head commit, and only while it is still the head.
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'
     # ci-wait-minutes is at most 60 and the last poll can come up to 3 min
     # after it; the rest covers setup and the merge.
     timeout-minutes: 75
@@ -239,6 +246,7 @@ jobs:
           WORK=$(mktemp -d)
           ERRORS=0
           RUNS_READABLE=true
+          COMMITS_CHECKED=false
           STABLE_SINCE=""
 
           finish() {
@@ -309,6 +317,18 @@ jobs:
             if [ "$PR_HEAD" != "$HEAD_SHA" ]; then
               echo "::notice title=Dependabot PR not merged by this run::The PR has a new head commit ($PR_HEAD). The run for that commit decides."
               finish superseded "new head $PR_HEAD"
+            fi
+            # Once: every commit of the PR must be a verified commit by
+            # Dependabot. fetch-metadata checks only the first one.
+            if [ "$COMMITS_CHECKED" != true ]; then
+              fetch "$WORK/commits" --paginate "repos/$REPO/pulls/$PR_NUMBER/commits?per_page=100" \
+                --jq '.[] | [.sha, (.author.login // "-"), (.commit.verification.verified | tostring)] | @tsv' || return 1
+              FOREIGN=$(awk -F'\t' '$2 != "dependabot[bot]" || $3 != "true" { printf "%s%s (%s, verified: %s)", sep, substr($1, 1, 12), $2, $3; sep = ", " }' "$WORK/commits")
+              if [ -n "$FOREIGN" ] || [ ! -s "$WORK/commits" ]; then
+                echo "::notice title=Dependabot PR left open::Not every commit of this PR is a verified commit by Dependabot: ${FOREIGN:-no commits}. Review and merge it by hand."
+                finish foreign-commits "${FOREIGN:-no commits}"
+              fi
+              COMMITS_CHECKED=true
             fi
             fetch "$WORK/runs" --paginate "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" \
               --jq '.check_runs[] | [.id, .check_suite.id, .status, (.conclusion // "-"), .name] | @tsv' || return 1
@@ -573,6 +593,7 @@ jobs:
                   esac ;;
                 failed)     DECISION="⏸️ Left open: CI did not pass ($CI_DETAIL)." ;;
                 no-checks)  DECISION="⏸️ Left open: no check passed on this PR ($CI_DETAIL)." ;;
+                foreign-commits) DECISION="⏸️ Left open: not every commit is a verified commit by Dependabot ($CI_DETAIL)." ;;
                 timeout)    DECISION="⏸️ Left open: $CI_DETAIL." ;;
                 unreadable) DECISION="⏸️ Left open: the job token cannot read CI results (grant checks: read and statuses: read)." ;;
                 api-error)  DECISION="⏸️ Left open: CI results could not be read ($CI_DETAIL)." ;;
