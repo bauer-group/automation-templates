@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Behavioural test for the 'Create Backup' (id: create) step of
-# ../modules-backup-roundtrip-test.yml - the decision the fixture round trip in
-# backup-roundtrip-selftest.yml cannot reach.
+# Behavioural test for the 'Create Backup' (id: create) and 'Pull Images'
+# (id: pull) steps of ../modules-backup-roundtrip-test.yml - the two decisions
+# the fixture round trip in backup-roundtrip-selftest.yml cannot reach.
 #
 # Create Backup: since BackupHelper 1.7.7 'backuphelper create' exits 1 when a
 # component failed, yet the snapshot is still stored. The step used to end on
@@ -15,9 +15,12 @@
 #   exit 1, no new snapshot         -> no snapshot-id, step fails
 #   exit 0, no new snapshot         -> step fails (zero jobs ran)
 #
+# Pull Images: only the services Start Stack starts (the 'services' input and
+# their dependencies, transitively) are pulled, never an image under test.
+#
 # The step bodies are extracted from the workflow at runtime and run the way a
-# `shell: bash` step runs (-eo pipefail). The engine CLI ('bh' from lib.sh) is a
-# stub.
+# `shell: bash` step runs (-eo pipefail). The engine CLI ('bh' from lib.sh) and
+# `docker` are stubs.
 #
 # Usage: bash .github/workflows/tests/backup-roundtrip-module.test.sh
 
@@ -50,12 +53,14 @@ extract_step() {
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-extract_step create > "$WORK/create.sh"
-if [ ! -s "$WORK/create.sh" ]; then
-  echo "FATAL: could not extract the 'create' run block from the workflow."
-  echo "       The step was renamed, removed, or re-indented - update this test."
-  exit 1
-fi
+for STEP in create pull; do
+  extract_step "$STEP" > "$WORK/$STEP.sh"
+  if [ ! -s "$WORK/$STEP.sh" ]; then
+    echo "FATAL: could not extract the '$STEP' run block from the workflow."
+    echo "       The step was renamed, removed, or re-indented - update this test."
+    exit 1
+  fi
+done
 
 PASSED=0
 FAILED=0
@@ -90,16 +95,25 @@ else
   pass "Verify Snapshot keeps the implicit success()"
 fi
 
+mkdir -p "$WORK/bin"
+cat > "$WORK/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+echo "docker $*" >> "$DIR/docker.log"
+[ "$1 $2" = "compose pull" ] || { echo "unexpected docker call: $*" >&2; exit 2; }
+exit 0
+STUB
+chmod +x "$WORK/bin/docker"
+
 reset() {
   DIR="$WORK/case-$1"
   rm -rf "$DIR"
   mkdir -p "$DIR/diagnostics"
-  : > "$DIR/output"; : > "$DIR/env"
+  : > "$DIR/output"; : > "$DIR/env"; : > "$DIR/docker.log"
   export DIR
 }
 run_step() {
   local step="$1"; shift
-  env ROUNDTRIP_DIR="$DIR" GITHUB_OUTPUT="$DIR/output" GITHUB_ENV="$DIR/env" \
+  env PATH="$WORK/bin:$PATH" ROUNDTRIP_DIR="$DIR" GITHUB_OUTPUT="$DIR/output" GITHUB_ENV="$DIR/env" \
     BACKUP_SERVICE=backup START_SERVICES="" "$@" bash -eo pipefail "$WORK/$step.sh" > "$DIR/log" 2>&1
 }
 out() { grep "^$1=" "$DIR/output" | tail -n 1 | cut -d= -f2-; }
@@ -173,6 +187,72 @@ expect_log "two new snapshots: warning" "::warning::2 new snapshots"
 
 create_case offsite-only 0; add_after "$NEW" 0 "  (off-site only)"
 run_step create; expect_rc "off-site-only row: not a local snapshot" $? 1
+
+# === Pull Images ================================================================
+# Every shape the step has to handle: dependencies (map and list form, and a
+# chain), an image under test, a service with a build section, services that
+# are configured but not started.
+cat > "$WORK/compose-config.json" <<'JSON'
+{
+  "services": {
+    "database":   {"image": "postgres:18-alpine"},
+    "files-init": {"image": "alpine:3"},
+    "app":        {"image": "alpine:3", "depends_on": {"files-init": {"condition": "service_completed_successfully", "required": true}}},
+    "backup":     {"image": "roundtrip-fixture/backup:ci",
+                   "depends_on": {"database": {"condition": "service_healthy", "required": true},
+                                  "files-init": {"condition": "service_completed_successfully", "required": true}}},
+    "worker":     {"image": "acme/worker:1", "depends_on": {"database": {"condition": "service_started", "required": true}}},
+    "runner":     {"image": "acme/runner:1", "depends_on": ["worker"]},
+    "devtool":    {"image": "acme/devtool:1", "build": {"context": "."}},
+    "decoy":      {"image": "registry.invalid/decoy:never"},
+    "chain-a":    {"image": "acme/a:1", "depends_on": {"chain-b": {}}},
+    "chain-b":    {"image": "acme/b:1", "depends_on": {"chain-c": {}}},
+    "chain-c":    {"image": "acme/c:1", "depends_on": {"devtool": {}}}
+  }
+}
+JSON
+pull_case() {
+  reset "$1"
+  cp "$WORK/compose-config.json" "$DIR/compose-config.json"
+  echo "roundtrip-fixture/backup:ci" > "$DIR/built-images.txt"
+}
+pulled() { sed -n 's/^docker compose pull --quiet //p' "$DIR/docker.log" | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ $//'; }
+
+pull_case all
+run_step pull; expect_rc "all services: step passes" $? 0
+expect_eq "all services: every pullable image" "$(pulled)" "app chain-a chain-b chain-c database decoy files-init runner worker"
+
+pull_case selected
+run_step pull START_SERVICES="app backup"; expect_rc "selected services: step passes" $? 0
+expect_eq "selected services: started ones and their dependencies, no image under test" "$(pulled)" "app database files-init"
+
+pull_case newline
+run_step pull START_SERVICES=$'app\nbackup'
+expect_eq "newline-separated services" "$(pulled)" "app database files-init"
+
+pull_case list-form
+run_step pull START_SERVICES="runner"
+expect_eq "depends_on in list form, transitively" "$(pulled)" "database runner worker"
+
+pull_case chain
+run_step pull START_SERVICES="chain-a"
+expect_eq "dependency chain, build section skipped" "$(pulled)" "chain-a chain-b chain-c"
+
+pull_case nothing
+run_step pull START_SERVICES="backup devtool"
+expect_rc "only built images and their deps: step passes" $? 0
+expect_eq "only built images: their dependencies" "$(pulled)" "database files-init"
+
+pull_case only-built
+run_step pull START_SERVICES="devtool"
+expect_rc "nothing to pull: step passes" $? 0
+if [ -s "$DIR/docker.log" ]; then fail "nothing to pull: no docker call" "$(cat "$DIR/docker.log")"; else pass "nothing to pull: no docker call"; fi
+expect_log "nothing to pull: says so" "Nothing to pull"
+
+pull_case unknown
+run_step pull START_SERVICES="app not-configured"
+expect_rc "unknown service: left to 'up'" $? 0
+expect_eq "unknown service: the known ones still pulled" "$(pulled)" "app files-init"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"
