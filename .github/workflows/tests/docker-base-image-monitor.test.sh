@@ -394,6 +394,8 @@ if has_var APP_DIGEST_PENDING; then pass "persist failure: record kept"; else fa
 # Runs the three steps the way the job chains them: success() gates persist.
 cycle() {
   run_step check || return 1
+  # Kept for the assertions: the later steps overwrite the step output file.
+  cp "$FAKE/output" "$FAKE/check-output"
   local dispatch_updates variable_updates pending_deletes run_id="" run_url=""
   dispatch_updates=$(out dispatch-updates); variable_updates=$(out variable-updates)
   pending_deletes=$(out pending-deletes)
@@ -436,7 +438,7 @@ expect_eq "cycle 4: digest stored" "$(var APP_DIGEST)" "$D_NEW"
 if has_var APP_DIGEST_PENDING; then fail "cycle 4: record removed" "still there"; else pass "cycle 4: record removed"; fi
 
 cycle; expect_rc "cycle 5 (nothing new): succeeds" $? 0
-expect_eq "cycle 5: up to date" "$(out updates-found)" false
+expect_eq "cycle 5: up to date" "$(grep '^updates-found=' "$FAKE/check-output" | cut -d= -f2-)" false
 if [ -f "$FAKE/dispatch-path" ]; then fail "cycle 5: nothing dispatched" "dispatched"; else pass "cycle 5: nothing dispatched"; fi
 
 echo ""
