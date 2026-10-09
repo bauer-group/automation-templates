@@ -1,0 +1,83 @@
+# =============================================================================
+# Backup Round Trip - Upgrade from the Previous Release
+# =============================================================================
+# Operators do not install fresh: they run the previous release, with its data
+# and its snapshots, and upgrade. This caller tests that path next to the
+# fresh round trip:
+#
+#   previous release: start, seed, back up (old sidecar)
+#   upgrade like an operator: upgrade-script, compose files and images of
+#     this commit, 'docker compose up -d' -> data intact, healthcheck passes
+#   delete the data, restore the OLD snapshot with the NEW sidecar, check
+#
+# 'latest-release' resolves the newest release of this repository; its tag
+# (v1.4.2) names the images (1.4.2) the release pipeline published.
+#
+# Assumed repository layout:
+#   docker-compose.yml               app, app-backup (profile: backup)
+#   src/app, src/app-backup          the images under test
+#   tests/backup-roundtrip/          seed.sh, mutate.sh, check.sh,
+#                                    upgrade.sh (what the release notes say)
+#
+# Docs: docs/workflows/modules-backup-roundtrip-test.md#upgrade-from-a-previous-release
+# =============================================================================
+
+name: 🧪 Backup Round Trip (upgrade)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'docker-compose*.yml'
+      - '.env.example'
+      - 'tests/backup-roundtrip/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup-roundtrip-upgrade:
+    name: 🧪 Backup Round Trip (upgrade from the latest release)
+    # packages: read pulls the previous release's images as well.
+    permissions:
+      contents: read
+      packages: read
+    uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+    with:
+      compose-file: 'docker-compose.yml'
+      profiles: 'backup'
+      generated-secrets: 'DATABASE_PASSWORD'
+      # Both images are upgraded: the previous release runs first, the builds
+      # take over its references at the upgrade.
+      build-images: |
+        [
+          {"service": "app", "context": "src/app"},
+          {"service": "app-backup", "context": "src/app-backup"}
+        ]
+      backup-service: 'app-backup'
+      require-components: 'app files'
+      services-to-stop-before-restore: 'app'
+      seed-script: 'tests/backup-roundtrip/seed.sh'
+      mutate-script: 'tests/backup-roundtrip/mutate.sh'
+      check-script: 'tests/backup-roundtrip/check.sh'
+      upgrade-from: 'latest-release'
+      # Optional: what the release notes tell operators to do before the
+      # upgrade, e.g. rename a variable in .env.
+      upgrade-script: 'tests/backup-roundtrip/upgrade.sh'
+      # Two boots of the application instead of one.
+      timeout-minutes: 60
+      artifact-name: 'backup-roundtrip-upgrade-diagnostics'
+    secrets: inherit
+
+  # Variant: only the sidecar comes from an older release whose snapshots must
+  # stay restorable, started with the source type it had then. The other
+  # images are this commit's from the start.
+  #
+  # backup-roundtrip-legacy:
+  #   uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+  #   with:
+  #     upgrade-from: '{"app-backup": "ghcr.io/acme/app/app-backup:0.17.29"}'
+  #     upgrade-from-compose-files: '["docker-compose.yml", "tests/backup-roundtrip/legacy-snapshot.yml"]'
+  #     # ... the rest as above

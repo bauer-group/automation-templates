@@ -33,6 +33,14 @@
 # fail 'create'; Simulate New Host (id: new-host) wipes the data dir and
 # demands that the snapshot is listed off-site only.
 #
+# upgrade-from: Pull Previous Release (id: previous) resolves 'latest-release',
+# tags and full references per service and gives the previous release the
+# references the services resolve to; Build Images Under Test (id: build)
+# keeps an upgraded service's build under a staging tag; Upgrade Stack (id:
+# upgrade) runs the hook first, switches to the compose files of this commit,
+# hands the references to the builds and fails when a container still runs
+# the previous image.
+#
 # The step bodies are extracted from the workflow at runtime and run the way a
 # `shell: bash` step runs (-eo pipefail). The engine CLI ('bh' from lib.sh) and
 # `docker` are stubs.
@@ -68,7 +76,7 @@ extract_step() {
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-for STEP in validate prepare networks s3-prepare create pull s3-upload new-host; do
+for STEP in validate prepare networks s3-prepare previous build create pull s3-upload upgrade new-host; do
   extract_step "$STEP" > "$WORK/$STEP.sh"
   if [ ! -s "$WORK/$STEP.sh" ]; then
     echo "FATAL: could not extract the '$STEP' run block from the workflow."
@@ -280,7 +288,8 @@ validate_case() {
     PROJECT_NAME=backup-roundtrip ENV_OVERRIDES="" GENERATED_SECRETS="" BUILD_IMAGES="" \
     PREPARE_SCRIPT="" SEED_SCRIPT="" MUTATE_SCRIPT="" CHECK_SCRIPT="" STOP_SERVICES="" \
     SCRIPT_TIMEOUT=600 WAIT_TIMEOUT=600 EXTERNAL_NETWORKS="" \
-    S3_DESTINATION=false S3_ENV="" S3_IMAGE="" S3_CLIENT_IMAGE="" "$@")
+    S3_DESTINATION=false S3_ENV="" S3_IMAGE="" S3_CLIENT_IMAGE="" \
+    UPGRADE_FROM="" UPGRADE_FROM_COMPOSE_FILES="" UPGRADE_SCRIPT="" "$@")
 }
 
 validate_case defaults
@@ -322,6 +331,46 @@ validate_case s3-image S3_DESTINATION=true S3_ENV="$S3_MAPPING" S3_IMAGE='minio:
 expect_rc "validate: s3-image that is no image reference" $? 1
 expect_log "validate: names the bad image" "is not an image reference"
 
+BUILDS='[{"service": "app", "context": "src/app"}, {"service": "app-backup", "context": "src/app-backup"}]'
+validate_case upgrade-latest BUILD_IMAGES="$BUILDS" UPGRADE_FROM=latest-release
+expect_rc "validate: upgrade-from latest-release" $? 0
+
+validate_case upgrade-tag BUILD_IMAGES="$BUILDS" UPGRADE_FROM=1.4.2
+expect_rc "validate: upgrade-from one tag" $? 0
+
+validate_case upgrade-object BUILD_IMAGES="$BUILDS" \
+  UPGRADE_FROM='{"app": "latest-release", "app-backup": "ghcr.io/acme/app-backup:1.4.2"}'
+expect_rc "validate: upgrade-from per service" $? 0
+
+validate_case upgrade-files BUILD_IMAGES="$BUILDS" UPGRADE_FROM=latest-release \
+  UPGRADE_FROM_COMPOSE_FILES='["docker-compose.yml"]' UPGRADE_SCRIPT=docker-compose.yml
+expect_rc "validate: upgrade-from with previous compose files and a hook" $? 0
+
+validate_case upgrade-unknown BUILD_IMAGES="$BUILDS" UPGRADE_FROM='{"worker": "1.0"}'
+expect_rc "validate: upgrade-from for a service that is not built" $? 1
+expect_log "validate: names the service" "upgrade-from: 'worker' is not a build-images service"
+
+validate_case upgrade-bad-spec BUILD_IMAGES="$BUILDS" UPGRADE_FROM='{"app": "1.0 && curl evil"}'
+expect_rc "validate: upgrade-from spec that is neither tag nor reference" $? 1
+expect_log "validate: names the spec" "upgrade-from: '1.0 && curl evil' for 'app' is neither"
+
+validate_case upgrade-ref-string BUILD_IMAGES="$BUILDS" UPGRADE_FROM='ghcr.io/acme/app:1.0'
+expect_rc "validate: a plain upgrade-from is a tag, never one reference for every service" $? 1
+
+validate_case upgrade-no-builds UPGRADE_FROM=latest-release
+expect_rc "validate: upgrade-from without build-images" $? 1
+expect_log "validate: explains why builds are needed" "upgrade-from needs build-images"
+
+validate_case upgrade-orphans UPGRADE_SCRIPT=docker-compose.yml UPGRADE_FROM_COMPOSE_FILES='["docker-compose.yml"]'
+expect_rc "validate: upgrade-script without upgrade-from" $? 1
+expect_log "validate: says upgrade-from is needed" "upgrade-from-compose-files and upgrade-script need upgrade-from"
+
+validate_case upgrade-missing-file BUILD_IMAGES="$BUILDS" UPGRADE_FROM=1.0 \
+  UPGRADE_FROM_COMPOSE_FILES='["docker-compose.yml", "previous.yml"]' UPGRADE_SCRIPT=upgrade.sh
+expect_rc "validate: missing previous compose file and hook" $? 1
+expect_log "validate: names the missing compose file" "compose file 'previous.yml' (upgrade-from-compose-files) not found"
+expect_log "validate: names the missing hook" "script 'upgrade.sh' not found"
+
 # === Prepare Environment (s3-destination) ======================================
 cat > "$WORK/bin/docker" <<'STUB'
 #!/usr/bin/env bash
@@ -348,7 +397,8 @@ ENV
     PROJECT_NAME=backup-roundtrip ENV_TEMPLATE=.env.example ENV_OVERRIDES="" GENERATED_SECRETS="" \
     PREPARE_SCRIPT="" SCRIPT_TIMEOUT=600 RUNNER_TEMP="$DIR/runner" GITHUB_RUN_ID=1 GITHUB_RUN_ATTEMPT=1 \
     ROUNDTRIP_S3_SERVICE=roundtrip-s3 ROUNDTRIP_S3_CLIENT=roundtrip-s3-client ROUNDTRIP_S3_BUCKET=backup-roundtrip \
-    S3_IMAGE=ghcr.io/bauer-group/cs-minio/minio:latest S3_CLIENT_IMAGE=ghcr.io/bauer-group/cs-minio/minio-init:latest "$@")
+    S3_IMAGE=ghcr.io/bauer-group/cs-minio/minio:latest S3_CLIENT_IMAGE=ghcr.io/bauer-group/cs-minio/minio-init:latest \
+    UPGRADE_FROM_COMPOSE_FILES="" "$@")
 }
 env_value() { grep "^$1=" "$DIR/.env" | tail -n 1 | cut -d= -f2-; }
 
@@ -452,6 +502,7 @@ run_s3_prepare; expect_rc "s3-prepare: step passes" $? 0
 expect_eq "s3-prepare: the server joins the backup service's networks" \
   "$(grep -c '^    networks: \["local","proxy"\]$' "$(OVERRIDE_FILE)")" 2
 if grep -q "^COMPOSE_FILE=docker-compose.yml:$(OVERRIDE_FILE)$" "$DIR/env"; then pass "s3-prepare: the override joins COMPOSE_FILE"; else fail "s3-prepare: the override joins COMPOSE_FILE" "$(cat "$DIR/env")"; fi
+# shellcheck disable=SC2016 # the generated file holds the literal reference
 if grep -q '^      MINIO_ROOT_PASSWORD: \${ROUNDTRIP_S3_SECRET_KEY}$' "$(OVERRIDE_FILE)"; then pass "s3-prepare: credentials stay .env references"; else fail "s3-prepare: credentials stay .env references" "$(cat "$(OVERRIDE_FILE)")"; fi
 expect_eq "s3-prepare: the client only runs on demand" "$(grep -c '^    profiles: \["roundtrip-s3-client"\]$' "$(OVERRIDE_FILE)")" 1
 if jq -e '.services | has("roundtrip-s3")' "$DIR/compose-config.json" > /dev/null; then pass "s3-prepare: configuration re-rendered with the server"; else fail "s3-prepare: configuration re-rendered with the server" "missing"; fi
@@ -595,6 +646,212 @@ host_case not-running
 : > "$DIR/container"
 run_host; expect_rc "new-host: sidecar not running" $? 1
 expect_log "new-host: says so" "'backup' is not running"
+
+# === Pull Previous Release ======================================================
+# The fake docker records pulls and tags; a reference listed in unpullable
+# fails to pull. The fake curl answers the releases API from release.json.
+cat > "$WORK/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+echo "docker $*" >> "$DIR/docker.log"
+case "$1" in
+  pull) ! grep -qxF "$2" "$DIR/unpullable" ;;
+  tag)  echo "$2 -> $3" >> "$DIR/tags" ;;
+  *) echo "unexpected docker call: $*" >&2; exit 2 ;;
+esac
+STUB
+cat > "$WORK/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+echo "curl ${*: -1}" >> "$DIR/curl.log"
+[ -f "$DIR/release.json" ] || { echo "curl: (22) The requested URL returned error: 404" >&2; exit 22; }
+cat "$DIR/release.json"
+STUB
+chmod +x "$WORK/bin/curl"
+previous_case() {
+  reset "$1"
+  : > "$DIR/unpullable"; : > "$DIR/tags"; : > "$DIR/curl.log"
+  cat > "$DIR/compose-config.json" <<'JSON'
+{"services": {
+  "app":        {"image": "ghcr.io/acme/app:stable"},
+  "worker":     {"image": "ghcr.io/acme/app:stable"},
+  "app-backup": {"image": "registry.example.com:5000/acme/app-backup@sha256:0123"},
+  "cache":      {"image": "redis:8"}
+}}
+JSON
+}
+PREVIOUS_BUILDS='[{"service": "app", "context": "src/app"}, {"service": "app-backup", "context": "src/app-backup"}]'
+run_previous() {
+  run_step previous BUILD_IMAGES="$PREVIOUS_BUILDS" GH_TOKEN=token-for-the-test \
+    GITHUB_API_URL=https://api.github.test GITHUB_REPOSITORY=acme/stack "$@"
+}
+tags() { tr '\n' '|' < "$DIR/tags" | sed 's/|$//'; }
+
+previous_case latest; echo '{"tag_name": "v0.2.61", "name": "v0.2.61"}' > "$DIR/release.json"
+run_previous UPGRADE_FROM=latest-release; expect_rc "previous latest-release: step passes" $? 0
+expect_eq "previous latest-release: asks the releases API of this repository" "$(cat "$DIR/curl.log")" "curl https://api.github.test/repos/acme/stack/releases/latest"
+expect_eq "previous latest-release: the release's images take over the references (leading v dropped, tag and digest replaced, registry port kept)" \
+  "$(tags)" "ghcr.io/acme/app:0.2.61 -> ghcr.io/acme/app:stable|registry.example.com:5000/acme/app-backup:0.2.61 -> registry.example.com:5000/acme/app-backup@sha256:0123"
+expect_eq "previous latest-release: references kept out of Pull Images" "$(sort "$DIR/previous-images.txt" | tr '\n' ' ')" "ghcr.io/acme/app:stable registry.example.com:5000/acme/app-backup@sha256:0123 "
+if grep -q '^ROUNDTRIP_PREVIOUS_RELEASE=v0.2.61$' "$DIR/env"; then pass "previous latest-release: release exported for the scripts"; else fail "previous latest-release: release exported for the scripts" "$(cat "$DIR/env")"; fi
+expect_eq "previous latest-release: images exported for the scripts" \
+  "$(sed -n 's/^ROUNDTRIP_PREVIOUS_IMAGES=//p' "$DIR/env" | jq -c .)" \
+  '{"app":"ghcr.io/acme/app:0.2.61","app-backup":"registry.example.com:5000/acme/app-backup:0.2.61"}'
+expect_eq "previous latest-release: plan for the upgrade and the summary" "$(cut -f 1,2 "$DIR/upgrade-plan.tsv" | tr '\t\n' ' |')" \
+  "app ghcr.io/acme/app:0.2.61|app-backup registry.example.com:5000/acme/app-backup:0.2.61|"
+
+previous_case tag
+run_previous UPGRADE_FROM=1.4.2; expect_rc "previous tag: step passes" $? 0
+expect_eq "previous tag: no API call for a plain tag" "$(cat "$DIR/curl.log")" ""
+expect_eq "previous tag: one tag for every built service" "$(cut -d' ' -f1 "$DIR/tags" | tr '\n' ' ')" \
+  "ghcr.io/acme/app:1.4.2 registry.example.com:5000/acme/app-backup:1.4.2 "
+
+previous_case object; echo '{"tag_name": "2.0.0"}' > "$DIR/release.json"
+run_previous UPGRADE_FROM='{"app-backup": "ghcr.io/acme/legacy-backup:0.17.29", "app": "latest-release"}'
+expect_rc "previous per service: step passes" $? 0
+expect_eq "previous per service: a full reference is used as given, latest-release resolved" "$(tags)" \
+  "ghcr.io/acme/legacy-backup:0.17.29 -> registry.example.com:5000/acme/app-backup@sha256:0123|ghcr.io/acme/app:2.0.0 -> ghcr.io/acme/app:stable"
+
+previous_case only-one
+run_previous UPGRADE_FROM='{"app": "1.0.0"}'
+expect_eq "previous per service: a service left out keeps its reference" "$(tags)" "ghcr.io/acme/app:1.0.0 -> ghcr.io/acme/app:stable"
+
+previous_case no-release
+run_previous UPGRADE_FROM=latest-release; expect_rc "previous: repository without a release" $? 1
+expect_log "previous: says there is no release" "acme/stack has no published release to upgrade from"
+
+previous_case odd-release; echo '{"tag_name": "release/2026-10"}' > "$DIR/release.json"
+run_previous UPGRADE_FROM=latest-release; expect_rc "previous: release tag that is no image tag" $? 1
+expect_log "previous: asks for the tag instead" "does not give an image tag"
+
+previous_case unpublished; echo "ghcr.io/acme/app:9.9.9" > "$DIR/unpullable"
+run_previous UPGRADE_FROM=9.9.9; expect_rc "previous: image not published under the tag" $? 1
+expect_log "previous: names the image" "'ghcr.io/acme/app:9.9.9' could not be pulled"
+
+previous_case no-image
+jq '.services.app |= del(.image)' "$DIR/compose-config.json" > "$DIR/c.json" && mv "$DIR/c.json" "$DIR/compose-config.json"
+run_previous UPGRADE_FROM=1.0.0; expect_rc "previous: service without an image reference" $? 1
+expect_log "previous: names the service" "service 'app' has no image reference"
+rm -f "$WORK/bin/curl"
+
+# === Build Images Under Test ====================================================
+cat > "$WORK/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = build ] || { echo "unexpected docker call: $*" >&2; exit 2; }
+# Records the tags of each build.
+TAGS=(); while [ $# -gt 0 ]; do [ "$1" != --tag ] || TAGS+=("$2"); shift; done
+echo "${TAGS[*]}" >> "$DIR/builds"
+STUB
+build_case() {
+  reset "$1"
+  : > "$DIR/builds"
+  echo '{"services": {"app": {"image": "ghcr.io/acme/app:stable"}, "worker": {"image": "ghcr.io/acme/worker:stable"}}}' > "$DIR/compose-config.json"
+}
+BUILD_BOTH='[{"service": "app", "context": "."}, {"service": "worker", "context": "."}]'
+
+build_case plain
+run_step build BUILD_IMAGES="$BUILD_BOTH"; expect_rc "build: step passes" $? 0
+expect_eq "build: tagged as the references, as before" "$(tr '\n' '|' < "$DIR/builds")" "ghcr.io/acme/app:stable|ghcr.io/acme/worker:stable|"
+if [ -f "$DIR/staged-images.txt" ]; then fail "build: no staging without upgrade-from" "staged-images.txt exists"; else pass "build: no staging without upgrade-from"; fi
+
+build_case upgrade; printf 'app\tghcr.io/acme/app:1.0\tghcr.io/acme/app:stable\n' > "$DIR/upgrade-plan.tsv"
+run_step build BUILD_IMAGES="$BUILD_BOTH"; expect_rc "build with upgrade-from: step passes" $? 0
+expect_eq "build with upgrade-from: the upgraded service waits under a staging tag, the other runs from the start" \
+  "$(tr '\n' '|' < "$DIR/builds")" "roundtrip-staged/image-0:build|roundtrip-staged/image-1:build ghcr.io/acme/worker:stable|"
+expect_eq "build with upgrade-from: only the image running from the start is under test yet" "$(cat "$DIR/built-images.txt")" "ghcr.io/acme/worker:stable"
+expect_eq "build with upgrade-from: every build is staged for the upgrade" "$(tr '\t\n' ' |' < "$DIR/staged-images.txt")" \
+  "app roundtrip-staged/image-0:build|worker roundtrip-staged/image-1:build|"
+
+# === Pull Images (upgrade-from) =================================================
+cat > "$WORK/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+echo "docker $*" >> "$DIR/docker.log"
+[ "$1 $2" = "compose pull" ] || { echo "unexpected docker call: $*" >&2; exit 2; }
+STUB
+pull_case previous
+echo "alpine:3" > "$DIR/previous-images.txt"
+run_step pull START_SERVICES="app backup"
+expect_eq "pull: the previous release's images are local, not pulled" "$(pulled)" "database"
+
+# === Upgrade Stack ==============================================================
+# The fake docker keeps image ids per reference (images/) and the image each
+# container runs (running/). 'tag' moves a reference to the staged image,
+# 'up' recreates the containers of every service whose reference moved -
+# unless keep-running names the service, to fake Compose missing the change.
+cat > "$WORK/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+echo "docker $*" >> "$DIR/docker.log"
+key() { printf '%s' "$1" | tr '/:@' '___'; }
+case "$*" in
+  "compose config --quiet") ;;
+  "compose config --format json") cat "$DIR/target-config.json" ;;
+  "compose ps") ;;
+  "compose ps -a -q "*) cat "$DIR/containers/${*: -1}" 2>/dev/null || true ;;
+  "compose up "*)
+    echo "up" >> "$DIR/order"
+    for f in "$DIR"/containers/*; do
+      SERVICE=$(basename "$f")
+      grep -qxF "$SERVICE" "$DIR/keep-running" && continue
+      REF=$(jq -r --arg s "$SERVICE" '.services[$s].image' "$DIR/target-config.json")
+      while read -r C; do cp "$DIR/images/$(key "$REF")" "$DIR/running/$C"; done < "$f"
+    done ;;
+  "tag "*) echo "tag $2" >> "$DIR/order"; cp "$DIR/images/$(key "$2")" "$DIR/images/$(key "$3")" ;;
+  "image inspect --format {{.Id}} "*) cat "$DIR/images/$(key "${*: -1}")" ;;
+  "inspect --format {{.Image}} "*) cat "$DIR/running/${*: -1}" ;;
+  *) echo "unexpected docker call: $*" >&2; exit 2 ;;
+esac
+STUB
+cat > "$WORK/lib.sh" <<'LIB'
+bh() { echo "bh $*" >> "$DIR/order"; }
+run_phase() { echo "phase $1${3:+ $3}" >> "$DIR/order"; }
+LIB
+upgrade_case() {
+  reset "$1"
+  cp "$WORK/lib.sh" "$DIR/lib.sh"
+  mkdir -p "$DIR/images" "$DIR/running" "$DIR/containers"
+  : > "$DIR/order"; : > "$DIR/keep-running"
+  # The previous release holds the references; the builds wait staged.
+  echo "sha256:old-app"    > "$DIR/images/ghcr.io_acme_app_stable"
+  echo "sha256:old-backup" > "$DIR/images/ghcr.io_acme_app-backup_stable"
+  echo "sha256:new-app"    > "$DIR/images/roundtrip-staged_image-0_build"
+  echo "sha256:new-backup" > "$DIR/images/roundtrip-staged_image-1_build"
+  printf 'app\troundtrip-staged/image-0:build\napp-backup\troundtrip-staged/image-1:build\n' > "$DIR/staged-images.txt"
+  echo '{"services": {"app": {"image": "ghcr.io/acme/app:stable"}, "worker": {"image": "ghcr.io/acme/app:stable"},
+                      "app-backup": {"image": "ghcr.io/acme/app-backup:stable"}, "database": {"image": "postgres:18"}}}' > "$DIR/target-config.json"
+  echo c-app > "$DIR/containers/app"; printf 'c-worker-1\nc-worker-2\n' > "$DIR/containers/worker"; echo c-backup > "$DIR/containers/app-backup"
+  for C in c-app c-worker-1 c-worker-2; do echo "sha256:old-app" > "$DIR/running/$C"; done
+  echo "sha256:old-backup" > "$DIR/running/c-backup"
+}
+run_upgrade() {
+  run_step upgrade ROUNDTRIP_COMPOSE_FILE_TARGET=docker-compose.yml ROUNDTRIP_PREVIOUS_RELEASE=v1.0.0 \
+    UPGRADE_SCRIPT=upgrade.sh CHECK_SCRIPT=check.sh RUN_HEALTHCHECK=true WAIT_TIMEOUT=60 "$@"
+}
+order() { tr '\n' '|' < "$DIR/order" | sed 's/|$//'; }
+
+upgrade_case ok
+run_upgrade ROUNDTRIP_COMPOSE_EXTRA="$DIR/s3-destination.compose.yml"; expect_rc "upgrade: step passes" $? 0
+expect_eq "upgrade: hook, then the new images, up, data check and healthcheck - in that order" "$(order)" \
+  "phase upgrade|tag roundtrip-staged/image-0:build|tag roundtrip-staged/image-1:build|up|phase check present|bh healthcheck"
+if grep -q "^COMPOSE_FILE=docker-compose.yml:$DIR/s3-destination.compose.yml$" "$DIR/env"; then pass "upgrade: the files of this commit plus the module's override"; else fail "upgrade: the files of this commit plus the module's override" "$(cat "$DIR/env")"; fi
+expect_eq "upgrade: the references are under test now" "$(sort "$DIR/built-images.txt" | tr '\n' ' ')" "ghcr.io/acme/app-backup:stable ghcr.io/acme/app:stable "
+expect_log "upgrade: every container checked" "Every container of an image under test runs the build of this commit"
+
+upgrade_case no-extra
+run_upgrade; expect_rc "upgrade without an override file: step passes" $? 0
+if grep -q "^COMPOSE_FILE=docker-compose.yml$" "$DIR/env"; then pass "upgrade: only the files of this commit"; else fail "upgrade: only the files of this commit" "$(cat "$DIR/env")"; fi
+
+upgrade_case stale; echo worker > "$DIR/keep-running"
+run_upgrade; expect_rc "upgrade: a container kept the previous image" $? 1
+expect_log "upgrade: names the service" "'worker' still runs the previous image"
+if grep -q "phase check" "$DIR/order"; then fail "upgrade: no data check on a half-upgraded stack" "check ran"; else pass "upgrade: no data check on a half-upgraded stack"; fi
+
+upgrade_case no-healthcheck
+run_upgrade RUN_HEALTHCHECK=false UPGRADE_SCRIPT="" CHECK_SCRIPT=""
+expect_eq "upgrade: without hook, check and healthcheck only the switch" "$(order)" \
+  "tag roundtrip-staged/image-0:build|tag roundtrip-staged/image-1:build|up"
+
+upgrade_case lost-reference
+echo '{"services": {"worker": {"image": "ghcr.io/acme/app:stable"}}}' > "$DIR/target-config.json"
+run_upgrade; expect_rc "upgrade: a built service missing from this commit's configuration" $? 1
+expect_log "upgrade: names the service" "service 'app' has no image reference in the configuration of this commit"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"

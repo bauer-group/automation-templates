@@ -17,6 +17,11 @@
 # Opt-in, off unless the caller sets them - every existing caller runs the
 # cycle above unchanged:
 #
+#   upgrade-from        the stack starts with the PREVIOUS release, which seeds
+#                       and backs up; then it is upgraded like an operator does
+#                       (images switched, up -d), the data and the healthcheck
+#                       are checked, and the OLD snapshot is restored with the
+#                       NEW sidecar
 #   s3-destination      a throwaway S3 server (MinIO) becomes the sidecar's S3
 #                       destination: the snapshot must reach the bucket, the
 #                       sidecar's local data is wiped like on a new host, and
@@ -163,10 +168,35 @@ on:
         type: string
         default: "--force"
       run-healthcheck:
-        description: "Run 'backuphelper healthcheck' at the end (must report the new snapshot as fresh)"
+        description: "Run 'backuphelper healthcheck' at the end (must report the new snapshot as fresh) and, with upgrade-from, right after the upgrade"
         required: false
         type: boolean
         default: true
+
+      # -- Upgrade from a previous release (opt-in) ----------------------------
+      upgrade-from:
+        description: >-
+          Tests the upgrade of an existing installation. The stack starts with a previous release,
+          which seeds and backs up; then the images built from this commit replace it like an
+          operator's upgrade (compose up -d), data and healthcheck are checked, and the OLD
+          snapshot is restored with the NEW sidecar. 'latest-release' (the newest release of this
+          repository; a leading 'v' of its tag is dropped for the image tag), one image tag for
+          every build-images service (e.g. '1.4.2'), or a JSON object mapping build-images services
+          to 'latest-release', a tag or a full image reference - services left out run this
+          commit's image from the start. Empty: no upgrade test.
+        required: false
+        type: string
+        default: ""
+      upgrade-from-compose-files:
+        description: 'Compose files the previous release is started with, as a JSON array - e.g. the files of this commit plus an override that restores the shape of the previous release. Empty: the files of compose-file/compose-files. The upgrade switches to those.'
+        required: false
+        type: string
+        default: ""
+      upgrade-script:
+        description: "Bash script (relative to working-directory) run at the upgrade, after the old snapshot was taken and before the stack switches to the new images and compose files - for what the release notes tell operators to do, e.g. migrating the .env. Runs with ROUNDTRIP_PHASE=upgrade."
+        required: false
+        type: string
+        default: ""
 
       # -- Off-site S3 destination (opt-in) ------------------------------------
       s3-destination:
@@ -335,6 +365,9 @@ jobs:
           S3_ENV: ${{ inputs.s3-env }}
           S3_IMAGE: ${{ inputs.s3-image }}
           S3_CLIENT_IMAGE: ${{ inputs.s3-client-image }}
+          UPGRADE_FROM: ${{ inputs.upgrade-from }}
+          UPGRADE_FROM_COMPOSE_FILES: ${{ inputs.upgrade-from-compose-files }}
+          UPGRADE_SCRIPT: ${{ inputs.upgrade-script }}
         run: |
           set -euo pipefail
           set -f # inputs are split on whitespace below, never globbed
@@ -389,7 +422,7 @@ jobs:
               || fail "build-images must be a JSON array of objects with 'service' and 'context'"
           fi
 
-          for SCRIPT in "$PREPARE_SCRIPT" "$SEED_SCRIPT" "$MUTATE_SCRIPT" "$CHECK_SCRIPT"; do
+          for SCRIPT in "$PREPARE_SCRIPT" "$SEED_SCRIPT" "$MUTATE_SCRIPT" "$CHECK_SCRIPT" "$UPGRADE_SCRIPT"; do
             [ -z "$SCRIPT" ] || [ -f "$SCRIPT" ] || fail "script '$SCRIPT' not found in $(pwd)"
           done
           if { [ -n "$SEED_SCRIPT" ] || [ -n "$MUTATE_SCRIPT" ]; } && [ -z "$CHECK_SCRIPT" ]; then
@@ -429,6 +462,42 @@ jobs:
             done
           fi
 
+          # upgrade-from: 'latest-release', a tag, or {"service": "tag | ref | latest-release"}.
+          # A tag has no '/', ':' or '@'; anything with one is a full reference.
+          TAG_RE='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'
+          valid_spec() {
+            [ "$1" = "latest-release" ] || [[ "$1" =~ $TAG_RE ]] || { [[ "$1" == *[/:@]* ]] && [[ "$1" =~ $REF_RE ]]; }
+          }
+          if [ -n "$UPGRADE_FROM" ]; then
+            [ -n "$BUILD_IMAGES" ] || fail "upgrade-from needs build-images: the upgrade switches the stack to the images built from this commit"
+            if [[ "$UPGRADE_FROM" == \{* ]]; then
+              if jq -e 'type == "object" and length > 0 and all(.[]; type == "string")' <<< "$UPGRADE_FROM" > /dev/null 2>&1; then
+                PLAN=$(jq -r 'to_entries[] | "\(.key)\t\(.value)"' <<< "$UPGRADE_FROM")
+                while IFS=$'\t' read -r SERVICE SPEC; do
+                  jq -e --arg s "$SERVICE" 'any(.[]; .service == $s)' <<< "${BUILD_IMAGES:-[]}" > /dev/null 2>&1 \
+                    || fail "upgrade-from: '$SERVICE' is not a build-images service - only an image built from this commit can be upgraded to"
+                  valid_spec "$SPEC" || fail "upgrade-from: '$SPEC' for '$SERVICE' is neither 'latest-release', an image tag nor an image reference"
+                done <<< "$PLAN"
+              else
+                fail "upgrade-from must be a JSON object mapping build-images services to 'latest-release', a tag or an image reference"
+              fi
+            elif [ "$UPGRADE_FROM" != "latest-release" ] && [[ ! "$UPGRADE_FROM" =~ $TAG_RE ]]; then
+              fail "upgrade-from must be 'latest-release', an image tag or a JSON object (got '$UPGRADE_FROM')"
+            fi
+          fi
+          if [ -z "$UPGRADE_FROM" ] && { [ -n "$UPGRADE_FROM_COMPOSE_FILES" ] || [ -n "$UPGRADE_SCRIPT" ]; }; then
+            fail "upgrade-from-compose-files and upgrade-script need upgrade-from"
+          fi
+          if [ -n "$UPGRADE_FROM_COMPOSE_FILES" ]; then
+            jq -e 'type == "array" and length > 0 and all(.[]; type == "string")' <<< "$UPGRADE_FROM_COMPOSE_FILES" > /dev/null 2>&1 \
+              || fail "upgrade-from-compose-files must be a non-empty JSON array of paths"
+            mapfile -t PREVIOUS_FILES < <(jq -r '.[]' <<< "$UPGRADE_FROM_COMPOSE_FILES" 2>/dev/null || true)
+            for FILE in "${PREVIOUS_FILES[@]}"; do
+              [ -f "$FILE" ] || fail "compose file '$FILE' (upgrade-from-compose-files) not found in $(pwd)"
+              [[ "$FILE" != *:* ]] || fail "compose file '$FILE' must not contain ':'"
+            done
+          fi
+
           if [ "$ERRORS" -gt 0 ]; then
             echo "❌ $ERRORS input error(s) - nothing was started"
             exit 1
@@ -451,6 +520,7 @@ jobs:
           S3_ENV: ${{ inputs.s3-env }}
           S3_IMAGE: ${{ inputs.s3-image }}
           S3_CLIENT_IMAGE: ${{ inputs.s3-client-image }}
+          UPGRADE_FROM_COMPOSE_FILES: ${{ inputs.upgrade-from-compose-files }}
         run: |
           set -euo pipefail
           set -f # inputs are split on whitespace below, never globbed
@@ -579,6 +649,12 @@ jobs:
           else
             COMPOSE_FILE_LIST="$COMPOSE_FILE_INPUT"
           fi
+          # The files of this commit. upgrade-from-compose-files starts the
+          # previous release from other files; the upgrade switches to these.
+          echo "ROUNDTRIP_COMPOSE_FILE_TARGET=$COMPOSE_FILE_LIST" >> "$GITHUB_ENV"
+          if [ -n "$UPGRADE_FROM_COMPOSE_FILES" ]; then
+            COMPOSE_FILE_LIST=$(jq -r 'join(":")' <<< "$UPGRADE_FROM_COMPOSE_FILES")
+          fi
           PROFILES="${PROFILES_INPUT// /}"
           MARKER="rt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$(openssl rand -hex 4)"
           echo "COMPOSE_FILE=$COMPOSE_FILE_LIST" >> "$GITHUB_ENV"
@@ -617,20 +693,31 @@ jobs:
       - name: "🔍 Validate Compose Configuration"
         run: |
           set -euo pipefail
-          # Fails on undefined required variables and syntax errors before
-          # anything is built or pulled.
-          docker compose config --quiet
-          # Captured first: piped straight into 'grep -q', compose can be
-          # killed by SIGPIPE once grep has its match, and pipefail would
-          # report the service as missing - depending on the service order.
-          SERVICES=$(docker compose config --services)
-          if ! grep -qxF "$BACKUP_SERVICE" <<< "$SERVICES"; then
-            echo "::error title=Backup round trip::backup-service '$BACKUP_SERVICE' is not part of the configuration - is its profile activated (profiles input)?"
-            echo "Services: $(tr '\n' ' ' <<< "$SERVICES")"
-            exit 1
+          # Validates the configuration COMPOSE_FILE names and renders it to $1.
+          check_config() {
+            # Fails on undefined required variables and syntax errors before
+            # anything is built or pulled.
+            docker compose config --quiet
+            # Captured first: piped straight into 'grep -q', compose can be
+            # killed by SIGPIPE once grep has its match, and pipefail would
+            # report the service as missing - depending on the service order.
+            local services
+            services=$(docker compose config --services)
+            if ! grep -qxF "$BACKUP_SERVICE" <<< "$services"; then
+              echo "::error title=Backup round trip::backup-service '$BACKUP_SERVICE' is not part of the configuration ($COMPOSE_FILE) - is its profile activated (profiles input)?"
+              echo "Services: $(tr '\n' ' ' <<< "$services")"
+              exit 1
+            fi
+            docker compose config --format json > "$1"
+            echo "✅ $COMPOSE_FILE: $(jq '.services | length' "$1") service(s) configured, profiles: ${COMPOSE_PROFILES:-<none>}"
+          }
+          check_config "$ROUNDTRIP_DIR/compose-config.json"
+          # upgrade-from-compose-files: the previous release starts from other
+          # files, and the upgrade switches to the files of this commit - both
+          # must be valid before anything is pulled.
+          if [ "$COMPOSE_FILE" != "$ROUNDTRIP_COMPOSE_FILE_TARGET" ]; then
+            (export COMPOSE_FILE="$ROUNDTRIP_COMPOSE_FILE_TARGET"; check_config "$ROUNDTRIP_DIR/compose-config.target.json")
           fi
-          docker compose config --format json > "$ROUNDTRIP_DIR/compose-config.json"
-          echo "✅ $(jq '.services | length' "$ROUNDTRIP_DIR/compose-config.json") service(s) configured, profiles: ${COMPOSE_PROFILES:-<none>}"
 
       # The throwaway S3 server joins the project through a generated override
       # file, on the networks of the backup service, so the sidecar reaches it
@@ -684,6 +771,9 @@ jobs:
 
           COMPOSE_FILE="$COMPOSE_FILE:$OVERRIDE"
           echo "COMPOSE_FILE=$COMPOSE_FILE" >> "$GITHUB_ENV"
+          # The upgrade (upgrade-from) keeps the server when it switches the
+          # compose files.
+          echo "ROUNDTRIP_COMPOSE_EXTRA=$OVERRIDE" >> "$GITHUB_ENV"
           docker compose config --quiet
           docker compose config --format json > "$CONFIG"
           echo "✅ $ROUNDTRIP_S3_SERVICE joins $(jq -r 'join(", ")' <<< "$NETWORKS") next to $BACKUP_SERVICE"
@@ -702,15 +792,21 @@ jobs:
           set -euo pipefail
           set -f # the input is split on whitespace below, never globbed
           : > "$ROUNDTRIP_DIR/created-networks.txt"
+          CONFIGS=("$ROUNDTRIP_DIR/compose-config.json")
+          if [ -f "$ROUNDTRIP_DIR/compose-config.target.json" ]; then
+            CONFIGS+=("$ROUNDTRIP_DIR/compose-config.target.json")
+          fi
 
           NAMES=""
           for NAME in ${EXTERNAL_NETWORKS//,/ }; do
             if [ "$NAME" = "auto" ]; then
               # Every network the configuration declares external, by the name
               # Compose resolved - a name taken from the .env is its value.
+              # With upgrade-from-compose-files, also those of the files the
+              # upgrade switches to.
               DECLARED=$(jq -r '(.networks // {}) | to_entries[]
                                 | select(.value.external == true) | .value.name // .key' \
-                         "$ROUNDTRIP_DIR/compose-config.json")
+                         "${CONFIGS[@]}")
               [ -n "$DECLARED" ] || echo "::notice::external-networks: 'auto' found no external network in the configuration"
               NAMES+="$DECLARED"$'\n'
             else
@@ -737,17 +833,99 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # upgrade-from: the previous release takes the image references the
+      # services resolve to, so Compose starts it like an installed release.
+      # The images under test wait under staging tags until Upgrade Stack.
+      - name: "⏮️ Pull Previous Release"
+        id: previous
+        if: inputs.upgrade-from != ''
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
+        env:
+          UPGRADE_FROM: ${{ inputs.upgrade-from }}
+          BUILD_IMAGES: ${{ inputs.build-images }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CONFIG="$ROUNDTRIP_DIR/compose-config.json"
+          TAG_RE='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'
+
+          # One spec per upgraded service: a tag, a full reference or
+          # latest-release. A plain value applies to every build-images service.
+          if [[ "$UPGRADE_FROM" == \{* ]]; then
+            PLAN="$UPGRADE_FROM"
+          else
+            PLAN=$(jq -c --arg v "$UPGRADE_FROM" 'map({key: .service, value: $v}) | from_entries' <<< "$BUILD_IMAGES")
+          fi
+
+          RELEASE=""
+          if jq -e 'any(.[]; . == "latest-release")' <<< "$PLAN" > /dev/null; then
+            if ! RESPONSE=$(curl -fsSL --retry 3 \
+                 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                 "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/latest"); then
+              echo "::error title=Backup round trip::upgrade-from: $GITHUB_REPOSITORY has no published release to upgrade from (GET releases/latest failed)"
+              exit 1
+            fi
+            RELEASE=$(jq -r '.tag_name // empty' <<< "$RESPONSE")
+            IMAGE_TAG="${RELEASE#v}"
+            if [[ ! "$IMAGE_TAG" =~ $TAG_RE ]]; then
+              echo "::error title=Backup round trip::upgrade-from: the latest release '$RELEASE' does not give an image tag - name the tag instead of 'latest-release'"
+              exit 1
+            fi
+            echo "⏮️ Latest release of $GITHUB_REPOSITORY: $RELEASE (image tag $IMAGE_TAG)"
+            PLAN=$(jq -c --arg t "$IMAGE_TAG" 'map_values(if . == "latest-release" then $t else . end)' <<< "$PLAN")
+          fi
+
+          : > "$ROUNDTRIP_DIR/previous-images.txt"
+          : > "$ROUNDTRIP_DIR/upgrade-plan.tsv"
+          PREVIOUS='{}'
+          ENTRIES=$(jq -r 'to_entries[] | "\(.key)\t\(.value)"' <<< "$PLAN")
+          while IFS=$'\t' read -r SERVICE SPEC; do
+            REF=$(jq -r --arg s "$SERVICE" '.services[$s].image // empty' "$CONFIG")
+            if [ -z "$REF" ]; then
+              echo "::error title=Backup round trip::upgrade-from: service '$SERVICE' has no image reference in the configuration the previous release starts from"
+              exit 1
+            fi
+            if [[ "$SPEC" == *[/:@]* ]]; then
+              OLD="$SPEC"
+            else
+              # The repository of the reference the service resolves to, with
+              # the release's tag: ghcr.io/acme/app:stable -> ghcr.io/acme/app:1.4.2
+              REPOSITORY="${REF%%@*}"
+              [[ "${REPOSITORY##*/}" != *:* ]] || REPOSITORY="${REPOSITORY%:*}"
+              OLD="$REPOSITORY:$SPEC"
+            fi
+            echo "::group::⏮️ $SERVICE: $OLD"
+            if ! docker pull "$OLD"; then
+              echo "::endgroup::"
+              echo "::error title=Backup round trip::upgrade-from: '$OLD' could not be pulled - is the previous release published under that tag, and may this job read it (registry-login, packages: read)?"
+              exit 1
+            fi
+            echo "::endgroup::"
+            docker tag "$OLD" "$REF"
+            echo "$REF" >> "$ROUNDTRIP_DIR/previous-images.txt"
+            printf '%s\t%s\t%s\n' "$SERVICE" "$OLD" "$REF" >> "$ROUNDTRIP_DIR/upgrade-plan.tsv"
+            PREVIOUS=$(jq -c --arg s "$SERVICE" --arg o "$OLD" '. + {($s): $o}' <<< "$PREVIOUS")
+            echo "✅ $SERVICE starts as $OLD (tagged $REF)"
+          done <<< "$ENTRIES"
+
+          # For the scripts: what the stack started from.
+          echo "ROUNDTRIP_PREVIOUS_RELEASE=$RELEASE" >> "$GITHUB_ENV"
+          echo "ROUNDTRIP_PREVIOUS_IMAGES=$PREVIOUS" >> "$GITHUB_ENV"
+
       # Each image is tagged with the exact reference its compose service
       # resolves to, so Compose starts the build instead of pulling the
       # released image - whether the reference comes from an env variable or is
       # written literally in the compose file.
       - name: "🐳 Build Images Under Test"
+        id: build
         if: inputs.build-images != ''
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
         env:
           BUILD_IMAGES: ${{ inputs.build-images }}
         run: |
           set -euo pipefail
           CONFIG="$ROUNDTRIP_DIR/compose-config.json"
+          UPGRADE_PLAN="$ROUNDTRIP_DIR/upgrade-plan.tsv"
           : > "$ROUNDTRIP_DIR/built-images.txt"
 
           COUNT=$(jq 'length' <<< "$BUILD_IMAGES")
@@ -764,7 +942,22 @@ jobs:
               exit 1
             fi
 
-            ARGS=(--pull --tag "$IMAGE_REF")
+            ARGS=(--pull)
+            UPGRADED=false
+            if [ -f "$UPGRADE_PLAN" ]; then
+              # upgrade-from: every build also waits under a staging tag for
+              # Upgrade Stack. A service the previous release runs is NOT
+              # tagged as its reference yet - the old image holds it.
+              STAGED="roundtrip-staged/image-$i:build"
+              ARGS+=(--tag "$STAGED")
+              printf '%s\t%s\n' "$SERVICE" "$STAGED" >> "$ROUNDTRIP_DIR/staged-images.txt"
+              if cut -f 1 "$UPGRADE_PLAN" | grep -qxF "$SERVICE"; then
+                UPGRADED=true
+              fi
+            fi
+            if [ "$UPGRADED" = "false" ]; then
+              ARGS+=(--tag "$IMAGE_REF")
+            fi
             [ -z "$DOCKERFILE" ] || ARGS+=(--file "$DOCKERFILE")
             [ -z "$TARGET" ] || ARGS+=(--target "$TARGET")
             while IFS= read -r BUILD_ARG; do
@@ -773,6 +966,13 @@ jobs:
                             | if type == "object" then to_entries[] | "\(.key)=\(.value)"
                               else split("\n")[] end' <<< "$ENTRY")
 
+            if [ "$UPGRADED" = "true" ]; then
+              echo "::group::🐳 $SERVICE -> $STAGED (takes over $IMAGE_REF at the upgrade)"
+              docker build "${ARGS[@]}" "$CONTEXT"
+              echo "::endgroup::"
+              echo "✅ Built $STAGED from $CONTEXT - the previous release runs first"
+              continue
+            fi
             echo "::group::🐳 $SERVICE -> $IMAGE_REF"
             docker build "${ARGS[@]}" "$CONTEXT"
             echo "::endgroup::"
@@ -785,8 +985,11 @@ jobs:
         # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
         run: |
           set -euo pipefail
-          touch "$ROUNDTRIP_DIR/built-images.txt"
-          BUILT=$(jq -R -s 'split("\n") | map(select(length > 0))' "$ROUNDTRIP_DIR/built-images.txt")
+          touch "$ROUNDTRIP_DIR/built-images.txt" "$ROUNDTRIP_DIR/previous-images.txt"
+          # The images under test and the previous release's (upgrade-from)
+          # are local; pulling their references would replace them.
+          BUILT=$(cat "$ROUNDTRIP_DIR/built-images.txt" "$ROUNDTRIP_DIR/previous-images.txt" \
+            | jq -R -s 'split("\n") | map(select(length > 0))')
           read -r -a SERVICES <<< "$(echo "$START_SERVICES" | tr '\n' ' ')"
           STARTED=$(jq -n '$ARGS.positional' --args "${SERVICES[@]}")
           # Only what Start Stack starts: the 'services' input plus everything
@@ -1030,6 +1233,82 @@ jobs:
           fi
           echo "✅ Snapshot $SNAPSHOT_ID is in s3://$ROUNDTRIP_S3_BUCKET: $(cut -f 1 <<< "$ARCHIVE") ($LOCAL_SIZE bytes, same as the local copy) and its manifest"
 
+      # The previous release has seeded and backed up. Now the upgrade an
+      # operator does: what the release notes say (upgrade-script), the
+      # compose files of the new release, its images under the references the
+      # services already use - like 'docker compose pull' - and 'up -d', which
+      # recreates every container whose image changed. The snapshot taken
+      # before stays for the restore below, which the NEW sidecar runs.
+      - name: "⬆️ Upgrade Stack"
+        id: upgrade
+        if: inputs.upgrade-from != ''
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
+        env:
+          UPGRADE_SCRIPT: ${{ inputs.upgrade-script }}
+          CHECK_SCRIPT: ${{ inputs.check-script }}
+          RUN_HEALTHCHECK: ${{ inputs.run-healthcheck }}
+        run: |
+          set -euo pipefail
+          source "$ROUNDTRIP_DIR/lib.sh"
+          read -r -a SERVICES <<< "$(echo "$START_SERVICES" | tr '\n' ' ')"
+          CONFIG="$ROUNDTRIP_DIR/compose-config.json"
+
+          if [ -n "$UPGRADE_SCRIPT" ]; then
+            run_phase upgrade "$UPGRADE_SCRIPT"
+          fi
+
+          # The files of this commit, plus the module's own override files.
+          COMPOSE_FILE="$ROUNDTRIP_COMPOSE_FILE_TARGET${ROUNDTRIP_COMPOSE_EXTRA:+:$ROUNDTRIP_COMPOSE_EXTRA}"
+          echo "COMPOSE_FILE=$COMPOSE_FILE" >> "$GITHUB_ENV"
+          docker compose config --quiet
+          docker compose config --format json > "$CONFIG"
+
+          # The new release's images take over the references the services
+          # resolve to - also a reference the upgrade-script changed.
+          touch "$ROUNDTRIP_DIR/built-images.txt"
+          while IFS=$'\t' read -r SERVICE STAGED; do
+            REF=$(jq -r --arg s "$SERVICE" '.services[$s].image // empty' "$CONFIG")
+            if [ -z "$REF" ]; then
+              echo "::error title=Backup round trip::upgrade: service '$SERVICE' has no image reference in the configuration of this commit"
+              exit 1
+            fi
+            docker tag "$STAGED" "$REF"
+            grep -qxF "$REF" "$ROUNDTRIP_DIR/built-images.txt" || echo "$REF" >> "$ROUNDTRIP_DIR/built-images.txt"
+            echo "⬆️ $SERVICE: $REF is now the image built from this commit"
+          done < "$ROUNDTRIP_DIR/staged-images.txt"
+
+          docker compose up -d --wait --wait-timeout "$WAIT_TIMEOUT" "${SERVICES[@]}"
+          docker compose ps
+
+          # Every container of an image under test must run the new build -
+          # Compose recreates a container only when it sees its image changed.
+          BUILT=$(jq -R -s 'split("\n") | map(select(length > 0))' "$ROUNDTRIP_DIR/built-images.txt")
+          RUNNING=$(jq -r --argjson built "$BUILT" '.services | to_entries[]
+                      | select(.value.image as $i | $built | index($i)) | "\(.key)\t\(.value.image)"' "$CONFIG")
+          STALE=0
+          while IFS=$'\t' read -r SERVICE REF; do
+            [ -n "$SERVICE" ] || continue
+            WANT=$(docker image inspect --format '{{.Id}}' "$REF")
+            for CONTAINER in $(docker compose ps -a -q "$SERVICE"); do
+              if [ "$(docker inspect --format '{{.Image}}' "$CONTAINER")" != "$WANT" ]; then
+                echo "::error title=Backup round trip::upgrade: '$SERVICE' still runs the previous image after 'up -d'"
+                STALE=1
+              fi
+            done
+          done <<< "$RUNNING"
+          [ "$STALE" -eq 0 ] || exit 1
+          echo "✅ Every container of an image under test runs the build of this commit"
+
+          # The installation the operator now has: data intact, and the new
+          # sidecar healthy with the previous release's snapshots and records.
+          if [ -n "$CHECK_SCRIPT" ]; then
+            run_phase check "$CHECK_SCRIPT" present
+          fi
+          if [ "$RUN_HEALTHCHECK" = "true" ]; then
+            bh healthcheck
+          fi
+          echo "✅ Upgraded from ${ROUNDTRIP_PREVIOUS_RELEASE:-the previous release}: data intact, the new sidecar is healthy"
+
       - name: "🗑️ Remove Seeded Data"
         id: mutate
         if: inputs.mutate-script != ''
@@ -1191,7 +1470,7 @@ jobs:
           timeout 60 docker compose exec -T "$BACKUP_SERVICE" backuphelper list > "$DIAG/snapshots.txt" 2>&1
           { df -h /; echo; free -m; echo; docker system df; } > "$DIAG/runner.txt" 2>&1
           # Generated override files hold .env references, never credentials.
-          cp -f "$ROUNDTRIP_DIR"/*.compose.yml "$DIAG/" 2> /dev/null
+          cp -f "$ROUNDTRIP_DIR"/*.compose.yml "$ROUNDTRIP_DIR/upgrade-plan.tsv" "$DIAG/" 2> /dev/null
           # The .env holds the generated secrets and is never collected.
           ls -la "$DIAG" "$DIAG/logs"
 
@@ -1238,6 +1517,9 @@ jobs:
           OUTCOME_HEALTH: ${{ steps.healthcheck.outcome }}
           RUN_HEALTHCHECK: ${{ inputs.run-healthcheck }}
           ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          HAS_UPGRADE: ${{ inputs.upgrade-from != '' }}
+          OUTCOME_PREVIOUS: ${{ steps.previous.outcome }}
+          OUTCOME_UPGRADE: ${{ steps.upgrade.outcome }}
           HAS_S3: ${{ inputs.s3-destination }}
           OUTCOME_S3_UPLOAD: ${{ steps.s3-upload.outcome }}
           OUTCOME_NEW_HOST: ${{ steps.new-host.outcome }}
@@ -1258,6 +1540,9 @@ jobs:
             echo ""
             if [ "$JOB_STATUS" = "success" ]; then
               PASSED="✅ **Passed** - snapshot \`$SNAPSHOT_ID\` was created, verified and restored."
+              if [ "$HAS_UPGRADE" = "true" ]; then
+                PASSED+=" The previous release (${ROUNDTRIP_PREVIOUS_RELEASE:-see below}) took it; the images built from this commit restored it after the upgrade."
+              fi
               if [ "$HAS_S3" = "true" ]; then
                 PASSED+=" It reached the S3 bucket, and the restore pulled it back from there after the sidecar's local data was wiped."
               fi
@@ -1268,11 +1553,13 @@ jobs:
             echo ""
             echo "| Phase | Result |"
             echo "|-------|--------|"
+            # Rows of opt-in phases only when they are configured.
+            [ "$HAS_UPGRADE" != "true" ] || echo "| Pull previous release | $(cell "$OUTCOME_PREVIOUS" true) |"
             echo "| Seed test data | $(cell "$OUTCOME_SEED" "$HAS_SEED") |"
             echo "| Create backup | $(cell "$OUTCOME_CREATE" true) |"
             echo "| Inspect snapshot | $(cell "$OUTCOME_INSPECT" true) |"
-            # Rows of opt-in phases only when they are configured.
             [ "$HAS_S3" != "true" ] || echo "| Off-site copy in S3 | $(cell "$OUTCOME_S3_UPLOAD" true) |"
+            [ "$HAS_UPGRADE" != "true" ] || echo "| Upgrade to this commit (data + healthcheck) | $(cell "$OUTCOME_UPGRADE" true) |"
             echo "| Remove seeded data | $(cell "$OUTCOME_MUTATE" "$HAS_MUTATE") |"
             [ "$HAS_S3" != "true" ] || echo "| New host: local data wiped | $(cell "$OUTCOME_NEW_HOST" true) |"
             echo "| Restore snapshot | $(cell "$OUTCOME_RESTORE" true) |"
@@ -1303,6 +1590,20 @@ jobs:
               echo "| Component | Kind | Size | Status |"
               echo "|-----------|------|------|--------|"
               jq -r '.components[] | "| `\(.name)` | \(.kind) | \(.size) bytes | \(if .error then "❌ " + .error elif ((.metadata.warnings // []) | length) > 0 then "⚠️ Warnings" else "✅ OK" end) |"' "$MANIFEST"
+              echo ""
+            fi
+
+            PLAN="${ROUNDTRIP_DIR:-/nonexistent}/upgrade-plan.tsv"
+            if [ -s "$PLAN" ]; then
+              echo "### ⬆️ Upgraded from \`${ROUNDTRIP_PREVIOUS_RELEASE:-the images below}\`"
+              echo ""
+              echo "| Service | Previous release | Started as |"
+              echo "|---------|------------------|------------|"
+              while IFS=$'\t' read -r SERVICE OLD REF; do
+                echo "| \`$SERVICE\` | \`$OLD\` | \`$REF\` |"
+              done < "$PLAN"
+              echo ""
+              echo "The upgrade gave those references the images built from this commit (*Images under test*)."
               echo ""
             fi
 

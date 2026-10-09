@@ -1071,7 +1071,7 @@ gh auth status --show-token
 
 #### 🔍 Validation Modules
 
-- [🧪 **Backup Round-Trip Test**](docs/workflows/modules-backup-roundtrip-test.md) - Backup, delete, restore and verify real data of a compose stack before release, per compose variant (local, Traefik, Coolify) and from an off-site S3 copy on a new host
+- [🧪 **Backup Round-Trip Test**](docs/workflows/modules-backup-roundtrip-test.md) - Backup, delete, restore and verify real data of a compose stack before release, per compose variant (local, Traefik, Coolify), after an upgrade from the previous release and from an off-site S3 copy on a new host
 - [🔍 **Docker Base Image Monitor**](docs/workflows/modules-docker-base-image-monitor.md) - Base image digest drift detection
 - [🐳 **Dockerfile Validation**](docs/workflows/modules-validate-dockerfile.md) - Dockerfile linting with Hadolint
 - [📋 **Docker Compose Validation**](docs/workflows/modules-validate-compose.md) - Docker Compose validation
