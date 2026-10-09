@@ -189,8 +189,8 @@ Base image digests and dependency updates (npm, pip, .NET, Go) in one scheduled 
 
 **Examples:**
 - `auto-maintenance/weekly-maintenance.yml` - Weekly run with a manual dry run
-- `auto-maintenance/maintenance-config.json` - Two base images, npm and pip, validation, release dispatch
-- `auto-maintenance/README.md` - Setup, and when to use the base image monitor or Dependabot instead
+- `auto-maintenance/maintenance-config.json` - Three floating base images and a release dispatch, as the container stacks run it
+- `auto-maintenance/README.md` - Setup, the known limitation (npm, pip and .NET updates are not committed yet), and when to use the base image monitor or Dependabot instead
 
 ### CI/CD Pipelines
 Complete CI/CD pipeline configurations

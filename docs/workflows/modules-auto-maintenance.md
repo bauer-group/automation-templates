@@ -6,6 +6,7 @@ Vollautomatische Repository-Wartung: Base Image Monitoring, Dependency Updates, 
 
 - [Problemstellung](#problemstellung)
 - [Funktionsweise](#funktionsweise)
+  - [Bekannte Einschraenkung: Dependency-Updates werden nicht committet](#bekannte-einschraenkung-dependency-updates-werden-nicht-committet)
 - [Schnellstart](#schnellstart)
 - [Vollstaendige Einrichtung](#vollstaendige-einrichtung)
 - [JSON-Konfigurationsreferenz](#json-konfigurationsreferenz)
@@ -92,6 +93,21 @@ VORHER (pro Repo, bis zu 3 Workflows):        NACHHER (pro Repo):
 **Unterschied zum Base Image Monitor:** Hier zählt ein Digest als erledigt, sobald der Release-Workflow gestartet wurde. Muss ein Release-Gate (z. B. der Backup-Round-Trip) erst bestehen und soll ein fehlgeschlagener Release automatisch wiederholt werden, ist [`modules-docker-base-image-monitor.yml`](./modules-docker-base-image-monitor.md#release-confirmation) das passende Modul.
 
 **Digest-Variablen werden zuletzt gespeichert:** erst nachdem der Commit gepusht und der Release-Workflow gestartet wurde. Schlägt einer dieser Schritte fehl oder wird der Commit übersprungen (z. B. fehlgeschlagene Validierung), bleibt der alte Digest stehen und der nächste Lauf erkennt das Update erneut. Der leere Commit für reine Base-Image-Updates endet auf `[skip ci]`, wenn `release.trigger-workflow` gesetzt ist; der per `workflow_dispatch` gestartete Release läuft trotzdem. `docker manifest inspect` wird bei vorübergehenden Registry-Fehlern (z. B. `429`) bis zu 3-mal versucht.
+
+### Bekannte Einschraenkung: Dependency-Updates werden nicht committet
+
+Der Schritt „Commit and push“ nimmt jedes Ecosystem mit **einem** `git add` fester Pfade im Repository-Root auf:
+
+| Ecosystem | `git add` |
+|-----------|-----------|
+| Node.js | `package.json package-lock.json yarn.lock pnpm-lock.yaml` |
+| Python | `requirements.txt requirements*.txt Pipfile.lock poetry.lock` |
+| .NET | `'*.csproj' '*.fsproj' Directory.Build.props Directory.Packages.props` |
+| Go | `go.mod go.sum` |
+
+Fehlt auch nur einer dieser Pfade, nimmt Git **keinen** davon auf (`fatal: pathspec ... did not match any files`, im Workflow unterdrückt). Für Node.js, Python und Go stehen Dateien in einem anderen `working-directory` als dem Root gar nicht in der Liste. Ein Repository mit einem einzigen Paketmanager bekommt seine npm-, pip- oder .NET-Updates deshalb **nie** committet: Der Lauf aktualisiert und validiert sie, meldet im Log `No dependency files to commit` und verwirft sie — die Job Summary zeigt trotzdem „Dependency file changes detected“.
+
+Nicht betroffen sind Base-Image-Updates (ihr Commit ist leer) und ein Go-Modul im Root (`go.mod` und `go.sum`). Bis das Modul nur vorhandene Dateien aufnimmt, kommen Dependency-Updates besser von Dependabot, gemerged mit [Docker Maintenance (Dependabot)](./docker-maintenance.md) nach grüner PR-CI. Die produktiven Caller nutzen das Modul nur für Base Images.
 
 ---
 
@@ -258,7 +274,7 @@ Jeder Block ist **optional**. Man konfiguriert nur was man braucht.
 | Feld | Typ | Default | Beschreibung |
 |------|-----|---------|--------------|
 | `version` | string | `"3.13"` | Python Version |
-| `requirements-file` | string | `"requirements.txt"` | Pfad zur Requirements-Datei |
+| `requirements-file` | string | `"requirements.txt"` | Pfad zur Requirements-Datei, relativ zu `working-directory` |
 | `working-directory` | string | `"."` | Arbeitsverzeichnis |
 | `update-strategy` | string | `"compatible"` | `compatible`: Upgrade innerhalb Constraints |
 
@@ -308,7 +324,7 @@ Jeder Block ist **optional**. Man konfiguriert nur was man braucht.
 
 ## Beispiele
 
-> Kopierfertiger Caller und Konfiguration: [`github/workflows/examples/auto-maintenance/`](../../github/workflows/examples/auto-maintenance/README.md).
+> Kopierfertiger Caller und Konfiguration: [`github/workflows/examples/auto-maintenance/`](../../github/workflows/examples/auto-maintenance/README.md). Die Beispiele mit `ecosystems` zeigen den Aufbau der Konfiguration; ihre npm-, pip- und .NET-Updates werden derzeit nicht committet, siehe [Bekannte Einschraenkung](#bekannte-einschraenkung-dependency-updates-werden-nicht-committet).
 
 ### Node.js Projekt (z.B. Ghost BunnyCDN Connector)
 
@@ -373,7 +389,7 @@ Jeder Block ist **optional**. Man konfiguriert nur was man braucht.
     },
     "python": {
       "version": "3.13",
-      "requirements-file": "src/n8n-backup/requirements.txt",
+      "requirements-file": "requirements.txt",
       "working-directory": "src/n8n-backup"
     }
   },
@@ -410,7 +426,7 @@ Jeder Block ist **optional**. Man konfiguriert nur was man braucht.
   "ecosystems": {
     "python": {
       "version": "3.13",
-      "requirements-file": "src/requirements.txt",
+      "requirements-file": "requirements.txt",
       "working-directory": "src"
     }
   },
@@ -544,6 +560,10 @@ Docker Hub Rate Limits oder das Image existiert nicht. Pruefen:
 ```bash
 docker manifest inspect IMAGE:TAG
 ```
+
+### "No dependency files to commit"
+
+Die Updates wurden angewendet (und, falls `validation` gesetzt ist, validiert), aber nicht committet. Ursache ist die [bekannte Einschraenkung](#bekannte-einschraenkung-dependency-updates-werden-nicht-committet) beim Aufnehmen der Dateien; die Konfiguration ist nicht falsch. Base-Image-Updates desselben Laufs werden trotzdem committet und released.
 
 ### Validation fehlgeschlagen
 

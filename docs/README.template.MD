@@ -1061,7 +1061,7 @@ gh auth status --show-token
 
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
 - [🐳 **Fork Docker Build**](docs/workflows/fork-docker-build.md) - Multi-image build, Trivy gate and GHCR push for forked repositories
-- [🔧 **Auto Maintenance**](docs/workflows/modules-auto-maintenance.md) - Base image digests and dependency updates (npm, pip, .NET, Go) in one scheduled run, validated and rolled back on failure
+- [🔧 **Auto Maintenance**](docs/workflows/modules-auto-maintenance.md) - Base image digests and dependency updates (npm, pip, .NET, Go) in one scheduled run, validated and rolled back on failure; npm, pip and .NET updates are not committed yet ([known limitation](docs/workflows/modules-auto-maintenance.md#bekannte-einschraenkung-dependency-updates-werden-nicht-committet))
 - [🐳 **Docker Image Maintenance**](docs/workflows/docker-maintenance.md) - Dependabot PRs merged after their PR CI passed (trigger scope, decision table), or Renovate
 - [🐍 **Python Build System**](docs/workflows/python-build.md) - Python application builds and testing
 - [🐍 **Python Semantic Release System**](docs/workflows/python-semantic-release.md) - Modern Python CI/CD with semantic versioning
@@ -1157,7 +1157,7 @@ gh auth status --show-token
 
 - [🐳 **Docker Examples**](github/workflows/examples/docker/) - Complete Docker workflow examples
 - [🐳 **Docker Compose Examples**](github/workflows/examples/docker-compose/) - Docker Compose workflow examples
-- [🔧 **Auto Maintenance Examples**](github/workflows/examples/auto-maintenance/) - Weekly caller and a multi-ecosystem config
+- [🔧 **Auto Maintenance Examples**](github/workflows/examples/auto-maintenance/) - Weekly caller and a base image config
 - [🧪 **Backup Round-Trip Examples**](github/workflows/examples/backup-roundtrip/) - Minimal, gated release pipeline, plugin sources, upgrade from the previous release, off-site S3, compose variants
 - [🐳 **Fork Docker Build Examples**](github/workflows/examples/fork-docker-build/) - Drop-in caller for a fork's `workspace` branch
 - [🐳 **Docker Maintenance (Dependabot) Examples**](github/workflows/examples/docker-maintenance-dependabot/) - Merge after the PR CI: backup round-trip gate, own CI, several workflows, no PR CI
