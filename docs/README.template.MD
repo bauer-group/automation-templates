@@ -121,7 +121,9 @@ jobs:
 │   │   └── platformio-build/     # PlatformIO cross-platform builds
 │   ├── config/                # 📋 Configuration Templates
 │   │   ├── claude-code/          # Claude Code Assistant configurations
+│   │   ├── docker-base-image-monitor/ # Base image monitor config schema + example
 │   │   ├── docker-build/         # Docker build configurations
+│   │   ├── docker-maintenance-dependabot/ # dependabot.yml template for base image updates
 │   │   ├── dotnet-build/         # .NET build configurations
 │   │   ├── dotnet-desktop-build/ # .NET desktop build configurations
 │   │   ├── issues/               # Issue template configurations
@@ -146,6 +148,7 @@ jobs:
 │       ├── claude-code.yml            # Claude Code AI assistant
 │       ├── coolify-deploy.yml         # Coolify deployment automation
 │       ├── docker-build.yml           # Docker build & deploy
+│       ├── docker-maintenance-dependabot.yml # Merge Dependabot PRs after their PR CI passed
 │       ├── documentation.yml          # Documentation automation
 │       ├── dotnet-build.yml           # .NET build & test
 │       ├── dotnet-desktop-build.yml   # .NET desktop builds
@@ -172,6 +175,7 @@ jobs:
 │       ├── modules-validate-compose.yml    # Docker Compose validation
 │       ├── modules-validate-shellscript.yml # Shell script validation (ShellCheck)
 │       ├── modules-backup-roundtrip-test.yml # Backup round trip of a compose stack
+│       ├── modules-docker-base-image-monitor.yml # Rebuild when a floating base image tag moves
 │       └── modules-*.yml              # Additional module workflows
 ├── github/                    # 🛠️ Repository Management Tools
 │   ├── branch-protect/           # Branch protection automation
@@ -185,7 +189,9 @@ jobs:
 │           ├── claude-code/          # Claude Code assistant examples
 │           ├── coolify-deploy/       # Coolify deployment examples
 │           ├── docker/               # Docker build examples
+│           ├── docker-base-image-monitor/ # Base image monitor callers
 │           ├── docker-compose/       # Docker Compose examples
+│           ├── docker-maintenance-dependabot/ # Dependabot merge callers
 │           ├── dockerfile-validation/ # Dockerfile linting examples
 │           ├── documentation/        # Documentation examples
 │           ├── dotnet-build/         # .NET project examples
@@ -213,11 +219,13 @@ jobs:
 │   │   ├── claude-code.md            # Claude Code AI assistant
 │   │   ├── coolify-deploy.md         # Coolify deployment
 │   │   ├── docker-build.md           # Docker build system
+│   │   ├── docker-maintenance.md     # Docker image maintenance (Dependabot / Renovate)
 │   │   ├── dotnet-build.md           # .NET build system
 │   │   ├── dotnet-desktop-build.md   # .NET desktop builds
 │   │   ├── makefile-build.md         # Makefile build system
 │   │   ├── meta-repository-sync.md   # Meta repository sync
 │   │   ├── modules-backup-roundtrip-test.md # Backup round-trip test
+│   │   ├── modules-docker-base-image-monitor.md # Base image monitor
 │   │   ├── modules-validate-compose.md # Compose validation
 │   │   ├── modules-validate-dockerfile.md # Dockerfile validation (Hadolint)
 │   │   ├── modules-validate-shellscript.md # Shell validation
@@ -249,6 +257,8 @@ Complete Docker automation with multi-platform builds, security scanning, and en
 | **🔧 docker-build action** | Multi-platform Docker builds | Composite action with security scanning |
 | **🚀 docker-build workflow** | Complete Docker CI/CD | `uses: {{REPO_FULL_NAME}}/.github/workflows/docker-build.yml@main` |
 | **📋 Configuration Templates** | Pre-configured setups | `default`, `web-application`, `microservice`, `enterprise` |
+| **🐳 Docker maintenance (Dependabot)** | Merge Dependabot base image PRs only after the named PR CI passed | `uses: {{REPO_FULL_NAME}}/.github/workflows/docker-maintenance-dependabot.yml@main` |
+| **🔍 Base image monitor** | Release a rebuild when a floating tag (`stable`, `latest`) moves; stored once the release succeeded | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-docker-base-image-monitor.yml@main` |
 
 **Quick Start - Docker:**
 ```yaml
@@ -1049,6 +1059,7 @@ gh auth status --show-token
 ### 🚀 Workflow Systems Documentation
 
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
+- [🐳 **Docker Image Maintenance**](docs/workflows/docker-maintenance.md) - Dependabot PRs merged after their PR CI passed (trigger scope, decision table), or Renovate
 - [🐍 **Python Build System**](docs/workflows/python-build.md) - Python application builds and testing
 - [🐍 **Python Semantic Release System**](docs/workflows/python-semantic-release.md) - Modern Python CI/CD with semantic versioning
 - [📦 **Semantic Release Config Contract**](docs/workflows/semantic-release-config.md) - What a repository's `semantic-release.json` actually controls, and what is silently ignored
@@ -1075,7 +1086,7 @@ gh auth status --show-token
 #### 🔍 Validation Modules
 
 - [🧪 **Backup Round-Trip Test**](docs/workflows/modules-backup-roundtrip-test.md) - Backup, delete, restore and verify real data of a compose stack before release, per compose variant (local, Traefik, Coolify), after an upgrade from the previous release and from an off-site S3 copy on a new host
-- [🔍 **Docker Base Image Monitor**](docs/workflows/modules-docker-base-image-monitor.md) - Base image digest drift detection
+- [🔍 **Docker Base Image Monitor**](docs/workflows/modules-docker-base-image-monitor.md) - Base image digest drift detection; digests stored once the release succeeded, failed releases retried, [operator recovery](docs/workflows/modules-docker-base-image-monitor.md#operator-recovery)
 - [🐳 **Dockerfile Validation**](docs/workflows/modules-validate-dockerfile.md) - Dockerfile linting with Hadolint
 - [📋 **Docker Compose Validation**](docs/workflows/modules-validate-compose.md) - Docker Compose validation
 - [🐚 **Shell Script Validation**](docs/workflows/modules-validate-shellscript.md) - Shell script linting with ShellCheck
@@ -1119,6 +1130,8 @@ gh auth status --show-token
 ### 📋 Configuration References
 
 - [🐳 **Docker Configurations**](.github/config/docker-build/) - Docker build configuration templates
+- [🔍 **Docker Base Image Monitor Configuration**](.github/config/docker-base-image-monitor/README.md) - Config schema, example and setup guide
+- [🐳 **Dependabot Configuration**](.github/config/docker-maintenance-dependabot/dependabot.yml) - `dependabot.yml` template for base image updates
 - [⚡ **Zephyr Configurations**](.github/config/zephyr-build/) - Zephyr RTOS build configuration templates
 - [📟 **ESP32 Configurations**](.github/config/esp32-build/) - ESP32 build configuration templates
 - [🔧 **STM32 Configurations**](.github/config/stm32-build/) - STM32 build configuration templates
@@ -1140,6 +1153,8 @@ gh auth status --show-token
 
 - [🐳 **Docker Examples**](github/workflows/examples/docker/) - Complete Docker workflow examples
 - [🐳 **Docker Compose Examples**](github/workflows/examples/docker-compose/) - Docker Compose workflow examples
+- [🐳 **Docker Maintenance (Dependabot) Examples**](github/workflows/examples/docker-maintenance-dependabot/) - Merge after the PR CI: backup round-trip gate, own CI, several workflows, no PR CI
+- [🔍 **Docker Base Image Monitor Examples**](github/workflows/examples/docker-base-image-monitor/) - Daily check with release dispatch, several images, dry run
 - [🐳 **Dockerfile Validation Examples**](github/workflows/examples/dockerfile-validation/) - Dockerfile linting examples
 - [🐍 **Python Examples**](github/workflows/examples/python-build/) - Python build and test examples
 - [🐍 **Python Release Examples**](github/workflows/examples/python-release/) - Python semantic release examples

@@ -82,6 +82,21 @@ billed to the organization".
 **Zweck:** Wiederverwendbarer Node.js Build und Publish Workflow  
 **Features:** npm/yarn/pnpm/bun Support, Package Publishing, Docker
 
+### Container-Wartung
+
+Reusable Workflows, mit denen sich Container-Repositories selbst aktuell halten — jeweils mit eigener Doku und kopierfertigen Beispielen:
+
+#### 🐳 [docker-maintenance-dependabot.yml](./docker-maintenance-dependabot.yml) - Docker Maintenance (Dependabot)
+**Zweck:** Merged Dependabot-PRs erst, nachdem die in `required-workflows` genannte PR-CI auf dem Head-Commit grün ist (ohne Ruleset/Branch Protection)  
+**Features:** Entscheidungstabelle mit Annotation pro Fall, nur Patch-Updates per Default, CI-Änderungen (`.github/`, GitHub Actions) bleiben offen, gepinnter Merge (`--match-head-commit`)  
+**Trigger-Umfang:** Die `pull_request.paths` des Callers entscheiden, welche Dependabot-PRs das Modul erreichen  
+**Docs:** [docs/workflows/docker-maintenance.md](../../docs/workflows/docker-maintenance.md) · **Beispiele:** [examples/docker-maintenance-dependabot/](../../github/workflows/examples/docker-maintenance-dependabot/README.md)
+
+#### 🔍 [modules-docker-base-image-monitor.yml](./modules-docker-base-image-monitor.yml) - Docker Base Image Monitor
+**Zweck:** Erkennt neu gebaute Base Images hinter Floating Tags und stößt Release + Rebuild an  
+**Features:** Digest-Speicherung erst nach erfolgreichem Release (`<VAR>_PENDING`), fehlgeschlagene Releases erneut dispatcht (bis zu 3 Läufe pro Digest, `max-release-attempts`), Coverage-Report, Dry Run  
+**Docs:** [docs/workflows/modules-docker-base-image-monitor.md](../../docs/workflows/modules-docker-base-image-monitor.md) ([Operator recovery](../../docs/workflows/modules-docker-base-image-monitor.md#operator-recovery)) · **Beispiele:** [examples/docker-base-image-monitor/](../../github/workflows/examples/docker-base-image-monitor/README.md)
+
 ### Fork-Automation
 
 Für geforkte Repositories, die sich selbst warten (Mirror → Workspace → Build):
@@ -159,6 +174,8 @@ jobs:
 | **dotnet-publish-binaries.yml** | workflow_call | Self-contained Binaries pro RID + Release-Upload | Linux (x64+arm64), Windows (x64); macOS/win-arm64 opt-in |
 | **nodejs-build.yml** | workflow_call | Build, Test, Publish, Docker | Linux, Windows, macOS |
 | **fork-docker-build.yml** | workflow_call | Multi-Image Build, Trivy-Scan, GHCR (Fork-CI) | Linux |
+| **docker-maintenance-dependabot.yml** | workflow_call (Caller: `pull_request`) | Dependabot-PRs nach grüner PR-CI mergen | Linux |
+| **modules-docker-base-image-monitor.yml** | workflow_call (Caller: `schedule`) | Digest-Überwachung, Release-Dispatch mit Bestätigung und Retries | Linux |
 | **sync-upstream.yml** | workflow_call | Fork-Sync (merge-upstream API) + Workspace-Merge | Linux |
 
 ## 🚀 Verwendung für externe Repositories
@@ -182,7 +199,7 @@ uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.y
 ## 📚 Weitere Dokumentation
 
 - **[Modulare Komponenten](./MODULES-README.MD)** - Detaillierte Modul-Dokumentation
-- **[GitHub Actions](../actions/README.MD)** - Verfügbare Action-Komponenten
+- **[GitHub Actions](../actions/README.md)** - Verfügbare Action-Komponenten
 
 ---
 
