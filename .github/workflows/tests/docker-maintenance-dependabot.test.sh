@@ -308,8 +308,16 @@ fixture "$D" runs 1 "$OWN_RUN" "$(run 201 20 completed success build)" "$(run 20
 run_ci "$D"; check ci/re-run-newest-counts "$D" $? 0 result green -
 
 D=$(new_case rerun-newest-fails)
-fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)" "$(run 201 22 completed failure build)"
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success build)" "$(run 201 20 completed failure build)"
 run_ci "$D"; check ci/re-run-newest-failure-counts "$D" $? 0 result failed notice
+
+# GitHub returns the latest check run per name *per check suite* (verified:
+# 9 Teams Notifications runs on one commit, same job names, all returned).
+# Two workflows with a job called "build" are two checks; the newer one
+# passing must not hide the older one failing.
+D=$(new_case same-name-other-workflow)
+fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed failure build)" "$(run 201 21 completed success build)"
+run_ci "$D"; check ci/same-job-name-in-two-workflows "$D" $? 0 result failed notice "build (failure)"
 
 D=$(new_case workflow-without-jobs-yet)
 fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 completed success labels)"

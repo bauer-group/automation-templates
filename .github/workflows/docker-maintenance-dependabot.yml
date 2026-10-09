@@ -259,8 +259,11 @@ jobs:
               FILENAME == runs_f {
                 if ($0 == "") next
                 if (is_self($1, $5)) { self_suite[$2] = 1; next }
-                # A re-run adds a check run with the same name; the newest counts.
-                if (!($5 in best) || $1 + 0 > best[$5] + 0) { best[$5] = $1; st[$5] = $3; co[$5] = $4 }
+                # A re-run adds a check run with the same name to the same check
+                # suite; the newest counts. Jobs of the same name in different
+                # workflow runs (suites) are different checks and all count.
+                k = $2 SUBSEP $5
+                if (!(k in best) || $1 + 0 > best[k] + 0) { best[k] = $1; st[k] = $3; co[k] = $4; nm[k] = $5 }
                 next
               }
               # check suites: id, status, conclusion, check run count, app
@@ -276,11 +279,11 @@ jobs:
                 next
               }
               END {
-                for (n in best) {
+                for (k in best) {
                   total++
-                  if (st[n] != "completed")  { pending++; print "PENDING\tcheck\t" n " (" st[n] ")" }
-                  else if (!good(co[n]))     { failed++;  print "FAILED\tcheck\t" n " (" co[n] ")" }
-                  else                       {            print "OK\tcheck\t" n " (" co[n] ")" }
+                  if (st[k] != "completed")  { pending++; print "PENDING\tcheck\t" nm[k] " (" st[k] ")" }
+                  else if (!good(co[k]))     { failed++;  print "FAILED\tcheck\t" nm[k] " (" co[k] ")" }
+                  else                       {            print "OK\tcheck\t" nm[k] " (" co[k] ")" }
                 }
                 for (i = 1; i <= ns; i++) {
                   if (sid[i] in self_suite) continue
