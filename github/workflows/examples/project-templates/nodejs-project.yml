@@ -56,7 +56,10 @@ jobs:
       enable-security-scan: true
       enable-license-check: true
       enable-commit-lint: true
-      security-scan-engine: 'gitleaks'
+      # Gitleaks is opt-in: set 'gitleaks' in repositories without GitHub secret
+      # scanning and push protection (organization repositories also need
+      # GITLEAKS_LICENSE, for Dependabot PRs as a Dependabot secret).
+      security-scan-engine: 'none'
       fail-on-security-issues: true
       fail-on-license-issues: false
     secrets: inherit
@@ -67,7 +70,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: 'gitleaks'
+      scan-engine: 'none'  # Trivy only; 'gitleaks' to add the secret scan (see above)
       scan-type: 'all'
       fail-on-findings: false
       exclude-paths: 'node_modules,dist,build,.nyc_output,coverage'

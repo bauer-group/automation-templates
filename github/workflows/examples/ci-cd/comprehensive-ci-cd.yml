@@ -21,10 +21,10 @@ on:
         default: 'source'
         options: ['source', 'binaries', 'docker', 'all']
       security-scan-engine:
-        description: 'Security scan engine'
+        description: "Secret scan engine ('none' = Gitleaks off, the default)"
         type: choice
-        default: 'gitleaks'
-        options: ['gitleaks']
+        default: 'none'
+        options: ['none', 'gitleaks']
 
 jobs:
   # PR validation for pull requests
@@ -36,7 +36,10 @@ jobs:
       enable-security-scan: true
       enable-license-check: true
       enable-commit-lint: true
-      security-scan-engine: 'gitleaks'  # Faster for PRs
+      # Gitleaks is opt-in: set 'gitleaks' in repositories without GitHub secret
+      # scanning and push protection (organization repositories also need
+      # GITLEAKS_LICENSE, for Dependabot PRs as a Dependabot secret).
+      security-scan-engine: 'none'
       fail-on-security-issues: true
       fail-on-license-issues: false
     secrets:
@@ -48,7 +51,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: ${{ inputs.security-scan-engine || 'gitleaks' }}
+      scan-engine: ${{ inputs.security-scan-engine || 'none' }}  # Trivy always; Gitleaks opt-in
       scan-type: 'all'
       fail-on-findings: false  # Don't block releases, but report issues
     secrets:

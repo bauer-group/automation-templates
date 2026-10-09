@@ -1,15 +1,18 @@
 name: 'Security Scan'
-description: 'Secret scanning with Gitleaks and dependency vulnerability scanning with Trivy'
+description: 'Dependency vulnerability scanning with Trivy and opt-in secret scanning with Gitleaks'
 author: 'BAUER GROUP'
 
 inputs:
   scan-engine:
     description: >-
-      Secret scan engine: 'gitleaks'. 'both' is still accepted and runs gitleaks.
-      'gitguardian' is deprecated: GitGuardian was removed, so it runs NO secret scanner
-      and the run says so with a warning.
+      Secret scan engine. 'none' (default): Gitleaks is opt-in and does not run, and
+      the run says so with a notice. 'gitleaks': scan the git history with Gitleaks -
+      enable it in repositories without GitHub secret scanning and push protection
+      (organization repositories also need gitleaks-license). 'both' is still accepted
+      and runs gitleaks. 'gitguardian' is deprecated: GitGuardian was removed, so it
+      runs NO secret scanner and the run says so with a warning.
     required: false
-    default: 'gitleaks'
+    default: 'none'
   scan-type:
     description: 'Type of security scan (secrets, vulnerabilities, all)'
     required: false
@@ -32,7 +35,10 @@ inputs:
     default: ''
     deprecationMessage: 'GitGuardian scanning was removed from automation-templates; gitguardian-api-key is ignored and can be dropped.'
   gitleaks-license:
-    description: 'Gitleaks Pro license key (required for Organizations)'
+    description: >-
+      Gitleaks license key (free from gitleaks.io). Read only when scan-engine is
+      'gitleaks'; gitleaks-action refuses to scan a repository owned by an
+      organization without it.
     required: false
     default: ''
   minimum-severity:
@@ -48,8 +54,9 @@ outputs:
   secrets-found:
     description: >-
       Secret scan state: 'true', 'false', 'unknown' when the scan did not complete, or
-      'skipped' when no secret scan ran (scan-type 'vulnerabilities', or the removed
-      'gitguardian' engine). Only 'false' means scanned and clean.
+      'skipped' when no secret scan ran (Gitleaks not enabled, which is the default;
+      scan-type 'vulnerabilities'; or the removed 'gitguardian' engine). Only 'false'
+      means scanned and clean.
     value: ${{ steps.process-gitleaks.outputs.secrets-found || 'skipped' }}
   gitleaks-secrets-found:
     description: 'Whether secrets were found by Gitleaks: true, false, or unknown'
@@ -106,12 +113,22 @@ runs:
         # able to report anything else. Gitleaks (full history) and the TruffleHog
         # module (live verification) cover secret scanning.
         #
+        # Gitleaks is opt-in (2026-10): the templates also serve repositories that
+        # have GitHub secret scanning and push protection, where Gitleaks duplicates
+        # them and needs a licence secret that Dependabot runs do not receive. 'none'
+        # - the default - and an empty value therefore mean "not enabled": a notice,
+        # not a warning, and the secret engine 'disabled' so every summary can say
+        # so instead of reporting a clean scan.
+        #
         # The old engine names stay accepted so no caller breaks:
         #   both        -> gitleaks, exactly what 'both' ran besides GitGuardian
         #   gitguardian -> no secret scanner. Mapping it to gitleaks would override a
         #                  caller that chose it to keep gitleaks off (e.g. because the
         #                  Gitleaks licence is not available to Dependabot runs).
         case "$SCAN_ENGINE" in
+          none | '')
+            SECRET_ENGINE="disabled"
+            echo "::notice title=Gitleaks disabled::Gitleaks is opt-in and was not enabled (scan-engine: '${SCAN_ENGINE:-none}'), so this run scanned no secrets. Enable it with scan-engine: 'gitleaks' in repositories without GitHub secret scanning and push protection." ;;
           gitleaks)
             SECRET_ENGINE="gitleaks" ;;
           both)
@@ -122,7 +139,7 @@ runs:
             echo "::warning title=No secret scan ran::scan-engine 'gitguardian' is deprecated: GitGuardian was removed from automation-templates (it only ever scanned the last commit and could not report findings). This run scanned NO secrets. Use scan-engine: 'gitleaks', or the modules-trufflehog-scan workflow." ;;
           *)
             SECRET_ENGINE="none"
-            echo "::warning title=No secret scan ran::Unknown scan-engine '${SCAN_ENGINE}' - this run scanned NO secrets. Valid value: 'gitleaks'." ;;
+            echo "::warning title=No secret scan ran::Unknown scan-engine '${SCAN_ENGINE}' - this run scanned NO secrets. Valid values: 'none' (default, Gitleaks disabled) and 'gitleaks'." ;;
         esac
 
         echo "🛡️ Initializing Security Scan"
@@ -470,7 +487,8 @@ runs:
 
         # One score: 100, minus 50 for a secret finding, minus the vulnerability
         # penalty. With GitGuardian gone there is no second engine to average with,
-        # so best-engine-score is the same number.
+        # so best-engine-score is the same number. With Gitleaks disabled the score
+        # covers dependencies only; the summary table says so.
         SCORE=100
         if [ "$GITLEAKS_SECRETS" == "true" ]; then
           SCORE=50
@@ -496,11 +514,11 @@ runs:
           false)   SECRETS_CELL="✅ none found" ;;
           unknown) SECRETS_CELL="❓ scan did not complete - NOT a clean result" ;;
           *)
-            if [ "$SECRET_ENGINE" == "gitleaks" ]; then
-              SECRETS_CELL="⏭️ not requested (scan-type)"
-            else
-              SECRETS_CELL="⏭️ not scanned - no secret engine ran"
-            fi ;;
+            case "$SECRET_ENGINE" in
+              gitleaks) SECRETS_CELL="⏭️ not requested (scan-type)" ;;
+              disabled) SECRETS_CELL="⏭️ disabled - Gitleaks is opt-in (enable with scan-engine: 'gitleaks')" ;;
+              *)        SECRETS_CELL="⏭️ not scanned - no secret engine ran" ;;
+            esac ;;
         esac
         SCANNED="${TRIVY_TARGETS} file(s), ${TRIVY_PACKAGES} package(s) checked"
         case "$VULNS_FOUND" in
@@ -570,7 +588,7 @@ runs:
         echo "🛡️ Security Scan Summary:"
         echo "  • Secret Engine: ${SECRET_ENGINE}"
         echo "  • Score: $SCORE/100"
-        echo "  • Gitleaks Secrets: $GITLEAKS_SECRETS ($GITLEAKS_COUNT)"
+        echo "  • Secrets (Gitleaks): $SECRETS_CELL"
         echo "  • Vulnerabilities: $VULNS_FOUND (${SCANNED})"
         [ -z "$PYTHON_LINE" ] || echo "  • $PYTHON_LINE"
         echo "  • Status: $SUMMARY"

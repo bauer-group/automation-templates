@@ -171,6 +171,17 @@ on:
         type: string
         default: 'ubuntu-latest'
 
+      security-scan-engine:
+        description: >-
+          Secret scan engine for the Security Scan job. 'none' (default): Gitleaks is
+          opt-in and the job only records that it is disabled. 'gitleaks': scan the git
+          history with Gitleaks - enable it in repositories without GitHub secret
+          scanning and push protection (organization repositories also need the
+          GITLEAKS_LICENSE secret, for Dependabot runs as a Dependabot secret).
+        required: false
+        type: string
+        default: 'none'
+
     outputs:
       build-status:
         description: 'Overall build status'
@@ -270,20 +281,32 @@ jobs:
   security:
     name: Security Scan
     runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 15
 
+    # The job always runs, because the build waits for its result. With Gitleaks
+    # left at its opt-in default it only records that the secret scan is disabled;
+    # skipping the job instead would also skip every job that needs the build.
     steps:
+      - name: Gitleaks Disabled
+        if: inputs.security-scan-engine == 'none' || inputs.security-scan-engine == ''
+        shell: bash
+        run: |
+          echo "::notice title=Gitleaks disabled::Gitleaks is opt-in and was not enabled (security-scan-engine: 'none'), so no secret scan ran. Enable it with security-scan-engine: 'gitleaks' in repositories without GitHub secret scanning and push protection."
+
       - name: Checkout Code
+        if: inputs.security-scan-engine != 'none' && inputs.security-scan-engine != ''
         uses: actions/checkout@v7
         with:
           fetch-depth: 0  # gitleaks scans the history, not just the last commit
 
       - name: Security Scan
+        if: inputs.security-scan-engine != 'none' && inputs.security-scan-engine != ''
         uses: bauer-group/automation-templates/.github/actions/security-scan@main
         with:
           # The action's inputs are scan-engine and token. The old names
           # (scan-engines, github-token) were silently ignored, so the scan ran
           # with its defaults and without a token.
-          scan-engine: 'gitleaks'
+          scan-engine: ${{ inputs.security-scan-engine }}
           scan-type: 'secrets'
           fail-on-findings: 'true'
           gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
@@ -750,6 +773,9 @@ jobs:
     steps:
       - name: 📊 Generate Summary
         shell: bash
+        env:
+          GITLEAKS_DISABLED: ${{ inputs.security-scan-engine == 'none' || inputs.security-scan-engine == '' }}
+          SECURITY_RESULT: ${{ needs.security.result }}
         run: |
           # Maps a job result to the repo-standard status icon (see
           # docs/workflow-icon-conventions.md).
@@ -770,7 +796,11 @@ jobs:
             echo "## Build Results"
             echo "| Component | Status |"
             echo "|-----------|--------|"
-            echo "| Security Scan | $(result_icon "${{ needs.security.result }}") |"
+            if [ "$GITLEAKS_DISABLED" = "true" ] && [ "$SECURITY_RESULT" = "success" ]; then
+              echo "| Security Scan | ⏭️ Disabled (Gitleaks is opt-in: security-scan-engine 'gitleaks') |"
+            else
+              echo "| Security Scan | $(result_icon "${{ needs.security.result }}") |"
+            fi
             echo "| Build | $(result_icon "${{ needs.build.result }}") |"
             echo "| Release | $(result_icon "${{ needs.release.result }}") |"
             echo ""
