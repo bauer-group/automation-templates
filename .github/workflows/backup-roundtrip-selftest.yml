@@ -14,7 +14,8 @@ name: "🧪 Backup Round-Trip Self-Test"
 # a configured service whose image cannot be pulled. A matrix runs one round
 # trip per compose variant; the proxy variant needs an external network the
 # module creates. Two runs use a throwaway MinIO as the S3 destination and
-# restore from it after the sidecar's local data was wiped.
+# restore from it after the sidecar's local data was wiped. Three runs start
+# from a previous engine release and restore its snapshot after the upgrade.
 #
 # What a real stack cannot show without turning this workflow red - a create
 # that exits 1 for a failed component - is covered by the Step Tests job, which
@@ -157,12 +158,53 @@ jobs:
       artifact-name: 'backup-roundtrip-selftest-s3-diagnostics'
     secrets: inherit
 
+  # The upgrade of an existing installation: the "previous release" is the
+  # engine image 1.7.7 itself (the fixture's sidecar only adds labels to it),
+  # started from previous-release.yml. It seeds and backs up; upgrade.sh
+  # proves that state and migrates the .env; the module switches to the
+  # sidecar built from this commit (FROM the newest engine) and to
+  # docker-compose.yml alone, checks data and healthcheck, and the new
+  # sidecar restores the 1.7.7 snapshot.
+  roundtrip-upgrade:
+    name: "🧪 Fixture Round Trip (upgrade)"
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/modules-backup-roundtrip-test.yml
+    with:
+      working-directory: '.github/workflows/tests/backup-roundtrip'
+      compose-file: 'docker-compose.yml'
+      profiles: 'backup'
+      env-overrides: |
+        APP_MODE=ci
+        SAAS_EXPORT_ENABLED=false
+      generated-secrets: 'DATABASE_PASSWORD'
+      prepare-script: 'prepare.sh'
+      build-images: '[{"service": "backup", "context": "backup"}]'
+      backup-service: 'backup'
+      require-components: 'database files'
+      services-to-stop-before-restore: 'app'
+      seed-script: 'seed.sh'
+      mutate-script: 'mutate.sh'
+      check-script: 'check.sh'
+      # A full reference per service: the release whose snapshots must stay
+      # restorable.
+      upgrade-from: '{"backup": "ghcr.io/bauer-group/cs-backuphelper/backuphelper:1.7.7"}'
+      upgrade-from-compose-files: '["docker-compose.yml", "previous-release.yml"]'
+      upgrade-script: 'upgrade.sh'
+      wait-timeout: 180
+      timeout-minutes: 15
+      artifact-name: 'backup-roundtrip-selftest-upgrade-diagnostics'
+    secrets: inherit
+
   # One round trip per compose variant, the pattern consumers use for their
   # local, Traefik and Coolify files. The proxy variant joins an external
   # network that only exists because external-networks creates it ('auto'
   # finds it in the configuration); on the base variant 'auto' finds none.
-  # Both legs also use the S3 destination with every optional setting
-  # mapped, so the opt-in capabilities are proven together.
+  # Both legs combine every opt-in capability, as CS-ZAMMAD's gate does: the
+  # S3 destination with every optional setting mapped, and an upgrade given
+  # as a plain tag - the sidecar's reference becomes the engine repository
+  # (BACKUP_IMAGE), so tag 1.9.0 names the engine release 1.9.0.
   roundtrip-variants:
     name: "🧪 Fixture Round Trip (${{ matrix.variant }})"
     strategy:
@@ -185,6 +227,7 @@ jobs:
       env-overrides: |
         APP_MODE=ci
         SAAS_EXPORT_ENABLED=false
+        BACKUP_IMAGE=ghcr.io/bauer-group/cs-backuphelper/backuphelper
       generated-secrets: 'DATABASE_PASSWORD'
       prepare-script: 'prepare.sh'
       build-images: '[{"service": "backup", "context": "backup"}]'
@@ -204,6 +247,7 @@ jobs:
         region=BACKUP_S3_REGION
         path-style=BACKUP_S3_PATH_STYLE
         prefix=BACKUP_S3_PREFIX
+      upgrade-from: '1.9.0'
       wait-timeout: 180
       timeout-minutes: 15
       artifact-name: 'backup-roundtrip-selftest-${{ matrix.variant }}-diagnostics'
@@ -212,7 +256,7 @@ jobs:
   # The outputs are part of the module's contract - callers gate on them.
   check-outputs:
     name: "📋 Check Module Outputs"
-    needs: [roundtrip, roundtrip-services, roundtrip-s3, roundtrip-variants]
+    needs: [roundtrip, roundtrip-services, roundtrip-s3, roundtrip-upgrade, roundtrip-variants]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -224,7 +268,7 @@ jobs:
           set -euo pipefail
           # A matrix job reports the outputs of one of its legs and the
           # result of all of them.
-          for JOB in roundtrip roundtrip-services roundtrip-s3 roundtrip-variants; do
+          for JOB in roundtrip roundtrip-services roundtrip-s3 roundtrip-upgrade roundtrip-variants; do
             SNAPSHOT_ID=$(jq -r --arg j "$JOB" '.[$j].outputs["snapshot-id"] // ""' <<< "$NEEDS_JSON")
             COMPONENTS=$(jq -r --arg j "$JOB" '.[$j].outputs.components // ""' <<< "$NEEDS_JSON")
             RESULT=$(jq -r --arg j "$JOB" '.[$j].outputs.result // ""' <<< "$NEEDS_JSON")

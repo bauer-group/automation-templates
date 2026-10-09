@@ -15,6 +15,7 @@ This reusable workflow runs the complete cycle against the caller's own compose 
 - **No credentials in the repository** — passwords are generated per run and masked
 - **Logs stay private** — runs in the consumer repository; diagnostics are uploaded there on failure only
 - **Release gate** — exposes `result`, `snapshot-id` and `components` for `needs:` conditions
+- **Upgrade of an existing installation** (opt-in) — the previous release seeds and backs up, the stack is upgraded to this commit like an operator does, data and healthcheck are checked, and the old snapshot is restored with the new sidecar, see [Upgrade from a Previous Release](#upgrade-from-a-previous-release)
 - **Off-site copy and a new host** (opt-in) — a throwaway S3 server becomes the sidecar's S3 destination; the snapshot must reach the bucket, then the sidecar's local data is wiped and the restore has to pull it back from S3, see [Off-Site S3 and a New Host](#off-site-s3-and-a-new-host)
 - **Every compose variant** (opt-in) — creates the external proxy network a Traefik or Coolify file expects, so the round trip runs once per variant in a matrix, see [Compose Variants](#compose-variants-traefik-coolify)
 
@@ -52,6 +53,8 @@ Everything marked opt-in is off by default: a caller that does not set those inp
 7. **Restore** — `services-to-stop-before-restore` are stopped, the snapshot is restored, and the stack is started again with `up --wait`.
 8. **Check** — `check-script` must report the data **present** again.
 9. **Healthcheck** — `backuphelper healthcheck` must report the new snapshot as fresh.
+
+With `upgrade-from`, the stack of steps 3 to 5 is the previous release; after *verify* it is upgraded to the images built from this commit, the check must see the data and the healthcheck must pass, and steps 6 to 9 run on the upgraded stack — the restore reads the old snapshot with the new sidecar. See [Upgrade from a Previous Release](#upgrade-from-a-previous-release).
 
 With `s3-destination`, three phases join the cycle: after *verify* the archive and its manifest must be in the bucket with the local size; before the restore the sidecar's container and data dir are removed like on a new host, and its `list` must show the snapshot as off-site only; after the restore the snapshot must be local again — pulled back from S3 — and pass `verify`. See [Off-Site S3 and a New Host](#off-site-s3-and-a-new-host).
 10. **Always** — on failure, `docker compose ps`, every service's log, the snapshot list and, once the snapshot was inspected, its manifest are uploaded as an artifact; the stack is removed with `down --volumes`, together with the networks `external-networks` created; the step summary shows each phase.
@@ -130,7 +133,15 @@ Ready-to-copy callers are in [`github/workflows/examples/backup-roundtrip/`](../
 | `services-to-stop-before-restore` | Services to stop before the restore — usually the application containers that hold database connections or write files. Started again afterwards | `''` |
 | `restore-command` | Engine subcommand that restores. Change it only for a plugin that wraps restore, e.g. `'documenso restore'` | `'restore'` |
 | `restore-args` | Arguments after the snapshot id. Keep `--force` — there is no terminal for the confirmation | `'--force'` |
-| `run-healthcheck` | Run `backuphelper healthcheck` at the end | `true` |
+| `run-healthcheck` | Run `backuphelper healthcheck` at the end and, with `upgrade-from`, right after the upgrade | `true` |
+
+### Upgrade from a previous release (opt-in)
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `upgrade-from` | Start the stack with a previous release and upgrade it to this commit before the restore. `latest-release` (the newest release of this repository; a leading `v` of its tag is dropped for the image tag), one image tag for every `build-images` service (`'1.4.2'`), or a JSON object mapping `build-images` services to `latest-release`, a tag or a full image reference — services left out run this commit's image from the start. See [Upgrade from a Previous Release](#upgrade-from-a-previous-release) | `''` |
+| `upgrade-from-compose-files` | Compose files the previous release starts from, as a JSON array — the files of this commit plus an override that restores the previous shape. Empty: the files of `compose-file`/`compose-files`. The upgrade switches to those | `''` |
+| `upgrade-script` | Bash script run at the upgrade — after the old snapshot was taken, before the stack switches to the new images and compose files — for what the release notes tell operators to do, e.g. migrating the `.env`. `ROUNDTRIP_PHASE=upgrade` | `''` |
 
 ### Off-site S3 destination (opt-in)
 
@@ -240,13 +251,15 @@ The scripts are plain bash files in the caller repository, run with `bash <scrip
 | Variable | Set for | Content |
 |----------|---------|---------|
 | `ROUNDTRIP_MARKER` | seed, mutate, check | Unique token per run, `rt-<run id>-<attempt>-<8 hex>` — only `[a-z0-9-]`. Tag everything you write with it |
-| `ROUNDTRIP_PHASE` | all | `prepare`, `seed`, `mutate` or `check` |
+| `ROUNDTRIP_PHASE` | all | `prepare`, `seed`, `mutate`, `check` or `upgrade` |
 | `ROUNDTRIP_EXPECT` | check | `present` or `absent` |
-| `ROUNDTRIP_SNAPSHOT_ID` | mutate, check after the backup | Id of the snapshot under test |
+| `ROUNDTRIP_SNAPSHOT_ID` | upgrade, mutate, check after the backup | Id of the snapshot under test |
+| `ROUNDTRIP_PREVIOUS_RELEASE` | all after *Pull previous release* (`upgrade-from`) | The release tag `latest-release` resolved to (`v0.2.61`); empty for explicit tags |
+| `ROUNDTRIP_PREVIOUS_IMAGES` | all after *Pull previous release* (`upgrade-from`) | JSON object: upgraded service → image of the previous release |
 | `ROUNDTRIP_BACKUP_SERVICE` | seed, mutate, check | The `backup-service` input |
 | `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`, `COMPOSE_PROFILES` | seed, mutate, check | Set, so `docker compose exec -T <service> …` reaches the stack |
 
-`prepare-script` runs before the stack exists, from `working-directory`, with only `ROUNDTRIP_PHASE=prepare`; it edits `.env` in place.
+`prepare-script` runs before the stack exists, from `working-directory`, with only `ROUNDTRIP_PHASE=prepare`; it edits `.env` in place. `upgrade-script` runs against the running previous release with the full environment above and `ROUNDTRIP_PHASE=upgrade`; it may edit `.env` too, see [Upgrade from a Previous Release](#upgrade-from-a-previous-release).
 
 The `.env` is **not** sourced into the scripts — compose `.env` syntax is not shell syntax. Run commands inside the containers instead; they already have their credentials.
 
@@ -393,6 +406,42 @@ jobs:
 **Cost.** Measured on GitHub-hosted runners: the module's own fixture (PostgreSQL, a file volume, a sidecar) takes under a minute. CS-ZAMMAD's full stack (Zammad's five roles, PostgreSQL, Elasticsearch, Redis, Memcached) takes 7 to 9 minutes: about 1.5 to free disk space, 1 to build both images, 2 to 3 for the first boot with migrations and the search index, 1.5 for the restore and the restart, the rest for seeding and checks through `rails runner`.
 
 A complete pipeline is in [`gated-release-pipeline.yml`](../../github/workflows/examples/backup-roundtrip/gated-release-pipeline.yml).
+
+## Upgrade from a Previous Release
+
+Without `upgrade-from` every round trip starts on empty volumes with the images of this commit — a fresh installation. Operators do not install fresh: they run the previous release, with its data, its snapshots and its sidecar's run records, and upgrade. With `upgrade-from` the round trip does exactly that:
+
+```yaml
+      upgrade-from: 'latest-release'
+```
+
+| Phase | What happens |
+|-------|--------------|
+| Pull previous release | Before anything starts, the previous release's image of every upgraded service is pulled and tagged as the reference the service resolves to (`ghcr.io/acme/app:stable` ← `ghcr.io/acme/app:0.2.61`), so Compose starts it like an installed release. The images built from this commit wait under staging tags |
+| Start, seed, back up | The previous release — its application and its sidecar — starts, seeds, takes the snapshot; *inspect* and *verify* run against its manifest |
+| Upgrade | `upgrade-script` (if set) runs first. Then the stack switches to the compose files of this commit, the builds take over the references — what `docker compose pull` does with a floating tag — and `docker compose up -d --wait` recreates every container whose image changed, one-shot init services included. Every container of an image under test must run the new build afterwards, else the step fails |
+| After the upgrade | `check-script` must see the data (`present`); `backuphelper healthcheck` must pass in the new sidecar, with the previous release's snapshot and run records in its data dir |
+| Mutate, restore, check | As always — the restore reads the **old** snapshot with the **new** sidecar |
+
+**Which release.** `upgrade-from` takes three forms:
+
+| Form | Example | Previous image of a service that resolves to `ghcr.io/acme/app:stable` |
+|------|---------|------|
+| `latest-release` | `'latest-release'` | the newest published release of this repository (`GET /repos/{repo}/releases/latest`, pre-releases excluded): tag `v0.2.61` → `ghcr.io/acme/app:0.2.61` |
+| A tag, for every `build-images` service | `'0.2.60'` | `ghcr.io/acme/app:0.2.60` — the repository of the reference, with this tag |
+| A JSON object per service | `'{"app-backup": "ghcr.io/acme/app-backup:0.17.29", "app": "latest-release"}'` | per service: `latest-release`, a tag, or a full reference (anything with `/`, `:` or `@`). Services left out of the object run this commit's image from the start |
+
+Services that share one image (Zammad's five roles on `zammad-railsserver`'s image) are upgraded together — the reference moves for all of them. The release must have published its images under the version tag (`docker-build.yml` does with `auto-tags`); a repository without a release, or with a tag that is no image tag, fails at *Pull previous release* with a message saying so. Private or internal images need `packages: read`, as for every pull.
+
+**When the previous release has a different shape.** By default the previous release starts from the compose files of **this** commit — it is the *images* that are old. That is exactly right while the compose files and the `.env` stay compatible, which they are between neighbouring releases of most stacks. When they are not:
+
+- **The previous release needs other compose settings** (an old source type, a removed variable, a different healthcheck): keep an override file that restores them and pass `upgrade-from-compose-files: '["docker-compose.yml", "tests/backup-roundtrip/previous-release.yml"]'`. The previous release starts from those files; the upgrade switches to `compose-file`/`compose-files`. The first file must lie in `working-directory` like the others, because Compose reads the `.env` from the first file's directory. CS-IAM's legacy-snapshot job is this pattern: the override sets the old `zitadel-postgres` source type.
+- **The release notes ask operators to do something** (rename a variable, add a new required one, run a migration command against the old stack): put it in `upgrade-script`. It runs against the running previous release, after the old snapshot was taken and before the switch, and may edit `.env`; Compose picks the changes up at `up -d`.
+- **The shapes are too far apart** for an override (renamed services, moved volumes): pin `upgrade-from` to a release that is close enough, or keep a fresh round trip only — volume names must survive the upgrade for the data to.
+
+The previous release's compose files are never checked out from its tag: the module cannot know which of them an operator used, and the data must live in the same named volumes before and after anyway.
+
+A ready-to-copy caller is in [`upgrade-from-previous-release.yml`](../../github/workflows/examples/backup-roundtrip/upgrade-from-previous-release.yml).
 
 ## Off-Site S3 and a New Host
 
@@ -551,15 +600,27 @@ Every run writes a summary with the result of each phase, the snapshot's compone
 | Backup healthcheck  | ✅ Passed |
 ```
 
-When `create` exited non-zero, the summary says so, with the exit code and whether a snapshot was stored. Opt-in phases add their rows only when they are configured — with `s3-destination` *Off-site copy in S3*, *New host: local data wiped* and *Snapshot pulled back from S3*, plus a table of the objects in the bucket.
+When `create` exited non-zero, the summary says so, with the exit code and whether a snapshot was stored. Opt-in phases add their rows only when they are configured — with `upgrade-from` *Pull previous release* and *Upgrade to this commit*, plus a table of the previous release's images; with `s3-destination` *Off-site copy in S3*, *New host: local data wiped* and *Snapshot pulled back from S3*, plus a table of the objects in the bucket; with `external-networks` the networks the run created.
 
-On failure (or cancellation) the artifact `artifact-name` contains `ps.txt`, `logs/<service>.log` for every service, `snapshots.txt`, `manifest.json` (once *Inspect snapshot* has run), the output of `create` and `restore`, and the runner's disk and memory state; with `s3-destination` also `s3-objects.json` (the bucket listing) and the generated `s3-destination.compose.yml`, which holds `.env` references only. The `.env` is **never** included. Service logs are uploaded as they are — an application that logs its connection string logs the per-run generated password, which is worthless after the run.
+On failure (or cancellation) the artifact `artifact-name` contains `ps.txt`, `logs/<service>.log` for every service, `snapshots.txt`, `manifest.json` (once *Inspect snapshot* has run), the output of `create` and `restore`, and the runner's disk and memory state; with `s3-destination` also `s3-objects.json` (the bucket listing) and the generated `s3-destination.compose.yml`, which holds `.env` references only; with `upgrade-from` also `upgrade-plan.tsv` (service, previous image, reference). The `.env` is **never** included. Service logs are uploaded as they are — an application that logs its connection string logs the per-run generated password, which is worthless after the run.
 
 ## Troubleshooting
 
 ### `backup-service '…' is not part of the configuration`
 
 The sidecar sits behind a profile that is not active. Set `profiles: 'backup'` (or whatever your compose file uses).
+
+### `upgrade-from: '…' could not be pulled`
+
+The previous release did not publish that image under the tag, or the job may not read it. Check the package's tags (a release tag `v1.4.2` is looked up as image tag `1.4.2`), `registry-login` and `packages: read`. For an image that is published under another name, give the full reference in the JSON form.
+
+### `upgrade: '…' still runs the previous image after 'up -d'`
+
+Compose did not recreate a container after the reference moved to the new image — usually `pull_policy: always` on that service, which pulls the released image back over the build, or a container started outside Compose. The data check is skipped: the stack is only half upgraded.
+
+### The healthcheck fails right after the upgrade
+
+The new sidecar judges the previous release's run records. A failed previous run, or a snapshot of the previous release with a failed component, keeps it unhealthy until a newer run succeeds — exactly what an operator would see after the same upgrade ([BackupHelper healthcheck](https://github.com/bauer-group/CS-BackupHelper/blob/main/docs/deployment.md#the-functional-healthcheck)). With several jobs, see the engine's notes on the healthcheck transition after an upgrade.
 
 ### `the archive of snapshot … is not in the bucket`
 
@@ -619,6 +680,7 @@ The calling job does not grant `packages: read`, or the package is private to an
 - **One snapshot per run.** Retention, GFS pruning and the scheduler are not exercised.
 - **One backup job per configuration.** `create` runs every job of `BACKUP_CONFIG_JSON`, but the module tests only the newest snapshot it produced, and the engine's `list`, `verify` and `restore` use the first job unless `--job` is given. A configuration with several jobs is therefore not covered completely; every consumer on the `jobs` schema defines exactly one today.
 - **Restore is a full restore** unless `restore-args` narrows it with `--only`.
+- **The upgrade test is one hop, with the compose files of this commit.** `upgrade-from` upgrades from one release, by switching images; the previous release starts from this commit's compose files unless `upgrade-from-compose-files` says otherwise. Skipped releases in between, bind-mounted data (paths differ between checkouts) and a restore of the previous release's data into a downgraded stack are not covered.
 - **Compose variants run without their proxy.** `external-networks` creates the proxy network, but Traefik or Coolify is not started; routing, labels and TLS are not tested.
 
 ## Related Modules

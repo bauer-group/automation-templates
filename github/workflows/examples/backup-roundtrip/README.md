@@ -11,6 +11,7 @@ Full reference: [`docs/workflows/modules-backup-roundtrip-test.md`](../../../../
 | [minimal-postgres-filesystem.yml](minimal-postgres-filesystem.yml) | Smallest useful round trip: one PostgreSQL database and one file volume, on pull requests and on demand |
 | [gated-release-pipeline.yml](gated-release-pipeline.yml) | Complete `docker-release.yml`: validation, round trip, semantic release and image builds — no release unless the round trip passed |
 | [plugin-and-external-sources.yml](plugin-and-external-sources.yml) | A plugin source that talks to the application in the stack (tested) and one that needs an external SaaS account (switched off), with `require-components` guarding the rest |
+| [upgrade-from-previous-release.yml](upgrade-from-previous-release.yml) | The previous release seeds and backs up, the stack is upgraded to this commit like an operator does, and the new sidecar restores the old snapshot |
 | [offsite-s3-new-host.yml](offsite-s3-new-host.yml) | The snapshot must reach an S3 bucket (a throwaway MinIO), and the restore runs on a "new host" whose data dir was wiped - it has to pull the snapshot back from S3 |
 | [compose-variants-matrix.yml](compose-variants-matrix.yml) | One round trip per compose variant (local, Traefik, Coolify) in a matrix; `external-networks: 'auto'` creates the proxy networks the variants declare external |
 
@@ -37,6 +38,7 @@ Full reference: [`docs/workflows/modules-backup-roundtrip-test.md`](../../../../
 | Mutate + check | The check no longer sees the data (`absent`) — so it can tell the difference |
 | Restore + check | The data is back (`present`) after the stack was restarted |
 | Healthcheck | The sidecar reports the new snapshot as fresh |
+| Upgrade (`upgrade-from`) | The previous release took the snapshot; after the upgrade the data was intact, the new sidecar healthy, and the new sidecar restored the old snapshot |
 | S3 (`s3-destination`) | Archive and manifest reached the bucket; after the sidecar's data dir was wiped, the restore pulled the snapshot back from S3 and it passed `verify` |
 
 ## Related
