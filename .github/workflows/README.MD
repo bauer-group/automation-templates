@@ -123,9 +123,11 @@ jobs:
   security-scan:
     uses: ./.github/workflows/modules-security-scan.yml
     with:
+      # Gitleaks ist opt-in (Default 'none' = nur Trivy). Dieses Repository schaltet
+      # es ein; für Repositories ohne GitHub Secret Scanning gedacht, siehe
+      # docs/security/native-secret-scanning.md#gitleaks-is-opt-in
       scan-engine: 'gitleaks'
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    secrets: inherit   # GITLEAKS_LICENSE
 
   semantic-release:
     needs: security-scan

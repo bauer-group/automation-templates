@@ -11,7 +11,7 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 | `CODECOV_TOKEN` | Empfohlen | Global Upload Token für Code Coverage |
 | `DOCKER_USERNAME` | Optional | Docker Hub Benutzername |
 | `DOCKER_PASSWORD` | Optional | Docker Hub Passwort/Token |
-| `GITLEAKS_LICENSE` | Optional | Gitleaks Enterprise License |
+| `GITLEAKS_LICENSE` | Optional | Gitleaks License (kostenlos), nur wenn Gitleaks eingeschaltet ist (opt-in) |
 | `NUGET_API_KEY` | Optional | NuGet.org API Key (Publishing) |
 | `DOTNET_NUGET_RESTORE_CREDENTIALS` | Optional | PAT (`read:packages`) für Restore aus privaten NuGet-Feeds |
 | `PYPI_API_TOKEN` | Optional | PyPI Publishing Token |
@@ -125,8 +125,28 @@ Nur nötig, wenn Dependabot **interne oder private** Base-Images aktualisieren s
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
-| `GITLEAKS_LICENSE` | gitleaks-scan | Gitleaks Enterprise License Key | Gitleaks Enterprise Subscription |
+| `GITLEAKS_LICENSE` | modules-security-scan, modules-pr-validation, python-semantic-release, esp32-build, stm32-build, platformio-build, zephyr-build (Action `security-scan`) | License Key für `gitleaks/gitleaks-action`; nur gelesen, wenn Gitleaks per Engine-Input `'gitleaks'` eingeschaltet ist | [gitleaks.io](https://gitleaks.io) → kostenloser License Key (Formular) |
 | `FOSSA_API_KEY` | license-compliance | FOSSA License Scanning | [fossa.com](https://fossa.com) → Account Settings |
+
+> **Gitleaks ist opt-in (seit Oktober 2026).** Standardmäßig läuft Gitleaks in keinem Template,
+> `GITLEAKS_LICENSE` wird dann nicht gebraucht. Einschalten (`scan-engine: 'gitleaks'`,
+> `security-scan-engine: 'gitleaks'` bzw. `security-engine: 'gitleaks'`) in Repositories **ohne**
+> GitHub Secret Scanning und Push Protection — siehe
+> [Gitleaks ist opt-in](./security/native-secret-scanning.md#gitleaks-is-opt-in). Ist es
+> eingeschaltet, verlangt `gitleaks-action` die License in **Organisations**-Repositories
+> (persönliche Repositories brauchen keine) und bricht ohne sie mit „missing gitleaks license“ ab.
+>
+> **Dependabot:** Von Dependabot ausgelöste Läufe erhalten **keine** Actions-Secrets. Wer Gitleaks
+> einschaltet und Dependabot-PRs hat, muss `GITLEAKS_LICENSE` zusätzlich als **Dependabot-Secret**
+> anlegen (*Settings → Secrets and variables → **Dependabot***, oder auf Organisationsebene),
+> sonst scheitert der Secret-Scan auf jedem Dependabot-PR:
+>
+> ```bash
+> gh secret set GITLEAKS_LICENSE --app dependabot --org your-org --visibility all
+> ```
+>
+> Die Action `gitleaks-scan` (genutzt von `makefile-build` und `security-scan-meta`) installiert
+> das Gitleaks-Binary direkt und braucht **keine** License.
 
 > **`GITGUARDIAN_API_KEY` wird nicht mehr verwendet.** GitGuardian wurde im Oktober 2026 aus
 > den Security-Workflows entfernt (im CI wurde nur der letzte Commit gescannt, Funde konnten
@@ -223,7 +243,7 @@ GitHub Organization → Settings → Secrets and variables → Actions → New o
 **Empfohlene Organization Secrets:**
 - `CODECOV_TOKEN` (Global Upload Token)
 - `DOCKER_USERNAME` / `DOCKER_PASSWORD`
-- `GITLEAKS_LICENSE`
+- `GITLEAKS_LICENSE` (nur für Repositories, die Gitleaks einschalten; zusätzlich als Dependabot-Secret)
 - `SONARQUBE_TOKEN` / `SONARQUBE_HOST_URL`
 - `NUGET_API_KEY`
 - `DOTNET_NUGET_RESTORE_CREDENTIALS`

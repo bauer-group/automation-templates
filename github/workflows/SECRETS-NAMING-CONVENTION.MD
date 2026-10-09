@@ -55,7 +55,7 @@ This document defines the naming convention for GitHub Secrets used in our workf
 
 | Secret Name | Description | Scope | Used In |
 |------------|-------------|-------|---------|
-| `GITLEAKS_LICENSE_KEY` | Gitleaks license for advanced features | Global | modules-security-scan.yml |
+| `GITLEAKS_LICENSE_KEY` | Gitleaks license; the templates read it as `GITLEAKS_LICENSE`, and only when Gitleaks is enabled (opt-in) | Global | modules-security-scan.yml |
 | `FOSSA_LICENSE_API_KEY` | FOSSA API key for license compliance | Global | modules-license-compliance.yml |
 
 ### 🤖 AI & Automation
