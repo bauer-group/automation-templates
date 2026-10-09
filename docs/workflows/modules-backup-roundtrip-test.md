@@ -54,7 +54,7 @@ Everything marked opt-in is off by default: a caller that does not set those inp
 8. **Check** — `check-script` must report the data **present** again.
 9. **Healthcheck** — `backuphelper healthcheck` must report the new snapshot as fresh.
 
-With `upgrade-from`, the stack of steps 3 to 5 is the previous release; after *verify* it is upgraded to the images built from this commit, the check must see the data and the healthcheck must pass, and steps 6 to 9 run on the upgraded stack — the restore reads the old snapshot with the new sidecar. See [Upgrade from a Previous Release](#upgrade-from-a-previous-release).
+With `upgrade-from`, the stack of steps 3 to 5 is the previous release — checked right after the start, before anything is seeded; after *verify* it is upgraded to the images built from this commit, the check must see the data and the healthcheck must pass, and steps 6 to 9 run on the upgraded stack — the restore reads the old snapshot with the new sidecar. See [Upgrade from a Previous Release](#upgrade-from-a-previous-release).
 
 With `s3-destination`, three phases join the cycle: after *verify* the archive and its manifest must be in the bucket with the local size; before the restore the sidecar's container and data dir are removed like on a new host, and its `list` must show the snapshot as off-site only; after the restore the snapshot must be local again — pulled back from S3 — and pass `verify`. See [Off-Site S3 and a New Host](#off-site-s3-and-a-new-host).
 10. **Always** — on failure, `docker compose ps`, every service's log, the snapshot list and, once the snapshot was inspected, its manifest are uploaded as an artifact; the stack is removed with `down --volumes`, together with the networks `external-networks` created; the step summary shows each phase.
@@ -418,8 +418,8 @@ Without `upgrade-from` every round trip starts on empty volumes with the images 
 | Phase | What happens |
 |-------|--------------|
 | Pull previous release | Before anything starts, the previous release's image of every upgraded service is pulled and tagged as the reference the service resolves to (`ghcr.io/acme/app:stable` ← `ghcr.io/acme/app:0.2.61`), so Compose starts it like an installed release. The images built from this commit wait under staging tags |
-| Start, seed, back up | The previous release — its application and its sidecar — starts, seeds, takes the snapshot; *inspect* and *verify* run against its manifest |
-| Upgrade | `upgrade-script` (if set) runs first. Then the stack switches to the compose files of this commit, the builds take over the references — what `docker compose pull` does with a floating tag — and `docker compose up -d --wait` recreates every container whose image changed, one-shot init services included. Every container of an image under test must run the new build afterwards, else the step fails |
+| Start, seed, back up | The previous release — its application and its sidecar — starts. *Check previous release* then demands that every reference still holds the previous image and that every container of a service on it runs that image; only then does it seed and take the snapshot. *Inspect* and *verify* run against its manifest |
+| Upgrade | `upgrade-script` (if set) runs first. Then the stack switches to the compose files of this commit, the builds take over the references — what `docker compose pull` does with a floating tag — and `docker compose up -d --wait` recreates every container whose image changed, one-shot init services included. The id of each build is recorded before `up`; afterwards every reference must still hold it and every container of a service on it must run it, else the step fails |
 | After the upgrade | `check-script` must see the data (`present`); `backuphelper healthcheck` must pass in the new sidecar, with the previous release's snapshot and run records in its data dir |
 | Mutate, restore, check | As always — the restore reads the **old** snapshot with the **new** sidecar |
 
@@ -432,6 +432,8 @@ Without `upgrade-from` every round trip starts on empty volumes with the images 
 | A JSON object per service | `'{"app-backup": "ghcr.io/acme/app-backup:0.17.29", "app": "latest-release"}'` | per service: `latest-release`, a tag, or a full reference (anything with `/`, `:` or `@`). Services left out of the object run this commit's image from the start |
 
 Services that share one image (Zammad's five roles on `zammad-railsserver`'s image) are upgraded together — the reference moves for all of them. The release must have published its images under the version tag (`docker-build.yml` does with `auto-tags`); a repository without a release, or with a tag that is no image tag, fails at *Pull previous release* with a message saying so. Private or internal images need `packages: read`, as for every pull.
+
+**`pull_policy` of the services under test.** The test only means something when Compose runs the images the module tagged: the previous release at the start, the build of this commit after the upgrade. A service with `pull_policy: always` makes `up` pull the reference from the registry, one with `pull_policy: build` builds its own image — either replaces the tagged image, and the containers would then run the registry's or Compose's image while the reference looks right. The module therefore compares the containers with the image ids it tagged, not with whatever the reference holds after `up`, and fails at *Check previous release* or *Upgrade* when `up` replaced one. Keep `missing` (the default) or `never` for the round trip; when the production file sets `always`, override it in a CI-only file through `compose-files` (and `upgrade-from-compose-files`, if set).
 
 **When the previous release has a different shape.** By default the previous release starts from the compose files of **this** commit — it is the *images* that are old. That is exactly right while the compose files and the `.env` stay compatible, which they are between neighbouring releases of most stacks. When they are not:
 
@@ -610,7 +612,7 @@ Every run writes a summary with the result of each phase, the snapshot's compone
 | Backup healthcheck  | ✅ Passed |
 ```
 
-When `create` exited non-zero, the summary says so, with the exit code and whether a snapshot was stored. Opt-in phases add their rows only when they are configured — with `upgrade-from` *Pull previous release* and *Upgrade to this commit*, plus a table of the previous release's images; with `s3-destination` *Off-site copy in S3*, *New host: local data wiped* and *Snapshot pulled back from S3*, plus a table of the objects in the bucket; with `external-networks` the networks the run created.
+When `create` exited non-zero, the summary says so, with the exit code and whether a snapshot was stored. Opt-in phases add their rows only when they are configured — with `upgrade-from` *Pull previous release*, *Previous release runs* and *Upgrade to this commit*, plus a table of the previous release's images; with `s3-destination` *Off-site copy in S3*, *New host: local data wiped* and *Snapshot pulled back from S3*, plus a table of the objects in the bucket; with `external-networks` the networks the run created.
 
 On failure (or cancellation) the artifact `artifact-name` contains `ps.txt`, `logs/<service>.log` for every service, `snapshots.txt`, `manifest.json` (once *Inspect snapshot* has run), the output of `create` and `restore`, and the runner's disk and memory state; with `s3-destination` also `s3-objects.json` (the bucket listing) and the generated `s3-destination.compose.yml`, which holds `.env` references only; with `upgrade-from` also `upgrade-plan.tsv` (service, previous image, reference). The `.env` is **never** included. Service logs are uploaded as they are — an application that logs its connection string logs the per-run generated password, which is worthless after the run.
 
@@ -624,9 +626,15 @@ The sidecar sits behind a profile that is not active. Set `profiles: 'backup'` (
 
 The previous release did not publish that image under the tag, or the job may not read it. Check the package's tags (a release tag `v1.4.2` is looked up as image tag `1.4.2`), `registry-login` and `packages: read`. For an image that is published under another name, give the full reference in the JSON form.
 
-### `upgrade: '…' still runs the previous image after 'up -d'`
+### `'up' replaced …, which held the previous release` / `'up' replaced the image under test …`
 
-Compose did not recreate a container after the reference moved to the new image — usually `pull_policy: always` on that service, which pulls the released image back over the build, or a container started outside Compose. The data check is skipped: the stack is only half upgraded.
+`docker compose up` put another image under a reference the module had tagged — at the start (*Check previous release*) or at the upgrade (*Upgrade*). A service on that reference has `pull_policy: always`, which pulls the registry's image over it, or `pull_policy: build`, which builds its own. The error shows both image ids. Set `pull_policy` to `missing` or `never` for the round trip, see [`pull_policy` of the services under test](#upgrade-from-a-previous-release). Nothing after the check runs: the stack runs neither the previous release nor the build under test.
+
+### `upgrade-from: '…' runs …, not the previous release` / `upgrade: '…' runs … after 'up -d', not the build of this commit`
+
+The reference holds the right image, but a container of that service runs another one: Compose did not recreate it after the reference moved (it was started outside Compose, or with `--no-recreate`), or it is left over from an earlier start. The data check is skipped: the stack is only half upgraded.
+
+A warning `no started service runs …` means that no started container uses an upgraded image — the service is outside `services` and its dependencies, so its upgrade is not tested.
 
 ### The healthcheck fails right after the upgrade
 

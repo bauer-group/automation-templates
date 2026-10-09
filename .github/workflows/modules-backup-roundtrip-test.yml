@@ -1056,6 +1056,48 @@ jobs:
             exit 1
           fi
 
+      # upgrade-from: the upgrade test means nothing unless the stack that
+      # seeds and backs up really is the previous release. 'up' can replace
+      # it: a service with 'pull_policy: always' pulls the reference from the
+      # registry, one with 'pull_policy: build' builds it.
+      - name: "⏮️ Check Previous Release"
+        id: previous-running
+        if: inputs.upgrade-from != ''
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
+        run: |
+          set -euo pipefail
+          CONFIG="$ROUNDTRIP_DIR/compose-config.json"
+          short_id() { local id="${1#sha256:}"; echo "${id:0:12}"; }
+          ERRORS=0
+          fail() { echo "::error title=Backup round trip::$1"; ERRORS=$((ERRORS + 1)); }
+
+          # Per reference the previous image it was tagged with last - that
+          # tag is the one that held.
+          while IFS=$'\t' read -r REF OLD; do
+            WANT=$(docker image inspect --format '{{.Id}}' "$OLD")
+            NOW=$(docker image inspect --format '{{.Id}}' "$REF" 2> /dev/null || true)
+            if [ "$NOW" != "$WANT" ]; then
+              fail "upgrade-from: 'up' replaced $REF, which held the previous release $OLD ($(short_id "$WANT") -> $(short_id "${NOW:-none}")) - a service on it pulls (pull_policy: always) or builds (pull_policy: build) its image itself. Set pull_policy to missing or never for the round trip, e.g. in a CI-only override file."
+              continue
+            fi
+            CHECKED=0
+            for SERVICE in $(jq -r --arg r "$REF" '.services | to_entries[] | select(.value.image == $r) | .key' "$CONFIG"); do
+              for CONTAINER in $(docker compose ps -a -q "$SERVICE"); do
+                RUNNING=$(docker inspect --format '{{.Image}}' "$CONTAINER")
+                [ "$RUNNING" = "$WANT" ] || fail "upgrade-from: '$SERVICE' runs $(short_id "$RUNNING"), not the previous release $OLD ($(short_id "$WANT"))"
+                CHECKED=$((CHECKED + 1))
+              done
+            done
+            if [ "$CHECKED" -eq 0 ]; then
+              echo "::warning::upgrade-from: no started service runs $REF - the upgrade of $OLD is not tested"
+            else
+              echo "⏮️ $CHECKED container(s) on $REF run the previous release $OLD"
+            fi
+          done < <(tac "$ROUNDTRIP_DIR/upgrade-plan.tsv" | awk -F '\t' '!seen[$3]++ {print $3 "\t" $2}')
+
+          [ "$ERRORS" -eq 0 ] || exit 1
+          echo "✅ The stack runs the previous release - the upgrade starts from it"
+
       - name: "🧪 Seed Test Data"
         id: seed
         if: inputs.seed-script != ''
@@ -1269,8 +1311,11 @@ jobs:
           docker compose config --format json > "$CONFIG"
 
           # The new release's images take over the references the services
-          # resolve to - also a reference the upgrade-script changed.
+          # resolve to - also a reference the upgrade-script changed. Each
+          # reference is recorded with the id of the build it now holds.
           touch "$ROUNDTRIP_DIR/built-images.txt"
+          EXPECTED="$ROUNDTRIP_DIR/upgrade-images.tsv"
+          : > "$EXPECTED"
           while IFS=$'\t' read -r SERVICE STAGED; do
             REF=$(jq -r --arg s "$SERVICE" '.services[$s].image // empty' "$CONFIG")
             if [ -z "$REF" ]; then
@@ -1278,6 +1323,7 @@ jobs:
               exit 1
             fi
             docker tag "$STAGED" "$REF"
+            printf '%s\t%s\n' "$REF" "$(docker image inspect --format '{{.Id}}' "$STAGED")" >> "$EXPECTED"
             grep -qxF "$REF" "$ROUNDTRIP_DIR/built-images.txt" || echo "$REF" >> "$ROUNDTRIP_DIR/built-images.txt"
             echo "⬆️ $SERVICE: $REF is now the image built from this commit"
           done < "$ROUNDTRIP_DIR/staged-images.txt"
@@ -1285,22 +1331,31 @@ jobs:
           docker compose up -d --wait --wait-timeout "$WAIT_TIMEOUT" "${SERVICES[@]}"
           docker compose ps
 
-          # Every container of an image under test must run the new build -
-          # Compose recreates a container only when it sees its image changed.
-          BUILT=$(jq -R -s 'split("\n") | map(select(length > 0))' "$ROUNDTRIP_DIR/built-images.txt")
-          RUNNING=$(jq -r --argjson built "$BUILT" '.services | to_entries[]
-                      | select(.value.image as $i | $built | index($i)) | "\(.key)\t\(.value.image)"' "$CONFIG")
+          # Checked against the build ids recorded before 'up', never against
+          # what the references hold after it: a service with 'pull_policy:
+          # always' pulls the released image over its reference at 'up', one
+          # with 'pull_policy: build' builds its own - its containers would
+          # then match the reference and the stack would run that image.
+          # Compose also recreates a container only when it sees its image
+          # changed. The last row per reference is the tag that held.
+          short_id() { local id="${1#sha256:}"; echo "${id:0:12}"; }
           STALE=0
-          while IFS=$'\t' read -r SERVICE REF; do
-            [ -n "$SERVICE" ] || continue
-            WANT=$(docker image inspect --format '{{.Id}}' "$REF")
-            for CONTAINER in $(docker compose ps -a -q "$SERVICE"); do
-              if [ "$(docker inspect --format '{{.Image}}' "$CONTAINER")" != "$WANT" ]; then
-                echo "::error title=Backup round trip::upgrade: '$SERVICE' still runs the previous image after 'up -d'"
-                STALE=1
-              fi
+          while IFS=$'\t' read -r REF WANT; do
+            NOW=$(docker image inspect --format '{{.Id}}' "$REF" 2> /dev/null || true)
+            if [ "$NOW" != "$WANT" ]; then
+              echo "::error title=Backup round trip::upgrade: 'up' replaced the image under test $REF ($(short_id "$WANT") -> $(short_id "${NOW:-none}")) - a service on it pulls (pull_policy: always) or builds (pull_policy: build) its image itself, so the stack would not run the build of this commit. Set pull_policy to missing or never for the round trip, e.g. in a CI-only override file."
+              STALE=1
+            fi
+            for SERVICE in $(jq -r --arg r "$REF" '.services | to_entries[] | select(.value.image == $r) | .key' "$CONFIG"); do
+              for CONTAINER in $(docker compose ps -a -q "$SERVICE"); do
+                RUNNING=$(docker inspect --format '{{.Image}}' "$CONTAINER")
+                if [ "$RUNNING" != "$WANT" ]; then
+                  echo "::error title=Backup round trip::upgrade: '$SERVICE' runs $(short_id "$RUNNING") after 'up -d', not the build of this commit $(short_id "$WANT") ($REF)"
+                  STALE=1
+                fi
+              done
             done
-          done <<< "$RUNNING"
+          done < <(tac "$EXPECTED" | awk -F '\t' '!seen[$1]++')
           [ "$STALE" -eq 0 ] || exit 1
           echo "✅ Every container of an image under test runs the build of this commit"
 
@@ -1524,6 +1579,7 @@ jobs:
           ARTIFACT_NAME: ${{ inputs.artifact-name }}
           HAS_UPGRADE: ${{ inputs.upgrade-from != '' }}
           OUTCOME_PREVIOUS: ${{ steps.previous.outcome }}
+          OUTCOME_PREVIOUS_RUNNING: ${{ steps.previous-running.outcome }}
           OUTCOME_UPGRADE: ${{ steps.upgrade.outcome }}
           HAS_S3: ${{ inputs.s3-destination }}
           OUTCOME_S3_UPLOAD: ${{ steps.s3-upload.outcome }}
@@ -1560,6 +1616,7 @@ jobs:
             echo "|-------|--------|"
             # Rows of opt-in phases only when they are configured.
             [ "$HAS_UPGRADE" != "true" ] || echo "| Pull previous release | $(cell "$OUTCOME_PREVIOUS" true) |"
+            [ "$HAS_UPGRADE" != "true" ] || echo "| Previous release runs | $(cell "$OUTCOME_PREVIOUS_RUNNING" true) |"
             echo "| Seed test data | $(cell "$OUTCOME_SEED" "$HAS_SEED") |"
             echo "| Create backup | $(cell "$OUTCOME_CREATE" true) |"
             echo "| Inspect snapshot | $(cell "$OUTCOME_INSPECT" true) |"
