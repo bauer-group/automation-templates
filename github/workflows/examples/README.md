@@ -285,7 +285,7 @@ Most workflows support configuration through:
 ### Project Resources
 - [Contributing Guidelines](../../../CONTRIBUTING.MD) - Learn how to contribute
 - [Security Policy](../../../SECURITY.MD) - Security and vulnerability reporting
-- [Code of Conduct](../../../CODE_OF_CONDUCT.MD) - Community standards
+- [Code of Conduct](../../../CODE_OF_CONDUCT.md) - Community standards
 
 ## Contributing
 
