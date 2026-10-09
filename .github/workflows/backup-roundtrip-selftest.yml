@@ -12,6 +12,10 @@ name: "🧪 Backup Round-Trip Self-Test"
 # line), an image built from the repository, required components and a service
 # stopped for the restore.
 #
+# What a real stack cannot show without turning this workflow red - a create
+# that exits 1 for a failed component - is covered by the Step Tests job, which
+# runs tests/backup-roundtrip-module.test.sh against the module's step bodies.
+#
 # Path-filtered on purpose: a stack round trip costs a few runner minutes and
 # is only worth spending when the module or its fixture changes.
 
@@ -22,18 +26,35 @@ on:
       - '.github/workflows/modules-backup-roundtrip-test.yml'
       - '.github/workflows/backup-roundtrip-selftest.yml'
       - '.github/workflows/tests/backup-roundtrip/**'
+      - '.github/workflows/tests/backup-roundtrip-module.test.sh'
   pull_request:
     branches: [main]
     paths:
       - '.github/workflows/modules-backup-roundtrip-test.yml'
       - '.github/workflows/backup-roundtrip-selftest.yml'
       - '.github/workflows/tests/backup-roundtrip/**'
+      - '.github/workflows/tests/backup-roundtrip-module.test.sh'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  # Seconds, no stack: the decisions of Create Backup against a stubbed engine.
+  step-tests:
+    name: "🧪 Step Tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v7
+
+      - name: "🧪 Create Backup"
+        shell: bash
+        run: bash .github/workflows/tests/backup-roundtrip-module.test.sh
+
   roundtrip:
     name: "🧪 Fixture Round Trip"
     permissions:
