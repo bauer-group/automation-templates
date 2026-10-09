@@ -13,7 +13,8 @@
 # - With a target workflow, a digest counts as handled only once the run
 #   dispatched for it has succeeded: the run is recorded in
 #   <variable>_PENDING, the next check reads its result, stores the digest on
-#   success and dispatches again when the run failed (e.g. a red release gate)
+#   success and dispatches again when the run failed (e.g. a red release gate),
+#   with a new release commit if the failed run had already tagged its release
 # - Supports dry-run mode for testing
 #
 # Usage (config file + workflow dispatch):
@@ -305,7 +306,8 @@ jobs:
           UPDATED_IMAGES="[]"
           NEW_IMAGES="[]"
           NEW_DIGESTS="{}"
-          UPDATE_DETAILS=""
+          NEW_DETAILS=""
+          RETRY_DETAILS=""
           RETRIED="[]"
           PENDING="[]"
           CONFIRMED="[]"
@@ -509,12 +511,17 @@ jobs:
               echo "   New: $CURRENT_DIGEST"
               NEW_IMAGES=$(printf '%s' "$NEW_IMAGES" | jq -c --arg name "$NAME" '. + [$name]')
               # Build update details for commit message
-              UPDATE_DETAILS="${UPDATE_DETAILS}
+              NEW_DETAILS="${NEW_DETAILS}
           - $NAME ($IMAGE:$TAG)
             Old: ${STORED_DIGEST:-<none>}
             New: $CURRENT_DIGEST"
             else
               echo "🔁 Release retry for $NAME ($CURRENT_DIGEST)"
+              # Only used if the retry gets a release commit, see below.
+              RETRY_DETAILS="${RETRY_DETAILS}
+          - $NAME ($IMAGE:$TAG)
+            Digest: $CURRENT_DIGEST
+            Failed run: $RUN_URL ($RUN_CONCLUSION)"
             fi
 
             UPDATES_FOUND="true"
@@ -537,19 +544,55 @@ jobs:
             echo "::endgroup::"
           done < <(printf '%s' "$IMAGES" | jq -c '.[]')
 
+          # A retry has to give the dispatched run something to release. If
+          # the failed run had already tagged the base image commit (a build,
+          # scan or push job failed after the release job), a bare dispatch
+          # finds no new commit: semantic-release cuts no release, every build
+          # is skipped and the run still ends "success" - which the next check
+          # would confirm while the image stays on the old base. Such a retry
+          # gets a release commit of its own. While the base image commit is
+          # still unreleased (the run failed before tagging, e.g. a red release
+          # gate), the dispatch releases that commit and no new one is added.
+          RETRY_COMMIT="false"
+          if [ "$(printf '%s' "$RETRIED" | jq 'length')" -gt 0 ]; then
+            LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+            # Captured first: `git log | grep -q` fails under pipefail when
+            # grep exits early and git log is killed by SIGPIPE.
+            UNRELEASED=$(git log --format=%s "${LAST_TAG:+${LAST_TAG}..}HEAD" 2>/dev/null || true)
+            if grep -qF -- "${COMMIT_PREFIX}: update base image" <<< "$UNRELEASED"; then
+              echo "🔁 A base image commit after ${LAST_TAG:-the first commit} is not released yet - the retry dispatches the release without a new commit"
+            else
+              RETRY_COMMIT="true"
+              echo "🔁 The base image commit was already released${LAST_TAG:+ ($LAST_TAG)} - the retry gets a new release commit"
+            fi
+          fi
+
+          COMMIT_IMAGES="$NEW_IMAGES"
+          UPDATE_DETAILS=""
+          if [ -n "$NEW_DETAILS" ]; then
+            printf -v UPDATE_DETAILS 'Base image digest changed:\n%s' "$NEW_DETAILS"
+          fi
+          if [ "$RETRY_COMMIT" = "true" ]; then
+            COMMIT_IMAGES=$(jq -nc --argjson n "$NEW_IMAGES" --argjson r "$RETRIED" '$n + ($r | map(.name))')
+            printf -v UPDATE_DETAILS '%s%sRelease retried - the previous run failed after its release was tagged:\n%s' \
+              "$UPDATE_DETAILS" "${UPDATE_DETAILS:+$'\n\n'}" "$RETRY_DETAILS"
+          fi
+
           # Write outputs
           # UNREACHABLE_IMAGES survives the loop because it is fed by process
           # substitution above, not a pipe - a pipe would run the loop in a subshell
           # and discard everything accumulated in it.
           UNREACHABLE_COUNT=$(printf '%s' "$UNREACHABLE_IMAGES" | jq 'length')
-          NEW_UPDATES_FOUND=$(printf '%s' "$NEW_IMAGES" | jq 'length > 0')
+          COMMIT_NEEDED=$(printf '%s' "$COMMIT_IMAGES" | jq 'length > 0')
           STATE_CHANGED=$(jq -n --argjson v "$VARIABLE_UPDATES" --argjson d "$DISPATCH_UPDATES" --argjson p "$PENDING_DELETES" \
             '($v | length) + ($d | length) + ($p | length) > 0')
           {
             echo "updates-found=$UPDATES_FOUND"
             echo "updated-images=$UPDATED_IMAGES"
-            echo "new-updates-found=$NEW_UPDATES_FOUND"
             echo "new-images=$NEW_IMAGES"
+            echo "commit-needed=$COMMIT_NEEDED"
+            echo "commit-images=$COMMIT_IMAGES"
+            echo "retry-commit=$RETRY_COMMIT"
             echo "new-digests=$NEW_DIGESTS"
             echo "retried=$RETRIED"
             echo "retried-images=$(printf '%s' "$RETRIED" | jq -c 'map(.name)')"
@@ -600,18 +643,21 @@ jobs:
             echo "::warning::$UNREACHABLE_COUNT of $CONFIGURED_COUNT base image(s) could not be checked (fail-on-unreachable-image is false). This run did NOT verify them."
           fi
 
-      # Only for new digests. A retry re-dispatches the release of a digest
-      # whose commit is already on the branch; another empty commit would add
-      # nothing but noise.
+      # For new digests, and for a retry whose failed run had already
+      # released the previous base image commit: without a new commit the
+      # dispatched run would have nothing to release and skip every build.
+      # A retry whose base image commit is still unreleased (the run failed
+      # before tagging) gets none - the dispatch releases that commit.
       - name: "📝 Create release commit"
         id: release
-        if: steps.check.outputs.new-updates-found == 'true' && inputs.commit-and-release == true && inputs.dry-run != true
+        if: steps.check.outputs.commit-needed == 'true' && inputs.commit-and-release == true && inputs.dry-run != true
         env:
           GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           COMMIT_PREFIX: ${{ steps.check.outputs.commit-prefix }}
-          UPDATED_IMAGES_JSON: ${{ steps.check.outputs.new-images }}
+          UPDATED_IMAGES_JSON: ${{ steps.check.outputs.commit-images }}
           TARGET_WORKFLOW: ${{ inputs.target-workflow }}
         shell: bash
+        # Tested by .github/workflows/tests/docker-base-image-monitor.test.sh
         run: |
           set -euo pipefail
 
@@ -632,11 +678,12 @@ jobs:
             SKIP_CI=" [skip ci]"
           fi
 
-          # Create commit message using heredoc for proper formatting
+          # Create commit message using heredoc for proper formatting.
+          # UPDATE_DETAILS (from the check) lists changed digests and, for a
+          # retry that needs a commit, the failed run.
           COMMIT_MSG=$(cat <<COMMIT_EOF
           ${COMMIT_PREFIX}: update base image ${UPDATED}${SKIP_CI}
 
-          Base image digest changed:
           ${UPDATE_DETAILS}
 
           Triggered by: Docker Base Image Monitor
@@ -822,6 +869,7 @@ jobs:
           RETRIED_JSON: ${{ steps.check.outputs.retried }}
           PENDING_JSON: ${{ steps.check.outputs.pending }}
           CONFIRMED_JSON: ${{ steps.check.outputs.confirmed }}
+          RETRY_COMMIT: ${{ steps.check.outputs.retry-commit }}
           RELEASE_TRIGGERED: ${{ steps.release.outputs.triggered }}
           RELEASE_SHA: ${{ steps.release.outputs.commit-sha }}
           RELEASE_PREFIX: ${{ steps.check.outputs.commit-prefix }}
@@ -885,6 +933,9 @@ jobs:
                 echo "A real run would dispatch the release again."
               else
                 echo "The release is dispatched again below; every check repeats this until a run succeeds."
+              fi
+              if [ "$RETRY_COMMIT" = "true" ] && [ "$RELEASE_TRIGGERED" = "true" ]; then
+                echo "The failed run had already released the base image commit, so the retry comes with a new release commit - otherwise the run would find nothing to release and skip every build."
               fi
               echo ""
               echo "| Image | Failed run | Result |"

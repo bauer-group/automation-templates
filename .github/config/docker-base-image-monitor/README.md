@@ -605,6 +605,13 @@ Base Image.
 dispatcht, bis ein Run erfolgreich ist. Den Fehler im verlinkten Run beheben — kein
 manueller Eingriff am Monitor nötig.
 
+Hatte der fehlgeschlagene Run sein Release schon getaggt (Release-Job grün, danach Build,
+Scan oder Push rot), pusht der Retry vorher einen neuen leeren Release-Commit
+(`<commit-prefix>: update base image …`, im Body der fehlgeschlagene Run). Ohne ihn fände
+semantic-release nichts zu releasen, der Run übersprünge alle Builds und endete trotzdem
+grün. Ist der Base-Image-Commit noch unreleased (z.B. rotes Gate vor dem Release), wird
+ohne neuen Commit erneut dispatcht. Details: [Retry commit](../../../docs/workflows/modules-docker-base-image-monitor.md#retry-commit).
+
 ### Variable `<NAME>_PENDING` im Repository
 
 **Ursache:** Kein Fehler. Sie hält den Release-Run, der für einen neuen Digest dispatcht

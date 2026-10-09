@@ -126,9 +126,18 @@ So the digest variable is written only once the dispatched run has **succeeded**
 | Queued or running | Nothing | ⏳ Release still running |
 | Could not be read (API error) | Nothing — a second release is never started on a transient error | ⏳ Release still running, ⚠️ Unknown |
 | Succeeded | Stores the digest, removes `<variable>_PENDING` | ✅ Release confirmed |
-| Failed, cancelled, timed out or deleted | Dispatches the release again — no new commit — and records the new run | ❌ Release failed, with a link to the failed run and a `::warning::` annotation |
+| Failed, cancelled, timed out or deleted | Dispatches the release again and records the new run; pushes a new release commit first if the failed run had already tagged its release, see [Retry commit](#retry-commit) | ❌ Release failed, with a link to the failed run and a `::warning::` annotation |
 
 The state is only read and written by the check, so the job does not wait for the release: with a daily schedule the digest is stored by the check after the successful run. A release that keeps failing is dispatched again by every check until it succeeds or a newer digest replaces it, which keeps the failure visible in the consumer's Actions instead of losing it. A newer digest of the same image is a new update, whatever happened to the recorded run.
+
+### Retry commit
+
+A consumer's release workflow builds only when semantic-release cuts a release, and that needs a releasable commit after the last tag. Where the dispatched run failed decides whether one is there:
+
+- **Before the release was tagged** (for example a red release gate): the base image commit of the first check is still unreleased. The retry dispatches again without a new commit, and the run releases that commit.
+- **After the release was tagged** (the release job passed, then a build, scan or push job failed): the base image commit is already released. A bare dispatch would find nothing to release, skip every build and still end *success* — and the next check would confirm a digest that never reached an image. So the retry first pushes a new empty release commit, `<commit-prefix>: update base image <images>`, whose body names the failed run.
+
+The check tells the two apart by looking for a base image commit (`<commit-prefix>: update base image …`) after the newest tag (`git describe --tags`). A commit written back after the tag, such as `chore: update Dockerfile version to …`, does not count. With `commit-and-release: false` no commit is created; the target workflow must then rebuild without one.
 
 Without `target-workflow` (the release starts from the push of the release commit) there is no run to follow, and the digest is stored once the commit is pushed, as before. The same applies if GitHub answers a dispatch without a run id (only a GitHub Enterprise Server without `return_run_details`); the run then logs a warning.
 
@@ -172,7 +181,7 @@ The PAT is **not** used for the registry login. Manifests of internal or private
 ## Notes
 
 - **Callers must grant `packages: read`** for internal or private GHCR packages. A reusable workflow can only restrict the caller's permissions, never extend them. A *partial* `permissions:` block that omits `packages` sets it to `none` and breaks the check; having no block at all does not. See [GHCR Internal Visibility](../ghcr-internal-visibility.md).
-- The commit created on an update is **empty** — the actual state lives in repository variables. Its only purpose is to give semantic-release something to release. When `target-workflow` is set, its subject ends in `[skip ci]`: the release runs through `workflow_dispatch`, so push workflows are not started again on an unchanged tree. `[skip ci]` does not affect the dispatched run.
+- The commit created on an update — or on a retry whose earlier release was already tagged — is **empty**; the actual state lives in repository variables. Its only purpose is to give semantic-release something to release. When `target-workflow` is set, its subject ends in `[skip ci]`: the release runs through `workflow_dispatch`, so push workflows are not started again on an unchanged tree. `[skip ci]` does not affect the dispatched run.
 - State is stored **last**, after commit, push and dispatch. If any of these fails (or an image is unreachable), nothing is stored and the next run detects the same update again instead of reporting "No update". A failure while storing only means the next run repeats an already started release. With `target-workflow` the digest itself waits for the dispatched run, see [Release confirmation](#release-confirmation).
 - The dispatch uses the REST endpoint with `return_run_details`, which accepts a workflow file name or id. A workflow **name** in `target-workflow`, which `gh workflow run` accepted, is resolved to its id first.
 - `modules-auto-maintenance.yml` contains the same base image check as one of several maintenance tasks. Use this module when base image monitoring is all you need.
