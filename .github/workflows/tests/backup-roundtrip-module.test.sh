@@ -26,7 +26,8 @@
 # exist already are left alone and are not removed at the end.
 #
 # s3-destination: Prepare Environment (id: prepare) writes the throwaway
-# server's values into exactly the variables s3-env names; Prepare S3
+# server's values into exactly the variables s3-env names, over env-overrides
+# and generated-secrets; Prepare S3
 # Destination (id: s3-prepare) puts the server on the backup service's
 # networks; Check Off-Site Copy (id: s3-upload) fails unless archive and
 # manifest are in the bucket with the local size - a failed upload does not
@@ -328,6 +329,11 @@ expect_log "validate: invalid variable name" "s3-env line is not 'setting VARIAB
 expect_log "validate: no assignment syntax" "s3-env line is not 'setting VARIABLE' (whitespace, no '='): 'prefix=G'"
 expect_log "validate: unknown setting" "s3-env: unknown setting 'token'"
 
+validate_case s3-same-variable S3_DESTINATION=true "${S3_IMAGES[@]}" \
+  S3_ENV=$'endpoint A\nbucket B\naccess-key APP_S3_KEY\nsecret-key APP_S3_KEY'
+expect_rc "validate: one variable for two settings" $? 1
+expect_log "validate: names the variable used twice" "s3-env names 'APP_S3_KEY' for two settings"
+
 validate_case s3-image S3_DESTINATION=true S3_ENV="$S3_MAPPING" S3_IMAGE='minio:latest; rm -rf /' S3_CLIENT_IMAGE=mc
 expect_rc "validate: s3-image that is no image reference" $? 1
 expect_log "validate: names the bad image" "is not an image reference"
@@ -417,6 +423,15 @@ expect_log "prepare s3: secret key masked" "::add-mask::$(env_value ROUNDTRIP_S3
 expect_eq "prepare s3: server image" "$(env_value ROUNDTRIP_S3_IMAGE)" "ghcr.io/bauer-group/cs-minio/minio:latest"
 expect_eq "prepare s3: unmapped variables untouched" "$(env_value OTHER_S3_BUCKET)" "untouched"
 expect_eq "prepare s3: a key is replaced in place, not repeated" "$(grep -c '^APP_S3_BUCKET=' "$DIR/.env")" 1
+
+# The server's values are written last: an override or a generated secret for
+# a mapped variable must not point the sidecar elsewhere.
+prepare_case s3-wins S3_DESTINATION=true S3_ENV="$S3_MAPPING" GENERATED_SECRETS="APP_S3_SECRET_KEY" \
+  ENV_OVERRIDES=$'APP_S3_BUCKET=from-overrides\nAPP_S3_ENDPOINT=https://s3.example.test'
+expect_rc "prepare s3 over overrides: step passes" $? 0
+expect_eq "prepare s3: the server's bucket wins over env-overrides" "$(env_value APP_S3_BUCKET)" "backup-roundtrip"
+expect_eq "prepare s3: the server's endpoint wins over env-overrides" "$(env_value APP_S3_ENDPOINT)" "http://roundtrip-s3:9000"
+expect_eq "prepare s3: the server's secret key wins over generated-secrets" "$(env_value APP_S3_SECRET_KEY)" "$(env_value ROUNDTRIP_S3_SECRET_KEY)"
 
 prepare_case s3-off S3_DESTINATION=false S3_ENV="$S3_MAPPING"
 expect_rc "prepare without s3-destination: step passes" $? 0

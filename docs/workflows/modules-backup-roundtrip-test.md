@@ -148,7 +148,7 @@ Ready-to-copy callers are in [`github/workflows/examples/backup-roundtrip/`](../
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `s3-destination` | Start a throwaway S3 server (MinIO) on the networks of the backup service and make it the sidecar's S3 destination. The snapshot must reach the bucket; the restore then runs on a "new host" and pulls it back from S3. See [Off-Site S3 and a New Host](#off-site-s3-and-a-new-host) | `false` |
-| `s3-env` | Lines `setting VARIABLE` (whitespace between them, no `=`) naming the `.env` variables your compose file builds its S3 destination from. The module writes the server's values into them. Required: `endpoint`, `bucket`, `access-key`, `secret-key`; optional: `region`, `path-style`, `prefix`. Read only with `s3-destination`, so a matrix can switch S3 per leg | `''` |
+| `s3-env` | Lines `setting VARIABLE` (whitespace between them, no `=`) naming the `.env` variables your compose file builds its S3 destination from. The module writes the server's values into them. Required: `endpoint`, `bucket`, `access-key`, `secret-key`; optional: `region`, `path-style`, `prefix`. Each setting names a variable of its own. The values are written after `env-overrides` and `generated-secrets`, so they win over both. Read only with `s3-destination`, so a matrix can switch S3 per leg | `''` |
 | `s3-image` | Image of the S3 server: MinIO-compatible, with `curl` for the healthcheck | `'ghcr.io/bauer-group/cs-minio/minio:latest'` |
 | `s3-client-image` | Image that provides the MinIO client `mc` (bucket creation, listing) | `'ghcr.io/bauer-group/cs-minio/minio-init:latest'` |
 
