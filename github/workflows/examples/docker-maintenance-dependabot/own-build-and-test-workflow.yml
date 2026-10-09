@@ -1,0 +1,79 @@
+# =============================================================================
+# Docker Maintenance (Dependabot) - Own Build and Test Workflow
+# =============================================================================
+# For an image without a backup sidecar: the repository's own CI workflow
+# builds the image and runs the tests on pull requests, and that run is what
+# vouches for a Dependabot update.
+#
+# This example lets two ecosystems through - Docker base images and npm
+# packages - to show what the trigger scope needs: every file Dependabot
+# changes for an ecosystem must be listed here AND in the pull_request paths
+# of ci.yml. Leave the npm files out to keep npm updates as manual merges.
+#
+# Matching .github/workflows/ci.yml (excerpt) - the required workflow:
+# -----------------------------------------------------------------------------
+# name: CI
+# on:
+#   pull_request:
+#     branches: [main]
+#     paths:                    # covers every path listed below
+#       - 'Dockerfile'
+#       - 'package.json'
+#       - 'package-lock.json'
+#       - 'src/**'
+# jobs:
+#   build:   ...                # docker-build.yml with push: false
+#   test:    ...                # npm ci && npm test
+# -----------------------------------------------------------------------------
+#
+# Required .github/dependabot.yml (excerpt):
+# -----------------------------------------------------------------------------
+# version: 2
+# updates:
+#   - package-ecosystem: "docker"
+#     directory: "/"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "fix(docker)"
+#   - package-ecosystem: "npm"
+#     directory: "/"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "fix(deps)"
+# -----------------------------------------------------------------------------
+# =============================================================================
+
+name: 🐳 Docker Maintenance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # Every file Dependabot changes for the ecosystems that may be merged.
+    # Each one must also start ci.yml - see its paths above.
+    paths:
+      - 'Dockerfile'
+      - 'package.json'
+      - 'package-lock.json'
+
+permissions:
+  contents: write       # merge
+  pull-requests: write  # approve, read the PR
+  checks: read          # check runs and suites - private repositories
+  statuses: read        # commit statuses - private repositories
+  actions: read         # workflow runs - private repositories
+
+jobs:
+  maintenance:
+    name: Auto-merge Dependabot PRs
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
+    with:
+      # The repository's own build and test workflow - no backup round trip.
+      required-workflows: .github/workflows/ci.yml
+      merge-method: 'squash'
+      auto-approve: true
+      # Patch updates only; e.g. 'patch,minor' once the tests are trusted to
+      # catch a breaking minor release.
+      merge-update-types: 'patch'
+    secrets: inherit

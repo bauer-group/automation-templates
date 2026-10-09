@@ -1,0 +1,49 @@
+# =============================================================================
+# Docker Maintenance (Dependabot) - No PR CI: Nothing Is Merged
+# =============================================================================
+# For a repository that has no workflow building and testing pull requests
+# (yet). required-workflows is left unset ON PURPOSE: nothing would vouch for
+# an update, and "no check failed" is not the same as "tested".
+#
+# What the workflow does in this setup, for every Dependabot PR that changes a
+# listed file:
+# - writes a notice "Automatic merging is off: the input required-workflows is
+#   not set" on the run, and
+# - puts dependency, update type, old and new version into the job summary,
+# - leaves the PR open for a manual review and merge.
+# It does not wait for CI and needs no write access, so the token below is
+# read-only.
+#
+# Turning automatic merging on later takes two changes, once a PR CI workflow
+# exists that builds and tests what Dependabot changes:
+# 1. set required-workflows to that workflow file, e.g.
+#      required-workflows: .github/workflows/ci.yml
+# 2. grant contents: write and pull-requests: write (plus checks, statuses and
+#    actions: read in private repositories), as in
+#    simple-dependabot-maintenance.yml
+# =============================================================================
+
+name: 🐳 Docker Maintenance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'Dockerfile'
+
+# Read-only: with required-workflows unset the workflow only reads the PR's
+# Dependabot metadata and never approves or merges.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  maintenance:
+    name: Report Dependabot PRs
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
+    with:
+      # Deliberately not set - there is no PR CI that could vouch for an
+      # update, so every PR stays open with a notice.
+      # required-workflows: .github/workflows/ci.yml
+      merge-method: 'squash'
+    secrets: inherit

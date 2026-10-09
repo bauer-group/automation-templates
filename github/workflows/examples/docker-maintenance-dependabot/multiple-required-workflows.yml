@@ -1,0 +1,63 @@
+# =============================================================================
+# Docker Maintenance (Dependabot) - Several Required Workflows
+# =============================================================================
+# The image is built by docker-release.yml, and a separate tests.yml runs the
+# integration tests against it. Both have to vouch for an update: a
+# Dependabot PR is merged only if EACH listed workflow has a pull_request run
+# for the PR head commit whose latest attempt succeeded, and no other check
+# failed.
+#
+# Rules for several required workflows:
+# - Comma or newline separated; each entry is a workflow file directly under
+#   .github/workflows/ (.yml or .yaml). Anything else fails the job with an
+#   "Invalid input" error.
+# - The paths below must start ALL of them. A PR that starts docker-release.yml
+#   but not tests.yml stays open with "required workflow .github/workflows/
+#   tests.yml did not run for this change - not tested".
+# - A required workflow whose jobs were all skipped on the PR (an if: that
+#   excludes pull requests) concluded "skipped" and tested nothing - the PR
+#   stays open.
+# - Renaming or moving a listed workflow makes every PR stay open with "did
+#   not run" until this list is updated.
+#
+# Matching pull_request paths of both required workflows (excerpt):
+# -----------------------------------------------------------------------------
+# docker-release.yml:  paths: ['docker/**', 'src/**', 'docker-compose*.yml']
+# tests.yml:           paths: ['docker/**', 'src/**', 'tests/**']
+# -> common to both:   docker/** and src/** - the caller lists files from there
+# -----------------------------------------------------------------------------
+# =============================================================================
+
+name: 🐳 Docker Maintenance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # Only files that start every required workflow.
+    paths:
+      - 'docker/Dockerfile'
+      - 'docker/worker.Dockerfile'
+
+permissions:
+  contents: write       # merge
+  pull-requests: write  # approve, read the PR
+  checks: read          # check runs and suites - private repositories
+  statuses: read        # commit statuses - private repositories
+  actions: read         # workflow runs - private repositories
+
+jobs:
+  maintenance:
+    name: Auto-merge Dependabot PRs
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
+    with:
+      # Every listed workflow must have run on the PR and passed.
+      required-workflows: |
+        .github/workflows/docker-release.yml
+        .github/workflows/tests.yml
+      merge-method: 'squash'
+      auto-approve: true
+      merge-update-types: 'patch'
+      # The slower of the two decides when CI is complete; raise the wait if
+      # the integration tests regularly take longer than about 45 minutes.
+      ci-wait-minutes: 60
+    secrets: inherit

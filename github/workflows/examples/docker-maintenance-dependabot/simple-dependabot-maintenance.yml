@@ -35,7 +35,7 @@
 #    main.
 #    Keep the `paths:` below within the `pull_request` `paths:` of that CI:
 #    a PR that does not start it stays open, as it was not tested. A passed
-#    check that tests nothing (e.g. GitGuardian) is not enough.
+#    check that tests nothing (e.g. a secret scan) is not enough.
 #
 # Required .github/dependabot.yml in your repo:
 # -----------------------------------------------------------------------------
@@ -63,7 +63,11 @@ name: Docker Maintenance
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    # Only files whose change also starts the required workflow (Prerequisites 3)
+    # Only files whose change also starts the required workflow (Prerequisites 3).
+    # These paths also decide which Dependabot PRs reach the workflow at all:
+    # with Dockerfiles only, npm, pip or Composer updates never start it and
+    # stay manual merges - see docs/workflows/docker-maintenance.md, section
+    # "Decide which PRs reach it (trigger scope)".
     paths:
       - 'Dockerfile'
       - 'src/Dockerfile'

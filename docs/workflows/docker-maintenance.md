@@ -120,14 +120,53 @@ jobs:
     secrets: inherit
 ```
 
-#### 3. Name the PR CI that must pass
+#### 3. Decide which PRs reach it (trigger scope)
+
+The reusable workflow can only decide on a PR whose event starts the calling
+workflow. The caller's `on.pull_request.paths` therefore decide which
+Dependabot PRs reach it at all - before any of the rules below apply:
+
+- **A PR outside the caller's `paths:` never reaches the workflow.** No job
+  runs, no annotation is written, no summary appears: the PR simply stays open
+  until someone merges it by hand. Nothing tells you that it was not
+  considered, so pick the paths on purpose.
+- **Dockerfile-only paths (as above) mean: base image updates only.** An npm,
+  pip or Composer update changes `package.json`/`package-lock.json`,
+  `requirements*.txt`/`poetry.lock` or `composer.json`/`composer.lock` - not a
+  Dockerfile - so it never starts the caller and stays a manual merge. That is
+  the safe default for a repository whose PR CI only builds the image.
+- **To let another ecosystem through, widen both path lists.** Add its
+  manifest and lock files to the caller's `paths:` **and** to the
+  `pull_request` `paths:` of every workflow in `required-workflows`. A PR that
+  reaches the caller but not the required workflow stays open with "did not
+  run for this change - not tested".
+- **Without `paths:`** every Dependabot PR reaches the workflow and is decided
+  by the [decision table](#decision-table): GitHub Actions updates and other
+  `.github/` changes stay open, every other update merges only if its required
+  workflow ran on it and passed.
+
+| Caller `paths:`                                   | Dependabot PR                               | What happens                                                                                    |
+|---------------------------------------------------|---------------------------------------------|-------------------------------------------------------------------------------------------------|
+| `Dockerfile`                                      | `FROM` base image bump in `Dockerfile`      | Reaches the workflow - decided by the [decision table](#decision-table)                         |
+| `Dockerfile`                                      | npm bump in `package.json` + lock file      | Caller does not start - PR stays open, no annotation, merge by hand                             |
+| `Dockerfile`, `package.json`, `package-lock.json` | npm bump in `package.json` + lock file      | Reaches the workflow - merged only if the required workflow's PR `paths:` cover these files too |
+| none                                              | GitHub Actions bump in `.github/workflows/` | Reaches the workflow - left open: a CI change is never merged automatically                     |
+
+The `pull_request` `types:` matter as well: keep `opened`, `synchronize`
+(Dependabot rebased or updated the PR), `reopened` and `ready_for_review`, so
+every new head commit gets its own decision.
+
+Ready-to-copy callers for each case are in
+[`github/workflows/examples/docker-maintenance-dependabot/`](../../github/workflows/examples/docker-maintenance-dependabot/).
+
+#### 4. Name the PR CI that must pass
 
 Nothing else to configure - no ruleset, no branch protection, no "Allow auto-merge".
 The workflow waits for the CI of the PR itself and merges only when every
 workflow listed in `required-workflows` has run on the PR and passed. With
 `required-workflows` empty (the default) it merges **nothing** and leaves each
 PR open with a notice that says how to set it. A passed check alone proves
-nothing: GitGuardian, notification and AI-summary jobs pass on every PR
+nothing: secret scans, notification and labeler jobs pass on every PR
 without building anything.
 
 ##### Choosing `required-workflows`
@@ -164,6 +203,20 @@ nothing.
 An existing caller of this workflow merges nothing until it sets
 `required-workflows`; in private repositories it also needs the three read
 permissions below.
+
+##### Common setups
+
+| Repository                                                               | `required-workflows`                                                     | Example                                                                                                                          |
+|--------------------------------------------------------------------------|--------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| Container stack whose release pipeline runs the backup round trip on PRs | `.github/workflows/docker-release.yml`                                   | [with-backup-roundtrip-gate.yml](../../github/workflows/examples/docker-maintenance-dependabot/with-backup-roundtrip-gate.yml)   |
+| Image without a backup sidecar, own build and test workflow              | `.github/workflows/ci.yml`                                               | [own-build-and-test-workflow.yml](../../github/workflows/examples/docker-maintenance-dependabot/own-build-and-test-workflow.yml) |
+| Image build and a separate test suite, both must pass                    | `.github/workflows/docker-release.yml` and `.github/workflows/tests.yml` | [multiple-required-workflows.yml](../../github/workflows/examples/docker-maintenance-dependabot/multiple-required-workflows.yml) |
+| No PR CI at all (yet)                                                    | leave unset - nothing is merged, every PR gets a notice                  | [no-pr-ci-manual-merge.yml](../../github/workflows/examples/docker-maintenance-dependabot/no-pr-ci-manual-merge.yml)             |
+
+Leaving `required-workflows` unset is a deliberate choice, not a
+misconfiguration, when no workflow builds and tests the PR: the job then
+records every Dependabot PR in its summary and leaves it for review. Merging
+"because nothing failed" would merge updates nothing has tested.
 
 #### Permissions
 
@@ -250,28 +303,37 @@ PR's head.
    repo setting), the rejected approval is a notice and the merge goes ahead;
    it only fails if the base branch requires a review.
 
-Every other outcome leaves the PR **open** with the job green, the decision as an
-annotation and in the job summary:
+#### Decision table
 
-| Situation                                                                          | Annotation |
-|------------------------------------------------------------------------------------|------------|
-| `required-workflows` is not set - automatic merging is off                         | notice     |
-| Update type not in `merge-update-types`, or unknown                                | notice     |
-| Not every commit of the PR is a verified commit by Dependabot                      | notice     |
-| The PR changes CI: a GitHub Actions update, or a changed file under `.github/`     | notice     |
-| A check failed, was cancelled, timed out, needs action or went stale               | notice     |
-| A workflow could not start (`startup_failure`)                                     | notice     |
-| A required workflow did not run for this change, or concluded `skipped`/`neutral`  | notice     |
-| CI not finished and quiet after `ci-wait-minutes`                                  | notice     |
-| CI results not readable (private repo without `checks`/`statuses`/`actions: read`) | notice     |
-| CI results could not be read after three API errors in a row                       | warning    |
-| The PR got a new head commit or was closed meanwhile                               | notice     |
-| CI passed, but the PR is a draft or cannot be merged (e.g. a conflict)             | notice     |
-| CI passed, but the PR could not be read again right before the merge               | warning    |
-| CI passed, but the merge was rejected (e.g. a required review)                     | warning    |
+The rules are checked in this order; the first one that applies decides. Every
+outcome other than a merge leaves the PR **open** with the job green, the
+decision as an annotation and in the job summary (with the checks seen on the
+head commit). Only invalid inputs turn the job red.
+
+| #   | Stage            | Situation                                                                                                                                 | Outcome                               | Annotation |
+|-----|------------------|-------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------|------------|
+| 1   | Trigger          | The PR changes no file in the caller's `on.pull_request.paths` ([trigger scope](#3-decide-which-prs-reach-it-trigger-scope))              | Caller does not run - PR stays open   | none       |
+| 2   | Job filter       | PR not opened by `dependabot[bot]`, or the event was raised by someone else (a person pushed to the branch)                               | Job skipped - PR stays open           | none       |
+| 3   | Inputs           | `merge-method`, `ci-wait-minutes`, `merge-update-types` or `required-workflows` is invalid                                                | ❌ Job fails                          | error      |
+| 4   | Ecosystem        | GitHub Actions update (`package-ecosystem: "github-actions"`)                                                                             | ⏸️ Left open - a CI change            | notice     |
+| 5   | Required CI      | `required-workflows` is not set - automatic merging is off                                                                                | ⏸️ Left open, without waiting for CI  | notice     |
+| 6   | Update type      | Type unknown (digest, non-semver tag), or not in `merge-update-types`                                                                     | ⏸️ Left open for review               | notice     |
+| 7   | PR state         | The PR was closed or got a new head commit meanwhile (checked on every poll)                                                              | ⏹️ Not merged by this run             | notice     |
+| 8   | Commits          | Not every commit of the PR is a verified commit by Dependabot                                                                             | ⏸️ Left open                          | notice     |
+| 9   | Changed files    | A changed file under `.github/` (also the old path of a moved file), or the file list is not complete                                     | ⏸️ Left open - a CI change            | notice     |
+| 10  | Permissions      | CI results not readable (private repo without `checks`/`statuses`/`actions: read`)                                                        | ⏸️ Left open                          | notice     |
+| 11  | CI result        | A check failed, was cancelled, timed out, needs action, went stale or could not start (`startup_failure`) - decided as soon as it is seen | ⏸️ Left open                          | notice     |
+| 12  | CI wait          | CI not finished and quiet after `ci-wait-minutes`                                                                                         | ⏸️ Left open                          | notice     |
+| 13  | CI wait          | CI results could not be read after three API errors in a row                                                                              | ⚠️ Left open                          | warning    |
+| 14  | Required CI      | A required workflow did not run for this change, ran only for a fork, or concluded `skipped`/`neutral`                                    | ⏸️ Left open - not tested             | notice     |
+| 15  | Before the merge | The PR could not be read again right before the merge                                                                                     | ⚠️ Left open                          | warning    |
+| 16  | Before the merge | The PR is a draft or cannot be merged (e.g. a conflict - Dependabot rebases it)                                                           | ⏸️ Left open                          | notice     |
+| 17  | Approval         | `auto-approve` is on, but GitHub Actions may not approve PRs here                                                                         | Merge goes ahead without the approval | notice     |
+| 18  | Merge            | The merge was rejected (e.g. the base branch requires a review)                                                                           | ⚠️ Left open                          | warning    |
+| -   | -                | None of the above: every required workflow passed, no check failed, CI complete and quiet                                                 | ✅ Merged (`--match-head-commit`)     | -          |
 
 A newer event on the same PR (e.g. Dependabot rebased it) cancels the run that is
-still waiting.
+still waiting; the run for the new head commit decides.
 
 ### Limits
 
@@ -325,9 +387,15 @@ See [Choosing `required-workflows`](#choosing-required-workflows).
 
 ### Examples
 
-See `github/workflows/examples/docker-maintenance-dependabot/`:
+See [`github/workflows/examples/docker-maintenance-dependabot/`](../../github/workflows/examples/docker-maintenance-dependabot/README.md):
 
-- [simple-dependabot-maintenance.yml](../../github/workflows/examples/docker-maintenance-dependabot/simple-dependabot-maintenance.yml)
+| Example                                                                                                                              | Use case                                                                                                 |
+|--------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| [simple-dependabot-maintenance.yml](../../github/workflows/examples/docker-maintenance-dependabot/simple-dependabot-maintenance.yml) | Smallest caller: Dockerfile updates, one PR CI workflow                                                  |
+| [with-backup-roundtrip-gate.yml](../../github/workflows/examples/docker-maintenance-dependabot/with-backup-roundtrip-gate.yml)       | Container stack: merge only after the PR run of `docker-release.yml`, backup round trip included, passed |
+| [own-build-and-test-workflow.yml](../../github/workflows/examples/docker-maintenance-dependabot/own-build-and-test-workflow.yml)     | No backup sidecar: the repository's own build and test workflow vouches; npm updates let through as well |
+| [multiple-required-workflows.yml](../../github/workflows/examples/docker-maintenance-dependabot/multiple-required-workflows.yml)     | Image build and a separate test suite - both must have run on the PR and passed                          |
+| [no-pr-ci-manual-merge.yml](../../github/workflows/examples/docker-maintenance-dependabot/no-pr-ci-manual-merge.yml)                 | No PR CI yet: `required-workflows` left unset on purpose - nothing is merged, every PR is reported       |
 
 ---
 
@@ -542,8 +610,7 @@ that is not made by `GITHUB_TOKEN`, or when the release workflow is run by hand
 The workflow completes but the PR stays open.
 
 **Cause:** the job left it open on purpose. The annotation and the job summary
-say why - see the table under [How Merging Works](#how-merging-works). The
-usual ones:
+say why - see the [decision table](#decision-table). The usual ones:
 
 | Annotation says                                   | Fix                                                                                                                         |
 |---------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
@@ -558,6 +625,18 @@ usual ones:
 
 Do **not** add a ruleset with required status checks for this - it is not needed
 and blocks semantic-release (see above).
+
+### No Docker Maintenance Run for a Dependabot PR
+
+The PR has no `Docker Maintenance` check at all - no annotation, no summary.
+
+**Cause:** the caller workflow never started: the PR changes no file in its
+`on.pull_request.paths` (rows 1 and 2 of the [decision table](#decision-table)).
+With Dockerfile-only paths this is expected for npm, pip, Composer and GitHub
+Actions updates - they are merged by hand. To let an ecosystem through, add its
+manifest and lock files to the caller's `paths:` and to the `pull_request`
+`paths:` of every required workflow, see
+[Decide which PRs reach it](#3-decide-which-prs-reach-it-trigger-scope).
 
 ### No Semantic Release Created
 
@@ -593,7 +672,7 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 
 ## Security Considerations
 
-- **Tested by the named CI**: Dependabot PRs are merged only when every workflow in `required-workflows` ran on the PR's head commit and passed and no other check failed, after CI has been complete and unchanged for 3 minutes (5 minutes after the start at the earliest). A passed check that tests nothing (e.g. GitGuardian) is not enough, and without `required-workflows` nothing is merged
+- **Tested by the named CI**: Dependabot PRs are merged only when every workflow in `required-workflows` ran on the PR's head commit and passed and no other check failed, after CI has been complete and unchanged for 3 minutes (5 minutes after the start at the earliest). A passed check that tests nothing (e.g. a secret scan or a notification job) is not enough, and without `required-workflows` nothing is merged
 - **CI changes stay open**: a GitHub Actions update or a PR that changes `.github/` is never merged automatically - a `pull_request` run uses the PR's own version of a changed workflow, and push- or schedule-only workflows do not run before the merge
 - **Pinned merge**: the Dependabot merge and its approval name the head commit whose CI was checked
 - **Dependabot only**: the Dependabot job acts only on Dependabot's PRs, on events Dependabot raised, with verified Dependabot commits only; it never checks out PR code
@@ -604,6 +683,9 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 ## Related Documentation
 
 - [Docker Build Workflow](./docker-build.md)
-- [Semantic Release Workflow](./semantic-release.md)
+- [Semantic Release Config Contract](./semantic-release-config.md)
+- [Backup Round-Trip Test](./modules-backup-roundtrip-test.md) - the PR gate a container stack names in `required-workflows`
+- [Docker Base Image Monitor](./modules-docker-base-image-monitor.md) - rebuilds on floating tags (`stable`, `latest`) that Dependabot cannot track
+- [Examples](../../github/workflows/examples/docker-maintenance-dependabot/README.md)
 - [Dependabot Documentation](https://docs.github.com/en/code-security/dependabot)
 - [Renovate Documentation](https://docs.renovatebot.com/)
