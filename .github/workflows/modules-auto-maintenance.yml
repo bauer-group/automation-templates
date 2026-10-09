@@ -13,7 +13,8 @@
 #   dispatched, so a failed run is retried next time
 # - Multi-ecosystem dependency updates (Node.js, Python, .NET, Go)
 # - Build/Test/Typecheck validation with automatic rollback on failure
-# - Selective staging (only dependency files committed)
+# - Selective staging: only dependency manifests and lock files are
+#   committed, also below a working-directory
 # - Semantic release compatible commits
 # - Optional workflow_dispatch trigger for release pipelines
 # - Comprehensive Job Summary
@@ -752,7 +753,10 @@ jobs:
           UPDATED_IMAGES_JSON: ${{ steps.base-images.outputs.updated-images }}
           HAS_FILE_CHANGES: ${{ steps.detect-changes.outputs.has-file-changes }}
           TRIGGER_WORKFLOW: ${{ steps.config.outputs.trigger-workflow }}
+          PYTHON_WORKDIR: ${{ steps.config.outputs.python-workdir }}
+          PYTHON_REQUIREMENTS: ${{ steps.config.outputs.python-requirements }}
         shell: bash
+        # Tested by .github/workflows/tests/auto-maintenance-commit.test.sh
         run: |
           set -euo pipefail
 
@@ -762,13 +766,59 @@ jobs:
 
           COMMITTED="false"
 
-          # Stage only dependency files (selective staging)
+          # Selective staging: dependency manifests and lock files only, never
+          # build output or other files a validation command touched. Every
+          # changed path is matched by its file name, anywhere in the
+          # repository (a working-directory below the root included), and
+          # staged with its own `git add`. One `git add` of several fixed
+          # paths stages NOTHING as soon as one of them does not exist - that
+          # dropped every npm (no yarn.lock), pip (no Pipfile.lock) and .NET
+          # (no *.fsproj) update while the run still reported changes.
+          REQUIREMENTS_PATH=""
+          is_dependency_file() {
+            case "$1" in
+              node_modules/*|*/node_modules/*) return 1 ;;
+            esac
+            case "${1##*/}" in
+              package.json|package-lock.json|npm-shrinkwrap.json|yarn.lock|pnpm-lock.yaml) return 0 ;;
+              requirements*.txt|Pipfile.lock|poetry.lock) return 0 ;;
+              *.csproj|*.fsproj|*.vbproj|Directory.Build.props|Directory.Packages.props|packages.lock.json) return 0 ;;
+              go.mod|go.sum) return 0 ;;
+            esac
+            # The configured requirements file may have any name, e.g. requirements/prod.txt.
+            [ -n "$REQUIREMENTS_PATH" ] && [ "$1" = "$REQUIREMENTS_PATH" ]
+          }
+
           if [ "$HAS_FILE_CHANGES" = "true" ]; then
             echo "📁 Staging dependency files..."
-            git add package.json package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null || true
-            git add requirements.txt requirements*.txt Pipfile.lock poetry.lock 2>/dev/null || true
-            git add '*.csproj' '*.fsproj' Directory.Build.props Directory.Packages.props 2>/dev/null || true
-            git add go.mod go.sum 2>/dev/null || true
+
+            # The configured requirements file as git spells it below:
+            # relative to the repository root, without ./ segments.
+            if [ -n "${PYTHON_REQUIREMENTS:-}" ]; then
+              REQUIREMENTS_PATH=$(git ls-files --full-name -- "${PYTHON_WORKDIR:-.}/$PYTHON_REQUIREMENTS" | head -n 1) || REQUIREMENTS_PATH=""
+            fi
+
+            # Modified tracked files plus new files that are not ignored,
+            # NUL-separated so that no file name is split or quoted.
+            CHANGED_LIST=$(mktemp)
+            git diff --name-only -z > "$CHANGED_LIST"
+            git ls-files --others --exclude-standard -z >> "$CHANGED_LIST"
+
+            LEFT_OUT=()
+            while IFS= read -r -d '' FILE; do
+              if is_dependency_file "$FILE"; then
+                git --literal-pathspecs add -- "$FILE"
+              else
+                LEFT_OUT+=("$FILE")
+              fi
+            done < "$CHANGED_LIST"
+            rm -f "$CHANGED_LIST"
+
+            if [ "${#LEFT_OUT[@]}" -gt 0 ]; then
+              echo "ℹ️ Not committed - not a dependency manifest or lock file (${#LEFT_OUT[@]}):"
+              printf '   %s\n' "${LEFT_OUT[@]:0:20}"
+              [ "${#LEFT_OUT[@]}" -le 20 ] || echo "   ... and $(( ${#LEFT_OUT[@]} - 20 )) more"
+            fi
 
             # Check if anything was staged
             if git diff --cached --quiet; then

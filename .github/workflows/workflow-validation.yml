@@ -177,6 +177,14 @@ jobs:
         shell: bash
         run: bash .github/workflows/tests/docker-base-image-monitor.test.sh
 
+      # Same failure class: auto-maintenance staged each ecosystem with one
+      # `git add` of fixed paths, which stages nothing when one path is
+      # missing. npm, pip and .NET updates were validated and then dropped
+      # while the run stayed green. Pins what gets committed per ecosystem.
+      - name: "🧪 auto-maintenance: npm, pip and .NET updates are committed"
+        shell: bash
+        run: bash .github/workflows/tests/auto-maintenance-commit.test.sh
+
   workflow-audit:
     name: "🔎 Workflow Audit"
     runs-on: ubuntu-latest

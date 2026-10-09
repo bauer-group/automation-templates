@@ -6,7 +6,7 @@ Vollautomatische Repository-Wartung: Base Image Monitoring, Dependency Updates, 
 
 - [Problemstellung](#problemstellung)
 - [Funktionsweise](#funktionsweise)
-  - [Bekannte Einschraenkung: Dependency-Updates werden nicht committet](#bekannte-einschraenkung-dependency-updates-werden-nicht-committet)
+  - [Was committet wird](#was-committet-wird)
 - [Schnellstart](#schnellstart)
 - [Vollstaendige Einrichtung](#vollstaendige-einrichtung)
 - [JSON-Konfigurationsreferenz](#json-konfigurationsreferenz)
@@ -94,20 +94,27 @@ VORHER (pro Repo, bis zu 3 Workflows):        NACHHER (pro Repo):
 
 **Digest-Variablen werden zuletzt gespeichert:** erst nachdem der Commit gepusht und der Release-Workflow gestartet wurde. Schlägt einer dieser Schritte fehl oder wird der Commit übersprungen (z. B. fehlgeschlagene Validierung), bleibt der alte Digest stehen und der nächste Lauf erkennt das Update erneut. Der leere Commit für reine Base-Image-Updates endet auf `[skip ci]`, wenn `release.trigger-workflow` gesetzt ist; der per `workflow_dispatch` gestartete Release läuft trotzdem. `docker manifest inspect` wird bei vorübergehenden Registry-Fehlern (z. B. `429`) bis zu 3-mal versucht.
 
-### Bekannte Einschraenkung: Dependency-Updates werden nicht committet
+### Was committet wird
 
-Der Schritt „Commit and push“ nimmt jedes Ecosystem mit **einem** `git add` fester Pfade im Repository-Root auf:
+Der Schritt „Commit and push“ committet nur Dependency-Manifeste und Lock-Dateien — nie Quellcode, Build-Ausgaben oder andere Dateien, die ein Validierungsbefehl verändert hat. Ausgangspunkt sind alle Dateien, die der Lauf geändert oder neu angelegt hat (`git diff` plus neue, nicht ignorierte Dateien). Jede davon wird einzeln an ihrem Dateinamen erkannt — an jeder Stelle im Repository, also auch unterhalb eines `working-directory` — und mit einem eigenen `git add` aufgenommen.
 
-| Ecosystem | `git add` |
-|-----------|-----------|
-| Node.js | `package.json package-lock.json yarn.lock pnpm-lock.yaml` |
-| Python | `requirements.txt requirements*.txt Pipfile.lock poetry.lock` |
-| .NET | `'*.csproj' '*.fsproj' Directory.Build.props Directory.Packages.props` |
-| Go | `go.mod go.sum` |
+| Ecosystem | Committet, wenn geändert |
+|-----------|--------------------------|
+| Node.js (npm, yarn, pnpm) | `package.json`, `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml` |
+| Python | `requirements*.txt`, die konfigurierte `requirements-file` unter jedem Namen (z. B. `requirements/prod.txt`), `Pipfile.lock`, `poetry.lock` |
+| .NET | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Build.props`, `Directory.Packages.props`, `packages.lock.json` (entsteht nur mit `RestorePackagesWithLockFile`) |
+| Go | `go.mod`, `go.sum` |
+| Base Images | Keine Datei: Der Digest liegt in einer Repository-Variable. Ändert sich sonst nichts, entsteht ein leerer Commit `<commit-prefix>: update base image <namen>` (mit `[skip ci]`, wenn `release.trigger-workflow` gesetzt ist). |
 
-Fehlt auch nur einer dieser Pfade, nimmt Git **keinen** davon auf (`fatal: pathspec ... did not match any files`, im Workflow unterdrückt). Für Node.js, Python und Go stehen Dateien in einem anderen `working-directory` als dem Root gar nicht in der Liste. Ein Repository mit einem einzigen Paketmanager bekommt seine npm-, pip- oder .NET-Updates deshalb **nie** committet: Der Lauf aktualisiert und validiert sie, meldet im Log `No dependency files to commit` und verwirft sie — die Job Summary zeigt trotzdem „Dependency file changes detected“.
+Dabei gilt:
 
-Nicht betroffen sind Base-Image-Updates (ihr Commit ist leer) und ein Go-Modul im Root (`go.mod` und `go.sum`). Bis das Modul nur vorhandene Dateien aufnimmt, kommen Dependency-Updates besser von Dependabot, gemerged mit [Docker Maintenance (Dependabot)](./docker-maintenance.md) nach grüner PR-CI. Die produktiven Caller nutzen das Modul nur für Base Images.
+- **Ignorierte Dateien werden nie committet.** Steht eine Lock-Datei in `.gitignore`, bleibt sie draußen.
+- **`node_modules/` wird nie committet**, auch wenn das Verzeichnis nicht ignoriert ist.
+- **Alles andere bleibt im Checkout des Runners** und verfällt mit ihm. Das Log listet diese Dateien unter `Not committed - not a dependency manifest or lock file` (die ersten 20).
+- **Kein Dependency-File geändert:** kein Dependency-Commit, Log `No dependency files to commit`. Base-Image-Updates desselben Laufs bekommen trotzdem ihren leeren Commit.
+- **Base Images und Dependencies im selben Lauf:** ein gemeinsamer Commit `<commit-prefix>: automated maintenance update`, dessen Body die Images nennt. Er läuft ohne `[skip ci]`, die Push-CI prüft die neuen Versionen also mit.
+
+> **Bis zu dieser Korrektur** nahm der Schritt jedes Ecosystem mit **einem** `git add` fester Pfade im Repository-Root auf, z. B. `git add package.json package-lock.json yarn.lock pnpm-lock.yaml`. Fehlte einer davon, nahm Git keinen auf (`fatal: pathspec ... did not match any files`, im Workflow unterdrückt). npm-, pip- und .NET-Updates wurden deshalb aktualisiert, validiert und dann verworfen, während der Lauf grün blieb. Wer `ecosystems` deshalb nicht eingesetzt hat, kann es jetzt aktivieren. Getestet wird das Verhalten von [`auto-maintenance-commit.test.sh`](../../.github/workflows/tests/auto-maintenance-commit.test.sh) in der Workflow-Validierung.
 
 ---
 
@@ -324,7 +331,7 @@ Jeder Block ist **optional**. Man konfiguriert nur was man braucht.
 
 ## Beispiele
 
-> Kopierfertiger Caller und Konfiguration: [`github/workflows/examples/auto-maintenance/`](../../github/workflows/examples/auto-maintenance/README.md). Die Beispiele mit `ecosystems` zeigen den Aufbau der Konfiguration; ihre npm-, pip- und .NET-Updates werden derzeit nicht committet, siehe [Bekannte Einschraenkung](#bekannte-einschraenkung-dependency-updates-werden-nicht-committet).
+> Kopierfertiger Caller und Konfigurationen: [`github/workflows/examples/auto-maintenance/`](../../github/workflows/examples/auto-maintenance/README.md) — Base Images (`maintenance-config.json`) und ein npm-Projekt mit Validierung (`maintenance-config-npm.json`). Welche Dateien je Ecosystem committet werden, steht unter [Was committet wird](#was-committet-wird).
 
 ### Node.js Projekt (z.B. Ghost BunnyCDN Connector)
 
@@ -563,7 +570,21 @@ docker manifest inspect IMAGE:TAG
 
 ### "No dependency files to commit"
 
-Die Updates wurden angewendet (und, falls `validation` gesetzt ist, validiert), aber nicht committet. Ursache ist die [bekannte Einschraenkung](#bekannte-einschraenkung-dependency-updates-werden-nicht-committet) beim Aufnehmen der Dateien; die Konfiguration ist nicht falsch. Base-Image-Updates desselben Laufs werden trotzdem committet und released.
+Der Lauf hat Dateien geändert, aber keine davon ist ein Manifest oder eine Lock-Datei aus [Was committet wird](#was-committet-wird). Die Zeilen `Not committed - not a dependency manifest or lock file` direkt davor im Log nennen die Dateien. Base-Image-Updates desselben Laufs werden trotzdem committet und released.
+
+| Ursache | Lösung |
+|---------|--------|
+| Nur ein Validierungsbefehl hat Dateien geändert (z. B. Build-Ausgabe ohne `.gitignore`) | Erwartet, nichts zu tun. Build-Ausgaben in `.gitignore` aufnehmen, dann bleibt das Log ruhig. |
+| Die Requirements-Datei heißt nicht `requirements*.txt` und `requirements-file` zeigt nicht auf sie | `requirements-file` relativ zu `working-directory` angeben, z. B. `"working-directory": "backend", "requirements-file": "requirements/prod.txt"` |
+
+### Ein Update fehlt im Commit
+
+Der Commit enthält nur einen Teil der erwarteten Dateien, oder eine Lock-Datei fehlt:
+
+- **Lock-Datei ignoriert?** `git check-ignore -v package-lock.json` zeigt die Regel. Ignorierte Dateien werden nie committet — Regel entfernen und die Datei einchecken.
+- **Datei unter `node_modules/`?** Wird nie committet, auch ohne `.gitignore`.
+- **Validierung fehlgeschlagen?** Dann wurde alles zurückgerollt und nichts committet, siehe nächster Abschnitt.
+- **Welche Dateien hat der Lauf geändert?** Der Schritt „Detect changes“ listet geänderte und neue Dateien, „Commit and push“ unter `Staged files` die committeten.
 
 ### Validation fehlgeschlagen
 

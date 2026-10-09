@@ -278,7 +278,7 @@ maintenance:
 - `updates-found`: Ob Updates gefunden wurden
 - `summary`: Zusammenfassung der Änderungen
 
-> **Bekannte Einschränkung:** npm-, pip- und .NET-Updates werden derzeit validiert, aber nicht committet; Base Images und Go-Module im Root sind nicht betroffen ([Details](../../docs/workflows/modules-auto-maintenance.md#bekannte-einschraenkung-dependency-updates-werden-nicht-committet)).
+> **Commit:** Nur Dependency-Manifeste und Lock-Dateien (npm/yarn/pnpm, `requirements*.txt`, `*.csproj`/`Directory.Packages.props`/`packages.lock.json`, `go.mod`/`go.sum`), auch unterhalb eines `working-directory`; Build-Ausgaben und Quellcode bleiben draußen ([Details](../../docs/workflows/modules-auto-maintenance.md#was-committet-wird)).
 >
 > Doku: [docs/workflows/modules-auto-maintenance.md](../../docs/workflows/modules-auto-maintenance.md) · Beispiele: [github/workflows/examples/auto-maintenance/](../../github/workflows/examples/auto-maintenance/README.md)
 
