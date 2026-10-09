@@ -302,7 +302,7 @@ validate_case bad-network EXTERNAL_NETWORKS='proxy bad/name'
 expect_rc "validate: external-networks with an invalid name" $? 1
 expect_log "validate: names the invalid network" "external-networks entry 'bad/name' is neither 'auto' nor a network name"
 
-S3_MAPPING=$'# the stack\'s names\nendpoint=APP_S3_ENDPOINT\nbucket=APP_S3_BUCKET\n  access-key=APP_S3_ACCESS_KEY  \nsecret-key=APP_S3_SECRET_KEY\nregion=APP_S3_REGION\npath-style=APP_S3_PATH_STYLE\nprefix=APP_S3_PREFIX'
+S3_MAPPING=$'# the stack\'s names\nendpoint   APP_S3_ENDPOINT\nbucket\tAPP_S3_BUCKET\n  access-key APP_S3_ACCESS_KEY  \nsecret-key APP_S3_SECRET_KEY\nregion APP_S3_REGION\npath-style APP_S3_PATH_STYLE\nprefix APP_S3_PREFIX'
 S3_IMAGES=(S3_IMAGE=ghcr.io/bauer-group/cs-minio/minio:latest S3_CLIENT_IMAGE=ghcr.io/bauer-group/cs-minio/minio-init:latest)
 
 validate_case s3-ok S3_DESTINATION=true S3_ENV="$S3_MAPPING" "${S3_IMAGES[@]}"
@@ -311,7 +311,7 @@ expect_rc "validate: s3-env with every setting, a comment and padding" $? 0
 validate_case s3-off S3_DESTINATION=false S3_ENV='nonsense' "${S3_IMAGES[@]}"
 expect_rc "validate: s3-env is ignored without s3-destination" $? 0
 
-validate_case s3-missing S3_DESTINATION=true S3_ENV=$'endpoint=A\nbucket=B' "${S3_IMAGES[@]}"
+validate_case s3-missing S3_DESTINATION=true S3_ENV=$'endpoint A\nbucket B' "${S3_IMAGES[@]}"
 expect_rc "validate: s3-env without credentials" $? 1
 expect_log "validate: names the missing access-key" "s3-env must map 'access-key'"
 expect_log "validate: names the missing secret-key" "s3-env must map 'secret-key'"
@@ -321,10 +321,11 @@ expect_rc "validate: s3-destination without s3-env" $? 1
 expect_log "validate: says s3-env is needed" "s3-destination needs s3-env"
 
 validate_case s3-bad S3_DESTINATION=true "${S3_IMAGES[@]}" \
-  S3_ENV=$'endpoint=A\nbucket=B\naccess-key=C\nsecret-key=D\nsecret-key=E\nregion=1BAD\ntoken=F'
+  S3_ENV=$'endpoint A\nbucket B\naccess-key C\nsecret-key D\nsecret-key E\nregion 1BAD\ntoken F\nprefix=G'
 expect_rc "validate: broken s3-env lines" $? 1
 expect_log "validate: duplicate setting" "s3-env maps 'secret-key' twice"
-expect_log "validate: invalid variable name" "s3-env line is not setting=VARIABLE: 'region=1BAD'"
+expect_log "validate: invalid variable name" "s3-env line is not 'setting VARIABLE' (whitespace, no '='): 'region 1BAD'"
+expect_log "validate: no assignment syntax" "s3-env line is not 'setting VARIABLE' (whitespace, no '='): 'prefix=G'"
 expect_log "validate: unknown setting" "s3-env: unknown setting 'token'"
 
 validate_case s3-image S3_DESTINATION=true S3_ENV="$S3_MAPPING" S3_IMAGE='minio:latest; rm -rf /' S3_CLIENT_IMAGE=mc

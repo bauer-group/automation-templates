@@ -62,13 +62,13 @@ jobs:
       mutate-script: 'tests/backup-roundtrip/mutate.sh'
       check-script: 'tests/backup-roundtrip/check.sh'
       s3-destination: true
-      # setting=VARIABLE: which .env variable carries which setting. The
+      # setting VARIABLE: which .env variable carries which setting. The
       # module fills them with the throwaway server's values; the credentials
       # are generated per run and masked.
       s3-env: |
-        endpoint=APP_BACKUP_S3_ENDPOINT
-        bucket=APP_BACKUP_S3_BUCKET
-        access-key=APP_BACKUP_S3_ACCESS_KEY
-        secret-key=APP_BACKUP_S3_SECRET_KEY
+        endpoint   APP_BACKUP_S3_ENDPOINT
+        bucket     APP_BACKUP_S3_BUCKET
+        access-key APP_BACKUP_S3_ACCESS_KEY
+        secret-key APP_BACKUP_S3_SECRET_KEY
       artifact-name: 'backup-roundtrip-s3-diagnostics'
     secrets: inherit
