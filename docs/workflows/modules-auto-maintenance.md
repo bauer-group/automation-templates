@@ -89,6 +89,8 @@ VORHER (pro Repo, bis zu 3 Workflows):        NACHHER (pro Repo):
 
 **Wenn nichts zu tun ist:** Workflow endet in ~30 Sekunden. Kein Commit, kein Release.
 
+**Unterschied zum Base Image Monitor:** Hier zählt ein Digest als erledigt, sobald der Release-Workflow gestartet wurde. Muss ein Release-Gate (z. B. der Backup-Round-Trip) erst bestehen und soll ein fehlgeschlagener Release automatisch wiederholt werden, ist [`modules-docker-base-image-monitor.yml`](./modules-docker-base-image-monitor.md#release-confirmation) das passende Modul.
+
 **Digest-Variablen werden zuletzt gespeichert:** erst nachdem der Commit gepusht und der Release-Workflow gestartet wurde. Schlägt einer dieser Schritte fehl oder wird der Commit übersprungen (z. B. fehlgeschlagene Validierung), bleibt der alte Digest stehen und der nächste Lauf erkennt das Update erneut. Der leere Commit für reine Base-Image-Updates endet auf `[skip ci]`, wenn `release.trigger-workflow` gesetzt ist; der per `workflow_dispatch` gestartete Release läuft trotzdem. `docker manifest inspect` wird bei vorübergehenden Registry-Fehlern (z. B. `429`) bis zu 3-mal versucht.
 
 ---
@@ -305,6 +307,8 @@ Jeder Block ist **optional**. Man konfiguriert nur was man braucht.
 ---
 
 ## Beispiele
+
+> Kopierfertiger Caller und Konfiguration: [`github/workflows/examples/auto-maintenance/`](../../github/workflows/examples/auto-maintenance/README.md).
 
 ### Node.js Projekt (z.B. Ghost BunnyCDN Connector)
 

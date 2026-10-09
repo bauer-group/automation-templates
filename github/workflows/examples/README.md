@@ -6,6 +6,10 @@ This directory contains example workflows demonstrating how to use the reusable 
 
 ```
 github/workflows/examples/
+├── auto-maintenance/        # Base images + dependency updates in one run
+│   ├── README.md
+│   ├── weekly-maintenance.yml
+│   └── maintenance-config.json
 ├── backup-roundtrip/        # Backup round trip of a compose stack before release
 │   ├── README.md
 │   ├── minimal-postgres-filesystem.yml
@@ -180,6 +184,14 @@ Reads the digest behind floating tags (`stable`, `latest`) and releases a rebuil
 - `docker-base-image-monitor/dry-run.yml` - Config changes checked on their PR; preview before recovery
 - `docker-base-image-monitor/README.md` - Setup, what a check does and what to do when a release keeps failing
 
+### Auto Maintenance (`modules-auto-maintenance.yml`)
+Base image digests and dependency updates (npm, pip, .NET, Go) in one scheduled run, validated by the repository's build and tests and rolled back on failure
+
+**Examples:**
+- `auto-maintenance/weekly-maintenance.yml` - Weekly run with a manual dry run
+- `auto-maintenance/maintenance-config.json` - Two base images, npm and pip, validation, release dispatch
+- `auto-maintenance/README.md` - Setup, and when to use the base image monitor or Dependabot instead
+
 ### CI/CD Pipelines
 Complete CI/CD pipeline configurations
 
@@ -258,6 +270,7 @@ Most workflows support configuration through:
 - [Fork Docker Build Documentation](../../../docs/workflows/fork-docker-build.md)
 - [Backup Round-Trip Test Documentation](../../../docs/workflows/modules-backup-roundtrip-test.md)
 - [Docker Maintenance Documentation](../../../docs/workflows/docker-maintenance.md)
+- [Auto Maintenance Documentation](../../../docs/workflows/modules-auto-maintenance.md)
 - [Docker Base Image Monitor Documentation](../../../docs/workflows/modules-docker-base-image-monitor.md)
 - [Python Build Documentation](../../../docs/workflows/python-build.md)
 - [.NET Desktop Build Documentation](../../../docs/workflows/dotnet-desktop-build.md)
