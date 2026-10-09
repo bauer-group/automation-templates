@@ -32,6 +32,12 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 | [`auto-merge`](./auto-merge/) | Intelligent PR merging | GitHub API | PR-Automatisierung |
 | [`artifact-generator`](./artifact-generator/) | Multi-format artifact creation | GitHub Releases | [modules-artifact-generation.yml](../workflows/modules-artifact-generation.yml) |
 
+### 🐳 Container
+
+| Action | Purpose | Engine | Modularer Workflow |
+|--------|---------|--------|---------------------|
+| [`docker-build`](./docker-build/) | Multi-platform build, security scan gate, SBOM, signing, push, Dockerfile version write-back | BuildKit + Trivy/Grype + Cosign | [docker-build.yml](../workflows/docker-build.yml) · Doku: [docker-build.md](../../docs/workflows/docker-build.md#2-composite-action) |
+
 ### 🤖 AI & Automation
 
 | Action                          | Purpose                   | Engine           | Modularer Workflow                               |

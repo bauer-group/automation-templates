@@ -21,7 +21,10 @@ name: Docker Build (Self-Hosted Example)
 # Prerequisites for self-hosted Docker builds:
 # - Docker Engine installed and running
 # - docker buildx available for multi-platform builds
-# - Sufficient disk space for image layers
+# - Sufficient disk space for image layers. free-disk-space has no effect
+#   here: it is skipped on self-hosted runners, whose disk outlives the job,
+#   so the space has to be freed on the host itself (e.g. pruning old images
+#   and build cache on a schedule)
 # - Network access to target registries
 # ============================================================================
 

@@ -357,6 +357,10 @@ runs-on: '["self-hosted", "linux", "docker"]'
 
 See [Self-Hosted Runner Documentation](../self-hosted-runners.md) for details.
 
+`free-disk-space` is skipped on self-hosted runners even when set to `true`: their
+disk outlives the job, and removing toolchains there would break the host's other
+jobs. Free space on the host itself - see [Running out of disk space](#running-out-of-disk-space).
+
 ### Deployment
 
 | Parameter | Description | Default |
@@ -647,6 +651,19 @@ The repository includes comprehensive examples in `github/workflows/examples/doc
      `github-token-secret-id` instead (see [Build Secrets](#build-secrets))
    - For a private or internal package, grant the repository read access under the
      package's *Manage Actions access*
+
+6. **Dockerfile write-back failed** (`update-dockerfile-version: true`)
+   - The image is already published; only the commit of the new version to the
+     default branch failed
+   - A push that lost the race against another image job, or got a server error,
+     is retried up to 5 times after a rebase - a failure after the 5th attempt or
+     a real rebase conflict fails the job (see
+     [Update Dockerfile Version from Git Tag](#update-dockerfile-version-from-git-tag))
+   - Re-run the failed job, or commit the version by hand
+
+7. **"no space left on device" in the scan step**
+   - See [Running out of disk space](#running-out-of-disk-space): `free-disk-space: true`
+     (GitHub-hosted runners only) and `cache-mode: 'min'`
 
 ### Debug Mode
 

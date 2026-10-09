@@ -149,6 +149,7 @@ jobs:
 │       ├── coolify-deploy.yml         # Coolify deployment automation
 │       ├── docker-build.yml           # Docker build & deploy
 │       ├── docker-maintenance-dependabot.yml # Merge Dependabot PRs after their PR CI passed
+│       ├── fork-docker-build.yml      # Multi-image build for forks
 │       ├── documentation.yml          # Documentation automation
 │       ├── dotnet-build.yml           # .NET build & test
 │       ├── dotnet-desktop-build.yml   # .NET desktop builds
@@ -192,6 +193,7 @@ jobs:
 │           ├── docker-base-image-monitor/ # Base image monitor callers
 │           ├── docker-compose/       # Docker Compose examples
 │           ├── docker-maintenance-dependabot/ # Dependabot merge callers
+│           ├── fork-docker-build/    # Fork image build caller
 │           ├── dockerfile-validation/ # Dockerfile linting examples
 │           ├── documentation/        # Documentation examples
 │           ├── dotnet-build/         # .NET project examples
@@ -220,6 +222,7 @@ jobs:
 │   │   ├── coolify-deploy.md         # Coolify deployment
 │   │   ├── docker-build.md           # Docker build system
 │   │   ├── docker-maintenance.md     # Docker image maintenance (Dependabot / Renovate)
+│   │   ├── fork-docker-build.md      # Fork Docker build
 │   │   ├── dotnet-build.md           # .NET build system
 │   │   ├── dotnet-desktop-build.md   # .NET desktop builds
 │   │   ├── makefile-build.md         # Makefile build system
@@ -1059,6 +1062,7 @@ gh auth status --show-token
 ### 🚀 Workflow Systems Documentation
 
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
+- [🐳 **Fork Docker Build**](docs/workflows/fork-docker-build.md) - Multi-image build, Trivy gate and GHCR push for forked repositories
 - [🐳 **Docker Image Maintenance**](docs/workflows/docker-maintenance.md) - Dependabot PRs merged after their PR CI passed (trigger scope, decision table), or Renovate
 - [🐍 **Python Build System**](docs/workflows/python-build.md) - Python application builds and testing
 - [🐍 **Python Semantic Release System**](docs/workflows/python-semantic-release.md) - Modern Python CI/CD with semantic versioning
@@ -1095,7 +1099,7 @@ gh auth status --show-token
 
 #### Build Actions
 
-- [🐳 **docker-build**](.github/actions/docker-build/README.md) - Multi-platform Docker builds with security
+- [🐳 **docker-build**](docs/workflows/docker-build.md#2-composite-action) - Multi-platform Docker builds with security ([action.yml](.github/actions/docker-build/action.yml))
 - [📦 **dotnet-nuget**](.github/actions/dotnet-nuget/action.yml) - .NET NuGet build, sign, and pack
 - [🔐 **dotnet-nuget-auth**](.github/actions/dotnet-nuget-auth/action.yml) - Authenticated restore from private NuGet feeds
 - [🪟 **dotnet-msi**](.github/actions/dotnet-msi/action.yml) - WiX MSI packaging for Windows deployment
@@ -1154,6 +1158,7 @@ gh auth status --show-token
 - [🐳 **Docker Examples**](github/workflows/examples/docker/) - Complete Docker workflow examples
 - [🐳 **Docker Compose Examples**](github/workflows/examples/docker-compose/) - Docker Compose workflow examples
 - [🧪 **Backup Round-Trip Examples**](github/workflows/examples/backup-roundtrip/) - Minimal, gated release pipeline, plugin sources, upgrade from the previous release, off-site S3, compose variants
+- [🐳 **Fork Docker Build Examples**](github/workflows/examples/fork-docker-build/) - Drop-in caller for a fork's `workspace` branch
 - [🐳 **Docker Maintenance (Dependabot) Examples**](github/workflows/examples/docker-maintenance-dependabot/) - Merge after the PR CI: backup round-trip gate, own CI, several workflows, no PR CI
 - [🔍 **Docker Base Image Monitor Examples**](github/workflows/examples/docker-base-image-monitor/) - Daily check with release dispatch, several images, dry run
 - [🐳 **Dockerfile Validation Examples**](github/workflows/examples/dockerfile-validation/) - Dockerfile linting examples

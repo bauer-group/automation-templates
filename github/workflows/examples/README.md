@@ -58,6 +58,9 @@ github/workflows/examples/
 │   ├── simple-docker-build.yml
 │   ├── dockerhub-with-readme-sync.yml
 │   └── ...
+├── fork-docker-build/       # Image build for forked repositories
+│   ├── README.md
+│   └── fork-docker-build.yml
 ├── docker-base-image-monitor/      # Rebuild when a floating base image tag moves
 │   ├── README.md
 │   ├── daily-release-dispatch.yml
@@ -141,6 +144,21 @@ Starts a compose stack with its BackupHelper sidecar, seeds data, backs it up, d
 - `backup-roundtrip/offsite-s3-new-host.yml` - Off-site copy in a throwaway S3 bucket, restored on a "new host" with a wiped data dir
 - `backup-roundtrip/compose-variants-matrix.yml` - One round trip per compose variant (local, Traefik, Coolify), external proxy networks created
 - `backup-roundtrip/README.md` - Setup and what a run proves
+
+### Docker Build (`docker-build.yml`)
+Multi-platform image build with a security scan gate before the push, SBOM, signing and Dockerfile version write-back
+
+**Examples:** see [`docker/README.md`](docker/README.md) for all of them, e.g.
+- `docker/simple-docker-build.yml` - Basic GHCR build
+- `docker/large-image-build.yml` - Images that outgrow a GitHub-hosted runner's free disk (`free-disk-space`, `cache-mode: 'min'`)
+- `docker/self-hosted-build.yml` - Self-hosted runners (`free-disk-space` is skipped there - free space on the host)
+
+### Fork Docker Build (`fork-docker-build.yml`)
+Lean multi-image builder for forks: Trivy scan before the push, workspace tags, GHCR
+
+**Examples:**
+- `fork-docker-build/fork-docker-build.yml` - Drop-in caller for the fork's `workspace` branch
+- `fork-docker-build/README.md` - Setup, per-image options, disk space
 
 ### Docker Maintenance with Dependabot (`docker-maintenance-dependabot.yml`)
 Merges a Dependabot PR only after every workflow in `required-workflows` has run on its head commit and passed. The caller's `on.pull_request.paths` decide which Dependabot PRs reach it at all
@@ -237,6 +255,7 @@ Most workflows support configuration through:
 
 ### Build Workflow Documentation
 - [Docker Build Documentation](../../../docs/workflows/docker-build.md)
+- [Fork Docker Build Documentation](../../../docs/workflows/fork-docker-build.md)
 - [Backup Round-Trip Test Documentation](../../../docs/workflows/modules-backup-roundtrip-test.md)
 - [Docker Maintenance Documentation](../../../docs/workflows/docker-maintenance.md)
 - [Docker Base Image Monitor Documentation](../../../docs/workflows/modules-docker-base-image-monitor.md)

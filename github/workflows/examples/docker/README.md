@@ -86,7 +86,7 @@ Security-first Docker build with comprehensive vulnerability scanning.
 Docker build for images too large for a GitHub-hosted runner's default free space.
 
 **Features:**
-- `free-disk-space`: reclaims the runner's unused toolchains before the build
+- `free-disk-space`: reclaims the runner's unused toolchains before the build (GitHub-hosted runners only)
 - `cache-mode: 'min'`: keeps the cache export from refilling the disk
 - Single-platform build to hold one image in the daemon rather than several
 - Documents the failure it prevents, which reports itself as a scanner error
@@ -100,6 +100,11 @@ A GitHub-hosted runner has roughly 4 GB free once its preinstalled toolchains ar
 accounted for, and a large build needs that several times over: BuildKit's layers,
 the local copy kept in the daemon so the image can be scanned, the cache export,
 and the tarball Trivy has Docker export before it analyses anything.
+
+`free-disk-space` only acts on GitHub-hosted Linux runners. On a self-hosted
+runner it is skipped even when set to `true`: the host's disk outlives the job,
+and removing toolchains there would break its other jobs. Free space on the host
+instead - see `self-hosted-build.yml`.
 
 The symptom does not name disk space. It surfaces as
 
