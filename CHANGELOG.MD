@@ -4,6 +4,16 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.5.0](https://github.com/bauer-group/automation-templates/compare/v11.4.0...v11.5.0) (2026-10-09)
+
+### 🚀 Features
+
+* **security:** made Gitleaks opt-in in every scan template ([22291c7](https://github.com/bauer-group/automation-templates/commit/22291c77ba78d571f7a6ad66ec2b122a2a424010))
+
+### 🔧 Maintenance
+
+* **ci:** bump google/osv-scanner-action from 2.5.1 to 2.6.0 ([#103](https://github.com/bauer-group/automation-templates/issues/103)) ([4763d65](https://github.com/bauer-group/automation-templates/commit/4763d65b582ba1c4ed7f22969a50c863aa78ce52))
+
 ## [11.4.0](https://github.com/bauer-group/automation-templates/compare/v11.3.0...v11.4.0) (2026-10-09)
 
 ### 🚀 Features
