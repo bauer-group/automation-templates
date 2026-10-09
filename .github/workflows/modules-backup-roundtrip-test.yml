@@ -193,7 +193,7 @@ on:
         type: string
         default: ""
       upgrade-script:
-        description: "Bash script (relative to working-directory) run at the upgrade, after the old snapshot was taken and before the stack switches to the new images and compose files - for what the release notes tell operators to do, e.g. migrating the .env. Runs with ROUNDTRIP_PHASE=upgrade."
+        description: "Bash script (relative to working-directory) run at the upgrade, after the old snapshot was taken and before the stack switches to the new images and compose files - for what the release notes tell operators to do, e.g. migrating the .env. Runs with ROUNDTRIP_PHASE=upgrade. Every value it adds to or changes in the .env is masked."
         required: false
         type: string
         default: ""
@@ -533,9 +533,51 @@ jobs:
           mkdir -p "$ROUNDTRIP_DIR/diagnostics"
           echo "ROUNDTRIP_DIR=$ROUNDTRIP_DIR" >> "$GITHUB_ENV"
 
+          # Engine CLI, phase runner and .env helpers shared by this step and
+          # the steps below.
+          cat > "$ROUNDTRIP_DIR/lib.sh" << 'LIB'
+          # Runs the BackupHelper CLI inside the running backup sidecar.
+          bh() { docker compose exec -T "$BACKUP_SERVICE" backuphelper "$@"; }
+
+          # Runs one caller script with the documented contract.
+          run_phase() {
+            local phase="$1" script="$2" expect="${3:-}"
+            echo "▶ ${phase}: ${script}${expect:+ (expect ${expect})}"
+            ROUNDTRIP_PHASE="$phase" ROUNDTRIP_EXPECT="$expect" \
+              timeout --kill-after=10 "$SCRIPT_TIMEOUT" bash "$script"
+          }
+
+          # Runs the MinIO client against the throwaway S3 server
+          # (s3-destination); its alias is "rt".
+          s3c() { docker compose run --rm --no-deps -T "$ROUNDTRIP_S3_CLIENT" "$@"; }
+
           # A key appended to a last line without a newline would be glued onto
-          # it, so the .env always ends with one - also after the prepare script.
+          # it, so the .env always ends with one - also after a caller script.
           end_with_newline() { [ ! -s .env ] || [ -z "$(tail -c 1 .env)" ] || echo >> .env; }
+
+          # Masks the value of every .env line that is not in $1, a copy of the
+          # .env taken before a caller script ran: everything the script added
+          # or changed is treated as secret. Sets MASKED to the count.
+          mask_env_changes() {
+            local line value
+            end_with_newline
+            MASKED=0
+            while IFS= read -r line; do
+              [[ "$line" == *=* ]] || continue
+              grep -qxF -- "$line" "$1" && continue
+              value="${line#*=}"
+              # Masked without its quotes: the application prints the bare
+              # value, and masking it also covers the quoted form.
+              if [[ "$value" =~ ^\"(.*)\"$ || "$value" =~ ^\'(.*)\'$ ]]; then
+                value="${BASH_REMATCH[1]}"
+              fi
+              [ "${#value}" -ge 8 ] || continue
+              echo "::add-mask::$value"
+              MASKED=$((MASKED + 1))
+            done < .env
+          }
+          LIB
+          source "$ROUNDTRIP_DIR/lib.sh"
 
           # -- .env: template, prepare script, overrides, generated secrets ------
           if [ -f "$ENV_TEMPLATE" ]; then
@@ -555,21 +597,7 @@ jobs:
             echo "▶ prepare: $PREPARE_SCRIPT"
             ROUNDTRIP_PHASE=prepare timeout --kill-after=10 "$SCRIPT_TIMEOUT" bash "$PREPARE_SCRIPT"
             [ -f .env ] || { echo "::error title=Backup round trip::prepare-script removed the .env"; exit 1; }
-            end_with_newline
-            MASKED=0
-            while IFS= read -r LINE; do
-              [[ "$LINE" == *=* ]] || continue
-              grep -qxF -- "$LINE" "$ROUNDTRIP_DIR/env.before" && continue
-              VALUE="${LINE#*=}"
-              # Masked without its quotes: the application prints the bare
-              # value, and masking it also covers the quoted form.
-              if [[ "$VALUE" =~ ^\"(.*)\"$ || "$VALUE" =~ ^\'(.*)\'$ ]]; then
-                VALUE="${BASH_REMATCH[1]}"
-              fi
-              [ "${#VALUE}" -ge 8 ] || continue
-              echo "::add-mask::$VALUE"
-              MASKED=$((MASKED + 1))
-            done < .env
+            mask_env_changes "$ROUNDTRIP_DIR/env.before"
             rm -f "$ROUNDTRIP_DIR/env.before"
             echo "🔐 prepare-script set $MASKED value(s), all masked"
           fi
@@ -670,24 +698,6 @@ jobs:
           if [ -n "$PROFILES" ]; then
             echo "COMPOSE_PROFILES=$PROFILES" >> "$GITHUB_ENV"
           fi
-
-          # Engine CLI and phase runner shared by the steps below.
-          cat > "$ROUNDTRIP_DIR/lib.sh" << 'LIB'
-          # Runs the BackupHelper CLI inside the running backup sidecar.
-          bh() { docker compose exec -T "$BACKUP_SERVICE" backuphelper "$@"; }
-
-          # Runs one caller script with the documented contract.
-          run_phase() {
-            local phase="$1" script="$2" expect="${3:-}"
-            echo "▶ ${phase}: ${script}${expect:+ (expect ${expect})}"
-            ROUNDTRIP_PHASE="$phase" ROUNDTRIP_EXPECT="$expect" \
-              timeout --kill-after=10 "$SCRIPT_TIMEOUT" bash "$script"
-          }
-
-          # Runs the MinIO client against the throwaway S3 server
-          # (s3-destination); its alias is "rt".
-          s3c() { docker compose run --rm --no-deps -T "$ROUNDTRIP_S3_CLIENT" "$@"; }
-          LIB
 
           echo "::group::Tool versions"
           docker version --format 'Docker {{.Server.Version}}'
@@ -1300,8 +1310,16 @@ jobs:
           read -r -a SERVICES <<< "$(echo "$START_SERVICES" | tr '\n' ' ')"
           CONFIG="$ROUNDTRIP_DIR/compose-config.json"
 
+          # Like prepare-script's, everything the hook adds to or changes in
+          # the .env is masked: release notes may have it generate a secret
+          # the new release needs.
           if [ -n "$UPGRADE_SCRIPT" ]; then
+            cp .env "$ROUNDTRIP_DIR/env.before-upgrade"
             run_phase upgrade "$UPGRADE_SCRIPT"
+            [ -f .env ] || { echo "::error title=Backup round trip::upgrade-script removed the .env"; exit 1; }
+            mask_env_changes "$ROUNDTRIP_DIR/env.before-upgrade"
+            rm -f "$ROUNDTRIP_DIR/env.before-upgrade"
+            echo "🔐 upgrade-script set $MASKED value(s) in the .env, all masked"
           fi
 
           # The files of this commit, plus the module's own override files.

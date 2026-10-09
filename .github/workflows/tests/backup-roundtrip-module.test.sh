@@ -76,8 +76,24 @@ extract_step() {
   ' "$WORKFLOW_FILE"
 }
 
+# The helpers Prepare Environment writes to lib.sh (heredoc LIB), as the
+# steps source them.
+extract_lib() {
+  awk '
+    /^          cat > "\$ROUNDTRIP_DIR\/lib.sh" << .LIB.$/ { collecting = 1; next }
+    collecting && /^          LIB$/ { exit }
+    collecting { if ($0 == "") { print ""; next } sub(/^          /, ""); print }
+  ' "$WORKFLOW_FILE"
+}
+
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
+
+extract_lib > "$WORK/real-lib.sh"
+if ! grep -q '^mask_env_changes() {$' "$WORK/real-lib.sh"; then
+  echo "FATAL: could not extract lib.sh with mask_env_changes from the Prepare Environment step."
+  exit 1
+fi
 
 for STEP in validate prepare networks s3-prepare previous build create pull previous-running s3-upload upgrade new-host; do
   extract_step "$STEP" > "$WORK/$STEP.sh"
@@ -439,6 +455,23 @@ prepare_case s3-off S3_DESTINATION=false S3_ENV="$S3_MAPPING"
 expect_rc "prepare without s3-destination: step passes" $? 0
 expect_eq "prepare without s3-destination: endpoint untouched" "$(env_value APP_S3_ENDPOINT)" ""
 expect_eq "prepare without s3-destination: no server keys" "$(grep -c '^ROUNDTRIP_S3_' "$DIR/.env")" 0
+if [ -s "$DIR/runner/backup-roundtrip/lib.sh" ]; then pass "prepare: lib.sh written for the steps below"; else fail "prepare: lib.sh written for the steps below" "missing"; fi
+
+# prepare-script: what it adds or changes is masked (quotes stripped), also on
+# an unterminated last line; short values and untouched lines are not.
+cat > "$WORK/prepare-script.sh" <<'SCRIPT'
+sed -i 's/^STACK_NAME=.*/STACK_NAME=renamed-stack/' .env
+echo 'SHORT=abc' >> .env
+printf 'APP_VALUE="value-from-prepare"' >> .env
+SCRIPT
+prepare_case masked S3_DESTINATION=false S3_ENV="" PREPARE_SCRIPT="$WORK/prepare-script.sh" ENV_OVERRIDES="APP_MODE=ci"
+expect_rc "prepare-script: step passes" $? 0
+expect_log "prepare-script: a changed value is masked" "::add-mask::renamed-stack"
+expect_log "prepare-script: an added value on an unterminated line is masked without its quotes" "::add-mask::value-from-prepare"
+expect_log "prepare-script: counted" "prepare-script set 2 value(s), all masked"
+if grep -q -e '^::add-mask::abc$' -e '^::add-mask::untouched$' "$DIR/log"; then fail "prepare-script: short and untouched values stay readable" "$(grep add-mask "$DIR/log")"; else pass "prepare-script: short and untouched values stay readable"; fi
+expect_eq "prepare-script: an override is not glued onto its unterminated line" "$(env_value APP_VALUE)|$(env_value APP_MODE)" '"value-from-prepare"|ci'
+rm -f "$WORK/prepare-script.sh"
 
 # === Create External Networks ===================================================
 # The fake docker: 'network inspect' succeeds for the names in
@@ -822,13 +855,23 @@ case "$*" in
   *) echo "unexpected docker call: $*" >&2; exit 2 ;;
 esac
 STUB
-cat > "$WORK/lib.sh" <<'LIB'
+# The real lib.sh (its .env helpers), with the engine and the caller scripts
+# faked. The upgrade hook runs hook.sh, if the case has one, in the .env's
+# directory.
+{
+  cat "$WORK/real-lib.sh"
+  cat <<'LIB'
 bh() { echo "bh $*" >> "$DIR/order"; }
-run_phase() { echo "phase $1${3:+ $3}" >> "$DIR/order"; }
+run_phase() {
+  echo "phase $1${3:+ $3}" >> "$DIR/order"
+  if [ "$1" = upgrade ] && [ -f "$DIR/hook.sh" ]; then bash "$DIR/hook.sh"; fi
+}
 LIB
+} > "$WORK/lib.sh"
 upgrade_case() {
   reset "$1"
   cp "$WORK/lib.sh" "$DIR/lib.sh"
+  printf 'STACK_NAME=application\nAPP_MODE=ci\n' > "$DIR/.env"
   mkdir -p "$DIR/images" "$DIR/running" "$DIR/containers"
   : > "$DIR/order"; : > "$DIR/keep-running"
   # The previous release holds the references; the builds wait staged.
@@ -844,8 +887,8 @@ upgrade_case() {
   echo "sha256:old-backup" > "$DIR/running/c-backup"
 }
 run_upgrade() {
-  run_step upgrade ROUNDTRIP_COMPOSE_FILE_TARGET=docker-compose.yml ROUNDTRIP_PREVIOUS_RELEASE=v1.0.0 \
-    UPGRADE_SCRIPT=upgrade.sh CHECK_SCRIPT=check.sh RUN_HEALTHCHECK=true WAIT_TIMEOUT=60 "$@"
+  (cd "$DIR" && run_step upgrade ROUNDTRIP_COMPOSE_FILE_TARGET=docker-compose.yml ROUNDTRIP_PREVIOUS_RELEASE=v1.0.0 \
+    UPGRADE_SCRIPT=upgrade.sh CHECK_SCRIPT=check.sh RUN_HEALTHCHECK=true WAIT_TIMEOUT=60 "$@")
 }
 order() { tr '\n' '|' < "$DIR/order" | sed 's/|$//'; }
 
@@ -888,6 +931,28 @@ upgrade_case no-healthcheck
 run_upgrade RUN_HEALTHCHECK=false UPGRADE_SCRIPT="" CHECK_SCRIPT=""
 expect_eq "upgrade: without hook, check and healthcheck only the switch" "$(order)" \
   "tag roundtrip-staged/image-0:build|tag roundtrip-staged/image-1:build|up"
+if grep -q "add-mask" "$DIR/log"; then fail "upgrade: without a hook nothing is masked" "$(grep add-mask "$DIR/log")"; else pass "upgrade: without a hook nothing is masked"; fi
+
+# The hook migrates the .env the way release notes say: what it changes or
+# adds - here also a quoted value on an unterminated last line - is masked
+# before anything else runs; untouched and short values are not.
+upgrade_case hook-masked
+cat > "$DIR/hook.sh" <<'SCRIPT'
+sed -i 's/^APP_MODE=.*/APP_MODE=upgraded/' .env
+echo 'TINY=abc' >> .env
+printf 'NEW_SETTING="value-from-the-hook"' >> .env
+SCRIPT
+run_upgrade; expect_rc "upgrade hook editing the .env: step passes" $? 0
+expect_log "upgrade hook: a changed value is masked" "::add-mask::upgraded"
+expect_log "upgrade hook: an added value is masked without its quotes" "::add-mask::value-from-the-hook"
+expect_log "upgrade hook: counted" "upgrade-script set 2 value(s) in the .env, all masked"
+if grep -q -e '^::add-mask::application$' -e '^::add-mask::abc$' "$DIR/log"; then fail "upgrade hook: untouched and short values stay readable" "$(grep add-mask "$DIR/log")"; else pass "upgrade hook: untouched and short values stay readable"; fi
+expect_eq "upgrade hook: the .env ends with a newline again" "$(tail -c 1 "$DIR/.env" | od -An -c | tr -d ' ')" '\n'
+if [ -f "$DIR/env.before-upgrade" ]; then fail "upgrade hook: the copy of the .env is removed" "still there"; else pass "upgrade hook: the copy of the .env is removed"; fi
+
+upgrade_case hook-removes-env; echo 'rm .env' > "$DIR/hook.sh"
+run_upgrade; expect_rc "upgrade hook removing the .env: step fails" $? 1
+expect_log "upgrade hook removing the .env: says so" "upgrade-script removed the .env"
 
 upgrade_case lost-reference
 echo '{"services": {"worker": {"image": "ghcr.io/acme/app:stable"}}}' > "$DIR/target-config.json"
