@@ -148,7 +148,7 @@ Ready-to-copy callers are in [`github/workflows/examples/backup-roundtrip/`](../
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `s3-destination` | Start a throwaway S3 server (MinIO) on the networks of the backup service and make it the sidecar's S3 destination. The snapshot must reach the bucket; the restore then runs on a "new host" and pulls it back from S3. See [Off-Site S3 and a New Host](#off-site-s3-and-a-new-host) | `false` |
-| `s3-env` | Lines `setting=VARIABLE` naming the `.env` variables your compose file builds its S3 destination from. The module writes the server's values into them. Required: `endpoint`, `bucket`, `access-key`, `secret-key`; optional: `region`, `path-style`, `prefix`. Read only with `s3-destination`, so a matrix can switch S3 per leg | `''` |
+| `s3-env` | Lines `setting VARIABLE` (whitespace between them, no `=`) naming the `.env` variables your compose file builds its S3 destination from. The module writes the server's values into them. Required: `endpoint`, `bucket`, `access-key`, `secret-key`; optional: `region`, `path-style`, `prefix`. Read only with `s3-destination`, so a matrix can switch S3 per leg | `''` |
 | `s3-image` | Image of the S3 server: MinIO-compatible, with `curl` for the healthcheck | `'ghcr.io/bauer-group/cs-minio/minio:latest'` |
 | `s3-client-image` | Image that provides the MinIO client `mc` (bucket creation, listing) | `'ghcr.io/bauer-group/cs-minio/minio-init:latest'` |
 
@@ -449,15 +449,17 @@ Without `s3-destination` every round trip restores from the copy in the sidecar'
 
 ```yaml
       s3-destination: true
-      # setting=VARIABLE - the .env variables your compose file builds the
+      # setting VARIABLE - the .env variables your compose file builds the
       # S3 destination from (here CS-ZAMMAD's)
       s3-env: |
-        endpoint=ZAMMAD_BACKUP_S3_ENDPOINT_URL
-        bucket=ZAMMAD_BACKUP_S3_BUCKET
-        access-key=ZAMMAD_BACKUP_S3_ACCESS_KEY
-        secret-key=ZAMMAD_BACKUP_S3_SECRET_KEY
-        region=ZAMMAD_BACKUP_S3_REGION
+        endpoint   ZAMMAD_BACKUP_S3_ENDPOINT_URL
+        bucket     ZAMMAD_BACKUP_S3_BUCKET
+        access-key ZAMMAD_BACKUP_S3_ACCESS_KEY
+        secret-key ZAMMAD_BACKUP_S3_SECRET_KEY
+        region     ZAMMAD_BACKUP_S3_REGION
 ```
+
+Setting and variable are separated by whitespace, not `=`: secret scanners read a line like `access-key=ZAMMAD_BACKUP_S3_ACCESS_KEY` as a hard-coded credential (GitGuardian reported exactly that line as a *Generic High Entropy Secret*), so the module rejects the `=` form.
 
 | Phase | What happens |
 |-------|--------------|

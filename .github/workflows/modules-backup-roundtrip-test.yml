@@ -205,7 +205,7 @@ on:
         type: boolean
         default: false
       s3-env:
-        description: "Lines 'setting=VARIABLE' naming the .env variables the compose file builds its S3 destination from; the module writes the throwaway server's values into them. Settings: endpoint, bucket, access-key, secret-key (required), region, path-style, prefix (optional). Example: 'endpoint=APP_BACKUP_S3_ENDPOINT'."
+        description: "Lines 'setting VARIABLE' (separated by whitespace) naming the .env variables the compose file builds its S3 destination from; the module writes the throwaway server's values into them. Settings: endpoint, bucket, access-key, secret-key (required), region, path-style, prefix (optional). Example line: 'endpoint APP_BACKUP_S3_ENDPOINT'. No '=': secret scanners read 'access-key=NAME' as a credential."
         required: false
         type: string
         default: ""
@@ -442,8 +442,8 @@ jobs:
               LINE="${LINE%"${LINE##*[![:space:]]}"}"
               [ -n "$LINE" ] || continue
               [[ "$LINE" == \#* ]] && continue
-              if [[ ! "$LINE" =~ ^([a-z-]+)=([A-Za-z_][A-Za-z0-9_]*)$ ]]; then
-                fail "s3-env line is not setting=VARIABLE: '$LINE'"
+              if [[ ! "$LINE" =~ ^([a-z-]+)[[:space:]]+([A-Za-z_][A-Za-z0-9_]*)$ ]]; then
+                fail "s3-env line is not 'setting VARIABLE' (whitespace, no '='): '$LINE'"
                 continue
               fi
               SETTING="${BASH_REMATCH[1]}"
@@ -627,8 +627,8 @@ jobs:
               LINE="${LINE%"${LINE##*[![:space:]]}"}"
               [ -n "$LINE" ] || continue
               [[ "$LINE" == \#* ]] && continue
-              VARIABLE="${LINE#*=}"
-              case "${LINE%%=*}" in
+              VARIABLE="${LINE##*[[:space:]]}"
+              case "${LINE%%[[:space:]]*}" in
                 endpoint)   set_env "$VARIABLE" "http://$ROUNDTRIP_S3_SERVICE:9000" ;;
                 bucket)     set_env "$VARIABLE" "$ROUNDTRIP_S3_BUCKET" ;;
                 access-key) set_env "$VARIABLE" "$S3_ACCESS_KEY" ;;
