@@ -47,7 +47,8 @@ PYPI_API_TOKEN       # Your PyPI API token
 GITHUB_TOKEN         # Automatically provided by GitHub
 
 # Optional
-GITLEAKS_LICENSE     # Gitleaks Pro license key
+GITLEAKS_LICENSE     # Gitleaks license key (free, gitleaks.io) - only with security-engine: 'gitleaks'
+                     # in an organization repository; for Dependabot runs also as a Dependabot secret
 ```
 
 ### 3. Project Structure
@@ -78,7 +79,7 @@ your-python-project/
 | Input | Description | Default | Required |
 |-------|-------------|---------|----------|
 | `python-version` | Python version to use | `'3.12'` | No |
-| `security-engine` | Secret scan engine (`gitleaks`; `both` still works and runs gitleaks) | `'gitleaks'` | No |
+| `security-engine` | Secret scan engine: `none` (Gitleaks off) or `gitleaks` (opt-in, for repositories without GitHub secret scanning and push protection); `both` still works and runs gitleaks | `'none'` | No |
 | `force-release` | Force create release even without changes | `false` | No |
 | `skip-pypi` | Skip PyPI publishing | `false` | No |
 | `package-source-path` | Path to package source | `'src'` | No |
@@ -92,7 +93,7 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/python-automatic-release.yml@main
     with:
       python-version: '3.12'
-      security-engine: 'gitleaks'
+      security-engine: 'none'          # 'gitleaks' turns on the secret scan (opt-in)
       force-release: false
       skip-pypi: false
       package-source-path: 'src'
@@ -263,7 +264,6 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/python-automatic-release.yml@main
     with:
       python-version: '3.12'
-      security-engine: 'gitleaks'
       force-release: ${{ inputs.force-release || false }}
       version-file: 'src/my_package/__init__.py'
     secrets: inherit
@@ -275,7 +275,7 @@ jobs:
 
 - **Automated Testing**: pytest, coverage reporting, test discovery
 - **Code Quality**: flake8, mypy, black, isort checks
-- **Security Scanning**: Bandit, Safety, Gitleaks, Trivy
+- **Security Scanning**: Bandit, Safety, Trivy; Gitleaks opt-in (`security-engine: 'gitleaks'`)
 - **Package Building**: Wheel and source distributions  
 - **Version Management**: Automatic version detection and updating
 - **Release Creation**: Semantic release with changelog

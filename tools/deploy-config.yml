@@ -461,7 +461,7 @@ secrets:
     setup_url: "https://docs.docker.com/docker-hub/access-tokens/"
 
   GITLEAKS_LICENSE:
-    description: "Gitleaks Pro license key (optional)"
+    description: "Gitleaks license key (free, optional) - only when Gitleaks is enabled (opt-in); also as a Dependabot secret"
     required_for:
       - "automatic-release"
       - "python-automatic-release"
@@ -501,9 +501,9 @@ variables:
     example: "18"
 
   SECURITY_SCAN_ENGINE:
-    description: "Security scanning engine to use"
-    default: "gitleaks"
-    values: ["gitleaks"]
+    description: "Secret scan engine: none (Gitleaks off, default) or gitleaks (opt-in for repositories without GitHub secret scanning)"
+    default: "none"
+    values: ["none", "gitleaks"]
 
   MINIMUM_COVERAGE:
     description: "Minimum test coverage percentage"

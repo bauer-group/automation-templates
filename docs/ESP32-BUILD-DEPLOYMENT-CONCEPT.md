@@ -210,7 +210,7 @@ security:
 
 | Check | Beschreibung | Pflicht |
 |-------|--------------|---------|
-| Security Scan | Gitleaks für Secrets | Ja |
+| Security Scan | Gitleaks für Secrets (opt-in: `security-scan-engine: 'gitleaks'`, Default `none`) | Konfigurierbar |
 | Build Success | Alle Targets kompilieren | Ja |
 | Unit Tests | pytest/Unity Tests | Konfigurierbar |
 | Static Analysis | cppcheck, clang-tidy | Konfigurierbar |

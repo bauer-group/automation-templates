@@ -33,12 +33,18 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 - name: 🛡️ Security Scan
   uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
   with:
-    scan-engine: 'gitleaks'
+    scan-engine: 'gitleaks'   # opt-in; the default 'none' runs Trivy only
     scan-type: 'all'
     fail-on-findings: 'true'
     gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
     token: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+> **Gitleaks is opt-in.** Every template defaults to `'none'`: Trivy scans the
+> dependencies and the summaries report Gitleaks as *disabled*. Enable it in repositories
+> without GitHub secret scanning and push protection; organization repositories then need
+> `GITLEAKS_LICENSE`, for Dependabot runs as a Dependabot secret. See
+> [Gitleaks is opt-in](docs/security/native-secret-scanning.md#gitleaks-is-opt-in).
 
 ### Individual Engines
 
@@ -65,8 +71,8 @@ on:
     inputs:
       security-scan-engines:
         type: choice
-        default: 'gitleaks'
-        options: ['gitleaks']
+        default: 'none'
+        options: ['none', 'gitleaks']
 
 jobs:
   release:
@@ -303,7 +309,7 @@ Enterprise-grade security scanning and compliance automation.
 
 | Component | Purpose | Usage |
 |-----------|---------|-------|
-| **🛡️ security-scan action** | Secret and dependency vulnerability scanning | Gitleaks, Trivy |
+| **🛡️ security-scan action** | Dependency vulnerability scanning, secret scanning (opt-in) | Trivy, Gitleaks (opt-in) |
 | **📋 license-compliance action** | License compliance checks | SPDX, FOSSA integration |
 | **🔍 Release Management** | Automated releases | Semantic versioning, changelog generation |
 
@@ -867,7 +873,7 @@ jobs:
 - name: Security Scan
   uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
   with:
-    scan-engine: 'gitleaks'
+    scan-engine: 'gitleaks'   # opt-in, default 'none'
     fail-on-findings: 'true'
     gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
     token: ${{ secrets.GITHUB_TOKEN }}
@@ -968,7 +974,7 @@ jobs:
       - name: Security scan
         uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
         with:
-          scan-engine: 'gitleaks'
+          scan-engine: 'gitleaks'   # opt-in, default 'none'
           gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
           token: ${{ secrets.GITHUB_TOKEN }}
 ```
