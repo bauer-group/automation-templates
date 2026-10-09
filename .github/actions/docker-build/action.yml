@@ -846,12 +846,12 @@ runs:
             # warning the log gives no hint that the margin was ever thin.
             if [ "$IMAGE_BYTES" -gt 0 ] && [ "$AVAIL_BYTES" -ge "$IMAGE_BYTES" ]                && [ "$AVAIL_BYTES" -lt $((IMAGE_BYTES * 2)) ]; then
               echo "::warning::Disk space is tight for this scan: ~$((AVAIL_BYTES / 1024 / 1024)) MB free for a ~$((IMAGE_BYTES / 1024 / 1024)) MB image. Trivy exports the image to a tarball and then needs room to analyse the layers, so it wants roughly $((IMAGE_BYTES * 2 / 1024 / 1024)) MB. If the scan fails below with 'no space left on device', this is why."
-              echo "::warning::  Set 'free-disk-space: true' on the docker-build workflow to reclaim the runner's unused toolchains, and/or 'cache-mode: min' to shrink the cache export."
+              echo "::warning::  On a GitHub-hosted runner, set 'free-disk-space: true' on the docker-build workflow to reclaim the runner's unused toolchains (it is skipped on self-hosted runners - free space on the host there), and/or 'cache-mode: min' to shrink the cache export."
             fi
 
             if [ "$IMAGE_BYTES" -gt 0 ] && [ "$AVAIL_BYTES" -lt "$IMAGE_BYTES" ]; then
               echo "::error::Not enough disk space to scan this image. Trivy exports it to a tarball first, so it needs about $((IMAGE_BYTES / 1024 / 1024)) MB free and only $((AVAIL_BYTES / 1024 / 1024)) MB remain."
-              echo "::error::  Options: set 'free-disk-space: true' (reclaims 10+ GB of unused runner toolchains) and/or 'cache-mode: min', shrink the image (multi-stage build, fetch large assets at runtime), or use a larger runner."
+              echo "::error::  Options: set 'free-disk-space: true' (GitHub-hosted runners only: reclaims 10+ GB of unused toolchains; on a self-hosted runner free space on the host) and/or 'cache-mode: min', shrink the image (multi-stage build, fetch large assets at runtime), or use a larger runner."
               echo "scan-passed=false" >> "$GITHUB_OUTPUT"
               exit 1
             fi

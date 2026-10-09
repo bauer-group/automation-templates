@@ -94,7 +94,7 @@ with:
 | `security-scan` | boolean | `true` | Scan with Trivy before pushing |
 | `security-fail-on` | string | `CRITICAL` | Severity that blocks the push: `CRITICAL`, `HIGH`, `MEDIUM`, or `NONE` (scan + report only) |
 | `cache-mode` | string | `max` | Cache export mode: `max` (every intermediate layer of every stage) or `min` (final stage only) |
-| `free-disk-space` | boolean | `false` | Remove unused runner toolchains before building (Linux only) |
+| `free-disk-space` | boolean | `false` | Remove unused runner toolchains before building (GitHub-hosted Linux runners only; ignored on self-hosted runners) |
 | `runs-on` | string | `ubuntu-latest` | Runner (string or JSON array for self-hosted) |
 | `build-timeout` | number | `30` | Per-image job timeout (minutes) |
 
@@ -125,7 +125,7 @@ cache-mode: 'min'        # exports only the final stage instead of every layer o
 
 `free-disk-space` runs after checkout and before the build — the only place it can,
 since a caller cannot inject a step into this job. It skips itself on non-Linux
-runners, logs `df -h /` before and after, and deliberately leaves the rest of
+and on self-hosted runners (their disk outlives the job), logs `df -h /` before and after, and deliberately leaves the rest of
 `/opt/hostedtoolcache` and all of `/usr/local/lib/node_modules` alone (npm lives
 in the latter).
 

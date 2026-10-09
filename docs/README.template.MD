@@ -136,7 +136,6 @@ jobs:
 │   │   ├── platformio-build/     # PlatformIO build configurations
 │   │   └── commitlint.config.mjs  # Commit linting rules
 │   └── workflows/             # 🚀 Reusable Workflows
-│       ├── ai-issue-summary.yml       # AI-powered issue summarization
 │       ├── automatic-release.yml      # Automated release management
 │       ├── claude-code.yml            # Claude Code AI assistant
 │       ├── coolify-deploy.yml         # Coolify deployment automation
@@ -614,7 +613,7 @@ jobs:
 | **🟢 Teams Notifications** | Available | Microsoft Teams integration | `uses: {{REPO_FULL_NAME}}/.github/workflows/teams-notifications.yml@main` |
 | **🟢 Repository Cleanup** | Available | Automated repository maintenance | `uses: {{REPO_FULL_NAME}}/.github/workflows/repository-cleanup.yml@main` |
 | **🟢 Coolify Deploy** | Available | Coolify deployment automation | `uses: {{REPO_FULL_NAME}}/.github/workflows/coolify-deploy.yml@main` |
-| **🟢 AI Issue Summary** | Available | AI-powered issue summarization | `uses: {{REPO_FULL_NAME}}/.github/workflows/ai-issue-summary.yml@main` |
+| **🟡 AI Issue Summary** | Paused - being reworked, see [#105](https://github.com/bauer-group/automation-templates/issues/105) | AI-powered issue summarization | - |
 | **🟢 Issue Automation** | Available | Automated issue management | `uses: {{REPO_FULL_NAME}}/.github/workflows/issue-automation.yml@main` |
 | **🟢 PR Labeler** | Available | Automated pull request labeling | `uses: {{REPO_FULL_NAME}}/.github/workflows/pr-labeler.yml@main` |
 
