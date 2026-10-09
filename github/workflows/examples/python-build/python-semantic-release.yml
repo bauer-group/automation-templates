@@ -40,7 +40,11 @@ jobs:
       run-security-scan: true
       
       # Security Configuration
-      security-engine: 'gitleaks'
+      # 'none' (default): Trivy scans the dependencies, Gitleaks stays off.
+      # 'gitleaks': add the secret scan - for repositories without GitHub secret
+      # scanning and push protection (organization repositories also need
+      # GITLEAKS_LICENSE, for Dependabot runs as a Dependabot secret).
+      security-engine: 'none'
       
       # Build Configuration
       build-local-wheel: true
@@ -99,4 +103,6 @@ jobs:
 # 5. OPTIONAL SECRETS
 # Configure these in your repository settings if needed:
 # - PYPI_API_TOKEN: PyPI API token (if not using Trusted Publishing)
-# - GITLEAKS_LICENSE: For Gitleaks Pro features
+# - GITLEAKS_LICENSE: Gitleaks license key (free from gitleaks.io), only with
+#   security-engine: 'gitleaks' in an organization repository. Dependabot runs
+#   read it from the Dependabot secrets, so add it there as well.

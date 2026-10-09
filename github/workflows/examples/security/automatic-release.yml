@@ -16,10 +16,10 @@ on:
   workflow_dispatch:
     inputs:
       security-engine:
-        description: 'Security scan engine'
+        description: 'Secret scan engine'
         type: choice
         default: 'gitleaks'
-        options: ['gitleaks']
+        options: ['gitleaks', 'none']
       force-release:
         description: 'Force create release'
         type: boolean
@@ -40,6 +40,10 @@ jobs:
       enable-security-scan: true
       enable-license-check: true
       enable-commit-lint: true
+      # Gitleaks is opt-in (default 'none'); enabled here on purpose. Drop it in
+      # repositories that have GitHub secret scanning and push protection.
+      # Organization repositories need GITLEAKS_LICENSE (for Dependabot runs as a
+      # Dependabot secret).
       security-scan-engine: 'gitleaks'
       fail-on-security-issues: true
       fail-on-license-issues: false
@@ -51,7 +55,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/modules-security-scan.yml
     with:
-      scan-engine: ${{ inputs.security-engine || 'gitleaks' }}
+      scan-engine: ${{ inputs.security-engine || 'gitleaks' }}  # opt-in, see pr-validation
       scan-type: 'all'
       fail-on-findings: false
     secrets: inherit

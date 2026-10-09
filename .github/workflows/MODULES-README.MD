@@ -9,16 +9,26 @@ Diese Sammlung von wiederverwendbaren Workflows ermöglicht es, CI/CD-Pipelines 
 ## 📦 Verfügbare Module
 
 ### 🛡️ [Security Scan](./modules-security-scan.yml)
-**Zweck:** Secrets-Erkennung mit Gitleaks + Trivy Vulnerability Scan
+**Zweck:** Trivy Vulnerability Scan + Secrets-Erkennung mit Gitleaks (opt-in)
 
 ```yaml
 uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
 with:
-  scan-engine: 'gitleaks'
+  scan-engine: 'none'       # Default: Gitleaks aus; 'gitleaks' schaltet es ein (siehe unten)
   scan-type: 'all'
   fail-on-findings: true
-secrets: inherit   # GITLEAKS_LICENSE
+secrets: inherit           # GITLEAKS_LICENSE, nur mit scan-engine: 'gitleaks' nötig
 ```
+
+> **Gitleaks ist opt-in (seit 2026-10).** Ohne `scan-engine: 'gitleaks'` läuft nur Trivy;
+> die Zusammenfassung zeigt dann „disabled - Gitleaks is opt-in“ statt eines sauberen
+> Secret-Scans, und der Lauf scheitert nicht daran. Einschalten in Repositories **ohne**
+> GitHub Secret Scanning und Push Protection - typisch private Repositories in
+> Organisationen ohne GitHub Secret Protection (Advanced Security); öffentliche
+> Repositories können beides kostenlos einschalten. In Organisations-Repositories braucht Gitleaks das
+> Secret `GITLEAKS_LICENSE`, für Dependabot-Läufe zusätzlich als **Dependabot**-Secret.
+> Details und Prüfbefehl:
+> [Gitleaks ist opt-in](../../docs/security/native-secret-scanning.md#gitleaks-is-opt-in).
 
 > GitGuardian wurde entfernt (2026-10): Im CI scannte es nur den letzten Commit und konnte
 > Funde gar nicht melden. `scan-engine: 'both'` läuft weiter und nutzt Gitleaks,
@@ -38,7 +48,7 @@ der Scan `vulnerabilities-found: unknown` statt `false`, und die Zusammenfassung
 „NOT scanned“ statt „Excellent“. Das lässt den Lauf nicht scheitern.
 
 **Ausgaben:**
-- `secrets-found`: Ob Secrets gefunden wurden
+- `secrets-found`: Ob Secrets gefunden wurden (`skipped` = kein Secret-Scan, z. B. weil Gitleaks nicht eingeschaltet ist; nur `false` heißt gescannt und sauber)
 - `vulnerabilities-found`: Ob Schwachstellen entdeckt wurden (via Trivy; `unknown` = nichts gescannt)
 - `security-score`: Sicherheitsbewertung (0-100)
 - `scan-results`: Zusammenfassung der Ergebnisse
@@ -316,12 +326,16 @@ secrets:
 uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@main
 with:
   enable-security-scan: true
+  security-scan-engine: 'none'   # Default; 'gitleaks' für Repos ohne GitHub Secret Scanning
   enable-license-check: true
   enable-commit-lint: true
   fail-on-security-issues: true
-secrets:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+secrets: inherit
 ```
+
+> Der Secret-Scan der PR-Validierung ist Gitleaks und damit opt-in: Mit
+> `security-scan-engine: 'none'` (Default) wird der Schritt übersprungen und in der
+> Zusammenfassung als „Gitleaks disabled (opt-in)“ ausgewiesen.
 
 ### 🏷️ [PR Labeler & Triage](./modules-pr-labeler.yml)
 **Zweck:** Automatisches Labeling und Triage von Pull Requests
@@ -376,7 +390,8 @@ jobs:
   secrets:
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: 'gitleaks'
+      scan-engine: 'gitleaks'   # opt-in: Repo ohne GitHub Secret Scanning / Push Protection
+    secrets: inherit            # GITLEAKS_LICENSE
 
   vulnerabilities:
     uses: bauer-group/automation-templates/.github/workflows/modules-vulnerability-scan.yml@main

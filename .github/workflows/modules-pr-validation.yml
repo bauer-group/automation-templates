@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       enable-security-scan:
-        description: 'Enable security scanning on PRs'
+        description: "Run the secret scan on PRs. It scans only when security-scan-engine is 'gitleaks'; with the default 'none' the step is skipped and reported as disabled"
         required: false
         type: boolean
         default: true
@@ -19,10 +19,15 @@ on:
         type: boolean
         default: true
       security-scan-engine:
-        description: "Secret scan engine for PR validation: 'gitleaks' ('both' still works and runs gitleaks)"
+        description: >-
+          Secret scan engine for PR validation. 'none' (default): Gitleaks is opt-in
+          and the secret scan step is skipped. 'gitleaks': scan the PR with Gitleaks -
+          enable it in repositories without GitHub secret scanning and push protection
+          (organization repositories also need GITLEAKS_LICENSE, for Dependabot PRs as
+          a Dependabot secret). 'both' still works and runs gitleaks.
         required: false
         type: string
-        default: 'gitleaks'
+        default: 'none'
       fail-on-security-issues:
         description: 'Fail PR validation on security issues'
         required: false
@@ -44,7 +49,10 @@ on:
         description: 'Deprecated and ignored: GitGuardian scanning was removed.'
         required: false
       GITLEAKS_LICENSE:
-        description: 'Gitleaks Pro license key'
+        description: >-
+          Gitleaks license key (free from gitleaks.io). Needed only when
+          security-scan-engine is 'gitleaks' in an organization repository; Dependabot
+          PRs read it from the Dependabot secrets, not the Actions secrets.
         required: false
     outputs:
       validation-passed:
@@ -92,9 +100,13 @@ jobs:
       # dedicated modules-security-scan / modules-vulnerability-scan workflows
       # that run on main/release. Outputs (security-score) are preserved so the
       # summary + PR comment below keep working unchanged.
+      #
+      # Gitleaks is opt-in. With the engine left at 'none' this step has nothing to
+      # scan, so it is skipped rather than run to report a score of 100 for a scan
+      # that never looked at anything; the summary says "disabled" instead.
       - name: 🛡️ Security Scan (Secrets)
         id: security
-        if: inputs.enable-security-scan == true
+        if: inputs.enable-security-scan == true && inputs.security-scan-engine != 'none' && inputs.security-scan-engine != ''
         continue-on-error: ${{ inputs.fail-on-security-issues == false }}
         uses: bauer-group/automation-templates/.github/actions/security-scan@main
         with:
@@ -120,6 +132,9 @@ jobs:
       - name: 📊 Validation Summary
         id: summary
         if: always()
+        env:
+          ENABLE_SECURITY_SCAN: ${{ inputs.enable-security-scan }}
+          SECURITY_SCAN_ENGINE: ${{ inputs.security-scan-engine }}
         run: |
           # Determine overall validation status
           VALIDATION_PASSED="true"
@@ -159,7 +174,9 @@ jobs:
           fi
           
           # Security Scan
-          if [ "${{ inputs.enable-security-scan }}" = "true" ]; then
+          if [ "$ENABLE_SECURITY_SCAN" = "true" ] && { [ "$SECURITY_SCAN_ENGINE" = "none" ] || [ -z "$SECURITY_SCAN_ENGINE" ]; }; then
+            echo "| **Security Scan** | ⏭️ | ⏭️ | Gitleaks disabled (opt-in: \`security-scan-engine: 'gitleaks'\`) |" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ inputs.enable-security-scan }}" = "true" ]; then
             SECURITY_ICON="${{ steps.security.outcome == 'success' && '✅' || '❌' }}"
             SECURITY_SCORE="${{ steps.security.outputs.security-score || 'N/A' }}"
             echo "| **Security Scan** | ✅ | $SECURITY_ICON | Score: $SECURITY_SCORE/100 |" >> "$GITHUB_STEP_SUMMARY"

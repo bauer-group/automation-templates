@@ -2,17 +2,20 @@
 #
 # Behavioural test for the 'Setup Security Scan' step (id: engine) in ../action.yml.
 #
-# GitGuardian was removed, but the engine names callers already pass must keep working
-# without silently changing what a caller asked for:
+# Gitleaks is opt-in, and GitGuardian was removed, but the engine names callers
+# already pass must keep working without silently changing what a caller asked for:
 #
-#   gitleaks     -> gitleaks
+#   none, ''     -> disabled, plus a notice. The default: Gitleaks runs only where a
+#                   caller enables it. 'disabled' is its own value so the summaries
+#                   can say "disabled" rather than "clean" or "no engine ran".
+#   gitleaks     -> gitleaks, no annotation (the explicit opt-in)
 #   both         -> gitleaks, plus a notice (the gitleaks half of what 'both' ran)
 #   gitguardian  -> NO secret scanner, plus a warning. Mapping it to gitleaks would
 #                   switch gitleaks on for a caller that chose 'gitguardian' to keep it
 #                   off (bauer-group/OT-CAN2IP-WebUI does exactly that, because the
 #                   Gitleaks licence is not available to Dependabot runs).
-#   anything else, including '' -> no secret scanner, plus a warning. Before, an
-#                   unknown value silently skipped every engine; now it says so.
+#   anything else -> no secret scanner, plus a warning. Before, an unknown value
+#                   silently skipped every engine; now it says so.
 #
 # The step body is extracted from action.yml at runtime rather than duplicated here:
 # a copied-out script would keep passing after the real one regressed.
@@ -76,6 +79,11 @@ run_case() {
     grep -q '^::\(notice\|warning\)' "$dir/log" && ok=false
   else
     grep -q "^::${annotation}" "$dir/log" || ok=false
+    # A notice is information, not a problem: a run that only did what it was
+    # configured to do must not raise a warning on top of it.
+    if [ "$annotation" = "notice" ]; then
+      grep -q '^::warning' "$dir/log" && ok=false
+    fi
   fi
   [ -d "$dir/security-reports" ] || ok=false
 
@@ -90,11 +98,12 @@ run_case() {
   fi
 }
 
+run_case default-none  none         disabled notice
+run_case empty-value   ''           disabled notice
 run_case gitleaks      gitleaks     gitleaks -
 run_case both          both         gitleaks notice
 run_case gitguardian   gitguardian  none     warning
 run_case unknown-value gitguardain  none     warning
-run_case empty-value   ''           none     warning
 
 echo
 echo "$PASSED passed, $FAILED failed"

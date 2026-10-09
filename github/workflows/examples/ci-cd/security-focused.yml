@@ -14,10 +14,10 @@ on:
   workflow_dispatch:
     inputs:
       scan-engine:
-        description: 'Security scan engine'
+        description: 'Secret scan engine'
         type: choice
         default: 'gitleaks'
-        options: ['gitleaks']
+        options: ['gitleaks', 'none']
       deep-scan:
         description: 'Enable deep security scan'
         type: boolean
@@ -29,6 +29,10 @@ jobs:
     name: Deep Security Analysis
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
+      # Gitleaks is opt-in (default 'none'); enabled here on purpose. Drop it in
+      # repositories that have GitHub secret scanning and push protection.
+      # Organization repositories need GITLEAKS_LICENSE (for Dependabot runs as a
+      # Dependabot secret).
       scan-engine: ${{ inputs.scan-engine || 'gitleaks' }}
       scan-type: 'all'
       fail-on-findings: ${{ github.event_name == 'pull_request' }}  # Strict for PRs, informative for scheduled runs
@@ -59,7 +63,7 @@ jobs:
       enable-security-scan: true
       enable-license-check: true
       enable-commit-lint: true
-      security-scan-engine: 'gitleaks'
+      security-scan-engine: 'gitleaks'  # opt-in, see the security-analysis job
       fail-on-security-issues: true
       fail-on-license-issues: true  # Strict compliance for security projects
     secrets:

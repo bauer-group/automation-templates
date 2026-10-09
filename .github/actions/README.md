@@ -16,8 +16,8 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 
 | Action | Purpose | Engine | Performance | Modularer Workflow |
 |--------|---------|---------|-------------|---------------------|
-| [`security-scan`](./security-scan/) | Secrets + dependency vulnerabilities | Gitleaks + Trivy | ⚡⚡⚡ | [modules-security-scan.yml](../workflows/modules-security-scan.yml) |
-| [`security-scan-meta`](./security-scan-meta/) | Secrets + vulnerabilities (gitleaks-scan based) | Gitleaks + Trivy | ⚡⚡⚡ | Erweiterte Sicherheitsanalyse |
+| [`security-scan`](./security-scan/) | Dependency vulnerabilities + secrets (opt-in) | Trivy + Gitleaks (opt-in) | ⚡⚡⚡ | [modules-security-scan.yml](../workflows/modules-security-scan.yml) |
+| [`security-scan-meta`](./security-scan-meta/) | Vulnerabilities + secrets (opt-in, gitleaks-scan based) | Trivy + Gitleaks (opt-in) | ⚡⚡⚡ | Erweiterte Sicherheitsanalyse |
 | [`gitleaks-scan`](./gitleaks-scan/) | Fast secrets detection | Gitleaks | ⚡⚡⚡ | Gitleaks-spezifisch |
 | [`trufflehog-scan`](./trufflehog-scan/) | Verified-first secrets detection | TruffleHog | ⚡⚡ | [modules-trufflehog-scan.yml](../workflows/modules-trufflehog-scan.yml) |
 | [`license-compliance`](./license-compliance/) | SPDX license validation | FOSSA + SPDX | ⚡⚡⚡ | [modules-license-compliance.yml](../workflows/modules-license-compliance.yml) |
@@ -68,9 +68,14 @@ jobs:
   security:
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: gitleaks
+      scan-engine: gitleaks   # opt-in, Default 'none' - nur für Repos ohne GitHub Secret Scanning
     secrets: inherit
 ```
+
+> **Gitleaks ist opt-in.** `scan-engine` steht standardmäßig auf `'none'`: Dann läuft nur
+> Trivy, und die Zusammenfassung meldet Gitleaks als *disabled*. `'gitleaks'` schaltet es
+> ein - sinnvoll in Repositories ohne GitHub Secret Scanning und Push Protection. Siehe
+> [Gitleaks ist opt-in](../../docs/security/native-secret-scanning.md#gitleaks-is-opt-in).
 
 **Release Management:**
 ```yaml
@@ -124,7 +129,7 @@ jobs:
 - name: 🛡️ Security Scan
   uses: bauer-group/automation-templates/.github/actions/security-scan@main
   with:
-    scan-engine: gitleaks
+    scan-engine: gitleaks   # opt-in, Default 'none'
     scan-type: all
     fail-on-findings: true
     token: ${{ secrets.GITHUB_TOKEN }}
@@ -201,7 +206,7 @@ jobs:
 ```yaml
 secrets:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}           # Always available
-  GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}   # Gitleaks in organization repositories
+  GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}   # Only with Gitleaks enabled, in organization repositories
   FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}         # For license compliance
 ```
 
@@ -218,7 +223,7 @@ permissions:
 ## 🏛️ Enterprise Features
 
 ### Multi-Engine Security Scanning
-- **Layered secret scanning**: Gitleaks (full history) + TruffleHog (live verification)
+- **Layered secret scanning**: TruffleHog (live verification) + Gitleaks (full history, opt-in for repositories without GitHub secret scanning)
 - **Custom rule sets**: Organization-specific security policies
 - **SARIF integration**: Native GitHub Security tab integration
 - **False positive management**: Intelligent filtering and allowlists
@@ -243,7 +248,7 @@ jobs:
   security:
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: gitleaks
+      scan-engine: gitleaks   # opt-in
     secrets: inherit
   
   compliance:

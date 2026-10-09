@@ -1,15 +1,17 @@
 name: 'Security Scan Meta Package'
-description: 'Secret scanning with Gitleaks and dependency vulnerability scanning with Trivy'
+description: 'Dependency vulnerability scanning with Trivy and opt-in secret scanning with Gitleaks'
 author: 'BAUER GROUP'
 
 inputs:
   scan-engine:
     description: >-
-      Secret scan engine: 'gitleaks'. 'both' is still accepted and runs gitleaks.
-      'gitguardian' is deprecated: GitGuardian was removed, so it runs NO secret scanner
-      and the run says so with a warning.
+      Secret scan engine. 'none' (default): Gitleaks is opt-in and does not run, and
+      the run says so with a notice. 'gitleaks': run the gitleaks-scan action - enable
+      it in repositories without GitHub secret scanning and push protection. 'both' is
+      still accepted and runs gitleaks. 'gitguardian' is deprecated: GitGuardian was
+      removed, so it runs NO secret scanner and the run says so with a warning.
     required: false
-    default: 'gitleaks'
+    default: 'none'
   scan-type:
     description: 'Type of security scan to perform (secrets, vulnerabilities, all)'
     required: false
@@ -68,7 +70,7 @@ outputs:
     description: 'Comma-separated list of engines that were executed'
     value: ${{ steps.summary.outputs.engines-used }}
   gitleaks-secrets:
-    description: 'Whether Gitleaks found secrets (true/false)'
+    description: 'Whether Gitleaks found secrets (true/false); empty when Gitleaks did not run'
     value: ${{ steps.gitleaks-scan.outputs.secrets-found }}
   gitleaks-count:
     description: 'Number of secrets found by Gitleaks'
@@ -91,12 +93,19 @@ runs:
       run: |
         set -uo pipefail
 
+        # Gitleaks is opt-in (2026-10): 'none' - the default - and an empty value
+        # mean "not enabled" and get a notice, not a warning.
         # GitGuardian was removed (2026-10): in CI it scanned only the last commit and
         # could not report a finding. The old engine names stay accepted, see the
         # security-scan action for the reasoning: 'both' runs gitleaks, 'gitguardian'
         # runs no secret scanner (mapping it to gitleaks would override a caller that
         # chose it to keep gitleaks off).
+        GITLEAKS_STATE="not scanned"
         case "$SCAN_ENGINE" in
+          none | '')
+            ENGINES_TO_USE=""
+            GITLEAKS_STATE="disabled (opt-in, enable with scan-engine: 'gitleaks')"
+            echo "::notice title=Gitleaks disabled::Gitleaks is opt-in and was not enabled (scan-engine: '${SCAN_ENGINE:-none}'), so this run scanned no secrets. Enable it with scan-engine: 'gitleaks' in repositories without GitHub secret scanning and push protection." ;;
           gitleaks)
             ENGINES_TO_USE="gitleaks" ;;
           both)
@@ -104,7 +113,7 @@ runs:
             echo "::notice title=GitGuardian removed::scan-engine 'both' now runs Gitleaks only, because GitGuardian was removed from automation-templates. Set scan-engine: 'gitleaks' to silence this notice." ;;
           *)
             ENGINES_TO_USE=""
-            echo "::warning title=No secret scan ran::scan-engine '${SCAN_ENGINE}' runs no secret scanner (GitGuardian was removed from automation-templates). Use scan-engine: 'gitleaks'." ;;
+            echo "::warning title=No secret scan ran::scan-engine '${SCAN_ENGINE}' runs no secret scanner (GitGuardian was removed from automation-templates). Valid values: 'none' (default, Gitleaks disabled) and 'gitleaks'." ;;
         esac
 
         echo "🛡️ Initializing Security Scan Meta Package"
@@ -117,6 +126,7 @@ runs:
 
         mkdir -p security-reports
         echo "ENGINES_TO_USE=$ENGINES_TO_USE" >> "$GITHUB_ENV"
+        echo "GITLEAKS_STATE=$GITLEAKS_STATE" >> "$GITHUB_ENV"
 
     - name: 🔍 Run Gitleaks Security Scan
       id: gitleaks-scan
@@ -221,7 +231,9 @@ runs:
       id: summary
       shell: bash
       env:
-        GITLEAKS_SECRETS: ${{ steps.gitleaks-scan.outputs.secrets-found || 'false' }}
+        # 'skipped', not 'false': when Gitleaks did not run, nothing was found
+        # because nothing was looked at, and 'false' reads as a clean scan.
+        GITLEAKS_SECRETS: ${{ steps.gitleaks-scan.outputs.secrets-found || 'skipped' }}
         GITLEAKS_COUNT: ${{ steps.gitleaks-scan.outputs.secrets-count || '0' }}
         VULNS_FOUND: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found || 'false' }}
         TRIVY_CRITICAL: ${{ steps.vulnerability-scan.outputs.trivy-critical || '0' }}
@@ -275,7 +287,7 @@ runs:
 
         | Scan | Result |
         |------|--------|
-        | **Secrets (Gitleaks)** | $([[ "$ENGINES_USED" == *"gitleaks"* ]] && echo "$GITLEAKS_SECRETS ($GITLEAKS_COUNT)" || echo "not scanned") |
+        | **Secrets (Gitleaks)** | $([[ "$ENGINES_USED" == *"gitleaks"* ]] && echo "$GITLEAKS_SECRETS ($GITLEAKS_COUNT)" || echo "${GITLEAKS_STATE:-not scanned}") |
         | **Vulnerabilities (Trivy)** | $VULNS_FOUND (critical $TRIVY_CRITICAL, high $TRIVY_HIGH, medium $TRIVY_MEDIUM) |
 
         ## 🔗 Resources
@@ -289,7 +301,11 @@ runs:
         echo "🛡️ Security Scan Meta Package Summary:"
         echo "  • Secret Engine: ${ENGINES_USED:-none}"
         echo "  • Score: $SCORE/100"
-        echo "  • Gitleaks Secrets: $GITLEAKS_SECRETS ($GITLEAKS_COUNT)"
+        if [[ "$ENGINES_USED" == *"gitleaks"* ]]; then
+          echo "  • Gitleaks Secrets: $GITLEAKS_SECRETS ($GITLEAKS_COUNT)"
+        else
+          echo "  • Gitleaks Secrets: ${GITLEAKS_STATE:-not scanned}"
+        fi
         echo "  • Vulnerabilities: $VULNS_FOUND"
         echo "  • Status: $SUMMARY"
 
@@ -309,7 +325,7 @@ runs:
       # Scanner results reach the script through env: instead of being interpolated
       # into the body, so nothing a scanner reports can be parsed as shell.
       env:
-        GITLEAKS_SECRETS: ${{ steps.gitleaks-scan.outputs.secrets-found || 'false' }}
+        GITLEAKS_SECRETS: ${{ steps.gitleaks-scan.outputs.secrets-found || 'skipped' }}
         VULNS_FOUND: ${{ steps.vulnerability-scan.outputs.vulnerabilities-found || 'false' }}
         TRIVY_CRITICAL: ${{ steps.vulnerability-scan.outputs.trivy-critical || '0' }}
         TRIVY_HIGH: ${{ steps.vulnerability-scan.outputs.trivy-high || '0' }}
@@ -344,7 +360,11 @@ runs:
           echo "================================================"
           echo "  • Score: $SCORE/100"
           echo "  • Secret Engine: ${ENGINES_USED:-none}"
-          echo "  • Gitleaks Secrets: $GITLEAKS_SECRETS"
+          if [ "$GITLEAKS_SECRETS" = "skipped" ]; then
+            echo "  • Gitleaks Secrets: ${GITLEAKS_STATE:-not scanned}"
+          else
+            echo "  • Gitleaks Secrets: $GITLEAKS_SECRETS"
+          fi
           echo "  • Vulnerabilities: $VULNS_FOUND"
           echo ""
           echo "🔗 Review the dual-security-scan-reports artifact for detailed information."
