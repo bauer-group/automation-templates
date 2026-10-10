@@ -109,6 +109,7 @@ static_has   "guard reads the ecosystem"         'PACKAGE_ECOSYSTEM: ${{ steps.m
 static_has   "guard reads every dependency's versions" 'UPDATED_DEPENDENCIES_JSON: ${{ steps.metadata.outputs.updated-dependencies-json }}'
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "summary shows a 0.x update counted as major" 'TYPE_NOTE: ${{ steps.guard.outputs.type-note }}'
+static_has   "summary explains unreadable versions" 'versions-unreadable) DECISION='
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "wait gets the checked list"        'REQUIRED: ${{ steps.guard.outputs.required }}'
 static_has   "merge is gated by green CI"        "if: steps.ci.outputs.result == 'green'"
@@ -494,17 +495,17 @@ GUARD_DEPS=$(deps "$(dep redis 7.2.4 7.2.5 "$P")" "$(dep lib 0.3.1 0.3.2 "$P")")
 GUARD_DEPS=$(deps "$(dep redis 7.2.4 7.2.5 "$P")" "$(dep app 0.3-alpine 0.4-alpine "$MI")") \
                                                  guard_case group-not-plain-semver    "$MI" "patch,minor"       false 0 true  minor       -
 
-# Per-dependency data that cannot be read: a warning, the job stays green and
-# the update type is the one Dependabot reported.
-GUARD_DEPS="not json"  guard_case deps-not-json  "$MI" "patch,minor" false 0 true minor warning
-glogged     deps-not-json "a 0.x update could not be checked. The update type is taken as Dependabot reported it: semver-minor"
-GUARD_DEPS=""          guard_case deps-empty     "$P"  "patch"       false 0 true patch warning
-GUARD_DEPS="[]"        guard_case deps-none      "$P"  "patch"       false 0 true patch warning
-GUARD_DEPS='{"a":1}'   guard_case deps-not-list  "$P"  "patch"       false 0 true patch warning
+# Per-dependency data that cannot be read: the 0.x rule cannot be checked, so
+# the PR is left open (fail closed) - a notice, the job stays green, no wait.
+GUARD_DEPS="not json"  guard_case deps-not-json  "$MI" "patch,minor" false 0 false versions-unreadable notice
+glogged     deps-not-json "so it cannot be shown that this is not a 0.x update, which may break on any change. Review and merge it by hand."
+GUARD_DEPS=""          guard_case deps-empty     "$P"  "patch"       false 0 false versions-unreadable notice
+GUARD_DEPS="[]"        guard_case deps-none      "$P"  "patch"       false 0 false versions-unreadable notice
+GUARD_DEPS='{"a":1}'   guard_case deps-not-list  "$P"  "patch"       false 0 false versions-unreadable notice
 mkdir -p "$WORK/nojq"
 printf '#!/usr/bin/env bash\necho "jq: command not found" >&2\nexit 127\n' > "$WORK/nojq/jq"; chmod +x "$WORK/nojq/jq"
 GUARD_PATH="$WORK/nojq:$PATH" GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")") \
-                       guard_case jq-missing     "$MI" "patch,minor" false 0 true minor warning
+                       guard_case jq-missing     "$MI" "patch,minor" false 0 false versions-unreadable notice
 
 # The order stays: a GitHub Actions update, a missing required-workflows and
 # an unknown update type decide before the versions are looked at.

@@ -322,6 +322,7 @@ head commit). Only invalid inputs turn the job red.
 | 4   | Ecosystem        | GitHub Actions update (`package-ecosystem: "github-actions"`)                                                                             | ⏸️ Left open - a CI change            | notice     |
 | 5   | Required CI      | `required-workflows` is not set - automatic merging is off                                                                                | ⏸️ Left open, without waiting for CI  | notice     |
 | 6   | Update type      | Type unknown (digest, non-semver tag), or not in `merge-update-types` ([0.x updates](#updates-below-100) count stricter)                  | ⏸️ Left open for review               | notice     |
+| 6a  | Update type      | The versions of the updated dependencies cannot be read, so the [0.x rule](#updates-below-100) cannot be checked                         | ⏸️ Left open for review               | notice     |
 | 7   | PR state         | The PR was closed or got a new head commit meanwhile (checked on every poll)                                                              | ⏹️ Not merged by this run             | notice     |
 | 8   | Commits          | Not every commit of the PR is a verified commit by Dependabot                                                                             | ⏸️ Left open                          | notice     |
 | 9   | Changed files    | A changed file under `.github/` (also the old path of a moved file), or the file list is not complete                                     | ⏸️ Left open - a CI change            | notice     |
@@ -378,9 +379,9 @@ workflow therefore counts update types the way npm's caret ranges do
   `0.x minor treated as major: lib 0.3.1 -> 0.4.0`; the notice of a PR left
   open and the job summary (*Update Type*) name it as well.
 - **Versions not readable** (no `jq` on the runner, unexpected output of
-  `fetch-metadata`): a warning *Dependabot versions not read*, and the update
-  type Dependabot reported counts, as before this rule existed. The job does
-  not fail.
+  `fetch-metadata`): the PR is **left open** with a notice, reason
+  `versions-unreadable`. Without the versions the rule cannot be checked, and
+  a merge gate does not merge what it could not check. The job does not fail.
 
 What this means for `merge-update-types`:
 
@@ -697,7 +698,7 @@ say why - see the [decision table](#decision-table). The usual ones:
 | automatic merging is off: required-workflows      | Set `required-workflows`, see [Choosing `required-workflows`](#choosing-required-workflows)                                 |
 | update type is not merged automatically           | Expected for minor/major; merge by hand, or widen `merge-update-types`                                                      |
 | semver-major update (0.x minor/0.0.x patch ...)   | Expected below 1.0.0, any update may break: review and merge by hand, or add `major` to `merge-update-types`                |
-| Dependabot versions not read (warning)            | No `jq` on a self-hosted runner: install it. Not a stop - the update type Dependabot reported counts                        |
+| versions of the updated dependencies could not be read | No `jq` on a self-hosted runner: install it. Otherwise merge by hand - the 0.x rule could not be checked              |
 | change the CI itself / changes CI files           | Expected: review and merge by hand. GitHub Actions updates and PRs that change `.github/` are never merged automatically    |
 | CI did not pass                                   | Fix the check, or merge by hand; a re-run of the check alone does not merge - re-run this job, or `@dependabot rebase`      |
 | required workflow ... did not run for this change | Its `pull_request` `paths:` miss the changed files: merge by hand, and keep the caller's `paths:` within the workflow's     |
