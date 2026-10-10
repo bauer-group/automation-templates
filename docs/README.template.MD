@@ -43,8 +43,11 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 > **Gitleaks is opt-in.** Every template defaults to `'none'`: Trivy scans the
 > dependencies and the summaries report Gitleaks as *disabled*. Enable it in repositories
 > without GitHub secret scanning and push protection; organization repositories then need
-> `GITLEAKS_LICENSE`, for Dependabot runs as a Dependabot secret. See
-> [Gitleaks is opt-in](docs/security/native-secret-scanning.md#gitleaks-is-opt-in).
+> `GITLEAKS_LICENSE`, for Dependabot runs as a Dependabot secret. Pull requests whose token
+> cannot list their commits (private repositories without `pull-requests: read`) are scanned
+> with the gitleaks CLI and need no licence. See
+> [Gitleaks is opt-in](docs/security/native-secret-scanning.md#gitleaks-is-opt-in) and the
+> [Security Scan Module](docs/workflows/modules-security-scan.md).
 
 ### Individual Engines
 

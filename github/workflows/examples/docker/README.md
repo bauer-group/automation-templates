@@ -140,6 +140,10 @@ Each example uses one of the predefined configuration files:
 
 4. **Configure secrets** in your repository:
    - `GITHUB_TOKEN` (automatically available)
+   - `DOCKER_USERNAME` and `DOCKER_PASSWORD` (required to publish to Docker Hub;
+     optional for GHCR builds, which then pull base images from Docker Hub logged
+     in instead of hitting its anonymous rate limit - see
+     [Docker Hub Pull Login](../../../../docs/workflows/docker-build.md#docker-hub-pull-login))
    - `REGISTRY_TOKEN` (for custom registries)
    - `COSIGN_PRIVATE_KEY` and `COSIGN_PASSWORD` (for image signing)
    - `KUBECONFIG` (for Kubernetes deployment)

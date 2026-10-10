@@ -51,12 +51,14 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
-| `DOCKER_USERNAME` | docker-build, dotnet-build, nodejs-build, backup-roundtrip (optional) | Docker Hub Benutzername | [hub.docker.com](https://hub.docker.com) Account Settings |
-| `DOCKER_PASSWORD` | docker-build, dotnet-build, nodejs-build, backup-roundtrip (optional) | Docker Hub Access Token | Docker Hub → Account Settings → Security → Access Tokens |
+| `DOCKER_USERNAME` | docker-build (bei `publish-to: ghcr` optional), dotnet-build, nodejs-build, backup-roundtrip (optional) | Docker Hub Benutzername | [hub.docker.com](https://hub.docker.com) Account Settings |
+| `DOCKER_PASSWORD` | docker-build (bei `publish-to: ghcr` optional), dotnet-build, nodejs-build, backup-roundtrip (optional) | Docker Hub Access Token | Docker Hub → Account Settings → Security → Access Tokens |
 | `COSIGN_PRIVATE_KEY` | docker-build | Sigstore Cosign Private Key | `cosign generate-key-pair` |
 | `COSIGN_PASSWORD` | docker-build | Passwort für Cosign Key | Selbst festlegen |
 
 > **Fork Docker Build** (`fork-docker-build.yml`) benötigt **kein** konfiguriertes Secret — der GHCR-Login läuft über den automatischen `GITHUB_TOKEN`.
+
+> **Docker Build mit `publish-to: ghcr`** (`docker-build.yml`, Standard) benötigt `DOCKER_USERNAME` / `DOCKER_PASSWORD` **nicht**. Mit `secrets: inherit` übergeben, meldet sich der Build vor dem ersten Pull bei Docker Hub an: Base-Images sowie das BuildKit- und QEMU-Image werden dann unter dem Kontingent des Kontos statt anonym gezogen, und parallele Builds laufen nicht mehr in Docker Hubs Pull-Limit pro Runner-IP (`429 toomanyrequests`). Ein Access Token mit Leserechten genügt dafür. Ohne die Secrets (Forks, Dependabot-Läufe, Caller ohne `secrets: inherit`) wird anonym gezogen wie bisher; ein fehlgeschlagener Login erzeugt nur eine Warnung. Bei `publish-to: dockerhub` / `both` bleiben beide Secrets Pflicht (dort mit Schreibrechten). Siehe [Docker Build → Docker Hub Pull Login](./workflows/docker-build.md#docker-hub-pull-login).
 
 > **Backup Round-Trip Test** (`modules-backup-roundtrip-test.yml`) benötigt **kein** Secret. `DOCKER_USERNAME` / `DOCKER_PASSWORD` sind optional: Mit `secrets: inherit` übergeben, zieht das Modul von Docker Hub angemeldet statt anonym und läuft nicht in Docker Hubs Pull-Limit pro Runner-IP (`429 toomanyrequests`). Der GHCR-Login nutzt den automatischen `GITHUB_TOKEN` (der aufrufende Job muss `packages: read` gewähren), und jedes Passwort, das der Stack braucht, wird pro Lauf über `generated-secrets` erzeugt und maskiert — ebenso die Zugangsdaten des Wegwerf-S3-Servers (`s3-destination`). Produktions-Credentials gehören weder in `env-overrides` noch ins Repository — Quellen, die ein externes Konto brauchen, werden für den Test abgeschaltet. Siehe [Backup Round-Trip Test → Secrets](./workflows/modules-backup-roundtrip-test.md#secrets).
 
@@ -129,7 +131,7 @@ Nur nötig, wenn Dependabot **interne oder private** Base-Images aktualisieren s
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
-| `GITLEAKS_LICENSE` | modules-security-scan, modules-pr-validation, python-semantic-release, esp32-build, stm32-build, platformio-build, zephyr-build (Action `security-scan`) | License Key für `gitleaks/gitleaks-action`; nur gelesen, wenn Gitleaks per Engine-Input `'gitleaks'` eingeschaltet ist | [gitleaks.io](https://gitleaks.io) → kostenloser License Key (Formular) |
+| `GITLEAKS_LICENSE` | modules-security-scan, modules-pr-validation, python-semantic-release, esp32-build, stm32-build, platformio-build, zephyr-build (Action `security-scan`) | License Key für `gitleaks/gitleaks-action`; nur gelesen, wenn Gitleaks per Engine-Input `'gitleaks'` eingeschaltet ist. Pull-Requests privater und interner Repositories ohne `pull-requests: read` (bei modules-security-scan immer) scannt die Gitleaks-CLI ohne License | [gitleaks.io](https://gitleaks.io) → kostenloser License Key (Formular) |
 | `FOSSA_API_KEY` | license-compliance | FOSSA License Scanning | [fossa.com](https://fossa.com) → Account Settings |
 
 > **Gitleaks ist opt-in (seit Oktober 2026).** Standardmäßig läuft Gitleaks in keinem Template,
@@ -143,11 +145,22 @@ Nur nötig, wenn Dependabot **interne oder private** Base-Images aktualisieren s
 > **Dependabot:** Von Dependabot ausgelöste Läufe erhalten **keine** Actions-Secrets. Wer Gitleaks
 > einschaltet und Dependabot-PRs hat, muss `GITLEAKS_LICENSE` zusätzlich als **Dependabot-Secret**
 > anlegen (*Settings → Secrets and variables → **Dependabot***, oder auf Organisationsebene),
-> sonst scheitert der Secret-Scan auf jedem Dependabot-PR:
+> sonst scheitert der Secret-Scan auf jedem Dependabot-Lauf, der `gitleaks-action` nutzt
+> (Pull-Requests privater Repositories über `modules-security-scan` nicht, siehe unten):
 >
 > ```bash
 > gh secret set GITLEAKS_LICENSE --app dependabot --org your-org --visibility all
 > ```
+>
+> **Pull-Requests:** `gitleaks-action` liest die Commits eines Pull-Requests über die API und
+> braucht dafür in privaten und internen Repositories `pull-requests: read`.
+> `modules-security-scan` kann diesen Scope nicht weitergeben (ein aufgerufener Workflow kann
+> das Token des Aufrufers nur einschränken). Die Action `security-scan` erkennt ein Token, das
+> die Commits nicht lesen darf, und scannt sie mit der Gitleaks-CLI - diese Läufe, auch die von
+> Dependabot, brauchen **keine** License. Wo das Token die Commits lesen darf (in öffentlichen
+> Repositories jedes Token, sonst eines mit dem Scope wie bei `modules-pr-validation`), läuft
+> `gitleaks-action` unverändert und braucht sie weiterhin.
+> Details: [How Gitleaks scans each event](./workflows/modules-security-scan.md#how-gitleaks-scans-each-event).
 >
 > Die Action `gitleaks-scan` (genutzt von `makefile-build` und `security-scan-meta`) installiert
 > das Gitleaks-Binary direkt und braucht **keine** License.
@@ -360,8 +373,8 @@ jobs:
 
 ```yaml
 secrets:
-  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}         # Docker Hub Auth
-  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}         # Docker Hub Auth
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}         # Docker Hub: Push (dockerhub/both), Pull-Login (ghcr, optional)
+  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}         # Docker Hub: Push (dockerhub/both), Pull-Login (ghcr, optional)
   COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}   # Image Signing
   COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}         # Cosign Key Password
 ```

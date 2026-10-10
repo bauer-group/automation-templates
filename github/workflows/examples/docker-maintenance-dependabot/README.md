@@ -29,7 +29,7 @@ Full reference: [`docs/workflows/docker-maintenance.md`](../../../../docs/workfl
 | Trigger | It changes a file in the caller's `paths:` and was opened by Dependabot, on an event Dependabot raised |
 | CI change | It is no GitHub Actions update and changes no file under `.github/` |
 | Required CI | `required-workflows` is set |
-| Update type | The semver update type is in `merge-update-types` (default `patch`) |
+| Update type | The semver update type is in `merge-update-types` (default `patch`). Below 1.0.0 a minor update (`0.3.1 → 0.4.0`) and a patch update of `0.0.z` (`0.0.3 → 0.0.4`) count as major — every dependency of a grouped PR is checked, see [Updates below 1.0.0](../../../../docs/workflows/docker-maintenance.md#updates-below-100) |
 | Commits | Every commit is a verified commit by Dependabot |
 | CI | Every required workflow has a `pull_request` run for the head commit that succeeded, no check failed, and CI was complete and quiet for 3 minutes |
 | Merge | The PR is still open, on the same head commit, no draft and mergeable — the merge is pinned with `--match-head-commit` |

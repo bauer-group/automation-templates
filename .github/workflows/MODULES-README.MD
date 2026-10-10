@@ -11,6 +11,8 @@ Diese Sammlung von wiederverwendbaren Workflows ermöglicht es, CI/CD-Pipelines 
 ### 🛡️ [Security Scan](./modules-security-scan.yml)
 **Zweck:** Trivy Vulnerability Scan + Secrets-Erkennung mit Gitleaks (opt-in)
 
+Dokumentation (Inputs, Secrets, Outputs, Troubleshooting): [docs/workflows/modules-security-scan.md](../../docs/workflows/modules-security-scan.md)
+
 ```yaml
 uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
 with:
@@ -27,7 +29,9 @@ secrets: inherit           # GITLEAKS_LICENSE, nur mit scan-engine: 'gitleaks' n
 > Organisationen ohne GitHub Secret Protection (Advanced Security); öffentliche
 > Repositories können beides kostenlos einschalten. In Organisations-Repositories braucht Gitleaks das
 > Secret `GITLEAKS_LICENSE`, für Dependabot-Läufe zusätzlich als **Dependabot**-Secret.
-> Details und Prüfbefehl:
+> Pull-Requests privater und interner Repositories scannt das Modul mit der Gitleaks-CLI über
+> dieselben Commits; dafür braucht es weder die License noch `pull-requests: read` (den Scope
+> kann ein aufgerufener Workflow nicht erhalten). Details und Prüfbefehl:
 > [Gitleaks ist opt-in](../../docs/security/native-secret-scanning.md#gitleaks-is-opt-in).
 
 > GitGuardian wurde entfernt (2026-10): Im CI scannte es nur den letzten Commit und konnte
@@ -240,7 +244,7 @@ check:
 ### 🐳 [Docker Maintenance (Dependabot)](./docker-maintenance-dependabot.yml)
 **Zweck:** Merged Dependabot-PRs erst, nachdem die genannte PR-CI auf dem Head-Commit gelaufen und grün ist — ohne Ruleset, Branch Protection oder „Allow auto-merge“
 
-Wartet, bis die CI des PRs vollständig und 3 Minuten unverändert ist, und merged nur, wenn jeder Workflow aus `required-workflows` per `pull_request` auf dem Head-Commit erfolgreich lief und kein Check fehlschlug (`gh pr merge --match-head-commit`). Standardmäßig nur Patch-Updates. GitHub-Actions-Updates und PRs, die `.github/` ändern, bleiben immer offen. Ohne `required-workflows` wird nichts gemerged.
+Wartet, bis die CI des PRs vollständig und 3 Minuten unverändert ist, und merged nur, wenn jeder Workflow aus `required-workflows` per `pull_request` auf dem Head-Commit erfolgreich lief und kein Check fehlschlug (`gh pr merge --match-head-commit`). Standardmäßig nur Patch-Updates; unter 1.0.0 zählt ein Minor-Update (`0.3.1 → 0.4.0`) und ein Patch-Update von `0.0.z` als Major (SemVer §4, wie npm-`^`-Ranges) — geprüft für jede Dependency eines gruppierten PRs. GitHub-Actions-Updates und PRs, die `.github/` ändern, bleiben immer offen. Ohne `required-workflows` wird nichts gemerged.
 
 ```yaml
 on:

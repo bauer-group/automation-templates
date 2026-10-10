@@ -349,11 +349,11 @@ on:
     
     secrets:
       DOCKER_USERNAME:
-        description: 'Docker Hub username'
+        description: 'Docker Hub username. Required for publish-to dockerhub or both. Optional for ghcr: with DOCKER_PASSWORD, pulls from Docker Hub (base images, BuildKit, QEMU) run logged in, under the quota of the account instead of the anonymous per-IP limit of the runner'
         required: false
 
       DOCKER_PASSWORD:
-        description: 'Docker Hub password/token'
+        description: 'Docker Hub password/token for DOCKER_USERNAME (for ghcr builds a read-only token is enough)'
         required: false
 
       COSIGN_PRIVATE_KEY:
@@ -498,6 +498,58 @@ jobs:
             exit 1
           fi
           echo "✅ GITHUB_TOKEN will be passed to the build as secret '$SECRET_ID'"
+
+      # Docker Hub limits anonymous pulls per IP address, and GitHub-hosted runners
+      # share theirs. A build that publishes to GHCR still pulls from Docker Hub - the
+      # FROM base images, the BuildKit image of the docker-container builder, the
+      # QEMU image of a multi-platform build - and did so anonymously, so when many
+      # builds ran at once those pulls failed with 429 'toomanyrequests'. Logged in,
+      # the account's own quota applies.
+      #
+      # GHCR only: with publish-to dockerhub or both, Build Docker Image logs in to
+      # docker.io itself, and Validate Registry Credentials makes the secrets
+      # mandatory there. Optional here - without the secrets (callers without
+      # secrets: inherit, fork PRs, Dependabot runs) Docker Hub is pulled anonymously
+      # exactly as before. A failed login only warns: the anonymous pull may still
+      # succeed, and the pull says so if not. The action's post step logs out again,
+      # so a self-hosted runner keeps no credentials.
+      #
+      # Ahead of Build Docker Image on purpose: that action sets up QEMU and Buildx,
+      # which pull from Docker Hub, before its own registry logins. Ahead of the
+      # pre-build tests too, which may start containers of their own.
+      - name: 🔎 Check Docker Hub Credentials
+        id: dockerhub-pull
+        if: inputs.publish-to == 'ghcr'
+        shell: bash
+        env:
+          # Presence only - the secret values themselves are never referenced here.
+          HAS_DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME != '' }}
+          HAS_DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD != '' }}
+        run: |
+          if [ "$HAS_DOCKER_USERNAME" = "true" ] && [ "$HAS_DOCKER_PASSWORD" = "true" ]; then
+            echo "login=true" >> "$GITHUB_OUTPUT"
+            echo "🔑 Docker Hub credentials present - pulls from Docker Hub run under the account's quota"
+          else
+            echo "login=false" >> "$GITHUB_OUTPUT"
+            echo "⚪ DOCKER_USERNAME and DOCKER_PASSWORD are not both set - Docker Hub is pulled anonymously (rate-limited per runner IP)"
+          fi
+
+      - name: 🔐 Log in to Docker Hub
+        id: dockerhub-pull-login
+        if: steps.dockerhub-pull.outputs.login == 'true'
+        continue-on-error: true
+        uses: docker/login-action@v4
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: ⚠️ Docker Hub Login Failed
+        id: dockerhub-pull-warning
+        if: steps.dockerhub-pull-login.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning title=Docker Build::Docker Hub login failed - DOCKER_USERNAME or DOCKER_PASSWORD is wrong or expired, or Docker Hub could not be reached. Docker Hub is pulled anonymously and may hit its rate limit (429 toomanyrequests)."
 
       - name: 📥 Checkout Repository
         uses: actions/checkout@v7

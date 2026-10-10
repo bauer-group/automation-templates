@@ -38,7 +38,9 @@ inputs:
     description: >-
       Gitleaks license key (free from gitleaks.io). Read only when scan-engine is
       'gitleaks'; gitleaks-action refuses to scan a repository owned by an
-      organization without it.
+      organization without it. A pull request whose token cannot list its commits
+      (a private repository without pull-requests: read) is scanned with the
+      gitleaks CLI instead, which does not need it.
     required: false
     default: ''
   minimum-severity:
@@ -151,9 +153,54 @@ runs:
         mkdir -p security-reports
         echo "secret-engine=${SECRET_ENGINE}" >> "$GITHUB_OUTPUT"
 
+    - name: 🔎 Choose Gitleaks Runner
+      id: gitleaks-mode
+      # gitleaks-action scans a pull request by first listing its commits through the
+      # REST API. In a private or internal repository that needs `pull-requests:
+      # read`, which modules-security-scan.yml cannot pass: a called workflow's own
+      # `permissions:` block caps the token, and adding the scope there would make
+      # GitHub refuse every caller that grants the documented three. The action then
+      # died with HTTP 403 ("Resource not accessible by integration") before gitleaks
+      # ran, so no pull request of a private repository was ever secret-scanned
+      # through that module.
+      #
+      # Probe instead of assume: where the token CAN list the commits (any token in a
+      # public repository, or one with pull-requests such as modules-pr-validation's),
+      # gitleaks-action runs exactly as before. Only where it cannot, the two steps
+      # after it scan the same commits with the gitleaks CLI, which needs neither the
+      # API nor a licence.
+      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && steps.engine.outputs.secret-engine == 'gitleaks'
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPOSITORY: ${{ github.repository }}
+        API_URL: ${{ github.api_url }}
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        set -uo pipefail
+
+        MODE="action"
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          # The request gitleaks-action makes, limited to one commit. `|| true`: on a
+          # network error curl exits non-zero after -w has printed 000, which is an
+          # answer here, not a reason to abort.
+          STATUS=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${API_URL}/repos/${REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=1") || true
+          if [ "${STATUS:-000}" != "200" ]; then
+            MODE="cli"
+            echo "::notice title=Gitleaks pull request scan::The token cannot list this pull request's commits (HTTP ${STATUS:-000}); gitleaks-action needs pull-requests: read for that. Scanning the same commits with the gitleaks CLI instead, which needs no licence."
+          fi
+        fi
+
+        echo "Gitleaks runner: ${MODE}"
+        echo "mode=${MODE}" >> "$GITHUB_OUTPUT"
+
     - name: 🔐 Gitleaks Secrets Detection
       id: gitleaks-scan
-      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && steps.engine.outputs.secret-engine == 'gitleaks'
+      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && steps.engine.outputs.secret-engine == 'gitleaks' && steps.gitleaks-mode.outputs.mode != 'cli'
       # gitleaks exits 2 when it finds something, which without this fails the step
       # and aborts the whole composite action - taking the result processing, the
       # summary AND the deliberate `fail-on-findings` gate down with it. That is how
@@ -169,6 +216,81 @@ runs:
         GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
         GITLEAKS_ENABLE_SUMMARY: false
 
+    - name: 🔧 Install Gitleaks CLI
+      id: gitleaks-cli-install
+      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && steps.engine.outputs.secret-engine == 'gitleaks' && steps.gitleaks-mode.outputs.mode == 'cli'
+      # A failed download must not abort the composite: the scan step is then
+      # skipped, and the result processing reports "gitleaks never ran" as 'unknown',
+      # which the gate fails on.
+      continue-on-error: true
+      shell: bash
+      env:
+        # The version gitleaks-action@v3 installs by default, so a pull request is
+        # judged by the same rules as the push that follows it.
+        GITLEAKS_VERSION: '8.24.3'
+      run: |
+        set -euo pipefail
+
+        case "${RUNNER_OS}/${RUNNER_ARCH}" in
+          Linux/X64)   PLATFORM="linux_x64" ;;
+          Linux/ARM64) PLATFORM="linux_arm64" ;;
+          *)
+            echo "::error title=Gitleaks CLI unavailable::No gitleaks build is wired up for ${RUNNER_OS}/${RUNNER_ARCH}, so this pull request was NOT scanned for secrets. Run the scan on a Linux runner."
+            exit 1 ;;
+        esac
+
+        ARCHIVE="gitleaks_${GITLEAKS_VERSION}_${PLATFORM}.tar.gz"
+        BASE_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+        DEST="${RUNNER_TEMP}/gitleaks-cli-${GITLEAKS_VERSION}"
+        mkdir -p "$DEST"
+
+        curl -sSfL --retry 3 --max-time 120 -o "${DEST}/${ARCHIVE}" "${BASE_URL}/${ARCHIVE}"
+        curl -sSfL --retry 3 --max-time 60 -o "${DEST}/checksums.txt" "${BASE_URL}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+
+        # Verified before it is unpacked: an archive that does not match the release's
+        # own checksum list is never executed. No matching line fails sha256sum too.
+        ( cd "$DEST" && awk -v f="$ARCHIVE" '$2 == f' checksums.txt | sha256sum -c - )
+        tar -xzf "${DEST}/${ARCHIVE}" -C "$DEST" gitleaks
+        "${DEST}/gitleaks" version
+
+        echo "path=${DEST}/gitleaks" >> "$GITHUB_OUTPUT"
+
+    - name: 🔐 Gitleaks Secrets Detection (pull request commits)
+      id: gitleaks-cli
+      if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && steps.engine.outputs.secret-engine == 'gitleaks' && steps.gitleaks-mode.outputs.mode == 'cli' && steps.gitleaks-cli-install.outcome == 'success'
+      # Same reason as on the gitleaks-action step: exit 2 means "found something",
+      # a result for the processing step, not an error that may abort the composite.
+      continue-on-error: true
+      shell: bash
+      env:
+        GITLEAKS_BIN: ${{ steps.gitleaks-cli-install.outputs.path }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -euo pipefail
+
+        # The commits gitleaks-action would have listed through the API: what the pull
+        # request adds on top of its base branch. Both ends come from the event
+        # payload, and the checkout has to contain them (fetch-depth: 0).
+        for SHA in "$BASE_SHA" "$HEAD_SHA"; do
+          if ! git cat-file -e "${SHA}^{commit}" 2>/dev/null; then
+            echo "::error title=Gitleaks range unavailable::Commit '${SHA}' is not in the checkout, so the pull request's commits cannot be scanned. Check out with fetch-depth: 0."
+            exit 1
+          fi
+        done
+
+        echo "Scanning the pull request's commits: ${BASE_SHA}..${HEAD_SHA}"
+
+        # The arguments gitleaks-action passes for a pull request, so both runners
+        # write the same report; only the range is taken from the payload, not the API.
+        "$GITLEAKS_BIN" detect \
+          --redact \
+          -v \
+          --exit-code=2 \
+          --report-format=sarif \
+          --report-path=results.sarif \
+          --log-opts="--no-merges --first-parent ${BASE_SHA}..${HEAD_SHA}"
+
     - name: 📊 Process Gitleaks Results
       id: process-gitleaks
       # always(): this must still run when the scan step failed, which is precisely
@@ -176,7 +298,9 @@ runs:
       if: always() && (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && steps.engine.outputs.secret-engine == 'gitleaks'
       shell: bash
       env:
-        GITLEAKS_OUTCOME: ${{ steps.gitleaks-scan.outcome }}
+        # The outcome of whichever runner scanned. A CLI scan whose install failed is
+        # 'skipped' and has no report, so it is reported as unknown, never as clean.
+        GITLEAKS_OUTCOME: ${{ steps.gitleaks-mode.outputs.mode == 'cli' && steps.gitleaks-cli.outcome || steps.gitleaks-scan.outcome }}
         GITLEAKS_SARIF: results.sarif
       run: |
         set -uo pipefail

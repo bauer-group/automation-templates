@@ -93,5 +93,9 @@ jobs:
       required-workflows: .github/workflows/docker-release.yml
       merge-method: 'squash'
       auto-approve: true
-      merge-update-types: 'patch'   # e.g. 'patch,minor' to merge minor updates too
+      # e.g. 'patch,minor' to merge minor updates too. Below 1.0.0 any update
+      # may break, so a minor update of 0.y.z (0.3.1 -> 0.4.0) and a patch
+      # update of 0.0.z (0.0.3 -> 0.0.4) count as major and stay open unless
+      # 'major' is listed too.
+      merge-update-types: 'patch'
     secrets: inherit
