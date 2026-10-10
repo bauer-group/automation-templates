@@ -21,9 +21,9 @@
 # release gate (e.g. the backup round trip) has to pass before a base image
 # counts as done.
 #
-# The config lists base images only. npm, pip and .NET updates from the
-# ecosystems block are validated but currently not committed - see "Known
-# limitation" in README.md in this folder.
+# maintenance-config.json lists base images only; maintenance-config-npm.json
+# updates npm dependencies instead. Only dependency manifests and lock files
+# are committed - see "What gets committed" in README.md in this folder.
 #
 # Token: MAINTENANCE_TOKEN (preferred) or PAT_READWRITE_ORGANISATION, a PAT
 # with Contents, Variables and Actions read/write (classic: repo, plus

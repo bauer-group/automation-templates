@@ -193,6 +193,15 @@ jobs:
         shell: bash
         run: bash .github/workflows/tests/docker-base-image-monitor.test.sh
 
+      # Same failure class: auto-maintenance staged each ecosystem with one
+      # `git add` of fixed paths, which stages nothing when one path is
+      # missing. npm, pip and .NET updates were validated and then dropped
+      # while the run stayed green. Pins what gets committed per ecosystem,
+      # and that new files in unignored build or tool directories are not.
+      - name: "🧪 auto-maintenance: npm, pip and .NET updates are committed"
+        shell: bash
+        run: bash .github/workflows/tests/auto-maintenance-commit.test.sh
+
   # The integration the unit test cannot reach: a real pull_request event, a token
   # that cannot list the pull request's commits, and the real download, checksum
   # check and commit range. In a private repository that is what
