@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.7.1](https://github.com/bauer-group/automation-templates/compare/v11.7.0...v11.7.1) (2026-10-10)
+
+### 🐛 Bug Fixes
+
+* **security-scan:** fixed HTTP 403 on Gitleaks pull request scans ([15f782c](https://github.com/bauer-group/automation-templates/commit/15f782c6c81dfcc37f13753a98f7f9eeda337c5c))
+
 ## [11.7.0](https://github.com/bauer-group/automation-templates/compare/v11.6.0...v11.7.0) (2026-10-10)
 
 ### 🚀 Features
