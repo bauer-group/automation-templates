@@ -12,7 +12,10 @@
 #    build and test the update. Without it nothing is merged - a passed check
 #    alone (GitGuardian, a notification job) tests nothing.
 # 2. Update type: only the types listed in `merge-update-types` are merged
-#    (default: patch). Everything else stays open for review.
+#    (default: patch). Everything else stays open for review. Below 1.0.0
+#    any change may break (SemVer 4): as in npm's caret ranges, a minor
+#    update of a 0.y.z version and a patch update of a 0.0.z version count
+#    as major - checked per dependency, the strictest one decides.
 # 3. CI: the job waits until every other check run, check suite, commit status
 #    and workflow run on the PR head commit has completed and nothing has
 #    changed for 3 minutes (5 minutes after the start at the earliest), so a
@@ -71,6 +74,9 @@
 #   hand: a pull_request run uses the PR's own version of a changed workflow,
 #   and a changed push- or schedule-only workflow does not run before the
 #   merge at all.
+# - jq on the runner (preinstalled on GitHub-hosted runners) to read the
+#   versions of the updated dependencies. Without it the 0.x rule cannot be
+#   applied: a warning says so and the update type Dependabot reported counts.
 # =============================================================================
 
 name: 🐳 Docker Maintenance (Dependabot)
@@ -97,7 +103,7 @@ on:
         default: true
 
       merge-update-types:
-        description: 'Semver update types that are merged, comma separated: patch, minor, major. Other updates stay open for review.'
+        description: 'Semver update types that are merged, comma separated: patch, minor, major. Other updates stay open for review. A minor update of a 0.y.z version and a patch update of a 0.0.z version count as major.'
         type: string
         required: false
         default: 'patch'
@@ -146,8 +152,8 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Decides from the inputs, the ecosystem and the update type alone - no
-      # API call.
+      # Decides from the inputs, the ecosystem, the update type and the
+      # versions of the updated dependencies alone - no API call.
       # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
       - name: 🛡️ Merge guard
         id: guard
@@ -155,6 +161,7 @@ jobs:
         env:
           PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          UPDATED_DEPENDENCIES_JSON: ${{ steps.metadata.outputs.updated-dependencies-json }}
           MERGE_UPDATE_TYPES: ${{ inputs.merge-update-types }}
           ALLOW_MAJOR: ${{ inputs.allow-major }}
           MERGE_METHOD: ${{ inputs.merge-method }}
@@ -248,10 +255,48 @@ jobs:
               ;;
           esac
 
+          # SemVer 4: a 0.y.z version may break on any change. As in npm's
+          # caret ranges (^0.3.1 allows < 0.4.0, ^0.0.3 allows < 0.0.4), a
+          # minor update of a 0.y.z version and a patch update of a 0.0.z
+          # version count as major. Each updated dependency is checked - in a
+          # grouped PR the strictest one decides. Only plain X.Y.Z versions are
+          # read (a leading v and a pre-release or build suffix allowed); any
+          # other version - a tag like 18-alpine, a date, a digest - keeps the
+          # type Dependabot reported.
+          TYPE_NOTE=""
+          if ! DEPS=$(printf '%s' "$UPDATED_DEPENDENCIES_JSON" | jq -r '
+                if type == "array" then .[] else error("not a list") end
+                | select(type == "object")
+                | [.dependencyName, .prevVersion, .newVersion, .updateType]
+                | map(if . == null or . == "" then "-" else tostring end)
+                | @tsv' 2> /dev/null) || [ -z "$DEPS" ]; then
+            echo "::warning title=Dependabot versions not read::The versions of the updated dependencies could not be read, so a 0.x update could not be checked. The update type is taken as Dependabot reported it: semver-$TYPE."
+          else
+            SEMVER='^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+            while IFS=$'\t' read -r DEP PREV NEW DEP_TYPE; do
+              [[ "$NEW" =~ $SEMVER ]] || continue
+              # Matched last, so BASH_REMATCH holds the previous version.
+              [[ "$PREV" =~ $SEMVER ]] || continue
+              [ "${BASH_REMATCH[1]}" = 0 ] || continue
+              case "$DEP_TYPE" in
+                version-update:semver-minor) RULE="0.x minor treated as major" ;;
+                version-update:semver-patch)
+                  [ "${BASH_REMATCH[2]}" = 0 ] || continue
+                  RULE="0.0.x patch treated as major"
+                  ;;
+                *) continue ;;
+              esac
+              echo "$RULE: $DEP $PREV -> $NEW"
+              TYPE_NOTE="${TYPE_NOTE:+$TYPE_NOTE; }$RULE: $DEP $PREV -> $NEW"
+              TYPE=major
+            done <<< "$DEPS"
+          fi
+          echo "type-note=$TYPE_NOTE" >> "$GITHUB_OUTPUT"
+
           case " $ALLOWED " in
             *" $TYPE "*) decide true "$TYPE" ;;
             *)
-              echo "::notice title=Dependabot PR left open::semver-$TYPE update - left open for review. Merged automatically:$ALLOWED (input merge-update-types)."
+              echo "::notice title=Dependabot PR left open::semver-$TYPE update${TYPE_NOTE:+ ($TYPE_NOTE)} - left open for review. Merged automatically:$ALLOWED (input merge-update-types)."
               decide false update-type
               ;;
           esac
@@ -663,6 +708,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           DEPENDENCIES: ${{ steps.metadata.outputs.dependency-names }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          TYPE_NOTE: ${{ steps.guard.outputs.type-note }}
           PREVIOUS_VERSION: ${{ steps.metadata.outputs.previous-version }}
           NEW_VERSION: ${{ steps.metadata.outputs.new-version }}
           MERGE_METHOD: ${{ inputs.merge-method }}
@@ -710,7 +756,7 @@ jobs:
             echo "|----------|-------|"
             echo "| **PR** | #$PR_NUMBER |"
             echo "| **Dependency** | \`$DEPENDENCIES\` |"
-            echo "| **Update Type** | $UPDATE_TYPE |"
+            echo "| **Update Type** | $UPDATE_TYPE${TYPE_NOTE:+ - counted as semver-major ($TYPE_NOTE)} |"
             echo "| **Required Workflows** | \`${REQUIRED:-none}\` |"
             echo "| **From** | \`$PREVIOUS_VERSION\` |"
             echo "| **To** | \`$NEW_VERSION\` |"

@@ -99,7 +99,7 @@ Reusable Workflows, mit denen sich Container-Repositories selbst aktuell halten,
 
 #### 🐳 [docker-maintenance-dependabot.yml](./docker-maintenance-dependabot.yml) - Docker Maintenance (Dependabot)
 **Zweck:** Merged Dependabot-PRs erst, nachdem die in `required-workflows` genannte PR-CI auf dem Head-Commit grün ist (ohne Ruleset/Branch Protection)  
-**Features:** Entscheidungstabelle mit Annotation pro Fall, nur Patch-Updates per Default, CI-Änderungen (`.github/`, GitHub Actions) bleiben offen, gepinnter Merge (`--match-head-commit`)  
+**Features:** Entscheidungstabelle mit Annotation pro Fall, nur Patch-Updates per Default (unter 1.0.0 zählen Minor- und 0.0.x-Patch-Updates als Major, SemVer §4), CI-Änderungen (`.github/`, GitHub Actions) bleiben offen, gepinnter Merge (`--match-head-commit`)  
 **Trigger-Umfang:** Die `pull_request.paths` des Callers entscheiden, welche Dependabot-PRs das Modul erreichen  
 **Docs:** [docs/workflows/docker-maintenance.md](../../docs/workflows/docker-maintenance.md) · **Beispiele:** [examples/docker-maintenance-dependabot/](../../github/workflows/examples/docker-maintenance-dependabot/README.md)
 

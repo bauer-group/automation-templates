@@ -74,6 +74,8 @@ jobs:
       merge-method: 'squash'
       auto-approve: true
       # Patch updates only; e.g. 'patch,minor' once the tests are trusted to
-      # catch a breaking minor release.
+      # catch a breaking minor release. An npm package below 1.0.0 is
+      # stricter: 0.3.1 -> 0.4.0 and 0.0.3 -> 0.0.4 count as major (SemVer 4,
+      # as npm's ^ ranges read them), so 'patch,minor' leaves them open.
       merge-update-types: 'patch'
     secrets: inherit

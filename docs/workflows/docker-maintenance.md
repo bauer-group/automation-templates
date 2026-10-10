@@ -116,7 +116,8 @@ jobs:
       required-workflows: .github/workflows/docker-release.yml
       merge-method: 'squash'
       auto-approve: true
-      # merge-update-types: 'patch,minor'  # default: patch
+      # merge-update-types: 'patch,minor'  # default: patch; below 1.0.0 a
+      #                                    # minor update counts as major
     secrets: inherit
 ```
 
@@ -271,6 +272,9 @@ PR's head.
    (default `patch`). A `minor` or `major` update, or one whose type cannot be
    determined (digest, non-semver tag), stays open for review. The redpanda
    `26.1 → 26.2` bump that took a production stack down was a semver-*minor*.
+   Below 1.0.0 any update may break: a minor update of a `0.y.z` version and
+   a patch update of a `0.0.z` version count as `major`, checked for every
+   dependency of the PR - see [Updates below 1.0.0](#updates-below-100).
 4. **Wait for CI** - the job polls the check runs, check suites, commit
    statuses and workflow runs of the PR head commit (every 30 s, after 5 min
    every 60 s, after 15 min every 3 min), leaving out its own job and other
@@ -317,7 +321,7 @@ head commit). Only invalid inputs turn the job red.
 | 3   | Inputs           | `merge-method`, `ci-wait-minutes`, `merge-update-types` or `required-workflows` is invalid                                                | ❌ Job fails                          | error      |
 | 4   | Ecosystem        | GitHub Actions update (`package-ecosystem: "github-actions"`)                                                                             | ⏸️ Left open - a CI change            | notice     |
 | 5   | Required CI      | `required-workflows` is not set - automatic merging is off                                                                                | ⏸️ Left open, without waiting for CI  | notice     |
-| 6   | Update type      | Type unknown (digest, non-semver tag), or not in `merge-update-types`                                                                     | ⏸️ Left open for review               | notice     |
+| 6   | Update type      | Type unknown (digest, non-semver tag), or not in `merge-update-types` ([0.x updates](#updates-below-100) count stricter)                  | ⏸️ Left open for review               | notice     |
 | 7   | PR state         | The PR was closed or got a new head commit meanwhile (checked on every poll)                                                              | ⏹️ Not merged by this run             | notice     |
 | 8   | Commits          | Not every commit of the PR is a verified commit by Dependabot                                                                             | ⏸️ Left open                          | notice     |
 | 9   | Changed files    | A changed file under `.github/` (also the old path of a moved file), or the file list is not complete                                     | ⏸️ Left open - a CI change            | notice     |
@@ -335,6 +339,77 @@ head commit). Only invalid inputs turn the job red.
 A newer event on the same PR (e.g. Dependabot rebased it) cancels the run that is
 still waiting; the run for the new head commit decides.
 
+#### Updates below 1.0.0
+
+[SemVer 4](https://semver.org/#spec-item-4): a `0.y.z` version is initial
+development - anything may change at any time. Dependabot still reports
+`0.3.1 → 0.4.0` as semver-*minor* and `0.0.3 → 0.0.4` as semver-*patch*, so a
+caller that merges `minor` updates would merge a breaking 0.x release. The
+workflow therefore counts update types the way npm's caret ranges do
+(`^0.3.1` allows `< 0.4.0`, `^0.0.3` allows `< 0.0.4`):
+
+| Previous version       | New version            | Dependabot reports | Counted as  | Why                                            |
+|------------------------|------------------------|--------------------|-------------|------------------------------------------------|
+| `0.3.1`                | `0.3.2`                | patch              | patch       | within `^0.3.1` - unchanged                    |
+| `0.3.1`                | `0.4.0`                | minor              | **major**   | 0.x minor treated as major                     |
+| `0.0.3`                | `0.0.4`                | patch              | **major**   | 0.0.x patch treated as major                   |
+| `0.0.3`                | `0.1.0`                | minor              | **major**   | 0.x minor treated as major                     |
+| `0.9.2`                | `1.0.0`                | major              | major       | unchanged                                      |
+| `1.2.3`                | `1.3.0`                | minor              | minor       | 1.0.0 or later - unchanged                     |
+| `v0.3.1`               | `v0.4.0`               | minor              | **major**   | a leading `v` is read                          |
+| `0.3.1-rc.1`           | `0.4.0+build.7`        | minor              | **major**   | a pre-release or build suffix is read          |
+| `0.3.1-alpine3.20`     | `0.4.0-alpine3.20`     | minor              | **major**   | an image variant reads as a pre-release suffix |
+| `0.3-alpine`           | `0.4-alpine`           | minor              | minor       | not `X.Y.Z` - the reported type counts         |
+| `18-alpine`            | `19-alpine`            | major              | major       | not `X.Y.Z` - the reported type counts         |
+| `2024-01-15`, a digest | `2024-02-01`, a digest | as reported        | as reported | not `X.Y.Z` - the reported type counts         |
+
+- **Only plain `X.Y.Z` versions are read**, both the previous and the new
+  one: three numbers without leading zeros, optionally a leading `v`, a
+  `-pre-release` and a `+build` suffix. Any other version keeps the update
+  type Dependabot reported - it never fails the job.
+- **The previous version decides** whether the rule applies: `0.y.z` turns a
+  minor update into a major one, `0.0.z` a patch update as well. A patch
+  update of `0.y.z` with `y > 0` stays a patch.
+- **Every dependency of the PR is checked** - the `updated-dependencies-json`
+  of `dependabot/fetch-metadata` lists each with its own versions and update
+  type. In a grouped update the strictest dependency decides: one
+  `0.3.1 → 0.4.0` among ten patch updates makes the PR a major update.
+- **Logged**: each dependency counted as major gets a line such as
+  `0.x minor treated as major: lib 0.3.1 -> 0.4.0`; the notice of a PR left
+  open and the job summary (*Update Type*) name it as well.
+- **Versions not readable** (no `jq` on the runner, unexpected output of
+  `fetch-metadata`): a warning *Dependabot versions not read*, and the update
+  type Dependabot reported counts, as before this rule existed. The job does
+  not fail.
+
+What this means for `merge-update-types`:
+
+| `merge-update-types` | `0.3.1 → 0.3.2` | `0.3.1 → 0.4.0`           | `0.0.3 → 0.0.4`           |
+|----------------------|-----------------|---------------------------|---------------------------|
+| `patch` (default)    | merged          | left open                 | left open (merged before) |
+| `patch,minor`        | merged          | left open (merged before) | left open (merged before) |
+| `patch,minor,major`  | merged          | merged                    | merged                    |
+
+"Merged" always means: after the required CI passed, as for every other
+update.
+
+**Example.** A caller with `merge-update-types: 'patch,minor'`; Dependabot
+updates an image tag from `0.3.1` to `0.4.0`. The guard's log reads:
+
+```text
+Merged update types: patch minor
+Required workflows: .github/workflows/docker-release.yml
+Ecosystem: docker, update type: version-update:semver-minor
+0.x minor treated as major: example/tool 0.3.1 -> 0.4.0
+Decision: ok=false reason=update-type
+```
+
+The PR stays open with the notice *semver-major update (0.x minor treated as
+major: example/tool 0.3.1 -> 0.4.0) - left open for review. Merged
+automatically: patch minor (input merge-update-types).* Review the release
+notes and merge it by hand, or add `major` to `merge-update-types` to let the
+required CI decide such updates as well.
+
 ### Limits
 
 - **Only `.github/` counts as CI.** A GitHub Actions update and a PR that
@@ -346,6 +421,11 @@ still waiting; the run for the new head commit decides.
   `success`; which of its jobs run is up to the workflow. A job it skips by
   its own `if:` (e.g. a round trip that runs only for some paths) does not
   stop the merge. Choose workflows whose PR run always builds and tests.
+- **0.x versions are recognised in plain `X.Y.Z` form only.** A tag such as
+  `0.3-alpine` or a date keeps the update type Dependabot reported, so a
+  `0.3-alpine → 0.4-alpine` update is a minor one for `merge-update-types`.
+  Keep `minor` out of it for images with such tags, or merge them by hand -
+  see [Updates below 1.0.0](#updates-below-100).
 - **Matched by file path.** A required workflow that is renamed or moved no
   longer matches: every PR stays open with "did not run" until
   `required-workflows` is updated.
@@ -378,7 +458,7 @@ still waiting; the run for the new head commit decides.
 | `required-workflows` | PR CI workflow files that must have run on the PR and passed, comma or newline separated, e.g. `.github/workflows/ci.yml`         | `''` (no merge) |
 | `merge-method`       | squash, merge, or rebase                                                                                                          | `squash`        |
 | `auto-approve`       | Approve the PR before merging it                                                                                                  | `true`          |
-| `merge-update-types` | Semver update types to merge, comma separated: `patch`, `minor`, `major`                                                          | `patch`         |
+| `merge-update-types` | Semver update types to merge: `patch`, `minor`, `major`; [0.x updates](#updates-below-100) count stricter                         | `patch`         |
 | `ci-wait-minutes`    | How long to wait for CI to finish and settle (10-60) before leaving the PR open                                                   | `60`            |
 | `allow-major`        | Deprecated: `true` equals `merge-update-types: patch,minor,major`                                                                 | `false`         |
 | `runs-on`            | Runner label, or a JSON array of labels for self-hosted runners                                                                   | `ubuntu-latest` |
@@ -616,6 +696,8 @@ say why - see the [decision table](#decision-table). The usual ones:
 |---------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
 | automatic merging is off: required-workflows      | Set `required-workflows`, see [Choosing `required-workflows`](#choosing-required-workflows)                                 |
 | update type is not merged automatically           | Expected for minor/major; merge by hand, or widen `merge-update-types`                                                      |
+| semver-major update (0.x minor/0.0.x patch ...)   | Expected below 1.0.0, any update may break: review and merge by hand, or add `major` to `merge-update-types`                |
+| Dependabot versions not read (warning)            | No `jq` on a self-hosted runner: install it. Not a stop - the update type Dependabot reported counts                        |
 | change the CI itself / changes CI files           | Expected: review and merge by hand. GitHub Actions updates and PRs that change `.github/` are never merged automatically    |
 | CI did not pass                                   | Fix the check, or merge by hand; a re-run of the check alone does not merge - re-run this job, or `@dependabot rebase`      |
 | required workflow ... did not run for this change | Its `pull_request` `paths:` miss the changed files: merge by hand, and keep the caller's `paths:` within the workflow's     |
@@ -682,7 +764,7 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 - **Dependabot only**: the Dependabot job acts only on Dependabot's PRs, on events Dependabot raised, with verified Dependabot commits only; it never checks out PR code
 - **Auto-approve optional**: Can be disabled for manual review
 - **Audit trail**: All updates tracked in PRs and git history
-- **Update types**: Dependabot merges patch updates only unless `merge-update-types` widens it; Renovate leaves majors for review
+- **Update types**: Dependabot merges patch updates only unless `merge-update-types` widens it, and below 1.0.0 a minor update (and below 0.1.0 a patch update) counts as major; Renovate leaves majors for review
 
 ## Related Documentation
 
