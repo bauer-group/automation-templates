@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-10-09 23:13:02 UTC -->
+<!-- Generated on 2026-10-10 01:36:10 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -9,7 +9,7 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 
 **Repository Information:**
 
-- **Version:** 11.6.0 (2026-10-09)
+- **Version:** 11.7.2 (2026-10-10)
 - **Repository:** [bauer-group/automation-templates](https://github.com/bauer-group/automation-templates)
 - **Branch:** main
 - **Architecture:** Modular, Reusable, Enterprise-Ready
@@ -46,8 +46,11 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 > **Gitleaks is opt-in.** Every template defaults to `'none'`: Trivy scans the
 > dependencies and the summaries report Gitleaks as *disabled*. Enable it in repositories
 > without GitHub secret scanning and push protection; organization repositories then need
-> `GITLEAKS_LICENSE`, for Dependabot runs as a Dependabot secret. See
-> [Gitleaks is opt-in](docs/security/native-secret-scanning.md#gitleaks-is-opt-in).
+> `GITLEAKS_LICENSE`, for Dependabot runs as a Dependabot secret. Pull requests whose token
+> cannot list their commits (private repositories without `pull-requests: read`) are scanned
+> with the gitleaks CLI and need no licence. See
+> [Gitleaks is opt-in](docs/security/native-secret-scanning.md#gitleaks-is-opt-in) and the
+> [Security Scan Module](docs/workflows/modules-security-scan.md).
 
 ### Individual Engines
 
@@ -1229,5 +1232,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-10-09 23:13:02 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-10-10 01:36:10 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
