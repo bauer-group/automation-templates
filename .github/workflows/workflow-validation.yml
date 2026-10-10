@@ -128,9 +128,10 @@ jobs:
         shell: bash
         run: bash .github/actions/gitleaks-scan/tests/allowlist.test.sh
 
-      # gitleaks-action needs pull-requests: read to scan a pull request, which
-      # modules-security-scan.yml can never pass, so every pull request died with
-      # HTTP 403 unscanned. Pins the runner choice and the range the CLI scans.
+      # gitleaks-action needs pull-requests: read to scan a pull request in a private
+      # repository, which modules-security-scan.yml can never pass, so every such
+      # pull request died with HTTP 403 unscanned. Pins the runner choice and the
+      # range the CLI scans.
       - name: "🧪 security-scan: pull requests are scanned without pull-requests: read"
         shell: bash
         run: bash .github/actions/security-scan/tests/pull-request-scan.test.sh
@@ -185,10 +186,12 @@ jobs:
         run: bash .github/workflows/tests/docker-base-image-monitor.test.sh
 
   # The integration the unit test cannot reach: a real pull_request event, a token
-  # WITHOUT pull-requests: read (the shape modules-security-scan.yml always passes),
-  # and the real download and checksum check. gitleaks-action died here with HTTP 403
-  # before scanning anything. Pull requests only: on a push the action runs, and in
-  # this organization repository it needs the licence secret this job does not get.
+  # that cannot list the pull request's commits, and the real download, checksum
+  # check and commit range. In a private repository that is what
+  # modules-security-scan.yml's token is (no pull-requests: read), and gitleaks-action
+  # died there with HTTP 403 before scanning anything. Pull requests only: on a push
+  # the action runs, and in this organization repository it needs the licence secret
+  # this job does not get.
   security-scan-pull-request:
     name: "🧪 security-scan: pull request without pull-requests: read"
     if: github.event_name == 'pull_request'
@@ -211,7 +214,11 @@ jobs:
           # Report-only: this job proves the scan COMPLETES without the scope. Whether
           # the pull request contains a secret is not what it asserts.
           fail-on-findings: 'false'
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # This repository is public, so ANY token may list its pull requests and the
+          # probe would rightly keep gitleaks-action. A token the API rejects stands in
+          # for the private-repository token that lacks pull-requests: read. The CLI
+          # path itself never uses the token.
+          token: 'token-that-cannot-list-commits'
 
       - name: "🔍 Assert the scan completed"
         shell: bash
@@ -220,9 +227,9 @@ jobs:
         run: |
           case "$SECRETS_FOUND" in
             true | false)
-              echo "Gitleaks scanned the pull request without pull-requests: read (secrets-found=${SECRETS_FOUND})." ;;
+              echo "Gitleaks scanned the pull request with a token that cannot list its commits (secrets-found=${SECRETS_FOUND})." ;;
             *)
-              echo "::error::The pull request was not scanned (secrets-found='${SECRETS_FOUND}'). Without pull-requests: read the CLI path must run to completion."
+              echo "::error::The pull request was not scanned (secrets-found='${SECRETS_FOUND}'). When the token cannot list the commits, the CLI path must run to completion."
               exit 1 ;;
           esac
 
