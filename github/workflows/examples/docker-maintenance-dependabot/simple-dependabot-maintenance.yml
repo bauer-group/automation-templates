@@ -67,7 +67,8 @@ on:
     # These paths also decide which Dependabot PRs reach the workflow at all:
     # with Dockerfiles only, npm, pip or Composer updates never start it and
     # stay manual merges - see docs/workflows/docker-maintenance.md, section
-    # "Decide which PRs reach it (trigger scope)".
+    # "Decide which PRs reach it (trigger scope)". Once dependabot.yml updates
+    # more than base images, leave paths: out - see all-ecosystems.yml.
     paths:
       - 'Dockerfile'
       - 'src/Dockerfile'
