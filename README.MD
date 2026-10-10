@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-10-10 19:12:16 UTC -->
+<!-- Generated on 2026-10-10 20:26:34 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -270,7 +270,7 @@ Complete Docker automation with multi-platform builds, security scanning, and en
 | **🔧 docker-build action** | Multi-platform Docker builds | Composite action with security scanning |
 | **🚀 docker-build workflow** | Complete Docker CI/CD | `uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main` |
 | **📋 Configuration Templates** | Pre-configured setups | `default`, `web-application`, `microservice`, `enterprise` |
-| **🐳 Docker maintenance (Dependabot)** | Merge Dependabot base image PRs only after the named PR CI passed | `uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main` |
+| **🐳 Docker maintenance (Dependabot)** | Merge Dependabot PRs of any ecosystem (base images, npm, pip, Composer, Cargo, NuGet, ...) only after the named PR CI passed | `uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main` |
 | **🔍 Base image monitor** | Release a rebuild when a floating tag (`stable`, `latest`) moves; stored once the release succeeded | `uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main` |
 
 **Quick Start - Docker:**
@@ -1074,7 +1074,7 @@ gh auth status --show-token
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
 - [🐳 **Fork Docker Build**](docs/workflows/fork-docker-build.md) - Multi-image build, Trivy gate and GHCR push for forked repositories
 - [🔧 **Auto Maintenance**](docs/workflows/modules-auto-maintenance.md) - Base image digests and dependency updates (npm, pip, .NET, Go) in one scheduled run, validated and rolled back on failure; commits only dependency manifests and lock files ([what gets committed](docs/workflows/modules-auto-maintenance.md#was-committet-wird))
-- [🐳 **Docker Image Maintenance**](docs/workflows/docker-maintenance.md) - Dependabot PRs merged after their PR CI passed (trigger scope, decision table), or Renovate
+- [🐳 **Docker Image Maintenance**](docs/workflows/docker-maintenance.md) - Dependabot PRs of every ecosystem merged after their PR CI passed (trigger scope, files per ecosystem, decision table), or Renovate
 - [🐍 **Python Build System**](docs/workflows/python-build.md) - Python application builds and testing
 - [🐍 **Python Semantic Release System**](docs/workflows/python-semantic-release.md) - Modern Python CI/CD with semantic versioning
 - [📦 **Semantic Release Config Contract**](docs/workflows/semantic-release-config.md) - What a repository's `semantic-release.json` actually controls, and what is silently ignored
@@ -1172,7 +1172,7 @@ gh auth status --show-token
 - [🔧 **Auto Maintenance Examples**](github/workflows/examples/auto-maintenance/) - Weekly caller and a base image config
 - [🧪 **Backup Round-Trip Examples**](github/workflows/examples/backup-roundtrip/) - Minimal, gated release pipeline, plugin sources, upgrade from the previous release, off-site S3, compose variants, several backup jobs
 - [🐳 **Fork Docker Build Examples**](github/workflows/examples/fork-docker-build/) - Drop-in caller for a fork's `workspace` branch
-- [🐳 **Docker Maintenance (Dependabot) Examples**](github/workflows/examples/docker-maintenance-dependabot/) - Merge after the PR CI: backup round-trip gate, own CI, several workflows, no PR CI
+- [🐳 **Docker Maintenance (Dependabot) Examples**](github/workflows/examples/docker-maintenance-dependabot/) - Merge after the PR CI: backup round-trip gate, own CI, several workflows, all ecosystems, .NET library, no PR CI
 - [🔍 **Docker Base Image Monitor Examples**](github/workflows/examples/docker-base-image-monitor/) - Daily check with release dispatch, several images, dry run
 - [🐳 **Dockerfile Validation Examples**](github/workflows/examples/dockerfile-validation/) - Dockerfile linting examples
 - [🐍 **Python Examples**](github/workflows/examples/python-build/) - Python build and test examples
@@ -1232,5 +1232,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-10-10 19:12:16 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-10-10 20:26:34 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
