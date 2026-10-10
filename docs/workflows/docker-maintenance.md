@@ -43,13 +43,28 @@ release.
 
 A merged `fix(deps)` commit in a library publishes a new package for every
 dependency update, and in a NuGet package it raises the minimum version every
-consumer gets (a `PackageReference` version is a lower bound). `chore(deps)`
-releases nothing with the default release rules of
-`modules-semantic-release.yml`. A repository whose
-`.github/config/release/semantic-release.json` releases on it - this
-repository's own config has `{"type": "chore", "scope": "deps", "release": "patch"}` -
-needs a type its rules leave out there, such as `build(deps)`. Example:
+consumer gets (a `PackageReference` version is a lower bound). Example:
 [dotnet-library.yml](../../github/workflows/examples/docker-maintenance-dependabot/dotnet-library.yml).
+
+Whether `chore(deps)` releases depends on the rules
+`modules-semantic-release.yml` analyzes the commit with:
+
+- **Default rules** (no `releaseRules` in
+  `.github/config/release/semantic-release.json`, `force-release` off): no
+  release.
+- **Custom `releaseRules`**
+  ([how they are read](semantic-release-config.md#what-is-read-from-your-config)):
+  the rules decide. Every matching rule counts, in order, and a later match
+  with `"release": false` overrides an earlier `"patch"`. This repository's
+  own config has `{"type": "chore", "scope": "deps", "release": "patch"}`
+  followed by `{"type": "chore", "release": false}`, so `chore(deps)`
+  releases nothing here either. Only rules that leave `chore(deps)` at a
+  release - the `chore`/`deps` patch rule without a later `chore` rule set to
+  `false` - need another type that they do not release on, such as
+  `build(deps)`.
+- **`force-release: true`** (used only when the repository config has no
+  `releaseRules`): every commit type releases, `chore(deps)` and
+  `build(deps)` included.
 
 ---
 
