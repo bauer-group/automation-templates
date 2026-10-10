@@ -5,9 +5,9 @@ name: 🛡️ Security Scan
 #
 # Gitleaks is opt-in: enable it (scan-engine: 'gitleaks') in repositories WITHOUT
 # GitHub secret scanning and push protection. Organization repositories then need the
-# GITLEAKS_LICENSE secret for push, schedule and manual runs. Pull requests (including
-# Dependabot's) are scanned with the gitleaks CLI and need neither the licence nor
-# pull-requests: read.
+# GITLEAKS_LICENSE secret for push, schedule and manual runs. In private and internal
+# repositories, pull requests (including Dependabot's) are scanned with the gitleaks CLI
+# and need neither the licence nor pull-requests: read.
 # Docs: docs/workflows/modules-security-scan.md
 
 on:

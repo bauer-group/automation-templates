@@ -14,10 +14,11 @@ action, which can also be used directly as a step.
 - **Gitleaks is opt-in** (`scan-engine: 'gitleaks'`). Enable it in repositories without
   GitHub secret scanning and push protection - see
   [Gitleaks is opt-in](../security/native-secret-scanning.md#gitleaks-is-opt-in).
-- **Pull requests are scanned without `pull-requests: read`.** gitleaks-action needs that
-  scope to list a pull request's commits; this workflow cannot pass it (see
-  [Permissions](#permissions)), so pull requests are scanned with the gitleaks CLI over the
-  same commits. See [How Gitleaks scans each event](#how-gitleaks-scans-each-event).
+- **Pull requests are scanned without `pull-requests: read`.** In private and internal
+  repositories gitleaks-action needs that scope to list a pull request's commits; this
+  workflow cannot pass it (see [Permissions](#permissions)), so there the pull request's
+  commits are scanned with the gitleaks CLI. See
+  [How Gitleaks scans each event](#how-gitleaks-scans-each-event).
 - **"Not scanned" is never "clean".** A scan that did not complete reports `unknown` and
   fails the gate; a disabled Gitleaks reports `skipped` and says so in the summary.
 
@@ -86,9 +87,10 @@ grants less than this list, GitHub refuses to start the run ("The nested job ...
 requesting ..., but is only allowed ..."): you get a run with no jobs and no log.
 
 `pull-requests: read` is deliberately **not** in the list. gitleaks-action would need it on
-pull requests, but adding it would make GitHub refuse every existing caller that grants the
-three scopes above. The action detects the missing scope instead and scans pull requests
-with the gitleaks CLI, which needs no API access.
+pull requests of private and internal repositories, but adding it would make GitHub refuse
+every existing caller that grants the three scopes above. The action detects a token that
+cannot list the pull request's commits instead and scans them with the gitleaks CLI, which
+needs no API access.
 
 ## Input Parameters
 
@@ -105,7 +107,7 @@ with the gitleaks CLI, which needs no API access.
 
 | Secret | Required | Description |
 |--------|----------|-------------|
-| `GITLEAKS_LICENSE` | Only with `scan-engine: 'gitleaks'` in an **organization** repository, for push, schedule and `workflow_dispatch` runs | License key for `gitleaks/gitleaks-action` (free from [gitleaks.io](https://gitleaks.io)). Pull request runs scan with the gitleaks CLI and do not read it. Dependabot-triggered runs read secrets from the **Dependabot** store, not the Actions store. |
+| `GITLEAKS_LICENSE` | Only with `scan-engine: 'gitleaks'` in an **organization** repository, for every run that uses gitleaks-action (see the table below) | License key for `gitleaks/gitleaks-action` (free from [gitleaks.io](https://gitleaks.io)). Pull request runs of private and internal repositories scan with the gitleaks CLI and do not read it. Dependabot-triggered runs read secrets from the **Dependabot** store, not the Actions store. |
 | `GITGUARDIAN_API_KEY` | No | Deprecated and ignored (GitGuardian was removed) |
 
 Use `secrets: inherit`. Details: [Secrets Reference](../secrets-reference.md#security-scanning).
@@ -129,8 +131,8 @@ Reports (Gitleaks SARIF, Trivy JSON, the summary) are uploaded as the
 |-------|--------|-----------------|---------|
 | `push` | `gitleaks/gitleaks-action` | The pushed commits | Required in organization repositories |
 | `schedule`, `workflow_dispatch` | `gitleaks/gitleaks-action` | The full history | Required in organization repositories |
-| `pull_request`, token **without** `pull-requests: read` (always the case through this workflow) | gitleaks CLI | The pull request's own commits: `base.sha..head.sha` from the event, `--no-merges --first-parent` | Not needed |
-| `pull_request`, token **with** `pull-requests: read` (the action used directly, e.g. by `modules-pr-validation`) | `gitleaks/gitleaks-action` | The pull request's commits, listed through the API | Required in organization repositories |
+| `pull_request`, token **cannot** list the pull request's commits (private and internal repositories: always the case through this workflow) | gitleaks CLI | The pull request's own commits: `base.sha..head.sha` from the event, `--no-merges --first-parent` | Not needed |
+| `pull_request`, token **can** list them (any token in a public repository, or one with `pull-requests: read` such as `modules-pr-validation`'s) | `gitleaks/gitleaks-action` | The pull request's commits, listed through the API | Required in organization repositories |
 
 On a pull request the action first asks the API for the pull request's commits - the same
 request gitleaks-action makes. If the token may not (any answer other than HTTP 200), the
@@ -151,7 +153,7 @@ Callers whose token can list the commits keep running gitleaks-action exactly as
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `RequestError [HttpError]: Resource not accessible by integration`, `status: 403`, on `GET /repos/.../pulls/<n>/commits` | gitleaks-action on a pull request without `pull-requests: read`. Fixed: the action now detects this and uses the CLI. | Nothing to change in the caller. Re-run the failed check; callers on `@main` pick the fix up. |
+| `RequestError [HttpError]: Resource not accessible by integration`, `status: 403`, on `GET /repos/.../pulls/<n>/commits` | gitleaks-action on a pull request of a private repository without `pull-requests: read`. Fixed: the action now detects this and uses the CLI. | Nothing to change in the caller. Re-run the failed check; callers on `@main` pick the fix up. |
 | Run fails before any job starts: "The nested job ... is requesting ..., but is only allowed ..." | The calling job grants less than the [three scopes](#permissions) | Grant `contents: read`, `security-events: write`, `actions: read` on the calling job |
 | `missing gitleaks license` | Push, schedule or dispatch run in an organization repository without `GITLEAKS_LICENSE` | Add the secret; for Dependabot runs also as a Dependabot secret (see [Secrets](#secrets)) |
 | `Gitleaks range unavailable` | The checkout does not contain the pull request's base or head commit | The workflow checks out with `fetch-depth: 0`; when using the action directly, do the same |

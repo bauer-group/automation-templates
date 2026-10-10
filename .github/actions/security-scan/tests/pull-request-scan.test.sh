@@ -3,11 +3,11 @@
 # Behavioural test for the Gitleaks pull request path in ../action.yml.
 #
 # gitleaks-action scans a pull request by listing its commits through the REST API,
-# which needs `pull-requests: read`. modules-security-scan.yml can never pass that
-# scope (its own `permissions:` block caps the token), so on every pull request the
-# action died with HTTP 403 before gitleaks ran and the repository was NOT scanned.
-# The fix probes the API first and, where the token cannot list the commits, scans
-# the same commits with the gitleaks CLI.
+# which in a private repository needs `pull-requests: read`. modules-security-scan.yml
+# can never pass that scope (its own `permissions:` block caps the token), so on every
+# pull request of a private repository the action died with HTTP 403 before gitleaks
+# ran and the repository was NOT scanned. The fix probes the API first and, where the
+# token cannot list the commits, scans the same commits with the gitleaks CLI.
 #
 # Two steps carry that decision and are tested here:
 #   gitleaks-mode  - picks the runner. Where the token CAN list the commits it must

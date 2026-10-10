@@ -38,8 +38,9 @@ inputs:
     description: >-
       Gitleaks license key (free from gitleaks.io). Read only when scan-engine is
       'gitleaks'; gitleaks-action refuses to scan a repository owned by an
-      organization without it. A pull request whose token lacks pull-requests: read
-      is scanned with the gitleaks CLI instead, which does not need it.
+      organization without it. A pull request whose token cannot list its commits
+      (a private repository without pull-requests: read) is scanned with the
+      gitleaks CLI instead, which does not need it.
     required: false
     default: ''
   minimum-severity:
@@ -155,17 +156,19 @@ runs:
     - name: 🔎 Choose Gitleaks Runner
       id: gitleaks-mode
       # gitleaks-action scans a pull request by first listing its commits through the
-      # REST API, which needs `pull-requests: read`. modules-security-scan.yml cannot
-      # pass that scope: a called workflow's own `permissions:` block caps the token,
-      # and adding the scope there would make GitHub refuse every caller that grants
-      # the documented three. The action then died with HTTP 403 ("Resource not
-      # accessible by integration") before gitleaks ran, so no pull request was ever
-      # secret-scanned through that module.
+      # REST API. In a private or internal repository that needs `pull-requests:
+      # read`, which modules-security-scan.yml cannot pass: a called workflow's own
+      # `permissions:` block caps the token, and adding the scope there would make
+      # GitHub refuse every caller that grants the documented three. The action then
+      # died with HTTP 403 ("Resource not accessible by integration") before gitleaks
+      # ran, so no pull request of a private repository was ever secret-scanned
+      # through that module.
       #
-      # Probe instead of assume: where the token CAN list the commits (for example
-      # modules-pr-validation, which grants pull-requests), gitleaks-action runs
-      # exactly as before. Only where it cannot, the two steps after it scan the same
-      # commits with the gitleaks CLI, which needs neither the API nor a licence.
+      # Probe instead of assume: where the token CAN list the commits (any token in a
+      # public repository, or one with pull-requests such as modules-pr-validation's),
+      # gitleaks-action runs exactly as before. Only where it cannot, the two steps
+      # after it scan the same commits with the gitleaks CLI, which needs neither the
+      # API nor a licence.
       if: (inputs.scan-type == 'all' || inputs.scan-type == 'secrets') && steps.engine.outputs.secret-engine == 'gitleaks'
       shell: bash
       env:

@@ -67,11 +67,12 @@ requests in the repository, as a **Dependabot** secret
 that store. See [Secrets Reference](../secrets-reference.md#security-scanning).
 
 **Pull requests:** gitleaks-action lists a pull request's commits through the API, which
-needs `pull-requests: read`. `modules-security-scan.yml` cannot pass that scope (a called
-workflow can only narrow the caller's token), so the `security-scan` action detects the
-missing scope and scans the same commits with the gitleaks CLI instead. Those runs -
-Dependabot's included - need **no** licence. Where the token does carry the scope (for
-example `modules-pr-validation.yml`), gitleaks-action runs as before. Details:
+in private and internal repositories needs `pull-requests: read`. `modules-security-scan.yml`
+cannot pass that scope (a called workflow can only narrow the caller's token), so the
+`security-scan` action detects a token that cannot list the commits and scans them with the
+gitleaks CLI instead. Those runs - Dependabot's included - need **no** licence. Where the
+token can list them (any token in a public repository, otherwise one with the scope such as
+`modules-pr-validation.yml`'s), gitleaks-action runs as before. Details:
 [How Gitleaks scans each event](../workflows/modules-security-scan.md#how-gitleaks-scans-each-event).
 
 With Gitleaks off, the scans do not fail or report "not scanned" because of it: the run
