@@ -6,7 +6,7 @@ Vollautomatische Repository-Wartung: Base Image Monitoring, Dependency Updates, 
 
 - [Problemstellung](#problemstellung)
 - [Funktionsweise](#funktionsweise)
-  - [Bekannte Einschraenkung: Dependency-Updates werden nicht committet](#bekannte-einschraenkung-dependency-updates-werden-nicht-committet)
+  - [Was committet wird](#was-committet-wird)
 - [Schnellstart](#schnellstart)
 - [Vollstaendige Einrichtung](#vollstaendige-einrichtung)
 - [JSON-Konfigurationsreferenz](#json-konfigurationsreferenz)
@@ -94,20 +94,34 @@ VORHER (pro Repo, bis zu 3 Workflows):        NACHHER (pro Repo):
 
 **Digest-Variablen werden zuletzt gespeichert:** erst nachdem der Commit gepusht und der Release-Workflow gestartet wurde. Schlägt einer dieser Schritte fehl oder wird der Commit übersprungen (z. B. fehlgeschlagene Validierung), bleibt der alte Digest stehen und der nächste Lauf erkennt das Update erneut. Der leere Commit für reine Base-Image-Updates endet auf `[skip ci]`, wenn `release.trigger-workflow` gesetzt ist; der per `workflow_dispatch` gestartete Release läuft trotzdem. `docker manifest inspect` wird bei vorübergehenden Registry-Fehlern (z. B. `429`) bis zu 3-mal versucht.
 
-### Bekannte Einschraenkung: Dependency-Updates werden nicht committet
+### Was committet wird
 
-Der Schritt „Commit and push“ nimmt jedes Ecosystem mit **einem** `git add` fester Pfade im Repository-Root auf:
+Der Schritt „Commit and push“ committet nur Dependency-Manifeste und Lock-Dateien. Ausgangspunkt sind die Dateien, die der Lauf geändert oder neu angelegt hat; jede wird einzeln geprüft und mit einem eigenen `git add` aufgenommen. Für versionierte und neue Dateien gelten unterschiedliche Regeln:
 
-| Ecosystem | `git add` |
-|-----------|-----------|
-| Node.js | `package.json package-lock.json yarn.lock pnpm-lock.yaml` |
-| Python | `requirements.txt requirements*.txt Pipfile.lock poetry.lock` |
-| .NET | `'*.csproj' '*.fsproj' Directory.Build.props Directory.Packages.props` |
-| Go | `go.mod go.sum` |
+| Datei | Wird committet, wenn … |
+|-------|------------------------|
+| **Versioniert und geändert** (laut `git diff`, auch gelöscht) | ihr Dateiname in der Tabelle unten steht — an jeder Stelle im Repository, also auch unterhalb eines `working-directory` |
+| **Neu** (nicht versioniert, nicht ignoriert) | sie eine Lock-Datei ist **und** ihr Manifest im selben Verzeichnis versioniert ist: `go.sum` neben `go.mod`, `package-lock.json`/`npm-shrinkwrap.json`/`yarn.lock`/`pnpm-lock.yaml` neben `package.json`, `packages.lock.json` neben einem `*.csproj`/`*.fsproj`/`*.vbproj`, `poetry.lock` neben `pyproject.toml`, `Pipfile.lock` neben `Pipfile`. Ein **neues Manifest** wird nie committet — die Update-Schritte ändern nur vorhandene. |
 
-Fehlt auch nur einer dieser Pfade, nimmt Git **keinen** davon auf (`fatal: pathspec ... did not match any files`, im Workflow unterdrückt). Für Node.js, Python und Go stehen Dateien in einem anderen `working-directory` als dem Root gar nicht in der Liste. Ein Repository mit einem einzigen Paketmanager bekommt seine npm-, pip- oder .NET-Updates deshalb **nie** committet: Der Lauf aktualisiert und validiert sie, meldet im Log `No dependency files to commit` und verwirft sie — die Job Summary zeigt trotzdem „Dependency file changes detected“.
+| Ecosystem | Manifeste und Lock-Dateien |
+|-----------|----------------------------|
+| Node.js (npm, yarn, pnpm) | `package.json`, `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml` |
+| Python | `requirements*.txt`, die konfigurierte `requirements-file` unter jedem Namen (z. B. `requirements/prod.txt`), `Pipfile.lock`, `poetry.lock` |
+| .NET | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Build.props`, `Directory.Packages.props`, `packages.lock.json` (entsteht nur mit `RestorePackagesWithLockFile`) |
+| Go | `go.mod`, `go.sum` |
+| Base Images | Keine Datei: Der Digest liegt in einer Repository-Variable. Ändert sich sonst nichts, entsteht ein leerer Commit `<commit-prefix>: update base image <namen>` (mit `[skip ci]`, wenn `release.trigger-workflow` gesetzt ist). |
 
-Nicht betroffen sind Base-Image-Updates (ihr Commit ist leer) und ein Go-Modul im Root (`go.mod` und `go.sum`). Bis das Modul nur vorhandene Dateien aufnimmt, kommen Dependency-Updates besser von Dependabot, gemerged mit [Docker Maintenance (Dependabot)](./docker-maintenance.md) nach grüner PR-CI. Die produktiven Caller nutzen das Modul nur für Base Images.
+Dabei gilt:
+
+- **Nicht versionierte Build- und Tool-Verzeichnisse bleiben draußen**, auch ohne `.gitignore` und auch dann, wenn darin Dateien wie `package.json`, `yarn.lock` oder `requirements.txt` liegen — z. B. `dist/`, `build/`, `.venv/`, `.tox/`, `.next/`, `.output/`, `obj/`. Ihre Dateien sind neu, und neben ihnen ist kein Manifest versioniert.
+- **Versionierte Build-Ausgabe wird committet, wenn sie wie ein Manifest heißt** und der Lauf sie ändert — z. B. das eingecheckte `dist/package.json` einer JavaScript Action nach `npm run build`. Die übrigen Dateien daneben (`dist/index.js`) bleiben draußen, siehe [Build-Ausgabe im Commit](#build-ausgabe-im-commit).
+- **`.gitignore` wirkt nur auf neue Dateien.** Eine neue, ignorierte Lock-Datei bleibt draußen; eine bereits versionierte wird auch dann committet, wenn sie zusätzlich in `.gitignore` steht.
+- **`node_modules/` wird nie committet**, auch wenn das Verzeichnis nicht ignoriert ist.
+- **Alles andere bleibt im Checkout des Runners** und verfällt mit ihm: Quellcode, den ein Validierungsbefehl geändert hat, und neue Dateien, die keine der Regeln oben erfüllen. Das Log von „Commit and push“ listet sie unter `Not committed` (die ersten 20).
+- **Keine committbare Datei geändert:** kein Dependency-Commit, Log `No dependency files to commit`, die Job Summary meldet „Files changed, but none of them is a dependency file to commit“. Base-Image-Updates desselben Laufs bekommen trotzdem ihren leeren Commit.
+- **Base Images und Dependencies im selben Lauf:** ein gemeinsamer Commit `<commit-prefix>: automated maintenance update`, dessen Body die Images nennt. Er läuft ohne `[skip ci]`, die Push-CI prüft die neuen Versionen also mit.
+
+> **Bis zu dieser Korrektur** nahm der Schritt jedes Ecosystem mit **einem** `git add` fester Pfade im Repository-Root auf, z. B. `git add package.json package-lock.json yarn.lock pnpm-lock.yaml`. Fehlte einer davon, nahm Git keinen auf (`fatal: pathspec ... did not match any files`, im Workflow unterdrückt). npm-, pip- und .NET-Updates wurden deshalb aktualisiert, validiert und dann verworfen, während der Lauf grün blieb. Wer `ecosystems` deshalb nicht eingesetzt hat, kann es jetzt aktivieren — zusammen mit [`validation`](#validation---validierung-nach-updates). **Ein Caller, der `ecosystems` bereits ohne `validation` konfiguriert hat, pusht ab jetzt ungebaute und ungetestete Updates direkt auf den Ziel-Branch** — dort `validation` ergänzen. Getestet wird das Verhalten von [`auto-maintenance-commit.test.sh`](../../.github/workflows/tests/auto-maintenance-commit.test.sh) in der Workflow-Validierung.
 
 ---
 
@@ -239,6 +253,14 @@ Optionale Anpassungen:
 | `config-file` | `.github/config/maintenance/config.json` | Abweichender Pfad |
 | `runs-on` | `ubuntu-latest` | Self-hosted Runner |
 | `dry-run` | `false` | Zum Testen |
+| `fail-on-unreachable-image` | `true` | `false` stuft ein nicht lesbares Base-Image-Manifest (Auth, Netzwerk, falscher Tag) zur Warnung herab. Der Lauf meldet dann Erfolg, obwohl diese Images nie geprüft wurden. |
+
+Outputs des Reusable Workflows:
+
+| Output | Beschreibung |
+|--------|--------------|
+| `updates-found` | `true`, wenn der Lauf Base-Image- oder Dependency-Updates gefunden hat — auch dann, wenn keine davon committet wurde (fehlgeschlagene Validierung, nur nicht committbare Dateien, `dry-run`) |
+| `summary` | Kurzfassung, z. B. `Updates found: base images + dependencies` oder `No updates found` |
 
 ---
 
@@ -311,6 +333,8 @@ Jeder Block ist **optional**. Man konfiguriert nur was man braucht.
 
 **Bei Fehler:** Alle Aenderungen werden mit `git checkout -- . && git clean -fd` revertiert. Der Workflow schlaegt NICHT fehl, sondern reportet den Fehler in der Job Summary.
 
+**Ohne `validation`** werden die Updates aus `ecosystems` ungebaut und ungetestet committet und direkt auf `release.target-branch` gepusht. Wer `ecosystems` nutzt, sollte `validation` deshalb immer setzen.
+
 ### `release` - Release-Konfiguration
 
 | Feld | Typ | Default | Beschreibung |
@@ -324,7 +348,7 @@ Jeder Block ist **optional**. Man konfiguriert nur was man braucht.
 
 ## Beispiele
 
-> Kopierfertiger Caller und Konfiguration: [`github/workflows/examples/auto-maintenance/`](../../github/workflows/examples/auto-maintenance/README.md). Die Beispiele mit `ecosystems` zeigen den Aufbau der Konfiguration; ihre npm-, pip- und .NET-Updates werden derzeit nicht committet, siehe [Bekannte Einschraenkung](#bekannte-einschraenkung-dependency-updates-werden-nicht-committet).
+> Kopierfertiger Caller und Konfigurationen: [`github/workflows/examples/auto-maintenance/`](../../github/workflows/examples/auto-maintenance/README.md) — Base Images (`maintenance-config.json`) und ein npm-Projekt mit Validierung (`maintenance-config-npm.json`). Welche Dateien je Ecosystem committet werden, steht unter [Was committet wird](#was-committet-wird).
 
 ### Node.js Projekt (z.B. Ghost BunnyCDN Connector)
 
@@ -563,7 +587,27 @@ docker manifest inspect IMAGE:TAG
 
 ### "No dependency files to commit"
 
-Die Updates wurden angewendet (und, falls `validation` gesetzt ist, validiert), aber nicht committet. Ursache ist die [bekannte Einschraenkung](#bekannte-einschraenkung-dependency-updates-werden-nicht-committet) beim Aufnehmen der Dateien; die Konfiguration ist nicht falsch. Base-Image-Updates desselben Laufs werden trotzdem committet und released.
+Der Lauf hat Dateien geändert oder angelegt, aber keine davon wird nach [Was committet wird](#was-committet-wird) committet. Die Zeilen unter `Not committed` direkt davor im Log nennen die Dateien; die Job Summary meldet „Files changed, but none of them is a dependency file to commit“. Base-Image-Updates desselben Laufs werden trotzdem committet und released.
+
+| Ursache | Lösung |
+|---------|--------|
+| Nur ein Validierungsbefehl hat Dateien geändert oder angelegt (Quellcode, Build-Ausgabe, `.venv/`) | Erwartet, nichts zu tun. Build- und Tool-Verzeichnisse in `.gitignore` aufnehmen, dann bleibt das Log ruhig. |
+| Die Requirements-Datei heißt nicht `requirements*.txt` und `requirements-file` zeigt nicht auf sie | `requirements-file` relativ zu `working-directory` angeben, z. B. `"working-directory": "backend", "requirements-file": "requirements/prod.txt"` |
+| Die Datei ist neu: ein Manifest oder eine Lock-Datei ohne versioniertes Manifest im selben Verzeichnis | Die Datei einmal selbst committen. Ab dann ist sie versioniert, und der Lauf committet ihre Änderungen. |
+
+### Ein Update fehlt im Commit
+
+Der Commit enthält nur einen Teil der erwarteten Dateien, oder eine Lock-Datei fehlt:
+
+- **Lock-Datei ignoriert?** `git check-ignore -v package-lock.json` zeigt die Regel. Eine neue, ignorierte Datei wird nie committet — Regel entfernen und die Datei einchecken.
+- **Neue Lock-Datei ohne Manifest daneben?** Eine neue Lock-Datei wird nur committet, wenn ihr Manifest im **selben** Verzeichnis versioniert ist (`go.sum` neben `go.mod`). Liegt das Manifest woanders oder ist es nicht eingecheckt, die Lock-Datei einmal selbst committen.
+- **Datei unter `node_modules/`?** Wird nie committet, auch ohne `.gitignore`.
+- **Validierung fehlgeschlagen?** Dann wurde alles zurückgerollt und nichts committet, siehe [Validation fehlgeschlagen](#validation-fehlgeschlagen).
+- **Welche Dateien hat der Lauf geändert?** Der Schritt „Detect changes“ listet geänderte und neue Dateien, „Commit and push“ unter `Staged files` die committeten und unter `Not committed` die übrigen.
+
+### Build-Ausgabe im Commit
+
+Eine versionierte Datei, die wie ein Manifest heißt, wird committet, sobald der Lauf sie ändert — auch wenn sie Build-Ausgabe ist, z. B. ein eingechecktes `dist/package.json`, das `npm run build` neu schreibt. Soll sie nicht mehr mitlaufen: `git rm --cached dist/package.json` und `dist/` in `.gitignore` aufnehmen. Nicht versionierte Build-Ausgabe wird nie committet.
 
 ### Validation fehlgeschlagen
 
