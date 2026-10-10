@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.8.0](https://github.com/bauer-group/automation-templates/compare/v11.7.2...v11.8.0) (2026-10-10)
+
+### 🚀 Features
+
+* **backup-roundtrip:** tested every job of a multi-job configuration ([7f25048](https://github.com/bauer-group/automation-templates/commit/7f25048df12409cb39054d3826e6fba70575b0cd))
+
 ## [11.7.2](https://github.com/bauer-group/automation-templates/compare/v11.7.1...v11.7.2) (2026-10-10)
 
 ### 🐛 Bug Fixes
