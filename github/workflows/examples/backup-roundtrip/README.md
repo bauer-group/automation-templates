@@ -14,6 +14,7 @@ Full reference: [`docs/workflows/modules-backup-roundtrip-test.md`](../../../../
 | [upgrade-from-previous-release.yml](upgrade-from-previous-release.yml) | The previous release seeds and backs up, the stack is upgraded to this commit like an operator does, and the new sidecar restores the old snapshot |
 | [offsite-s3-new-host.yml](offsite-s3-new-host.yml) | The snapshot must reach an S3 bucket (a throwaway MinIO), and the restore runs on a "new host" whose data dir was wiped - it has to pull the snapshot back from S3 |
 | [compose-variants-matrix.yml](compose-variants-matrix.yml) | One round trip per compose variant (local, Traefik, Coolify) in a matrix; `external-networks: 'auto'` creates the proxy networks the variants declare external |
+| [several-backup-jobs.yml](several-backup-jobs.yml) | A sidecar with several backup jobs (database hourly, files nightly): one snapshot per job is inspected, verified and restored, the release gate reads `snapshot-ids` |
 
 ## Setup
 
@@ -40,6 +41,7 @@ Full reference: [`docs/workflows/modules-backup-roundtrip-test.md`](../../../../
 | Healthcheck | The sidecar reports the new snapshot as fresh |
 | Upgrade (`upgrade-from`) | The previous release took the snapshot; after the upgrade the data was intact, the new sidecar healthy, and the new sidecar restored the old snapshot |
 | S3 (`s3-destination`) | Archive and manifest reached the bucket; after the sidecar's data dir was wiped, the restore pulled the snapshot back from S3 and it passed `verify` |
+| Several jobs | Every phase above held for every job's snapshot, and the snapshots were restored in config order |
 
 ## Related
 
