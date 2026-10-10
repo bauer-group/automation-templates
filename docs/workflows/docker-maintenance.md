@@ -930,6 +930,8 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 2. Check Settings → Security → Dependabot is enabled
 3. Verify `package-ecosystem: "docker"` is configured
 4. Check `directory` points to folder with Dockerfile
+5. Compose files: `package-ecosystem: "docker-compose"`, with `directory`
+   pointing to the folder that holds them - `"docker"` does not read them
 
 ### Renovate Not Creating PRs
 
