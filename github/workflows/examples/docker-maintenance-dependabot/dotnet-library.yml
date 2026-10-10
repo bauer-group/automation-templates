@@ -15,11 +15,17 @@
 #   nothing: prefix "chore(deps)" (dependabot.yml below). The updates then
 #   ship with the next feat or fix release.
 # - "chore(deps)" releases nothing with the default release rules of
-#   modules-semantic-release.yml. A repository whose
-#   .github/config/release/semantic-release.json has the rule
-#   {"type": "chore", "scope": "deps", "release": "patch"} (as the one in
-#   automation-templates) releases on it - use a type its rules leave out
-#   there, e.g. "build(deps)".
+#   modules-semantic-release.yml. Custom releaseRules in
+#   .github/config/release/semantic-release.json decide for themselves:
+#   every matching rule counts, in order, and a later match with
+#   "release": false overrides an earlier "patch". automation-templates'
+#   own config ({"type": "chore", "scope": "deps", "release": "patch"},
+#   then {"type": "chore", "release": false}) therefore releases nothing on
+#   chore(deps) either. Only rules that leave chore(deps) at a release (the
+#   chore/deps patch rule without a later chore rule set to false) need
+#   another type they do not release on, e.g. "build(deps)".
+# - force-release: true (used only without custom releaseRules) releases on
+#   every commit type, chore(deps) and build(deps) included.
 # - A release per update wanted (e.g. a security fix has to reach consumers
 #   at once)? Use "fix(deps)".
 #
