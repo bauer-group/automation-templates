@@ -253,6 +253,14 @@ Optionale Anpassungen:
 | `config-file` | `.github/config/maintenance/config.json` | Abweichender Pfad |
 | `runs-on` | `ubuntu-latest` | Self-hosted Runner |
 | `dry-run` | `false` | Zum Testen |
+| `fail-on-unreachable-image` | `true` | `false` stuft ein nicht lesbares Base-Image-Manifest (Auth, Netzwerk, falscher Tag) zur Warnung herab. Der Lauf meldet dann Erfolg, obwohl diese Images nie geprüft wurden. |
+
+Outputs des Reusable Workflows:
+
+| Output | Beschreibung |
+|--------|--------------|
+| `updates-found` | `true`, wenn der Lauf Base-Image- oder Dependency-Updates gefunden hat — auch dann, wenn keine davon committet wurde (fehlgeschlagene Validierung, nur nicht committbare Dateien, `dry-run`) |
+| `summary` | Kurzfassung, z. B. `Updates found: base images + dependencies` oder `No updates found` |
 
 ---
 
