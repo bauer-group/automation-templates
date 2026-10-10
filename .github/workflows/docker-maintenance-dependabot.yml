@@ -76,7 +76,7 @@
 #   merge at all.
 # - jq on the runner (preinstalled on GitHub-hosted runners) to read the
 #   versions of the updated dependencies. Without it the 0.x rule cannot be
-#   applied: a warning says so and the update type Dependabot reported counts.
+#   checked, so the PR is left open - never merged on an unchecked type.
 # =============================================================================
 
 name: 🐳 Docker Maintenance (Dependabot)
@@ -262,7 +262,8 @@ jobs:
           # grouped PR the strictest one decides. Only plain X.Y.Z versions are
           # read (a leading v and a pre-release or build suffix allowed); any
           # other version - a tag like 18-alpine, a date, a digest - keeps the
-          # type Dependabot reported.
+          # type Dependabot reported. Versions that cannot be read at all leave
+          # the PR open: a merge gate must not merge what it could not check.
           TYPE_NOTE=""
           if ! DEPS=$(printf '%s' "$UPDATED_DEPENDENCIES_JSON" | jq -r '
                 if type == "array" then .[] else error("not a list") end
@@ -270,7 +271,9 @@ jobs:
                 | [.dependencyName, .prevVersion, .newVersion, .updateType]
                 | map(if . == null or . == "" then "-" else tostring end)
                 | @tsv' 2> /dev/null) || [ -z "$DEPS" ]; then
-            echo "::warning title=Dependabot versions not read::The versions of the updated dependencies could not be read, so a 0.x update could not be checked. The update type is taken as Dependabot reported it: semver-$TYPE."
+            echo "::notice title=Dependabot PR left open::The versions of the updated dependencies could not be read (jq missing on the runner, or unexpected output of dependabot/fetch-metadata), so it cannot be shown that this is not a 0.x update, which may break on any change. Review and merge it by hand."
+            decide false versions-unreadable
+            exit 0
           else
             SEMVER='^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
             while IFS=$'\t' read -r DEP PREV NEW DEP_TYPE; do
@@ -725,6 +728,7 @@ jobs:
             ci-change)           DECISION="⏸️ Left open: a GitHub Actions update changes the CI itself, so its CI cannot vouch for it." ;;
             update-type)         DECISION="⏸️ Left open: only $ALLOWED updates are merged automatically (merge-update-types)." ;;
             unknown-update-type) DECISION="⏸️ Left open: the update type could not be determined." ;;
+            versions-unreadable) DECISION="⏸️ Left open: the versions of the updated dependencies could not be read, so the 0.x rule could not be checked." ;;
             patch|minor|major)
               case "$CI_RESULT" in
                 green)
