@@ -14,7 +14,8 @@ This reusable workflow runs the complete cycle against the caller's own compose 
 - **A check that must discriminate** — your check script has to see the data before the backup, *not* see it after the deletion and see it again after the restore, so a restore that writes nothing cannot pass
 - **No credentials in the repository** — passwords are generated per run and masked
 - **Logs stay private** — runs in the consumer repository; diagnostics are uploaded there on failure only
-- **Release gate** — exposes `result`, `snapshot-id` and `components` for `needs:` conditions
+- **Release gate** — exposes `result`, `snapshot-id`, `snapshot-ids` and `components` for `needs:` conditions
+- **Several backup jobs** — a `BACKUP_CONFIG_JSON` with more than one job is tested completely: one snapshot per job is inspected, verified and restored, in config order, see [Several Backup Jobs](#several-backup-jobs)
 - **Upgrade of an existing installation** (opt-in) — the previous release seeds and backs up, the stack is upgraded to this commit like an operator does, data and healthcheck are checked, and the old snapshot is restored with the new sidecar, see [Upgrade from a Previous Release](#upgrade-from-a-previous-release)
 - **Off-site copy and a new host** (opt-in) — a throwaway S3 server becomes the sidecar's S3 destination; the snapshot must reach the bucket, then the sidecar's local data is wiped and the restore has to pull it back from S3, see [Off-Site S3 and a New Host](#off-site-s3-and-a-new-host)
 - **Every compose variant** (opt-in) — creates the external proxy network a Traefik or Coolify file expects, so the round trip runs once per variant in a matrix, see [Compose Variants](#compose-variants-traefik-coolify)
@@ -48,9 +49,9 @@ Everything marked opt-in is off by default: a caller that does not set those inp
 2. **Build** — each `build-images` entry is built with `--pull` and tagged with the image reference its compose service resolves to. Compose then starts that build instead of pulling the released image. Before that, `external-networks` (if set) creates the external networks the configuration needs.
 3. **Start** — the images of the started services are pulled (the `services` input and everything it depends on, or every service when `services` is empty), except the images under test. `docker compose up -d --wait` then waits until every service is running or healthy and one-shot dependencies have completed. On the fresh volumes of a run the sidecar is healthy, see [BackupHelper 1.7.7 and later](#backuphelper-177-and-later).
 4. **Seed** — `seed-script` writes marker data; `check-script` must then report it **present**.
-5. **Back up** — `backuphelper create` runs inside the sidecar and must exit `0`; from BackupHelper 1.7.7 on it exits `1` when a component failed. The new snapshot is found by comparing `list` before and after — also after a non-zero exit, so that *Inspect snapshot* can still name the failed component before the job fails. `show` must report every component without `error`, without warnings (unless allowed) and must include every `require-components` name. `verify` must confirm the archive checksum.
+5. **Back up** — `backuphelper create` runs inside the sidecar and must exit `0`; from BackupHelper 1.7.7 on it exits `1` when a component failed. The new snapshot is found by comparing `list` before and after — also after a non-zero exit, so that *Inspect snapshot* can still name the failed component before the job fails. `create` runs every job of the configuration; with several jobs the module takes one snapshot per job and every check below applies to each of them, see [Several Backup Jobs](#several-backup-jobs). `show` must report every component without `error`, without warnings (unless allowed) and must include every `require-components` name. `verify` must confirm the archive checksum.
 6. **Mutate** — `mutate-script` deletes the seeded data; `check-script` must now report it **absent**.
-7. **Restore** — `services-to-stop-before-restore` are stopped, the snapshot is restored, and the stack is started again with `up --wait`.
+7. **Restore** — `services-to-stop-before-restore` are stopped, the snapshot is restored — with several jobs every job's snapshot, in config order — and the stack is started again with `up --wait`.
 8. **Check** — `check-script` must report the data **present** again.
 9. **Healthcheck** — `backuphelper healthcheck` must report the new snapshot as fresh.
 
@@ -128,11 +129,11 @@ Ready-to-copy callers are in [`github/workflows/examples/backup-roundtrip/`](../
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `backup-service` | **Required.** Compose service of the BackupHelper sidecar. It must run as a daemon; the CLI is executed inside it with `docker compose exec` | — |
-| `require-components` | Component names the snapshot must contain (spaces, commas or newlines). Catches a source that is disabled, skipped (an S3 source with an empty bucket) or renamed | `''` |
+| `require-components` | Component names the snapshot must contain (spaces, commas or newlines) — with several jobs, one of the jobs' snapshots. Catches a source that is disabled, skipped (an S3 source with an empty bucket) or renamed | `''` |
 | `allow-component-warnings` | Accept components that report warnings, such as files a filesystem source could not read | `false` |
 | `services-to-stop-before-restore` | Services to stop before the restore — usually the application containers that hold database connections or write files. Started again afterwards | `''` |
 | `restore-command` | Engine subcommand that restores. Change it only for a plugin that wraps restore, e.g. `'documenso restore'` | `'restore'` |
-| `restore-args` | Arguments after the snapshot id. Keep `--force` — there is no terminal for the confirmation | `'--force'` |
+| `restore-args` | Arguments after the snapshot id. Keep `--force` — there is no terminal for the confirmation. With several jobs they are passed to every job's restore, so an `--only` name must be in each job's snapshot | `'--force'` |
 | `run-healthcheck` | Run `backuphelper healthcheck` at the end and, with `upgrade-from`, right after the upgrade | `true` |
 
 ### Upgrade from a previous release (opt-in)
@@ -183,9 +184,12 @@ Without scripts the module still tests the backup mechanics (create, show, verif
 
 | Output | Description |
 |--------|-------------|
-| `snapshot-id` | Id of the snapshot that was created and restored (`YYYY-MM-DD_HH-MM-SS`). Also set when `create` failed but stored a snapshot |
-| `components` | JSON array of the snapshot's components: `[{"name", "kind", "size", "error"}]`. Also set when `create` failed but stored a snapshot, with the failed component's `error` |
+| `snapshot-id` | Id of the snapshot that was created and restored (`YYYY-MM-DD_HH-MM-SS`). With several jobs the first job's snapshot (`YYYY-MM-DD_HH-MM-SS_<job>`). Also set when `create` failed but stored a snapshot |
+| `snapshot-ids` | JSON array of every snapshot the round trip created and restored, one per job in config order: `[{"job", "id"}]`. With one job it holds exactly `snapshot-id` (`[{"job": "main", "id": "2026-10-08_09-14-46"}]`). Also set when `create` failed but stored snapshots |
+| `components` | JSON array of the snapshot's components: `[{"name", "kind", "size", "error"}]`. With several jobs the components of every job's snapshot in config order, each with the job it belongs to: `[{"job", "name", "kind", "size", "error"}]`. Also set when `create` failed but stored a snapshot, with the failed component's `error` |
 | `result` | Result of the round-trip job: `success`, `failure` or `cancelled` |
+
+With one job, `snapshot-id` and `components` are exactly what they were before `snapshot-ids` existed; a release gate that reads them needs no change.
 
 ## Secrets
 
@@ -271,7 +275,8 @@ The scripts are plain bash files in the caller repository, run with `bash <scrip
 | `ROUNDTRIP_MARKER` | seed, mutate, check | Unique token per run, `rt-<run id>-<attempt>-<8 hex>` — only `[a-z0-9-]`. Tag everything you write with it |
 | `ROUNDTRIP_PHASE` | all | `prepare`, `seed`, `mutate`, `check` or `upgrade` |
 | `ROUNDTRIP_EXPECT` | check | `present` or `absent` |
-| `ROUNDTRIP_SNAPSHOT_ID` | upgrade, mutate, check after the backup | Id of the snapshot under test |
+| `ROUNDTRIP_SNAPSHOT_ID` | upgrade, mutate, check after the backup | Id of the snapshot under test — with several jobs, the first job's |
+| `ROUNDTRIP_SNAPSHOT_IDS` | upgrade, mutate, check after the backup | JSON array of every snapshot under test, one per job in config order: `[{"job", "id"}]` (the `snapshot-ids` output) |
 | `ROUNDTRIP_PREVIOUS_RELEASE` | all after *Pull previous release* (`upgrade-from`) | The release tag `latest-release` resolved to (`v0.2.61`); empty for explicit tags |
 | `ROUNDTRIP_PREVIOUS_IMAGES` | all after *Pull previous release* (`upgrade-from`) | JSON object: upgraded service → image of the previous release |
 | `ROUNDTRIP_BACKUP_SERVICE` | seed, mutate, check | The `backup-service` input |
@@ -508,6 +513,42 @@ services:
 
 A ready-to-copy caller is in [`offsite-s3-new-host.yml`](../../github/workflows/examples/backup-roundtrip/offsite-s3-new-host.yml).
 
+## Several Backup Jobs
+
+A stack that backs up its parts separately — the database hourly, the files nightly, an export weekly — has several jobs in its `BACKUP_CONFIG_JSON`. `backuphelper create` runs all of them, one after the other, and each stores a snapshot of its own. The round trip tests every one of them; there is no input to set:
+
+```json
+{
+  "jobs": [
+    {"name": "database", "sources": [{"type": "postgres", "name": "database", "...": "..."}], "schedule": {"cron": "15 * * * *"}},
+    {"name": "files",    "sources": [{"type": "filesystem", "name": "files", "path": "/srv/files"}], "schedule": {"cron": "45 3 * * *"}}
+  ]
+}
+```
+
+**Needs BackupHelper 1.10.0 or later.** From 1.10.0 on, the engine names the job in the snapshot id of a configuration with several jobs — `2026-10-08_09-14-46_database`, `2026-10-08_09-14-47_files` ([snapshot ids](https://github.com/bauer-group/CS-BackupHelper/blob/main/docs/configuration.md#snapshot-ids)) — and `restore` puts a snapshot back into the job its id names. Before, every job wrote a plain timestamp: the snapshots could not be told apart, two jobs starting in the same second overwrote each other, and `restore` without `--job` restored into the first job. A sidecar built `FROM ghcr.io/bauer-group/cs-backuphelper/backuphelper:latest` has it; a configuration with one job keeps its plain ids on every version.
+
+| Phase | With several jobs |
+|-------|-------------------|
+| Create | The job names come from `backuphelper config`, in config order — the order `create` runs them. Each job's snapshot is the new local snapshot whose id ends in `_<job>` (every character of the name other than a letter, digit, `-` or `_` becomes `-` there, as in the engine). A job without one, plain ids of an older engine, or two jobs whose names give the same id suffix fail *Create backup* with a message saying which |
+| Inspect | `show` for every snapshot: each component error-free and warning-free (annotations name the job), and `require-components` must be found in one of the snapshots — a database job and a files job together satisfy `require-components: 'database files'` |
+| Verify | `verify` for every snapshot |
+| Off-site copy (`s3-destination`) | Archive and manifest of **every** job's snapshot must be in the bucket. A job that stays local fails here: on a new host its data would be gone |
+| New host (`s3-destination`) | `list` shows only the first job's off-site copies, so every job is asked with `list --job <job>` for its own snapshot |
+| Restore | Every snapshot, in config order, with `restore-command <id> restore-args` as given — the engine picks the job from the id, so a plugin command needs no `--job`. Before it, the module checks that every snapshot's job is still configured: after an upgrade that renamed a job the engine would restore into the first job without a word |
+| After the restore (`s3-destination`) | Every snapshot must be local again and pass `verify` |
+| Healthcheck | Unchanged — the engine judges every job on its own |
+
+**Outputs.** `snapshot-id` is the first job's snapshot, `snapshot-ids` lists all of them with their job, and every entry of `components` carries its `job`. Scripts get the same list as `ROUNDTRIP_SNAPSHOT_IDS`.
+
+**`restore-args`** go to every job's restore. Keep `--force`; an `--only` name must be in every job's snapshot, which with jobs of different sources it is not — leave `--only` out and let every job restore completely.
+
+**`upgrade-from`.** The previous release takes the snapshots, so its sidecar must be on BackupHelper 1.10.0 or later as well; with an older one *Create backup* fails on the plain ids. Point `upgrade-from` at the first release built on 1.10.0 (the JSON form takes a tag per service) until `latest-release` is one. Job names must survive the upgrade — the round trip fails before the restore when one is gone.
+
+**Every job is tested.** `create` always runs every job, so there is no input to leave one out. A source that needs an external service is switched off as usual ([Sources that need external services](#sources-that-need-external-services)); a job whose every source is external has nothing to back up on a runner — leave it out of a CI-only configuration in an override file (`compose-files`), the way the module's fixture replaces its configuration.
+
+A ready-to-copy caller is in [`several-backup-jobs.yml`](../../github/workflows/examples/backup-roundtrip/several-backup-jobs.yml). The module's self-test runs a two-job configuration of its fixture ([`docker-compose.multi-job.yml`](../../.github/workflows/tests/backup-roundtrip/docker-compose.multi-job.yml)) twice — once plain, once with `s3-destination` and an upgrade from engine 1.10.0.
+
 ## Compose Variants (Traefik, Coolify)
 
 Most stacks ship several compose files: a local one with published ports, one for Traefik, one for Coolify. Operators deploy the variant, not the local file, and the variants differ in exactly the places a backup depends on — volume names, networks, the sidecar's environment. Run the round trip once per variant with a matrix:
@@ -632,9 +673,9 @@ Every run writes a summary with the result of each phase, the snapshot's compone
 | Backup healthcheck  | ✅ Passed |
 ```
 
-When `create` exited non-zero, the summary says so, with the exit code and whether a snapshot was stored. Opt-in phases add their rows only when they are configured — with `upgrade-from` *Pull previous release*, *Previous release runs* and *Upgrade to this commit*, plus a table of the previous release's images; with `s3-destination` *Off-site copy in S3*, *New host: local data wiped* and *Snapshot pulled back from S3*, plus a table of the objects in the bucket; with `external-networks` the networks the run created.
+When `create` exited non-zero, the summary says so, with the exit code and whether a snapshot was stored. With several jobs the summary names every job's snapshot and shows one component table per snapshot. Opt-in phases add their rows only when they are configured — with `upgrade-from` *Pull previous release*, *Previous release runs* and *Upgrade to this commit*, plus a table of the previous release's images; with `s3-destination` *Off-site copy in S3*, *New host: local data wiped* and *Snapshot pulled back from S3*, plus a table of the objects in the bucket; with `external-networks` the networks the run created.
 
-On failure (or cancellation) the artifact `artifact-name` contains `ps.txt`, `logs/<service>.log` for every service, `snapshots.txt`, `manifest.json` (once *Inspect snapshot* has run), the output of `create` and `restore`, and the runner's disk and memory state; with `s3-destination` also `s3-objects.json` (the bucket listing) and the generated `s3-destination.compose.yml`, which holds `.env` references only; with `upgrade-from` also `upgrade-plan.tsv` (service, previous image, reference). The `.env` is **never** included. Service logs are uploaded as they are — an application that logs its connection string logs the per-run generated password, which is worthless after the run. The same goes for the throwaway S3 server's log (`logs/roundtrip-s3.log`): MinIO prints its root credentials only when its output is a terminal (checked for RELEASE.2025-10-15, the version in the default image at the time of writing), and the module starts it without one; another `s3-image` may print them, but they too are generated per run and the server is removed with the job.
+On failure (or cancellation) the artifact `artifact-name` contains `ps.txt`, `logs/<service>.log` for every service, `snapshots.txt`, `manifest.json` (once *Inspect snapshot* has run; with several jobs one `manifest.<id>.json` per snapshot instead), the output of `create` and `restore`, and the runner's disk and memory state; with `s3-destination` also `s3-objects.json` (the bucket listing) and the generated `s3-destination.compose.yml`, which holds `.env` references only; with `upgrade-from` also `upgrade-plan.tsv` (service, previous image, reference). The `.env` is **never** included. Service logs are uploaded as they are — an application that logs its connection string logs the per-run generated password, which is worthless after the run. The same goes for the throwaway S3 server's log (`logs/roundtrip-s3.log`): MinIO prints its root credentials only when its output is a terminal (checked for RELEASE.2025-10-15, the version in the default image at the time of writing), and the module starts it without one; another `s3-image` may print them, but they too are generated per run and the server is removed with the job.
 
 ## Troubleshooting
 
@@ -670,6 +711,8 @@ With `s3-destination`: the sidecar did not upload. `create` exited `0` anyway �
 
 The sidecar that started on the empty data dir cannot see the bucket: `list` reads the off-site copies of the first job's S3 destination. Check that the destination is in the first job and that its settings survive a container restart (they come from the `.env`, not from a file in the data dir).
 
+With several jobs the module asks every job (`list --job <job>`), and the error names the job whose destination does not reach the bucket — usually one without the S3 destination, or with settings of its own that `s3-env` does not map. The same job fails *Off-site copy in S3* first, with `job '…': the archive of snapshot … is not in the bucket`.
+
 ### `local snapshots survived the wipe`
 
 *Simulate new host* emptied the data dir the sidecar's `BACKUP_DATA_DIR` names (default `/data`) — on its own mount, below a mount, or with the container — but the restarted sidecar still lists local snapshots. The sidecar keeps them somewhere else: `BACKUP_DATA_DIR` is set in a way the container's environment does not show (an entrypoint that exports it), or the data dir lies on a mount type that is not a volume or bind mount. The step log names the data dir and the mount it wiped.
@@ -683,6 +726,22 @@ The compose file — usually a Traefik or Coolify variant — joins a network th
 The run ended in `error`: a component failed (since BackupHelper 1.7.7), the snapshot was stored on no destination, or the run aborted — a `pre_backup` hook raised or the disk filled up while bundling. A snapshot with a failed component is still stored: the module resolves it and runs *Inspect snapshot*, whose annotations, step summary table and `manifest.json` in the artifact name the failed component and its `error`. The summary also states the exit code. When no snapshot was stored at all, the error says so and only `create.log` and the service logs remain.
 
 For a failed component, `create.log` reports `job <job> snapshot <id> finished: error`. A source that raised — a plugin source, a path the sidecar cannot read — also logged `source <name> (<type>) failed: …` there. A failed dump, a missing path, a failed S3 source or a source without output did not; their reason is only in the manifest, which *Inspect snapshot* reads for you.
+
+### `job '…' stored no local snapshot`
+
+The configuration has several jobs and one of them left no new snapshot in the data dir. Its run aborted (a `pre_backup` hook raised, the disk filled up) — and an aborted job stops the jobs after it in the same `create` — or it stores no local copy (`keep_local: false` with a working S3 destination, see [No local data volume, `keep_local: false`](#no-local-data-volume-keep_local-false)). `create.log` in the artifact shows each job's run. The snapshots of the other jobs are still inspected, so their problems show up in the same run.
+
+### `… stored snapshots whose ids name no job … BackupHelper before 1.10.0`
+
+The configuration has several jobs, but the sidecar runs an engine older than 1.10.0, which writes plain timestamps for every job. Rebuild the sidecar on 1.10.0 or later (`FROM ghcr.io/bauer-group/cs-backuphelper/backuphelper:latest`). With `upgrade-from`, the previous release took the snapshots: set `upgrade-from` to a release whose sidecar is on 1.10.0 or later, see [Several Backup Jobs](#several-backup-jobs).
+
+### `several jobs write snapshot ids ending in the same job name`
+
+Two job names become the same in a snapshot id, where every character other than a letter, digit, `-` or `_` is replaced by `-` — `db.hourly` and `db-hourly` both end in `_db-hourly`. Neither the module nor the engine can tell their snapshots apart, and two of them starting in the same second overwrite each other. Rename one of the jobs.
+
+### `job '…' of snapshot … is not in the configuration any more`
+
+With several jobs the engine restores a snapshot into the job its id names — and into the first job, without a word, when that job no longer exists. The configuration the restore runs with has no job of that name: the upgrade (`upgrade-from`, `upgrade-script`) renamed or removed it. Keep job names across releases; an operator restoring an old snapshot after such a release would have to pass `--job` by hand.
 
 ### `'backuphelper create' exited 0 but no new local snapshot appeared`
 
@@ -725,8 +784,8 @@ Docker Hub's anonymous pull limit for the runner's IP address is used up — typ
 - **Off-site storage is tested against MinIO only, and only with `s3-destination`.** Without it S3 destinations are skipped (empty bucket, the CI default). With it, upload and hydration run against a MinIO server over plain HTTP: provider specifics (AWS virtual-host addressing, R2 or B2 quirks), TLS and `ca_bundle` are not exercised.
 - **Encryption is tested only if the stack enables it in CI.** A stack that encrypts in production needs a throwaway key pair in the test configuration to exercise decryption.
 - **Linux runners with Docker Engine and a Compose v2 release that supports `up --wait --wait-timeout`.** `bash`, `jq` and `openssl` must be available — they are on GitHub-hosted runners.
-- **One snapshot per run.** Retention, GFS pruning and the scheduler are not exercised.
-- **One backup job per configuration.** `create` runs every job of `BACKUP_CONFIG_JSON`, but the module tests only the newest snapshot it produced, and the engine's `list`, `verify` and `restore` use the first job unless `--job` is given. A configuration with several jobs is therefore not covered completely; every consumer on the `jobs` schema defines exactly one today.
+- **One snapshot per job and run.** Retention, GFS pruning and the scheduler are not exercised.
+- **Several jobs need BackupHelper 1.10.0 or later**, which names the job in the snapshot id; with an older engine a configuration with several jobs fails *Create backup*. Every job runs and is restored — the module cannot leave one out. See [Several Backup Jobs](#several-backup-jobs).
 - **Restore is a full restore** unless `restore-args` narrows it with `--only`.
 - **The upgrade test is one hop, with the compose files of this commit.** `upgrade-from` upgrades from one release, by switching images; the previous release starts from this commit's compose files unless `upgrade-from-compose-files` says otherwise. Skipped releases in between, bind-mounted data (paths differ between checkouts) and a restore of the previous release's data into a downgraded stack are not covered.
 - **Compose variants run without their proxy.** `external-networks` creates the proxy network, but Traefik or Coolify is not started; routing, labels and TLS are not tested.

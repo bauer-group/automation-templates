@@ -147,6 +147,7 @@ Starts a compose stack with its BackupHelper sidecar, seeds data, backs it up, d
 - `backup-roundtrip/upgrade-from-previous-release.yml` - Upgrade from the latest release: old sidecar backs up, new sidecar restores
 - `backup-roundtrip/offsite-s3-new-host.yml` - Off-site copy in a throwaway S3 bucket, restored on a "new host" with a wiped data dir
 - `backup-roundtrip/compose-variants-matrix.yml` - One round trip per compose variant (local, Traefik, Coolify), external proxy networks created
+- `backup-roundtrip/several-backup-jobs.yml` - A sidecar with several backup jobs: one snapshot per job inspected, verified and restored
 - `backup-roundtrip/README.md` - Setup and what a run proves
 
 ### Docker Build (`docker-build.yml`)
