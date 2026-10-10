@@ -16,6 +16,8 @@ name: "🧪 Backup Round-Trip Self-Test"
 # module creates. Two runs use a throwaway MinIO as the S3 destination and
 # restore from it after the sidecar's local data was wiped. Three runs start
 # from a previous engine release and restore its snapshot after the upgrade.
+# Two runs back the stack up with two jobs (database and files) and must
+# restore one snapshot per job - one of them also through S3 and an upgrade.
 #
 # What a real stack cannot show without turning this workflow red - a create
 # that exits 1 for a failed component - is covered by the Step Tests job, which
@@ -275,10 +277,66 @@ jobs:
       artifact-name: 'backup-roundtrip-selftest-${{ matrix.variant }}-diagnostics'
     secrets: inherit
 
+  # Two backup jobs in one configuration (docker-compose.multi-job.yml): the
+  # database in one, the files in the other. 'create' runs both; the module
+  # must inspect, verify and restore one snapshot per job, in config order,
+  # and require-components counts the components of both. The second leg
+  # takes the snapshots with the engine release 1.10.0 - the first that
+  # names the job in the snapshot id - ships them to S3, upgrades to the
+  # sidecar built from this commit, wipes its data dir and restores both
+  # jobs' snapshots from the bucket.
+  roundtrip-multi-job:
+    name: "🧪 Fixture Round Trip (${{ matrix.leg }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: two jobs
+            artifact: multi-job
+            s3-destination: false
+            upgrade-from: ''
+          - leg: two jobs, S3 + upgrade
+            artifact: multi-job-s3-upgrade
+            s3-destination: true
+            upgrade-from: '{"backup": "ghcr.io/bauer-group/cs-backuphelper/backuphelper:1.10.0"}'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/modules-backup-roundtrip-test.yml
+    with:
+      working-directory: '.github/workflows/tests/backup-roundtrip'
+      compose-files: '["docker-compose.yml", "docker-compose.multi-job.yml"]'
+      profiles: 'backup'
+      env-overrides: |
+        APP_MODE=ci
+        SAAS_EXPORT_ENABLED=false
+      generated-secrets: 'DATABASE_PASSWORD'
+      prepare-script: 'prepare.sh'
+      build-images: '[{"service": "backup", "context": "backup"}]'
+      backup-service: 'backup'
+      # One component in each job.
+      require-components: 'database files'
+      services-to-stop-before-restore: 'app'
+      seed-script: 'seed.sh'
+      mutate-script: 'mutate.sh'
+      check-script: 'check.sh'
+      s3-destination: ${{ matrix.s3-destination }}
+      # Read only on the S3 leg.
+      s3-env: |
+        endpoint   BACKUP_S3_ENDPOINT
+        bucket     BACKUP_S3_BUCKET
+        access-key BACKUP_S3_ACCESS_KEY
+        secret-key BACKUP_S3_SECRET_KEY
+      upgrade-from: ${{ matrix.upgrade-from }}
+      wait-timeout: 180
+      timeout-minutes: 15
+      artifact-name: 'backup-roundtrip-selftest-${{ matrix.artifact }}-diagnostics'
+    secrets: inherit
+
   # The outputs are part of the module's contract - callers gate on them.
   check-outputs:
     name: "📋 Check Module Outputs"
-    needs: [roundtrip, roundtrip-services, roundtrip-s3, roundtrip-upgrade, roundtrip-variants]
+    needs: [roundtrip, roundtrip-services, roundtrip-s3, roundtrip-upgrade, roundtrip-variants, roundtrip-multi-job]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -300,10 +358,38 @@ jobs:
             echo "result:      $RESULT"
             [[ "$SNAPSHOT_ID" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]] \
               || { echo "::error::$JOB: snapshot-id is not a snapshot id"; exit 1; }
+            # One job: snapshot-ids holds exactly that job's snapshot.
+            jq -e --arg id "$SNAPSHOT_ID" '. == [{"job": "main", "id": $id}]' \
+                <<< "$(jq -r --arg j "$JOB" '.[$j].outputs["snapshot-ids"] // "null"' <<< "$NEEDS_JSON")" > /dev/null \
+              || { echo "::error::$JOB: snapshot-ids must hold the one job's snapshot"; exit 1; }
             jq -e '[.[].name] | sort == ["database", "files"]' <<< "$COMPONENTS" > /dev/null \
               || { echo "::error::$JOB: components must list exactly database and files (saas-export is disabled)"; exit 1; }
             jq -e 'all(.[]; .error == null and .size > 0)' <<< "$COMPONENTS" > /dev/null \
               || { echo "::error::$JOB: every component must be error-free and non-empty"; exit 1; }
             [ "$RESULT" = "success" ] || { echo "::error::$JOB: result must be success"; exit 1; }
           done
+
+          # Two jobs: one snapshot per job in config order, snapshot-id the
+          # first job's, every component with its job.
+          JOB=roundtrip-multi-job
+          SNAPSHOT_ID=$(jq -r --arg j "$JOB" '.[$j].outputs["snapshot-id"] // ""' <<< "$NEEDS_JSON")
+          SNAPSHOT_IDS=$(jq -r --arg j "$JOB" '.[$j].outputs["snapshot-ids"] // "null"' <<< "$NEEDS_JSON")
+          COMPONENTS=$(jq -r --arg j "$JOB" '.[$j].outputs.components // "null"' <<< "$NEEDS_JSON")
+          RESULT=$(jq -r --arg j "$JOB" '.[$j].outputs.result // ""' <<< "$NEEDS_JSON")
+          echo "== $JOB"
+          echo "snapshot-id:  $SNAPSHOT_ID"
+          echo "snapshot-ids: $SNAPSHOT_IDS"
+          echo "components:   $COMPONENTS"
+          echo "result:       $RESULT"
+          jq -e 'map(.job) == ["database", "files"]
+                 and all(.[]; (.id | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}_")) and .id[20:] == .job)' \
+               <<< "$SNAPSHOT_IDS" > /dev/null \
+            || { echo "::error::$JOB: snapshot-ids must hold one snapshot per job, in config order, each id naming its job"; exit 1; }
+          [ "$SNAPSHOT_ID" = "$(jq -r '.[0].id' <<< "$SNAPSHOT_IDS")" ] \
+            || { echo "::error::$JOB: snapshot-id must be the first job's snapshot"; exit 1; }
+          jq -e 'map({job, name}) == [{"job": "database", "name": "database"}, {"job": "files", "name": "files"}]' <<< "$COMPONENTS" > /dev/null \
+            || { echo "::error::$JOB: components must list database (job database) and files (job files)"; exit 1; }
+          jq -e 'all(.[]; .error == null and .size > 0)' <<< "$COMPONENTS" > /dev/null \
+            || { echo "::error::$JOB: every component must be error-free and non-empty"; exit 1; }
+          [ "$RESULT" = "success" ] || { echo "::error::$JOB: result must be success"; exit 1; }
           echo "✅ Outputs match the contract"

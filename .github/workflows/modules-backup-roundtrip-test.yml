@@ -29,6 +29,11 @@
 #   external-networks   creates the external networks a Traefik or Coolify
 #                       compose variant expects, so every variant can run
 #
+# A BACKUP_CONFIG_JSON with several jobs is tested completely, without an
+# input: 'create' runs every job, and one snapshot per job is inspected,
+# verified and restored, in config order (BackupHelper 1.10.0 and later,
+# which names the job in the snapshot id).
+#
 # It runs in the CALLER's repository, so logs and artifacts of private stacks
 # stay where they belong.
 #
@@ -289,10 +294,13 @@ on:
 
     outputs:
       snapshot-id:
-        description: "Id of the snapshot the round trip created and restored"
+        description: "Id of the snapshot the round trip created and restored; with several backup jobs the first job's"
         value: ${{ jobs.roundtrip.outputs.snapshot-id }}
+      snapshot-ids:
+        description: "JSON array of every snapshot the round trip created and restored, one per backup job in config order ({job, id}); with one job exactly snapshot-id"
+        value: ${{ jobs.roundtrip.outputs.snapshot-ids }}
       components:
-        description: "JSON array of the snapshot's components ({name, kind, size, error})"
+        description: "JSON array of the snapshot's components ({name, kind, size, error}); with several backup jobs those of every job's snapshot, each with its job ({job, name, kind, size, error})"
         value: ${{ jobs.roundtrip.outputs.components }}
       result:
         description: "Result of the round trip job: success, failure or cancelled"
@@ -310,6 +318,7 @@ jobs:
 
     outputs:
       snapshot-id: ${{ steps.create.outputs.snapshot-id }}
+      snapshot-ids: ${{ steps.create.outputs.snapshot-ids }}
       components: ${{ steps.inspect.outputs.components }}
 
     defaults:
@@ -1200,9 +1209,14 @@ jobs:
           set -euo pipefail
           source "$ROUNDTRIP_DIR/lib.sh"
           SID_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$'
+          # In a config with several jobs the id also names the job
+          # (BackupHelper 1.10.0 and later): <timestamp>_<job>.
+          ANY_SID_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}(_[A-Za-z0-9_-]+)?$'
+          SNAPSHOTS="$ROUNDTRIP_DIR/snapshots.tsv"
+          : > "$SNAPSHOTS"
 
           # Local snapshots only (size > 0); off-site-only rows report 0 bytes.
-          local_ids() { awk -v re="$SID_RE" '$1 ~ re && $2 > 0 {print $1}' | sort; }
+          local_ids() { awk -v re="$ANY_SID_RE" '$1 ~ re && $2 > 0 {print $1}' | sort; }
 
           LIST_BEFORE=$(bh list)
           local_ids <<< "$LIST_BEFORE" > "$ROUNDTRIP_DIR/ids-before.txt"
@@ -1233,91 +1247,193 @@ jobs:
             fi
             exit 1
           fi
-          if [ ${#NEW_IDS[@]} -gt 1 ]; then
-            echo "::warning::${#NEW_IDS[@]} new snapshots (a scheduled run fired as well) - using the newest"
+
+          # The configured jobs in config order - the order 'create' ran them
+          # and the restore follows. Job names are never redacted. A config
+          # that cannot be read here counts as one job, as before.
+          JOBS=$(bh config 2> /dev/null | jq -c '[.jobs[]?.name | strings]' 2> /dev/null) || JOBS='[]'
+          [ -n "$JOBS" ] || JOBS='[]'
+          JOB_COUNT=$(jq 'length' <<< "$JOBS")
+
+          MISSING=0
+          if [ "$JOB_COUNT" -le 1 ]; then
+            # One job: one snapshot, plain id.
+            if [ ${#NEW_IDS[@]} -gt 1 ]; then
+              echo "::warning::${#NEW_IDS[@]} new snapshots (a scheduled run fired as well) - using the newest"
+            fi
+            printf '%s\t%s\n' "$(jq -r '.[0] // ""' <<< "$JOBS")" "${NEW_IDS[-1]}" > "$SNAPSHOTS"
+          else
+            # Several jobs: one snapshot per job, found by the job its id names
+            # - every character of the name other than a letter, digit, '-'
+            # or '_' becomes '-' there (the engine's job slug).
+            NEW_JSON=$(printf '%s\n' "${NEW_IDS[@]}" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            PLAN=$(jq -r --argjson ids "$NEW_JSON" '.[] | . as $job
+                     | (gsub("[^A-Za-z0-9_-]"; "-") | if . == "" then "-" else . end) as $slug
+                     | [$ids[] | select(.[20:] == $slug)] as $mine
+                     | [$job, $slug, ($mine | length), ($mine | last // "")] | @tsv' <<< "$JOBS")
+            SHARED=$(cut -f 2 <<< "$PLAN" | sort | uniq -d | paste -sd ' ' -)
+            if [ -n "$SHARED" ]; then
+              echo "::error title=Backup round trip::several jobs write snapshot ids ending in the same job name ($SHARED) - their snapshots cannot be told apart, and two of them starting in the same second overwrite each other. Give every job a name that stays distinct when every character other than a letter, digit, '-' or '_' becomes '-'."
+              exit 1
+            fi
+            # No job named in any new id, but plain ids: an engine before
+            # 1.10.0 wrote them for every job.
+            PLAIN=$(jq -r --arg re "$SID_RE" 'map(select(test($re))) | join(" ")' <<< "$NEW_JSON")
+            if [ -n "$PLAIN" ] && ! cut -f 3 <<< "$PLAN" | grep -qvx 0; then
+              echo "::error title=Backup round trip::the configuration has $JOB_COUNT jobs ($(jq -r 'join(", ")' <<< "$JOBS")), but 'create' stored snapshots whose ids name no job: $PLAIN. BackupHelper before 1.10.0 does not name the job in the id, so the jobs' snapshots cannot be told apart and 'restore' would put each into the first job. Build the sidecar on BackupHelper 1.10.0 or later - with upgrade-from, the previous release's sidecar too."
+              exit 1
+            fi
+            while IFS=$'\t' read -r JOB SLUG COUNT NEWEST; do
+              if [ "$COUNT" -eq 0 ]; then
+                echo "::error title=Backup round trip::job '$JOB' stored no local snapshot (no new id ending in _$SLUG) - its run aborted, or a job before it aborted the invocation. See create.log in the diagnostics artifact."
+                MISSING=$((MISSING + 1))
+                continue
+              fi
+              if [ "$COUNT" -gt 1 ]; then
+                echo "::warning::job '$JOB': $COUNT new snapshots (a scheduled run fired as well) - using the newest"
+              fi
+              printf '%s\t%s\n' "$JOB" "$NEWEST" >> "$SNAPSHOTS"
+            done <<< "$PLAN"
           fi
-          SNAPSHOT_ID="${NEW_IDS[-1]}"
-          if [[ ! "$SNAPSHOT_ID" =~ $SID_RE ]]; then
-            echo "::error::unexpected snapshot id format"; exit 1
-          fi
+
+          # The first job's snapshot is snapshot-id, as with one job; every
+          # snapshot is in snapshot-ids and, for the steps below, in
+          # snapshots.tsv (job<TAB>id, config order).
+          [ -s "$SNAPSHOTS" ] || exit 1
+          # Split by expansion, not 'read': a tab is IFS whitespace, and an
+          # empty job name (config not printed) would shift the id.
+          while IFS= read -r ROW; do
+            if [[ ! "${ROW#*$'\t'}" =~ $ANY_SID_RE ]]; then
+              echo "::error::unexpected snapshot id format"; exit 1
+            fi
+          done < "$SNAPSHOTS"
+          SNAPSHOT_ID=$(head -n 1 "$SNAPSHOTS" | cut -f 2)
+          SNAPSHOT_IDS=$(jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {job: .[0], id: .[1]})' "$SNAPSHOTS")
+          # shellcheck disable=SC2129
           echo "snapshot-id=$SNAPSHOT_ID" >> "$GITHUB_OUTPUT"
+          echo "snapshot-ids=$SNAPSHOT_IDS" >> "$GITHUB_OUTPUT"
           echo "ROUNDTRIP_SNAPSHOT_ID=$SNAPSHOT_ID" >> "$GITHUB_ENV"
+          echo "ROUNDTRIP_SNAPSHOT_IDS=$SNAPSHOT_IDS" >> "$GITHUB_ENV"
+          if [ "$JOB_COUNT" -gt 1 ]; then
+            jq -r '.[] | "  job \(.job): snapshot \(.id)"' <<< "$SNAPSHOT_IDS"
+          fi
 
           if [ "$CREATE_EXIT" -ne 0 ]; then
-            echo "::error title=Backup round trip::'backuphelper create' exited $CREATE_EXIT: snapshot $SNAPSHOT_ID was stored, but the run ended in error - usually a failed component. Inspect Snapshot below names it."
+            if [ "$JOB_COUNT" -gt 1 ]; then
+              echo "::error title=Backup round trip::'backuphelper create' exited $CREATE_EXIT: $(jq -r 'map(.id) | join(", ")' <<< "$SNAPSHOT_IDS") stored, but a run ended in error - usually a failed component. Inspect Snapshot below names it."
+            else
+              echo "::error title=Backup round trip::'backuphelper create' exited $CREATE_EXIT: snapshot $SNAPSHOT_ID was stored, but the run ended in error - usually a failed component. Inspect Snapshot below names it."
+            fi
             exit 1
           fi
-          echo "✅ Snapshot $SNAPSHOT_ID created"
+          [ "$MISSING" -eq 0 ] || exit 1
+          if [ "$JOB_COUNT" -gt 1 ]; then
+            echo "✅ $(wc -l < "$SNAPSHOTS") snapshots created, one per job"
+          else
+            echo "✅ Snapshot $SNAPSHOT_ID created"
+          fi
 
       # Also after a failed create, as long as it stored a snapshot: the
       # manifest names the failed component and its error, which 'create'
       # itself does not print for every source type. The job is failed by
       # Create Backup either way; the steps after this one do not run.
+      # With several jobs every job's snapshot is inspected, and
+      # require-components counts the components of all of them.
       - name: "📋 Inspect Snapshot"
         id: inspect
         if: ${{ !cancelled() && steps.create.outputs.snapshot-id != '' }}
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
         env:
           REQUIRE_COMPONENTS: ${{ inputs.require-components }}
           ALLOW_WARNINGS: ${{ inputs.allow-component-warnings }}
-          SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
         run: |
           set -euo pipefail
           set -f # require-components is split on whitespace below, never globbed
           source "$ROUNDTRIP_DIR/lib.sh"
-          MANIFEST="$ROUNDTRIP_DIR/diagnostics/manifest.json"
-          bh show "$SNAPSHOT_ID" > "$MANIFEST"
-          jq -e 'type == "object"' "$MANIFEST" > /dev/null || { echo "::error::'show' did not print a JSON manifest"; cat "$MANIFEST"; exit 1; }
+          # job<TAB>id per snapshot, config order (Create Backup). Read first:
+          # 'docker compose exec' would consume a loop's stdin.
+          mapfile -t ROWS < "$ROUNDTRIP_DIR/snapshots.tsv"
+          [ ${#ROWS[@]} -gt 0 ] || { echo "::error::no snapshot to inspect"; exit 1; }
+          MULTI=false
+          [ ${#ROWS[@]} -eq 1 ] || MULTI=true
 
           # Warnings as a list of strings, whatever shape a plugin source writes.
           WARNINGS_DEF='def warnings: (.metadata.warnings // []) | if type == "array" then map(tostring) else [tostring] end;'
 
-          echo "components=$(jq -c '[.components[] | {name, kind, size, error}]' "$MANIFEST")" >> "$GITHUB_OUTPUT"
-          jq -r "$WARNINGS_DEF"'.components[] | "  \(.name) (\(.kind)): \(.size) bytes, error: \(.error // "none"), warnings: \(warnings | length)"' "$MANIFEST"
-
           ERRORS=0
           fail() { echo "::error title=Backup round trip::$1"; ERRORS=$((ERRORS + 1)); }
 
-          [ "$(jq -r '.snapshot_id' "$MANIFEST")" = "$SNAPSHOT_ID" ] || fail "manifest belongs to another snapshot"
-          [ -n "$(jq -r '.archive_sha256 // empty' "$MANIFEST")" ] || fail "manifest has no archive_sha256 - verify and restore cannot check the archive"
-          [ "$(jq '.components | length' "$MANIFEST")" -gt 0 ] || fail "snapshot has no components"
-
-          # Captured first, not read from a process substitution: there a jq
-          # error is ignored and the gate would pass with nothing checked.
-          FAILED=$(jq -r '.components[] | select(.error != null) | "\(.name)\t\(.error)"' "$MANIFEST")
-          WARNED=$(jq -r "$WARNINGS_DEF"'.components[] | select(warnings | length > 0)
-                          | "\(.name)\t\(warnings | join("; "))"' "$MANIFEST")
-
-          while IFS=$'\t' read -r NAME ERROR; do
-            [ -n "$NAME" ] || continue
-            fail "component '$NAME' failed: $ERROR"
-          done <<< "$FAILED"
-
-          while IFS=$'\t' read -r NAME WARNINGS; do
-            [ -n "$NAME" ] || continue
-            if [ "$ALLOW_WARNINGS" = "true" ]; then
-              echo "::warning::component '$NAME' reported warnings: $WARNINGS"
-            else
-              fail "component '$NAME' reported warnings (set allow-component-warnings to accept): $WARNINGS"
+          # Every snapshot's components; with several jobs each names its job.
+          COMPONENTS='[]'
+          for ROW in "${ROWS[@]}"; do
+            JOB="${ROW%%$'\t'*}"
+            SNAPSHOT_ID="${ROW#*$'\t'}"
+            # One job keeps the file name manifest.json.
+            MANIFEST="$ROUNDTRIP_DIR/diagnostics/manifest.json"
+            WHERE=""
+            if [ "$MULTI" = "true" ]; then
+              MANIFEST="$ROUNDTRIP_DIR/diagnostics/manifest.$SNAPSHOT_ID.json"
+              WHERE="job '$JOB': "
+              echo "📋 Job $JOB, snapshot $SNAPSHOT_ID"
             fi
-          done <<< "$WARNED"
+            bh show "$SNAPSHOT_ID" > "$MANIFEST"
+            jq -e 'type == "object"' "$MANIFEST" > /dev/null || { echo "::error::'show' did not print a JSON manifest"; cat "$MANIFEST"; exit 1; }
+
+            COMPONENTS=$(jq -c --argjson all "$COMPONENTS" --arg job "$JOB" --arg multi "$MULTI" \
+              '$all + [.components[] | (if $multi == "true" then {job: $job} else {} end) + {name, kind, size, error}]' "$MANIFEST")
+            jq -r "$WARNINGS_DEF"'.components[] | "  \(.name) (\(.kind)): \(.size) bytes, error: \(.error // "none"), warnings: \(warnings | length)"' "$MANIFEST"
+
+            [ "$(jq -r '.snapshot_id' "$MANIFEST")" = "$SNAPSHOT_ID" ] || fail "${WHERE}manifest belongs to another snapshot"
+            [ -n "$(jq -r '.archive_sha256 // empty' "$MANIFEST")" ] || fail "${WHERE}manifest has no archive_sha256 - verify and restore cannot check the archive"
+            [ "$(jq '.components | length' "$MANIFEST")" -gt 0 ] || fail "${WHERE}snapshot has no components"
+
+            # Captured first, not read from a process substitution: there a jq
+            # error is ignored and the gate would pass with nothing checked.
+            FAILED=$(jq -r '.components[] | select(.error != null) | "\(.name)\t\(.error)"' "$MANIFEST")
+            WARNED=$(jq -r "$WARNINGS_DEF"'.components[] | select(warnings | length > 0)
+                            | "\(.name)\t\(warnings | join("; "))"' "$MANIFEST")
+
+            while IFS=$'\t' read -r NAME ERROR; do
+              [ -n "$NAME" ] || continue
+              fail "${WHERE}component '$NAME' failed: $ERROR"
+            done <<< "$FAILED"
+
+            while IFS=$'\t' read -r NAME WARNINGS; do
+              [ -n "$NAME" ] || continue
+              if [ "$ALLOW_WARNINGS" = "true" ]; then
+                echo "::warning::${WHERE}component '$NAME' reported warnings: $WARNINGS"
+              else
+                fail "${WHERE}component '$NAME' reported warnings (set allow-component-warnings to accept): $WARNINGS"
+              fi
+            done <<< "$WARNED"
+          done
+          echo "components=$COMPONENTS" >> "$GITHUB_OUTPUT"
 
           for NAME in ${REQUIRE_COMPONENTS//,/ }; do
-            jq -e --arg n "$NAME" 'any(.components[]; .name == $n)' "$MANIFEST" > /dev/null \
-              || fail "required component '$NAME' is missing - its source is disabled, skipped or misnamed (components: $(jq -r '[.components[].name] | join(", ")' "$MANIFEST"))"
+            jq -e --arg n "$NAME" 'any(.[]; .name == $n)' <<< "$COMPONENTS" > /dev/null \
+              || fail "required component '$NAME' is missing - its source is disabled, skipped or misnamed (components: $(jq -r 'map(.name) | join(", ")' <<< "$COMPONENTS"))"
           done
 
           [ "$ERRORS" -eq 0 ] || exit 1
-          echo "✅ All $(jq '.components | length' "$MANIFEST") component(s) were backed up without errors"
+          if [ "$MULTI" = "true" ]; then
+            echo "✅ All $(jq 'length' <<< "$COMPONENTS") component(s) of ${#ROWS[@]} snapshots were backed up without errors"
+          else
+            echo "✅ All $(jq 'length' <<< "$COMPONENTS") component(s) were backed up without errors"
+          fi
 
       - name: "🔍 Verify Snapshot"
-        env:
-          SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
         run: |
           set -euo pipefail
           source "$ROUNDTRIP_DIR/lib.sh"
-          OUTPUT=$(bh verify "$SNAPSHOT_ID")
-          echo "$OUTPUT"
-          [ "$OUTPUT" = "OK $SNAPSHOT_ID" ] || { echo "::error::verify did not confirm the archive checksum"; exit 1; }
+          # Read first: 'docker compose exec' would consume a loop's stdin.
+          mapfile -t ROWS < "$ROUNDTRIP_DIR/snapshots.tsv"
+          [ ${#ROWS[@]} -gt 0 ] || { echo "::error::no snapshot to verify"; exit 1; }
+          for ROW in "${ROWS[@]}"; do
+            SNAPSHOT_ID="${ROW#*$'\t'}"
+            OUTPUT=$(bh verify "$SNAPSHOT_ID")
+            echo "$OUTPUT"
+            [ "$OUTPUT" = "OK $SNAPSHOT_ID" ] || { echo "::error::verify did not confirm the archive checksum"; exit 1; }
+          done
 
       # A failed S3 upload does not fail 'create': the run ends in 'warning'
       # and exits 0, because the local copy exists. Only the bucket shows
@@ -1326,11 +1442,11 @@ jobs:
         id: s3-upload
         if: inputs.s3-destination
         # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
-        env:
-          SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
         run: |
           set -euo pipefail
           source "$ROUNDTRIP_DIR/lib.sh"
+          mapfile -t ROWS < "$ROUNDTRIP_DIR/snapshots.tsv"
+          [ ${#ROWS[@]} -gt 0 ] || { echo "::error::no snapshot to check"; exit 1; }
           OBJECTS="$ROUNDTRIP_DIR/diagnostics/s3-objects.json"
           LISTING=$(s3c ls --recursive --json "rt/$ROUNDTRIP_S3_BUCKET")
           # One JSON object per line; anything else the client prints is not
@@ -1342,24 +1458,35 @@ jobs:
           echo "Objects in s3://$ROUNDTRIP_S3_BUCKET:"
           while IFS= read -r LINE; do echo "  $LINE"; done <<< "${OBJECT_SIZES:-<none>}"
 
-          LOCAL_SIZE=$(bh list | awk -v id="$SNAPSHOT_ID" '$1 == id {print $2}')
-          ARCHIVE=$(awk -F '\t' -v id="$SNAPSHOT_ID" \
-            '$1 == id ".tar.gz" || $1 == id ".tar.gz.age" || $1 == id ".tar.gz.gpg"' <<< "$OBJECT_SIZES")
-          MANIFEST=$(awk -F '\t' -v name="$SNAPSHOT_ID.manifest.json" '$1 == name && $2 > 0' <<< "$OBJECT_SIZES")
-
+          LIST=$(bh list)
           ERRORS=0
           fail() { echo "::error title=Backup round trip::$1"; ERRORS=$((ERRORS + 1)); }
-          [ -n "$MANIFEST" ] || fail "the manifest $SNAPSHOT_ID.manifest.json is not in the bucket"
-          if [ -z "$ARCHIVE" ]; then
-            fail "the archive of snapshot $SNAPSHOT_ID is not in the bucket"
-          elif [ "$(cut -f 2 <<< "$ARCHIVE")" != "$LOCAL_SIZE" ]; then
-            fail "the archive in the bucket has $(cut -f 2 <<< "$ARCHIVE") bytes, the local one ${LOCAL_SIZE:-?}"
-          fi
+          PASSED=()
+          # Every job's snapshot - a job that stays local fails here.
+          for ROW in "${ROWS[@]}"; do
+            JOB="${ROW%%$'\t'*}"
+            SNAPSHOT_ID="${ROW#*$'\t'}"
+            WHERE=""
+            [ ${#ROWS[@]} -eq 1 ] || WHERE="job '$JOB': "
+            LOCAL_SIZE=$(awk -v id="$SNAPSHOT_ID" '$1 == id {print $2}' <<< "$LIST")
+            ARCHIVE=$(awk -F '\t' -v id="$SNAPSHOT_ID" \
+              '$1 == id ".tar.gz" || $1 == id ".tar.gz.age" || $1 == id ".tar.gz.gpg"' <<< "$OBJECT_SIZES")
+            MANIFEST=$(awk -F '\t' -v name="$SNAPSHOT_ID.manifest.json" '$1 == name && $2 > 0' <<< "$OBJECT_SIZES")
+
+            BEFORE=$ERRORS
+            [ -n "$MANIFEST" ] || fail "${WHERE}the manifest $SNAPSHOT_ID.manifest.json is not in the bucket"
+            if [ -z "$ARCHIVE" ]; then
+              fail "${WHERE}the archive of snapshot $SNAPSHOT_ID is not in the bucket"
+            elif [ "$(cut -f 2 <<< "$ARCHIVE")" != "$LOCAL_SIZE" ]; then
+              fail "${WHERE}the archive in the bucket has $(cut -f 2 <<< "$ARCHIVE") bytes, the local one ${LOCAL_SIZE:-?}"
+            fi
+            [ "$ERRORS" -gt "$BEFORE" ] || PASSED+=("Snapshot $SNAPSHOT_ID is in s3://$ROUNDTRIP_S3_BUCKET: $(cut -f 1 <<< "$ARCHIVE") ($LOCAL_SIZE bytes, same as the local copy) and its manifest")
+          done
           if [ "$ERRORS" -gt 0 ]; then
-            echo "The upload failed or was skipped - 'create' exits 0 in that case. The reason is in create.log and the sidecar's log (artifact). Check that s3-env names the variables the compose file builds the S3 destination from."
+            echo "The upload failed or was skipped - 'create' exits 0 in that case. The reason is in create.log and the sidecar's log (artifact). Check that s3-env names the variables the compose file builds the S3 destination from$([ ${#ROWS[@]} -eq 1 ] || echo ", and that every job has that S3 destination")."
             exit 1
           fi
-          echo "✅ Snapshot $SNAPSHOT_ID is in s3://$ROUNDTRIP_S3_BUCKET: $(cut -f 1 <<< "$ARCHIVE") ($LOCAL_SIZE bytes, same as the local copy) and its manifest"
+          for LINE in "${PASSED[@]}"; do echo "✅ $LINE"; done
 
       # The previous release has seeded and backed up. Now the upgrade an
       # operator does: what the release notes say (upgrade-script), the
@@ -1481,11 +1608,11 @@ jobs:
         id: new-host
         if: inputs.s3-destination
         # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
-        env:
-          SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
         run: |
           set -euo pipefail
           source "$ROUNDTRIP_DIR/lib.sh"
+          mapfile -t ROWS < "$ROUNDTRIP_DIR/snapshots.tsv"
+          [ ${#ROWS[@]} -gt 0 ] || { echo "::error::no snapshot under test"; exit 1; }
           CONTAINER=$(docker compose ps -q "$BACKUP_SERVICE")
           if [ -z "$CONTAINER" ]; then
             echo "::error title=Backup round trip::'$BACKUP_SERVICE' is not running"
@@ -1536,16 +1663,38 @@ jobs:
             echo "::error title=Backup round trip::local snapshots survived the wipe: $(tr '\n' ' ' <<< "$LOCAL")- the sidecar keeps them outside $DATA_DIR (its BACKUP_DATA_DIR), or on a mount this step did not find"
             exit 1
           fi
-          if ! awk -v id="$SNAPSHOT_ID" '$1 == id && $3 == "bytes" && $2 == 0 {found = 1} END {exit !found}' <<< "$LIST"; then
-            echo "::error title=Backup round trip::the new sidecar does not list snapshot $SNAPSHOT_ID as off-site - it does not reach the bucket"
-            exit 1
+          # 'list' shows the off-site copies of one job's S3 destination - the
+          # first job's unless --job names another, so with several jobs each
+          # is asked for its own snapshot.
+          for ROW in "${ROWS[@]}"; do
+            JOB="${ROW%%$'\t'*}"
+            SNAPSHOT_ID="${ROW#*$'\t'}"
+            JOB_LIST="$LIST"
+            if [ ${#ROWS[@]} -gt 1 ]; then
+              JOB_LIST=$(bh list --job "$JOB")
+            fi
+            if ! awk -v id="$SNAPSHOT_ID" '$1 == id && $3 == "bytes" && $2 == 0 {found = 1} END {exit !found}' <<< "$JOB_LIST"; then
+              if [ ${#ROWS[@]} -gt 1 ]; then
+                echo "::error title=Backup round trip::the new sidecar does not list snapshot $SNAPSHOT_ID of job '$JOB' as off-site ('list --job $JOB') - the job does not reach the bucket"
+              else
+                echo "::error title=Backup round trip::the new sidecar does not list snapshot $SNAPSHOT_ID as off-site - it does not reach the bucket"
+              fi
+              exit 1
+            fi
+          done
+          if [ ${#ROWS[@]} -gt 1 ]; then
+            echo "✅ New host: no local snapshot, every job's snapshot is listed off-site only"
+          else
+            echo "✅ New host: no local snapshot, $SNAPSHOT_ID is listed off-site only"
           fi
-          echo "✅ New host: no local snapshot, $SNAPSHOT_ID is listed off-site only"
 
+      # With several jobs every job's snapshot is restored, in config order.
+      # The engine restores a job-scoped id into the job it names, so the
+      # command stays as given - no --job a plugin command might not take.
       - name: "🔄 Restore Snapshot"
         id: restore
+        # Tested by .github/workflows/tests/backup-roundtrip-module.test.sh
         env:
-          SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
           STOP_SERVICES: ${{ inputs.services-to-stop-before-restore }}
           RESTORE_COMMAND: ${{ inputs.restore-command }}
           RESTORE_ARGS: ${{ inputs.restore-args }}
@@ -1556,13 +1705,35 @@ jobs:
           read -r -a COMMAND <<< "$RESTORE_COMMAND"
           read -r -a ARGS <<< "$RESTORE_ARGS"
           read -r -a SERVICES <<< "$(echo "$START_SERVICES" | tr '\n' ' ')"
+          mapfile -t ROWS < "$ROUNDTRIP_DIR/snapshots.tsv"
+          [ ${#ROWS[@]} -gt 0 ] || { echo "::error::no snapshot to restore"; exit 1; }
+
+          # The engine restores a job-scoped id into the job whose name it
+          # carries, and one whose job is gone - renamed by the upgrade - into
+          # the first job without a word.
+          if [ ${#ROWS[@]} -gt 1 ]; then
+            CONFIGURED=$(bh config | jq -c '[.jobs[]?.name | strings]')
+            for ROW in "${ROWS[@]}"; do
+              JOB="${ROW%%$'\t'*}"
+              SNAPSHOT_ID="${ROW#*$'\t'}"
+              if ! jq -e --arg s "${SNAPSHOT_ID:20}" \
+                   'any(.[]; (gsub("[^A-Za-z0-9_-]"; "-") | if . == "" then "-" else . end) == $s)' <<< "$CONFIGURED" > /dev/null; then
+                echo "::error title=Backup round trip::job '$JOB' of snapshot $SNAPSHOT_ID is not in the configuration any more (jobs: $(jq -r 'join(", ")' <<< "$CONFIGURED")) - the engine would restore the snapshot into the first job. Keep job names across releases."
+                exit 1
+              fi
+            done
+          fi
 
           if [ ${#STOP[@]} -gt 0 ]; then
             echo "⏹️ Stopping ${STOP[*]}"
             docker compose stop "${STOP[@]}"
           fi
 
-          bh "${COMMAND[@]}" "$SNAPSHOT_ID" "${ARGS[@]}" 2>&1 | tee "$ROUNDTRIP_DIR/diagnostics/restore.log"
+          : > "$ROUNDTRIP_DIR/diagnostics/restore.log"
+          for ROW in "${ROWS[@]}"; do
+            [ ${#ROWS[@]} -eq 1 ] || echo "🔄 Job ${ROW%%$'\t'*}: snapshot ${ROW#*$'\t'}" | tee -a "$ROUNDTRIP_DIR/diagnostics/restore.log"
+            bh "${COMMAND[@]}" "${ROW#*$'\t'}" "${ARGS[@]}" 2>&1 | tee -a "$ROUNDTRIP_DIR/diagnostics/restore.log"
+          done
 
           echo "🚀 Starting the stack again"
           docker compose up -d --wait --wait-timeout "$WAIT_TIMEOUT" "${SERVICES[@]}"
@@ -1571,22 +1742,25 @@ jobs:
       - name: "🪣 Check Hydrated Snapshot"
         id: s3-hydrated
         if: inputs.s3-destination
-        env:
-          SNAPSHOT_ID: ${{ steps.create.outputs.snapshot-id }}
         run: |
           set -euo pipefail
           source "$ROUNDTRIP_DIR/lib.sh"
+          mapfile -t ROWS < "$ROUNDTRIP_DIR/snapshots.tsv"
+          [ ${#ROWS[@]} -gt 0 ] || { echo "::error::no snapshot under test"; exit 1; }
           LIST=$(bh list)
           echo "$LIST"
-          # Local again only because the restore downloaded it.
-          if ! awk -v id="$SNAPSHOT_ID" '$1 == id && $3 == "bytes" && $2 > 0 {found = 1} END {exit !found}' <<< "$LIST"; then
-            echo "::error title=Backup round trip::snapshot $SNAPSHOT_ID is not local after the restore - it was not hydrated from S3"
-            exit 1
-          fi
-          OUTPUT=$(bh verify "$SNAPSHOT_ID")
-          echo "$OUTPUT"
-          [ "$OUTPUT" = "OK $SNAPSHOT_ID" ] || { echo "::error::the snapshot hydrated from S3 does not match its checksum"; exit 1; }
-          echo "✅ Snapshot $SNAPSHOT_ID was pulled back from s3://$ROUNDTRIP_S3_BUCKET and matches its checksum"
+          for ROW in "${ROWS[@]}"; do
+            SNAPSHOT_ID="${ROW#*$'\t'}"
+            # Local again only because the restore downloaded it.
+            if ! awk -v id="$SNAPSHOT_ID" '$1 == id && $3 == "bytes" && $2 > 0 {found = 1} END {exit !found}' <<< "$LIST"; then
+              echo "::error title=Backup round trip::snapshot $SNAPSHOT_ID is not local after the restore - it was not hydrated from S3"
+              exit 1
+            fi
+            OUTPUT=$(bh verify "$SNAPSHOT_ID")
+            echo "$OUTPUT"
+            [ "$OUTPUT" = "OK $SNAPSHOT_ID" ] || { echo "::error::the snapshot hydrated from S3 does not match its checksum"; exit 1; }
+            echo "✅ Snapshot $SNAPSHOT_ID was pulled back from s3://$ROUNDTRIP_S3_BUCKET and matches its checksum"
+          done
 
       - name: "🧪 Check Restored Data"
         id: check
@@ -1694,17 +1868,38 @@ jobs:
               *) if [ "$2" = "true" ]; then echo "⏭️ Not reached"; else echo "⚪ Not configured"; fi ;;
             esac
           }
+          # manifest file, heading -> component table, if the manifest was read
+          component_table() {
+            [ -s "$1" ] && jq -e '.components' "$1" > /dev/null 2>&1 || return 0
+            echo "### 📦 $2"
+            echo ""
+            echo "| Component | Kind | Size | Status |"
+            echo "|-----------|------|------|--------|"
+            jq -r '.components[] | "| `\(.name)` | \(.kind) | \(.size) bytes | \(if .error then "❌ " + .error elif ((.metadata.warnings // []) | length) > 0 then "⚠️ Warnings" else "✅ OK" end) |"' "$1"
+            echo ""
+          }
+          # job<TAB>id per snapshot (Create Backup); several with several jobs
+          SNAPSHOTS="${ROUNDTRIP_DIR:-/nonexistent}/snapshots.tsv"
+          COUNT=0
+          [ ! -s "$SNAPSHOTS" ] || COUNT=$(wc -l < "$SNAPSHOTS")
 
           {
             echo "## 🧪 Backup Round-Trip Test"
             echo ""
             if [ "$JOB_STATUS" = "success" ]; then
-              PASSED="✅ **Passed** - snapshot \`$SNAPSHOT_ID\` was created, verified and restored."
+              if [ "$COUNT" -gt 1 ]; then
+                # shellcheck disable=SC2016 # Markdown backticks in awk's format, not an expansion
+                PASSED="✅ **Passed** - $COUNT snapshots, one per job, were created, verified and restored: $(awk -F '\t' '{printf "%s`%s` (job `%s`)", (NR > 1 ? ", " : ""), $2, $1}' "$SNAPSHOTS")."
+                IT=them; ITS=They
+              else
+                PASSED="✅ **Passed** - snapshot \`$SNAPSHOT_ID\` was created, verified and restored."
+                IT=it; ITS=It
+              fi
               if [ "$HAS_UPGRADE" = "true" ]; then
-                PASSED+=" The previous release (${ROUNDTRIP_PREVIOUS_RELEASE:-see below}) took it; the images built from this commit restored it after the upgrade."
+                PASSED+=" The previous release (${ROUNDTRIP_PREVIOUS_RELEASE:-see below}) took $IT; the images built from this commit restored $IT after the upgrade."
               fi
               if [ "$HAS_S3" = "true" ]; then
-                PASSED+=" It reached the S3 bucket, and the restore pulled it back from there after the sidecar's local data was wiped."
+                PASSED+=" $ITS reached the S3 bucket, and the restore pulled $IT back from there after the sidecar's local data was wiped."
               fi
               echo "$PASSED"
             else
@@ -1729,7 +1924,10 @@ jobs:
             echo "| Backup healthcheck | $(cell "$OUTCOME_HEALTH" "$RUN_HEALTHCHECK") |"
             echo ""
             if [ -n "$CREATE_EXIT" ] && [ "$CREATE_EXIT" != "0" ]; then
-              if [ -n "$SNAPSHOT_ID" ]; then
+              if [ "$COUNT" -gt 1 ]; then
+                # shellcheck disable=SC2016 # Markdown backticks in sed's replacement, not an expansion
+                echo "> ❌ \`backuphelper create\` exited $CREATE_EXIT. Snapshots $(cut -f 2 "$SNAPSHOTS" | sed 's/.*/`&`/' | paste -sd ' ' -) were stored anyway; *Inspect snapshot* and the component tables name what failed."
+              elif [ -n "$SNAPSHOT_ID" ]; then
                 echo "> ❌ \`backuphelper create\` exited $CREATE_EXIT. Snapshot \`$SNAPSHOT_ID\` was stored anyway; *Inspect snapshot* and its component table name what failed."
               else
                 echo "> ❌ \`backuphelper create\` exited $CREATE_EXIT and stored no local snapshot - see \`create.log\` in the diagnostics artifact."
@@ -1744,14 +1942,12 @@ jobs:
               echo ""
             fi
 
-            MANIFEST="${ROUNDTRIP_DIR:-/nonexistent}/diagnostics/manifest.json"
-            if [ -s "$MANIFEST" ] && jq -e '.components' "$MANIFEST" > /dev/null 2>&1; then
-              echo "### 📦 Snapshot \`$SNAPSHOT_ID\`"
-              echo ""
-              echo "| Component | Kind | Size | Status |"
-              echo "|-----------|------|------|--------|"
-              jq -r '.components[] | "| `\(.name)` | \(.kind) | \(.size) bytes | \(if .error then "❌ " + .error elif ((.metadata.warnings // []) | length) > 0 then "⚠️ Warnings" else "✅ OK" end) |"' "$MANIFEST"
-              echo ""
+            if [ "$COUNT" -gt 1 ]; then
+              while IFS=$'\t' read -r JOB ID; do
+                component_table "$ROUNDTRIP_DIR/diagnostics/manifest.$ID.json" "Snapshot \`$ID\` (job \`$JOB\`)"
+              done < "$SNAPSHOTS"
+            else
+              component_table "${ROUNDTRIP_DIR:-/nonexistent}/diagnostics/manifest.json" "Snapshot \`$SNAPSHOT_ID\`"
             fi
 
             PLAN="${ROUNDTRIP_DIR:-/nonexistent}/upgrade-plan.tsv"

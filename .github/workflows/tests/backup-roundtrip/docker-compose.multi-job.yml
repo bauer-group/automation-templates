@@ -1,0 +1,59 @@
+# =============================================================================
+# Fixture: the sidecar with two backup jobs
+# =============================================================================
+# Merged over docker-compose.yml by the "Fixture Round Trip (two jobs)" legs of
+# backup-roundtrip-selftest.yml. It replaces the sidecar's configuration with
+# the shape a stack takes once it backs up its parts separately - here the
+# database in one job and the files in another, each with its own schedule.
+#
+# Both jobs keep the destinations of the single-job configuration: the local
+# data dir and the S3 destination the s3-destination leg points at its
+# throwaway MinIO. The jobs share the bucket and the prefix, which the engine
+# allows since 1.10.0 - every snapshot id names its job.
+#
+# The module must find one snapshot per job, inspect and verify both, restore
+# both in config order and, on a new host, see each job's snapshot off-site.
+# =============================================================================
+
+services:
+  backup:
+    environment:
+      BACKUP_CONFIG_JSON: |
+        {
+          "instance_name": "roundtrip-fixture",
+          "jobs": [
+            {
+              "name": "database",
+              "sources": [
+                {"type": "postgres", "name": "database", "host": "database", "database": "app",
+                 "user": "app", "password": "$${DATABASE_PASSWORD}"}
+              ],
+              "destinations": [
+                {"type": "local"},
+                {"type": "s3", "endpoint": "${BACKUP_S3_ENDPOINT:-}", "bucket": "${BACKUP_S3_BUCKET:-}",
+                 "access_key": "${BACKUP_S3_ACCESS_KEY:-}", "secret_key": "$${S3_SECRET_KEY}",
+                 "region": "${BACKUP_S3_REGION:-eu-central-1}", "prefix": "${BACKUP_S3_PREFIX:-fixture/}",
+                 "force_path_style": ${BACKUP_S3_PATH_STYLE:-true}}
+              ],
+              "schedule": {"mode": "cron", "cron": "15 3 * * *"},
+              "retention": {"count": 5}
+            },
+            {
+              "name": "files",
+              "sources": [
+                {"type": "filesystem", "name": "files", "path": "/srv/files"},
+                {"type": "s3", "name": "saas-export", "enabled": ${SAAS_EXPORT_ENABLED:-true},
+                 "endpoint": "https://saas-export.invalid", "bucket": "exports"}
+              ],
+              "destinations": [
+                {"type": "local"},
+                {"type": "s3", "endpoint": "${BACKUP_S3_ENDPOINT:-}", "bucket": "${BACKUP_S3_BUCKET:-}",
+                 "access_key": "${BACKUP_S3_ACCESS_KEY:-}", "secret_key": "$${S3_SECRET_KEY}",
+                 "region": "${BACKUP_S3_REGION:-eu-central-1}", "prefix": "${BACKUP_S3_PREFIX:-fixture/}",
+                 "force_path_style": ${BACKUP_S3_PATH_STYLE:-true}}
+              ],
+              "schedule": {"mode": "cron", "cron": "45 3 * * *"},
+              "retention": {"count": 5}
+            }
+          ]
+        }

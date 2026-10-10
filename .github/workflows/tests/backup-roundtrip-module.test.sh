@@ -15,6 +15,17 @@
 #   exit 1, no new snapshot         -> no snapshot-id, step fails
 #   exit 0, no new snapshot         -> step fails (zero jobs ran)
 #
+# Several jobs (BackupHelper 1.10.0 and later names the job in the id,
+# <timestamp>_<job>): one snapshot per job, resolved in config order through
+# the job names 'backuphelper config' lists - snapshot-id is the first job's,
+# snapshot-ids all of them. A job without a snapshot, plain ids of an older
+# engine and two jobs that write the same id suffix fail the step. Inspect
+# Snapshot (id: inspect) checks every job's manifest and require-components
+# across all of them; Check Off-Site Copy and Simulate New Host check every
+# job's snapshot (the latter through 'list --job'); Restore Snapshot
+# (id: restore) restores each in config order with the command as given, and
+# refuses a snapshot whose job is no longer configured.
+#
 # Pull Images: only the services Start Stack starts (the 'services' input and
 # their dependencies, transitively) are pulled, never an image under test.
 #
@@ -95,7 +106,7 @@ if ! grep -q '^mask_env_changes() {$' "$WORK/real-lib.sh"; then
   exit 1
 fi
 
-for STEP in validate prepare networks s3-prepare previous build create pull previous-running s3-upload upgrade new-host; do
+for STEP in validate prepare networks s3-prepare previous build create inspect pull previous-running s3-upload upgrade new-host restore; do
   extract_step "$STEP" > "$WORK/$STEP.sh"
   if [ ! -s "$WORK/$STEP.sh" ]; then
     echo "FATAL: could not extract the '$STEP' run block from the workflow."
@@ -162,7 +173,8 @@ out() { grep "^$1=" "$DIR/output" | tail -n 1 | cut -d= -f2-; }
 
 # === Create Backup ==============================================================
 # The fake engine: 'list' prints list.before until 'create' ran, then list.after;
-# 'create' exits with the code in create-exit.
+# 'create' exits with the code in create-exit; 'config' prints config.json (a
+# case without it has a config the CLI cannot print).
 cat > "$WORK/lib.sh" <<'LIB'
 bh() {
   case "$1" in
@@ -177,6 +189,9 @@ bh() {
       touch "$DIR/created"
       echo "job main snapshot fake finished: $(cat "$DIR/create-status")"
       return "$(cat "$DIR/create-exit")" ;;
+    config)
+      [ -f "$DIR/config.json" ] || { echo "Error: config not loaded" >&2; return 1; }
+      cat "$DIR/config.json" ;;
     *) echo "unexpected bh call: $*" >&2; return 2 ;;
   esac
 }
@@ -184,6 +199,11 @@ LIB
 OLD="2026-10-08_03-15-00"
 NEW="2026-10-09_09-14-46"
 NEWER="2026-10-09_09-14-58"
+# A config as 'backuphelper config' prints it (redacted) with these job names.
+config_with_jobs() {
+  jq -n '{version: 1, instance_name: "fixture", jobs: [$ARGS.positional[] | {name: ., sources: [], keep_local: true}]}' \
+    --args "$@" > "$DIR/config.json"
+}
 create_case() {
   reset "$1"
   cp "$WORK/lib.sh" "$DIR/lib.sh"
@@ -191,12 +211,18 @@ create_case() {
   if [ "$2" -eq 0 ]; then echo success; else echo error; fi > "$DIR/create-status"
   printf '%-24s %12d bytes\n' "$OLD" 2048 > "$DIR/list.before"
   cp "$DIR/list.before" "$DIR/list.after"
+  config_with_jobs main
 }
 add_after() { printf '%-24s %12d bytes%s\n' "$1" "$2" "${3:-}" >> "$DIR/list.after"; }
+# snapshots.tsv as "job id|job id"
+snapshots() { tr '\t\n' ' |' < "$DIR/snapshots.tsv" | sed 's/|$//'; }
 
 create_case ok 0; add_after "$NEW" 4096
 run_step create; expect_rc "create ok: step passes" $? 0
 expect_eq "create ok: snapshot id" "$(out snapshot-id)" "$NEW"
+expect_eq "create ok: snapshot-ids holds the one job's snapshot" "$(out snapshot-ids)" "[{\"job\":\"main\",\"id\":\"$NEW\"}]"
+expect_eq "create ok: snapshots for the steps below" "$(snapshots)" "main $NEW"
+expect_log "create ok: one job, the message as before" "✅ Snapshot $NEW created"
 expect_eq "create ok: exit code recorded" "$(out create-exit-code)" 0
 if grep -q "^ROUNDTRIP_SNAPSHOT_ID=$NEW$" "$DIR/env"; then pass "create ok: id exported to the scripts"; else fail "create ok: id exported to the scripts" "missing in GITHUB_ENV"; fi
 if [ -s "$DIR/diagnostics/create.log" ]; then pass "create ok: create.log written"; else fail "create ok: create.log written" "empty"; fi
@@ -229,6 +255,132 @@ expect_log "two new snapshots: warning" "::warning::2 new snapshots"
 
 create_case offsite-only 0; add_after "$NEW" 0 "  (off-site only)"
 run_step create; expect_rc "off-site-only row: not a local snapshot" $? 1
+
+# A config the CLI cannot print counts as one job, as before 'config' was read.
+create_case no-config 0; add_after "$NEW" 4096; rm "$DIR/config.json"
+run_step create; expect_rc "config not printed: step passes" $? 0
+expect_eq "config not printed: the snapshot, without a job name" "$(out snapshot-ids)" "[{\"job\":\"\",\"id\":\"$NEW\"}]"
+
+# --- several jobs ------------------------------------------------------------
+# Both jobs started in the same second: sorted, database's id comes first, but
+# the config - and 'create' - run uploads first. An older snapshot of a job is
+# not new.
+create_case two-jobs 0; config_with_jobs uploads database
+printf '%-24s %12d bytes\n' "${OLD}_database" 1024 >> "$DIR/list.before"; cp "$DIR/list.before" "$DIR/list.after"
+add_after "${NEW}_database" 4096; add_after "${NEW}_uploads" 2048
+run_step create; expect_rc "two jobs: step passes" $? 0
+expect_eq "two jobs: snapshot-id is the first job's" "$(out snapshot-id)" "${NEW}_uploads"
+expect_eq "two jobs: snapshot-ids in config order" "$(out snapshot-ids)" \
+  "[{\"job\":\"uploads\",\"id\":\"${NEW}_uploads\"},{\"job\":\"database\",\"id\":\"${NEW}_database\"}]"
+expect_eq "two jobs: snapshots for the steps below, config order" "$(snapshots)" "uploads ${NEW}_uploads|database ${NEW}_database"
+expect_eq "two jobs: ids exported to the scripts" "$(sed -n 's/^ROUNDTRIP_SNAPSHOT_IDS=//p' "$DIR/env" | jq -c 'map(.id)')" \
+  "[\"${NEW}_uploads\",\"${NEW}_database\"]"
+if grep -q "^ROUNDTRIP_SNAPSHOT_ID=${NEW}_uploads$" "$DIR/env"; then pass "two jobs: the first id exported as before"; else fail "two jobs: the first id exported as before" "$(cat "$DIR/env")"; fi
+expect_log "two jobs: names each job's snapshot" "job database: snapshot ${NEW}_database"
+
+# The id carries the job name with every character other than [A-Za-z0-9_-] as '-'.
+create_case slug 0; config_with_jobs "db.hourly" "files nightly"
+add_after "${NEW}_db-hourly" 4096; add_after "${NEWER}_files-nightly" 2048
+run_step create; expect_rc "job names with other characters: step passes" $? 0
+expect_eq "job names with other characters: found by the engine's slug" "$(snapshots)" \
+  "db.hourly ${NEW}_db-hourly|files nightly ${NEWER}_files-nightly"
+
+create_case scheduled 0; config_with_jobs app files
+add_after "${NEW}_app" 4096; add_after "${NEW}_files" 2048; add_after "${NEWER}_app" 4096
+run_step create; expect_rc "two jobs, one ran twice: step passes" $? 0
+expect_eq "two jobs, one ran twice: its newest snapshot" "$(snapshots)" "app ${NEWER}_app|files ${NEW}_files"
+expect_log "two jobs, one ran twice: warning" "::warning::job 'app': 2 new snapshots"
+
+# The second job aborted the invocation: the first one's snapshot is still
+# resolved for Inspect Snapshot, the step fails naming the missing job.
+create_case job-missing 1; config_with_jobs app files; add_after "${NEW}_app" 4096
+run_step create; expect_rc "two jobs, one without a snapshot: step fails" $? 1
+expect_eq "two jobs, one without a snapshot: the other one resolved" "$(out snapshot-id)" "${NEW}_app"
+expect_log "two jobs, one without a snapshot: names the job" "job 'files' stored no local snapshot (no new id ending in _files)"
+
+create_case job-missing-exit0 0; config_with_jobs app files; add_after "${NEW}_files" 4096
+run_step create; expect_rc "two jobs, the first without a snapshot, exit 0: step fails" $? 1
+expect_eq "two jobs, the first without a snapshot: snapshot-id is the next job's" "$(out snapshot-id)" "${NEW}_files"
+
+create_case two-jobs-failed 1; config_with_jobs app files; add_after "${NEW}_app" 4096; add_after "${NEWER}_files" 2048
+run_step create; expect_rc "two jobs, a failed component: step fails" $? 1
+expect_eq "two jobs, a failed component: both snapshots resolved for Inspect Snapshot" "$(snapshots)" "app ${NEW}_app|files ${NEWER}_files"
+expect_log "two jobs, a failed component: names the stored snapshots" "'backuphelper create' exited 1: ${NEW}_app, ${NEWER}_files stored"
+
+# BackupHelper before 1.10.0 writes plain ids for every job.
+create_case plain-ids 0; config_with_jobs app files; add_after "$NEW" 4096; add_after "$NEWER" 2048
+run_step create; expect_rc "two jobs with plain ids: step fails" $? 1
+expect_eq "two jobs with plain ids: no snapshot id" "$(out snapshot-id)" ""
+expect_log "two jobs with plain ids: names the engine version" "BackupHelper before 1.10.0 does not name the job in the id"
+expect_log "two jobs with plain ids: lists the ids" "whose ids name no job: $NEW $NEWER"
+
+create_case shared-slug 0; config_with_jobs "db.hourly" "db-hourly"; add_after "${NEW}_db-hourly" 4096; add_after "${NEWER}_db-hourly" 4096
+run_step create; expect_rc "two jobs with the same id suffix: step fails" $? 1
+expect_log "two jobs with the same id suffix: says why" "several jobs write snapshot ids ending in the same job name (db-hourly)"
+expect_eq "two jobs with the same id suffix: no snapshot id" "$(out snapshot-id)" ""
+
+# === Inspect Snapshot ===========================================================
+# The fake engine prints manifests/<id>.json for 'show <id>'. Each case lists
+# the snapshots Create Backup resolved in snapshots.tsv.
+cat > "$WORK/lib.sh" <<'LIB'
+bh() {
+  [ "$1" = show ] || { echo "unexpected bh call: $*" >&2; return 2; }
+  [ -f "$DIR/manifests/$2.json" ] || { echo "snapshot $2 not found"; return 1; }
+  cat "$DIR/manifests/$2.json"
+}
+LIB
+inspect_case() {
+  reset "$1"
+  cp "$WORK/lib.sh" "$DIR/lib.sh"
+  mkdir -p "$DIR/manifests"
+  : > "$DIR/snapshots.tsv"
+}
+# job, id, then "name:kind:size[:error]" per component
+snapshot() {
+  local job="$1" id="$2"; shift 2
+  printf '%s\t%s\n' "$job" "$id" >> "$DIR/snapshots.tsv"
+  printf '%s\n' "$@" | jq -R -s --arg id "$id" '{schema_version: 1, snapshot_id: $id, instance_name: "fixture",
+      created_at: "2026-10-09T09:14:46+00:00", archive_sha256: "0123abcd",
+      components: [split("\n")[] | select(length > 0) | split(":")
+                   | {name: .[0], kind: .[1], size: (.[2] | tonumber), sha256: "ab", error: (.[3] // null), metadata: {}}]}' \
+    > "$DIR/manifests/$id.json"
+}
+run_inspect() { run_step inspect REQUIRE_COMPONENTS="database files" ALLOW_WARNINGS=false "$@"; }
+
+inspect_case one-job; snapshot main "$NEW" "database:postgres:2048" "files:filesystem:512"
+run_inspect; expect_rc "inspect one job: step passes" $? 0
+expect_eq "inspect one job: components as before, without a job" "$(out components)" \
+  '[{"name":"database","kind":"postgres","size":2048,"error":null},{"name":"files","kind":"filesystem","size":512,"error":null}]'
+if [ -s "$DIR/diagnostics/manifest.json" ]; then pass "inspect one job: manifest.json as before"; else fail "inspect one job: manifest.json as before" "missing"; fi
+expect_log "inspect one job: the message as before" "✅ All 2 component(s) were backed up without errors"
+
+inspect_case two-jobs
+snapshot uploads "${NEW}_uploads" "files:filesystem:512"
+snapshot database "${NEW}_database" "database:postgres:2048"
+run_inspect; expect_rc "inspect two jobs: required components found across the jobs" $? 0
+expect_eq "inspect two jobs: every job's components, each with its job" "$(out components)" \
+  "[{\"job\":\"uploads\",\"name\":\"files\",\"kind\":\"filesystem\",\"size\":512,\"error\":null},{\"job\":\"database\",\"name\":\"database\",\"kind\":\"postgres\",\"size\":2048,\"error\":null}]"
+if [ -s "$DIR/diagnostics/manifest.${NEW}_uploads.json" ] && [ -s "$DIR/diagnostics/manifest.${NEW}_database.json" ]; then
+  pass "inspect two jobs: one manifest per snapshot"; else fail "inspect two jobs: one manifest per snapshot" "$(ls "$DIR/diagnostics")"; fi
+
+inspect_case two-jobs-missing
+snapshot uploads "${NEW}_uploads" "files:filesystem:512"
+snapshot database "${NEW}_database" "database:postgres:2048"
+run_inspect REQUIRE_COMPONENTS="database files env"; expect_rc "inspect two jobs: a required component in no job" $? 1
+expect_log "inspect two jobs: lists every job's components" "required component 'env' is missing - its source is disabled, skipped or misnamed (components: files, database)"
+
+# A failed component in the second job: named with its job, the output still set.
+inspect_case two-jobs-failed
+snapshot app "${NEW}_app" "database:postgres:2048"
+snapshot files "${NEWER}_files" "files:filesystem:0:no output"
+run_inspect; expect_rc "inspect two jobs: a failed component in the second job" $? 1
+expect_log "inspect two jobs: names the job of the failed component" "job 'files': component 'files' failed: no output"
+expect_eq "inspect two jobs: components set with the error" "$(out components | jq -c 'map(select(.error != null) | .job)')" '["files"]'
+
+inspect_case wrong-manifest; snapshot app "${NEW}_app" "database:postgres:2048"; snapshot files "${NEW}_files" "files:filesystem:512"
+jq '.snapshot_id = "something-else"' "$DIR/manifests/${NEW}_files.json" > "$DIR/m.json" && mv "$DIR/m.json" "$DIR/manifests/${NEW}_files.json"
+run_inspect; expect_rc "inspect two jobs: a manifest of another snapshot" $? 1
+expect_log "inspect two jobs: names the job" "job 'files': manifest belongs to another snapshot"
 
 # === Pull Images ================================================================
 # Every shape the step has to handle: dependencies (map and list form, and a
@@ -583,10 +735,11 @@ upload_case() {
   cp "$WORK/lib.sh" "$DIR/lib.sh"
   mkdir -p "$DIR/diagnostics"
   printf '%-24s %12d bytes\n' "$SID" 4096 > "$DIR/list"
+  printf 'main\t%s\n' "$SID" > "$DIR/snapshots.tsv"
   : > "$DIR/bucket"
 }
 object() { printf '{"status":"success","type":"file","size":%d,"key":"%s","storageClass":"STANDARD"}\n' "$2" "$1" >> "$DIR/bucket"; }
-run_upload() { run_step s3-upload SNAPSHOT_ID="$SID" ROUNDTRIP_S3_BUCKET=backup-roundtrip; }
+run_upload() { run_step s3-upload ROUNDTRIP_S3_BUCKET=backup-roundtrip; }
 
 upload_case ok; object "app/$SID.tar.gz" 4096; object "app/$SID.manifest.json" 900
 run_upload; expect_rc "s3-upload: archive and manifest in the bucket" $? 0
@@ -620,6 +773,22 @@ expect_log "s3-upload: explains why create passed" "'create' exits 0 in that cas
 upload_case other-snapshot; object "app/2026-10-08_03-15-00.tar.gz" 4096; object "app/2026-10-08_03-15-00.manifest.json" 900
 run_upload; expect_rc "s3-upload: only another snapshot in the bucket" $? 1
 
+# Several jobs: every job's snapshot must be in the bucket.
+upload_two_jobs() {
+  upload_case "$1"
+  printf 'app\t%s\nfiles\t%s\n' "${SID}_app" "${SID}_files" > "$DIR/snapshots.tsv"
+  printf '%-24s %12d bytes\n' "${SID}_app" 4096 "${SID}_files" 2048 > "$DIR/list"
+  object "app/${SID}_app.tar.gz" 4096; object "app/${SID}_app.manifest.json" 900
+}
+upload_two_jobs two-jobs; object "app/${SID}_files.tar.gz" 2048; object "app/${SID}_files.manifest.json" 700
+run_upload; expect_rc "s3-upload two jobs: both snapshots in the bucket" $? 0
+expect_log "s3-upload two jobs: confirms the second job's" "Snapshot ${SID}_files is in s3://backup-roundtrip"
+
+upload_two_jobs two-jobs-local-only
+run_upload; expect_rc "s3-upload two jobs: one job stays local" $? 1
+expect_log "s3-upload two jobs: names the job" "job 'files': the archive of snapshot ${SID}_files is not in the bucket"
+expect_log "s3-upload two jobs: hints at the job's destination" "and that every job has that S3 destination"
+
 # === Simulate New Host ==========================================================
 # The fake docker answers the inspections from files and records what is
 # removed, wiped and started; once the sidecar is started again, the fake
@@ -643,15 +812,19 @@ case "$1 $2" in
   *) echo "unexpected docker call: $*" >&2; exit 2 ;;
 esac
 STUB
+# 'list --job <job>' prints list.after.<job>, the off-site view of that job.
 cat > "$WORK/lib.sh" <<'LIB'
 bh() {
   [ "$1" = list ] || { echo "unexpected bh call: $*" >&2; return 2; }
+  if [ "${2:-}" = "--job" ]; then echo "list --job $3" >> "$DIR/bh.log"; cat "$DIR/list.after.$3"; return; fi
   if [ -f "$DIR/restarted" ]; then cat "$DIR/list.after"; else cat "$DIR/list.before"; fi
 }
 LIB
 host_case() {
   reset "$1"
   cp "$WORK/lib.sh" "$DIR/lib.sh"
+  printf 'main\t%s\n' "$SID" > "$DIR/snapshots.tsv"
+  : > "$DIR/bh.log"
   echo "0123456789ab" > "$DIR/container"
   printf 'PATH=/usr/bin\nBACKUP_DATA_DIR=/data\n' > "$DIR/container-env"
   echo '[{"Type": "volume", "Name": "rt-backup-data", "Source": "/var/lib/docker/volumes/rt-backup-data/_data", "Destination": "/data"},
@@ -660,7 +833,7 @@ host_case() {
   printf '%-24s %12d bytes  (off-site only)\n' "$SID" 0 > "$DIR/list.after"
   : > "$DIR/actions"
 }
-run_host() { run_step new-host SNAPSHOT_ID="$SID" WAIT_TIMEOUT=60; }
+run_host() { run_step new-host WAIT_TIMEOUT=60; }
 actions() { tr '\n' '|' < "$DIR/actions" | sed 's/|$//'; }
 
 host_case volume
@@ -719,6 +892,30 @@ host_case not-running
 : > "$DIR/container"
 run_host; expect_rc "new-host: sidecar not running" $? 1
 expect_log "new-host: says so" "'backup' is not running"
+
+host_case one-job-no-job-option
+run_host; expect_eq "new-host one job: 'list' as before, no --job" "$(cat "$DIR/bh.log")" ""
+
+# Several jobs: 'list' shows the first job's off-site copies only, so every
+# job is asked with --job.
+host_two_jobs() {
+  host_case "$1"
+  printf 'app\t%s\nfiles\t%s\n' "${SID}_app" "${SID}_files" > "$DIR/snapshots.tsv"
+  printf '%-28s %12d bytes  (off-site only)\n' "${SID}_app" 0 > "$DIR/list.after"
+  cp "$DIR/list.after" "$DIR/list.after.app"
+  printf '%-28s %12d bytes  (off-site only)\n' "${SID}_files" 0 > "$DIR/list.after.files"
+}
+host_two_jobs two-jobs
+run_host; expect_rc "new-host two jobs: every job's snapshot off-site only" $? 0
+expect_eq "new-host two jobs: each job asked for its own" "$(tr '\n' '|' < "$DIR/bh.log")" "list --job app|list --job files|"
+
+host_two_jobs two-jobs-unreachable; echo "no snapshots found" > "$DIR/list.after.files"
+run_host; expect_rc "new-host two jobs: the second job does not reach the bucket" $? 1
+expect_log "new-host two jobs: names the job" "does not list snapshot ${SID}_files of job 'files' as off-site ('list --job files')"
+
+host_two_jobs two-jobs-survived; printf '%-28s %12d bytes\n' "${SID}_files" 2048 >> "$DIR/list.after"
+run_host; expect_rc "new-host two jobs: a local snapshot of the second job survived" $? 1
+expect_log "new-host two jobs: names it" "local snapshots survived the wipe: ${SID}_files"
 
 # === Pull Previous Release ======================================================
 # The fake docker records pulls and tags; a reference listed in unpullable
@@ -1050,6 +1247,70 @@ for C in c-app c-worker-1 c-worker-2; do echo "sha256:older-app" > "$DIR/running
 printf 'worker\tghcr.io/acme/app:0.9\tghcr.io/acme/app:stable\n' >> "$DIR/upgrade-plan.tsv"
 run_step previous-running; expect_rc "previous running: the image tagged last holds a shared reference" $? 0
 expect_log "previous running: checked against it" "run the previous release ghcr.io/acme/app:0.9"
+
+# === Restore Snapshot ===========================================================
+# The fake engine records every call; 'config' prints config.json, the
+# configuration of the sidecar that restores. The fake docker records stop/up.
+cat > "$WORK/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "compose stop") echo "stop ${*:3}" >> "$DIR/calls" ;;
+  "compose up")   echo "up" >> "$DIR/calls" ;;
+  "compose ps")   ;;
+  *) echo "unexpected docker call: $*" >&2; exit 2 ;;
+esac
+STUB
+cat > "$WORK/lib.sh" <<'LIB'
+bh() {
+  echo "bh $*" >> "$DIR/calls"
+  case "$1" in
+    config) cat "$DIR/config.json" ;;
+    *) echo "restored $*" ;;
+  esac
+}
+LIB
+restore_case() {
+  reset "$1"
+  cp "$WORK/lib.sh" "$DIR/lib.sh"
+  : > "$DIR/calls"
+  printf 'main\t%s\n' "$NEW" > "$DIR/snapshots.tsv"
+  config_with_jobs main
+}
+run_restore() { run_step restore STOP_SERVICES="app" RESTORE_COMMAND="restore" RESTORE_ARGS="--force" WAIT_TIMEOUT=60 "$@"; }
+calls() { tr '\n' '|' < "$DIR/calls" | sed 's/|$//'; }
+
+restore_case one-job
+run_restore; expect_rc "restore one job: step passes" $? 0
+expect_eq "restore one job: stop, restore, up - as before" "$(calls)" "stop app|bh restore $NEW --force|up"
+expect_log "restore one job: restore.log written" "restored restore $NEW --force"
+
+restore_two_jobs() {
+  restore_case "$1"
+  config_with_jobs uploads database
+  printf 'uploads\t%s\ndatabase\t%s\n' "${NEW}_uploads" "${NEW}_database" > "$DIR/snapshots.tsv"
+}
+restore_two_jobs two-jobs
+run_restore; expect_rc "restore two jobs: step passes" $? 0
+expect_eq "restore two jobs: every job's snapshot, in config order, with the command as given" "$(calls)" \
+  "bh config|stop app|bh restore ${NEW}_uploads --force|bh restore ${NEW}_database --force|up"
+expect_eq "restore two jobs: restore.log has both" "$(grep -c '^restored ' "$DIR/diagnostics/restore.log")" 2
+
+# A plugin command gets no --job it might not take.
+restore_two_jobs plugin
+run_restore RESTORE_COMMAND="documenso restore" RESTORE_ARGS="--force --only documents"
+expect_eq "restore two jobs: a plugin command as given" "$(grep '^bh documenso' "$DIR/calls" | tr '\n' '|')" \
+  "bh documenso restore ${NEW}_uploads --force --only documents|bh documenso restore ${NEW}_database --force --only documents|"
+
+# The upgrade renamed a job: the engine would put its snapshot into the first job.
+restore_two_jobs renamed; config_with_jobs uploads db
+run_restore; expect_rc "restore two jobs: a job renamed since the backup" $? 1
+expect_log "restore two jobs: names the job" "job 'database' of snapshot ${NEW}_database is not in the configuration any more (jobs: uploads, db)"
+expect_eq "restore two jobs: nothing stopped or restored" "$(calls)" "bh config"
+
+# A job named with other characters: its id carries the engine's slug.
+restore_two_jobs slug; config_with_jobs "db.hourly" "files"
+printf 'db.hourly\t%s\nfiles\t%s\n' "${NEW}_db-hourly" "${NEW}_files" > "$DIR/snapshots.tsv"
+run_restore; expect_rc "restore two jobs: a job name with other characters" $? 0
 
 echo ""
 echo "$PASSED passed, $FAILED failed"
