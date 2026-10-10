@@ -28,6 +28,12 @@
 #   test:    ...                # npm ci && npm test
 # -----------------------------------------------------------------------------
 #
+# Release: ci.yml only builds and tests. The image is published by
+# release.yml (semantic release, then the image push) - dispatched after the
+# merge (release-workflow). It needs `on: workflow_dispatch` and must build
+# and test before it publishes (its release job `needs:` its build and test
+# jobs), so a broken update never reaches the registry.
+#
 # Required .github/dependabot.yml (excerpt):
 # -----------------------------------------------------------------------------
 # version: 2
@@ -61,7 +67,7 @@ permissions:
   pull-requests: write  # approve, read the PR
   checks: read          # check runs and suites - private repositories
   statuses: read        # commit statuses - private repositories
-  actions: read         # workflow runs - private repositories
+  actions: write        # dispatch the release; read workflow runs
 
 jobs:
   maintenance:
@@ -70,6 +76,8 @@ jobs:
     with:
       # The repository's own build and test workflow - no backup round trip.
       required-workflows: .github/workflows/ci.yml
+      # Publishes the merged update; its run must succeed.
+      release-workflow: .github/workflows/release.yml
       merge-method: 'squash'
       auto-approve: true
       # Patch updates only; e.g. 'patch,minor' once the tests are trusted to

@@ -36,6 +36,12 @@
 #    Dependabot secret DEPENDABOT_REBASE_TOKEN), CI runs on the new
 #    combination and the rebased PR gets its own decision. Only the exact
 #    combination CI tested is merged.
+# 6. Release (optional, `release-workflow`): the merge is made with the
+#    GITHUB_TOKEN, and a push made with it starts no workflow. After a merge
+#    - and only then - the release workflow is dispatched on the base branch
+#    (workflow_dispatch is exempt from that rule), its run is shown in the
+#    job summary, and the job waits for it (`release-wait-minutes`): a run
+#    that does not succeed fails the job.
 #
 # Why not GitHub's native auto-merge: without required status checks GitHub
 # merges an auto-merge PR at once, before CI has finished. Required checks need
@@ -43,7 +49,8 @@
 # main with the GITHUB_TOKEN (GitHub Actions cannot be a bypass actor).
 #
 # Every path that does not merge leaves the PR open with an annotation and the
-# job green. The decision is shown in the job summary.
+# job green. The decision is shown in the job summary. Only invalid inputs and
+# a release that was not started or did not succeed turn the job red.
 #
 # Usage in your repository:
 #   name: Docker Maintenance
@@ -56,20 +63,23 @@
 #     pull-requests: write  # approve, read the PR
 #     checks: read          # check runs and suites - private repositories
 #     statuses: read        # commit statuses - private repositories
-#     actions: read         # workflow runs - private repositories
+#     actions: write        # dispatch the release; read workflow runs
 #
 #   jobs:
 #     maintenance:
 #       uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
 #       with:
 #         required-workflows: .github/workflows/docker-release.yml
+#         release-workflow: .github/workflows/docker-release.yml
 #       secrets: inherit
 #
 # Permissions: this workflow declares none of its own, so the job token has
 # exactly what the calling workflow grants. In public repositories CI results
 # are readable without the three read scopes. In private repositories a caller
 # without `checks: read`, `statuses: read` and `actions: read` leaves every PR
-# open with a notice.
+# open with a notice. With `release-workflow` the caller grants
+# `actions: write` (it includes read); without it the dispatch fails with an
+# error naming that permission.
 #
 # Requirements:
 # - Dependabot must be enabled in repository settings
@@ -84,6 +94,10 @@
 # - jq on the runner (preinstalled on GitHub-hosted runners) to read the
 #   versions of the updated dependencies. Without it the 0.x rule cannot be
 #   checked, so the PR is left open - never merged on an unchecked type.
+# - With `release-workflow`: that workflow has an `on: workflow_dispatch`
+#   trigger, releases on it, and publishes nothing unless its own build and
+#   test jobs passed (`needs:`) - this workflow makes a failed release loud,
+#   the release workflow keeps a broken image from being published.
 # =============================================================================
 
 name: 🐳 Docker Maintenance (Dependabot)
@@ -127,11 +141,34 @@ on:
         required: false
         default: 60
 
+      release-workflow:
+        description: 'Release workflow file to start after a merge, e.g. .github/workflows/docker-release.yml. It is dispatched (workflow_dispatch) on the base branch only after this run merged the PR - the merge itself starts no workflow. Needs actions: write. Empty: no release is started.'
+        type: string
+        required: false
+        default: ''
+
+      release-wait-minutes:
+        description: 'How long to wait for the dispatched release run, in minutes (0-180). A run that does not conclude success within it fails the job. 0: do not wait.'
+        type: number
+        required: false
+        default: 60
+
       runs-on:
         description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         type: string
         required: false
         default: 'ubuntu-latest'
+
+    outputs:
+      merged:
+        description: 'true if this run merged the PR'
+        value: ${{ jobs.maintenance.outputs.merged }}
+      release-run-url:
+        description: 'URL of the dispatched release run (empty if none was dispatched or it was not found)'
+        value: ${{ jobs.maintenance.outputs.release-run-url }}
+      release-result:
+        description: 'success, failed, timeout, not-waited, not-found, unreadable or dispatch-failed; empty if no release was dispatched'
+        value: ${{ jobs.maintenance.outputs.release-result }}
 
     secrets:
       DEPENDABOT_REBASE_TOKEN:
@@ -149,8 +186,14 @@ jobs:
     # merge that event's head commit, and only while it is still the head.
     if: github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'
     # ci-wait-minutes is at most 60 and the last poll can come up to 3 min
-    # after it; the rest covers setup and the merge.
-    timeout-minutes: 75
+    # after it; the merge takes up to 1 min, finding the release run up to 2,
+    # release-wait-minutes is at most 180 and its last poll up to 1 min
+    # after it; the rest covers setup. (An expression cannot add the inputs.)
+    timeout-minutes: 255
+    outputs:
+      merged: ${{ steps.merge.outputs.merged }}
+      release-run-url: ${{ steps.release.outputs.run-url }}
+      release-result: ${{ steps.release.outputs.result }}
     # One decision per PR: a newer event (e.g. Dependabot rebased the PR)
     # replaces the run that is still waiting for the old head commit.
     concurrency:
@@ -179,6 +222,8 @@ jobs:
           MERGE_METHOD: ${{ inputs.merge-method }}
           WAIT_MINUTES: ${{ inputs.ci-wait-minutes }}
           REQUIRED_WORKFLOWS: ${{ inputs.required-workflows }}
+          RELEASE_WORKFLOW: ${{ inputs.release-workflow }}
+          RELEASE_WAIT_MINUTES: ${{ inputs.release-wait-minutes }}
         run: |
           set -uo pipefail
 
@@ -235,6 +280,31 @@ jobs:
           done < <(printf '%s\n' "$REQUIRED_WORKFLOWS" | tr ',' '\n')
           echo "Required workflows: ${REQUIRED:-none}"
           echo "required=$REQUIRED" >> "$GITHUB_OUTPUT"
+
+          # One workflow file directly in .github/workflows; its name goes
+          # into the dispatch URL, so only the characters of a file name.
+          RELEASE="${RELEASE_WORKFLOW#"${RELEASE_WORKFLOW%%[![:space:]]*}"}"
+          RELEASE="${RELEASE%"${RELEASE##*[![:space:]]}"}"
+          if [ -n "$RELEASE" ]; then
+            RELEASE_OK=false
+            case "${RELEASE#.github/workflows/}" in
+              "$RELEASE"|*[!A-Za-z0-9._-]*) ;;
+              ?*.yml|?*.yaml) RELEASE_OK=true ;;
+            esac
+            if [ "$RELEASE_OK" != true ]; then
+              echo "::error title=Invalid input::release-workflow takes one workflow file such as .github/workflows/docker-release.yml, got '$RELEASE_WORKFLOW'."
+              exit 1
+            fi
+          fi
+          case "$RELEASE_WAIT_MINUTES" in
+            ''|*[!0-9]*) echo "::error title=Invalid input::release-wait-minutes must be a whole number from 0 to 180, got '$RELEASE_WAIT_MINUTES'."; exit 1 ;;
+          esac
+          if [ "$RELEASE_WAIT_MINUTES" -gt 180 ]; then
+            echo "::error title=Invalid input::release-wait-minutes must be from 0 to 180, got '$RELEASE_WAIT_MINUTES'."
+            exit 1
+          fi
+          echo "Release workflow: ${RELEASE:-none}"
+          echo "release-workflow=$RELEASE" >> "$GITHUB_OUTPUT"
           echo "Ecosystem: ${PACKAGE_ECOSYSTEM:-unknown}, update type: ${UPDATE_TYPE:-unknown}"
 
           # A GitHub Actions update changes the CI itself: the PR's run of a
@@ -793,7 +863,155 @@ jobs:
           echo "::warning title=Dependabot PR left open::CI passed, but merging failed: $(head -n 1 "$ERR")"
           done_with false merge-failed
 
+      # The merge was made with the job token, and GitHub starts no workflow
+      # for a push made with it - except workflow_dispatch and
+      # repository_dispatch. So the release workflow is dispatched on the
+      # base branch, only after this run merged the PR (never for a PR left
+      # open, closed or superseded, never for a CI change - those are never
+      # merged). The dispatch answers with the run it created
+      # (return_run_details); a GitHub that answers 204 without it gets the
+      # run looked up: workflow_dispatch, that workflow, the base branch,
+      # created since the dispatch, on the merge commit. Then the job waits
+      # for the run: anything but success fails the job - a broken release
+      # is loud, never silent. Whether the release publishes anything after
+      # a failed test is up to the release workflow: it has to gate its
+      # publishing jobs on its tests (needs:).
+      # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
+      - name: 🚀 Release
+        id: release
+        if: steps.merge.outputs.merged == 'true' && steps.guard.outputs.release-workflow != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          MERGE_COMMIT: ${{ steps.merge.outputs.merge-commit }}
+          RELEASE_WORKFLOW: ${{ steps.guard.outputs.release-workflow }}
+          WAIT_MINUTES: ${{ inputs.release-wait-minutes }}
+        run: |
+          set -uo pipefail
+          WORK=$(mktemp -d)
+          WORKFLOW="${RELEASE_WORKFLOW##*/}"
+          RUN_ID=""
+          RUN_URL=""
+
+          # result: success, failed, timeout, not-waited, not-found,
+          # unreadable or dispatch-failed
+          finish() {
+            echo "result=$1" >> "$GITHUB_OUTPUT"
+            echo "detail=$2" >> "$GITHUB_OUTPUT"
+            echo "Release: $1 - $2"
+            exit "$3"
+          }
+
+          # A run created up to 2 min before the dispatch still counts: the
+          # runner's clock and GitHub's may differ a little.
+          SINCE=$(jq -rn "$(( $(date +%s) - 120 )) | todate")
+          echo "Dispatching $RELEASE_WORKFLOW on $BASE_REF (merge commit: ${MERGE_COMMIT:-unknown})"
+          DETAILS=(-F return_run_details=true)
+          for try in 1 2 3; do
+            if gh api --method POST "repos/$REPO/actions/workflows/$WORKFLOW/dispatches" \
+                 -f ref="$BASE_REF" "${DETAILS[@]}" > "$WORK/dispatch" 2> "$WORK/err"; then
+              break
+            fi
+            ERR=$(head -n 1 "$WORK/err")
+            case "$(cat "$WORK/err")" in
+              # A GitHub that does not know the parameter: without it (the run
+              # is looked up then).
+              *return_run_details*) if [ "${#DETAILS[@]}" -gt 0 ]; then DETAILS=(); WHY=""; else WHY="$ERR"; fi ;;
+              *"rate limit"*|*"HTTP 5"*) WHY="" ;;
+              *"HTTP 403"*|*"Resource not accessible"*) WHY="the job token may not start workflows - grant 'actions: write' in the calling workflow's permissions" ;;
+              *"HTTP 404"*) WHY="$RELEASE_WORKFLOW was not found on $BASE_REF" ;;
+              *"HTTP 422"*) WHY="$RELEASE_WORKFLOW cannot be dispatched - it needs an 'on: workflow_dispatch' trigger and must be enabled" ;;
+              *) WHY="" ;;
+            esac
+            if [ -z "$WHY" ] && [ "$try" -lt 3 ]; then
+              echo "Dispatch failed ($ERR) - retrying."
+              sleep 10
+              continue
+            fi
+            echo "::error title=Release not started::The update was merged, but $RELEASE_WORKFLOW could not be dispatched on $BASE_REF: ${WHY:-$ERR}. Run it by hand to release the update. ($ERR)"
+            finish dispatch-failed "${WHY:-$ERR}" 1
+          done
+
+          RUN_ID=$(jq -r '.workflow_run_id // empty' "$WORK/dispatch" 2> /dev/null || true)
+          RUN_URL=$(jq -r '.html_url // empty' "$WORK/dispatch" 2> /dev/null || true)
+          if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
+            RUN_ID=""
+          fi
+          if [ -z "$RUN_ID" ] && [ -n "$MERGE_COMMIT" ]; then
+            echo "The dispatch returned no run - looking it up."
+            BRANCH=$(jq -rn --arg b "$BASE_REF" '$b | @uri')
+            for _ in $(seq 1 24); do
+              if gh api "repos/$REPO/actions/workflows/$WORKFLOW/runs?event=workflow_dispatch&branch=$BRANCH&created=%3E%3D$SINCE&per_page=20" \
+                   --jq '.workflow_runs[] | [.id, .head_sha, .created_at, .html_url] | @tsv' > "$WORK/runs" 2> "$WORK/err"; then
+                FOUND=$(awk -F'\t' -v sha="$MERGE_COMMIT" -v since="$SINCE" '$2 == sha && $3 >= since { print $1 "\t" $4; exit }' "$WORK/runs")
+                if [ -n "$FOUND" ]; then
+                  RUN_ID="${FOUND%%$'\t'*}"
+                  RUN_URL="${FOUND#*$'\t'}"
+                  break
+                fi
+              fi
+              sleep 5
+            done
+          fi
+          if [ -z "$RUN_ID" ]; then
+            MSG="$RELEASE_WORKFLOW was dispatched on $BASE_REF, but its run for ${MERGE_COMMIT:-the merge commit} was not found within 2 min - check the workflow's runs"
+            if [ "$WAIT_MINUTES" -eq 0 ]; then
+              echo "::warning title=Release run not found::$MSG."
+              finish not-found "$MSG" 0
+            fi
+            echo "::error title=Release not confirmed::$MSG; its result cannot be confirmed."
+            finish not-found "$MSG" 1
+          fi
+          [ -n "$RUN_URL" ] || RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/$REPO/actions/runs/$RUN_ID"
+          echo "run-id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run-url=$RUN_URL" >> "$GITHUB_OUTPUT"
+          echo "Release run: $RUN_URL"
+
+          if [ "$WAIT_MINUTES" -eq 0 ]; then
+            echo "::notice title=Release started::$RELEASE_WORKFLOW runs for the merged update: $RUN_URL (not waited for: release-wait-minutes is 0)."
+            finish not-waited "not waited for (release-wait-minutes: 0)" 0
+          fi
+
+          # Every 30 s, after 10 min every 60 s, until it has completed or
+          # release-wait-minutes are over.
+          LIMIT=$((WAIT_MINUTES * 60))
+          START=$(date +%s)
+          ERRORS=0
+          STATUS=unknown
+          while :; do
+            if gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '[.status, (.conclusion // "-")] | @tsv' > "$WORK/run" 2> "$WORK/err"; then
+              ERRORS=0
+              IFS=$'\t' read -r STATUS CONCLUSION < "$WORK/run" || true
+              if [ "$STATUS" = completed ]; then
+                echo "conclusion=$CONCLUSION" >> "$GITHUB_OUTPUT"
+                if [ "$CONCLUSION" = success ]; then
+                  echo "Release run succeeded: $RUN_URL"
+                  finish success "$RUN_URL" 0
+                fi
+                echo "::error title=Release failed::The update was merged, but its release run $RUN_URL concluded '$CONCLUSION'. Fix the cause and re-run it, or run $RELEASE_WORKFLOW by hand."
+                finish failed "$CONCLUSION" 1
+              fi
+            else
+              ERRORS=$((ERRORS + 1))
+              echo "API error $ERRORS/5: $(head -n 1 "$WORK/err")"
+              if [ "$ERRORS" -ge 5 ]; then
+                echo "::error title=Release not confirmed::The release run $RUN_URL could not be read: $(head -n 1 "$WORK/err"). Check its result there."
+                finish unreadable "$(head -n 1 "$WORK/err")" 1
+              fi
+            fi
+            NOW=$(( $(date +%s) - START ))
+            if [ "$NOW" -ge "$LIMIT" ]; then
+              echo "::error title=Release not finished::The release run $RUN_URL was still $STATUS after $WAIT_MINUTES min (release-wait-minutes). Check its result there."
+              finish timeout "still $STATUS after $WAIT_MINUTES min" 1
+            fi
+            if [ "$NOW" -lt 600 ]; then sleep 30; else sleep 60; fi
+          done
+
+      # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
       - name: 📊 Summary
+        id: summary
         if: always()
         shell: bash
         env:
@@ -811,6 +1029,13 @@ jobs:
           CI_DETAIL: ${{ steps.ci.outputs.detail }}
           MERGE_REASON: ${{ steps.merge.outputs.reason }}
           MERGE_DETAIL: ${{ steps.merge.outputs.detail }}
+          MERGED: ${{ steps.merge.outputs.merged }}
+          MERGE_COMMIT: ${{ steps.merge.outputs.merge-commit }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          RELEASE_WORKFLOW: ${{ steps.guard.outputs.release-workflow }}
+          RELEASE_RESULT: ${{ steps.release.outputs.result }}
+          RELEASE_DETAIL: ${{ steps.release.outputs.detail }}
+          RELEASE_RUN_URL: ${{ steps.release.outputs.run-url }}
           JOB_STATUS: ${{ job.status }}
         run: |
           case "$GUARD_REASON" in
@@ -844,6 +1069,28 @@ jobs:
               esac ;;
             *) DECISION="❌ Not completed (job status: $JOB_STATUS)." ;;
           esac
+
+          # Merge -> release dispatched (run) -> release result
+          RELEASE_NOTE=""
+          RUN_LINK="${RELEASE_RUN_URL:+[run]($RELEASE_RUN_URL)}"
+          if [ "$MERGED" = true ] && [ -n "$RELEASE_WORKFLOW" ]; then
+            DISPATCHED="\`$RELEASE_WORKFLOW\` on \`$BASE_REF\` - ${RUN_LINK:-run not identified}"
+            case "$RELEASE_RESULT" in
+              success)         RESULT="✅ Succeeded" ;;
+              failed)          RESULT="❌ Failed: the run concluded \`$RELEASE_DETAIL\`" ;;
+              timeout)         RESULT="❌ Not finished: $RELEASE_DETAIL (release-wait-minutes)" ;;
+              not-waited)      RESULT="⏭️ Not waited for (release-wait-minutes: 0)" ;;
+              unreadable)      RESULT="❌ Not confirmed: the run could not be read ($RELEASE_DETAIL)" ;;
+              not-found)       RESULT="❓ Unknown: $RELEASE_DETAIL" ;;
+              dispatch-failed) DISPATCHED="❌ Not dispatched: $RELEASE_DETAIL"
+                               RESULT="❌ No release - run \`$RELEASE_WORKFLOW\` by hand" ;;
+              *)               RESULT="❌ Not completed (job status: $JOB_STATUS)" ;;
+            esac
+          elif [ "$MERGED" = true ]; then
+            RELEASE_NOTE="ℹ️ No release started: release-workflow is not set. The merge was made with GITHUB_TOKEN, which starts no workflow - the update is released with the next push to \`$BASE_REF\` or a manual run."
+          elif [ -n "$RELEASE_WORKFLOW" ]; then
+            RELEASE_NOTE="No release started: nothing was merged."
+          fi
           {
             echo "## 🐳 Docker Maintenance (Dependabot)"
             echo ""
@@ -858,6 +1105,18 @@ jobs:
             echo "| **Merge Method** | $MERGE_METHOD |"
             echo ""
             echo "$DECISION"
+            if [ "$MERGED" = true ] && [ -n "$RELEASE_WORKFLOW" ]; then
+              echo ""
+              echo "| Step | Result |"
+              echo "|------|--------|"
+              echo "| **Merge** | ✅ Merged into \`$BASE_REF\`${MERGE_COMMIT:+ as \`${MERGE_COMMIT:0:12}\`} |"
+              echo "| **Release dispatched** | $DISPATCHED |"
+              echo "| **Release result** | $RESULT |"
+            fi
+            if [ -n "$RELEASE_NOTE" ]; then
+              echo ""
+              echo "$RELEASE_NOTE"
+            fi
             if [ -s "$RUNNER_TEMP/dependabot-ci-checks.md" ]; then
               echo ""
               echo "**Checks on the head commit** (last poll):"

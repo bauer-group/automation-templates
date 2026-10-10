@@ -267,7 +267,7 @@ Complete Docker automation with multi-platform builds, security scanning, and en
 | **🔧 docker-build action** | Multi-platform Docker builds | Composite action with security scanning |
 | **🚀 docker-build workflow** | Complete Docker CI/CD | `uses: {{REPO_FULL_NAME}}/.github/workflows/docker-build.yml@main` |
 | **📋 Configuration Templates** | Pre-configured setups | `default`, `web-application`, `microservice`, `enterprise` |
-| **🐳 Docker maintenance (Dependabot)** | Merge Dependabot PRs of any ecosystem (base images, npm, pip, Composer, Cargo, NuGet, ...) only after the named PR CI passed | `uses: {{REPO_FULL_NAME}}/.github/workflows/docker-maintenance-dependabot.yml@main` |
+| **🐳 Docker maintenance (Dependabot)** | Merge Dependabot PRs of any ecosystem (base images, npm, pip, Composer, Cargo, NuGet, ...) only after the named PR CI passed on the current base, then dispatch the release and wait for it | `uses: {{REPO_FULL_NAME}}/.github/workflows/docker-maintenance-dependabot.yml@main` |
 | **🔍 Base image monitor** | Release a rebuild when a floating tag (`stable`, `latest`) moves; stored once the release succeeded | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-docker-base-image-monitor.yml@main` |
 
 **Quick Start - Docker:**
@@ -1071,7 +1071,7 @@ gh auth status --show-token
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
 - [🐳 **Fork Docker Build**](docs/workflows/fork-docker-build.md) - Multi-image build, Trivy gate and GHCR push for forked repositories
 - [🔧 **Auto Maintenance**](docs/workflows/modules-auto-maintenance.md) - Base image digests and dependency updates (npm, pip, .NET, Go) in one scheduled run, validated and rolled back on failure; commits only dependency manifests and lock files ([what gets committed](docs/workflows/modules-auto-maintenance.md#was-committet-wird))
-- [🐳 **Docker Image Maintenance**](docs/workflows/docker-maintenance.md) - Dependabot PRs of every ecosystem merged after their PR CI passed (trigger scope, files per ecosystem, decision table), or Renovate
+- [🐳 **Docker Image Maintenance**](docs/workflows/docker-maintenance.md) - Dependabot PRs of every ecosystem merged after their PR CI passed (trigger scope, files per ecosystem, decision table, tested base, release dispatch), or Renovate
 - [🐍 **Python Build System**](docs/workflows/python-build.md) - Python application builds and testing
 - [🐍 **Python Semantic Release System**](docs/workflows/python-semantic-release.md) - Modern Python CI/CD with semantic versioning
 - [📦 **Semantic Release Config Contract**](docs/workflows/semantic-release-config.md) - What a repository's `semantic-release.json` actually controls, and what is silently ignored

@@ -23,6 +23,11 @@
 #                        (else: no merge, '@dependabot rebase' with the rebase
 #                        token, once per head commit), then gh pr merge pinned
 #                        to the head commit
+#   release (id: release) - after a merge only: dispatches release-workflow on
+#                        the base branch, finds its run (returned by the
+#                        dispatch, or looked up), waits for it and fails the
+#                        job unless it succeeded
+#   summary (id: summary) - Merge -> Release dispatched (run) -> Release result
 #
 # Without this, `gh pr merge --auto` on a branch without required checks merged
 # at once - bauer-group/CS-BillingStack#12 three seconds after its label check
@@ -80,7 +85,9 @@ extract_step() {
 GUARD_BODY=$(extract_step guard)
 CI_BODY=$(extract_step ci)
 MERGE_BODY=$(extract_step merge)
-for step in GUARD_BODY CI_BODY MERGE_BODY; do
+RELEASE_BODY=$(extract_step release)
+SUMMARY_BODY=$(extract_step summary)
+for step in GUARD_BODY CI_BODY MERGE_BODY RELEASE_BODY SUMMARY_BODY; do
   if [ -z "${!step}" ]; then
     echo "FATAL: could not extract the run block for $step from the workflow."
     echo "       The step was renamed, removed, or re-indented - update this test."
@@ -140,10 +147,22 @@ static_lacks "no native auto-merge"              'enable-pull-request-automerge|
 # grant them; declaring only contents/pull-requests would take away the read
 # access a private repository's caller grants. So: none at all.
 static_lacks "no permissions of its own"         '^ *permissions:'
-# The job timeout has to cover the longest allowed wait (60 min), the last poll
-# interval (3 min) and the merge.
+# The job timeout has to cover the longest allowed CI wait (60 min) and its
+# last poll (3 min), the merge (1), finding the release run (2), the longest
+# allowed release wait (180) and its last poll (1).
 TIMEOUT=$(sed -n 's/^    timeout-minutes: \([0-9]*\)$/\1/p' "$WORKFLOW_FILE")
-if [ -n "$TIMEOUT" ] && [ "$TIMEOUT" -ge 65 ]; then pass "job timeout covers the wait ($TIMEOUT min)"; else fail "job timeout '$TIMEOUT' < 65"; fi
+if [ -n "$TIMEOUT" ] && [ "$TIMEOUT" -ge 247 ]; then pass "job timeout covers both waits ($TIMEOUT min)"; else fail "job timeout '$TIMEOUT' < 247"; fi
+if grep -qF "release-wait-minutes must be from 0 to 180" "$WORKFLOW_FILE"; then pass "release wait capped where the timeout expects it"; else fail "release-wait-minutes cap changed - check the job timeout"; fi
+# A release is dispatched only after this run merged the PR.
+static_has   "release only after a merge"        "if: steps.merge.outputs.merged == 'true' && steps.guard.outputs.release-workflow != ''"
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "release gets the merge commit"     'MERGE_COMMIT: ${{ steps.merge.outputs.merge-commit }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "release gets the checked file"     'RELEASE_WORKFLOW: ${{ steps.guard.outputs.release-workflow }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "run URL is a workflow output"      'value: ${{ jobs.maintenance.outputs.release-run-url }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "job exposes the run URL"           'release-run-url: ${{ steps.release.outputs.run-url }}'
 # The self filter keys on the job's display name and on the file name in the
 # callers' referenced_workflows.
 static_has   "self filter matches the job name"  'SELF_JOB_NAME: Docker Maintenance'
@@ -174,7 +193,9 @@ cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 # gh api [--paginate] <path> --jq <filter>: answers from $FAKE/<kind>.<n>.json, n
 # counting the calls per kind (the highest file is reused once n runs past it).
-# A file holding HTTP403, HTTP404, HTTP500 or RATELIMIT simulates that error.
+# A file holding HTTP403, HTTP404, HTTP422, HTTP500 or RATELIMIT simulates that
+# error, NOCONTENT an answer without a body (HTTP 204). POST .../dispatches
+# answers from $FAKE/dispatch.<n>.json the same way.
 # gh api --method POST .../reviews, POST .../comments and gh pr merge: logged
 # to $FAKE/calls; FAKE_REVIEW_FAIL / FAKE_COMMENT_FAIL / FAKE_MERGE_FAIL fail
 # them. A comment's token goes to $FAKE/tokens.
@@ -203,10 +224,11 @@ case "$method $path" in
     echo "${GH_TOKEN:-}" >> "$FAKE/tokens"
     [ -n "${FAKE_COMMENT_FAIL:-}" ] && { echo "gh: Bad credentials (HTTP 401)" >&2; exit 1; }
     exit 0 ;;
-  "GET "*) ;;
+  "POST repos/"*"/actions/workflows/"*"/dispatches") kind=dispatch ;;
+  "GET "*) kind="" ;;
   *) echo "unexpected gh api call: $*" >&2; exit 2 ;;
 esac
-case "$path" in
+[ -n "$kind" ] || case "$path" in
   repos/*/pulls/*/commits*)        kind=commits ;;
   repos/*/pulls/*/files*)          kind=files ;;
   repos/*/pulls/*)                 kind=pr ;;
@@ -218,6 +240,8 @@ case "$path" in
   repos/*/commits/*)               kind=commit ;;
   repos/*/issues/*/comments*)      kind=comments ;;
   repos/*/actions/runs\?*)         kind=actions ;;
+  repos/*/actions/runs/*)          kind=release ;;
+  repos/*/actions/workflows/*/runs\?*) kind=lookup ;;
   *) echo "unexpected path: $path" >&2; exit 2 ;;
 esac
 n=$(( $(cat "$FAKE/$kind.count" 2>/dev/null || echo 0) + 1 ))
@@ -229,7 +253,10 @@ case "$(cat "$file")" in
   HTTP403) echo "gh: Resource not accessible by integration (HTTP 403)" >&2; exit 1 ;;
   HTTP404) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
   HTTP500) echo "gh: Server Error (HTTP 500)" >&2; exit 1 ;;
+  HTTP422) echo "gh: Workflow does not have 'workflow_dispatch' trigger (HTTP 422)" >&2; exit 1 ;;
+  HTTP422PARAM) printf 'gh: Invalid request.\n\n"return_run_details" is not a permitted key. (HTTP 422)\n' >&2; exit 1 ;;
   RATELIMIT) echo "gh: API rate limit exceeded for installation ID 1. (HTTP 403)" >&2; exit 1 ;;
+  NOCONTENT) exit 0 ;;
 esac
 jq -r "$filter" < "$file"
 STUB
@@ -368,7 +395,9 @@ dep() {
 deps() { echo "[$(join "$@")]"; }
 
 # guard_case <name> <update-type> <merge-update-types> <allow-major> <want rc> <ok> <reason> <annotation|-> [merge-method] [wait-minutes]
-# required-workflows is $GUARD_REQUIRED, if set (also empty), else ci.yml; the
+# required-workflows is $GUARD_REQUIRED, if set (also empty), else ci.yml;
+# release-workflow is $GUARD_RELEASE (default empty), release-wait-minutes
+# $GUARD_RELEASE_WAIT (default 60); the
 # ecosystem is $GUARD_ECOSYSTEM, if set (also empty), else docker; the updated
 # dependencies are $GUARD_DEPS, if set (also empty), else one 7.2.4 -> 7.2.5
 # update of the given type (1.0.0 or later: the 0.x rule does not apply).
@@ -380,6 +409,7 @@ guard_case() {
       UPDATE_TYPE="$2" MERGE_UPDATE_TYPES="$3" ALLOW_MAJOR="$4" \
       UPDATED_DEPENDENCIES_JSON="${GUARD_DEPS-$(deps "$(dep redis 7.2.4 7.2.5 "$2")")}" \
       MERGE_METHOD="${9:-squash}" WAIT_MINUTES="${10:-60}" REQUIRED_WORKFLOWS="${GUARD_REQUIRED-$REQ_CI}" \
+      RELEASE_WORKFLOW="${GUARD_RELEASE-}" RELEASE_WAIT_MINUTES="${GUARD_RELEASE_WAIT-60}" \
       bash --noprofile --norc -eo pipefail -c "$GUARD_BODY" ) > "$dir/log" 2>&1
   local rc=$?
   check "guard/$name" "$dir" "$rc" "$5" ok "$6" "$8"
@@ -427,6 +457,37 @@ GUARD_REQUIRED=$' .github/workflows/ci.yml ,\n\t.github/workflows/docker-release
                                                           guard_case required-list        "$P" "patch" false 0 true patch -
 got=$(sed -n 's/^required=//p' "$WORK/guard-required-list/output")
 if [ "$got" = ".github/workflows/ci.yml,.github/workflows/docker-release.yaml" ]; then pass "guard/required-list: normalized"; else fail "guard/required-list: required='$got'"; fi
+
+# release-workflow: one workflow file directly in .github/workflows - its name
+# goes into the dispatch URL. Checked before any decision, so a typo fails
+# every run, not only the one that merges.
+release_is() {
+  local got; got=$(sed -n 's/^release-workflow=//p' "$WORK/guard-$1/output")
+  if [ "$got" = "$2" ]; then pass "guard/$1: release-workflow '$2'"; else fail "guard/$1: release-workflow '$got', want '$2'"; fi
+}
+guard_case release-unset "$P" "patch" false 0 true patch -
+release_is release-unset ""
+GUARD_RELEASE=" .github/workflows/docker-release.yml "  guard_case release-set        "$P" "patch" false 0 true patch -
+release_is release-set ".github/workflows/docker-release.yml"
+GUARD_RELEASE=".github/workflows/Release_2.yaml"         guard_case release-yaml       "$P" "patch" false 0 true patch -
+release_is release-yaml ".github/workflows/Release_2.yaml"
+GUARD_RELEASE="   "                                      guard_case release-blank      "$P" "patch" false 0 true patch -
+release_is release-blank ""
+for bad in "docker-release.yml" ".github/workflows/ci/release.yml" ".github/workflows/release.json" ".github/workflows/.yml" \
+           ".github/workflows/a.yml,.github/workflows/b.yml" ".github/workflows/my release.yml" ".github/workflows/../x.yml" \
+           "x/.github/workflows/release.yml" ".github/workflows/release.yml?ref=x"; do
+  name="release-invalid-${bad//[^A-Za-z0-9.-]/_}"
+  GUARD_RELEASE="$bad" guard_case "$name" "$P" "patch" false 1 "" "" error
+done
+# Invalid even where nothing would be merged.
+GUARD_ECOSYSTEM=github_actions GUARD_RELEASE="release.yml" guard_case release-invalid-actions-update "$P" "patch" false 1 "" "" error
+# release-wait-minutes: 0 (do not wait) to 180 (the job timeout covers it).
+GUARD_RELEASE_WAIT=0    guard_case release-wait-zero      "$P" "patch" false 0 true patch -
+GUARD_RELEASE_WAIT=180  guard_case release-wait-180       "$P" "patch" false 0 true patch -
+GUARD_RELEASE_WAIT=181  guard_case release-wait-too-long  "$P" "patch" false 1 "" "" error
+GUARD_RELEASE_WAIT=abc  guard_case release-wait-not-a-number "$P" "patch" false 1 "" "" error
+GUARD_RELEASE_WAIT=""   guard_case release-wait-empty     "$P" "patch" false 1 "" "" error
+GUARD_RELEASE_WAIT=-5   guard_case release-wait-negative  "$P" "patch" false 1 "" "" error
 
 # A GitHub Actions update changes the CI itself: never merged, whatever the
 # update type and required-workflows say - and without a wait. fetch-metadata
@@ -1259,6 +1320,216 @@ D=$(merge_dir landed-elsewhere); echo '{"sha":"m1","parents":[{"sha":"base9"}]}'
 merge_run "$D" true squash
 check merge/landed-on-another-base "$D" $? 0 merged true warning "Merged onto an untested base"
 output_is merge/landed-on-another-base "$D" detail "landed on base9, not on the tested base0"
+
+# --- release ------------------------------------------------------------------------
+# The merge commit m1 is on main; release-workflow is docker-release.yml. The
+# dispatch answers with run 555 (return_run_details) by default; the run is
+# queued, then in progress - each case says when and how it completes. The
+# clock starts at 2025-10-09T08:53:20Z, so runs created since 08:51:20Z count.
+REL_WF=".github/workflows/docker-release.yml"
+DISPATCH="api --method POST repos/o/r/actions/workflows/docker-release.yml/dispatches -f ref=main -F return_run_details=true"
+RUN_555="https://github.com/o/r/actions/runs/555"
+# relrun <status> <conclusion|->: the run as GET actions/runs/{id} returns it
+relrun() {
+  local c="null"; [ "$2" = "-" ] || c="\"$2\""
+  printf '{"id":555,"event":"workflow_dispatch","head_sha":"m1","status":"%s","conclusion":%s,"html_url":"%s"}\n' "$1" "$c" "$RUN_555"
+}
+# looked <id> <head sha> <created at>: a run as the workflow's runs list has it
+looked() { printf '{"id":%s,"event":"workflow_dispatch","head_sha":"%s","created_at":"%s","html_url":"https://github.com/o/r/actions/runs/%s"}' "$1" "$2" "$3" "$1"; }
+release_dir() {
+  local dir="$WORK/release-$1"
+  mkdir -p "$dir"; : > "$dir/output"; : > "$dir/calls"; echo 1760000000 > "$dir/clock"
+  printf '{"workflow_run_id":555,"run_url":"https://api.github.com/repos/o/r/actions/runs/555","html_url":"%s"}\n' "$RUN_555" > "$dir/dispatch.1.json"
+  relrun queued - > "$dir/release.1.json"
+  relrun in_progress - > "$dir/release.2.json"
+  echo '{"total_count":0,"workflow_runs":[]}' > "$dir/lookup.1.json"
+  echo "$dir"
+}
+# release_run <dir> [VAR=value ...]
+release_run() {
+  local dir="$1"; shift
+  ( cd "$dir" && env PATH="$WORK/bin:$PATH" FAKE="$dir" GITHUB_OUTPUT="$dir/output" GITHUB_SERVER_URL=https://github.com \
+      GH_TOKEN=test REPO=o/r BASE_REF=main MERGE_COMMIT=m1 RELEASE_WORKFLOW="$REL_WF" WAIT_MINUTES=60 "$@" \
+      bash --noprofile --norc -eo pipefail -c "$RELEASE_BODY" ) > "$dir/log" 2>&1
+}
+# waited <name> <dir> <seconds>: the step ended that many seconds after it started
+waited() {
+  local got; got=$(( $(cat "$2/clock") - 1760000000 ))
+  if [ "$got" -eq "$3" ]; then pass "$1: ended after ${3}s"; else fail "$1: ended after ${got}s, want ${3}s"; fi
+}
+
+# Dispatched on the base branch with run details, the run waited for: green.
+D=$(release_dir success); relrun completed success > "$D/release.4.json"
+release_run "$D"; check release/success "$D" $? 0 result success -
+called release/success "$D" "$DISPATCH"
+output_is release/success "$D" run-url "$RUN_555"
+output_is release/success "$D" run-id 555
+not_called release/success "$D" "actions/workflows/docker-release.yml/runs"
+waited release/success "$D" 90
+if [ "$(calls_to "$D" "actions/runs/555")" -eq 4 ]; then pass "release/success: 4 polls"; else fail "release/success: $(calls_to "$D" "actions/runs/555") polls"; fi
+
+# Anything but success fails the job and names the run.
+for c in failure cancelled timed_out startup_failure action_required skipped neutral; do
+  D=$(release_dir "conclusion-$c"); relrun completed "$c" > "$D/release.3.json"
+  release_run "$D"; check "release/$c-fails-the-job" "$D" $? 1 result failed error "release run $RUN_555 concluded '$c'"
+  output_is "release/$c-fails-the-job" "$D" conclusion "$c"
+done
+
+# Still running at the deadline: failed, with the run named.
+D=$(release_dir timeout)
+release_run "$D" WAIT_MINUTES=15; check release/still-running-at-the-deadline "$D" $? 1 result timeout error "was still in_progress after 15 min"
+waited release/still-running-at-the-deadline "$D" 900
+logged release/still-running-at-the-deadline "$D" "$RUN_555"
+
+# release-wait-minutes 0: dispatched and reported, not waited for.
+D=$(release_dir no-wait)
+release_run "$D" WAIT_MINUTES=0; check release/wait-zero-does-not-wait "$D" $? 0 result not-waited notice "$RUN_555"
+not_called release/wait-zero-does-not-wait "$D" "actions/runs/555"
+output_is release/wait-zero-does-not-wait "$D" run-url "$RUN_555"
+
+# A GitHub that answers 204 without run details: the run is looked up - a
+# workflow_dispatch run of the workflow on main, created since the dispatch,
+# on the merge commit. A run on another commit and one created before do not
+# count.
+D=$(release_dir lookup); echo NOCONTENT > "$D/dispatch.1.json"
+echo "{\"workflow_runs\":[$(looked 570 other 2025-10-09T08:53:30Z),$(looked 560 m1 2025-10-09T08:40:00Z)]}" > "$D/lookup.2.json"
+echo "{\"workflow_runs\":[$(looked 570 other 2025-10-09T08:53:30Z),$(looked 556 m1 2025-10-09T08:53:25Z),$(looked 560 m1 2025-10-09T08:40:00Z)]}" > "$D/lookup.3.json"
+printf '{"id":556,"status":"completed","conclusion":"success","html_url":"https://github.com/o/r/actions/runs/556"}\n' > "$D/release.1.json"
+release_run "$D"; check release/run-looked-up "$D" $? 0 result success - "looking it up"
+output_is release/run-looked-up "$D" run-id 556
+output_is release/run-looked-up "$D" run-url "https://github.com/o/r/actions/runs/556"
+called release/run-looked-up "$D" "api repos/o/r/actions/workflows/docker-release.yml/runs?event=workflow_dispatch&branch=main&created=%3E%3D2025-10-09T08:51:20Z&per_page=20 --jq .workflow_runs[] | [.id, .head_sha, .created_at, .html_url] | @tsv"
+if [ "$(calls_to "$D" "docker-release.yml/runs?")" -eq 3 ]; then pass "release/run-looked-up: found on the 3rd lookup"; else fail "release/run-looked-up: $(calls_to "$D" "docker-release.yml/runs?") lookups"; fi
+
+# Another base branch: dispatched there, and its name encoded in the lookup.
+D=$(release_dir lookup-branch); echo NOCONTENT > "$D/dispatch.1.json"
+echo "{\"workflow_runs\":[$(looked 556 m1 2025-10-09T08:53:25Z)]}" > "$D/lookup.1.json"
+relrun completed success > "$D/release.1.json"
+release_run "$D" BASE_REF=release/1.x; check release/lookup-on-another-branch "$D" $? 0 result success -
+called release/lookup-on-another-branch "$D" "api --method POST repos/o/r/actions/workflows/docker-release.yml/dispatches -f ref=release/1.x -F return_run_details=true"
+if grep -qF "runs?event=workflow_dispatch&branch=release%2F1.x&created=" "$D/calls"; then pass "release/lookup-on-another-branch: branch encoded"; else fail "release/lookup-on-another-branch: branch not encoded"; fi
+
+# Not found within 2 min: its result cannot be confirmed - red; without a wait
+# only a warning.
+D=$(release_dir not-found); echo NOCONTENT > "$D/dispatch.1.json"
+release_run "$D"; check release/run-not-found "$D" $? 1 result not-found error "was not found within 2 min"
+waited release/run-not-found "$D" 120
+D=$(release_dir not-found-no-wait); echo NOCONTENT > "$D/dispatch.1.json"
+release_run "$D" WAIT_MINUTES=0; check release/run-not-found-without-wait "$D" $? 0 result not-found warning "was not found within 2 min"
+D=$(release_dir no-merge-commit); echo NOCONTENT > "$D/dispatch.1.json"
+release_run "$D" MERGE_COMMIT=; check release/no-merge-commit-no-lookup "$D" $? 1 result not-found error
+not_called release/no-merge-commit-no-lookup "$D" "docker-release.yml/runs?"
+
+# The dispatch is refused: red, with the cause named - no wait.
+D=$(release_dir dispatch-403); echo HTTP403 > "$D/dispatch.1.json"
+release_run "$D"; check release/dispatch-403-names-the-permission "$D" $? 1 result dispatch-failed error "grant 'actions: write'"
+if [ "$(calls_to "$D" "/dispatches")" -eq 1 ]; then pass "release/dispatch-403: not retried"; else fail "release/dispatch-403: $(calls_to "$D" "/dispatches") dispatches"; fi
+not_called release/dispatch-403-names-the-permission "$D" "actions/runs/"
+output_is release/dispatch-403-names-the-permission "$D" detail "the job token may not start workflows - grant 'actions: write' in the calling workflow's permissions"
+D=$(release_dir dispatch-422); echo HTTP422 > "$D/dispatch.1.json"
+release_run "$D"; check release/dispatch-422-names-the-trigger "$D" $? 1 result dispatch-failed error "it needs an 'on: workflow_dispatch' trigger"
+D=$(release_dir dispatch-404); echo HTTP404 > "$D/dispatch.1.json"
+release_run "$D"; check release/dispatch-404-names-the-file "$D" $? 1 result dispatch-failed error "$REL_WF was not found on main"
+
+# A GitHub that does not know return_run_details (an older GHES): dispatched
+# again without it, the run looked up.
+D=$(release_dir unknown-parameter); echo HTTP422PARAM > "$D/dispatch.1.json"; echo NOCONTENT > "$D/dispatch.2.json"
+echo "{\"workflow_runs\":[$(looked 556 m1 2025-10-09T08:53:25Z)]}" > "$D/lookup.1.json"
+printf '{"id":556,"status":"completed","conclusion":"success","html_url":"https://github.com/o/r/actions/runs/556"}\n' > "$D/release.1.json"
+release_run "$D"; check release/dispatch-without-run-details "$D" $? 0 result success - "looking it up"
+called release/dispatch-without-run-details "$D" "api --method POST repos/o/r/actions/workflows/docker-release.yml/dispatches -f ref=main"
+
+# A server error or a rate limit is retried; three in a row give up.
+D=$(release_dir dispatch-retried); echo HTTP500 > "$D/dispatch.1.json"; echo RATELIMIT > "$D/dispatch.2.json"
+printf '{"workflow_run_id":555,"html_url":"%s"}\n' "$RUN_555" > "$D/dispatch.3.json"; relrun completed success > "$D/release.1.json"
+release_run "$D"; check release/dispatch-error-retried "$D" $? 0 result success - "retrying"
+D=$(release_dir dispatch-fails); echo HTTP500 > "$D/dispatch.1.json"
+release_run "$D"; check release/dispatch-gives-up-after-three "$D" $? 1 result dispatch-failed error "Server Error"
+if [ "$(calls_to "$D" "/dispatches")" -eq 3 ]; then pass "release/dispatch-fails: 3 attempts"; else fail "release/dispatch-fails: $(calls_to "$D" "/dispatches") attempts"; fi
+
+# The run not readable: retried; five errors in a row fail the job.
+D=$(release_dir run-read-retried); echo HTTP500 > "$D/release.1.json"; relrun completed success > "$D/release.2.json"
+release_run "$D"; check release/run-read-error-retried "$D" $? 0 result success - "API error 1/5"
+D=$(release_dir run-unreadable); echo HTTP500 > "$D/release.1.json"; rm "$D/release.2.json"
+release_run "$D"; check release/run-unreadable "$D" $? 1 result unreadable error "could not be read"
+
+# --- merge -> release ---------------------------------------------------------------
+# The release step runs only when the merge step merged (if: on the step, held
+# by a static check above) - here the two steps run in that order, the merge's
+# outputs feeding the release, as the job does.
+flow_run() {
+  local dir="$1"; shift
+  merge_run "$dir" true squash "$@"
+  if [ "$(sed -n 's/^merged=//p' "$dir/output")" = true ]; then
+    cp "$dir/log" "$dir/merge.log"
+    release_run "$dir" MERGE_COMMIT="$(sed -n 's/^merge-commit=//p' "$dir/output")" "$@"
+  fi
+}
+flow_dir() {
+  local dir; dir=$(merge_dir "flow-$1")
+  printf '{"workflow_run_id":555,"html_url":"%s"}\n' "$RUN_555" > "$dir/dispatch.1.json"
+  relrun completed success > "$dir/release.1.json"
+  echo "$dir"
+}
+D=$(flow_dir merged); flow_run "$D"
+called flow/merged-then-released "$D" "pr merge 7 --repo o/r --squash --match-head-commit abc"
+called flow/merged-then-released "$D" "$DISPATCH"
+output_is flow/merged-then-released "$D" result success
+ORDER=$(awk '/^pr merge/ { a = NR } /dispatches/ { b = NR } END { print (a && a < b) ? "ok" : a " " b }' "$D/calls")
+if [ "$ORDER" = ok ]; then pass "flow/merged-then-released: dispatched after the merge"; else fail "flow/merged-then-released: order $ORDER"; fi
+for c in base-moved conflict merge-rejected; do
+  D=$(flow_dir "$c")
+  case "$c" in
+    base-moved) moved_to "$D" base1 ;;
+    conflict) echo '{"state":"open","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":false,"mergeable_state":"dirty"}' > "$D/pr.1.json" ;;
+  esac
+  if [ "$c" = merge-rejected ]; then flow_run "$D" FAKE_MERGE_FAIL=1; else flow_run "$D"; fi
+  not_called "flow/$c-no-release" "$D" "/dispatches"
+done
+
+# --- summary ------------------------------------------------------------------------
+# summary_run <name> [VAR=value ...]: the job summary for these step outputs,
+# in $WORK/summary-<name>/summary
+summary_run() {
+  local name="$1" dir="$WORK/summary-$1" rc; shift
+  mkdir -p "$dir/temp"; : > "$dir/summary"
+  ( cd "$dir" && env GITHUB_STEP_SUMMARY="$dir/summary" RUNNER_TEMP="$dir/temp" PR_NUMBER=7 DEPENDENCIES=redis \
+      UPDATE_TYPE=version-update:semver-patch MERGE_METHOD=squash ALLOWED=patch REQUIRED="$REQ_CI" GUARD_REASON=patch \
+      CI_RESULT=green CI_DETAIL="required workflows passed" BASE_REF=main JOB_STATUS=success "$@" \
+      bash --noprofile --norc -eo pipefail -c "$SUMMARY_BODY" ) > "$dir/log" 2>&1
+  rc=$?
+  if [ "$rc" -eq 0 ]; then pass "summary/$name: written"; else fail "summary/$name: exit $rc"; sed 's/^/     | /' "$dir/log"; fi
+}
+shows() {
+  if grep -qF -- "$3" "$2/summary"; then pass "$1: shows '$3'"; else fail "$1: summary lacks '$3'"; sed 's/^/     | /' "$2/summary"; fi
+}
+lacks() {
+  if grep -qF -- "$3" "$2/summary"; then fail "$1: summary has '$3'"; else pass "$1: no '$3'"; fi
+}
+summary_run released MERGE_REASON=merged MERGED=true MERGE_COMMIT=m1abcdef01234567 RELEASE_WORKFLOW="$REL_WF" \
+  RELEASE_RESULT=success RELEASE_DETAIL="$RUN_555" RELEASE_RUN_URL="$RUN_555"
+S="$WORK/summary-released"
+shows summary/released "$S" "| **Merge** | ✅ Merged into \`main\` as \`m1abcdef0123\` |"
+shows summary/released "$S" "| **Release dispatched** | \`$REL_WF\` on \`main\` - [run]($RUN_555) |"
+shows summary/released "$S" "| **Release result** | ✅ Succeeded |"
+summary_run release-failed MERGE_REASON=merged MERGED=true MERGE_COMMIT=m1 RELEASE_WORKFLOW="$REL_WF" \
+  RELEASE_RESULT=failed RELEASE_DETAIL=startup_failure RELEASE_RUN_URL="$RUN_555" JOB_STATUS=failure
+S="$WORK/summary-release-failed"
+shows summary/release-failed "$S" "| **Release result** | ❌ Failed: the run concluded \`startup_failure\` |"
+summary_run dispatch-failed MERGE_REASON=merged MERGED=true MERGE_COMMIT=m1 RELEASE_WORKFLOW="$REL_WF" \
+  RELEASE_RESULT=dispatch-failed RELEASE_DETAIL="the job token may not start workflows" JOB_STATUS=failure
+S="$WORK/summary-dispatch-failed"
+shows summary/dispatch-failed "$S" "| **Release dispatched** | ❌ Not dispatched: the job token may not start workflows |"
+summary_run no-release-workflow MERGE_REASON=merged MERGED=true MERGE_COMMIT=m1
+S="$WORK/summary-no-release-workflow"
+shows summary/no-release-workflow "$S" "No release started: release-workflow is not set"
+lacks summary/no-release-workflow "$S" "**Release dispatched**"
+summary_run left-open MERGE_REASON=base-moved MERGED=false RELEASE_WORKFLOW="$REL_WF" \
+  MERGE_DETAIL="main moved from base0 (tested by CI) to base1; rebase requested"
+S="$WORK/summary-left-open"
+shows summary/left-open "$S" "🔄 Left open: CI passed, but not on the current base - main moved from base0 (tested by CI) to base1; rebase requested."
+shows summary/left-open "$S" "No release started: nothing was merged."
+lacks summary/left-open "$S" "**Release dispatched**"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"

@@ -112,6 +112,12 @@
 #       prefix: "chore(ci)"
 # -----------------------------------------------------------------------------
 #
+# Release: release.yml publishes what main holds (semantic release, image,
+# packages). It is dispatched after each merge (release-workflow) - the merge
+# itself starts no workflow - needs `on: workflow_dispatch`, and publishes
+# nothing unless its build and test jobs passed (`needs:`). A merged
+# "chore(deps-dev)" update releases nothing; its run still succeeds.
+#
 # Private registries (npm, NuGet, Composer, Cargo, internal images): ci.yml's
 # run on a Dependabot PR sees Dependabot secrets, not Actions secrets. Store
 # the feed credentials under Settings -> Secrets and variables -> Dependabot
@@ -135,7 +141,7 @@ permissions:
   pull-requests: write  # approve, read the PR
   checks: read          # check runs and suites - private repositories
   statuses: read        # commit statuses - private repositories
-  actions: read         # workflow runs - private repositories
+  actions: write        # dispatch the release; read workflow runs
 
 jobs:
   maintenance:
@@ -144,6 +150,8 @@ jobs:
     with:
       # The one workflow that builds and tests every ecosystem above.
       required-workflows: .github/workflows/ci.yml
+      # Dispatched on main after a merge; its run must succeed.
+      release-workflow: .github/workflows/release.yml
       merge-method: 'squash'
       auto-approve: true
       # Patch updates only. Below 1.0.0 any update may break (SemVer 4):

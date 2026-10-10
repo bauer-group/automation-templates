@@ -83,9 +83,10 @@ Whether `chore(deps)` releases depends on the rules
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
-With Dependabot, the step from the merge to the release is not automatic: the
-merge is made with `GITHUB_TOKEN`, which starts no `push` workflow - see
-[Limits](#limits).
+With Dependabot, the merge is made with `GITHUB_TOKEN`, which starts no `push`
+workflow. Set `release-workflow` and the workflow dispatches the release itself
+after the merge and waits for its result - see
+[Releasing the merged update](#releasing-the-merged-update).
 
 ---
 
@@ -152,7 +153,7 @@ permissions:
   pull-requests: write  # approve, read the PR
   checks: read          # check runs and suites - private repositories
   statuses: read        # commit statuses - private repositories
-  actions: read         # workflow runs - private repositories
+  actions: write        # dispatch the release; read workflow runs
 
 jobs:
   maintenance:
@@ -161,12 +162,17 @@ jobs:
     with:
       # The PR CI that builds and tests the update (empty: nothing is merged)
       required-workflows: .github/workflows/docker-release.yml
+      # Dispatched after a merge - the merge itself starts no workflow
+      release-workflow: .github/workflows/docker-release.yml
       merge-method: 'squash'
       auto-approve: true
       # merge-update-types: 'patch,minor'  # default: patch; below 1.0.0 a
       #                                    # minor update counts as major
     secrets: inherit
 ```
+
+Without `release-workflow`, `actions: read` is enough; the merged update is
+then released with the next push to `main` or a manual run.
 
 #### 3. Decide which PRs reach it (trigger scope)
 
@@ -404,13 +410,14 @@ what the calling workflow grants. A reusable workflow can only narrow its
 caller's permissions: declaring the read scopes itself would make GitHub refuse
 to start every caller that does not grant them.
 
-| Permission             | Used for                                                                 | Public repository | Private repository                                      |
-|------------------------|--------------------------------------------------------------------------|-------------------|---------------------------------------------------------|
-| `contents: write`      | merging the PR                                                           | required          | required                                                |
-| `pull-requests: write` | approving; reading the PR                                                | required          | required                                                |
-| `checks: read`         | check runs and check suites of the head commit                           | not needed        | required - without it every PR stays open with a notice |
-| `statuses: read`       | commit statuses of the head commit                                       | not needed        | required - without it every PR stays open with a notice |
-| `actions: read`        | workflow runs of the head commit - whether the required workflows passed | not needed        | required - without it every PR stays open with a notice |
+| Permission             | Used for                                                                                        | Public repository | Private repository                                                        |
+|------------------------|-------------------------------------------------------------------------------------------------|-------------------|---------------------------------------------------------------------------|
+| `contents: write`      | merging the PR                                                                                  | required          | required                                                                  |
+| `pull-requests: write` | approving; reading the PR                                                                       | required          | required                                                                  |
+| `checks: read`         | check runs and check suites of the head commit                                                  | not needed        | required - without it every PR stays open with a notice                   |
+| `statuses: read`       | commit statuses of the head commit                                                              | not needed        | required - without it every PR stays open with a notice                   |
+| `actions: read`        | workflow runs of the head commit - whether the required workflows passed                        | not needed        | required - without it every PR stays open with a notice                   |
+| `actions: write`       | with `release-workflow`: dispatching the release and reading its run (includes `actions: read`) | required          | required - without it the merged update is not released and the job fails |
 
 Public repositories need none of the three read scopes because their CI results
 are public; probed with a job token that had only `contents` and
@@ -418,6 +425,13 @@ are public; probed with a job token that had only `contents` and
 runs in a public repository and got HTTP 403 for all of them in private ones.
 Granting the read scopes in public repositories as well does no harm and keeps
 the workflow working if the repository is made private.
+
+`actions: write` is needed only with `release-workflow`, and replaces
+`actions: read` there. Starting a workflow is a write in every repository,
+public or private. A caller that sets `release-workflow` without granting it
+gets its PRs merged and the job then fails with *Release not started: ... grant
+'actions: write' in the calling workflow's permissions* - the merged update
+waits for the next release.
 
 > Rulesets with required status checks are **not** the way to gate this:
 > GitHub Actions cannot be a ruleset bypass actor, so such a ruleset on `main`
@@ -488,13 +502,19 @@ PR's head.
    branch is read. It must still be the commit CI tested the PR on - see
    [Only the combination CI tested](#only-the-combination-ci-tested). If it
    has moved, the PR is not merged and Dependabot is asked to rebase it.
+8. **Release** - with `release-workflow` set, and only after this run merged
+   the PR, the release workflow is dispatched on the base branch and the job
+   waits for its run - see
+   [Releasing the merged update](#releasing-the-merged-update).
 
 #### Decision table
 
 The rules are checked in this order; the first one that applies decides. Every
 outcome other than a merge leaves the PR **open** with the job green, the
 decision as an annotation and in the job summary (with the checks seen on the
-head commit). Only invalid inputs turn the job red.
+head commit). Only invalid inputs - and, after a merge, a release that was
+not started or did not succeed ([release outcomes](#release-outcomes)) - turn
+the job red.
 
 | #   | Stage            | Situation                                                                                                                                 | Outcome                               | Annotation |
 |-----|------------------|-------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------|------------|
@@ -644,6 +664,124 @@ automatically: patch minor (input merge-update-types).* Review the release
 notes and merge it by hand, or add `major` to `merge-update-types` to let the
 required CI decide such updates as well.
 
+### Releasing the merged update
+
+The merge is made with the job's `GITHUB_TOKEN`, and GitHub starts no workflow
+run for a push made with that token - so a release workflow on `push` to `main`
+never sees a Dependabot merge. `workflow_dispatch` is exempt from that rule.
+With `release-workflow` set, the workflow therefore starts the release itself:
+
+1. **Only after a merge.** The release is dispatched only when this run merged
+   the PR - never for a PR left open, closed, superseded, on a moved base, or
+   whose merge failed, and never for a CI change (those are never merged).
+2. **Dispatch** of `release-workflow` with `workflow_dispatch` on the PR's base
+   branch (`main`), with the job token. Server errors and rate limits are
+   retried twice.
+3. **Find the run.** GitHub answers the dispatch with the run it created
+   (`return_run_details`). A GitHub that answers without it (HTTP 204) or does
+   not know the parameter (an older GitHub Enterprise Server - the dispatch is
+   repeated without it) gets the run looked up for up to 2 minutes: a
+   `workflow_dispatch` run of that workflow on the base branch, created since
+   the dispatch, whose commit is the merge commit. Its URL goes into the job
+   summary and the `release-run-url` output.
+4. **Wait** up to `release-wait-minutes` (default 60, at most 180) for the run
+   to complete - every 30 s, after 10 min every 60 s. `0` dispatches and
+   reports the run without waiting for it.
+5. **Judge it.** Only the conclusion `success` keeps the job green. Every
+   other one - `failure`, `cancelled`, `timed_out`, `startup_failure`,
+   `action_required`, `skipped`, `neutral` - and a run still going at the
+   deadline fail the job with an error annotation that names the run. A broken
+   release is loud, never silent.
+
+The job summary shows the chain, for example:
+
+| Step                   | Result                                                      |
+|------------------------|-------------------------------------------------------------|
+| **Merge**              | ✅ Merged into `main` as `3f9c2a1b7d40`                     |
+| **Release dispatched** | `.github/workflows/docker-release.yml` on `main` - run link |
+| **Release result**     | ✅ Succeeded                                                |
+
+#### Release outcomes
+
+| Situation                                                                                | Job      | Annotation                                                               |
+|------------------------------------------------------------------------------------------|----------|--------------------------------------------------------------------------|
+| The release run concluded `success`                                                      | ✅ green | -                                                                        |
+| `release-wait-minutes: 0` - dispatched, run linked, not waited for                       | ✅ green | notice *Release started*                                                 |
+| Dispatch refused: no `actions: write` (HTTP 403)                                         | ❌ fails | error *Release not started*                                              |
+| Dispatch refused: no `workflow_dispatch` trigger, or the workflow is disabled (HTTP 422) | ❌ fails | error *Release not started*                                              |
+| Dispatch refused: the file does not exist on the base branch (HTTP 404)                  | ❌ fails | error *Release not started*                                              |
+| Dispatch failed three times (server error, rate limit)                                   | ❌ fails | error *Release not started*                                              |
+| The run was not found within 2 min                                                       | ❌ fails | error *Release not confirmed* (a warning with `release-wait-minutes: 0`) |
+| The run concluded anything but `success`                                                 | ❌ fails | error *Release failed*                                                   |
+| The run had not completed after `release-wait-minutes`                                   | ❌ fails | error *Release not finished*                                             |
+| The run could not be read five times in a row                                            | ❌ fails | error *Release not confirmed*                                            |
+
+In every failed case the update **is merged** - only its release is missing
+or broken. Fix the cause and re-run the release run, or run the release
+workflow by hand; the next release ships the update as well.
+
+#### What "no broken release" relies on
+
+This workflow decides what is merged and makes a failed release visible. What
+is **published** is decided by the release workflow - it must not push an
+image or a package when its own tests fail:
+
+- **`on: workflow_dispatch`** - without the trigger the dispatch is refused.
+- **Release on dispatch.** Jobs gated to `push` only
+  (`if: github.event_name == 'push'`) are skipped on a dispatch; a run that
+  skips everything concludes `skipped` and fails this job. Allow
+  `workflow_dispatch` as well.
+- **Gate publishing on the tests with `needs:`.** The release job needs every
+  build, test and round trip job and checks their results; the image builds
+  that push need the release job. A failed test then skips everything that
+  publishes, the run concludes `failure`, and this job turns red:
+
+  ```yaml
+  release:
+    needs: [validate-compose, validate-scripts, backup-roundtrip]
+    if: |
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.validate-compose.result == 'success' &&
+      needs.validate-scripts.result == 'success' &&
+      needs.backup-roundtrip.result == 'success'
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    secrets: inherit
+
+  docker-build:
+    needs: release
+    if: needs.release.outputs.release-created == 'true'
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      push: true
+    secrets: inherit
+  ```
+
+  A complete pipeline:
+  [gated-release-pipeline.yml](../../github/workflows/examples/backup-roundtrip/gated-release-pipeline.yml).
+- **Test what `main` is now.** The release run builds and tests the base
+  branch as it is when it starts - the merged update included - not the PR.
+  Such a gate also catches what PR CI cannot: a push in the second between
+  the base check and the merge (*Merged onto an untested base*).
+- **Let each dispatched run finish.** With `concurrency:` on the release
+  workflow, use `cancel-in-progress: false`: a run cancelled by the next one
+  concludes `cancelled` and fails this job, although the next run releases
+  both updates. A queued run waits, and its waiting counts against
+  `release-wait-minutes`.
+- **Commit types.** Whether the run publishes anything is semantic-release's
+  call: a `chore(deps)` commit releases nothing by default, and the run still
+  succeeds - see [Other ecosystems and libraries](#other-ecosystems-and-libraries).
+
+The dispatched run is started by `github-actions[bot]` with the job token: it
+gets the release workflow's own `permissions:` and the repository's Actions
+secrets, not the Dependabot ones. Its release commit, pushed with
+`GITHUB_TOKEN`, starts no further workflow.
+
+**Who notices a red job.** GitHub mails a failed run to the user who triggered
+it - here `dependabot[bot]`, so nobody gets mail. The failure shows as a red
+*Docker Maintenance* check on the merged PR and in the Actions tab; route
+failed runs to a channel (e.g. a Teams notification on `workflow_run`
+completed) to have it reach a person.
+
 ### Limits
 
 - **Only `.github/` counts as CI.** A GitHub Actions update and a PR that
@@ -665,8 +803,14 @@ required CI decide such updates as well.
   `required-workflows` is updated.
 - **No release by the merge itself.** The merge is made with the job's
   `GITHUB_TOKEN`, and GitHub starts no workflow run for a push made with that
-  token. A release workflow on `push` to `main` therefore runs with the next
-  push that is not made by that token, or when it is started by hand.
+  token. Without `release-workflow` a release workflow on `push` to `main`
+  runs with the next push that is not made by that token, or when it is
+  started by hand; with it, the release is dispatched after the merge - see
+  [Releasing the merged update](#releasing-the-merged-update).
+- **The release is waited for in the same job.** The runner stays busy for up
+  to `release-wait-minutes` after the merge (the job timeout is 255 minutes,
+  enough for the longest CI and release waits). Lower it, or set `0` to only
+  dispatch, if the release workflow is reliably watched elsewhere.
 - **One merge at a time.** Every Dependabot PR is merged only on the base CI
   tested it on, so of several PRs that passed CI together one is merged and
   each of the others is rebased and tested again (see
@@ -696,21 +840,29 @@ required CI decide such updates as well.
 
 ### Workflow Options
 
-| Input                | Description                                                                                                                       | Default         |
-|----------------------|-----------------------------------------------------------------------------------------------------------------------------------|-----------------|
-| `required-workflows` | PR CI workflow files that must have run on the PR and passed, comma or newline separated, e.g. `.github/workflows/ci.yml`         | `''` (no merge) |
-| `merge-method`       | squash, merge, or rebase                                                                                                          | `squash`        |
-| `auto-approve`       | Approve the PR before merging it                                                                                                  | `true`          |
-| `merge-update-types` | Semver update types to merge: `patch`, `minor`, `major`; [0.x updates](#updates-below-100) count stricter                         | `patch`         |
-| `ci-wait-minutes`    | How long to wait for CI to finish and settle (10-60) before leaving the PR open                                                   | `60`            |
-| `allow-major`        | Deprecated: `true` equals `merge-update-types: patch,minor,major`                                                                 | `false`         |
-| `runs-on`            | Runner label, or a JSON array of labels for self-hosted runners                                                                   | `ubuntu-latest` |
+| Input                  | Description                                                                                                                            | Default           |
+|------------------------|----------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| `required-workflows`   | PR CI workflow files that must have run on the PR and passed, comma or newline separated, e.g. `.github/workflows/ci.yml`              | `''` (no merge)   |
+| `merge-method`         | squash, merge, or rebase                                                                                                               | `squash`          |
+| `auto-approve`         | Approve the PR before merging it                                                                                                       | `true`            |
+| `merge-update-types`   | Semver update types to merge: `patch`, `minor`, `major`; [0.x updates](#updates-below-100) count stricter                              | `patch`           |
+| `ci-wait-minutes`      | How long to wait for CI to finish and settle (10-60) before leaving the PR open                                                        | `60`              |
+| `release-workflow`     | Release workflow file dispatched on the base branch after a merge, e.g. `.github/workflows/docker-release.yml`; needs `actions: write` | `''` (no release) |
+| `release-wait-minutes` | How long to wait for the dispatched release run (0-180); a run that does not succeed within it fails the job. `0`: do not wait         | `60`              |
+| `allow-major`          | Deprecated: `true` equals `merge-update-types: patch,minor,major`                                                                      | `false`           |
+| `runs-on`              | Runner label, or a JSON array of labels for self-hosted runners                                                                        | `ubuntu-latest`   |
 
 See [Choosing `required-workflows`](#choosing-required-workflows).
 
 | Secret                    | Description                                                                                                                                                                   | Required |
 |---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
 | `DEPENDABOT_REBASE_TOKEN` | Token of a user with push access that posts `@dependabot rebase` when the base branch moved since CI ran - a **Dependabot** secret, see [the rebase token](#the-rebase-token) | no       |
+
+| Output            | Description                                                                                                           |
+|-------------------|-----------------------------------------------------------------------------------------------------------------------|
+| `merged`          | `true` if this run merged the PR                                                                                      |
+| `release-run-url` | URL of the dispatched release run; empty if none was dispatched or it was not found                                   |
+| `release-result`  | `success`, `failed`, `timeout`, `not-waited`, `not-found`, `unreadable` or `dispatch-failed`; empty without a release |
 
 ### Examples
 
@@ -863,22 +1015,26 @@ permissions:
   pull-requests: write
   checks: read
   statuses: read
-  actions: read
+  actions: write        # dispatch the release after the merge
 
 jobs:
   maintenance:
     name: Auto-merge Dependabot PRs
     uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
     with:
+      # The PR run of docker-release.yml has to pass before the merge ...
       required-workflows: .github/workflows/docker-release.yml
+      # ... and its dispatched run releases the merged update.
+      release-workflow: .github/workflows/docker-release.yml
       merge-method: 'squash'
       auto-approve: true
     secrets: inherit
 ```
 
 ```yaml
-# .github/workflows/docker-release.yml - builds the PR (the required workflow
-# the maintenance workflow waits for) and releases after the merge
+# .github/workflows/docker-release.yml - builds every PR (the required workflow
+# the maintenance workflow waits for) and, on a push or a dispatch, releases
+# only what it built and tested in the same run
 name: Docker Release
 
 on:
@@ -890,6 +1046,8 @@ on:
     branches: [main]
     paths:
       - 'src/**'  # covers the maintenance workflow's paths
+  # Dispatched by the maintenance workflow after a Dependabot merge
+  workflow_dispatch:
 
 # What docker-build.yml and modules-semantic-release.yml declare: a called
 # workflow gets no more than its caller grants.
@@ -904,8 +1062,18 @@ permissions:
   actions: read
 
 jobs:
+  # Every event: the image is built (and tested) without pushing it.
+  build:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      push: false
+    secrets: inherit
+
+  # Push or dispatch only, and only after the build passed: a failed build
+  # skips the release and the image push, and the run concludes failure.
   release:
-    if: github.event_name == 'push'
+    needs: build
+    if: github.event_name != 'pull_request' && needs.build.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     secrets: inherit
 
@@ -916,19 +1084,14 @@ jobs:
     with:
       push: true
     secrets: inherit
-
-  docker-pr:
-    if: github.event_name == 'pull_request'
-    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
-    with:
-      push: false
-    secrets: inherit
 ```
 
-**Result:** Base image update → PR built → PR merged → PATCH release → Docker image rebuilt and pushed.
-With the Dependabot workflow the release starts with the next push to `main`
-that is not made by `GITHUB_TOKEN`, or when the release workflow is run by hand
-(`workflow_dispatch`) - see [Limits](#limits).
+**Result:** Base image update → PR built and tested → merged on the base CI
+tested → release dispatched → PATCH release → image rebuilt and pushed - or,
+if anything on the way fails, nothing published and a red *Docker Maintenance*
+job that names the release run. A stack with a backup sidecar gates the
+release on the backup round trip as well:
+[gated-release-pipeline.yml](../../github/workflows/examples/backup-roundtrip/gated-release-pipeline.yml).
 
 ---
 
@@ -984,6 +1147,28 @@ person pushed to the branch).
 |---------|----------|
 | Commit prefix is `chore(docker)` | Change to `fix(docker)` in dependabot.yml or renovate.json |
 | Semantic release not configured | Add `modules-semantic-release.yml` workflow |
+| A Dependabot merge released nothing, job summary says *No release started: release-workflow is not set* | Set `release-workflow` and grant `actions: write` - see [Releasing the merged update](#releasing-the-merged-update) |
+
+### Release After a Dependabot Merge Failed
+
+The PR was merged, but the *Docker Maintenance* job is red. The job summary
+shows *Merge → Release dispatched → Release result*; the error annotation says
+which step failed:
+
+| Annotation says                                                   | Fix                                                                                                                             |
+|-------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| Release not started: ... grant 'actions: write'                   | Add `actions: write` to the caller's `permissions:` (it replaces `actions: read`)                                               |
+| Release not started: ... needs an 'on: workflow_dispatch' trigger | Add `workflow_dispatch:` to the release workflow's `on:`, or enable the workflow                                                |
+| Release not started: ... was not found on main                    | `release-workflow` names a file that does not exist on the base branch - fix the path                                           |
+| Release failed: ... concluded 'failure'                           | The release workflow's own build or tests failed - its gate kept the image unpublished. Fix the cause, then re-run that run     |
+| Release failed: ... concluded 'cancelled'                         | Another run cancelled it (`concurrency` with `cancel-in-progress: true`) - set it to `false`; the later run released the update |
+| Release failed: ... concluded 'skipped'                           | Every job skipped on `workflow_dispatch` - allow that event in the release job's `if:`                                          |
+| Release failed: ... concluded 'startup_failure'                   | The release workflow is invalid (syntax, a called workflow, permissions) - see the run's annotations                            |
+| Release not finished: ... still in_progress after N min           | The release takes longer than `release-wait-minutes` - raise it (at most 180); the run itself goes on, check its result there   |
+| Release not confirmed: ... was not found within 2 min             | Rare: the GitHub did not return the run and it was not listed in time - check the workflow's runs                               |
+
+In every case the update is on `main`; re-run the release run, or start the
+release workflow by hand, once the cause is fixed.
 
 ### Renovate Auto-Merge Not Working
 
@@ -1015,6 +1200,7 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 - **Tested by the named CI**: Dependabot PRs are merged only when every workflow in `required-workflows` ran on the PR's head commit and passed and no other check failed, after CI has been complete and unchanged for 3 minutes (5 minutes after the start at the earliest). A passed check that tests nothing (e.g. a secret scan or a notification job) is not enough, and without `required-workflows` nothing is merged
 - **CI changes stay open**: a GitHub Actions update or a PR that changes `.github/` is never merged automatically - a `pull_request` run uses the PR's own version of a changed workflow, and push- or schedule-only workflows do not run before the merge
 - **Pinned merge**: the Dependabot merge and its approval name the head commit whose CI was checked
+- **Release only after a merge, failures loud**: `release-workflow` is dispatched only after this run merged the PR, needs nothing but `actions: write` on the job token, and a release run that does not succeed fails the job. What gets published is gated by the release workflow's own tests
 - **Only the tested combination**: a Dependabot PR is merged only while the base branch is still at the commit its CI was merged onto; otherwise it is rebased and tested again. The optional `DEPENDABOT_REBASE_TOKEN` is used for that one `@dependabot rebase` comment and nothing else
 - **Dependabot only**: the Dependabot job acts only on Dependabot's PRs, on events Dependabot raised, with verified Dependabot commits only; it never checks out PR code
 - **Auto-approve optional**: Can be disabled for manual review

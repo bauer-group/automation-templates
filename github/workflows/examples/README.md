@@ -171,14 +171,14 @@ Lean multi-image builder for forks: Trivy scan before the push, workspace tags, 
 Merges a Dependabot PR of any ecosystem (Docker, Compose, npm, pip, Composer, Cargo, NuGet, ...) only after every workflow in `required-workflows` has run on its head commit and passed. The caller's `on.pull_request.paths` decide which Dependabot PRs reach it at all - with more than the docker ecosystem, leave them out
 
 **Examples:**
-- `docker-maintenance-dependabot/simple-dependabot-maintenance.yml` - Smallest caller: Dockerfile updates, one PR CI workflow
-- `docker-maintenance-dependabot/with-backup-roundtrip-gate.yml` - Container stack: merged after the PR run of `docker-release.yml`, backup round trip included; private-repository permissions
+- `docker-maintenance-dependabot/simple-dependabot-maintenance.yml` - Smallest caller: Dockerfile updates, one PR CI workflow, release dispatched after the merge
+- `docker-maintenance-dependabot/with-backup-roundtrip-gate.yml` - Container stack: merged after the PR run of `docker-release.yml`, backup round trip included; released by the same pipeline on `main`, publishing only after its round trip passed
 - `docker-maintenance-dependabot/own-build-and-test-workflow.yml` - Image without backup: the repository's own `ci.yml` vouches; Docker and npm updates
 - `docker-maintenance-dependabot/multiple-required-workflows.yml` - Image build and a separate test suite, both required
 - `docker-maintenance-dependabot/all-ecosystems.yml` - Docker, Compose, npm, pip, Composer, Cargo and NuGet: no caller `paths:`, one `ci.yml` builds and tests all of them
 - `docker-maintenance-dependabot/dotnet-library.yml` - .NET library: NuGet updates tested by `dotnet build`/`dotnet test`, `chore(deps)` so that no update publishes a package
 - `docker-maintenance-dependabot/no-pr-ci-manual-merge.yml` - No PR CI: `required-workflows` deliberately unset, nothing is merged
-- `docker-maintenance-dependabot/README.md` - Setup, trigger scope per ecosystem and what decides a merge
+- `docker-maintenance-dependabot/README.md` - Setup, trigger scope per ecosystem, what decides a merge and the release after it
 
 ### Docker Base Image Monitor (`modules-docker-base-image-monitor.yml`)
 Reads the digest behind floating tags (`stable`, `latest`) and releases a rebuild when it moves; the digest is stored once the dispatched release succeeded, failed releases are retried

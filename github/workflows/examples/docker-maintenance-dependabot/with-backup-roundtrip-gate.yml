@@ -15,10 +15,16 @@
 #   Dependabot opens "fix(docker): bump ..."           (.github/dependabot.yml)
 #     -> docker-release.yml runs on pull_request       (validate, build, round trip)
 #     -> this workflow waits for that run              (complete and quiet CI)
-#     -> merged with --match-head-commit               (patch updates only)
-#     -> released with the next push to main that is not made by GITHUB_TOKEN,
-#        or when docker-release.yml is run by hand: the merge itself starts no
-#        workflow (see docs/workflows/docker-maintenance.md, "Limits")
+#     -> merged with --match-head-commit               (patch updates only,
+#                                                       on the base CI tested)
+#     -> docker-release.yml dispatched on main         (release-workflow - the
+#                                                       merge itself starts no
+#                                                       workflow)
+#     -> that run validates, runs the round trip on    (its release job needs
+#        main, then releases and pushes the images      the round trip: a
+#                                                       failure publishes
+#                                                       nothing)
+#     -> this job waits for the run and turns red unless it succeeded
 #
 # Trigger scope: the paths below are the Dockerfiles Dependabot updates. They
 # decide which Dependabot PRs reach this workflow at all, and they must stay
@@ -60,7 +66,7 @@ permissions:
   pull-requests: write  # approve, read the PR
   checks: read          # check runs and suites - private repositories
   statuses: read        # commit statuses - private repositories
-  actions: read         # workflow runs - private repositories
+  actions: write        # dispatch the release; read workflow runs
 
 jobs:
   maintenance:
@@ -70,6 +76,10 @@ jobs:
       # The PR run of the release pipeline: image builds and the backup round
       # trip. Every job it runs on the PR must pass, the round trip included.
       required-workflows: .github/workflows/docker-release.yml
+      # After the merge, the same pipeline on main: round trip, then release
+      # and image push. It has a workflow_dispatch trigger and its release
+      # job needs the round trip (gated-release-pipeline.yml).
+      release-workflow: .github/workflows/docker-release.yml
       merge-method: 'squash'
       auto-approve: true
       # Minor bumps of a database or broker image are not harmless - keep them
@@ -78,4 +88,6 @@ jobs:
       # The round trip boots the full stack, often 7 to 10 minutes after the
       # run was queued. 60 is the maximum and the default.
       ci-wait-minutes: 60
+      # The release run repeats the round trip and builds both images.
+      release-wait-minutes: 90
     secrets: inherit

@@ -20,10 +20,11 @@
 #    PRs the required workflow did not test stay open. So do GitHub Actions
 #    updates and every other PR that changes .github/ - CI that the PR
 #    itself changes cannot vouch for it
-# 5. Semantic release creates a PATCH version (e.g., 1.0.0 → 1.0.1) and the
-#    Docker image is rebuilt and pushed - with the next push to main that is
-#    not made by GITHUB_TOKEN, or when the release workflow is run by hand:
-#    the merge itself is made with GITHUB_TOKEN, which starts no workflow
+# 5. The merge is made with GITHUB_TOKEN, which starts no workflow - so this
+#    workflow dispatches release-workflow on main right after the merge and
+#    waits for its run (release-wait-minutes). Semantic release creates a
+#    PATCH version (e.g., 1.0.0 → 1.0.1) and the Docker image is rebuilt and
+#    pushed. A release run that does not succeed turns this job red.
 #
 # Prerequisites:
 # 1. Enable Dependabot in repository settings
@@ -36,6 +37,10 @@
 #    Keep the `paths:` below within the `pull_request` `paths:` of that CI:
 #    a PR that does not start it stays open, as it was not tested. A passed
 #    check that tests nothing (e.g. a secret scan) is not enough.
+# 4. The release workflow (here the same docker-release.yml) has an
+#    `on: workflow_dispatch` trigger and publishes nothing unless its build
+#    and tests passed (`needs:`) - see docs/workflows/docker-maintenance.md,
+#    "What no broken release relies on".
 #
 # Required .github/dependabot.yml in your repo:
 # -----------------------------------------------------------------------------
@@ -82,7 +87,7 @@ permissions:
   pull-requests: write  # approve, read the PR
   checks: read          # check runs and suites
   statuses: read        # commit statuses
-  actions: read         # workflow runs
+  actions: write        # dispatch the release; read workflow runs
 
 jobs:
   maintenance:
@@ -92,6 +97,9 @@ jobs:
       # The PR CI workflow(s) that must have run on the PR and passed, comma
       # separated. Empty: nothing is merged.
       required-workflows: .github/workflows/docker-release.yml
+      # Dispatched on main after a merge; its run must succeed. Without it
+      # the update is released with the next push to main.
+      release-workflow: .github/workflows/docker-release.yml
       merge-method: 'squash'
       auto-approve: true
       # e.g. 'patch,minor' to merge minor updates too. Below 1.0.0 any update
