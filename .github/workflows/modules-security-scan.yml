@@ -50,10 +50,10 @@ on:
       GITLEAKS_LICENSE:
         description: >-
           Gitleaks license key (free from gitleaks.io). Needed only when scan-engine
-          is 'gitleaks' in an organization repository, and only for push, schedule
-          and workflow_dispatch runs; pull request runs scan with the gitleaks CLI and
-          do not read it. Dependabot runs read it from the Dependabot secrets, not the
-          Actions secrets.
+          is 'gitleaks' in an organization repository. Pull request runs in private
+          and internal repositories scan with the gitleaks CLI and do not read it.
+          Dependabot runs read it from the Dependabot secrets, not the Actions
+          secrets.
         required: false
     outputs:
       secrets-found:
@@ -76,10 +76,11 @@ on:
         value: ${{ jobs.security-scan.outputs.scan-results }}
 
 # Do not add `pull-requests: read` here, although gitleaks-action needs it to scan a
-# pull request. A called workflow can only narrow the caller's token, and GitHub
-# refuses to start a caller that grants less than this block requests - every caller
-# grants exactly these three. The security-scan action detects the missing scope and
-# scans pull requests with the gitleaks CLI instead, which needs no API access.
+# pull request in a private repository. A called workflow can only narrow the
+# caller's token, and GitHub refuses to start a caller that grants less than this
+# block requests - every caller grants exactly these three. The security-scan action
+# detects a token that cannot list the pull request's commits and scans them with the
+# gitleaks CLI instead, which needs no API access.
 permissions:
   contents: read
   security-events: write

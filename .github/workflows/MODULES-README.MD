@@ -29,9 +29,9 @@ secrets: inherit           # GITLEAKS_LICENSE, nur mit scan-engine: 'gitleaks' n
 > Organisationen ohne GitHub Secret Protection (Advanced Security); öffentliche
 > Repositories können beides kostenlos einschalten. In Organisations-Repositories braucht Gitleaks das
 > Secret `GITLEAKS_LICENSE`, für Dependabot-Läufe zusätzlich als **Dependabot**-Secret.
-> Pull-Requests scannt das Modul mit der Gitleaks-CLI über dieselben Commits; dafür braucht
-> es weder die License noch `pull-requests: read` (den Scope kann ein aufgerufener Workflow
-> nicht erhalten). Details und Prüfbefehl:
+> Pull-Requests privater und interner Repositories scannt das Modul mit der Gitleaks-CLI über
+> dieselben Commits; dafür braucht es weder die License noch `pull-requests: read` (den Scope
+> kann ein aufgerufener Workflow nicht erhalten). Details und Prüfbefehl:
 > [Gitleaks ist opt-in](../../docs/security/native-secret-scanning.md#gitleaks-is-opt-in).
 
 > GitGuardian wurde entfernt (2026-10): Im CI scannte es nur den letzten Commit und konnte
