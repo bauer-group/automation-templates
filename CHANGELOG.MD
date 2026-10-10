@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.8.1](https://github.com/bauer-group/automation-templates/compare/v11.8.0...v11.8.1) (2026-10-10)
+
+### 🐛 Bug Fixes
+
+* **auto-maintenance:** committed npm, pip and .NET dependency updates ([c096d53](https://github.com/bauer-group/automation-templates/commit/c096d539f28b3fb2ca1565d50b95c99c93ccaec7))
+
 ## [11.8.0](https://github.com/bauer-group/automation-templates/compare/v11.7.2...v11.8.0) (2026-10-10)
 
 ### 🚀 Features
