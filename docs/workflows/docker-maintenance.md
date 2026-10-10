@@ -29,6 +29,28 @@ For automatic **PATCH** releases on base image updates, the commit message prefi
 
 Both configurations below use `fix(docker)` to ensure automatic releases.
 
+### Other ecosystems and libraries
+
+The same holds for every other ecosystem: the `commit-message` of each
+`updates:` entry in `dependabot.yml` decides whether its merged update cuts a
+release.
+
+| Repository                                              | `commit-message` of the `updates:` entry                                                                                                                              | After the merge                                                  |
+|---------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
+| Image or application - an update has to reach its users | `prefix: "fix(docker)"` for images (`docker`, `docker-compose`), `prefix: "fix(deps)"` for packages; `prefix-development: "chore(deps-dev)"` (npm, pip, uv, Composer) | PATCH release, image rebuilt                                     |
+| Library - NuGet, npm, Composer or Cargo package         | `prefix: "chore(deps)"`, unless every update should publish a package                                                                                                 | No release - the update ships with the next `feat`/`fix` release |
+| Any                                                     | `github-actions`: `prefix: "chore(ci)"`                                                                                                                               | No release - and never merged automatically                      |
+
+A merged `fix(deps)` commit in a library publishes a new package for every
+dependency update, and in a NuGet package it raises the minimum version every
+consumer gets (a `PackageReference` version is a lower bound). `chore(deps)`
+releases nothing with the default release rules of
+`modules-semantic-release.yml`. A repository whose
+`.github/config/release/semantic-release.json` releases on it - this
+repository's own config has `{"type": "chore", "scope": "deps", "release": "patch"}` -
+needs a type its rules leave out there, such as `build(deps)`. Example:
+[dotnet-library.yml](../../github/workflows/examples/docker-maintenance-dependabot/dotnet-library.yml).
+
 ---
 
 ## Complete Automation Flow
@@ -54,7 +76,10 @@ merge is made with `GITHUB_TOKEN`, which starts no `push` workflow - see
 
 ## Option 1: Dependabot (Simple)
 
-The simplest solution using GitHub's native Dependabot.
+The simplest solution using GitHub's native Dependabot. Despite the name, it
+merges Dependabot PRs of every ecosystem - base images, Compose files, npm,
+pip, Composer, Cargo, NuGet and the others - see
+[trigger scope](#3-decide-which-prs-reach-it-trigger-scope).
 
 ### Setup
 
@@ -84,6 +109,11 @@ updates:
 Or copy the complete template from:
 `.github/config/docker-maintenance-dependabot/dependabot.yml`
 
+For every other ecosystem add an `updates:` entry of its own, with the commit
+prefix from [Other ecosystems and libraries](#other-ecosystems-and-libraries) -
+[all-ecosystems.yml](../../github/workflows/examples/docker-maintenance-dependabot/all-ecosystems.yml)
+shows one for each.
+
 #### 2. Create Maintenance Workflow
 
 Create `.github/workflows/docker-maintenance.yml`:
@@ -94,6 +124,8 @@ name: Docker Maintenance
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    # docker only: the Dockerfiles. With any other ecosystem in
+    # dependabot.yml leave paths: out - see step 3.
     # Only files whose change also starts the required workflow - a PR that
     # does not start it stays open (not tested)
     paths:
@@ -123,39 +155,116 @@ jobs:
 
 #### 3. Decide which PRs reach it (trigger scope)
 
-The reusable workflow can only decide on a PR whose event starts the calling
-workflow. The caller's `on.pull_request.paths` therefore decide which
-Dependabot PRs reach it at all - before any of the rules below apply:
+The workflow decides on Dependabot PRs of **every** ecosystem: an npm, pip,
+Composer, Cargo or NuGet update goes through the same
+[decision table](#decision-table) as a base image update. But it can only
+decide on a PR whose event starts the calling workflow, so the caller's
+`on.pull_request.paths` decide which Dependabot PRs reach it at all - before
+any of the rules below apply.
+
+##### Recommended trigger
+
+| `dependabot.yml` updates                                                                       | Caller `paths:`           | Example                                                                                                                              |
+|------------------------------------------------------------------------------------------------|---------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `docker` only (and `github-actions`, which is never merged automatically)                      | The Dockerfiles - or none | [simple-dependabot-maintenance.yml](../../github/workflows/examples/docker-maintenance-dependabot/simple-dependabot-maintenance.yml) |
+| Any other ecosystem as well: `docker-compose`, `npm`, `pip`, `composer`, `cargo`, `nuget`, ... | **None**                  | [all-ecosystems.yml](../../github/workflows/examples/docker-maintenance-dependabot/all-ecosystems.yml)                               |
+
+```yaml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # No paths: - every Dependabot PR gets a decision and an annotation.
+    # The required workflow's pull_request paths decide what is tested.
+```
+
+Why no `paths:` as soon as Dependabot updates more than base images:
+
+- **Every Dependabot PR gets an explicit decision.** It is merged, or left
+  open with an annotation and a job summary that say why. A PR outside the
+  caller's `paths:` gets no run at all - no annotation, no summary - and
+  waits unnoticed. One file the list misses (a `pnpm-lock.yaml` instead of a
+  `package-lock.json`, a manifest in a subdirectory, a new ecosystem added to
+  `dependabot.yml` later) silently turns automatic merging off for it.
+- **Untested PRs stay open - visibly.** Whether an update is tested is
+  decided where it belongs: by the `pull_request` `paths:` of the required
+  workflow, which say what that workflow builds (see
+  [Files per ecosystem](#files-per-ecosystem)). A PR it does not build stays
+  open with *required workflow ... did not run for this change - not tested*,
+  a GitHub Actions update with *GitHub Actions updates change the CI itself*.
+- **It costs little.** The caller starts for every PR, but for a PR not
+  opened by Dependabot its job is skipped at once - a skipped check, no
+  runner time. A Dependabot PR that no required workflow tests is decided
+  once CI is complete and quiet, 5 minutes after the start at the earliest.
+
+With `paths:` (a repository that updates base images only):
 
 - **A PR outside the caller's `paths:` never reaches the workflow.** No job
   runs, no annotation is written, no summary appears: the PR simply stays open
   until someone merges it by hand. Nothing tells you that it was not
   considered, so pick the paths on purpose.
-- **Dockerfile-only paths (as above) mean: base image updates only.** An npm,
-  pip or Composer update changes `package.json`/`package-lock.json`,
+- **Dockerfile-only paths mean: base image updates only.** An npm, pip or
+  Composer update changes `package.json`/`package-lock.json`,
   `requirements*.txt`/`poetry.lock` or `composer.json`/`composer.lock` - not a
-  Dockerfile - so it never starts the caller and stays a manual merge. That is
-  the safe default for a repository whose PR CI only builds the image.
-- **To let another ecosystem through, widen both path lists.** Add its
-  manifest and lock files to the caller's `paths:` **and** to the
-  `pull_request` `paths:` of every workflow in `required-workflows`. A PR that
-  reaches the caller but not the required workflow stays open with "did not
-  run for this change - not tested".
-- **Without `paths:`** every Dependabot PR reaches the workflow and is decided
-  by the [decision table](#decision-table): GitHub Actions updates and other
-  `.github/` changes stay open, every other update merges only if its required
-  workflow ran on it and passed.
+  Dockerfile - so it never starts the caller and stays a manual merge.
+- **Keep them within the required workflow's paths.** A PR that reaches the
+  caller but not the required workflow stays open with "did not run for this
+  change - not tested".
 
-| Caller `paths:`                                   | Dependabot PR                               | What happens                                                                                    |
-|---------------------------------------------------|---------------------------------------------|-------------------------------------------------------------------------------------------------|
-| `Dockerfile`                                      | `FROM` base image bump in `Dockerfile`      | Reaches the workflow - decided by the [decision table](#decision-table)                         |
-| `Dockerfile`                                      | npm bump in `package.json` + lock file      | Caller does not start - PR stays open, no annotation, merge by hand                             |
-| `Dockerfile`, `package.json`, `package-lock.json` | npm bump in `package.json` + lock file      | Reaches the workflow - merged only if the required workflow's PR `paths:` cover these files too |
-| none                                              | GitHub Actions bump in `.github/workflows/` | Reaches the workflow - left open: a CI change is never merged automatically                     |
+| Caller `paths:` | Dependabot PR                                   | What happens                                                                                                            |
+|-----------------|-------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| `Dockerfile`    | `FROM` base image bump in `Dockerfile`          | Reaches the workflow - decided by the [decision table](#decision-table)                                                 |
+| `Dockerfile`    | npm bump in `package.json` + lock file          | Caller does not start - PR stays open, no annotation, merge by hand                                                     |
+| none            | npm bump in `package.json` + lock file          | Reaches the workflow - merged if a required workflow that builds these files ran and passed, else left open: not tested |
+| none            | pip bump in a file no required workflow watches | Reaches the workflow - left open with "did not run for this change - not tested"                                        |
+| none            | GitHub Actions bump in `.github/workflows/`     | Reaches the workflow - left open: a CI change is never merged automatically                                             |
 
 The `pull_request` `types:` matter as well: keep `opened`, `synchronize`
 (Dependabot rebased or updated the PR), `reopened` and `ready_for_review`, so
 every new head commit gets its own decision.
+
+##### Files per ecosystem
+
+The files a Dependabot PR changes, by `package-ecosystem`. They are what the
+required workflow's `pull_request` `paths:` have to match for the update to be
+tested - and with Dockerfile-only caller `paths:`, what never reaches the
+workflow. In `paths:`, prefix a name with `**/` to match it in every
+directory, or name the directory from `dependabot.yml` (`'web/package.json'`).
+
+| `package-ecosystem` | Manifest files                                                                                                                                                        | Lock files                                                                |
+|---------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------|
+| `docker`            | `Dockerfile` and every file whose name contains it (`Dockerfile.prod`, `worker.Dockerfile`), `Containerfile`                                                          | -                                                                         |
+| `docker-compose`    | `docker-compose.yml`, `compose.yaml` and their variants (`docker-compose.override.yml`, `compose.prod.yaml`)                                                          | -                                                                         |
+| `npm`               | `package.json`                                                                                                                                                        | `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml` |
+| `pip`               | `requirements*.txt` (any requirements `.txt`, `.in` for pip-compile), `pyproject.toml`, `Pipfile`, `setup.py`, `setup.cfg`                                            | `poetry.lock`, `Pipfile.lock`                                             |
+| `uv`                | `pyproject.toml`                                                                                                                                                      | `uv.lock`                                                                 |
+| `composer`          | `composer.json`                                                                                                                                                       | `composer.lock`                                                           |
+| `cargo`             | `Cargo.toml`                                                                                                                                                          | `Cargo.lock`                                                              |
+| `nuget`             | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Packages.props`, `Directory.Build.props`, `packages.config`, `global.json` (MSBuild SDKs), `.config/dotnet-tools.json` | `packages.lock.json`                                                      |
+| `dotnet-sdk`        | `global.json` (`sdk.version`)                                                                                                                                         | -                                                                         |
+| `gomod`             | `go.mod`                                                                                                                                                              | `go.sum`                                                                  |
+| `terraform`         | `*.tf`                                                                                                                                                                | `.terraform.lock.hcl`                                                     |
+| `github-actions`    | `.github/workflows/*.yml`, `action.yml`                                                                                                                               | - (never merged automatically, no `paths:` needed)                        |
+
+A PR may change only the lock file (an update of an indirect dependency), so
+list both, the manifest and its lock file.
+
+**Cover a file only where the workflow builds it.** Add a manifest and its
+lock file to the `pull_request` `paths:` of a required workflow only if that
+workflow's PR run builds or tests them:
+
+- `package.json`/`package-lock.json` in the workflow that runs `npm ci` and
+  the tests - or in the one that builds the image, if the Dockerfile runs
+  `npm ci` in a build stage.
+- `*.csproj`/`Directory.Packages.props` in the workflow that runs
+  `dotnet build` and `dotnet test`; `global.json` only if it sets up the SDK
+  from it (`global-json-file`).
+- Compose files in the workflow that starts the stack from them (e.g. the
+  backup round trip), not in one that only builds an image.
+
+A run that does not use a file still passes, and that pass would merge an
+update nothing exercised. An ecosystem no required workflow builds - Terraform
+without a `terraform plan` on PRs, say - stays open as "not tested", which is
+the honest outcome; review and merge such PRs by hand.
 
 Ready-to-copy callers for each case are in
 [`github/workflows/examples/docker-maintenance-dependabot/`](../../github/workflows/examples/docker-maintenance-dependabot/).
@@ -187,9 +296,61 @@ Dependabot changes:
 
 The required workflow must start for every file this caller's `paths:` lists,
 so keep the caller's `paths:` within the required workflow's `pull_request`
-`paths:`. A Dependabot PR that changes a file the required workflow does not
+`paths:`. Without caller `paths:` the required workflow's own `paths:` decide
+alone. A Dependabot PR that changes a file the required workflow does not
 watch stays open with "did not run for this change - not tested" - nothing
 tested it.
+
+##### Several required workflows: every one must run and pass
+
+`required-workflows` is an AND, not an OR: a PR is merged only if **every**
+listed workflow has a `pull_request` run for its head commit that succeeded.
+A listed workflow that did not run - its `paths:` miss the changed files -
+leaves the PR open, even when all the others passed. With several ecosystems
+this decides which updates can be merged at all.
+
+Example: an image whose Dockerfile builds a web frontend with `npm ci`, and a
+Python test suite in `tests/`. The caller has no `paths:` and requires both
+workflows:
+
+```yaml
+required-workflows: |
+  .github/workflows/docker-release.yml
+  .github/workflows/tests.yml
+# docker-release.yml - pull_request paths: Dockerfile, package.json, package-lock.json, src/**
+# tests.yml          - pull_request paths: tests/**, requirements-dev.txt, src/**
+```
+
+| Dependabot PR | Changed files                       | `docker-release.yml` | `tests.yml`  | Outcome                                                                  |
+|---------------|-------------------------------------|----------------------|--------------|--------------------------------------------------------------------------|
+| `docker`      | `Dockerfile`                        | runs                 | does not run | Left open: `tests.yml` did not run for this change - not tested          |
+| `npm`         | `package.json`, `package-lock.json` | runs                 | does not run | Left open: `tests.yml` did not run for this change - not tested          |
+| `pip`         | `requirements-dev.txt`              | does not run         | runs         | Left open: `docker-release.yml` did not run for this change - not tested |
+
+No Dependabot PR starts both workflows, so none is ever merged. Two ways out:
+
+1. **One required workflow that builds and tests everything** - a `ci.yml`
+   whose `pull_request` `paths:` list every manifest and lock file it builds.
+   Each ecosystem it builds merges once it passed, every other one stays open
+   as "not tested". See
+   [all-ecosystems.yml](../../github/workflows/examples/docker-maintenance-dependabot/all-ecosystems.yml).
+2. **Let each listed workflow start for the ecosystems that should merge -
+   only where it builds them.** If `tests.yml` builds the image and runs the
+   tests against it, add `Dockerfile`, `package.json` and `package-lock.json`
+   to its `paths:`: docker and npm updates then start both workflows and are
+   merged when both passed. `docker-release.yml` does not install
+   `requirements-dev.txt`, so it gets no path for it, and the pip update stays
+   open for review.
+
+A workflow that is **not** listed still counts when it runs: if it fails, the
+PR stays open (row 11 of the [decision table](#decision-table)). Listing it
+only adds the demand that it runs - so list the workflows that run for every
+Dependabot PR that should be merged, and no others.
+
+Keep **one caller per repository**. One caller per ecosystem, each with its
+own `required-workflows`, does not make an OR either: the job's concurrency
+group is per PR (`docker-maintenance-dependabot-pr-<number>`), so callers
+started by the same PR cancel each other and the last one decides alone.
 
 A PR that changes CI is never merged automatically, whatever
 `required-workflows` says: a GitHub Actions update
@@ -207,12 +368,14 @@ permissions below.
 
 ##### Common setups
 
-| Repository                                                               | `required-workflows`                                                     | Example                                                                                                                          |
-|--------------------------------------------------------------------------|--------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
-| Container stack whose release pipeline runs the backup round trip on PRs | `.github/workflows/docker-release.yml`                                   | [with-backup-roundtrip-gate.yml](../../github/workflows/examples/docker-maintenance-dependabot/with-backup-roundtrip-gate.yml)   |
-| Image without a backup sidecar, own build and test workflow              | `.github/workflows/ci.yml`                                               | [own-build-and-test-workflow.yml](../../github/workflows/examples/docker-maintenance-dependabot/own-build-and-test-workflow.yml) |
-| Image build and a separate test suite, both must pass                    | `.github/workflows/docker-release.yml` and `.github/workflows/tests.yml` | [multiple-required-workflows.yml](../../github/workflows/examples/docker-maintenance-dependabot/multiple-required-workflows.yml) |
-| No PR CI at all (yet)                                                    | leave unset - nothing is merged, every PR gets a notice                  | [no-pr-ci-manual-merge.yml](../../github/workflows/examples/docker-maintenance-dependabot/no-pr-ci-manual-merge.yml)             |
+| Repository                                                                                                           | `required-workflows`                                                     | Example                                                                                                                          |
+|----------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| Container stack whose release pipeline runs the backup round trip on PRs                                             | `.github/workflows/docker-release.yml`                                   | [with-backup-roundtrip-gate.yml](../../github/workflows/examples/docker-maintenance-dependabot/with-backup-roundtrip-gate.yml)   |
+| Image without a backup sidecar, own build and test workflow                                                          | `.github/workflows/ci.yml`                                               | [own-build-and-test-workflow.yml](../../github/workflows/examples/docker-maintenance-dependabot/own-build-and-test-workflow.yml) |
+| Image build and a separate test suite, both must pass                                                                | `.github/workflows/docker-release.yml` and `.github/workflows/tests.yml` | [multiple-required-workflows.yml](../../github/workflows/examples/docker-maintenance-dependabot/multiple-required-workflows.yml) |
+| Several ecosystems (docker, Compose, npm, pip, Composer, Cargo, NuGet), one CI workflow builds and tests all of them | `.github/workflows/ci.yml`, caller without `paths:`                      | [all-ecosystems.yml](../../github/workflows/examples/docker-maintenance-dependabot/all-ecosystems.yml)                           |
+| .NET library published to NuGet, `dotnet build` and `dotnet test` on PRs                                             | `.github/workflows/ci.yml`                                               | [dotnet-library.yml](../../github/workflows/examples/docker-maintenance-dependabot/dotnet-library.yml)                           |
+| No PR CI at all (yet)                                                                                                | leave unset - nothing is merged, every PR gets a notice                  | [no-pr-ci-manual-merge.yml](../../github/workflows/examples/docker-maintenance-dependabot/no-pr-ci-manual-merge.yml)             |
 
 Leaving `required-workflows` unset is a deliberate choice, not a
 misconfiguration, when no workflow builds and tests the PR: the job then
@@ -470,13 +633,15 @@ See [Choosing `required-workflows`](#choosing-required-workflows).
 
 See [`github/workflows/examples/docker-maintenance-dependabot/`](../../github/workflows/examples/docker-maintenance-dependabot/README.md):
 
-| Example                                                                                                                              | Use case                                                                                                 |
-|--------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
-| [simple-dependabot-maintenance.yml](../../github/workflows/examples/docker-maintenance-dependabot/simple-dependabot-maintenance.yml) | Smallest caller: Dockerfile updates, one PR CI workflow                                                  |
-| [with-backup-roundtrip-gate.yml](../../github/workflows/examples/docker-maintenance-dependabot/with-backup-roundtrip-gate.yml)       | Container stack: merge only after the PR run of `docker-release.yml`, backup round trip included, passed |
-| [own-build-and-test-workflow.yml](../../github/workflows/examples/docker-maintenance-dependabot/own-build-and-test-workflow.yml)     | No backup sidecar: the repository's own build and test workflow vouches; npm updates let through as well |
-| [multiple-required-workflows.yml](../../github/workflows/examples/docker-maintenance-dependabot/multiple-required-workflows.yml)     | Image build and a separate test suite - both must have run on the PR and passed                          |
-| [no-pr-ci-manual-merge.yml](../../github/workflows/examples/docker-maintenance-dependabot/no-pr-ci-manual-merge.yml)                 | No PR CI yet: `required-workflows` left unset on purpose - nothing is merged, every PR is reported       |
+| Example                                                                                                                              | Use case                                                                                                                         |
+|--------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| [simple-dependabot-maintenance.yml](../../github/workflows/examples/docker-maintenance-dependabot/simple-dependabot-maintenance.yml) | Smallest caller: Dockerfile updates, one PR CI workflow                                                                          |
+| [with-backup-roundtrip-gate.yml](../../github/workflows/examples/docker-maintenance-dependabot/with-backup-roundtrip-gate.yml)       | Container stack: merge only after the PR run of `docker-release.yml`, backup round trip included, passed                         |
+| [own-build-and-test-workflow.yml](../../github/workflows/examples/docker-maintenance-dependabot/own-build-and-test-workflow.yml)     | No backup sidecar: the repository's own build and test workflow vouches; Docker and npm updates, caller without `paths:`         |
+| [multiple-required-workflows.yml](../../github/workflows/examples/docker-maintenance-dependabot/multiple-required-workflows.yml)     | Image build and a separate test suite - both must have run on the PR and passed                                                  |
+| [all-ecosystems.yml](../../github/workflows/examples/docker-maintenance-dependabot/all-ecosystems.yml)                               | Docker, Compose, npm, pip, Composer, Cargo and NuGet updates: caller without `paths:`, one `ci.yml` builds and tests all of them |
+| [dotnet-library.yml](../../github/workflows/examples/docker-maintenance-dependabot/dotnet-library.yml)                               | .NET library: NuGet updates tested by `dotnet build` and `dotnet test`, `chore(deps)` so that no update publishes a package      |
+| [no-pr-ci-manual-merge.yml](../../github/workflows/examples/docker-maintenance-dependabot/no-pr-ci-manual-merge.yml)                 | No PR CI yet: `required-workflows` left unset on purpose - nothing is merged, every PR is reported                               |
 
 ---
 
@@ -693,18 +858,18 @@ The workflow completes but the PR stays open.
 **Cause:** the job left it open on purpose. The annotation and the job summary
 say why - see the [decision table](#decision-table). The usual ones:
 
-| Annotation says                                   | Fix                                                                                                                         |
-|---------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
-| automatic merging is off: required-workflows      | Set `required-workflows`, see [Choosing `required-workflows`](#choosing-required-workflows)                                 |
-| update type is not merged automatically           | Expected for minor/major; merge by hand, or widen `merge-update-types`                                                      |
-| semver-major update (0.x minor/0.0.x patch ...)   | Expected below 1.0.0, any update may break: review and merge by hand, or add `major` to `merge-update-types`                |
-| versions of the updated dependencies could not be read | No `jq` on a self-hosted runner: install it. Otherwise merge by hand - the 0.x rule could not be checked              |
-| change the CI itself / changes CI files           | Expected: review and merge by hand. GitHub Actions updates and PRs that change `.github/` are never merged automatically    |
-| CI did not pass                                   | Fix the check, or merge by hand; a re-run of the check alone does not merge - re-run this job, or `@dependabot rebase`      |
-| required workflow ... did not run for this change | Its `pull_request` `paths:` miss the changed files: merge by hand, and keep the caller's `paths:` within the workflow's     |
-| required workflow ... (run N, attempt M: skipped) | All of its jobs were skipped on the PR, so it tested nothing: merge by hand, or fix its `if:` conditions                    |
-| job token cannot read the CI results              | Private repo: add `checks: read`, `statuses: read` and `actions: read` to the caller's `permissions:`                       |
-| CI had not finished and settled after N min       | Raise `ci-wait-minutes`, or merge by hand once CI is green                                                                  |
+| Annotation says                                        | Fix                                                                                                                                                  |
+|--------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| automatic merging is off: required-workflows           | Set `required-workflows`, see [Choosing `required-workflows`](#choosing-required-workflows)                                                          |
+| update type is not merged automatically                | Expected for minor/major; merge by hand, or widen `merge-update-types`                                                                               |
+| semver-major update (0.x minor/0.0.x patch ...)        | Expected below 1.0.0, any update may break: review and merge by hand, or add `major` to `merge-update-types`                                         |
+| versions of the updated dependencies could not be read | No `jq` on a self-hosted runner: install it. Otherwise merge by hand - the 0.x rule could not be checked                                             |
+| change the CI itself / changes CI files                | Expected: review and merge by hand. GitHub Actions updates and PRs that change `.github/` are never merged automatically                             |
+| CI did not pass                                        | Fix the check, or merge by hand; a re-run of the check alone does not merge - re-run this job, or `@dependabot rebase`                               |
+| required workflow ... did not run for this change      | Its `pull_request` `paths:` miss the changed files: merge by hand, or add them there if it builds them ([files per ecosystem](#files-per-ecosystem)) |
+| required workflow ... (run N, attempt M: skipped)      | All of its jobs were skipped on the PR, so it tested nothing: merge by hand, or fix its `if:` conditions                                             |
+| job token cannot read the CI results                   | Private repo: add `checks: read`, `statuses: read` and `actions: read` to the caller's `permissions:`                                                |
+| CI had not finished and settled after N min            | Raise `ci-wait-minutes`, or merge by hand once CI is green                                                                                           |
 
 Do **not** add a ruleset with required status checks for this - it is not needed
 and blocks semantic-release (see above).
@@ -716,10 +881,12 @@ The PR has no `Docker Maintenance` check at all - no annotation, no summary.
 **Cause:** the caller workflow never started: the PR changes no file in its
 `on.pull_request.paths` (row 1 of the [decision table](#decision-table)).
 With Dockerfile-only paths this is expected for npm, pip, Composer and GitHub
-Actions updates - they are merged by hand. To let an ecosystem through, add its
-manifest and lock files to the caller's `paths:` and to the `pull_request`
-`paths:` of every required workflow, see
-[Decide which PRs reach it](#3-decide-which-prs-reach-it-trigger-scope).
+Actions updates - they are merged by hand. To have every Dependabot PR decided,
+remove the caller's `paths:` - recommended as soon as `dependabot.yml` updates
+more than base images - and add each ecosystem's manifest and lock files to the
+`pull_request` `paths:` of the required workflow that builds them, see
+[Recommended trigger](#recommended-trigger) and
+[Files per ecosystem](#files-per-ecosystem).
 
 A `Docker Maintenance` check that is there but *skipped* is row 2 instead: the
 PR was not opened by Dependabot, or the event was raised by someone else (a

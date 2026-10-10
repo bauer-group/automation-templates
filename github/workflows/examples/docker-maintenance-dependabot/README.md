@@ -1,6 +1,6 @@
 # Docker Maintenance (Dependabot) — Examples
 
-Callers of [`docker-maintenance-dependabot.yml`](../../../../.github/workflows/docker-maintenance-dependabot.yml): merge a Dependabot PR only after the CI you name has run on it and passed — no ruleset, no branch protection, no "Allow auto-merge".
+Callers of [`docker-maintenance-dependabot.yml`](../../../../.github/workflows/docker-maintenance-dependabot.yml): merge a Dependabot PR only after the CI you name has run on it and passed — no ruleset, no branch protection, no "Allow auto-merge". Despite the name, this works for every Dependabot ecosystem: base images, Compose files, npm, pip, Composer, Cargo, NuGet and the others.
 
 Full reference: [`docs/workflows/docker-maintenance.md`](../../../../docs/workflows/docker-maintenance.md#option-1-dependabot-simple).
 
@@ -10,28 +10,31 @@ Full reference: [`docs/workflows/docker-maintenance.md`](../../../../docs/workfl
 |---------|----------|
 | [simple-dependabot-maintenance.yml](simple-dependabot-maintenance.yml) | Smallest caller: Dockerfile updates, one PR CI workflow |
 | [with-backup-roundtrip-gate.yml](with-backup-roundtrip-gate.yml) | Container stack: merged only after the PR run of `docker-release.yml` — image builds and the [backup round trip](../backup-roundtrip/gated-release-pipeline.yml) — passed; private-repository permissions |
-| [own-build-and-test-workflow.yml](own-build-and-test-workflow.yml) | Image without a backup sidecar: the repository's own `ci.yml` vouches; Docker and npm updates both let through |
+| [own-build-and-test-workflow.yml](own-build-and-test-workflow.yml) | Image without a backup sidecar: the repository's own `ci.yml` vouches; Docker and npm updates both let through, caller without `paths:` |
 | [multiple-required-workflows.yml](multiple-required-workflows.yml) | Image build and a separate test suite: both have to run on the PR and pass |
+| [all-ecosystems.yml](all-ecosystems.yml) | Docker, Compose, npm, pip, Composer, Cargo and NuGet: caller without `paths:`, one `ci.yml` builds and tests all of them — what it does not build stays open as "not tested" |
+| [dotnet-library.yml](dotnet-library.yml) | .NET library: NuGet and SDK updates tested by `dotnet build`, `dotnet test` and `dotnet pack`; `chore(deps)` so that no update publishes a package |
 | [no-pr-ci-manual-merge.yml](no-pr-ci-manual-merge.yml) | No PR CI yet: `required-workflows` deliberately unset — nothing is merged, every PR is reported for review |
 
 ## Setup
 
-1. **Let Dependabot open the PRs.** Copy [`.github/config/docker-maintenance-dependabot/dependabot.yml`](../../../../.github/config/docker-maintenance-dependabot/dependabot.yml) to `.github/dependabot.yml` and keep `commit-message.prefix: "fix(docker)"`, so a merged update releases a patch version. Internal or private base images need Dependabot's own registry secrets — see the comment in that file.
-2. **Name the CI that vouches for an update** in `required-workflows`: the workflow files whose `pull_request` run builds and tests what Dependabot changes. Not this caller, not a notification, labeler or scan job — they pass on every PR without testing anything.
-3. **Choose the trigger scope.** The caller's `on.pull_request.paths` decide which Dependabot PRs reach the workflow at all; a PR outside them stays open without any annotation. List exactly the files Dependabot changes for the ecosystems that may be merged, and keep them within the `pull_request` `paths:` of every required workflow — see [Decide which PRs reach it](../../../../docs/workflows/docker-maintenance.md#3-decide-which-prs-reach-it-trigger-scope).
+1. **Let Dependabot open the PRs.** Copy [`.github/config/docker-maintenance-dependabot/dependabot.yml`](../../../../.github/config/docker-maintenance-dependabot/dependabot.yml) to `.github/dependabot.yml` and keep `commit-message.prefix: "fix(docker)"`, so a merged update releases a patch version. Add one `updates:` entry per further ecosystem ([all-ecosystems.yml](all-ecosystems.yml) has one for each): `fix(deps)` in an application, `chore(deps)` in a library unless every update should publish a package — see [Other ecosystems and libraries](../../../../docs/workflows/docker-maintenance.md#other-ecosystems-and-libraries). Internal or private registries and feeds need Dependabot's own secrets — see the comment in that file.
+2. **Name the CI that vouches for an update** in `required-workflows`: the workflow files whose `pull_request` run builds and tests what Dependabot changes. Not this caller, not a notification, labeler or scan job — they pass on every PR without testing anything. Several listed workflows are an AND: each has to run on the PR and pass, so list only workflows that run for every update that should be merged — see [Several required workflows](../../../../docs/workflows/docker-maintenance.md#several-required-workflows-every-one-must-run-and-pass).
+3. **Choose the trigger scope.** The caller's `on.pull_request.paths` decide which Dependabot PRs reach the workflow at all; a PR outside them stays open without any annotation. With more than the `docker` ecosystem, give the caller **no `paths:`**: every Dependabot PR then gets a decision and an annotation, and the required workflow's `pull_request` `paths:` decide what is tested — list a manifest and its lock file there only where that workflow builds them ([files per ecosystem](../../../../docs/workflows/docker-maintenance.md#files-per-ecosystem)). With base images only, the Dockerfiles are enough — see [Recommended trigger](../../../../docs/workflows/docker-maintenance.md#recommended-trigger).
 4. **Grant the permissions** in the caller: `contents: write` and `pull-requests: write`, plus `checks: read`, `statuses: read` and `actions: read` in private repositories. The reusable workflow declares none of its own.
 5. **Copy an example** to `.github/workflows/docker-maintenance.yml` and adjust `paths:` and `required-workflows`.
+6. **Give the PR CI its secrets.** A Dependabot PR's CI runs with Dependabot secrets, not Actions secrets: credentials it needs (a private npm, NuGet or Composer feed, a registry login) belong under *Settings → Secrets and variables → Dependabot* as well, or it fails on every Dependabot PR and the PR stays open.
 
 ## What decides a merge
 
 | Check | A PR is merged only if |
 |-------|------------------------|
-| Trigger | It changes a file in the caller's `paths:` and was opened by Dependabot, on an event Dependabot raised |
+| Trigger | It changes a file in the caller's `paths:` (if it has any) and was opened by Dependabot, on an event Dependabot raised |
 | CI change | It is no GitHub Actions update and changes no file under `.github/` |
 | Required CI | `required-workflows` is set |
 | Update type | The semver update type is in `merge-update-types` (default `patch`). Below 1.0.0 a minor update (`0.3.1 → 0.4.0`) and a patch update of `0.0.z` (`0.0.3 → 0.0.4`) count as major — every dependency of a grouped PR is checked, see [Updates below 1.0.0](../../../../docs/workflows/docker-maintenance.md#updates-below-100) |
 | Commits | Every commit is a verified commit by Dependabot |
-| CI | Every required workflow has a `pull_request` run for the head commit that succeeded, no check failed, and CI was complete and quiet for 3 minutes |
+| CI | Every required workflow (all of them, not one) has a `pull_request` run for the head commit that succeeded, no check failed, and CI was complete and quiet for 3 minutes |
 | Merge | The PR is still open, on the same head commit, no draft and mergeable — the merge is pinned with `--match-head-commit` |
 
 Every other outcome leaves the PR open with the job green and the reason as an annotation and in the job summary. The full, ordered list is the [decision table](../../../../docs/workflows/docker-maintenance.md#decision-table).

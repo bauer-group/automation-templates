@@ -1,0 +1,134 @@
+# =============================================================================
+# Dependabot Maintenance - .NET Library (NuGet)
+# =============================================================================
+# For a .NET class library that is published as a NuGet package. Dependabot
+# updates its package references; ci.yml builds and tests every pull request
+# with dotnet-build.yml, and that pull_request run is what vouches for an
+# update.
+#
+# Release or not - choose the commit prefix on purpose:
+# - A merged "fix(deps): ..." commit cuts a PATCH release. For a library that
+#   is a new package on NuGet for every dependency update, and a raised
+#   minimum version for every consumer (a PackageReference version is a lower
+#   bound).
+# - Unless that is wanted, give Dependabot's commits a type that releases
+#   nothing: prefix "chore(deps)" (dependabot.yml below). The updates then
+#   ship with the next feat or fix release.
+# - "chore(deps)" releases nothing with the default release rules of
+#   modules-semantic-release.yml. A repository whose
+#   .github/config/release/semantic-release.json has the rule
+#   {"type": "chore", "scope": "deps", "release": "patch"} (as the one in
+#   automation-templates) releases on it - use a type its rules leave out
+#   there, e.g. "build(deps)".
+# - A release per update wanted (e.g. a security fix has to reach consumers
+#   at once)? Use "fix(deps)".
+#
+# Trigger: no paths: filter. A .NET repository updates more than NuGet
+# packages - GitHub Actions at least, the SDK in global.json maybe - and every
+# Dependabot PR gets a decision and an annotation instead of waiting unnoticed.
+# A GitHub Actions update stays open (a CI change); a NuGet or SDK update is
+# merged once ci.yml passed on it.
+#
+# If the PR build lives in the release workflow (as in
+# ../dotnet-nuget/release-workflow.yml), name that file in required-workflows
+# instead - with the paths below in its pull_request trigger.
+#
+# Matching .github/workflows/ci.yml (excerpt) - the required workflow:
+# -----------------------------------------------------------------------------
+# name: CI
+# on:
+#   pull_request:
+#     branches: [main]
+#     paths:                         # every file a NuGet or SDK update changes
+#       - 'src/**'                   # *.csproj, packages.lock.json, code
+#       - 'tests/**'                 # test projects and their packages
+#       - '*.sln'
+#       - '*.slnx'
+#       - 'Directory.Packages.props' # central package versions
+#       - 'Directory.Build.props'
+#       - 'global.json'              # ci.yml sets up the SDK from it
+# permissions:
+#   contents: read
+#   pull-requests: write             # dotnet-build.yml calls modules-code-quality.yml
+# jobs:
+#   build:
+#     name: Build & Test
+#     uses: bauer-group/automation-templates/.github/workflows/dotnet-build.yml@main
+#     with:
+#       project-path: 'MyLibrary.sln'
+#       global-json-file: 'global.json'  # tests the SDK a dotnet-sdk update sets
+#       run-tests: true
+#       create-package: true             # dotnet pack must work as well
+#     secrets: inherit
+# -----------------------------------------------------------------------------
+#
+# Required .github/dependabot.yml (excerpt):
+# -----------------------------------------------------------------------------
+# version: 2
+# updates:
+#   - package-ecosystem: "nuget"            # *.csproj, Directory.Packages.props,
+#     directory: "/"                        # packages.lock.json
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "chore(deps)"               # no package release per update
+#     groups:
+#       microsoft:
+#         patterns:
+#           - "Microsoft.*"
+#           - "System.*"
+#   - package-ecosystem: "dotnet-sdk"       # global.json sdk.version (optional)
+#     directory: "/"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "chore(deps)"
+#   - package-ecosystem: "github-actions"   # never merged automatically
+#     directory: "/"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "chore(ci)"
+# -----------------------------------------------------------------------------
+#
+# Private NuGet feeds: ci.yml's run on a Dependabot PR sees Dependabot
+# secrets, not Actions secrets. Store the restore credentials under
+# Settings -> Secrets and variables -> Dependabot as well (and give Dependabot
+# the feed via registries: in dependabot.yml), or every Dependabot PR fails
+# its CI and stays open.
+# =============================================================================
+
+name: 🔄 Dependabot Maintenance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # No paths: on purpose - every Dependabot PR gets a decision and an
+    # annotation. ci.yml's pull_request paths decide what is tested.
+
+# The reusable workflow declares no permissions of its own: the job token has
+# exactly these. The three read scopes are needed in private repositories -
+# without them every PR stays open with a notice. In public ones they do no
+# harm.
+permissions:
+  contents: write       # merge
+  pull-requests: write  # approve, read the PR
+  checks: read          # check runs and suites - private repositories
+  statuses: read        # commit statuses - private repositories
+  actions: read         # workflow runs - private repositories
+
+jobs:
+  maintenance:
+    name: Auto-merge Dependabot PRs
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
+    with:
+      # dotnet build, dotnet test and dotnet pack of the PR.
+      required-workflows: .github/workflows/ci.yml
+      merge-method: 'squash'
+      auto-approve: true
+      # Patch updates only: a library passes every minor or major update of a
+      # dependency on to its consumers, so those get a review. A package
+      # below 1.0.0 is stricter still - 0.3.1 -> 0.4.0 and 0.0.3 -> 0.0.4
+      # count as major (SemVer 4).
+      merge-update-types: 'patch'
+    secrets: inherit

@@ -6,9 +6,11 @@
 # vouches for a Dependabot update.
 #
 # This example lets two ecosystems through - Docker base images and npm
-# packages - to show what the trigger scope needs: every file Dependabot
-# changes for an ecosystem must be listed here AND in the pull_request paths
-# of ci.yml. Leave the npm files out to keep npm updates as manual merges.
+# packages. With more than the docker ecosystem the caller below has no
+# paths: filter, so every Dependabot PR gets a decision and an annotation;
+# ci.yml's pull_request paths decide what is tested. Every file Dependabot
+# changes for an ecosystem that may be merged must start ci.yml - leave the
+# npm files out of ci.yml's paths to keep npm updates open as "not tested".
 #
 # Matching .github/workflows/ci.yml (excerpt) - the required workflow:
 # -----------------------------------------------------------------------------
@@ -16,7 +18,7 @@
 # on:
 #   pull_request:
 #     branches: [main]
-#     paths:                    # covers every path listed below
+#     paths:                    # what ci.yml builds and tests
 #       - 'Dockerfile'
 #       - 'package.json'
 #       - 'package-lock.json'
@@ -50,12 +52,9 @@ name: 🐳 Docker Maintenance
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    # Every file Dependabot changes for the ecosystems that may be merged.
-    # Each one must also start ci.yml - see its paths above.
-    paths:
-      - 'Dockerfile'
-      - 'package.json'
-      - 'package-lock.json'
+    # No paths: - more than the docker ecosystem is updated, so every
+    # Dependabot PR gets a decision. ci.yml's pull_request paths (above)
+    # decide what is tested.
 
 permissions:
   contents: write       # merge
