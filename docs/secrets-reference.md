@@ -131,7 +131,7 @@ Nur nötig, wenn Dependabot **interne oder private** Base-Images aktualisieren s
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
-| `GITLEAKS_LICENSE` | modules-security-scan, modules-pr-validation, python-semantic-release, esp32-build, stm32-build, platformio-build, zephyr-build (Action `security-scan`) | License Key für `gitleaks/gitleaks-action`; nur gelesen, wenn Gitleaks per Engine-Input `'gitleaks'` eingeschaltet ist | [gitleaks.io](https://gitleaks.io) → kostenloser License Key (Formular) |
+| `GITLEAKS_LICENSE` | modules-security-scan, modules-pr-validation, python-semantic-release, esp32-build, stm32-build, platformio-build, zephyr-build (Action `security-scan`) | License Key für `gitleaks/gitleaks-action`; nur gelesen, wenn Gitleaks per Engine-Input `'gitleaks'` eingeschaltet ist. Pull-Requests ohne `pull-requests: read` (bei modules-security-scan immer) scannt die Gitleaks-CLI ohne License | [gitleaks.io](https://gitleaks.io) → kostenloser License Key (Formular) |
 | `FOSSA_API_KEY` | license-compliance | FOSSA License Scanning | [fossa.com](https://fossa.com) → Account Settings |
 
 > **Gitleaks ist opt-in (seit Oktober 2026).** Standardmäßig läuft Gitleaks in keinem Template,
@@ -145,11 +145,20 @@ Nur nötig, wenn Dependabot **interne oder private** Base-Images aktualisieren s
 > **Dependabot:** Von Dependabot ausgelöste Läufe erhalten **keine** Actions-Secrets. Wer Gitleaks
 > einschaltet und Dependabot-PRs hat, muss `GITLEAKS_LICENSE` zusätzlich als **Dependabot-Secret**
 > anlegen (*Settings → Secrets and variables → **Dependabot***, oder auf Organisationsebene),
-> sonst scheitert der Secret-Scan auf jedem Dependabot-PR:
+> sonst scheitert der Secret-Scan auf jedem Dependabot-Lauf, der `gitleaks-action` nutzt
+> (Pull-Requests ohne `pull-requests: read` nicht, siehe unten):
 >
 > ```bash
 > gh secret set GITLEAKS_LICENSE --app dependabot --org your-org --visibility all
 > ```
+>
+> **Pull-Requests:** `gitleaks-action` liest die Commits eines Pull-Requests über die API und
+> braucht dafür `pull-requests: read`. `modules-security-scan` kann diesen Scope nicht
+> weitergeben (ein aufgerufener Workflow kann das Token des Aufrufers nur einschränken). Die
+> Action `security-scan` erkennt das und scannt dieselben Commits mit der Gitleaks-CLI - diese
+> Läufe, auch die von Dependabot, brauchen **keine** License. Wo das Token den Scope hat (z. B.
+> `modules-pr-validation`), läuft `gitleaks-action` unverändert und braucht sie weiterhin.
+> Details: [How Gitleaks scans each event](./workflows/modules-security-scan.md#how-gitleaks-scans-each-event).
 >
 > Die Action `gitleaks-scan` (genutzt von `makefile-build` und `security-scan-meta`) installiert
 > das Gitleaks-Binary direkt und braucht **keine** License.

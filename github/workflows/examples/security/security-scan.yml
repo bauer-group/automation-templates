@@ -1,0 +1,39 @@
+name: 🛡️ Security Scan
+
+# Trivy dependency scan plus Gitleaks secret scan, using modules-security-scan.yml.
+# Copy this file to .github/workflows/ in your repository.
+#
+# Gitleaks is opt-in: enable it (scan-engine: 'gitleaks') in repositories WITHOUT
+# GitHub secret scanning and push protection. Organization repositories then need the
+# GITLEAKS_LICENSE secret for push, schedule and manual runs. Pull requests (including
+# Dependabot's) are scanned with the gitleaks CLI and need neither the licence nor
+# pull-requests: read.
+# Docs: docs/workflows/modules-security-scan.md
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 4 * * 0'   # Sunday 04:00 UTC - full-history secret scan
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    name: Security Scan
+    uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
+    # Exactly the scopes the module declares. Granting less makes GitHub refuse the
+    # run before any job starts; pull-requests: read is NOT needed.
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    with:
+      scan-engine: 'gitleaks'   # default 'none' runs Trivy only
+      scan-type: 'all'
+      fail-on-findings: true
+    secrets: inherit            # GITLEAKS_LICENSE

@@ -11,6 +11,8 @@ Diese Sammlung von wiederverwendbaren Workflows ermöglicht es, CI/CD-Pipelines 
 ### 🛡️ [Security Scan](./modules-security-scan.yml)
 **Zweck:** Trivy Vulnerability Scan + Secrets-Erkennung mit Gitleaks (opt-in)
 
+Dokumentation (Inputs, Secrets, Outputs, Troubleshooting): [docs/workflows/modules-security-scan.md](../../docs/workflows/modules-security-scan.md)
+
 ```yaml
 uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
 with:
@@ -27,7 +29,9 @@ secrets: inherit           # GITLEAKS_LICENSE, nur mit scan-engine: 'gitleaks' n
 > Organisationen ohne GitHub Secret Protection (Advanced Security); öffentliche
 > Repositories können beides kostenlos einschalten. In Organisations-Repositories braucht Gitleaks das
 > Secret `GITLEAKS_LICENSE`, für Dependabot-Läufe zusätzlich als **Dependabot**-Secret.
-> Details und Prüfbefehl:
+> Pull-Requests scannt das Modul mit der Gitleaks-CLI über dieselben Commits; dafür braucht
+> es weder die License noch `pull-requests: read` (den Scope kann ein aufgerufener Workflow
+> nicht erhalten). Details und Prüfbefehl:
 > [Gitleaks ist opt-in](../../docs/security/native-secret-scanning.md#gitleaks-is-opt-in).
 
 > GitGuardian wurde entfernt (2026-10): Im CI scannte es nur den letzten Commit und konnte
