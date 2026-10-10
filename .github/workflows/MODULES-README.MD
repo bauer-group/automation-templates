@@ -241,7 +241,7 @@ check:
 ### 🐳 [Docker Maintenance (Dependabot)](./docker-maintenance-dependabot.yml)
 **Zweck:** Merged Dependabot-PRs erst, nachdem die genannte PR-CI auf dem Head-Commit gelaufen und grün ist — ohne Ruleset, Branch Protection oder „Allow auto-merge“
 
-Wartet, bis die CI des PRs vollständig und 3 Minuten unverändert ist, und merged nur, wenn jeder Workflow aus `required-workflows` per `pull_request` auf dem Head-Commit erfolgreich lief und kein Check fehlschlug (`gh pr merge --match-head-commit`). Standardmäßig nur Patch-Updates. GitHub-Actions-Updates und PRs, die `.github/` ändern, bleiben immer offen. Ohne `required-workflows` wird nichts gemerged.
+Wartet, bis die CI des PRs vollständig und 3 Minuten unverändert ist, und merged nur, wenn jeder Workflow aus `required-workflows` per `pull_request` auf dem Head-Commit erfolgreich lief und kein Check fehlschlug (`gh pr merge --match-head-commit`). Standardmäßig nur Patch-Updates; unter 1.0.0 zählt ein Minor-Update (`0.3.1 → 0.4.0`) und ein Patch-Update von `0.0.z` als Major (SemVer §4, wie npm-`^`-Ranges) — geprüft für jede Dependency eines gruppierten PRs. GitHub-Actions-Updates und PRs, die `.github/` ändern, bleiben immer offen. Ohne `required-workflows` wird nichts gemerged.
 
 ```yaml
 on:

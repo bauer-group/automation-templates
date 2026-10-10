@@ -7,8 +7,9 @@
 #
 #   guard  (id: guard) - GitHub Actions updates (never merged), required-
 #                        workflows (empty: nothing is merged), update type
-#                        against merge-update-types / allow-major, input
-#                        validation
+#                        against merge-update-types / allow-major (a minor
+#                        update of 0.y.z and a patch update of 0.0.z count as
+#                        major, per dependency), input validation
 #   wait   (id: ci)    - checks that every commit is a verified Dependabot
 #                        commit and that no changed file is under .github/,
 #                        polls check runs, check suites, commit statuses
@@ -104,6 +105,10 @@ static_has   "wait is gated by the guard"        "if: steps.guard.outputs.ok == 
 static_has   "guard reads required-workflows"    'REQUIRED_WORKFLOWS: ${{ inputs.required-workflows }}'
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "guard reads the ecosystem"         'PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "guard reads every dependency's versions" 'UPDATED_DEPENDENCIES_JSON: ${{ steps.metadata.outputs.updated-dependencies-json }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "summary shows a 0.x update counted as major" 'TYPE_NOTE: ${{ steps.guard.outputs.type-note }}'
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "wait gets the checked list"        'REQUIRED: ${{ steps.guard.outputs.required }}'
 static_has   "merge is gated by green CI"        "if: steps.ci.outputs.result == 'green'"
@@ -333,14 +338,26 @@ not_logged() {
 calls_to() { grep -c -- "$2" "$1/calls"; }
 
 # --- guard ----------------------------------------------------------------------
+# dep <name> <previous version> <new version> <update type>: one dependency as
+# dependabot/fetch-metadata (v3) lists it in updated-dependencies-json
+dep() {
+  printf '{"dependencyName":"%s","dependencyType":"direct:production","updateType":"%s","directory":"/","packageEcosystem":"docker","targetBranch":"main","prevVersion":"%s","newVersion":"%s","compatScore":0,"maintainerChanges":false,"dependencyGroup":"","alertState":"","ghsaId":"","cvss":0}' \
+    "$1" "$4" "$2" "$3"
+}
+deps() { echo "[$(join "$@")]"; }
+
 # guard_case <name> <update-type> <merge-update-types> <allow-major> <want rc> <ok> <reason> <annotation|-> [merge-method] [wait-minutes]
 # required-workflows is $GUARD_REQUIRED, if set (also empty), else ci.yml; the
-# ecosystem is $GUARD_ECOSYSTEM, if set (also empty), else docker.
+# ecosystem is $GUARD_ECOSYSTEM, if set (also empty), else docker; the updated
+# dependencies are $GUARD_DEPS, if set (also empty), else one 7.2.4 -> 7.2.5
+# update of the given type (1.0.0 or later: the 0.x rule does not apply).
+# $GUARD_PATH replaces PATH (to take jq away).
 guard_case() {
   local name="$1" dir="$WORK/guard-$1"
   mkdir -p "$dir"; : > "$dir/output"
-  ( cd "$dir" && GITHUB_OUTPUT="$dir/output" PACKAGE_ECOSYSTEM="${GUARD_ECOSYSTEM-docker}" \
+  ( cd "$dir" && PATH="${GUARD_PATH-$PATH}" GITHUB_OUTPUT="$dir/output" PACKAGE_ECOSYSTEM="${GUARD_ECOSYSTEM-docker}" \
       UPDATE_TYPE="$2" MERGE_UPDATE_TYPES="$3" ALLOW_MAJOR="$4" \
+      UPDATED_DEPENDENCIES_JSON="${GUARD_DEPS-$(deps "$(dep redis 7.2.4 7.2.5 "$2")")}" \
       MERGE_METHOD="${9:-squash}" WAIT_MINUTES="${10:-60}" REQUIRED_WORKFLOWS="${GUARD_REQUIRED-$REQ_CI}" \
       bash --noprofile --norc -eo pipefail -c "$GUARD_BODY" ) > "$dir/log" 2>&1
   local rc=$?
@@ -402,6 +419,101 @@ GUARD_ECOSYSTEM=github_actions                   guard_case actions-update-bad-i
 # Other ecosystems, or none known: the wait checks the changed files.
 GUARD_ECOSYSTEM=docker_compose                   guard_case compose-update             "$P"  "patch"             false 0 true  patch     -
 GUARD_ECOSYSTEM=""                               guard_case ecosystem-unknown          "$P"  "patch"             false 0 true  patch     -
+
+# --- guard: versions below 1.0.0 -------------------------------------------------
+# SemVer 4: a 0.y.z version may break on any change. Dependabot (and
+# fetch-metadata) call 0.3.1 -> 0.4.0 semver-minor; like npm's caret ranges the
+# guard counts a minor update of a 0.y.z version and a patch update of a 0.0.z
+# version as major. Per dependency, the strictest one decides.
+# type_note_is <name> <want>: the guard's type-note output
+type_note_is() {
+  local got; got=$(sed -n 's/^type-note=//p' "$WORK/guard-$1/output")
+  if [ "$got" = "$2" ]; then pass "guard/$1: type-note '$2'"; else fail "guard/$1: type-note '$got', want '$2'"; fi
+}
+glogged()     { logged "guard/$1" "$WORK/guard-$1" "$2"; }
+gnot_logged() { not_logged "guard/$1" "$WORK/guard-$1" "$2"; }
+
+# 0.3.1 -> 0.4.0: what a caller that merges minor updates used to merge.
+GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")") guard_case zero-minor-minor-allowed  "$MI" "patch,minor"       false 0 false update-type notice
+glogged     zero-minor-minor-allowed "0.x minor treated as major: lib 0.3.1 -> 0.4.0"
+glogged     zero-minor-minor-allowed "semver-major update (0.x minor treated as major: lib 0.3.1 -> 0.4.0) - left open for review"
+type_note_is zero-minor-minor-allowed "0.x minor treated as major: lib 0.3.1 -> 0.4.0"
+GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")") guard_case zero-minor-all-allowed    "$MI" "patch,minor,major" false 0 true  major       -
+glogged     zero-minor-all-allowed "0.x minor treated as major: lib 0.3.1 -> 0.4.0"
+GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")") guard_case zero-minor-allow-major    "$MI" "patch"             true  0 true  major       -
+GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")") guard_case zero-minor-default        "$MI" "patch"             false 0 false update-type notice
+# 0.0.3 -> 0.0.4: merged by the default (patch) before - now left open.
+GUARD_DEPS=$(deps "$(dep lib 0.0.3 0.0.4 "$P")")  guard_case zero-zero-patch-default   "$P"  "patch"             false 0 false update-type notice
+glogged     zero-zero-patch-default "0.0.x patch treated as major: lib 0.0.3 -> 0.0.4"
+type_note_is zero-zero-patch-default "0.0.x patch treated as major: lib 0.0.3 -> 0.0.4"
+GUARD_DEPS=$(deps "$(dep lib 0.0.3 0.0.4 "$P")")  guard_case zero-zero-patch-all       "$P"  "patch,minor,major" false 0 true  major       -
+GUARD_DEPS=$(deps "$(dep lib 0.0.3 0.1.0 "$MI")") guard_case zero-zero-minor           "$MI" "patch,minor"       false 0 false update-type notice
+glogged     zero-zero-minor "0.x minor treated as major: lib 0.0.3 -> 0.1.0"
+# Within the caret range: a patch update of 0.y.z (y > 0) stays a patch.
+GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.3.2 "$P")")  guard_case zero-patch-stays-patch    "$P"  "patch"             false 0 true  patch       -
+gnot_logged zero-patch-stays-patch "treated as major"
+type_note_is zero-patch-stays-patch ""
+# Already major, and 1.0.0 or later: as Dependabot reported.
+GUARD_DEPS=$(deps "$(dep lib 0.9.2 1.0.0 "$MA")") guard_case zero-to-one-major         "$MA" "patch,minor"       false 0 false update-type notice
+gnot_logged zero-to-one-major "treated as major"
+GUARD_DEPS=$(deps "$(dep lib 1.2.3 1.3.0 "$MI")") guard_case one-minor-stays-minor     "$MI" "patch,minor"       false 0 true  minor       -
+GUARD_DEPS=$(deps "$(dep lib 1.0.0 1.0.1 "$P")")  guard_case one-zero-zero-patch       "$P"  "patch"             false 0 true  patch       -
+# Plain X.Y.Z, with a leading v and a pre-release or build suffix.
+GUARD_DEPS=$(deps "$(dep redpanda v0.3.1 v0.4.0 "$MI")")                guard_case zero-minor-v-prefix  "$MI" "patch,minor" false 0 false update-type notice
+glogged     zero-minor-v-prefix "0.x minor treated as major: redpanda v0.3.1 -> v0.4.0"
+GUARD_DEPS=$(deps "$(dep lib 0.3.1-rc.1 0.4.0+build.7 "$MI")")         guard_case zero-minor-suffixes  "$MI" "patch,minor" false 0 false update-type notice
+GUARD_DEPS=$(deps "$(dep app 0.3.1-alpine3.20 0.4.0-alpine3.20 "$MI")") guard_case zero-minor-tag-variant "$MI" "patch,minor" false 0 false update-type notice
+# Anything else keeps the type Dependabot reported - and never fails the job:
+# a two-part tag, a tag like 18-alpine, leading zeros, a date, a digest, a
+# missing version, a new version that is not plain semver.
+for v in "0.3 0.4" "0.3-alpine 0.4-alpine" "0.03.1 0.04.0" "2024-01-15 2024-02-01" "- 0.4.0" "0.3.1 0.4" "0.3.1 0.4.0.1" "V0.3.1 V0.4.0" "0.3.1 sha256:0123abcd"; do
+  read -r prev new <<< "$v"; [ "$prev" = "-" ] && prev=""
+  name="not-plain-semver-${prev:-none}-$new"; name="${name//[^A-Za-z0-9.-]/_}"
+  GUARD_DEPS=$(deps "$(dep lib "$prev" "$new" "$MI")") guard_case "$name" "$MI" "patch,minor" false 0 true minor -
+  gnot_logged "$name" "treated as major"
+done
+GUARD_DEPS='[{"dependencyName":"lib","updateType":"version-update:semver-minor","prevVersion":null}]' \
+                                                 guard_case versions-missing          "$MI" "patch,minor"       false 0 true  minor       -
+# The update type of each dependency is the one fetch-metadata lists for it;
+# without one (no versions it could compare) the dependency changes nothing.
+GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "")")   guard_case dependency-type-unknown   "$MI" "patch,minor"       false 0 true  minor       -
+
+# A grouped update: the strictest dependency decides.
+GUARD_DEPS=$(deps "$(dep redis 7.2.4 7.2.5 "$P")" "$(dep lib 0.3.1 0.4.0 "$MI")") \
+                                                 guard_case group-zero-minor          "$MI" "patch,minor"       false 0 false update-type notice
+glogged     group-zero-minor "0.x minor treated as major: lib 0.3.1 -> 0.4.0"
+gnot_logged group-zero-minor "redis 7.2.4 -> 7.2.5"
+GUARD_DEPS=$(deps "$(dep redis 7.2.4 7.3.0 "$MI")" "$(dep lib 0.0.3 0.0.4 "$P")") \
+                                                 guard_case group-zero-zero-patch     "$MI" "patch,minor"       false 0 false update-type notice
+glogged     group-zero-zero-patch "0.0.x patch treated as major: lib 0.0.3 -> 0.0.4"
+GUARD_DEPS=$(deps "$(dep a 0.3.1 0.4.0 "$MI")" "$(dep b 0.0.1 0.0.2 "$P")") \
+                                                 guard_case group-two-zero            "$MI" "patch,minor,major" false 0 true  major       -
+type_note_is group-two-zero "0.x minor treated as major: a 0.3.1 -> 0.4.0; 0.0.x patch treated as major: b 0.0.1 -> 0.0.2"
+GUARD_DEPS=$(deps "$(dep redis 7.2.4 7.2.5 "$P")" "$(dep lib 0.3.1 0.3.2 "$P")") \
+                                                 guard_case group-within-caret        "$P"  "patch"             false 0 true  patch       -
+GUARD_DEPS=$(deps "$(dep redis 7.2.4 7.2.5 "$P")" "$(dep app 0.3-alpine 0.4-alpine "$MI")") \
+                                                 guard_case group-not-plain-semver    "$MI" "patch,minor"       false 0 true  minor       -
+
+# Per-dependency data that cannot be read: a warning, the job stays green and
+# the update type is the one Dependabot reported.
+GUARD_DEPS="not json"  guard_case deps-not-json  "$MI" "patch,minor" false 0 true minor warning
+glogged     deps-not-json "a 0.x update could not be checked. The update type is taken as Dependabot reported it: semver-minor"
+GUARD_DEPS=""          guard_case deps-empty     "$P"  "patch"       false 0 true patch warning
+GUARD_DEPS="[]"        guard_case deps-none      "$P"  "patch"       false 0 true patch warning
+GUARD_DEPS='{"a":1}'   guard_case deps-not-list  "$P"  "patch"       false 0 true patch warning
+mkdir -p "$WORK/nojq"
+printf '#!/usr/bin/env bash\necho "jq: command not found" >&2\nexit 127\n' > "$WORK/nojq/jq"; chmod +x "$WORK/nojq/jq"
+GUARD_PATH="$WORK/nojq:$PATH" GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")") \
+                       guard_case jq-missing     "$MI" "patch,minor" false 0 true minor warning
+
+# The order stays: a GitHub Actions update, a missing required-workflows and
+# an unknown update type decide before the versions are looked at.
+GUARD_ECOSYSTEM=github_actions GUARD_DEPS=$(deps "$(dep actions/checkout 0.3.1 0.4.0 "$MI")") \
+                                                 guard_case zero-actions-update       "$MI" "patch,minor"       false 0 false ci-change notice
+GUARD_REQUIRED="" GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")") \
+                                                 guard_case zero-required-empty       "$MI" "patch,minor"       false 0 false no-required-workflows notice
+GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "")")  guard_case zero-unknown-update-type  ""    "patch,minor,major" false 0 false unknown-update-type notice
+gnot_logged zero-unknown-update-type "treated as major"
 
 # --- wait for CI ----------------------------------------------------------------
 # run_ci <dir> [VAR=value ...]   (REQUIRED: the guard's checked list)
