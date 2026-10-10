@@ -66,6 +66,14 @@ requests in the repository, as a **Dependabot** secret
 (*Settings → Secrets and variables → Dependabot*) — Dependabot-triggered runs read only
 that store. See [Secrets Reference](../secrets-reference.md#security-scanning).
 
+**Pull requests:** gitleaks-action lists a pull request's commits through the API, which
+needs `pull-requests: read`. `modules-security-scan.yml` cannot pass that scope (a called
+workflow can only narrow the caller's token), so the `security-scan` action detects the
+missing scope and scans the same commits with the gitleaks CLI instead. Those runs -
+Dependabot's included - need **no** licence. Where the token does carry the scope (for
+example `modules-pr-validation.yml`), gitleaks-action runs as before. Details:
+[How Gitleaks scans each event](../workflows/modules-security-scan.md#how-gitleaks-scans-each-event).
+
 With Gitleaks off, the scans do not fail or report "not scanned" because of it: the run
 shows a notice, and the summaries say *disabled - Gitleaks is opt-in* instead of a clean
 secret result. The security score then covers dependencies (Trivy) only.
@@ -129,4 +137,4 @@ documented reason that is audit-logged) — the leak never reaches the remote.
 - [Secret scanning (docs.github.com)](https://docs.github.com/en/code-security/secret-scanning)
 - [Push protection (docs.github.com)](https://docs.github.com/en/code-security/secret-scanning/push-protection-for-repositories-and-organizations)
 - [`modules-trufflehog-scan.yml`](../workflows/modules-trufflehog-scan.md) — CI verification layer
-- [`modules-security-scan.yml`](../../.github/workflows/modules-security-scan.yml) — Trivy + Gitleaks (opt-in)
+- [`modules-security-scan.yml`](../workflows/modules-security-scan.md) — Trivy + Gitleaks (opt-in)
