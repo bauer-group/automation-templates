@@ -18,6 +18,10 @@
 #   go.mod, go.sum                                  -> committed (as before)
 #   files below a working-directory                 -> committed
 #   source files, build output, node_modules        -> left uncommitted
+#   new lock file next to its tracked manifest      -> committed (go.sum)
+#   new manifest, new lock file without a tracked
+#   manifest next to it (unignored dist/, .venv/)   -> left uncommitted
+#   tracked file named like a manifest (dist/)      -> committed
 #   only non-dependency files changed               -> no commit, no push
 #   base image update only                          -> empty commit (as before)
 #
@@ -177,6 +181,7 @@ expect_eq "npm: committed" "$(out committed)" "true"
 expect_eq "npm: lock file pushed" "$(pushed_files)" "package-lock.json"
 expect_eq "npm: commit subject" "$(origin_subject)" "fix(deps): automated maintenance update"
 expect_eq "npm: one commit on top" "$(origin_count)" "2"
+expect_eq "npm: count for the job summary" "$(out dependency-files)" "1"
 
 reset yarn "package.json={}" "yarn.lock=# yarn lockfile v1"
 write yarn.lock '# yarn lockfile v1
@@ -276,11 +281,85 @@ else
   fail "selective: the log names what was left out" "src/index.js not in the log"
 fi
 
+# === commit: new files ========================================================
+# A new file is staged only when it is a lock file next to the tracked manifest
+# it belongs to. Unignored build and tool directories hold files named like a
+# manifest or lock file, but no tracked manifest - nothing in them is pushed.
+
+# go mod tidy creates go.sum next to a tracked go.mod.
+reset new-go-sum "go.mod=module example.invalid/app"
+write go.mod "module example.invalid/app
+
+require golang.org/x/text v0.21.0"
+write go.sum "golang.org/x/text v0.21.0 h1:placeholder="
+run_step commit; expect_rc "new go.sum: step succeeds" $? 0
+expect_eq "new go.sum: go.mod and the new go.sum pushed" "$(pushed_files)" "$(lines go.mod go.sum)"
+
+# First lock files next to tracked manifests below the root.
+reset new-locks "frontend/package.json={}" "src/App/App.csproj=<Project Sdk=\"Microsoft.NET.Sdk\" />"   "[x]/package.json={}"
+write frontend/package-lock.json '{"lockfileVersion": 3}'
+write src/App/packages.lock.json '{"version": 1}'
+write "[x]/yarn.lock" "# yarn lockfile v1"
+run_step commit; expect_rc "new lock files next to tracked manifests: step succeeds" $? 0
+expect_eq "new lock files next to tracked manifests: pushed" "$(pushed_files)"   "$(lines "[x]/yarn.lock" frontend/package-lock.json src/App/packages.lock.json)"
+
+# A build that leaves an unignored dist/ with its own package.json and lock file.
+reset dist-untracked "package.json={}" "package-lock.json={}"
+write package-lock.json '{"lockfileVersion": 3}'
+write dist/package.json '{"name": "built"}'
+write dist/package-lock.json '{"lockfileVersion": 3}'
+write dist/lib/package.json '{"name": "lib"}'
+run_step commit; expect_rc "unignored dist/: step succeeds" $? 0
+expect_eq "unignored dist/: only the lock file at the root pushed" "$(pushed_files)" "package-lock.json"
+expect_eq "unignored dist/: build output left behind" "$(left_behind)"   "$(lines dist/lib/package.json dist/package-lock.json dist/package.json)"
+
+# A validation command that creates an unignored virtualenv or tox directory.
+reset venv-untracked "requirements.txt=requests==2.31.0"
+write requirements.txt "requests==2.32.3"
+write .venv/lib/python3.13/site-packages/foo/static/package.json '{"name": "foo-assets"}'
+write .venv/lib/python3.13/site-packages/foo/static/yarn.lock "# yarn lockfile v1"
+write .venv/lib/python3.13/site-packages/bar/requirements.txt "six==1.16.0"
+write .tox/py313/requirements-test.txt "pytest==8.3.4"
+write .tox/py313/poetry.lock "# poetry"
+run_step commit PYTHON_WORKDIR=. PYTHON_REQUIREMENTS=requirements.txt
+expect_rc "unignored .venv/ and .tox/: step succeeds" $? 0
+expect_eq "unignored .venv/ and .tox/: only requirements.txt pushed" "$(pushed_files)" "requirements.txt"
+expect_eq "unignored .venv/ and .tox/: everything in them left behind" "$(left_behind)"   "$(lines .tox/py313/poetry.lock .tox/py313/requirements-test.txt     .venv/lib/python3.13/site-packages/bar/requirements.txt     .venv/lib/python3.13/site-packages/foo/static/package.json     .venv/lib/python3.13/site-packages/foo/static/yarn.lock)"
+
+# New manifests are never staged, even between tracked files; a lock file is
+# not staged when its manifest is only tracked in a subdirectory or in a
+# directory whose name merely matches as a glob ([y] vs y), or when the
+# directory holds tracked files but no manifest.
+reset new-manifests "go.mod=module example.invalid/app" "src/index.js=// v1"   "tools/sub/go.mod=module example.invalid/tools" "y/package.json={}" "out/.gitkeep="
+write src/package.json '{"name": "new"}'
+write src/requirements.txt "flask==3.1.0"
+write src/App.csproj '<Project Sdk="Microsoft.NET.Sdk" />'
+write tools/go.sum "golang.org/x/text v0.21.0 h1:placeholder="
+write "[y]/package-lock.json" '{"lockfileVersion": 3}'
+write out/package-lock.json '{"lockfileVersion": 3}'
+run_step commit; expect_rc "new manifests: step succeeds" $? 0
+expect_eq "new manifests: not committed" "$(out committed)" "false"
+expect_eq "new manifests: nothing staged" "$(out dependency-files)" "0"
+expect_eq "new manifests: nothing pushed" "$(origin_count)" "1"
+expect_eq "new manifests: all left behind" "$(left_behind)"   "$(lines "[y]/package-lock.json" out/package-lock.json src/App.csproj src/package.json     src/requirements.txt tools/go.sum)"
+
+# A TRACKED file named like a manifest is committed wherever it is - e.g. the
+# committed dist/ of a JavaScript Action that the validation build rewrote.
+reset dist-tracked "package.json={}" "package-lock.json={}" "dist/package.json={}" "dist/index.js=// v1"
+write package-lock.json '{"lockfileVersion": 3}'
+write dist/package.json '{"type": "module"}'
+write dist/index.js "// v2"
+run_step commit; expect_rc "tracked dist/: step succeeds" $? 0
+expect_eq "tracked dist/: manifest pushed with the lock file" "$(pushed_files)"   "$(lines dist/package.json package-lock.json)"
+expect_eq "tracked dist/: count for the job summary" "$(out dependency-files)" "2"
+expect_eq "tracked dist/: bundle left behind" "$(left_behind)" "dist/index.js"
+
 # Changes, but none of them a dependency file: no commit, nothing pushed.
 reset no-deps "package.json={}" "src/index.js=// v1"
 write src/index.js "// v2"
 run_step commit; expect_rc "no dependency changes: step succeeds" $? 0
 expect_eq "no dependency changes: not committed" "$(out committed)" "false"
+expect_eq "no dependency changes: job summary sees nothing staged" "$(out dependency-files)" "0"
 expect_eq "no dependency changes: nothing pushed" "$(origin_count)" "1"
 if grep -q "No dependency files to commit" "$FAKE/log"; then
   pass "no dependency changes: reported"

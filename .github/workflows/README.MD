@@ -111,7 +111,7 @@ Reusable Workflows, mit denen sich Container-Repositories selbst aktuell halten,
 #### 🔧 [modules-auto-maintenance.yml](./modules-auto-maintenance.yml) - Auto Maintenance
 **Zweck:** Base-Image-Digests und Dependency-Updates (npm, pip, .NET, Go) in einem Lauf, validiert mit Build/Test und bei Fehlern zurückgerollt  
 **Features:** Eine JSON-Konfiguration, Commit + Release-Dispatch, Digests erst nach Push und Dispatch gespeichert, Dry Run  
-**Commit:** Nur Dependency-Manifeste und Lock-Dateien, auch unterhalb eines `working-directory` ([Details](../../docs/workflows/modules-auto-maintenance.md#was-committet-wird))  
+**Commit:** Nur Dependency-Manifeste und Lock-Dateien, auch unterhalb eines `working-directory`; neue Dateien nur als Lock-Datei neben ihrem versionierten Manifest ([Details](../../docs/workflows/modules-auto-maintenance.md#was-committet-wird))  
 **Docs:** [docs/workflows/modules-auto-maintenance.md](../../docs/workflows/modules-auto-maintenance.md) · **Beispiele:** [examples/auto-maintenance/](../../github/workflows/examples/auto-maintenance/README.md)
 
 #### 🧪 [modules-backup-roundtrip-test.yml](./modules-backup-roundtrip-test.yml) - Backup Round-Trip Test

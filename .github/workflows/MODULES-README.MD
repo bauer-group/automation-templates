@@ -278,7 +278,7 @@ maintenance:
 - `updates-found`: Ob Updates gefunden wurden
 - `summary`: Zusammenfassung der Änderungen
 
-> **Commit:** Nur Dependency-Manifeste und Lock-Dateien (npm/yarn/pnpm, `requirements*.txt`, `*.csproj`/`Directory.Packages.props`/`packages.lock.json`, `go.mod`/`go.sum`), auch unterhalb eines `working-directory`; Build-Ausgaben und Quellcode bleiben draußen ([Details](../../docs/workflows/modules-auto-maintenance.md#was-committet-wird)).
+> **Commit:** Nur Dependency-Manifeste und Lock-Dateien (npm/yarn/pnpm, `requirements*.txt`, `*.csproj`/`Directory.Packages.props`/`packages.lock.json`, `go.mod`/`go.sum`): versionierte, wenn der Lauf sie ändert, auch unterhalb eines `working-directory`; neue nur als Lock-Datei neben ihrem versionierten Manifest. Quellcode und nicht versionierte Build- und Tool-Verzeichnisse (`dist/`, `.venv/`) bleiben draußen ([Details](../../docs/workflows/modules-auto-maintenance.md#was-committet-wird)).
 >
 > Doku: [docs/workflows/modules-auto-maintenance.md](../../docs/workflows/modules-auto-maintenance.md) · Beispiele: [github/workflows/examples/auto-maintenance/](../../github/workflows/examples/auto-maintenance/README.md)
 

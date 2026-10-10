@@ -6,19 +6,22 @@ Full reference (German): [`docs/workflows/modules-auto-maintenance.md`](../../..
 
 ## What gets committed
 
-Only dependency manifests and lock files that the run changed, wherever they are in the repository (a `working-directory` below the root included). Each file is matched by its name and staged on its own:
+Only dependency manifests and lock files. Each file the run changed or created is checked and staged on its own:
 
-| Ecosystem | Committed when changed |
-|-----------|------------------------|
+* **A tracked file the run changed** is committed when its name is in the table below, wherever it is in the repository (a `working-directory` below the root included).
+* **A new file** is committed only when it is a lock file next to its tracked manifest in the same directory: `go.sum` next to `go.mod`, `package-lock.json`/`npm-shrinkwrap.json`/`yarn.lock`/`pnpm-lock.yaml` next to `package.json`, `packages.lock.json` next to a `*.csproj`/`*.fsproj`/`*.vbproj`, `poetry.lock` next to `pyproject.toml`, `Pipfile.lock` next to `Pipfile`. A new manifest is never committed - the update steps only change existing ones.
+
+| Ecosystem | Manifests and lock files |
+|-----------|--------------------------|
 | Node.js (npm, yarn, pnpm) | `package.json`, `package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml` |
 | Python | `requirements*.txt`, the configured `requirements-file` under any name, `Pipfile.lock`, `poetry.lock` |
 | .NET | `*.csproj`, `*.fsproj`, `*.vbproj`, `Directory.Build.props`, `Directory.Packages.props`, `packages.lock.json` |
 | Go | `go.mod`, `go.sum` |
 | Base images | No file - the digest lives in a repository variable; an empty release commit when nothing else changed |
 
-Ignored files and anything under `node_modules/` are never committed. Source edits and build output stay in the runner's checkout and are listed in the log under `Not committed - not a dependency manifest or lock file`.
+Untracked build and tool directories such as `dist/`, `.venv/`, `.tox/` or `.next/` therefore stay out even without a `.gitignore`, although they hold files named like `package.json` or `requirements.txt`. **Tracked** build output named like a manifest is committed when the run changes it, e.g. a checked-in `dist/package.json` of a JavaScript Action rewritten by `npm run build`. `.gitignore` only affects new files: a new ignored lock file stays out, a tracked one is committed even if it also matches `.gitignore`. Anything under `node_modules/` is never committed. Everything else - source edits, other new files - stays in the runner's checkout and is listed in the log under `Not committed`.
 
-> Before this was fixed, the module staged each ecosystem with one `git add` of fixed root paths, e.g. `package.json package-lock.json yarn.lock pnpm-lock.yaml`. Git stages nothing when one of them is missing, so npm, pip and .NET updates were validated and then dropped while the run stayed green. Repositories that kept `ecosystems` out of their config for that reason can enable it now.
+> Before this was fixed, the module staged each ecosystem with one `git add` of fixed root paths, e.g. `package.json package-lock.json yarn.lock pnpm-lock.yaml`. Git stages nothing when one of them is missing, so npm, pip and .NET updates were validated and then dropped while the run stayed green. Repositories that kept `ecosystems` out of their config for that reason can enable it now, together with `validation`. A caller that already had `ecosystems` without `validation` now pushes its updates unbuilt and untested straight to the target branch - add `validation` there.
 
 ## Examples
 
