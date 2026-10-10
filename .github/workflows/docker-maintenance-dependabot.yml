@@ -29,6 +29,13 @@
 #    the commit whose CI was checked can be merged. Where GitHub Actions may
 #    not approve PRs, the rejected approval is a notice and the merge goes
 #    ahead (it only fails if the base branch requires a review).
+# 5. Tested base: CI tested the PR merged onto the base branch as it was
+#    when CI started. If the base branch has moved since (another PR was
+#    merged, a release commit was pushed), nothing is merged: Dependabot is
+#    asked to rebase the PR (`@dependabot rebase`, posted with the optional
+#    Dependabot secret DEPENDABOT_REBASE_TOKEN), CI runs on the new
+#    combination and the rebased PR gets its own decision. Only the exact
+#    combination CI tested is merged.
 #
 # Why not GitHub's native auto-merge: without required status checks GitHub
 # merges an auto-merge PR at once, before CI has finished. Required checks need
@@ -125,6 +132,11 @@ on:
         type: string
         required: false
         default: 'ubuntu-latest'
+
+    secrets:
+      DEPENDABOT_REBASE_TOKEN:
+        description: 'Token of a user with push access (fine-grained: Pull requests read and write) that posts "@dependabot rebase" when the base branch moved since CI ran - Dependabot refuses the command from the job token. Store it as a Dependabot secret: a Dependabot PR''s workflows get Dependabot secrets only. Without it such a PR is left open with a notice.'
+        required: false
 
 jobs:
   maintenance:
@@ -637,6 +649,17 @@ jobs:
       # (null = not known yet); after 30 s the merge call itself decides.
       # The approval names that commit, so it cannot land on one pushed in the
       # meantime, and the merge is pinned to it with --match-head-commit.
+      #
+      # A pull_request run tests refs/pull/N/merge: the PR head merged onto
+      # the base branch as it was when the event fired - the event's
+      # pull_request.base.sha, that merge commit's first parent. Every
+      # required run of the event tested that combination (a re-run too: it
+      # keeps the event's commit). Merging after the base branch moved would
+      # land a combination no CI ran on - an unrelated push, or the PR merged
+      # just before this one. So the base branch is read last, right before
+      # the merge call, and a moved base leaves the PR open and asks
+      # Dependabot to rebase it: CI then runs on the new combination and the
+      # new head commit gets its own decision.
       # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
       - name: 🔀 Approve and merge
         id: merge
@@ -647,26 +670,64 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          TESTED_BASE: ${{ github.event.pull_request.base.sha }}
+          # Dependabot takes commands only from users with push access; only
+          # the '@dependabot rebase' comment is posted with this token.
+          REBASE_TOKEN: ${{ secrets.DEPENDABOT_REBASE_TOKEN }}
           AUTO_APPROVE: ${{ inputs.auto-approve }}
           MERGE_METHOD: ${{ inputs.merge-method }}
         run: |
           set -uo pipefail
           ERR=$(mktemp)
+          COMMENTS=$(mktemp)
 
           done_with() {
             echo "merged=$1" >> "$GITHUB_OUTPUT"
             echo "reason=$2" >> "$GITHUB_OUTPUT"
-            echo "Merged: $1 ($2)"
+            echo "detail=${3:-}" >> "$GITHUB_OUTPUT"
+            echo "Merged: $1 ($2${3:+: $3})"
             exit 0
           }
 
+          # The base branch moved since CI ran ($MOVED says how): left open,
+          # Dependabot asked to rebase. Dependabot answers a command of
+          # github-actions[bot] - the job token - with "Sorry, only users with
+          # push access can use that command", so the command is posted with
+          # DEPENDABOT_REBASE_TOKEN, a token of a user with push access, if the
+          # caller has one. Once per head commit: a rebase or recreate command
+          # posted after the head commit was made (by anyone but
+          # github-actions[bot], whose commands Dependabot refuses) is pending.
+          request_rebase() {
+            if [ -z "$REBASE_TOKEN" ]; then
+              echo "::notice title=Dependabot PR left open::CI passed, but $MOVED since CI ran, so CI did not test this update on the current base. Comment '@dependabot rebase' on the PR to have it tested again - Dependabot does not take the command from the job token. To request it automatically, store a token of a user with push access as the Dependabot secret DEPENDABOT_REBASE_TOKEN."
+              done_with false base-moved "$MOVED; rebase not requested (no DEPENDABOT_REBASE_TOKEN)"
+            fi
+            SINCE=$(gh api "repos/$REPO/commits/$HEAD_SHA" --jq '.commit.committer.date' 2> "$ERR") || SINCE=""
+            if [ -n "$SINCE" ] && gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
+                 --jq '.[] | [.created_at, .user.login, (.body | split("\n")[0])] | @tsv' > "$COMMENTS" 2> "$ERR"; then
+              if awk -F'\t' -v since="$SINCE" '$1 >= since && $2 != "github-actions[bot]" && $3 ~ /^@dependabot (rebase|recreate)/ { found = 1 } END { exit !found }' "$COMMENTS"; then
+                echo "::notice title=Dependabot PR left open::CI passed, but $MOVED since CI ran. A rebase of this head commit is already requested - the rebased PR is tested again and gets its own decision."
+                done_with false base-moved "$MOVED; rebase already requested"
+              fi
+            else
+              echo "Earlier rebase requests could not be read ($(head -n 1 "$ERR")) - requesting one."
+            fi
+            if GH_TOKEN="$REBASE_TOKEN" gh api --method POST "repos/$REPO/issues/$PR_NUMBER/comments" -f body='@dependabot rebase' --silent 2> "$ERR"; then
+              echo "::notice title=Dependabot PR left open::CI passed, but $MOVED since CI ran. Asked Dependabot to rebase the PR - CI runs again on the current base, and the new head commit gets its own decision."
+              done_with false base-moved "$MOVED; rebase requested"
+            fi
+            echo "::warning title=Dependabot PR left open::CI passed, but $MOVED since CI ran, and the rebase could not be requested with DEPENDABOT_REBASE_TOKEN: $(head -n 1 "$ERR"). Comment '@dependabot rebase' on the PR."
+            done_with false base-moved "$MOVED; rebase request failed"
+          }
+
           for try in 1 2 3 4 5 6 7; do
-            if ! PR=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '[.state, .head.sha, .draft, (.mergeable | tostring), .mergeable_state] | @tsv' 2> "$ERR"); then
+            if ! PR=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '[.state, .head.sha, .draft, (.mergeable | tostring), .mergeable_state, .base.ref] | @tsv' 2> "$ERR"); then
               echo "::warning title=Dependabot PR left open::CI passed, but the PR could not be read again before merging: $(head -n 1 "$ERR")"
               done_with false api-error
             fi
-            IFS=$'\t' read -r STATE HEAD DRAFT MERGEABLE MERGE_STATE <<< "$PR"
-            echo "PR: $STATE, head $HEAD, draft: $DRAFT, mergeable: $MERGEABLE ($MERGE_STATE)"
+            IFS=$'\t' read -r STATE HEAD DRAFT MERGEABLE MERGE_STATE PR_BASE <<< "$PR"
+            echo "PR: $STATE, head $HEAD, draft: $DRAFT, mergeable: $MERGEABLE ($MERGE_STATE), base: $PR_BASE"
             if [ "$STATE" != "open" ]; then
               echo "::notice title=Dependabot PR not merged::The PR is $STATE."
               done_with false closed
@@ -698,7 +759,35 @@ jobs:
             fi
           fi
 
+          # Last, right before the merge call: the base branch must still be
+          # at the commit CI tested the PR on.
+          MOVED=""
+          if [ "$PR_BASE" != "$BASE_REF" ]; then
+            MOVED="the base branch was changed from $BASE_REF to $PR_BASE"
+          elif ! TIP=$(gh api "repos/$REPO/git/ref/heads/$BASE_REF" --jq '.object.sha' 2> "$ERR"); then
+            echo "::warning title=Dependabot PR left open::CI passed, but the head of $BASE_REF could not be read to check that CI tested the PR on it: $(head -n 1 "$ERR")"
+            done_with false api-error
+          elif [ "$TIP" != "$TESTED_BASE" ]; then
+            MOVED="$BASE_REF moved from ${TESTED_BASE:0:12} (tested by CI) to ${TIP:0:12}"
+          fi
+          if [ -n "$MOVED" ]; then request_rebase; fi
+          echo "$BASE_REF is at ${TESTED_BASE:0:12}, the base CI tested the PR on."
+
           if gh pr merge "$PR_NUMBER" --repo "$REPO" "--$MERGE_METHOD" --match-head-commit "$HEAD_SHA" 2> "$ERR"; then
+            # The merge commit's first parent is the base it landed on (a
+            # Dependabot PR has one commit, so this holds for squash, merge
+            # and rebase). Only a push in the moment between the base check
+            # and the merge call makes it another commit than the tested one.
+            MERGE_COMMIT=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.merge_commit_sha // ""' 2> "$ERR") || MERGE_COMMIT=""
+            echo "merge-commit=$MERGE_COMMIT" >> "$GITHUB_OUTPUT"
+            LANDED=""
+            if [ -n "$MERGE_COMMIT" ]; then
+              LANDED=$(gh api "repos/$REPO/git/commits/$MERGE_COMMIT" --jq '.parents[0].sha // ""' 2> "$ERR") || LANDED=""
+            fi
+            if [ -n "$LANDED" ] && [ "$LANDED" != "$TESTED_BASE" ]; then
+              echo "::warning title=Merged onto an untested base::A push moved $BASE_REF to ${LANDED:0:12} in the moment between the base check and the merge, so ${MERGE_COMMIT:0:12} combines this update with a base CI did not test it on. Only the release workflow's own tests vouch for it now."
+              done_with true merged "landed on ${LANDED:0:12}, not on the tested ${TESTED_BASE:0:12}"
+            fi
             done_with true merged
           fi
           echo "::warning title=Dependabot PR left open::CI passed, but merging failed: $(head -n 1 "$ERR")"
@@ -721,6 +810,7 @@ jobs:
           CI_RESULT: ${{ steps.ci.outputs.result }}
           CI_DETAIL: ${{ steps.ci.outputs.detail }}
           MERGE_REASON: ${{ steps.merge.outputs.reason }}
+          MERGE_DETAIL: ${{ steps.merge.outputs.detail }}
           JOB_STATUS: ${{ job.status }}
         run: |
           case "$GUARD_REASON" in
@@ -733,7 +823,8 @@ jobs:
               case "$CI_RESULT" in
                 green)
                   case "$MERGE_REASON" in
-                    merged)        DECISION="✅ Merged after CI passed ($CI_DETAIL)." ;;
+                    merged)        DECISION="✅ Merged after CI passed ($CI_DETAIL).${MERGE_DETAIL:+ ⚠️ Merged onto an untested base: $MERGE_DETAIL.}" ;;
+                    base-moved)    DECISION="🔄 Left open: CI passed, but not on the current base - $MERGE_DETAIL." ;;
                     closed)        DECISION="⏹️ Not merged: the PR was closed before the merge." ;;
                     superseded)    DECISION="⏹️ Not merged by this run: the PR got a new head commit." ;;
                     draft)         DECISION="⏸️ Left open: CI passed, but the PR is a draft." ;;

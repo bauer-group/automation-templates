@@ -484,6 +484,10 @@ PR's head.
    that moment. Where GitHub Actions may not approve pull requests (an org or
    repo setting), the rejected approval is a notice and the merge goes ahead;
    it only fails if the base branch requires a review.
+7. **Tested base** - last, right before the merge call, the head of the base
+   branch is read. It must still be the commit CI tested the PR on - see
+   [Only the combination CI tested](#only-the-combination-ci-tested). If it
+   has moved, the PR is not merged and Dependabot is asked to rebase it.
 
 #### Decision table
 
@@ -500,7 +504,7 @@ head commit). Only invalid inputs turn the job red.
 | 4   | Ecosystem        | GitHub Actions update (`package-ecosystem: "github-actions"`)                                                                             | ⏸️ Left open - a CI change            | notice     |
 | 5   | Required CI      | `required-workflows` is not set - automatic merging is off                                                                                | ⏸️ Left open, without waiting for CI  | notice     |
 | 6   | Update type      | Type unknown (digest, non-semver tag), or not in `merge-update-types` ([0.x updates](#updates-below-100) count stricter)                  | ⏸️ Left open for review               | notice     |
-| 6a  | Update type      | The versions of the updated dependencies cannot be read, so the [0.x rule](#updates-below-100) cannot be checked                         | ⏸️ Left open for review               | notice     |
+| 6a  | Update type      | The versions of the updated dependencies cannot be read, so the [0.x rule](#updates-below-100) cannot be checked                          | ⏸️ Left open for review               | notice     |
 | 7   | PR state         | The PR was closed or got a new head commit meanwhile (checked on every poll)                                                              | ⏹️ Not merged by this run             | notice     |
 | 8   | Commits          | Not every commit of the PR is a verified commit by Dependabot                                                                             | ⏸️ Left open                          | notice     |
 | 9   | Changed files    | A changed file under `.github/` (also the old path of a moved file), or the file list is not complete                                     | ⏸️ Left open - a CI change            | notice     |
@@ -512,11 +516,62 @@ head commit). Only invalid inputs turn the job red.
 | 15  | Before the merge | The PR could not be read again right before the merge                                                                                     | ⚠️ Left open                          | warning    |
 | 16  | Before the merge | The PR is a draft or cannot be merged (e.g. a conflict - Dependabot rebases it)                                                           | ⏸️ Left open                          | notice     |
 | 17  | Approval         | `auto-approve` is on, but GitHub Actions may not approve PRs here                                                                         | Merge goes ahead without the approval | notice     |
+| 17a | Tested base      | The base branch moved since CI ran, or the PR's base branch was changed ([tested combination](#only-the-combination-ci-tested))           | 🔄 Left open - rebase requested       | notice     |
+| 17b | Tested base      | The head of the base branch could not be read                                                                                             | ⚠️ Left open                          | warning    |
 | 18  | Merge            | The merge was rejected (e.g. the base branch requires a review)                                                                           | ⚠️ Left open                          | warning    |
-| -   | -                | None of the above: every required workflow passed, no check failed, CI complete and quiet                                                 | ✅ Merged (`--match-head-commit`)     | -          |
+| -   | -                | None of the above: every required workflow passed, no check failed, CI complete and quiet, base unchanged                                 | ✅ Merged (`--match-head-commit`)     | -          |
 
 A newer event on the same PR (e.g. Dependabot rebased it) cancels the run that is
 still waiting; the run for the new head commit decides.
+
+#### Only the combination CI tested
+
+A `pull_request` run does not test the PR's branch alone: it tests
+`refs/pull/<n>/merge`, the PR head merged onto the base branch **as it was
+when the event fired** (the event's `pull_request.base.sha`, the first parent
+of that merge commit). Every required workflow run of the event, and every
+re-run of it, tested that one combination. Merging after the base branch has
+moved would put a combination on `main` that no CI ran on.
+
+So the workflow reads the head of the base branch last - after the approval,
+immediately before the merge call - and merges only if it is still that
+commit. Otherwise the PR stays open (job green, reason `base-moved`) and
+Dependabot is asked to rebase it:
+
+| The base branch moved because ...                                      | What happens                                                                                                                                          |
+|------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| an unrelated push landed on `main` while CI ran                        | Not merged. `@dependabot rebase` - the rebased PR is a new head commit, CI runs on it, and its run of this workflow decides again                     |
+| another Dependabot PR was merged first (two PRs opened together)       | The first one is merged; the second is not - it was tested without the first. It is rebased onto the first one's merge commit and tested again        |
+| a release run pushed its `chore(release)` commit after the first merge | Same: the next PR is rebased and tested again - each Dependabot update lands on `main` exactly as CI tested it                                        |
+| someone changed the PR's base branch                                   | Not merged; the rebase onto the new base branch is tested again                                                                                       |
+| a push lands in the second between the check and the merge call        | Merged - the check cannot pin the base. A warning *Merged onto an untested base* names the base it landed on; only the release's own tests vouch then |
+
+The command is posted **once per head commit**: a `@dependabot rebase` or
+`@dependabot recreate` comment made after the head commit was created - by a
+person, or by an earlier run of this workflow - counts as pending, and no
+second one is posted.
+
+##### The rebase token
+
+Dependabot takes commands only from users with push access. A comment made
+with the job's `GITHUB_TOKEN` is authored by `github-actions[bot]`, and
+Dependabot answers it with *Sorry, only users with push access can use that
+command* - the PR would never be rebased. The workflow therefore posts the
+command with the optional secret `DEPENDABOT_REBASE_TOKEN`:
+
+| What              | Setting                                                                                                                                                                                                                               |
+|-------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Token             | Fine-grained personal access token of a user (or machine user) with push access to the repository                                                                                                                                     |
+| Repository access | The repositories whose Dependabot PRs it rebases                                                                                                                                                                                      |
+| Permissions       | *Pull requests: Read and write* - it posts one comment; nothing else                                                                                                                                                                  |
+| Where to store it | **Dependabot secret** `DEPENDABOT_REBASE_TOKEN` (*Settings → Secrets and variables → Dependabot*, or at the organization). A Dependabot PR's workflows see Dependabot secrets only - an Actions secret of that name stays empty there |
+| How it is passed  | `secrets: inherit` in the caller, as in every example; or explicitly: `secrets: DEPENDABOT_REBASE_TOKEN: ${{ secrets.DEPENDABOT_REBASE_TOKEN }}`                                                                                      |
+
+The token is used for that one comment and nothing else; the merge, the
+approval and every read use the job token. Without it, a PR whose base moved
+stays open with the notice *Comment '@dependabot rebase' on the PR to have it
+tested again* - a person with push access comments it, and the rebased PR is
+merged automatically once its CI passed.
 
 #### Updates below 1.0.0
 
@@ -612,13 +667,22 @@ required CI decide such updates as well.
   `GITHUB_TOKEN`, and GitHub starts no workflow run for a push made with that
   token. A release workflow on `push` to `main` therefore runs with the next
   push that is not made by that token, or when it is started by hand.
-- **Base branch moved since CI ran.** The merge does not require the PR to be
-  up to date with its base branch, just like GitHub's auto-merge without
-  "Require branches to be up to date". A PR with a conflict stays open
-  (Dependabot rebases it). Two updates merged one after the other are each
-  tested on their own, not together - a release pipeline that tests `main`
-  before it releases (such as one gated by the backup round trip) catches a
-  combination that breaks.
+- **One merge at a time.** Every Dependabot PR is merged only on the base CI
+  tested it on, so of several PRs that passed CI together one is merged and
+  each of the others is rebased and tested again (see
+  [Only the combination CI tested](#only-the-combination-ci-tested)). Each
+  round costs one CI run per PR, and without `DEPENDABOT_REBASE_TOKEN` it
+  waits for someone to comment `@dependabot rebase`.
+- **The last second before the merge.** The base check and the merge are two
+  API calls - GitHub's merge call can pin the head commit, not the base. A
+  push in between is merged onto, and reported as *Merged onto an untested
+  base*. A release pipeline that tests `main` before it publishes (such as
+  one gated by the backup round trip) is what catches such a combination.
+- **Required workflows on other events.** The tested base is the one of the
+  event that started this run; a required workflow that does not run on that
+  event (`opened`, `synchronize`, `reopened` - the `pull_request` default)
+  is judged by its run of an earlier event. Keep the default `types:` in
+  required workflows.
 - **Workflows started by `workflow_run`** are not waited for: GitHub attaches
   such a run to the latest commit of the default branch, not to the PR's head
   commit, so it is not part of the PR's checks. Run the gate in a workflow that
@@ -643,6 +707,10 @@ required CI decide such updates as well.
 | `runs-on`            | Runner label, or a JSON array of labels for self-hosted runners                                                                   | `ubuntu-latest` |
 
 See [Choosing `required-workflows`](#choosing-required-workflows).
+
+| Secret                    | Description                                                                                                                                                                   | Required |
+|---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
+| `DEPENDABOT_REBASE_TOKEN` | Token of a user with push access that posts `@dependabot rebase` when the base branch moved since CI ran - a **Dependabot** secret, see [the rebase token](#the-rebase-token) | no       |
 
 ### Examples
 
@@ -885,6 +953,9 @@ say why - see the [decision table](#decision-table). The usual ones:
 | required workflow ... (run N, attempt M: skipped)      | All of its jobs were skipped on the PR, so it tested nothing: merge by hand, or fix its `if:` conditions                                             |
 | job token cannot read the CI results                   | Private repo: add `checks: read`, `statuses: read` and `actions: read` to the caller's `permissions:`                                                |
 | CI had not finished and settled after N min            | Raise `ci-wait-minutes`, or merge by hand once CI is green                                                                                           |
+| ... moved from ... (tested by CI) to ...               | Another PR or a release commit landed first: comment `@dependabot rebase`, or store the [rebase token](#the-rebase-token)                            |
+| rebase could not be requested                          | `DEPENDABOT_REBASE_TOKEN` expired, was revoked or lacks *Pull requests: write*: renew it; comment `@dependabot rebase` meanwhile                     |
+| Dependabot: *only users with push access ...*          | The rebase token's user has no push access to the repository - use one who has                                                                       |
 
 Do **not** add a ruleset with required status checks for this - it is not needed
 and blocks semantic-release (see above).
@@ -944,6 +1015,7 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 - **Tested by the named CI**: Dependabot PRs are merged only when every workflow in `required-workflows` ran on the PR's head commit and passed and no other check failed, after CI has been complete and unchanged for 3 minutes (5 minutes after the start at the earliest). A passed check that tests nothing (e.g. a secret scan or a notification job) is not enough, and without `required-workflows` nothing is merged
 - **CI changes stay open**: a GitHub Actions update or a PR that changes `.github/` is never merged automatically - a `pull_request` run uses the PR's own version of a changed workflow, and push- or schedule-only workflows do not run before the merge
 - **Pinned merge**: the Dependabot merge and its approval name the head commit whose CI was checked
+- **Only the tested combination**: a Dependabot PR is merged only while the base branch is still at the commit its CI was merged onto; otherwise it is rebased and tested again. The optional `DEPENDABOT_REBASE_TOKEN` is used for that one `@dependabot rebase` comment and nothing else
 - **Dependabot only**: the Dependabot job acts only on Dependabot's PRs, on events Dependabot raised, with verified Dependabot commits only; it never checks out PR code
 - **Auto-approve optional**: Can be disabled for manual review
 - **Audit trail**: All updates tracked in PRs and git history

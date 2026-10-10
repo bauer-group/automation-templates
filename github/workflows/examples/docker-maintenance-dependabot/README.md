@@ -24,6 +24,7 @@ Full reference: [`docs/workflows/docker-maintenance.md`](../../../../docs/workfl
 4. **Grant the permissions** in the caller: `contents: write` and `pull-requests: write`, plus `checks: read`, `statuses: read` and `actions: read` in private repositories. The reusable workflow declares none of its own.
 5. **Copy an example** to `.github/workflows/docker-maintenance.yml` and adjust `paths:` and `required-workflows`.
 6. **Give the PR CI its secrets.** A Dependabot PR's CI runs with Dependabot secrets, not Actions secrets: credentials it needs (a private npm, NuGet or Composer feed, a registry login) belong under *Settings → Secrets and variables → Dependabot* as well, or it fails on every Dependabot PR and the PR stays open.
+7. **Optional: let PRs on a moved base be rebased automatically.** Only the combination CI tested is merged; a PR whose base branch moved in the meantime is rebased and tested again. Dependabot refuses `@dependabot rebase` from the job token, so store a fine-grained token of a user with push access (*Pull requests: Read and write*) as the **Dependabot** secret `DEPENDABOT_REBASE_TOKEN` — see [The rebase token](../../../../docs/workflows/docker-maintenance.md#the-rebase-token). Without it such a PR waits for a person to comment `@dependabot rebase`.
 
 ## What decides a merge
 
@@ -36,6 +37,7 @@ Full reference: [`docs/workflows/docker-maintenance.md`](../../../../docs/workfl
 | Commits | Every commit is a verified commit by Dependabot |
 | CI | Every required workflow (all of them, not one) has a `pull_request` run for the head commit that succeeded, no check failed, and CI was complete and quiet for 3 minutes |
 | Merge | The PR is still open, on the same head commit, no draft and mergeable — the merge is pinned with `--match-head-commit` |
+| Tested base | The base branch is still at the commit CI tested the PR on. If it moved (another PR or a release commit landed first), the PR is rebased with `@dependabot rebase` and tested again — see [Only the combination CI tested](../../../../docs/workflows/docker-maintenance.md#only-the-combination-ci-tested) |
 
 Every other outcome leaves the PR open with the job green and the reason as an annotation and in the job summary. The full, ordered list is the [decision table](../../../../docs/workflows/docker-maintenance.md#decision-table).
 

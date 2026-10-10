@@ -18,8 +18,11 @@
 #                        that every required workflow ran and passed, decides
 #                        green / failed / not-tested / timeout / unreadable / ...
 #   merge  (id: merge) - reads the PR again, optional approval of the checked
-#                        commit (a rejection is only a notice), then gh pr merge
-#                        pinned to the head commit
+#                        commit (a rejection is only a notice), checks that the
+#                        base branch is still at the commit CI tested the PR on
+#                        (else: no merge, '@dependabot rebase' with the rebase
+#                        token, once per head commit), then gh pr merge pinned
+#                        to the head commit
 #
 # Without this, `gh pr merge --auto` on a branch without required checks merged
 # at once - bauer-group/CS-BillingStack#12 three seconds after its label check
@@ -118,6 +121,14 @@ static_has   "merge is pinned to the head"       '--match-head-commit "$HEAD_SHA
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "approval is pinned to the head"    '-f commit_id="$HEAD_SHA"'
 static_lacks "no gh pr review (it approves the latest commit)" 'gh pr review'
+# The base CI tested the PR on is the event's base commit (the first parent of
+# refs/pull/N/merge); the rebase command needs a token Dependabot accepts.
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "merge checks the base the event tested" 'TESTED_BASE: ${{ github.event.pull_request.base.sha }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "rebase token comes from the optional secret" 'REBASE_TOKEN: ${{ secrets.DEPENDABOT_REBASE_TOKEN }}'
+static_has   "rebase token is declared optional"  '      DEPENDABOT_REBASE_TOKEN:'
+if [ "$(grep -c 'secrets.DEPENDABOT_REBASE_TOKEN' "$WORKFLOW_FILE")" -eq 1 ]; then pass "rebase token reaches the merge step only"; else fail "rebase token used more than once"; fi
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "own check run is passed in"        'OWN_CHECK_RUN_ID: ${{ job.check_run_id }}'
 # shellcheck disable=SC2016 # literal workflow text
@@ -164,8 +175,9 @@ cat > "$WORK/bin/gh" <<'STUB'
 # gh api [--paginate] <path> --jq <filter>: answers from $FAKE/<kind>.<n>.json, n
 # counting the calls per kind (the highest file is reused once n runs past it).
 # A file holding HTTP403, HTTP404, HTTP500 or RATELIMIT simulates that error.
-# gh api --method POST .../reviews and gh pr merge: logged to $FAKE/calls;
-# FAKE_REVIEW_FAIL / FAKE_MERGE_FAIL fail them.
+# gh api --method POST .../reviews, POST .../comments and gh pr merge: logged
+# to $FAKE/calls; FAKE_REVIEW_FAIL / FAKE_COMMENT_FAIL / FAKE_MERGE_FAIL fail
+# them. A comment's token goes to $FAKE/tokens.
 echo "$*" >> "$FAKE/calls"
 if [ "${1:-}" = "pr" ] && [ "${2:-}" = "merge" ]; then
   [ -n "${FAKE_MERGE_FAIL:-}" ] && { echo "X Pull request o/r#7 is not mergeable: the base branch policy prohibits the merge." >&2; exit 1; }
@@ -178,7 +190,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --jq) filter="$2"; shift 2 ;;
     --method) method="$2"; shift 2 ;;
-    -f) shift 2 ;;
+    -f|-F) shift 2 ;;
     --paginate|--silent) shift ;;
     *) path="$1"; shift ;;
   esac
@@ -186,6 +198,10 @@ done
 case "$method $path" in
   "POST repos/"*"/pulls/"*"/reviews")
     [ -n "${FAKE_REVIEW_FAIL:-}" ] && { echo "gh: GitHub Actions is not permitted to approve pull requests. (HTTP 422)" >&2; exit 1; }
+    exit 0 ;;
+  "POST repos/"*"/issues/"*"/comments")
+    echo "${GH_TOKEN:-}" >> "$FAKE/tokens"
+    [ -n "${FAKE_COMMENT_FAIL:-}" ] && { echo "gh: Bad credentials (HTTP 401)" >&2; exit 1; }
     exit 0 ;;
   "GET "*) ;;
   *) echo "unexpected gh api call: $*" >&2; exit 2 ;;
@@ -197,6 +213,10 @@ case "$path" in
   repos/*/commits/*/check-runs*)   kind=runs ;;
   repos/*/commits/*/check-suites*) kind=suites ;;
   repos/*/commits/*/status\?*)     kind=status ;;
+  repos/*/git/ref/heads/*)         kind=baseref ;;
+  repos/*/git/commits/*)           kind=gitcommit ;;
+  repos/*/commits/*)               kind=commit ;;
+  repos/*/issues/*/comments*)      kind=comments ;;
   repos/*/actions/runs\?*)         kind=actions ;;
   *) echo "unexpected path: $path" >&2; exit 2 ;;
 esac
@@ -1036,20 +1056,37 @@ run_ci "$D"; check ci/ci-change-after-an-error "$D" $? 0 result ci-change notice
 
 # --- approve and merge ------------------------------------------------------------
 # The PR as read again right before merging: $dir/pr.<n>.json, ready by default.
-PR_READY='{"state":"open","head":{"sha":"abc"},"draft":false,"mergeable":true,"mergeable_state":"clean"}'
+PR_READY='{"state":"open","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":true,"mergeable_state":"clean","merge_commit_sha":"m1"}'
 APPROVAL="api --method POST repos/o/r/pulls/7/reviews -f event=APPROVE -f commit_id=abc --silent"
+# The event tested the PR on base0, the head of main (git/ref) - unchanged by
+# default. After the merge, its commit m1 sits on base0. The head commit abc
+# was made at 10:00; the PR has no comments by default.
 merge_dir() {
   local dir="$WORK/merge-$1"
-  mkdir -p "$dir"; : > "$dir/output"; : > "$dir/calls"; echo 0 > "$dir/clock"
+  mkdir -p "$dir"; : > "$dir/output"; : > "$dir/calls"; : > "$dir/tokens"; echo 0 > "$dir/clock"
   echo "$PR_READY" > "$dir/pr.1.json"
+  echo '{"ref":"refs/heads/main","object":{"sha":"base0","type":"commit"}}' > "$dir/baseref.1.json"
+  echo '{"sha":"m1","parents":[{"sha":"base0"}]}' > "$dir/gitcommit.1.json"
+  echo '{"sha":"abc","commit":{"committer":{"date":"2026-01-01T10:00:00Z"}}}' > "$dir/commit.1.json"
+  echo '[]' > "$dir/comments.1.json"
   echo "$dir"
 }
 # merge_run <dir> <auto-approve> <merge-method> [VAR=value ...]
 merge_run() {
   local dir="$1" approve="$2" method="$3"; shift 3
   ( cd "$dir" && env PATH="$WORK/bin:$PATH" FAKE="$dir" GITHUB_OUTPUT="$dir/output" \
-      GH_TOKEN=test REPO=o/r PR_NUMBER=7 HEAD_SHA=abc AUTO_APPROVE="$approve" MERGE_METHOD="$method" "$@" \
+      GH_TOKEN=test REPO=o/r PR_NUMBER=7 HEAD_SHA=abc BASE_REF=main TESTED_BASE=base0 REBASE_TOKEN= \
+      AUTO_APPROVE="$approve" MERGE_METHOD="$method" "$@" \
       bash --noprofile --norc -eo pipefail -c "$MERGE_BODY" ) > "$dir/log" 2>&1
+}
+# moved_to <dir> <sha>: main is at <sha> now
+moved_to() { printf '{"ref":"refs/heads/main","object":{"sha":"%s","type":"commit"}}\n' "$2" > "$1/baseref.1.json"; }
+# comment <created_at> <login> <body>: a comment on the PR
+comment() { printf '{"created_at":"%s","user":{"login":"%s"},"body":"%s"}' "$1" "$2" "$3"; }
+# output_is <name> <dir> <key> <want>
+output_is() {
+  local got; got=$(sed -n "s/^$3=//p" "$2/output")
+  if [ "$got" = "$4" ]; then pass "$1: $3 '$4'"; else fail "$1: $3 '$got', want '$4'"; fi
 }
 reason_is() {
   local got; got=$(sed -n 's/^reason=//p' "$2/output")
@@ -1086,27 +1123,27 @@ check merge/merge-rejected "$D" $? 0 merged false warning "base branch policy pr
 reason_is merge/merge-rejected "$D" merge-failed
 
 # Re-read right before merging: whatever changed since the CI decision wins.
-D=$(merge_dir closed); echo '{"state":"closed","head":{"sha":"abc"},"draft":false,"mergeable":null,"mergeable_state":"unknown"}' > "$D/pr.1.json"
+D=$(merge_dir closed); echo '{"state":"closed","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":null,"mergeable_state":"unknown"}' > "$D/pr.1.json"
 merge_run "$D" true squash
 check merge/closed-meanwhile "$D" $? 0 merged false notice
 reason_is merge/closed-meanwhile "$D" closed
 not_called merge/closed-meanwhile "$D" "pulls/7/reviews"
 not_called merge/closed-meanwhile "$D" "pr merge"
 
-D=$(merge_dir new-head); echo '{"state":"open","head":{"sha":"def"},"draft":false,"mergeable":true,"mergeable_state":"clean"}' > "$D/pr.1.json"
+D=$(merge_dir new-head); echo '{"state":"open","head":{"sha":"def"},"base":{"ref":"main"},"draft":false,"mergeable":true,"mergeable_state":"clean"}' > "$D/pr.1.json"
 merge_run "$D" true squash
 check merge/new-head-meanwhile "$D" $? 0 merged false notice "new head commit (def)"
 reason_is merge/new-head-meanwhile "$D" superseded
 not_called merge/new-head-meanwhile "$D" "pulls/7/reviews"
 not_called merge/new-head-meanwhile "$D" "pr merge"
 
-D=$(merge_dir draft); echo '{"state":"open","head":{"sha":"abc"},"draft":true,"mergeable":true,"mergeable_state":"draft"}' > "$D/pr.1.json"
+D=$(merge_dir draft); echo '{"state":"open","head":{"sha":"abc"},"base":{"ref":"main"},"draft":true,"mergeable":true,"mergeable_state":"draft"}' > "$D/pr.1.json"
 merge_run "$D" true squash
 check merge/draft "$D" $? 0 merged false notice
 reason_is merge/draft "$D" draft
 not_called merge/draft "$D" "pr merge"
 
-D=$(merge_dir conflict); echo '{"state":"open","head":{"sha":"abc"},"draft":false,"mergeable":false,"mergeable_state":"dirty"}' > "$D/pr.1.json"
+D=$(merge_dir conflict); echo '{"state":"open","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":false,"mergeable_state":"dirty"}' > "$D/pr.1.json"
 merge_run "$D" true squash
 check merge/conflict "$D" $? 0 merged false notice "dirty"
 reason_is merge/conflict "$D" not-mergeable
@@ -1115,14 +1152,15 @@ not_called merge/conflict "$D" "pr merge"
 
 # GitHub computes `mergeable` in the background (null until then).
 D=$(merge_dir mergeability-computing)
-echo '{"state":"open","head":{"sha":"abc"},"draft":false,"mergeable":null,"mergeable_state":"unknown"}' > "$D/pr.1.json"
+echo '{"state":"open","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":null,"mergeable_state":"unknown"}' > "$D/pr.1.json"
 echo "$PR_READY" > "$D/pr.3.json"
 merge_run "$D" true squash
 check merge/waits-for-mergeability "$D" $? 0 merged true -
-if [ "$(grep -c 'pulls/7 ' "$D/calls")" -eq 3 ] && [ "$(cat "$D/clock")" -eq 10 ]; then pass "merge/waits-for-mergeability: 3 reads, 10 s"; else fail "merge/waits-for-mergeability: $(grep -c 'pulls/7 ' "$D/calls") reads, $(cat "$D/clock") s"; fi
+READS=$(grep -c 'pulls/7 --jq \[.state' "$D/calls")
+if [ "$READS" -eq 3 ] && [ "$(cat "$D/clock")" -eq 10 ]; then pass "merge/waits-for-mergeability: 3 reads, 10 s"; else fail "merge/waits-for-mergeability: $READS reads, $(cat "$D/clock") s"; fi
 
 D=$(merge_dir mergeability-unknown)
-echo '{"state":"open","head":{"sha":"abc"},"draft":false,"mergeable":null,"mergeable_state":"unknown"}' > "$D/pr.1.json"
+echo '{"state":"open","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":null,"mergeable_state":"unknown"}' > "$D/pr.1.json"
 merge_run "$D" true squash
 check merge/unknown-mergeability-merge-call-decides "$D" $? 0 merged true - "the merge call decides"
 if [ "$(cat "$D/clock")" -eq 30 ]; then pass "merge/unknown-mergeability: gave up after 30 s"; else fail "merge/unknown-mergeability: $(cat "$D/clock") s"; fi
@@ -1131,6 +1169,96 @@ D=$(merge_dir pr-unreadable); raw "$D" pr.1.json HTTP500
 merge_run "$D" true squash
 check merge/pr-unreadable "$D" $? 0 merged false warning
 not_called merge/pr-unreadable "$D" "pr merge"
+
+# --- approve and merge: only the combination CI tested ------------------------------
+# CI tested refs/pull/7/merge: the head merged onto base0. The head of main is
+# read last before the merge call - after the approval, right before the merge.
+D=$(merge_dir base-unchanged); merge_run "$D" true squash
+check merge/base-unchanged-merges "$D" $? 0 merged true -
+called merge/base-unchanged-merges "$D" "api repos/o/r/git/ref/heads/main --jq .object.sha"
+ORDER=$(awk '/pulls\/7\/reviews/ { a = NR } /git\/ref\/heads\/main/ { b = NR } /^pr merge/ { c = NR } END { print (a < b && b < c) ? "ok" : a " " b " " c }' "$D/calls")
+if [ "$ORDER" = ok ]; then pass "merge/base-checked-right-before-the-merge"; else fail "merge/base-checked-right-before-the-merge: lines $ORDER"; fi
+output_is merge/base-unchanged-merges "$D" merge-commit m1
+not_called merge/base-unchanged-merges "$D" "issues/7/comments"
+
+# An unrelated push moved main: not merged, CI runs again after a rebase. The
+# command is posted with the rebase token - Dependabot refuses the job token.
+D=$(merge_dir base-moved); moved_to "$D" base1
+merge_run "$D" true squash REBASE_TOKEN=rebase-token
+check merge/base-moved-not-merged "$D" $? 0 merged false notice "Asked Dependabot to rebase the PR"
+reason_is merge/base-moved-not-merged "$D" base-moved
+not_called merge/base-moved-not-merged "$D" "pr merge"
+called merge/base-moved-not-merged "$D" "api --method POST repos/o/r/issues/7/comments -f body=@dependabot rebase --silent"
+if [ "$(cat "$D/tokens")" = "rebase-token" ]; then pass "merge/base-moved: command posted with the rebase token"; else fail "merge/base-moved: posted with '$(cat "$D/tokens")'"; fi
+output_is merge/base-moved-not-merged "$D" detail "main moved from base0 (tested by CI) to base1; rebase requested"
+
+# Two Dependabot PRs: the first one's merge commit m0 moved main under the
+# second, which CI tested on base0 - rebased and tested again, not merged.
+D=$(merge_dir second-of-two); moved_to "$D" m0
+merge_run "$D" true squash REBASE_TOKEN=rebase-token
+check merge/second-of-two-prs-rebased "$D" $? 0 merged false notice "main moved from base0 (tested by CI) to m0"
+not_called merge/second-of-two-prs-rebased "$D" "pr merge"
+if [ "$(wc -l < "$D/tokens")" -eq 1 ]; then pass "merge/second-of-two-prs: one rebase command"; else fail "merge/second-of-two-prs: $(wc -l < "$D/tokens") commands"; fi
+
+# Without the rebase token: a notice says how - no command the job token would
+# have refused.
+D=$(merge_dir base-moved-no-token); moved_to "$D" base1
+merge_run "$D" true squash
+check merge/base-moved-without-token "$D" $? 0 merged false notice "Comment '@dependabot rebase' on the PR"
+logged merge/base-moved-without-token "$D" "Dependabot secret DEPENDABOT_REBASE_TOKEN"
+not_called merge/base-moved-without-token "$D" "issues/7/comments"
+not_called merge/base-moved-without-token "$D" "pr merge"
+output_is merge/base-moved-without-token "$D" detail "main moved from base0 (tested by CI) to base1; rebase not requested (no DEPENDABOT_REBASE_TOKEN)"
+
+# Once per head commit: a rebase or recreate command since the head commit was
+# made is pending (a re-run of the job, a person who asked already).
+for c in "@dependabot rebase" "@dependabot recreate"; do
+  n="${c#@dependabot }"
+  D=$(merge_dir "base-moved-requested-$n"); moved_to "$D" base1
+  echo "[$(comment 2026-01-01T10:05:00Z karl "$c")]" > "$D/comments.1.json"
+  merge_run "$D" true squash REBASE_TOKEN=rebase-token
+  check "merge/base-moved-$n-already-requested" "$D" $? 0 merged false notice "already requested"
+  not_called "merge/base-moved-$n-already-requested" "$D" "--method POST repos/o/r/issues/7/comments"
+done
+# A command from before the head commit was made (an older head), or one of
+# github-actions[bot], which Dependabot refused, does not count.
+D=$(merge_dir base-moved-old-request); moved_to "$D" base1
+echo "[$(comment 2026-01-01T09:59:59Z karl "@dependabot rebase"),$(comment 2026-01-01T10:05:00Z "github-actions[bot]" "@dependabot rebase"),$(comment 2026-01-01T10:06:00Z karl "LGTM")]" > "$D/comments.1.json"
+merge_run "$D" true squash REBASE_TOKEN=rebase-token
+check merge/base-moved-stale-requests-ignored "$D" $? 0 merged false notice "Asked Dependabot to rebase the PR"
+called merge/base-moved-stale-requests-ignored "$D" "api --method POST repos/o/r/issues/7/comments -f body=@dependabot rebase --silent"
+
+# Earlier requests not readable: requested anyway (a second command is harmless).
+D=$(merge_dir base-moved-comments-unreadable); moved_to "$D" base1; raw "$D" comments.1.json HTTP500
+merge_run "$D" true squash REBASE_TOKEN=rebase-token
+check merge/base-moved-comments-unreadable "$D" $? 0 merged false notice "Asked Dependabot to rebase the PR"
+
+# The command could not be posted (token expired): a warning, still green.
+D=$(merge_dir base-moved-comment-fails); moved_to "$D" base1
+merge_run "$D" true squash REBASE_TOKEN=rebase-token FAKE_COMMENT_FAIL=1
+check merge/base-moved-rebase-request-fails "$D" $? 0 merged false warning "Bad credentials"
+reason_is merge/base-moved-rebase-request-fails "$D" base-moved
+not_called merge/base-moved-rebase-request-fails "$D" "pr merge"
+
+# The PR's base branch was changed to another branch.
+D=$(merge_dir base-ref-changed); echo "${PR_READY/\"ref\":\"main\"/\"ref\":\"develop\"}" > "$D/pr.1.json"
+merge_run "$D" true squash
+check merge/base-branch-changed "$D" $? 0 merged false notice "the base branch was changed from main to develop"
+not_called merge/base-branch-changed "$D" "pr merge"
+
+# The head of main not readable: nothing shows the combination was tested.
+D=$(merge_dir base-unreadable); raw "$D" baseref.1.json HTTP500
+merge_run "$D" true squash
+check merge/base-unreadable "$D" $? 0 merged false warning "could not be read"
+reason_is merge/base-unreadable "$D" api-error
+not_called merge/base-unreadable "$D" "pr merge"
+
+# A push in the moment between the base check and the merge call: merged, but
+# the merge commit sits on another base - said loudly.
+D=$(merge_dir landed-elsewhere); echo '{"sha":"m1","parents":[{"sha":"base9"}]}' > "$D/gitcommit.1.json"
+merge_run "$D" true squash
+check merge/landed-on-another-base "$D" $? 0 merged true warning "Merged onto an untested base"
+output_is merge/landed-on-another-base "$D" detail "landed on base9, not on the tested base0"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"
