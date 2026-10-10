@@ -89,13 +89,57 @@ The `publish-to` input controls where Docker images are published:
 
 | Secret | Required When | Description |
 |--------|---------------|-------------|
-| `DOCKER_USERNAME` | `publish-to: 'dockerhub'` or `'both'` | Docker Hub username |
-| `DOCKER_PASSWORD` | `publish-to: 'dockerhub'` or `'both'` | Docker Hub password or access token |
+| `DOCKER_USERNAME` | `publish-to: 'dockerhub'` or `'both'`. Optional with `'ghcr'` - see [Docker Hub Pull Login](#docker-hub-pull-login) | Docker Hub username |
+| `DOCKER_PASSWORD` | `publish-to: 'dockerhub'` or `'both'`. Optional with `'ghcr'` | Docker Hub password or access token (read-only is enough for `'ghcr'`) |
 | `COSIGN_PRIVATE_KEY` | `sign-image: true` | Cosign private key for image signing |
 | `COSIGN_PASSWORD` | `sign-image: true` | Cosign key password |
 | `DOCKER_BUILD_SECRETS` | The Dockerfile mounts build secrets | BuildKit secrets, one `id=value` per line. Not needed for a GitHub Packages token - see [Build Secrets](#build-secrets) |
 
 **Note:** For GHCR, `GITHUB_TOKEN` is automatically available and used for authentication.
+
+### Docker Hub Pull Login
+
+A build that publishes to GHCR still pulls from Docker Hub: the `FROM` base
+images, the BuildKit image of the `docker-container` builder and, for a
+multi-platform build, the QEMU image. Docker Hub limits anonymous pulls per IP
+address, and GitHub-hosted runners share theirs - so once many builds run at the
+same time, those pulls fail with `429 Too Many Requests` (`toomanyrequests`).
+
+With `publish-to: 'ghcr'` (the default) the build therefore logs in to Docker Hub
+before anything pulls, as soon as `DOCKER_USERNAME` and `DOCKER_PASSWORD` reach the
+workflow. Logged in, the account's own pull quota applies instead of the runner
+IP's. There is nothing to switch on: `secrets: inherit` passes both when they exist
+as organisation or repository secrets.
+
+```yaml
+jobs:
+  docker-build:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      publish-to: 'ghcr'
+    secrets: inherit   # passes DOCKER_USERNAME / DOCKER_PASSWORD when they exist
+```
+
+| `publish-to` | Secrets that reach the workflow | Docker Hub pulls |
+|--------------|---------------------------------|------------------|
+| `ghcr` | `DOCKER_USERNAME` and `DOCKER_PASSWORD` | Logged in - *Check Docker Hub Credentials*, then *Log in to Docker Hub* |
+| `ghcr` | neither, or only one of them | Anonymous, exactly as before |
+| `dockerhub` / `both` | both (mandatory) | These steps are skipped: *Build Docker Image* logs in to Docker Hub for its push, which covers the base images |
+
+- **Optional, and quiet without secrets.** A caller without `secrets: inherit`, a
+  pull request from a fork and a Dependabot run (Dependabot reads its own secret
+  store) get no secrets. *Check Docker Hub Credentials* says so in its log and the
+  build pulls anonymously, as it always has - no failure, no warning.
+- **A failed login only warns.** Wrong or expired credentials, or Docker Hub being
+  unreachable, add the warning *Docker Hub login failed* and the build carries on
+  anonymously; the pull itself then shows whether the anonymous quota was enough.
+- **A read-only access token is enough** for this login. With `dockerhub` / `both`
+  the same secrets push the image, so the token there needs write access.
+- **The credentials stay outside the image.** They live in the runner's Docker
+  config, which BuildKit consults to pull - no `RUN` instruction can read them -
+  and the login action's post step removes them when the job ends.
+- **With `dockerhub` / `both`,** the BuildKit and QEMU images are set up before
+  *Build Docker Image* logs in, so those two pulls stay anonymous there.
 
 ### Build Secrets
 
@@ -664,6 +708,21 @@ The repository includes comprehensive examples in `github/workflows/examples/doc
 7. **"no space left on device" in the scan step**
    - See [Running out of disk space](#running-out-of-disk-space): `free-disk-space: true`
      (GitHub-hosted runners only) and `cache-mode: 'min'`
+
+8. **Pulls fail with `429 Too Many Requests` / `toomanyrequests`**
+   - Docker Hub's anonymous pull limit for the runner's IP address is used up -
+     typically when many builds run at the same time. It hits the `FROM` base
+     images in *Build Docker Image*, or the BuildKit / QEMU image while Buildx
+     and QEMU are set up
+   - Pass `DOCKER_USERNAME` and `DOCKER_PASSWORD` with `secrets: inherit`, see
+     [Docker Hub Pull Login](#docker-hub-pull-login)
+   - *Check Docker Hub Credentials* reports they are not set although the
+     organisation or repository has them: the calling job lacks
+     `secrets: inherit` (or an explicit `secrets:` block passing both)
+   - The warning *Docker Hub login failed*: the credentials are wrong or expired,
+     or Docker Hub could not be reached
+   - Still `429` while logged in: the account's own pull quota is used up; how
+     large it is depends on the Docker Hub plan
 
 ### Debug Mode
 

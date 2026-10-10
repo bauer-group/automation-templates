@@ -51,12 +51,14 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
-| `DOCKER_USERNAME` | docker-build, dotnet-build, nodejs-build, backup-roundtrip (optional) | Docker Hub Benutzername | [hub.docker.com](https://hub.docker.com) Account Settings |
-| `DOCKER_PASSWORD` | docker-build, dotnet-build, nodejs-build, backup-roundtrip (optional) | Docker Hub Access Token | Docker Hub → Account Settings → Security → Access Tokens |
+| `DOCKER_USERNAME` | docker-build (bei `publish-to: ghcr` optional), dotnet-build, nodejs-build, backup-roundtrip (optional) | Docker Hub Benutzername | [hub.docker.com](https://hub.docker.com) Account Settings |
+| `DOCKER_PASSWORD` | docker-build (bei `publish-to: ghcr` optional), dotnet-build, nodejs-build, backup-roundtrip (optional) | Docker Hub Access Token | Docker Hub → Account Settings → Security → Access Tokens |
 | `COSIGN_PRIVATE_KEY` | docker-build | Sigstore Cosign Private Key | `cosign generate-key-pair` |
 | `COSIGN_PASSWORD` | docker-build | Passwort für Cosign Key | Selbst festlegen |
 
 > **Fork Docker Build** (`fork-docker-build.yml`) benötigt **kein** konfiguriertes Secret — der GHCR-Login läuft über den automatischen `GITHUB_TOKEN`.
+
+> **Docker Build mit `publish-to: ghcr`** (`docker-build.yml`, Standard) benötigt `DOCKER_USERNAME` / `DOCKER_PASSWORD` **nicht**. Mit `secrets: inherit` übergeben, meldet sich der Build vor dem ersten Pull bei Docker Hub an: Base-Images sowie das BuildKit- und QEMU-Image werden dann unter dem Kontingent des Kontos statt anonym gezogen, und parallele Builds laufen nicht mehr in Docker Hubs Pull-Limit pro Runner-IP (`429 toomanyrequests`). Ein Access Token mit Leserechten genügt dafür. Ohne die Secrets (Forks, Dependabot-Läufe, Caller ohne `secrets: inherit`) wird anonym gezogen wie bisher; ein fehlgeschlagener Login erzeugt nur eine Warnung. Bei `publish-to: dockerhub` / `both` bleiben beide Secrets Pflicht (dort mit Schreibrechten). Siehe [Docker Build → Docker Hub Pull Login](./workflows/docker-build.md#docker-hub-pull-login).
 
 > **Backup Round-Trip Test** (`modules-backup-roundtrip-test.yml`) benötigt **kein** Secret. `DOCKER_USERNAME` / `DOCKER_PASSWORD` sind optional: Mit `secrets: inherit` übergeben, zieht das Modul von Docker Hub angemeldet statt anonym und läuft nicht in Docker Hubs Pull-Limit pro Runner-IP (`429 toomanyrequests`). Der GHCR-Login nutzt den automatischen `GITHUB_TOKEN` (der aufrufende Job muss `packages: read` gewähren), und jedes Passwort, das der Stack braucht, wird pro Lauf über `generated-secrets` erzeugt und maskiert — ebenso die Zugangsdaten des Wegwerf-S3-Servers (`s3-destination`). Produktions-Credentials gehören weder in `env-overrides` noch ins Repository — Quellen, die ein externes Konto brauchen, werden für den Test abgeschaltet. Siehe [Backup Round-Trip Test → Secrets](./workflows/modules-backup-roundtrip-test.md#secrets).
 
@@ -371,8 +373,8 @@ jobs:
 
 ```yaml
 secrets:
-  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}         # Docker Hub Auth
-  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}         # Docker Hub Auth
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}         # Docker Hub: Push (dockerhub/both), Pull-Login (ghcr, optional)
+  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}         # Docker Hub: Push (dockerhub/both), Pull-Login (ghcr, optional)
   COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}   # Image Signing
   COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}         # Cosign Key Password
 ```
