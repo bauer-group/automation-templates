@@ -267,7 +267,7 @@ Complete Docker automation with multi-platform builds, security scanning, and en
 | **🔧 docker-build action** | Multi-platform Docker builds | Composite action with security scanning |
 | **🚀 docker-build workflow** | Complete Docker CI/CD | `uses: {{REPO_FULL_NAME}}/.github/workflows/docker-build.yml@main` |
 | **📋 Configuration Templates** | Pre-configured setups | `default`, `web-application`, `microservice`, `enterprise` |
-| **🐳 Docker maintenance (Dependabot)** | Merge Dependabot PRs of any ecosystem (base images, npm, pip, Composer, Cargo, NuGet, ...) only after the named PR CI passed on the current base, then dispatch the release and wait for it | `uses: {{REPO_FULL_NAME}}/.github/workflows/docker-maintenance-dependabot.yml@main` |
+| **🐳 Docker maintenance (Dependabot)** | Merge Dependabot PRs of any ecosystem (base images, npm, pip, Composer, Cargo, NuGet, ...) only after the named PR CI passed on the current base; opt-in (`release-workflow`): dispatch the release after the merge and wait for it | `uses: {{REPO_FULL_NAME}}/.github/workflows/docker-maintenance-dependabot.yml@main` |
 | **🔍 Base image monitor** | Release a rebuild when a floating tag (`stable`, `latest`) moves; stored once the release succeeded | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-docker-base-image-monitor.yml@main` |
 
 **Quick Start - Docker:**

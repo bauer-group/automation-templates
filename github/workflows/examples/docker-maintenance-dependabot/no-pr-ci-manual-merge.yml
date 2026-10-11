@@ -14,8 +14,9 @@
 # It does not wait for CI and needs no write access, so the token below is
 # read-only.
 #
-# Turning automatic merging on later takes two changes, once a PR CI workflow
-# exists that builds and tests what Dependabot changes:
+# Turning automatic merging on later takes two changes - a third to release
+# each merged update - once a PR CI workflow exists that builds and tests
+# what Dependabot changes:
 # 1. set required-workflows to that workflow file, e.g.
 #      required-workflows: .github/workflows/ci.yml
 # 2. grant contents: write and pull-requests: write (plus checks, statuses and

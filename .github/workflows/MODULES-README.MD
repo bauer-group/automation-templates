@@ -246,6 +246,8 @@ check:
 
 Wartet, bis die CI des PRs vollständig und 3 Minuten unverändert ist, und merged nur, wenn jeder Workflow aus `required-workflows` per `pull_request` auf dem Head-Commit erfolgreich lief und kein Check fehlschlug (`gh pr merge --match-head-commit`). Standardmäßig nur Patch-Updates; unter 1.0.0 zählt ein Minor-Update (`0.3.1 → 0.4.0`) und ein Patch-Update von `0.0.z` als Major (SemVer §4, wie npm-`^`-Ranges) — geprüft für jede Dependency eines gruppierten PRs. GitHub-Actions-Updates und PRs, die `.github/` ändern, bleiben immer offen. Ohne `required-workflows` wird nichts gemerged.
 
+Gemerged wird nur die Kombination, die die CI getestet hat: Hat sich der Base-Branch seit dem CI-Lauf bewegt (ein anderer PR, ein Release-Commit), bleibt der PR offen und Dependabot wird per `@dependabot rebase` um einen Rebase gebeten — mit dem optionalen **Dependabot**-Secret `DEPENDABOT_REBASE_TOKEN`, denn vom `GITHUB_TOKEN` nimmt Dependabot den Befehl nicht an. Der Merge mit dem `GITHUB_TOKEN` startet keinen Workflow; mit `release-workflow` (opt-in, braucht `actions: write`) dispatcht das Modul den Release-Workflow nach dem Merge auf dem Base-Branch, verlinkt den Run in der Job-Summary und wartet auf ihn (`release-wait-minutes`) — ein Release-Run, der nicht `success` endet, macht den Job rot. Was veröffentlicht wird, entscheidet der Release-Workflow: Er muss das Veröffentlichen per `needs:` an Build, Tests und Backup-Round-Trip binden.
+
 ```yaml
 on:
   pull_request:
@@ -256,14 +258,15 @@ permissions:
   pull-requests: write
   checks: read            # private Repositories
   statuses: read          # private Repositories
-  actions: read           # private Repositories
+  actions: write          # Release-Dispatch; ohne release-workflow: actions: read
 jobs:
   maintenance:
     uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
     with:
       required-workflows: .github/workflows/docker-release.yml
+      release-workflow: .github/workflows/docker-release.yml   # optional
       merge-update-types: 'patch'
-    secrets: inherit      # kein Secret nötig
+    secrets: inherit      # optional: DEPENDABOT_REBASE_TOKEN (Dependabot-Secret)
 ```
 
 > **Trigger-Umfang:** Die `paths:` des Callers bestimmen, welche Dependabot-PRs das Modul überhaupt erreichen. Mit reinen Dockerfile-Pfaden bleiben npm-, pip- und Composer-Updates manuelle Merges — ohne Annotation. Aktualisiert Dependabot mehr als Base Images (Compose, npm, pip, Composer, Cargo, NuGet, …), bekommt der Caller **keine** `paths:`: Jeder Dependabot-PR erhält dann eine Entscheidung mit Annotation, und die `pull_request`-`paths:` des Required Workflows entscheiden, was getestet ist. Mehrere `required-workflows` gelten als UND. Entscheidungstabelle, Trigger-Umfang, Dateien je Ökosystem und Beispiele (Backup-Round-Trip-Gate, eigener Build-/Test-Workflow, mehrere Workflows, alle Ökosysteme, .NET-Library, bewusst ohne PR-CI): [docs/workflows/docker-maintenance.md](../../docs/workflows/docker-maintenance.md#option-1-dependabot-simple) · [github/workflows/examples/docker-maintenance-dependabot/](../../github/workflows/examples/docker-maintenance-dependabot/README.md).

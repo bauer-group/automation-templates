@@ -22,8 +22,8 @@
 #                                                       workflow)
 #     -> that run validates, runs the round trip on    (its release job needs
 #        main, then releases and pushes the images      the round trip: a
-#                                                       failure publishes
-#                                                       nothing)
+#                                                       failed round trip
+#                                                       publishes nothing)
 #     -> this job waits for the run and turns red unless it succeeded
 #
 # Trigger scope: the paths below are the Dockerfiles Dependabot updates. They

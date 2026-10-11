@@ -98,8 +98,10 @@
 #   checked, so the PR is left open - never merged on an unchecked type.
 # - With `release-workflow`: that workflow has an `on: workflow_dispatch`
 #   trigger, releases on it, and publishes nothing unless its own build and
-#   test jobs passed (`needs:`) - this workflow makes a failed release loud,
-#   the release workflow keeps a broken image from being published.
+#   test jobs passed (`needs:`). This workflow makes a failed release loud;
+#   what is published is up to the release workflow - a failure after its
+#   semantic release (e.g. the image push) leaves a version without its
+#   image, see docs/workflows/docker-maintenance.md.
 # =============================================================================
 
 name: 🐳 Docker Maintenance (Dependabot)
