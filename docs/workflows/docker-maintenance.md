@@ -577,13 +577,13 @@ immediately before the merge call - and merges only if it is still that
 commit. Otherwise the PR stays open (job green, reason `base-moved`) and
 Dependabot is asked to rebase it:
 
-| The base branch moved because ...                                      | What happens                                                                                                                                          |
-|------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
-| an unrelated push landed on `main` while CI ran                        | Not merged. `@dependabot rebase` - the rebased PR is a new head commit, CI runs on it, and its run of this workflow decides again                     |
-| another Dependabot PR was merged first (two PRs opened together)       | The first one is merged; the second is not - it was tested without the first. It is rebased onto the first one's merge commit and tested again        |
-| a release run pushed its `chore(release)` commit after the first merge | Same: the next PR is rebased and tested again - each Dependabot update lands on `main` exactly as CI tested it                                        |
-| someone changed the PR's base branch                                   | Not merged; the rebase onto the new base branch is tested again                                                                                       |
-| a push lands in the second between the check and the merge call        | Merged - GitHub's merge call pins the head, not the base. A warning *Merged onto an untested base* names the base; the release's own tests vouch then |
+| The base branch moved because ...                                      | What happens                                                                                                                                                                                                                                                               |
+|------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| an unrelated push landed on `main` while CI ran                        | Not merged. `@dependabot rebase` - the rebased PR is a new head commit, CI runs on it, and its run of this workflow decides again                                                                                                                                          |
+| another Dependabot PR was merged first (two PRs opened together)       | The first one is merged; the second is not - it was tested without the first. It is rebased onto the first one's merge commit and tested again                                                                                                                             |
+| a release run pushed its `chore(release)` commit after the first merge | Same: the next PR is rebased and tested again - each Dependabot update lands on `main` exactly as CI tested it                                                                                                                                                             |
+| someone changed the PR's base branch                                   | Not merged; the rebase onto the new base branch is tested again                                                                                                                                                                                                            |
+| a push lands in the second between the check and the merge call        | Merged - GitHub's merge call pins the head, not the base. A warning *Merged onto an untested base* names the base; the release run builds and tests that merge before it publishes - if its release is [pinned to the commit it tested](#what-no-broken-release-relies-on) |
 
 This relies on the required workflows building that merge commit: see
 *Built from the merge ref* under
@@ -775,21 +775,30 @@ This workflow decides what is merged, and makes a release that fails loud:
 the job turns red and names the run. What is **published** - and whether a
 failure can leave something half published - is decided by the release
 workflow. With a pipeline like the one below, it depends on where the run
-fails:
+fails - and on whether its release is pinned to the commit it tested:
 
-| The release run fails ...                                                                                                      | Published                                                                                  |
-|--------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
-| before its release job - a build, test or backup round trip job the release job `needs:`                                       | **nothing**                                                                                |
-| in the release job (semantic-release) or after it - the image rebuild and push (registry error, build error, a secret missing) | the version tag, the GitHub release and the release commit may exist **without the image** |
+| The release run ...                                                                                                                  | Published                                                                                                                  |
+|--------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------|
+| fails before its release job - a build, test or backup round trip job the release job `needs:`                                       | **nothing**                                                                                                                |
+| fails in the release job (semantic-release) or after it - the image rebuild and push (registry error, build error, a secret missing) | the version tag, the GitHub release and the release commit may exist **without the image**                                 |
+| succeeds, but a push landed on `main` while it was going - release pinned to the tested commit (`ref: ${{ github.sha }}`)            | **nothing by this run**: semantic-release sees `main` ahead of it; the run that tested the newer `main` releases both      |
+| succeeds, but a push landed on `main` while it was going - release **not** pinned                                                    | a version tagged on the newer `main`, its image built from the older commit without the later change - **silently broken** |
 
+The last row is why the release has to be pinned (see *Release the commit
+the run tested* below): it is the one broken release that stays silent.
 The second row is the window such a pipeline leaves open: semantic-release
 publishes the version first, and the image job that `needs: release` builds
 and pushes it afterwards. A failure there is a broken release - loud, but
 not prevented. Re-run the run's failed jobs once the cause is fixed
 (`gh run rerun <run id> --failed`): jobs that succeeded are not run again
 and their outputs are used, so the image job builds the version the release
-job created. Starting the release workflow anew would not help - it finds no
-new commit, creates no release and skips the image. To narrow the window:
+job created. Starting the release workflow anew - or re-running all jobs -
+would not help: it finds the version released already, creates nothing and
+skips the image. If semantic-release itself failed after it had pushed the
+tag or the release commit (e.g. while it created the GitHub release),
+re-running the failed release job finds that version taken as well and the
+image job is skipped again: build and push the image for that tag by hand.
+To narrow the window:
 
 - **Fail before the release:** prove registry access (login, a probe push)
   in a job the release job needs, so a missing secret or a registry outage
@@ -820,6 +829,8 @@ The release workflow has to provide the rest:
       needs.validate-scripts.result == 'success' &&
       needs.backup-roundtrip.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      ref: ${{ github.sha }}   # release the commit this run tested
     secrets: inherit
 
   docker-build:
@@ -833,10 +844,28 @@ The release workflow has to provide the rest:
 
   A complete pipeline:
   [gated-release-pipeline.yml](../../github/workflows/examples/backup-roundtrip/gated-release-pipeline.yml).
-- **Test what `main` is now.** The release run builds and tests the base
-  branch as it is when it starts - the merged update included - not the PR.
-  Such a gate also catches what PR CI cannot: a push in the second between
-  the base check and the merge (*Merged onto an untested base*).
+- **Release the commit the run tested.** Call `modules-semantic-release.yml`
+  with `ref: ${{ github.sha }}`, as above. The run builds and tests
+  `github.sha` - the base branch as it was when the run started, the merged
+  update included - and its image jobs build that commit too. Without `ref`
+  the release job resets to the tip of `main` when it starts: a merge or push
+  that lands while the run's gate is still going (the next Dependabot merge,
+  whose own run this workflow dispatches) is tagged by this run without being
+  tested by it and is missing from its image, and the later run then finds
+  nothing left to release. Both runs succeed - the broken image is silent.
+  Pinned, semantic-release publishes nothing when `main` has moved on (*The
+  local branch main is behind the remote one, therefore a new version won't
+  be published* - checked with semantic-release 25.0.9), the run still
+  succeeds, and the later run, which built and tested the newer `main`,
+  releases both. Then the run publishes exactly what it tested, and its gate
+  also catches what PR CI cannot: a combination merged onto a base CI did
+  not test (*Merged onto an untested base*) is built and tested before
+  anything is published.
+  **The trade-off:** a push that starts no release run of its own - a
+  `paths-ignore`d documentation push, a `[skip ci]` commit of an automation -
+  leaves the earlier update unreleased until the next run. That is a missed
+  release, not a broken one, and the job summary still says *Succeeded*;
+  start the release workflow by hand to release it.
 - **Let each dispatched run finish.** A run cancelled by a later one
   concludes `cancelled` and fails this job, although the later run releases
   both updates. With `concurrency:` on the release workflow, set
@@ -850,6 +879,9 @@ The release workflow has to provide the rest:
 - **Commit types.** Whether the run publishes anything is semantic-release's
   call: a `chore(deps)` commit releases nothing by default, and the run still
   succeeds - see [Other ecosystems and libraries](#other-ecosystems-and-libraries).
+  The same holds for a pinned run whose `main` has moved on (above): *Release
+  result: Succeeded* means the run succeeded, not that it published a
+  version - its own summary says which.
 
 **Who notices a red job.** GitHub mails a failed run to the user who triggered
 it - here `dependabot[bot]`, so nobody gets mail. The failure shows as a red
@@ -930,9 +962,11 @@ workflow.
   API calls, and GitHub's merge call pins the head commit, not the base. A
   push in between is merged onto, and reported as *Merged onto an untested
   base* (decision table row 18b). A release pipeline that tests `main` before
-  it publishes (such as one gated by the backup round trip) is what catches
-  such a combination. The gap could be closed: instead of the merge call,
-  fast-forward the base branch to the very commit CI tested
+  it publishes (such as one gated by the backup round trip) and releases the
+  very commit it tested (`ref: ${{ github.sha }}`, see
+  [what "no broken release" relies on](#what-no-broken-release-relies-on)) is
+  what catches such a combination. The gap could be closed: instead of the
+  merge call, fast-forward the base branch to the very commit CI tested
   (`refs/pull/<n>/merge`, the event's `github.sha`) with
   `PATCH /repos/{owner}/{repo}/git/refs/heads/<base>` and `force: false`,
   which GitHub refuses if the base moved; GitHub then marks the PR merged, as
@@ -1157,7 +1191,8 @@ jobs:
 ```yaml
 # .github/workflows/docker-release.yml - builds every PR (the required workflow
 # the maintenance workflow waits for) and, on a push or a dispatch, releases
-# only what it built and tested in the same run
+# only what it built and tested in the same run (the release pinned to
+# github.sha, the commit the run built)
 name: Docker Release
 
 on:
@@ -1198,6 +1233,10 @@ jobs:
     needs: build
     if: github.event_name != 'pull_request' && needs.build.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      # The commit this run built and tested. If main moved on meanwhile,
+      # nothing is released here - the run for the newer main releases both.
+      ref: ${{ github.sha }}
     secrets: inherit
 
   docker:
@@ -1210,12 +1249,15 @@ jobs:
 ```
 
 **Result:** Base image update → PR built and tested → merged on the base CI
-tested → release dispatched → build on `main` → PATCH release → image rebuilt
-and pushed, and a green *Docker Maintenance* job. If the build on `main`
-fails, nothing is published; if the image rebuild or push after the release
-fails, the version tag and GitHub release exist without the image (see
+tested → release dispatched → build on `main` → PATCH release of the commit
+that was built → image rebuilt and pushed, and a green *Docker Maintenance*
+job. If the build on `main` fails, nothing is published; if the image rebuild
+or push after the release fails, the version tag and GitHub release exist
+without the image (see
 [What "no broken release" relies on](#what-no-broken-release-relies-on)). In
 either case the *Docker Maintenance* job turns red and names the release run.
+If another update lands on `main` while the run builds, this run releases
+nothing, and the run started for that update releases both.
 A stack with a backup sidecar gates the release on the backup round trip as
 well:
 [gated-release-pipeline.yml](../../github/workflows/examples/backup-roundtrip/gated-release-pipeline.yml).
@@ -1340,7 +1382,7 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 - **Tested by the named CI**: Dependabot PRs are merged only when every workflow in `required-workflows` ran on the PR's head commit and passed and no other check failed, after CI has been complete and unchanged for 3 minutes (5 minutes after the start at the earliest). A passed check that tests nothing (e.g. a secret scan or a notification job) is not enough, and without `required-workflows` nothing is merged
 - **CI changes stay open**: a GitHub Actions update or a PR that changes `.github/` is never merged automatically - a `pull_request` run uses the PR's own version of a changed workflow, and push- or schedule-only workflows do not run before the merge
 - **Pinned merge**: the Dependabot merge and its approval name the head commit whose CI was checked
-- **Release only after a merge, failures loud**: `release-workflow` is dispatched only after this run merged the PR, needs nothing but `actions: write` on the job token, and a release run that does not succeed fails the job. What gets published is gated by the release workflow's own tests - see [what "no broken release" relies on](#what-no-broken-release-relies-on) for the window a pipeline that tags before it pushes leaves open
+- **Release only after a merge, failures loud**: `release-workflow` is dispatched only after this run merged the PR, needs nothing but `actions: write` on the job token, and a release run that does not succeed fails the job. What gets published is gated by the release workflow's own tests, and is what they ran on only if its release is pinned to the commit the run tested (`ref: ${{ github.sha }}`) - see [what "no broken release" relies on](#what-no-broken-release-relies-on), also for the window a pipeline that tags before it pushes leaves open
 - **Released without a person in between**: with `release-workflow`, a merged dependency update is built and released by the dispatched run - with the release workflow's write permissions and the repository's secrets (registry credentials, signing keys) - without anyone looking at it first. Without it, the release waited for the next human push. That is a supply-chain trade-off to accept knowingly: an update whose harmful change passes the required CI reaches the registry automatically. Keep `merge-update-types` narrow (the default `patch`), the release gated on its tests, and `release-workflow` unset where a person should approve each release
 - **Only the tested combination**: a Dependabot PR is merged only while the base branch is still at the commit its CI was merged onto; otherwise it is rebased and tested again. The optional `DEPENDABOT_REBASE_TOKEN` is used for that one `@dependabot rebase` comment and nothing else; keep it on a machine user, limited to the selected repositories and short-lived (see [the rebase token](#the-rebase-token))
 - **Dependabot only**: the Dependabot job acts only on Dependabot's PRs, on events Dependabot raised, with verified Dependabot commits only; it never checks out PR code

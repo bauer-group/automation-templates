@@ -97,11 +97,14 @@
 #   versions of the updated dependencies. Without it the 0.x rule cannot be
 #   checked, so the PR is left open - never merged on an unchecked type.
 # - With `release-workflow`: that workflow has an `on: workflow_dispatch`
-#   trigger, releases on it, and publishes nothing unless its own build and
-#   test jobs passed (`needs:`). This workflow makes a failed release loud;
-#   what is published is up to the release workflow - a failure after its
-#   semantic release (e.g. the image push) leaves a version without its
-#   image, see docs/workflows/docker-maintenance.md.
+#   trigger, releases on it, publishes nothing unless its own build and
+#   test jobs passed (`needs:`), and releases the commit it tested
+#   (modules-semantic-release with `ref` set to github.sha - else a push
+#   during its run is tagged untested and missing from its image). This
+#   workflow makes a failed release loud; what is published is up to the
+#   release workflow - a failure after its semantic release (e.g. the image
+#   push) leaves a version without its image, see
+#   docs/workflows/docker-maintenance.md.
 # =============================================================================
 
 name: 🐳 Docker Maintenance (Dependabot)

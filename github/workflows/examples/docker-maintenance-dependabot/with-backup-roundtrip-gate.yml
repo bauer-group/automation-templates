@@ -23,7 +23,10 @@
 #     -> that run validates, runs the round trip on    (its release job needs
 #        main, then releases and pushes the images      the round trip: a
 #                                                       failed round trip
-#                                                       publishes nothing)
+#                                                       publishes nothing;
+#                                                       it releases the commit
+#                                                       it tested - ref:
+#                                                       github.sha)
 #     -> this job waits for the run and turns red unless it succeeded
 #
 # Trigger scope: the paths below are the Dockerfiles Dependabot updates. They
@@ -77,8 +80,9 @@ jobs:
       # trip. Every job it runs on the PR must pass, the round trip included.
       required-workflows: .github/workflows/docker-release.yml
       # After the merge, the same pipeline on main: round trip, then release
-      # and image push. It has a workflow_dispatch trigger and its release
-      # job needs the round trip (gated-release-pipeline.yml).
+      # and image push. It has a workflow_dispatch trigger, its release job
+      # needs the round trip and releases the commit the run tested
+      # (gated-release-pipeline.yml).
       release-workflow: .github/workflows/docker-release.yml
       merge-method: 'squash'
       auto-approve: true
