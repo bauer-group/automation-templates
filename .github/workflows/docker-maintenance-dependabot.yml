@@ -1062,7 +1062,9 @@ jobs:
                   echo "Release run succeeded: $RUN_URL"
                   finish success "$RUN_URL" 0
                 fi
-                echo "::error title=Release failed::The update was merged, but its release run $RUN_URL concluded '$CONCLUSION'. Fix the cause and re-run it, or run $RELEASE_WORKFLOW by hand."
+                # Re-running all jobs, or a new run, finds the version that
+                # the failed run may have created already and skips its image.
+                echo "::error title=Release failed::The update was merged, but its release run $RUN_URL concluded '$CONCLUSION'. Fix the cause, then re-run the failed jobs of that run (gh run rerun $RUN_ID --failed) - not all jobs, and not a new run: once its release job created the version, a new run releases nothing and skips the image. Run $RELEASE_WORKFLOW by hand only if the run failed before its release job."
                 finish failed "$CONCLUSION" 1
               fi
             else
@@ -1155,7 +1157,7 @@ jobs:
             DISPATCHED="\`$RELEASE_WORKFLOW\` on \`$BASE_REF\` - ${RUN_LINK:-run not identified}"
             case "$RELEASE_RESULT" in
               success)         RESULT="✅ Succeeded" ;;
-              failed)          RESULT="❌ Failed: the run concluded \`$RELEASE_DETAIL\`" ;;
+              failed)          RESULT="❌ Failed: the run concluded \`$RELEASE_DETAIL\` - fix the cause, then re-run its failed jobs (\`gh run rerun ${RELEASE_RUN_URL##*/} --failed\`), not all jobs" ;;
               timeout)         RESULT="❌ Not finished: $RELEASE_DETAIL (release-wait-minutes)" ;;
               not-waited)      RESULT="⏭️ Not waited for (release-wait-minutes: 0)" ;;
               unreadable)      RESULT="❌ Not confirmed: the run could not be read ($RELEASE_DETAIL)" ;;

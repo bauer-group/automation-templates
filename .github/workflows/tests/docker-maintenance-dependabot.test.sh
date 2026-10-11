@@ -1452,6 +1452,10 @@ for c in failure cancelled timed_out startup_failure action_required skipped neu
   D=$(release_dir "conclusion-$c"); relrun completed "$c" > "$D/release.3.json"
   release_run "$D"; check "release/$c-fails-the-job" "$D" $? 1 result failed error "release run $RUN_555 concluded '$c'"
   output_is "release/$c-fails-the-job" "$D" conclusion "$c"
+  # The fix it names: re-running all jobs or starting a new run finds the
+  # version the failed run may have created and skips its image.
+  logged "release/$c-fails-the-job" "$D" "re-run the failed jobs of that run (gh run rerun 555 --failed) - not all jobs, and not a new run"
+  logged "release/$c-fails-the-job" "$D" "Run $REL_WF by hand only if the run failed before its release job."
 done
 
 # Still running at the deadline: failed, with the run named.
@@ -1628,7 +1632,7 @@ shows summary/released "$S" "| **Release result** | ✅ Succeeded |"
 summary_run release-failed MERGE_REASON=merged MERGED=true MERGE_COMMIT=m1 RELEASE_WORKFLOW="$REL_WF" \
   RELEASE_RESULT=failed RELEASE_DETAIL=startup_failure RELEASE_RUN_URL="$RUN_555" JOB_STATUS=failure
 S="$WORK/summary-release-failed"
-shows summary/release-failed "$S" "| **Release result** | ❌ Failed: the run concluded \`startup_failure\` |"
+shows summary/release-failed "$S" "| **Release result** | ❌ Failed: the run concluded \`startup_failure\` - fix the cause, then re-run its failed jobs (\`gh run rerun 555 --failed\`), not all jobs |"
 summary_run dispatch-failed MERGE_REASON=merged MERGED=true MERGE_COMMIT=m1 RELEASE_WORKFLOW="$REL_WF" \
   RELEASE_RESULT=dispatch-failed RELEASE_DETAIL="the job token may not start workflows" JOB_STATUS=failure
 S="$WORK/summary-dispatch-failed"
