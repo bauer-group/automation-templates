@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.9.0](https://github.com/bauer-group/automation-templates/compare/v11.8.1...v11.9.0) (2026-10-11)
+
+### 🚀 Features
+
+* **dependabot:** release after the merge, merge only tested combinations ([#132](https://github.com/bauer-group/automation-templates/issues/132)) ([97609ca](https://github.com/bauer-group/automation-templates/commit/97609cadd0e903ca2482f016c6908bc42ac925a9))
+
 ## [11.8.1](https://github.com/bauer-group/automation-templates/compare/v11.8.0...v11.8.1) (2026-10-10)
 
 ### 🐛 Bug Fixes
