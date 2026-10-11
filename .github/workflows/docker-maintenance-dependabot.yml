@@ -28,7 +28,9 @@
 # 4. Merge: optional approval, then `gh pr merge --match-head-commit`, so only
 #    the commit whose CI was checked can be merged. Where GitHub Actions may
 #    not approve PRs, the rejected approval is a notice and the merge goes
-#    ahead (it only fails if the base branch requires a review).
+#    ahead (it only fails if the base branch requires a review). The PR is
+#    then read back: only a PR GitHub reports as merged counts as merged (gh
+#    also succeeds when it only added the PR to a merge queue).
 # 5. Tested base: CI tested the PR merged onto the base branch as it was
 #    when CI started. If the base branch has moved since (another PR was
 #    merged, a release commit was pushed), nothing is merged: Dependabot is
@@ -844,12 +846,35 @@ jobs:
           echo "$BASE_REF is at ${TESTED_BASE:0:12}, the base CI tested the PR on."
 
           if gh pr merge "$PR_NUMBER" --repo "$REPO" "--$MERGE_METHOD" --match-head-commit "$HEAD_SHA" 2> "$ERR"; then
+            # gh also succeeds when it only added the PR to a merge queue (a
+            # base branch rule; GitHub merges it later, without this run), so
+            # the PR is read back: merged, and with which commit. An open PR's
+            # merge_commit_sha is GitHub's test merge, not a merge. A read
+            # that lags behind the merge, or fails, is retried; the last
+            # answer counts.
+            MERGED="" MERGE_COMMIT=""
+            for try in 1 2 3; do
+              if READ=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '[(.merged | tostring), (.merge_commit_sha // "-")] | @tsv' 2> "$ERR"); then
+                IFS=$'\t' read -r MERGED MERGE_COMMIT <<< "$READ"
+                if [ "$MERGED" = true ]; then break; fi
+              fi
+              if [ "$try" -lt 3 ]; then sleep 5; fi
+            done
+            if [ "$MERGED" = false ]; then
+              echo "::warning title=Dependabot PR not merged::The merge call succeeded, but the PR is still not merged - the base branch probably requires a merge queue, which merges it later without this workflow. No release is started by this run."
+              done_with false not-merged "the merge call succeeded, but the PR is not merged (merge queue?)"
+            fi
+            if [ "$MERGED" != true ]; then
+              # gh reported the merge; only the commit is unknown.
+              echo "::warning title=Merge not confirmed::gh reported the PR merged, but it could not be read back ($(head -n 1 "$ERR")), so the merge commit is unknown and the base it landed on is not checked."
+              MERGE_COMMIT=""
+            fi
+            [ "$MERGE_COMMIT" != "-" ] || MERGE_COMMIT=""
+            echo "merge-commit=$MERGE_COMMIT" >> "$GITHUB_OUTPUT"
             # The merge commit's first parent is the base it landed on (a
             # Dependabot PR has one commit, so this holds for squash, merge
             # and rebase). Only a push in the moment between the base check
             # and the merge call makes it another commit than the tested one.
-            MERGE_COMMIT=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.merge_commit_sha // ""' 2> "$ERR") || MERGE_COMMIT=""
-            echo "merge-commit=$MERGE_COMMIT" >> "$GITHUB_OUTPUT"
             LANDED=""
             if [ -n "$MERGE_COMMIT" ]; then
               LANDED=$(gh api "repos/$REPO/git/commits/$MERGE_COMMIT" --jq '.parents[0].sha // ""' 2> "$ERR") || LANDED=""
@@ -866,9 +891,9 @@ jobs:
       # The merge was made with the job token, and GitHub starts no workflow
       # for a push made with it - except workflow_dispatch and
       # repository_dispatch. So the release workflow is dispatched on the
-      # base branch, only after this run merged the PR (never for a PR left
-      # open, closed or superseded, never for a CI change - those are never
-      # merged). The dispatch answers with the run it created
+      # base branch, only after this run merged the PR and read it back as
+      # merged (never for a PR left open, closed, superseded or only queued,
+      # never for a CI change - those are never merged). The dispatch answers with the run it created
       # (return_run_details); a GitHub that answers 204 without it gets the
       # run looked up: workflow_dispatch, that workflow, the base branch,
       # created since the dispatch, on the merge commit. Then the job waits
@@ -1054,6 +1079,7 @@ jobs:
                     superseded)    DECISION="⏹️ Not merged by this run: the PR got a new head commit." ;;
                     draft)         DECISION="⏸️ Left open: CI passed, but the PR is a draft." ;;
                     not-mergeable) DECISION="⏸️ Left open: CI passed, but the PR cannot be merged (e.g. a merge conflict)." ;;
+                    not-merged)    DECISION="⚠️ Not merged by this run: the merge call succeeded, but the PR is still open - the base branch probably requires a merge queue, which this workflow does not use." ;;
                     *)             DECISION="⚠️ Left open: CI passed, but the merge failed - see the annotation." ;;
                   esac ;;
                 failed)     DECISION="⏸️ Left open: CI did not pass ($CI_DETAIL)." ;;

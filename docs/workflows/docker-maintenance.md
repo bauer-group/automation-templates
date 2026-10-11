@@ -497,7 +497,9 @@ PR's head.
    approving without it would approve whatever commit is the PR's latest at
    that moment. Where GitHub Actions may not approve pull requests (an org or
    repo setting), the rejected approval is a notice and the merge goes ahead;
-   it only fails if the base branch requires a review.
+   it only fails if the base branch requires a review. After the merge call
+   the PR is read back: only a PR that GitHub reports as merged counts (`gh`
+   also succeeds when it only added the PR to a merge queue).
 7. **Tested base** - last, right before the merge call, the head of the base
    branch is read. It must still be the commit CI tested the PR on - see
    [Only the combination CI tested](#only-the-combination-ci-tested). If it
@@ -539,6 +541,7 @@ the job red.
 | 17a | Tested base      | The base branch moved since CI ran, or the PR's base branch was changed ([tested combination](#only-the-combination-ci-tested))           | 🔄 Left open - rebase requested       | notice     |
 | 17b | Tested base      | The head of the base branch could not be read                                                                                             | ⚠️ Left open                          | warning    |
 | 18  | Merge            | The merge was rejected (e.g. the base branch requires a review)                                                                           | ⚠️ Left open                          | warning    |
+| 18a | Merge            | The merge call succeeded, but the PR reads back as not merged (a merge queue only queued it)                                              | ⚠️ Not merged by this run, no release | warning    |
 | -   | -                | None of the above: every required workflow passed, no check failed, CI complete and quiet, base unchanged                                 | ✅ Merged (`--match-head-commit`)     | -          |
 
 A newer event on the same PR (e.g. Dependabot rebased it) cancels the run that is
@@ -672,8 +675,9 @@ never sees a Dependabot merge. `workflow_dispatch` is exempt from that rule.
 With `release-workflow` set, the workflow therefore starts the release itself:
 
 1. **Only after a merge.** The release is dispatched only when this run merged
-   the PR - never for a PR left open, closed, superseded, on a moved base, or
-   whose merge failed, and never for a CI change (those are never merged).
+   the PR and read it back as merged - never for a PR left open, closed,
+   superseded, on a moved base, only added to a merge queue, or whose merge
+   failed, and never for a CI change (those are never merged).
 2. **Dispatch** of `release-workflow` with `workflow_dispatch` on the PR's base
    branch (`main`), with the job token. Server errors and rate limits are
    retried twice.
@@ -827,6 +831,12 @@ completed) to have it reach a person.
   event (`opened`, `synchronize`, `reopened` - the `pull_request` default)
   is judged by its run of an earlier event. Keep the default `types:` in
   required workflows.
+- **No merge queue.** The workflow merges directly. On a base branch that
+  requires a merge queue, `gh pr merge` only queues the PR: the PR reads back
+  as not merged, the job warns *Dependabot PR not merged* and starts no
+  release. The queue merges it later with its own checks, outside this
+  workflow; this workflow is built for base branches without rulesets (see
+  the note under [Permissions](#permissions)).
 - **Workflows started by `workflow_run`** are not waited for: GitHub attaches
   such a run to the latest commit of the default branch, not to the PR's head
   commit, so it is not part of the PR's checks. Run the gate in a workflow that

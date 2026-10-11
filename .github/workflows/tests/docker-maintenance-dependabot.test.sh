@@ -198,10 +198,13 @@ cat > "$WORK/bin/gh" <<'STUB'
 # answers from $FAKE/dispatch.<n>.json the same way.
 # gh api --method POST .../reviews, POST .../comments and gh pr merge: logged
 # to $FAKE/calls; FAKE_REVIEW_FAIL / FAKE_COMMENT_FAIL / FAKE_MERGE_FAIL fail
-# them. A comment's token goes to $FAKE/tokens.
+# them. A comment's token goes to $FAKE/tokens. After gh pr merge the PR is
+# read from $FAKE/prmerged.<n>.json - unless FAKE_MERGE_QUEUED: gh succeeds,
+# but only adds the PR to a merge queue, and it stays open.
 echo "$*" >> "$FAKE/calls"
 if [ "${1:-}" = "pr" ] && [ "${2:-}" = "merge" ]; then
   [ -n "${FAKE_MERGE_FAIL:-}" ] && { echo "X Pull request o/r#7 is not mergeable: the base branch policy prohibits the merge." >&2; exit 1; }
+  [ -n "${FAKE_MERGE_QUEUED:-}" ] || : > "$FAKE/merged"
   exit 0
 fi
 [ "${1:-}" = "api" ] || { echo "unexpected gh call: $*" >&2; exit 2; }
@@ -231,7 +234,7 @@ esac
 [ -n "$kind" ] || case "$path" in
   repos/*/pulls/*/commits*)        kind=commits ;;
   repos/*/pulls/*/files*)          kind=files ;;
-  repos/*/pulls/*)                 kind=pr ;;
+  repos/*/pulls/*)                 kind=pr; [ -f "$FAKE/merged" ] && kind=prmerged ;;
   repos/*/commits/*/check-runs*)   kind=runs ;;
   repos/*/commits/*/check-suites*) kind=suites ;;
   repos/*/commits/*/status\?*)     kind=status ;;
@@ -1117,15 +1120,20 @@ run_ci "$D"; check ci/ci-change-after-an-error "$D" $? 0 result ci-change notice
 
 # --- approve and merge ------------------------------------------------------------
 # The PR as read again right before merging: $dir/pr.<n>.json, ready by default.
-PR_READY='{"state":"open","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":true,"mergeable_state":"clean","merge_commit_sha":"m1"}'
+# merge_commit_sha of an open PR is GitHub's test merge commit.
+PR_READY='{"state":"open","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":true,"mergeable_state":"clean","merged":false,"merge_commit_sha":"t1"}'
+# The PR as read back after the merge: merged as m1.
+PR_MERGED='{"state":"closed","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":null,"mergeable_state":"unknown","merged":true,"merge_commit_sha":"m1"}'
 APPROVAL="api --method POST repos/o/r/pulls/7/reviews -f event=APPROVE -f commit_id=abc --silent"
 # The event tested the PR on base0, the head of main (git/ref) - unchanged by
-# default. After the merge, its commit m1 sits on base0. The head commit abc
+# default. After the merge the PR reads as merged, and its commit m1 sits on
+# base0. The head commit abc
 # was made at 10:00; the PR has no comments by default.
 merge_dir() {
   local dir="$WORK/merge-$1"
   mkdir -p "$dir"; : > "$dir/output"; : > "$dir/calls"; : > "$dir/tokens"; echo 0 > "$dir/clock"
   echo "$PR_READY" > "$dir/pr.1.json"
+  echo "$PR_MERGED" > "$dir/prmerged.1.json"
   echo '{"ref":"refs/heads/main","object":{"sha":"base0","type":"commit"}}' > "$dir/baseref.1.json"
   echo '{"sha":"m1","parents":[{"sha":"base0"}]}' > "$dir/gitcommit.1.json"
   echo '{"sha":"abc","commit":{"committer":{"date":"2026-01-01T10:00:00Z"}}}' > "$dir/commit.1.json"
@@ -1321,6 +1329,27 @@ merge_run "$D" true squash
 check merge/landed-on-another-base "$D" $? 0 merged true warning "Merged onto an untested base"
 output_is merge/landed-on-another-base "$D" detail "landed on base9, not on the tested base0"
 
+# The PR is read back after the merge call. gh also succeeds when it only adds
+# the PR to a merge queue: the PR is still open, and its merge_commit_sha t1 is
+# GitHub's test merge - not merged by this run, nothing to release.
+D=$(merge_dir merge-queued); merge_run "$D" true squash FAKE_MERGE_QUEUED=1
+check merge/queued-is-not-merged "$D" $? 0 merged false warning "the PR is still not merged"
+reason_is merge/queued-is-not-merged "$D" not-merged
+output_is merge/queued-is-not-merged "$D" merge-commit ""
+if [ "$(calls_to "$D" 'merged | tostring')" -eq 3 ]; then pass "merge/queued-is-not-merged: read back 3 times"; else fail "merge/queued-is-not-merged: read back $(calls_to "$D" 'merged | tostring') times"; fi
+# A read that lags behind the merge is retried.
+D=$(merge_dir merge-read-lags); echo "$PR_READY" > "$D/prmerged.1.json"; echo "$PR_MERGED" > "$D/prmerged.2.json"
+merge_run "$D" true squash
+check merge/read-back-lags "$D" $? 0 merged true -
+output_is merge/read-back-lags "$D" merge-commit m1
+# Not readable at all: gh reported the merge, so it counts - but the merge
+# commit is unknown, and that is said.
+D=$(merge_dir merge-read-fails); raw "$D" prmerged.1.json HTTP500
+merge_run "$D" true squash
+check merge/read-back-fails "$D" $? 0 merged true warning "could not be read back"
+output_is merge/read-back-fails "$D" merge-commit ""
+not_called merge/read-back-fails "$D" "git/commits/"
+
 # --- release ------------------------------------------------------------------------
 # The merge commit m1 is on main; release-workflow is docker-release.yml. The
 # dispatch answers with run 555 (return_run_details) by default; the run is
@@ -1477,13 +1506,17 @@ called flow/merged-then-released "$D" "$DISPATCH"
 output_is flow/merged-then-released "$D" result success
 ORDER=$(awk '/^pr merge/ { a = NR } /dispatches/ { b = NR } END { print (a && a < b) ? "ok" : a " " b }' "$D/calls")
 if [ "$ORDER" = ok ]; then pass "flow/merged-then-released: dispatched after the merge"; else fail "flow/merged-then-released: order $ORDER"; fi
-for c in base-moved conflict merge-rejected; do
+for c in base-moved conflict merge-rejected merge-queued; do
   D=$(flow_dir "$c")
   case "$c" in
     base-moved) moved_to "$D" base1 ;;
     conflict) echo '{"state":"open","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":false,"mergeable_state":"dirty"}' > "$D/pr.1.json" ;;
   esac
-  if [ "$c" = merge-rejected ]; then flow_run "$D" FAKE_MERGE_FAIL=1; else flow_run "$D"; fi
+  case "$c" in
+    merge-rejected) flow_run "$D" FAKE_MERGE_FAIL=1 ;;
+    merge-queued) flow_run "$D" FAKE_MERGE_QUEUED=1 ;;
+    *) flow_run "$D" ;;
+  esac
   not_called "flow/$c-no-release" "$D" "/dispatches"
 done
 
@@ -1530,6 +1563,11 @@ S="$WORK/summary-left-open"
 shows summary/left-open "$S" "🔄 Left open: CI passed, but not on the current base - main moved from base0 (tested by CI) to base1; rebase requested."
 shows summary/left-open "$S" "No release started: nothing was merged."
 lacks summary/left-open "$S" "**Release dispatched**"
+summary_run queued MERGE_REASON=not-merged MERGED=false RELEASE_WORKFLOW="$REL_WF"
+S="$WORK/summary-queued"
+shows summary/queued "$S" "⚠️ Not merged by this run: the merge call succeeded, but the PR is still open"
+shows summary/queued "$S" "No release started: nothing was merged."
+lacks summary/queued "$S" "**Release dispatched**"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"
