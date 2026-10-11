@@ -110,7 +110,15 @@ static_has() {
 static_lacks() {
   if grep -qE -- "$2" "$WORKFLOW_FILE"; then fail "$1: '$2' found"; else pass "$1"; fi
 }
-static_has   "wait is gated by the guard"        "if: steps.guard.outputs.ok == 'true'"
+# static_line <name> <line>: the workflow has exactly this line - a gate that
+# is extended (`|| always()`, another condition) no longer matches.
+static_line() {
+  if grep -qxF -- "$2" "$WORKFLOW_FILE"; then pass "$1"; else fail "$1: line '$2' not found"; fi
+}
+# The step gates. The behavioural tests below run each step on its own, and
+# the flow/ tests chain merge and release the way these gates do - in the
+# harness. Only these exact lines hold the gates themselves.
+static_line  "wait is gated by the guard"        "        if: steps.guard.outputs.ok == 'true'"
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "guard reads required-workflows"    'REQUIRED_WORKFLOWS: ${{ inputs.required-workflows }}'
 # shellcheck disable=SC2016 # literal workflow text
@@ -122,7 +130,7 @@ static_has   "summary shows a 0.x update counted as major" 'TYPE_NOTE: ${{ steps
 static_has   "summary explains unreadable versions" 'versions-unreadable) DECISION='
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "wait gets the checked list"        'REQUIRED: ${{ steps.guard.outputs.required }}'
-static_has   "merge is gated by green CI"        "if: steps.ci.outputs.result == 'green'"
+static_line  "merge is gated by green CI"        "        if: steps.ci.outputs.result == 'green'"
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "merge is pinned to the head"       '--match-head-commit "$HEAD_SHA"'
 # shellcheck disable=SC2016 # literal workflow text
@@ -154,7 +162,7 @@ TIMEOUT=$(sed -n 's/^    timeout-minutes: \([0-9]*\)$/\1/p' "$WORKFLOW_FILE")
 if [ -n "$TIMEOUT" ] && [ "$TIMEOUT" -ge 247 ]; then pass "job timeout covers both waits ($TIMEOUT min)"; else fail "job timeout '$TIMEOUT' < 247"; fi
 if grep -qF "release-wait-minutes must be from 0 to 180" "$WORKFLOW_FILE"; then pass "release wait capped where the timeout expects it"; else fail "release-wait-minutes cap changed - check the job timeout"; fi
 # A release is dispatched only after this run merged the PR.
-static_has   "release only after a merge"        "if: steps.merge.outputs.merged == 'true' && steps.guard.outputs.release-workflow != ''"
+static_line  "release only after a merge"        "        if: steps.merge.outputs.merged == 'true' && steps.guard.outputs.release-workflow != ''"
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "release gets the merge commit"     'MERGE_COMMIT: ${{ steps.merge.outputs.merge-commit }}'
 # shellcheck disable=SC2016 # literal workflow text
@@ -169,7 +177,7 @@ static_has   "self filter matches the job name"  'SELF_JOB_NAME: Docker Maintena
 static_has   "job name is what the filter uses"  '    name: Docker Maintenance'
 static_has   "module filter matches this file"   "contains(\"/.github/workflows/$(basename "$WORKFLOW_FILE")@\")"
 # Only Dependabot's PRs, and only events Dependabot raised.
-static_has   "job runs for Dependabot's PRs and events only" "if: github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'"
+static_line  "job runs for Dependabot's PRs and events only" "    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'"
 # fetch-metadata's own author and signature checks stay on.
 static_lacks "fetch-metadata verification is not skipped" 'skip-verification|skip-commit-verification'
 # The job runs with a write token: nothing from the PR is checked out or run.
@@ -1330,6 +1338,15 @@ merge_run "$D" true squash REBASE_TOKEN=rebase-token
 check merge/base-moved-outsider-request-ignored "$D" $? 0 merged false notice "Asked Dependabot to rebase the PR"
 called merge/base-moved-outsider-request-ignored "$D" "api --method POST repos/o/r/issues/7/comments -f body=@dependabot rebase --silent"
 
+# The head commit's date not readable: nothing tells which requests are
+# older, so the rebase is requested - even with a request on the PR.
+D=$(merge_dir base-moved-commit-unreadable); moved_to "$D" base1; raw "$D" commit.1.json HTTP500
+echo "[$(comment 2026-01-01T10:05:00Z karl "@dependabot rebase")]" > "$D/comments.1.json"
+merge_run "$D" true squash REBASE_TOKEN=rebase-token
+check merge/base-moved-commit-date-unreadable "$D" $? 0 merged false notice "Asked Dependabot to rebase the PR"
+logged merge/base-moved-commit-date-unreadable "$D" "Earlier rebase requests could not be read"
+not_called merge/base-moved-commit-date-unreadable "$D" "issues/7/comments?per_page"
+
 # Earlier requests not readable: requested anyway (a second command is harmless).
 D=$(merge_dir base-moved-comments-unreadable); moved_to "$D" base1; raw "$D" comments.1.json HTTP500
 merge_run "$D" true squash REBASE_TOKEN=rebase-token
@@ -1538,6 +1555,11 @@ D=$(release_dir run-read-retried); echo HTTP500 > "$D/release.1.json"; relrun co
 release_run "$D"; check release/run-read-error-retried "$D" $? 0 result success - "API error 1/5"
 D=$(release_dir run-unreadable); echo HTTP500 > "$D/release.1.json"; rm "$D/release.2.json"
 release_run "$D"; check release/run-unreadable "$D" $? 1 result unreadable error "could not be read"
+# Only errors in a row count: a read in between starts the count anew, so
+# errors spread over a long release do not fail the job.
+D=$(release_dir run-read-errors-spread); echo HTTP500 > "$D/release.1.json"
+for n in 3 4 5 6; do echo HTTP500 > "$D/release.$n.json"; done; relrun completed success > "$D/release.7.json"
+release_run "$D"; check release/run-read-errors-not-in-a-row "$D" $? 0 result success - "API error 4/5"
 
 # --- merge -> release ---------------------------------------------------------------
 # The release step runs only when the merge step merged (if: on the step, held
@@ -1611,6 +1633,16 @@ summary_run dispatch-failed MERGE_REASON=merged MERGED=true MERGE_COMMIT=m1 RELE
   RELEASE_RESULT=dispatch-failed RELEASE_DETAIL="the job token may not start workflows" JOB_STATUS=failure
 S="$WORK/summary-dispatch-failed"
 shows summary/dispatch-failed "$S" "| **Release dispatched** | ❌ Not dispatched: the job token may not start workflows |"
+# Every release result has its row.
+for r in "timeout|still in_progress after 60 min|❌ Not finished: still in_progress after 60 min (release-wait-minutes)" \
+         "not-found|run not found|❓ Unknown: run not found" \
+         "unreadable|HTTP 500|❌ Not confirmed: the run could not be read (HTTP 500)" \
+         "not-waited|not waited for|⏭️ Not waited for (release-wait-minutes: 0)"; do
+  IFS='|' read -r result detail row <<< "$r"
+  summary_run "release-$result" MERGE_REASON=merged MERGED=true MERGE_COMMIT=m1 RELEASE_WORKFLOW="$REL_WF" \
+    RELEASE_RESULT="$result" RELEASE_DETAIL="$detail" RELEASE_RUN_URL="$RUN_555"
+  shows "summary/release-$result" "$WORK/summary-release-$result" "| **Release result** | $row |"
+done
 summary_run no-release-workflow MERGE_REASON=merged MERGED=true MERGE_COMMIT=m1
 S="$WORK/summary-no-release-workflow"
 shows summary/no-release-workflow "$S" "No release started: release-workflow is not set"
