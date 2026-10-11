@@ -1646,6 +1646,8 @@ done
 summary_run no-release-workflow MERGE_REASON=merged MERGED=true MERGE_COMMIT=m1
 S="$WORK/summary-no-release-workflow"
 shows summary/no-release-workflow "$S" "No release started: release-workflow is not set"
+# Not "released with the next push": a chore(deps) update is not released.
+shows summary/no-release-workflow "$S" "whether that releases this update depends on its commit type"
 lacks summary/no-release-workflow "$S" "**Release dispatched**"
 summary_run left-open MERGE_REASON=base-moved MERGED=false RELEASE_WORKFLOW="$REL_WF" \
   MERGE_DETAIL="main moved from base0 (tested by CI) to base1; rebase requested"

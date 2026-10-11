@@ -1165,7 +1165,7 @@ jobs:
               *)               RESULT="❌ Not completed (job status: $JOB_STATUS)" ;;
             esac
           elif [ "$MERGED" = true ]; then
-            RELEASE_NOTE="ℹ️ No release started: release-workflow is not set. The merge was made with GITHUB_TOKEN, which starts no workflow - the update is released with the next push to \`$BASE_REF\` or a manual run."
+            RELEASE_NOTE="ℹ️ No release started: release-workflow is not set. The merge was made with GITHUB_TOKEN, which starts no workflow. A release workflow on push runs with the next push to \`$BASE_REF\`, or by hand; whether that releases this update depends on its commit type (\`chore(deps)\` releases nothing by default)."
           elif [ "$CI_RESULT" = merged-before ] || [ "$MERGE_REASON" = merged-before ]; then
             RELEASE_NOTE="${RELEASE_WORKFLOW:+No release started by this run: if the merged update was not released, run \`$RELEASE_WORKFLOW\` by hand.}"
           elif [ -n "$RELEASE_WORKFLOW" ]; then
