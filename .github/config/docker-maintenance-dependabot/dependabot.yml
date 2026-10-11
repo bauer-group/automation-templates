@@ -60,8 +60,26 @@ updates:
     #     patterns:
     #       - "*"
 
-  # Docker Compose updates (optional)
-  # - package-ecosystem: "docker"
-  #   directory: "/docker/"
+  # Docker Compose updates (optional) - image tags in docker-compose.yml,
+  # compose.yaml and their variants (docker-compose.override.yml,
+  # compose.prod.yaml). The "docker" ecosystem above does not read them.
+  # `directory` is the folder that holds the Compose files, relative to the
+  # repository root; subfolders are not searched. For several folders use
+  # `directories:` instead (globs allowed).
+  # These PRs change only Compose files: the maintenance workflow's
+  # pull_request `paths:` must match them, or they are never merged
+  # automatically - see docs/workflows/docker-maintenance.md, trigger scope.
+  # - package-ecosystem: "docker-compose"
+  #   directory: "/"
   #   schedule:
   #     interval: "weekly"
+  #     day: "sunday"
+  #     time: "06:30"
+  #     timezone: "Etc/UTC"
+  #   labels:
+  #     - "dependencies"
+  #     - "docker"
+  #     - "automated"
+  #   commit-message:
+  #     prefix: "fix(docker)"
+  #   open-pull-requests-limit: 5
