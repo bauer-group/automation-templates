@@ -556,7 +556,7 @@ the job red.
 | 17d | Tested base      | The head of the base branch, or the merge commit CI tested (`github.sha`), could not be read                                              | ⚠️ Left open                          | warning    |
 | 18  | Merge            | The merge was rejected (e.g. the base branch requires a review)                                                                           | ⚠️ Left open                          | warning    |
 | 18a | Merge            | The merge call succeeded, but the PR reads back as not merged (a merge queue only queued it)                                              | ⚠️ Not merged by this run, no release | warning    |
-| 18b | After the merge  | A push landed on the base branch in the moment between the base check and the merge call                                                  | ✅ Merged - onto an untested base     | warning    |
+| 18b | After the merge  | A push landed on the base branch between the base check and the merge call - e.g. a sibling Dependabot PR merged in the same seconds      | ✅ Merged - onto an untested base     | warning    |
 | 18c | After the merge  | The PR could not be read back after the merge call: `gh` reported the merge, the merge commit is unknown                                  | ✅ Merged - merge commit unknown      | warning    |
 | -   | -                | None of the above: every required workflow passed, no check failed, CI complete and quiet, base unchanged                                 | ✅ Merged (`--match-head-commit`)     | -          |
 
@@ -581,13 +581,13 @@ immediately before the merge call - and merges only if it is still that
 commit. Otherwise the PR stays open (job green, reason `base-moved`) and
 Dependabot is asked to rebase it:
 
-| The base branch moved because ...                                      | What happens                                                                                                                                                                                                                                                               |
-|------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| an unrelated push landed on `main` while CI ran                        | Not merged. `@dependabot rebase` - the rebased PR is a new head commit, CI runs on it, and its run of this workflow decides again                                                                                                                                          |
-| another Dependabot PR was merged first (two PRs opened together)       | The first one is merged; the second is not - it was tested without the first. It is rebased onto the first one's merge commit and tested again                                                                                                                             |
-| a release run pushed its `chore(release)` commit after the first merge | Same: the next PR is rebased and tested again - each Dependabot update lands on `main` exactly as CI tested it                                                                                                                                                             |
-| someone changed the PR's base branch                                   | Not merged; the rebase onto the new base branch is tested again                                                                                                                                                                                                            |
-| a push lands in the second between the check and the merge call        | Merged - GitHub's merge call pins the head, not the base. A warning *Merged onto an untested base* names the base; the release run builds and tests that merge before it publishes - if its release is [pinned to the commit it tested](#what-no-broken-release-relies-on) |
+| The base branch moved because ...                                                                                                                       | What happens                                                                                                                                                                                                                                                               |
+|---------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| an unrelated push landed on `main` while CI ran                                                                                                         | Not merged. `@dependabot rebase` - the rebased PR is a new head commit, CI runs on it, and its run of this workflow decides again                                                                                                                                          |
+| another Dependabot PR was merged first (two PRs opened together)                                                                                        | The first one is merged; the second is not - it was tested without the first. It is rebased onto the first one's merge commit and tested again - unless both runs check the base in the same seconds (last row)                                                            |
+| a release run pushed its `chore(release)` commit after the first merge                                                                                  | Same: the next PR is rebased and tested again, so it lands on `main` as CI tested it                                                                                                                                                                                       |
+| someone changed the PR's base branch                                                                                                                    | Not merged; the rebase onto the new base branch is tested again                                                                                                                                                                                                            |
+| a push lands in the seconds between the check and the merge call - an unrelated push, or a sibling Dependabot PR merged by its own run at the same time | Merged - GitHub's merge call pins the head, not the base. A warning *Merged onto an untested base* names the base; the release run builds and tests that merge before it publishes - if its release is [pinned to the commit it tested](#what-no-broken-release-relies-on) |
 
 This relies on the required workflows building that merge commit: see
 *Built from the merge ref* under
@@ -957,27 +957,39 @@ workflow.
   with `release-workflow`, enough for the longest CI and release waits, and
   75 minutes without it. Lower `release-wait-minutes`, or set `0` to only
   dispatch, if the release workflow is reliably watched elsewhere.
-- **One merge at a time.** Every Dependabot PR is merged only on the base CI
-  tested it on, so of several PRs that passed CI together one is merged and
-  each of the others is rebased and tested again (see
+- **One merge at a time - as a rule.** Every Dependabot PR is merged only on
+  the base CI tested it on, so of several PRs that passed CI together one is
+  normally merged and each of the others is rebased and tested again (see
   [Only the combination CI tested](#only-the-combination-ci-tested)). Each
   round costs one CI run per PR, and without `DEPENDABOT_REBASE_TOKEN` it
-  waits for someone to comment `@dependabot rebase`.
-- **The last second before the merge.** The base check and the merge are two
+  waits for someone to comment `@dependabot rebase`. The exception is the
+  next point: two runs that check the base in the same few seconds both see
+  it unmoved.
+- **The last seconds before the merge.** The base check and the merge are two
   API calls, and GitHub's merge call pins the head commit, not the base. A
   push in between is merged onto, and reported as *Merged onto an untested
-  base* (decision table row 18b). A release pipeline that tests `main` before
-  it publishes (such as one gated by the backup round trip) and releases the
-  very commit it tested (`ref: ${{ github.sha }}`, see
+  base* (decision table row 18b). The likeliest such push is not a person's
+  but a sibling PR's merge: two Dependabot PRs whose CI passed in the same
+  poll round - e.g. two directories on the same Dependabot schedule, tested
+  by the same workflow - both pass the base check, and if their merge calls
+  fall within the same few seconds, the second lands on the first one
+  unrebased. Rare, but not impossible. A release pipeline that tests `main`
+  before it publishes (such as one gated by the backup round trip) and
+  releases the very commit it tested (`ref: ${{ github.sha }}`, see
   [what "no broken release" relies on](#what-no-broken-release-relies-on)) is
-  what catches such a combination. The gap could be closed: instead of the
-  merge call, fast-forward the base branch to the very commit CI tested
+  what catches such a combination: the second merge's release run builds and
+  tests both updates together before anything is published. The gap could be
+  closed: instead of the merge call, fast-forward the base branch to the very commit CI tested
   (`refs/pull/<n>/merge`, the event's `github.sha`) with
   `PATCH /repos/{owner}/{repo}/git/refs/heads/<base>` and `force: false`,
   which GitHub refuses if the base moved; GitHub then marks the PR merged, as
-  its head is part of the base branch. That fits `merge-method: merge` as
-  is (a squash needs a commit with that tree on the tested base first) and is
-  not implemented here.
+  its head is part of the base branch. That fits `merge-method: merge` only:
+  a squash or rebase commit is not the PR's head commit, so GitHub would not
+  mark the PR merged, and closing a Dependabot PR unmerged makes Dependabot
+  ignore that version. For the sibling case, a repository-wide merge lock
+  (the merge in a job of its own, in one concurrency group per repository
+  with `queue: max`) would serialise the base checks. Which of the two, if
+  any, is an owner decision; neither is implemented here.
 - **Required workflows on other events.** The tested base is the one of the
   event that started this run; a required workflow that does not run on that
   event (`opened`, `synchronize`, `reopened` - the `pull_request` default)
@@ -1389,7 +1401,7 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 - **Pinned merge**: the Dependabot merge and its approval name the head commit whose CI was checked
 - **Release only after a merge, failures loud**: `release-workflow` is dispatched only after this run merged the PR, needs nothing but `actions: write` on the job token, and a release run that does not succeed fails the job. What gets published is gated by the release workflow's own tests, and is what they ran on only if its release is pinned to the commit the run tested (`ref: ${{ github.sha }}`) - see [what "no broken release" relies on](#what-no-broken-release-relies-on), also for the window a pipeline that tags before it pushes leaves open
 - **Released without a person in between**: with `release-workflow`, a merged dependency update is built and released by the dispatched run - with the release workflow's write permissions and the repository's secrets (registry credentials, signing keys) - without anyone looking at it first. Without it, the release waited for the next human push. That is a supply-chain trade-off to accept knowingly: an update whose harmful change passes the required CI reaches the registry automatically. Keep `merge-update-types` narrow (the default `patch`), the release gated on its tests, and `release-workflow` unset where a person should approve each release
-- **Only the tested combination**: a Dependabot PR is merged only while the base branch is still at the commit its CI was merged onto; otherwise it is rebased and tested again. The optional `DEPENDABOT_REBASE_TOKEN` is used for that one `@dependabot rebase` comment and nothing else; keep it on a machine user, limited to the selected repositories and short-lived (see [the rebase token](#the-rebase-token))
+- **Only the tested combination**: a Dependabot PR is merged only while the base branch is still at the commit its CI was merged onto; otherwise it is rebased and tested again. A push in the seconds between that check and the merge call - most likely a sibling Dependabot PR merged at the same time - is merged onto and reported with the warning *Merged onto an untested base*; a release pinned to the commit it tested builds and tests that combination before publishing it. The optional `DEPENDABOT_REBASE_TOKEN` is used for that one `@dependabot rebase` comment and nothing else; keep it on a machine user, limited to the selected repositories and short-lived (see [the rebase token](#the-rebase-token))
 - **Dependabot only**: the Dependabot job acts only on Dependabot's PRs, on events Dependabot raised, with verified Dependabot commits only; it never checks out PR code
 - **Auto-approve optional**: Can be disabled for manual review
 - **Audit trail**: All updates tracked in PRs and git history

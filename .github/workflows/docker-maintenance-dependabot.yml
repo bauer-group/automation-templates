@@ -37,7 +37,10 @@
 #    asked to rebase the PR (`@dependabot rebase`, posted with the optional
 #    Dependabot secret DEPENDABOT_REBASE_TOKEN), CI runs on the new
 #    combination and the rebased PR gets its own decision. Only the exact
-#    combination CI tested is merged.
+#    combination CI tested is merged - but for a push in the seconds between
+#    the base check and the merge call (e.g. a sibling Dependabot PR merged
+#    by its own run at the same time), which is merged onto and reported
+#    with a warning.
 # 6. Release (optional, `release-workflow`): the merge is made with the
 #    GITHUB_TOKEN, and a push made with it starts no workflow. After a merge
 #    - and only then - the release workflow is dispatched on the base branch
