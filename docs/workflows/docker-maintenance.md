@@ -682,12 +682,19 @@ With `release-workflow` set, the workflow therefore starts the release itself:
    superseded, on a moved base, only added to a merge queue, or whose merge
    failed, and never for a CI change (those are never merged).
 2. **Dispatch** of `release-workflow` with `workflow_dispatch` on the PR's base
-   branch (`main`), with the job token. Server errors and rate limits are
-   retried twice.
+   branch (`main`), with the job token - three attempts at most, and never a
+   second release run:
+   - a **rate limit** refused the request, so no run exists: retried;
+   - after a **server or network error** the run may exist all the same
+     (GitHub created it, the answer was lost): the workflow first looks for
+     it, uses it if it is there, and dispatches again only if it is not;
+   - an **HTTP 422** is tried once more without `return_run_details` (a
+     GitHub that does not know the parameter); a second 422 means the
+     workflow cannot be dispatched;
+   - **HTTP 403 and 404** are final.
 3. **Find the run.** GitHub answers the dispatch with the run it created
    (`return_run_details`). A GitHub that answers without it (HTTP 204) or does
-   not know the parameter (an older GitHub Enterprise Server - the dispatch is
-   repeated without it) gets the run looked up for up to 2 minutes: a
+   not know the parameter gets the run looked up for up to 2 minutes: a
    `workflow_dispatch` run of that workflow on the base branch, created since
    the dispatch, whose commit is the merge commit. Its URL goes into the job
    summary and the `release-run-url` output.
@@ -717,7 +724,7 @@ The job summary shows the chain, for example:
 | Dispatch refused: no `actions: write` (HTTP 403)                                         | ❌ fails | error *Release not started*                                              |
 | Dispatch refused: no `workflow_dispatch` trigger, or the workflow is disabled (HTTP 422) | ❌ fails | error *Release not started*                                              |
 | Dispatch refused: the file does not exist on the base branch (HTTP 404)                  | ❌ fails | error *Release not started*                                              |
-| Dispatch failed three times (server error, rate limit)                                   | ❌ fails | error *Release not started*                                              |
+| Dispatch failed three times (server error, rate limit), and no run of it was found       | ❌ fails | error *Release not started*                                              |
 | The run was not found within 2 min                                                       | ❌ fails | error *Release not confirmed* (a warning with `release-wait-minutes: 0`) |
 | The run concluded anything but `success`                                                 | ❌ fails | error *Release failed*                                                   |
 | The run had not completed after `release-wait-minutes`                                   | ❌ fails | error *Release not finished*                                             |

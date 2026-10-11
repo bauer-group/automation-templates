@@ -905,14 +905,15 @@ jobs:
       # repository_dispatch. So the release workflow is dispatched on the
       # base branch, only after this run merged the PR and read it back as
       # merged (never for a PR left open, closed, superseded or only queued,
-      # never for a CI change - those are never merged). The dispatch answers with the run it created
-      # (return_run_details); a GitHub that answers 204 without it gets the
-      # run looked up: workflow_dispatch, that workflow, the base branch,
-      # created since the dispatch, on the merge commit. Then the job waits
-      # for the run: anything but success fails the job - a broken release
-      # is loud, never silent. Whether the release publishes anything after
-      # a failed test is up to the release workflow: it has to gate its
-      # publishing jobs on its tests (needs:).
+      # never for a CI change - those are never merged). The dispatch
+      # answers with the run it created (return_run_details); a GitHub that
+      # answers 204 without it gets the run looked up: workflow_dispatch,
+      # that workflow, the base branch, created since the dispatch, on the
+      # merge commit. A failed dispatch is retried only where that cannot
+      # start a second release run. Then the job waits for the run: anything
+      # but success fails the job - a broken release is loud, never silent.
+      # What a failing release has published by then is up to the release
+      # workflow: it has to gate its publishing jobs on its tests (needs:).
       # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
       - name: 🚀 Release
         id: release
@@ -929,6 +930,7 @@ jobs:
           set -uo pipefail
           WORK=$(mktemp -d)
           WORKFLOW="${RELEASE_WORKFLOW##*/}"
+          BRANCH=$(jq -rn --arg b "$BASE_REF" '$b | @uri')
           RUN_ID=""
           RUN_URL=""
 
@@ -944,6 +946,26 @@ jobs:
           # A run created up to 2 min before the dispatch still counts: the
           # runner's clock and GitHub's may differ a little.
           SINCE=$(jq -rn "$(( $(date +%s) - 120 )) | todate")
+
+          # One look for the run of this dispatch: a workflow_dispatch run of
+          # the workflow on the base branch, created since the dispatch, on
+          # the merge commit. Without the merge commit nothing tells it apart.
+          find_run() {
+            [ -n "$MERGE_COMMIT" ] || return 1
+            gh api "repos/$REPO/actions/workflows/$WORKFLOW/runs?event=workflow_dispatch&branch=$BRANCH&created=%3E%3D$SINCE&per_page=20" \
+              --jq '.workflow_runs[] | [.id, .head_sha, .created_at, .html_url] | @tsv' > "$WORK/runs" 2> "$WORK/lookup-err" || return 1
+            FOUND=$(awk -F'\t' -v sha="$MERGE_COMMIT" -v since="$SINCE" '$2 == sha && $3 >= since { print $1 "\t" $4; exit }' "$WORK/runs")
+            [ -n "$FOUND" ] || return 1
+            RUN_ID="${FOUND%%$'\t'*}"
+            RUN_URL="${FOUND#*$'\t'}"
+          }
+
+          # Three attempts in all. Retried: a rate limit (the request was
+          # refused, so no run exists); an HTTP 422 once without
+          # return_run_details (a GitHub that does not know the parameter -
+          # a 422 for another reason comes back); a server or network error
+          # only after a look for its run, which may exist although the
+          # answer failed - a retry must not start a second release.
           echo "Dispatching $RELEASE_WORKFLOW on $BASE_REF (merge commit: ${MERGE_COMMIT:-unknown})"
           DETAILS=(-F return_run_details=true)
           for try in 1 2 3; do
@@ -952,48 +974,57 @@ jobs:
               break
             fi
             ERR=$(head -n 1 "$WORK/err")
+            WHY="" RETRY=later
             case "$(cat "$WORK/err")" in
-              # A GitHub that does not know the parameter: without it (the run
-              # is looked up then).
-              *return_run_details*) if [ "${#DETAILS[@]}" -gt 0 ]; then DETAILS=(); WHY=""; else WHY="$ERR"; fi ;;
-              *"rate limit"*|*"HTTP 5"*) WHY="" ;;
+              *"rate limit"*|*"HTTP 429"*) ;;
               *"HTTP 403"*|*"Resource not accessible"*) WHY="the job token may not start workflows - grant 'actions: write' in the calling workflow's permissions" ;;
               *"HTTP 404"*) WHY="$RELEASE_WORKFLOW was not found on $BASE_REF" ;;
-              *"HTTP 422"*) WHY="$RELEASE_WORKFLOW cannot be dispatched - it needs an 'on: workflow_dispatch' trigger and must be enabled" ;;
-              *) WHY="" ;;
+              *"HTTP 422"*)
+                if [ "${#DETAILS[@]}" -gt 0 ]; then
+                  DETAILS=()
+                  RETRY=now
+                else
+                  WHY="$RELEASE_WORKFLOW cannot be dispatched - it needs an 'on: workflow_dispatch' trigger and must be enabled"
+                fi
+                ;;
+              *) RETRY=look ;;
             esac
-            if [ -z "$WHY" ] && [ "$try" -lt 3 ]; then
-              echo "Dispatch failed ($ERR) - retrying."
-              sleep 10
-              continue
+            if [ -z "$WHY" ]; then
+              if [ "$RETRY" != now ]; then sleep 10; fi
+              if [ "$RETRY" = look ] && find_run; then
+                echo "The dispatch answered with an error ($ERR), but its run exists - not dispatched again."
+                break
+              fi
+              if [ "$try" -lt 3 ]; then
+                echo "Dispatch failed ($ERR) - retrying."
+                continue
+              fi
             fi
             echo "::error title=Release not started::The update was merged, but $RELEASE_WORKFLOW could not be dispatched on $BASE_REF: ${WHY:-$ERR}. Run it by hand to release the update. ($ERR)"
             finish dispatch-failed "${WHY:-$ERR}" 1
           done
 
-          RUN_ID=$(jq -r '.workflow_run_id // empty' "$WORK/dispatch" 2> /dev/null || true)
-          RUN_URL=$(jq -r '.html_url // empty' "$WORK/dispatch" 2> /dev/null || true)
-          if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
-            RUN_ID=""
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(jq -r '.workflow_run_id // empty' "$WORK/dispatch" 2> /dev/null || true)
+            RUN_URL=$(jq -r '.html_url // empty' "$WORK/dispatch" 2> /dev/null || true)
+            if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
+              RUN_ID=""
+              RUN_URL=""
+            fi
           fi
           if [ -z "$RUN_ID" ] && [ -n "$MERGE_COMMIT" ]; then
             echo "The dispatch returned no run - looking it up."
-            BRANCH=$(jq -rn --arg b "$BASE_REF" '$b | @uri')
             for _ in $(seq 1 24); do
-              if gh api "repos/$REPO/actions/workflows/$WORKFLOW/runs?event=workflow_dispatch&branch=$BRANCH&created=%3E%3D$SINCE&per_page=20" \
-                   --jq '.workflow_runs[] | [.id, .head_sha, .created_at, .html_url] | @tsv' > "$WORK/runs" 2> "$WORK/err"; then
-                FOUND=$(awk -F'\t' -v sha="$MERGE_COMMIT" -v since="$SINCE" '$2 == sha && $3 >= since { print $1 "\t" $4; exit }' "$WORK/runs")
-                if [ -n "$FOUND" ]; then
-                  RUN_ID="${FOUND%%$'\t'*}"
-                  RUN_URL="${FOUND#*$'\t'}"
-                  break
-                fi
-              fi
+              if find_run; then break; fi
               sleep 5
             done
           fi
           if [ -z "$RUN_ID" ]; then
-            MSG="$RELEASE_WORKFLOW was dispatched on $BASE_REF, but its run for ${MERGE_COMMIT:-the merge commit} was not found within 2 min - check the workflow's runs"
+            if [ -n "$MERGE_COMMIT" ]; then
+              MSG="$RELEASE_WORKFLOW was dispatched on $BASE_REF, but its run for $MERGE_COMMIT was not found within 2 min - check the workflow's runs"
+            else
+              MSG="$RELEASE_WORKFLOW was dispatched on $BASE_REF, but GitHub did not return its run, and without the merge commit it cannot be looked up - check the workflow's runs"
+            fi
             if [ "$WAIT_MINUTES" -eq 0 ]; then
               echo "::warning title=Release run not found::$MSG."
               finish not-found "$MSG" 0

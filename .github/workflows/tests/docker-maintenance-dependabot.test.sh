@@ -1461,7 +1461,7 @@ waited release/run-not-found "$D" 120
 D=$(release_dir not-found-no-wait); echo NOCONTENT > "$D/dispatch.1.json"
 release_run "$D" WAIT_MINUTES=0; check release/run-not-found-without-wait "$D" $? 0 result not-found warning "was not found within 2 min"
 D=$(release_dir no-merge-commit); echo NOCONTENT > "$D/dispatch.1.json"
-release_run "$D" MERGE_COMMIT=; check release/no-merge-commit-no-lookup "$D" $? 1 result not-found error
+release_run "$D" MERGE_COMMIT=; check release/no-merge-commit-no-lookup "$D" $? 1 result not-found error "without the merge commit it cannot be looked up"
 not_called release/no-merge-commit-no-lookup "$D" "docker-release.yml/runs?"
 
 # The dispatch is refused: red, with the cause named - no wait.
@@ -1470,8 +1470,13 @@ release_run "$D"; check release/dispatch-403-names-the-permission "$D" $? 1 resu
 if [ "$(calls_to "$D" "/dispatches")" -eq 1 ]; then pass "release/dispatch-403: not retried"; else fail "release/dispatch-403: $(calls_to "$D" "/dispatches") dispatches"; fi
 not_called release/dispatch-403-names-the-permission "$D" "actions/runs/"
 output_is release/dispatch-403-names-the-permission "$D" detail "the job token may not start workflows - grant 'actions: write' in the calling workflow's permissions"
+# A 422 is tried once more without return_run_details (a GitHub that does not
+# know the parameter may say so in other words); a second 422 is the trigger.
 D=$(release_dir dispatch-422); echo HTTP422 > "$D/dispatch.1.json"
 release_run "$D"; check release/dispatch-422-names-the-trigger "$D" $? 1 result dispatch-failed error "it needs an 'on: workflow_dispatch' trigger"
+if [ "$(calls_to "$D" "/dispatches")" -eq 2 ]; then pass "release/dispatch-422: tried once without run details"; else fail "release/dispatch-422: $(calls_to "$D" "/dispatches") dispatches"; fi
+called release/dispatch-422-names-the-trigger "$D" "api --method POST repos/o/r/actions/workflows/docker-release.yml/dispatches -f ref=main"
+not_called release/dispatch-422-names-the-trigger "$D" "docker-release.yml/runs?"
 D=$(release_dir dispatch-404); echo HTTP404 > "$D/dispatch.1.json"
 release_run "$D"; check release/dispatch-404-names-the-file "$D" $? 1 result dispatch-failed error "$REL_WF was not found on main"
 
@@ -1483,13 +1488,32 @@ printf '{"id":556,"status":"completed","conclusion":"success","html_url":"https:
 release_run "$D"; check release/dispatch-without-run-details "$D" $? 0 result success - "looking it up"
 called release/dispatch-without-run-details "$D" "api --method POST repos/o/r/actions/workflows/docker-release.yml/dispatches -f ref=main"
 
-# A server error or a rate limit is retried; three in a row give up.
+# A server error or a rate limit is retried; three in a row give up. A rate
+# limit refused the request - retried at once. After a server error the run
+# may exist all the same: looked for first, so a retry never starts a second
+# release run.
 D=$(release_dir dispatch-retried); echo HTTP500 > "$D/dispatch.1.json"; echo RATELIMIT > "$D/dispatch.2.json"
 printf '{"workflow_run_id":555,"html_url":"%s"}\n' "$RUN_555" > "$D/dispatch.3.json"; relrun completed success > "$D/release.1.json"
 release_run "$D"; check release/dispatch-error-retried "$D" $? 0 result success - "retrying"
+if [ "$(calls_to "$D" "docker-release.yml/runs?")" -eq 1 ]; then pass "release/dispatch-retried: looked for the run after the server error only"; else fail "release/dispatch-retried: $(calls_to "$D" "docker-release.yml/runs?") lookups"; fi
 D=$(release_dir dispatch-fails); echo HTTP500 > "$D/dispatch.1.json"
 release_run "$D"; check release/dispatch-gives-up-after-three "$D" $? 1 result dispatch-failed error "Server Error"
 if [ "$(calls_to "$D" "/dispatches")" -eq 3 ]; then pass "release/dispatch-fails: 3 attempts"; else fail "release/dispatch-fails: $(calls_to "$D" "/dispatches") attempts"; fi
+if [ "$(calls_to "$D" "docker-release.yml/runs?")" -eq 3 ]; then pass "release/dispatch-fails: looked for a run after each error"; else fail "release/dispatch-fails: $(calls_to "$D" "docker-release.yml/runs?") lookups"; fi
+# The server error came after GitHub created the run: found, not dispatched
+# again, and that run is waited for.
+D=$(release_dir dispatch-error-run-created); echo HTTP500 > "$D/dispatch.1.json"
+echo "{\"workflow_runs\":[$(looked 556 m1 2025-10-09T08:53:25Z)]}" > "$D/lookup.1.json"
+printf '{"id":556,"status":"completed","conclusion":"success","html_url":"https://github.com/o/r/actions/runs/556"}\n' > "$D/release.1.json"
+release_run "$D"; check release/dispatch-error-but-run-created "$D" $? 0 result success - "its run exists - not dispatched again"
+if [ "$(calls_to "$D" "/dispatches")" -eq 1 ]; then pass "release/dispatch-error-but-run-created: one dispatch"; else fail "release/dispatch-error-but-run-created: $(calls_to "$D" "/dispatches") dispatches"; fi
+output_is release/dispatch-error-but-run-created "$D" run-id 556
+output_is release/dispatch-error-but-run-created "$D" run-url "https://github.com/o/r/actions/runs/556"
+# Without the merge commit the run cannot be told apart: no look, retried.
+D=$(release_dir dispatch-retried-no-commit); echo HTTP500 > "$D/dispatch.1.json"
+printf '{"workflow_run_id":555,"html_url":"%s"}\n' "$RUN_555" > "$D/dispatch.2.json"; relrun completed success > "$D/release.1.json"
+release_run "$D" MERGE_COMMIT=; check release/dispatch-retried-without-merge-commit "$D" $? 0 result success - "retrying"
+not_called release/dispatch-retried-without-merge-commit "$D" "docker-release.yml/runs?"
 
 # The run not readable: retried; five errors in a row fail the job.
 D=$(release_dir run-read-retried); echo HTTP500 > "$D/release.1.json"; relrun completed success > "$D/release.2.json"
