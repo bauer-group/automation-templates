@@ -489,9 +489,17 @@ jobs:
           fi
 
           poll() {
-            fetch "$WORK/pr" "repos/$REPO/pulls/$PR_NUMBER" --jq '[.state, .head.sha] | @tsv' || return 1
-            IFS=$'\t' read -r PR_STATE PR_HEAD < "$WORK/pr"
+            fetch "$WORK/pr" "repos/$REPO/pulls/$PR_NUMBER" --jq '[.state, .head.sha, (.merged | tostring)] | @tsv' || return 1
+            IFS=$'\t' read -r PR_STATE PR_HEAD PR_MERGED < "$WORK/pr"
             if [ "$PR_STATE" != "open" ]; then
+              # Merged before this run decided: by hand, or - on a re-run of
+              # this job - by its first attempt. Nothing to merge or release;
+              # said loudly, since a re-run of a job that failed on its
+              # release would otherwise turn green without a release.
+              if [ "$PR_MERGED" = true ]; then
+                echo "::warning title=Dependabot PR already merged::The PR was merged before this run decided (by hand, or by an earlier attempt of this job). This run neither merges nor releases it - re-running this job does not retry a release: re-run the release run, or start the release workflow by hand."
+                finish merged-before "PR merged before this run decided"
+              fi
               echo "::notice title=Dependabot PR not merged::The PR is $PR_STATE."
               finish closed "PR is $PR_STATE"
             fi
@@ -794,13 +802,17 @@ jobs:
           }
 
           for try in 1 2 3 4 5 6 7; do
-            if ! PR=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '[.state, .head.sha, .draft, (.mergeable | tostring), .mergeable_state, .base.ref] | @tsv' 2> "$ERR"); then
+            if ! PR=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '[.state, .head.sha, .draft, (.mergeable | tostring), .mergeable_state, .base.ref, (.merged | tostring)] | @tsv' 2> "$ERR"); then
               echo "::warning title=Dependabot PR left open::CI passed, but the PR could not be read again before merging: $(head -n 1 "$ERR")"
               done_with false api-error
             fi
-            IFS=$'\t' read -r STATE HEAD DRAFT MERGEABLE MERGE_STATE PR_BASE <<< "$PR"
+            IFS=$'\t' read -r STATE HEAD DRAFT MERGEABLE MERGE_STATE PR_BASE MERGED_BEFORE <<< "$PR"
             echo "PR: $STATE, head $HEAD, draft: $DRAFT, mergeable: $MERGEABLE ($MERGE_STATE), base: $PR_BASE"
             if [ "$STATE" != "open" ]; then
+              if [ "$MERGED_BEFORE" = true ]; then
+                echo "::warning title=Dependabot PR already merged::The PR was merged before this run could merge it (by hand, or by an earlier attempt of this job). This run neither merges nor releases it - re-running this job does not retry a release: re-run the release run, or start the release workflow by hand."
+                done_with false merged-before
+              fi
               echo "::notice title=Dependabot PR not merged::The PR is $STATE."
               done_with false closed
             fi
@@ -1063,6 +1075,9 @@ jobs:
           RELEASE_RUN_URL: ${{ steps.release.outputs.run-url }}
           JOB_STATUS: ${{ job.status }}
         run: |
+          # A re-run of a job that merged finds the PR merged: it neither
+          # merges nor releases, whatever its first attempt's release did.
+          MERGED_BEFORE_NOTE="⚠️ Already merged before this run decided (by hand, or by an earlier attempt of this job) - this run neither merged nor released it. Re-running this job does not retry a release: re-run the release run, or start the release workflow by hand."
           case "$GUARD_REASON" in
             no-required-workflows) DECISION="⏸️ Left open: automatic merging is off - set required-workflows to the PR CI workflows that build and test the update." ;;
             ci-change)           DECISION="⏸️ Left open: a GitHub Actions update changes the CI itself, so its CI cannot vouch for it." ;;
@@ -1080,6 +1095,7 @@ jobs:
                     draft)         DECISION="⏸️ Left open: CI passed, but the PR is a draft." ;;
                     not-mergeable) DECISION="⏸️ Left open: CI passed, but the PR cannot be merged (e.g. a merge conflict)." ;;
                     not-merged)    DECISION="⚠️ Not merged by this run: the merge call succeeded, but the PR is still open - the base branch probably requires a merge queue, which this workflow does not use." ;;
+                    merged-before) DECISION="$MERGED_BEFORE_NOTE" ;;
                     *)             DECISION="⚠️ Left open: CI passed, but the merge failed - see the annotation." ;;
                   esac ;;
                 failed)     DECISION="⏸️ Left open: CI did not pass ($CI_DETAIL)." ;;
@@ -1090,6 +1106,7 @@ jobs:
                 unreadable) DECISION="⏸️ Left open: the job token cannot read CI results (grant checks: read, statuses: read and actions: read)." ;;
                 api-error)  DECISION="⏸️ Left open: CI results could not be read ($CI_DETAIL)." ;;
                 closed)     DECISION="⏹️ Not merged: $CI_DETAIL." ;;
+                merged-before) DECISION="$MERGED_BEFORE_NOTE" ;;
                 superseded) DECISION="⏹️ Not merged by this run: the PR got a new head commit." ;;
                 *)          DECISION="❌ Not completed (job status: $JOB_STATUS)." ;;
               esac ;;
@@ -1114,6 +1131,8 @@ jobs:
             esac
           elif [ "$MERGED" = true ]; then
             RELEASE_NOTE="ℹ️ No release started: release-workflow is not set. The merge was made with GITHUB_TOKEN, which starts no workflow - the update is released with the next push to \`$BASE_REF\` or a manual run."
+          elif [ "$CI_RESULT" = merged-before ] || [ "$MERGE_REASON" = merged-before ]; then
+            RELEASE_NOTE="${RELEASE_WORKFLOW:+No release started by this run: if the merged update was not released, run \`$RELEASE_WORKFLOW\` by hand.}"
           elif [ -n "$RELEASE_WORKFLOW" ]; then
             RELEASE_NOTE="No release started: nothing was merged."
           fi

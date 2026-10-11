@@ -912,6 +912,14 @@ D=$(new_case pr-closed)
 echo '{"state":"closed","head":{"sha":"abc"}}' > "$D/pr.1.json"
 run_ci "$D"; check ci/pr-closed "$D" $? 0 result closed notice
 
+# Merged before this run decided - by hand, or by the first attempt of a job
+# that is re-run after its release failed: said with a warning, since a
+# re-run neither merges nor releases, and the job turns green.
+D=$(new_case pr-merged-before)
+echo '{"state":"closed","merged":true,"head":{"sha":"abc"}}' > "$D/pr.1.json"
+run_ci "$D"; check ci/pr-merged-before "$D" $? 0 result merged-before warning "re-running this job does not retry a release"
+decided_at ci/pr-merged-before "$D" 0
+
 # Dependabot rebased the PR during the wait: the run for the new commit decides.
 D=$(new_case superseded)
 fixture "$D" runs 1 "$OWN_RUN" "$(run 200 20 in_progress - build)"
@@ -1191,6 +1199,13 @@ D=$(merge_dir merge-rejected); merge_run "$D" true squash FAKE_MERGE_FAIL=1
 check merge/merge-rejected "$D" $? 0 merged false warning "base branch policy prohibits the merge"
 reason_is merge/merge-rejected "$D" merge-failed
 
+# Merged in the meantime (by hand): nothing to merge or release - a warning.
+D=$(merge_dir merged-before); echo '{"state":"closed","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":null,"mergeable_state":"unknown","merged":true}' > "$D/pr.1.json"
+merge_run "$D" true squash
+check merge/merged-before "$D" $? 0 merged false warning "re-running this job does not retry a release"
+reason_is merge/merged-before "$D" merged-before
+not_called merge/merged-before "$D" "pr merge"
+
 # Re-read right before merging: whatever changed since the CI decision wins.
 D=$(merge_dir closed); echo '{"state":"closed","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":null,"mergeable_state":"unknown"}' > "$D/pr.1.json"
 merge_run "$D" true squash
@@ -1336,7 +1351,7 @@ D=$(merge_dir merge-queued); merge_run "$D" true squash FAKE_MERGE_QUEUED=1
 check merge/queued-is-not-merged "$D" $? 0 merged false warning "the PR is still not merged"
 reason_is merge/queued-is-not-merged "$D" not-merged
 output_is merge/queued-is-not-merged "$D" merge-commit ""
-if [ "$(calls_to "$D" 'merged | tostring')" -eq 3 ]; then pass "merge/queued-is-not-merged: read back 3 times"; else fail "merge/queued-is-not-merged: read back $(calls_to "$D" 'merged | tostring') times"; fi
+if [ "$(calls_to "$D" 'merge_commit_sha //')" -eq 3 ]; then pass "merge/queued-is-not-merged: read back 3 times"; else fail "merge/queued-is-not-merged: read back $(calls_to "$D" 'merge_commit_sha //') times"; fi
 # A read that lags behind the merge is retried.
 D=$(merge_dir merge-read-lags); echo "$PR_READY" > "$D/prmerged.1.json"; echo "$PR_MERGED" > "$D/prmerged.2.json"
 merge_run "$D" true squash
@@ -1506,11 +1521,12 @@ called flow/merged-then-released "$D" "$DISPATCH"
 output_is flow/merged-then-released "$D" result success
 ORDER=$(awk '/^pr merge/ { a = NR } /dispatches/ { b = NR } END { print (a && a < b) ? "ok" : a " " b }' "$D/calls")
 if [ "$ORDER" = ok ]; then pass "flow/merged-then-released: dispatched after the merge"; else fail "flow/merged-then-released: order $ORDER"; fi
-for c in base-moved conflict merge-rejected merge-queued; do
+for c in base-moved conflict merge-rejected merge-queued merged-before; do
   D=$(flow_dir "$c")
   case "$c" in
     base-moved) moved_to "$D" base1 ;;
     conflict) echo '{"state":"open","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":false,"mergeable_state":"dirty"}' > "$D/pr.1.json" ;;
+    merged-before) echo "$PR_MERGED" > "$D/pr.1.json" ;;
   esac
   case "$c" in
     merge-rejected) flow_run "$D" FAKE_MERGE_FAIL=1 ;;
@@ -1568,6 +1584,19 @@ S="$WORK/summary-queued"
 shows summary/queued "$S" "⚠️ Not merged by this run: the merge call succeeded, but the PR is still open"
 shows summary/queued "$S" "No release started: nothing was merged."
 lacks summary/queued "$S" "**Release dispatched**"
+# A re-run of a job whose release failed: the PR is merged already. Said, not
+# reported as "not merged" - and no release by this run.
+summary_run rerun CI_RESULT=merged-before CI_DETAIL="PR merged before this run decided" RELEASE_WORKFLOW="$REL_WF" JOB_STATUS=success
+S="$WORK/summary-rerun"
+shows summary/rerun "$S" "⚠️ Already merged before this run decided (by hand, or by an earlier attempt of this job)"
+shows summary/rerun "$S" "Re-running this job does not retry a release"
+shows summary/rerun "$S" "No release started by this run: if the merged update was not released, run \`$REL_WF\` by hand."
+lacks summary/rerun "$S" "Not merged"
+lacks summary/rerun "$S" "**Release dispatched**"
+summary_run merged-by-hand MERGE_REASON=merged-before MERGED=false
+S="$WORK/summary-merged-by-hand"
+shows summary/merged-by-hand "$S" "⚠️ Already merged before this run decided"
+lacks summary/merged-by-hand "$S" "No release started"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"

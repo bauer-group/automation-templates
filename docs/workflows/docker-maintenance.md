@@ -450,7 +450,9 @@ only through environment variables.
 A maintainer may re-run the job, e.g. after CI was fixed by a re-run. A re-run
 keeps the actor and the privileges of the first run and replays its event, so
 it can only merge that event's head commit - and only while it is still the
-PR's head.
+PR's head. A re-run of a job that already merged the PR finds it merged: it
+warns *Dependabot PR already merged* and neither merges nor releases (see
+[Release After a Dependabot Merge Failed](#release-after-a-dependabot-merge-failed)).
 
 1. **No CI change** - a GitHub Actions update stays open at once. So does
    any PR with a changed file under `.github/` - also the old path of a file
@@ -528,6 +530,7 @@ the job red.
 | 6   | Update type      | Type unknown (digest, non-semver tag), or not in `merge-update-types` ([0.x updates](#updates-below-100) count stricter)                  | ⏸️ Left open for review               | notice     |
 | 6a  | Update type      | The versions of the updated dependencies cannot be read, so the [0.x rule](#updates-below-100) cannot be checked                          | ⏸️ Left open for review               | notice     |
 | 7   | PR state         | The PR was closed or got a new head commit meanwhile (checked on every poll)                                                              | ⏹️ Not merged by this run             | notice     |
+| 7a  | PR state         | The PR was merged before this run decided - by hand, or by the first attempt of a job that is re-run                                      | ⏹️ Not merged by this run, no release | warning    |
 | 8   | Commits          | Not every commit of the PR is a verified commit by Dependabot                                                                             | ⏸️ Left open                          | notice     |
 | 9   | Changed files    | A changed file under `.github/` (also the old path of a moved file), or the file list is not complete                                     | ⏸️ Left open - a CI change            | notice     |
 | 10  | Permissions      | CI results not readable (private repo without `checks`/`statuses`/`actions: read`)                                                        | ⏸️ Left open                          | notice     |
@@ -1179,6 +1182,16 @@ which step failed:
 
 In every case the update is on `main`; re-run the release run, or start the
 release workflow by hand, once the cause is fixed.
+
+**Re-running this job does not retry the release.** A re-run finds the PR
+merged already: it ends green with the warning *Dependabot PR already merged*,
+and its summary says so - it neither merges nor dispatches anything. The red
+attempt stays in the run's history; retry the release itself:
+
+```bash
+gh run rerun <release run id> --failed      # re-run the failed jobs of the release run
+gh workflow run docker-release.yml --ref main  # or start the release workflow anew
+```
 
 ### Renovate Auto-Merge Not Working
 
