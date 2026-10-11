@@ -193,10 +193,11 @@ jobs:
     # merge that event's head commit, and only while it is still the head.
     if: github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'
     # ci-wait-minutes is at most 60 and the last poll can come up to 3 min
-    # after it; the merge takes up to 1 min, finding the release run up to 2,
+    # after it, the merge takes up to 1 min, the rest covers setup: 75. With
+    # release-workflow, finding the release run takes up to 2 min more,
     # release-wait-minutes is at most 180 and its last poll up to 1 min
-    # after it; the rest covers setup. (An expression cannot add the inputs.)
-    timeout-minutes: 255
+    # after it: 255. (An expression cannot add the inputs.)
+    timeout-minutes: ${{ inputs.release-workflow != '' && 255 || 75 }}
     outputs:
       merged: ${{ steps.merge.outputs.merged }}
       release-run-url: ${{ steps.release.outputs.run-url }}

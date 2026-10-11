@@ -953,8 +953,9 @@ workflow.
   started by hand; with it, the release is dispatched after the merge - see
   [Releasing the merged update](#releasing-the-merged-update).
 - **The release is waited for in the same job.** The runner stays busy for up
-  to `release-wait-minutes` after the merge (the job timeout is 255 minutes,
-  enough for the longest CI and release waits). Lower it, or set `0` to only
+  to `release-wait-minutes` after the merge. The job timeout is 255 minutes
+  with `release-workflow`, enough for the longest CI and release waits, and
+  75 minutes without it. Lower `release-wait-minutes`, or set `0` to only
   dispatch, if the release workflow is reliably watched elsewhere.
 - **One merge at a time.** Every Dependabot PR is merged only on the base CI
   tested it on, so of several PRs that passed CI together one is merged and

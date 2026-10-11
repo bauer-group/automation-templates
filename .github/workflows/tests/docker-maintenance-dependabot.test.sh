@@ -159,10 +159,14 @@ static_lacks "no native auto-merge"              'enable-pull-request-automerge|
 # access a private repository's caller grants. So: none at all.
 static_lacks "no permissions of its own"         '^ *permissions:'
 # The job timeout has to cover the longest allowed CI wait (60 min) and its
-# last poll (3 min), the merge (1), finding the release run (2), the longest
-# allowed release wait (180) and its last poll (1).
-TIMEOUT=$(sed -n 's/^    timeout-minutes: \([0-9]*\)$/\1/p' "$WORKFLOW_FILE")
-if [ -n "$TIMEOUT" ] && [ "$TIMEOUT" -ge 247 ]; then pass "job timeout covers both waits ($TIMEOUT min)"; else fail "job timeout '$TIMEOUT' < 247"; fi
+# last poll (3 min) and the merge (1); with release-workflow also finding the
+# release run (2), the longest allowed release wait (180) and its last poll
+# (1). Callers without release-workflow keep the shorter one.
+# shellcheck disable=SC2016 # literal workflow text
+TIMEOUTS=$(sed -n 's/^    timeout-minutes: ${{ inputs.release-workflow != '"''"' \&\& \([0-9]*\) || \([0-9]*\) }}$/\1 \2/p' "$WORKFLOW_FILE")
+read -r TIMEOUT_RELEASE TIMEOUT_MERGE_ONLY <<< "$TIMEOUTS"
+if [ -n "$TIMEOUT_RELEASE" ] && [ "$TIMEOUT_RELEASE" -ge 247 ]; then pass "job timeout with a release covers both waits ($TIMEOUT_RELEASE min)"; else fail "job timeout with a release '$TIMEOUT_RELEASE' < 247"; fi
+if [ -n "$TIMEOUT_MERGE_ONLY" ] && [ "$TIMEOUT_MERGE_ONLY" -ge 64 ] && [ "$TIMEOUT_MERGE_ONLY" -lt "$TIMEOUT_RELEASE" ]; then pass "job timeout without a release covers the CI wait ($TIMEOUT_MERGE_ONLY min)"; else fail "job timeout without a release '$TIMEOUT_MERGE_ONLY'"; fi
 if grep -qF "release-wait-minutes must be from 0 to 180" "$WORKFLOW_FILE"; then pass "release wait capped where the timeout expects it"; else fail "release-wait-minutes cap changed - check the job timeout"; fi
 # A release is dispatched only after this run merged the PR.
 static_line  "release only after a merge"        "        if: steps.merge.outputs.merged == 'true' && steps.guard.outputs.release-workflow != ''"
