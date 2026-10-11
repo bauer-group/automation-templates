@@ -1666,7 +1666,7 @@ summary_run rerun CI_RESULT=merged-before CI_DETAIL="PR merged before this run d
 S="$WORK/summary-rerun"
 shows summary/rerun "$S" "⚠️ Already merged before this run decided (by hand, or by an earlier attempt of this job)"
 shows summary/rerun "$S" "Re-running this job does not retry a release"
-shows summary/rerun "$S" "No release started by this run: if the merged update was not released, run \`$REL_WF\` by hand."
+shows summary/rerun "$S" "No release started by this run. If the release of that merge failed, re-run the failed jobs of its run; run \`$REL_WF\` by hand only if it never ran or failed before releasing."
 lacks summary/rerun "$S" "Not merged"
 lacks summary/rerun "$S" "**Release dispatched**"
 summary_run merged-by-hand MERGE_REASON=merged-before MERGED=false
