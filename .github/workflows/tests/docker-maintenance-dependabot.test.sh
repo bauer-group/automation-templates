@@ -178,6 +178,16 @@ static_has   "release gets the checked file"     'RELEASE_WORKFLOW: ${{ steps.gu
 static_has   "run URL is a workflow output"      'value: ${{ jobs.maintenance.outputs.release-run-url }}'
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "job exposes the run URL"           'release-run-url: ${{ steps.release.outputs.run-url }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "merged is a workflow output"       'value: ${{ jobs.maintenance.outputs.merged }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "job exposes merged"                'merged: ${{ steps.merge.outputs.merged }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "release result is a workflow output" 'value: ${{ jobs.maintenance.outputs.release-result }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "job exposes the release result"    'release-result: ${{ steps.release.outputs.result }}'
+# A failed release fails the job: no step may swallow its failure.
+static_lacks "no step continues on error"        'continue-on-error'
 # The self filter keys on the job's display name and on the file name in the
 # callers' referenced_workflows.
 static_has   "self filter matches the job name"  'SELF_JOB_NAME: Docker Maintenance'
@@ -1719,6 +1729,14 @@ summary_run merged-by-hand MERGE_REASON=merged-before MERGED=false
 S="$WORK/summary-merged-by-hand"
 shows summary/merged-by-hand "$S" "⚠️ Already merged before this run decided"
 lacks summary/merged-by-hand "$S" "No release started"
+# The same found by the merge step, with release-workflow set: not "nothing
+# was merged" - how to retry that merge's release.
+summary_run merged-by-hand-release MERGE_REASON=merged-before MERGED=false RELEASE_WORKFLOW="$REL_WF"
+S="$WORK/summary-merged-by-hand-release"
+shows summary/merged-by-hand-release "$S" "⚠️ Already merged before this run decided"
+shows summary/merged-by-hand-release "$S" "No release started by this run. If the release of that merge failed, re-run the failed jobs of its run"
+lacks summary/merged-by-hand-release "$S" "nothing was merged"
+lacks summary/merged-by-hand-release "$S" "**Release dispatched**"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"
