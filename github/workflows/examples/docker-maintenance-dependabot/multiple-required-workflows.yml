@@ -20,6 +20,12 @@
 # - Renaming or moving a listed workflow makes every PR stay open with "did
 #   not run" until this list is updated.
 #
+# Release: docker-release.yml is dispatched after the merge (release-workflow)
+# and builds, tests and publishes the commit it was started on; it needs
+# `on: workflow_dispatch`, `needs:` on its build and test jobs before the
+# release, and `ref: ${{ github.sha }}` on modules-semantic-release.yml, so a
+# merge that lands during its run is not tagged untested.
+#
 # Matching pull_request paths of both required workflows (excerpt):
 # -----------------------------------------------------------------------------
 # docker-release.yml:  paths: ['docker/**', 'src/**', 'docker-compose*.yml']
@@ -43,7 +49,7 @@ permissions:
   pull-requests: write  # approve, read the PR
   checks: read          # check runs and suites - private repositories
   statuses: read        # commit statuses - private repositories
-  actions: read         # workflow runs - private repositories
+  actions: write        # dispatch the release; read workflow runs
 
 jobs:
   maintenance:
@@ -54,6 +60,8 @@ jobs:
       required-workflows: |
         .github/workflows/docker-release.yml
         .github/workflows/tests.yml
+      # One workflow, dispatched on main after the merge; its run must succeed.
+      release-workflow: .github/workflows/docker-release.yml
       merge-method: 'squash'
       auto-approve: true
       merge-update-types: 'patch'

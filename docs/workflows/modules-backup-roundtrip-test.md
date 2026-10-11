@@ -421,6 +421,10 @@ jobs:
       needs.validate-compose.result == 'success' &&
       needs.backup-roundtrip.result == 'success'
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    with:
+      # The commit this run round-tripped, not a newer main: a push during
+      # the round trip is released by its own run, after its own round trip.
+      ref: ${{ github.sha }}
     secrets: inherit
 ```
 

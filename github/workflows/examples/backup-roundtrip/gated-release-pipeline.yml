@@ -132,6 +132,14 @@ jobs:
     uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
     with:
       target-branch: 'main'
+      # Release the commit this run validated and round-tripped - the image
+      # jobs below build it too. Without it the release takes the tip of main
+      # when it starts: a push that landed during the round trip would be
+      # released untested, and missing from the images. Pinned, semantic-
+      # release publishes nothing once main has moved on, and the run for the
+      # newer main (a push, or the dispatch after a Dependabot merge)
+      # releases both.
+      ref: ${{ github.sha }}
       dry-run: false
       force-release: ${{ inputs.force-release || false }}
     secrets: inherit

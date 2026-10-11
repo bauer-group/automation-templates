@@ -27,7 +27,13 @@
 # - force-release: true (used only without custom releaseRules) releases on
 #   every commit type, chore(deps) and build(deps) included.
 # - A release per update wanted (e.g. a security fix has to reach consumers
-#   at once)? Use "fix(deps)".
+#   at once)? Use "fix(deps)" - and set release-workflow below (with
+#   actions: write): the merge is made with GITHUB_TOKEN and starts no
+#   workflow, so the release workflow is dispatched after it. That workflow
+#   must gate publishing on its build and tests (`needs:`) and release the
+#   commit it tested (`ref: ${{ github.sha }}` on modules-semantic-release.yml)
+#   - see docs/workflows/docker-maintenance.md, "What no broken release relies
+#   on". With "chore(deps)" there is nothing to release, so it stays unset.
 #
 # Trigger: no paths: filter. A .NET repository updates more than NuGet
 # packages - GitHub Actions at least, the SDK in global.json maybe - and every
@@ -122,6 +128,7 @@ permissions:
   checks: read          # check runs and suites - private repositories
   statuses: read        # commit statuses - private repositories
   actions: read         # workflow runs - private repositories
+  #                       (actions: write with release-workflow)
 
 jobs:
   maintenance:
@@ -130,6 +137,9 @@ jobs:
     with:
       # dotnet build, dotnet test and dotnet pack of the PR.
       required-workflows: .github/workflows/ci.yml
+      # Only with "fix(deps)": dispatched after the merge, its run must
+      # succeed (needs actions: write above). chore(deps) releases nothing.
+      # release-workflow: .github/workflows/release.yml
       merge-method: 'squash'
       auto-approve: true
       # Patch updates only: a library passes every minor or major update of a

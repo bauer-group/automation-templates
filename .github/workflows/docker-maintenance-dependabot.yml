@@ -28,7 +28,25 @@
 # 4. Merge: optional approval, then `gh pr merge --match-head-commit`, so only
 #    the commit whose CI was checked can be merged. Where GitHub Actions may
 #    not approve PRs, the rejected approval is a notice and the merge goes
-#    ahead (it only fails if the base branch requires a review).
+#    ahead (it only fails if the base branch requires a review). The PR is
+#    then read back: only a PR GitHub reports as merged counts as merged (gh
+#    also succeeds when it only added the PR to a merge queue).
+# 5. Tested base: CI tested the PR merged onto the base branch as it was
+#    when CI started. If the base branch has moved since (another PR was
+#    merged, a release commit was pushed), nothing is merged: Dependabot is
+#    asked to rebase the PR (`@dependabot rebase`, posted with the optional
+#    Dependabot secret DEPENDABOT_REBASE_TOKEN), CI runs on the new
+#    combination and the rebased PR gets its own decision. Only the exact
+#    combination CI tested is merged - but for a push in the seconds between
+#    the base check and the merge call (e.g. a sibling Dependabot PR merged
+#    by its own run at the same time), which is merged onto and reported
+#    with a warning.
+# 6. Release (optional, `release-workflow`): the merge is made with the
+#    GITHUB_TOKEN, and a push made with it starts no workflow. After a merge
+#    - and only then - the release workflow is dispatched on the base branch
+#    (workflow_dispatch is exempt from that rule), its run is shown in the
+#    job summary, and the job waits for it (`release-wait-minutes`): a run
+#    that does not succeed fails the job.
 #
 # Why not GitHub's native auto-merge: without required status checks GitHub
 # merges an auto-merge PR at once, before CI has finished. Required checks need
@@ -36,7 +54,8 @@
 # main with the GITHUB_TOKEN (GitHub Actions cannot be a bypass actor).
 #
 # Every path that does not merge leaves the PR open with an annotation and the
-# job green. The decision is shown in the job summary.
+# job green. The decision is shown in the job summary. Only invalid inputs and
+# a release that was not started or did not succeed turn the job red.
 #
 # Usage in your repository:
 #   name: Docker Maintenance
@@ -49,20 +68,23 @@
 #     pull-requests: write  # approve, read the PR
 #     checks: read          # check runs and suites - private repositories
 #     statuses: read        # commit statuses - private repositories
-#     actions: read         # workflow runs - private repositories
+#     actions: write        # dispatch the release; read workflow runs
 #
 #   jobs:
 #     maintenance:
 #       uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
 #       with:
 #         required-workflows: .github/workflows/docker-release.yml
+#         release-workflow: .github/workflows/docker-release.yml
 #       secrets: inherit
 #
 # Permissions: this workflow declares none of its own, so the job token has
 # exactly what the calling workflow grants. In public repositories CI results
 # are readable without the three read scopes. In private repositories a caller
 # without `checks: read`, `statuses: read` and `actions: read` leaves every PR
-# open with a notice.
+# open with a notice. With `release-workflow` the caller grants
+# `actions: write` (it includes read); without it the dispatch fails with an
+# error naming that permission.
 #
 # Requirements:
 # - Dependabot must be enabled in repository settings
@@ -77,6 +99,15 @@
 # - jq on the runner (preinstalled on GitHub-hosted runners) to read the
 #   versions of the updated dependencies. Without it the 0.x rule cannot be
 #   checked, so the PR is left open - never merged on an unchecked type.
+# - With `release-workflow`: that workflow has an `on: workflow_dispatch`
+#   trigger, releases on it, publishes nothing unless its own build and
+#   test jobs passed (`needs:`), and releases the commit it tested
+#   (modules-semantic-release with `ref` set to github.sha - else a push
+#   during its run is tagged untested and missing from its image). This
+#   workflow makes a failed release loud; what is published is up to the
+#   release workflow - a failure after its semantic release (e.g. the image
+#   push) leaves a version without its image, see
+#   docs/workflows/docker-maintenance.md.
 # =============================================================================
 
 name: 🐳 Docker Maintenance (Dependabot)
@@ -120,11 +151,39 @@ on:
         required: false
         default: 60
 
+      release-workflow:
+        description: 'Release workflow file to start after a merge, e.g. .github/workflows/docker-release.yml. It is dispatched (workflow_dispatch) on the base branch only after this run merged the PR - the merge itself starts no workflow. Needs actions: write. Empty: no release is started.'
+        type: string
+        required: false
+        default: ''
+
+      release-wait-minutes:
+        description: 'How long to wait for the dispatched release run, in minutes (0-180). A run that does not conclude success within it fails the job. 0: do not wait.'
+        type: number
+        required: false
+        default: 60
+
       runs-on:
         description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         type: string
         required: false
         default: 'ubuntu-latest'
+
+    outputs:
+      merged:
+        description: 'true if this run merged the PR'
+        value: ${{ jobs.maintenance.outputs.merged }}
+      release-run-url:
+        description: 'URL of the dispatched release run (empty if none was dispatched or it was not found)'
+        value: ${{ jobs.maintenance.outputs.release-run-url }}
+      release-result:
+        description: 'success, failed, timeout, not-waited, not-found, unreadable or dispatch-failed; empty if no release was dispatched'
+        value: ${{ jobs.maintenance.outputs.release-result }}
+
+    secrets:
+      DEPENDABOT_REBASE_TOKEN:
+        description: 'Token of a user with push access (fine-grained: Pull requests read and write) that posts "@dependabot rebase" when the base branch moved since CI ran - Dependabot refuses the command from the job token. Store it as a Dependabot secret: a Dependabot PR''s workflows get Dependabot secrets only. Without it such a PR is left open with a notice.'
+        required: false
 
 jobs:
   maintenance:
@@ -137,8 +196,15 @@ jobs:
     # merge that event's head commit, and only while it is still the head.
     if: github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'
     # ci-wait-minutes is at most 60 and the last poll can come up to 3 min
-    # after it; the rest covers setup and the merge.
-    timeout-minutes: 75
+    # after it, the merge takes up to 1 min, the rest covers setup: 75. With
+    # release-workflow, finding the release run takes up to 2 min more,
+    # release-wait-minutes is at most 180 and its last poll up to 1 min
+    # after it: 255. (An expression cannot add the inputs.)
+    timeout-minutes: ${{ inputs.release-workflow != '' && 255 || 75 }}
+    outputs:
+      merged: ${{ steps.merge.outputs.merged }}
+      release-run-url: ${{ steps.release.outputs.run-url }}
+      release-result: ${{ steps.release.outputs.result }}
     # One decision per PR: a newer event (e.g. Dependabot rebased the PR)
     # replaces the run that is still waiting for the old head commit.
     concurrency:
@@ -167,6 +233,8 @@ jobs:
           MERGE_METHOD: ${{ inputs.merge-method }}
           WAIT_MINUTES: ${{ inputs.ci-wait-minutes }}
           REQUIRED_WORKFLOWS: ${{ inputs.required-workflows }}
+          RELEASE_WORKFLOW: ${{ inputs.release-workflow }}
+          RELEASE_WAIT_MINUTES: ${{ inputs.release-wait-minutes }}
         run: |
           set -uo pipefail
 
@@ -223,6 +291,31 @@ jobs:
           done < <(printf '%s\n' "$REQUIRED_WORKFLOWS" | tr ',' '\n')
           echo "Required workflows: ${REQUIRED:-none}"
           echo "required=$REQUIRED" >> "$GITHUB_OUTPUT"
+
+          # One workflow file directly in .github/workflows; its name goes
+          # into the dispatch URL, so only the characters of a file name.
+          RELEASE="${RELEASE_WORKFLOW#"${RELEASE_WORKFLOW%%[![:space:]]*}"}"
+          RELEASE="${RELEASE%"${RELEASE##*[![:space:]]}"}"
+          if [ -n "$RELEASE" ]; then
+            RELEASE_OK=false
+            case "${RELEASE#.github/workflows/}" in
+              "$RELEASE"|*[!A-Za-z0-9._-]*) ;;
+              ?*.yml|?*.yaml) RELEASE_OK=true ;;
+            esac
+            if [ "$RELEASE_OK" != true ]; then
+              echo "::error title=Invalid input::release-workflow takes one workflow file such as .github/workflows/docker-release.yml, got '$RELEASE_WORKFLOW'."
+              exit 1
+            fi
+          fi
+          case "$RELEASE_WAIT_MINUTES" in
+            ''|*[!0-9]*) echo "::error title=Invalid input::release-wait-minutes must be a whole number from 0 to 180, got '$RELEASE_WAIT_MINUTES'."; exit 1 ;;
+          esac
+          if [ "$RELEASE_WAIT_MINUTES" -gt 180 ]; then
+            echo "::error title=Invalid input::release-wait-minutes must be from 0 to 180, got '$RELEASE_WAIT_MINUTES'."
+            exit 1
+          fi
+          echo "Release workflow: ${RELEASE:-none}"
+          echo "release-workflow=$RELEASE" >> "$GITHUB_OUTPUT"
           echo "Ecosystem: ${PACKAGE_ECOSYSTEM:-unknown}, update type: ${UPDATE_TYPE:-unknown}"
 
           # A GitHub Actions update changes the CI itself: the PR's run of a
@@ -405,9 +498,17 @@ jobs:
           fi
 
           poll() {
-            fetch "$WORK/pr" "repos/$REPO/pulls/$PR_NUMBER" --jq '[.state, .head.sha] | @tsv' || return 1
-            IFS=$'\t' read -r PR_STATE PR_HEAD < "$WORK/pr"
+            fetch "$WORK/pr" "repos/$REPO/pulls/$PR_NUMBER" --jq '[.state, .head.sha, (.merged | tostring)] | @tsv' || return 1
+            IFS=$'\t' read -r PR_STATE PR_HEAD PR_MERGED < "$WORK/pr"
             if [ "$PR_STATE" != "open" ]; then
+              # Merged before this run decided: by hand, or - on a re-run of
+              # this job - by its first attempt. Nothing to merge or release;
+              # said loudly, since a re-run of a job that failed on its
+              # release would otherwise turn green without a release.
+              if [ "$PR_MERGED" = true ]; then
+                echo "::warning title=Dependabot PR already merged::The PR was merged before this run decided (by hand, or by an earlier attempt of this job). This run neither merges nor releases it - re-running this job does not retry a release: re-run the failed jobs of its release run (run the release workflow by hand only if it never ran or failed before releasing)."
+                finish merged-before "PR merged before this run decided"
+              fi
               echo "::notice title=Dependabot PR not merged::The PR is $PR_STATE."
               finish closed "PR is $PR_STATE"
             fi
@@ -637,6 +738,19 @@ jobs:
       # (null = not known yet); after 30 s the merge call itself decides.
       # The approval names that commit, so it cannot land on one pushed in the
       # meantime, and the merge is pinned to it with --match-head-commit.
+      #
+      # A pull_request run tests refs/pull/N/merge: the PR head merged onto
+      # the base branch as it was when the event fired. That merge commit is
+      # the event's github.sha, and its first parent is the base CI tested -
+      # read from the commit itself (the event's pull_request.base.sha is
+      # the same commit in practice, but GitHub does not document that).
+      # Every required run of the event tested that combination (a re-run
+      # too: it keeps the event's commit). Merging after the base branch
+      # moved would land a combination no CI ran on - an unrelated push, or
+      # the PR merged just before this one. So the base branch is read last,
+      # right before the merge call, and a moved base leaves the PR open and
+      # asks Dependabot to rebase it: CI then runs on the new combination and
+      # the new head commit gets its own decision.
       # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
       - name: 🔀 Approve and merge
         id: merge
@@ -647,27 +761,74 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          # The merge commit the event's runs checked out, and the event's
+          # base - used only if github.sha is not a merge of the head.
+          TESTED_MERGE: ${{ github.sha }}
+          EVENT_BASE: ${{ github.event.pull_request.base.sha }}
+          # Dependabot takes commands only from users with push access; only
+          # the '@dependabot rebase' comment is posted with this token.
+          REBASE_TOKEN: ${{ secrets.DEPENDABOT_REBASE_TOKEN }}
           AUTO_APPROVE: ${{ inputs.auto-approve }}
           MERGE_METHOD: ${{ inputs.merge-method }}
         run: |
           set -uo pipefail
           ERR=$(mktemp)
+          COMMENTS=$(mktemp)
 
           done_with() {
             echo "merged=$1" >> "$GITHUB_OUTPUT"
             echo "reason=$2" >> "$GITHUB_OUTPUT"
-            echo "Merged: $1 ($2)"
+            echo "detail=${3:-}" >> "$GITHUB_OUTPUT"
+            echo "Merged: $1 ($2${3:+: $3})"
             exit 0
           }
 
+          # The base branch moved since CI ran ($MOVED says how): left open,
+          # Dependabot asked to rebase. Dependabot answers a command of
+          # github-actions[bot] - the job token - with "Sorry, only users with
+          # push access can use that command", so the command is posted with
+          # DEPENDABOT_REBASE_TOKEN, a token of a user with push access, if the
+          # caller has one. Once per head commit: a rebase or recreate command
+          # posted after the head commit was made is pending - if its author
+          # is the repository's owner, an organization member or a
+          # collaborator. Dependabot refuses others (an outsider on a public
+          # repository, github-actions[bot]), so their commands do not count.
+          request_rebase() {
+            if [ -z "$REBASE_TOKEN" ]; then
+              echo "::notice title=Dependabot PR left open::CI passed, but $MOVED since CI ran, so CI did not test this update on the current base. Comment '@dependabot rebase' on the PR to have it tested again - Dependabot does not take the command from the job token. To request it automatically, store a token of a user with push access as the Dependabot secret DEPENDABOT_REBASE_TOKEN."
+              done_with false base-moved "$MOVED; rebase not requested (no DEPENDABOT_REBASE_TOKEN)"
+            fi
+            SINCE=$(gh api "repos/$REPO/commits/$HEAD_SHA" --jq '.commit.committer.date' 2> "$ERR") || SINCE=""
+            if [ -n "$SINCE" ] && gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
+                 --jq '.[] | [.created_at, .user.login, .author_association, (.body | split("\n")[0])] | @tsv' > "$COMMENTS" 2> "$ERR"; then
+              if awk -F'\t' -v since="$SINCE" '$1 >= since && $2 != "github-actions[bot]" && $3 ~ /^(OWNER|MEMBER|COLLABORATOR)$/ && $4 ~ /^@dependabot (rebase|recreate)/ { found = 1 } END { exit !found }' "$COMMENTS"; then
+                echo "::notice title=Dependabot PR left open::CI passed, but $MOVED since CI ran. A rebase of this head commit is already requested - the rebased PR is tested again and gets its own decision."
+                done_with false base-moved "$MOVED; rebase already requested"
+              fi
+            else
+              echo "Earlier rebase requests could not be read ($(head -n 1 "$ERR")) - requesting one."
+            fi
+            if GH_TOKEN="$REBASE_TOKEN" gh api --method POST "repos/$REPO/issues/$PR_NUMBER/comments" -f body='@dependabot rebase' --silent 2> "$ERR"; then
+              echo "::notice title=Dependabot PR left open::CI passed, but $MOVED since CI ran. Asked Dependabot to rebase the PR - CI runs again on the current base, and the new head commit gets its own decision."
+              done_with false base-moved "$MOVED; rebase requested"
+            fi
+            echo "::warning title=Dependabot PR left open::CI passed, but $MOVED since CI ran, and the rebase could not be requested with DEPENDABOT_REBASE_TOKEN: $(head -n 1 "$ERR"). Comment '@dependabot rebase' on the PR."
+            done_with false base-moved "$MOVED; rebase request failed"
+          }
+
           for try in 1 2 3 4 5 6 7; do
-            if ! PR=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '[.state, .head.sha, .draft, (.mergeable | tostring), .mergeable_state] | @tsv' 2> "$ERR"); then
+            if ! PR=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '[.state, .head.sha, .draft, (.mergeable | tostring), .mergeable_state, .base.ref, (.merged | tostring)] | @tsv' 2> "$ERR"); then
               echo "::warning title=Dependabot PR left open::CI passed, but the PR could not be read again before merging: $(head -n 1 "$ERR")"
               done_with false api-error
             fi
-            IFS=$'\t' read -r STATE HEAD DRAFT MERGEABLE MERGE_STATE <<< "$PR"
-            echo "PR: $STATE, head $HEAD, draft: $DRAFT, mergeable: $MERGEABLE ($MERGE_STATE)"
+            IFS=$'\t' read -r STATE HEAD DRAFT MERGEABLE MERGE_STATE PR_BASE MERGED_BEFORE <<< "$PR"
+            echo "PR: $STATE, head $HEAD, draft: $DRAFT, mergeable: $MERGEABLE ($MERGE_STATE), base: $PR_BASE"
             if [ "$STATE" != "open" ]; then
+              if [ "$MERGED_BEFORE" = true ]; then
+                echo "::warning title=Dependabot PR already merged::The PR was merged before this run could merge it (by hand, or by an earlier attempt of this job). This run neither merges nor releases it - re-running this job does not retry a release: re-run the failed jobs of its release run (run the release workflow by hand only if it never ran or failed before releasing)."
+                done_with false merged-before
+              fi
               echo "::notice title=Dependabot PR not merged::The PR is $STATE."
               done_with false closed
             fi
@@ -690,6 +851,26 @@ jobs:
             echo "GitHub has not computed whether the PR can be merged - the merge call decides."
           fi
 
+          # The base CI tested: the first parent of the merge commit the
+          # event's runs checked out, whose second parent is the head commit.
+          # Not readable: nothing shows which base was tested - left open. A
+          # github.sha that is no such merge (not a pull_request event) falls
+          # back to the event's base.
+          if ! PARENTS=$(gh api "repos/$REPO/git/commits/$TESTED_MERGE" --jq '[.parents[].sha] | @tsv' 2> "$ERR"); then
+            echo "::warning title=Dependabot PR left open::CI passed, but the merge commit CI tested (${TESTED_MERGE:0:12}) could not be read to tell which base it tested: $(head -n 1 "$ERR")"
+            done_with false api-error
+          fi
+          read -r FIRST_PARENT SECOND_PARENT OTHER_PARENTS <<< "$PARENTS" || true
+          if [ -n "$FIRST_PARENT" ] && [ "$SECOND_PARENT" = "$HEAD_SHA" ] && [ -z "$OTHER_PARENTS" ]; then
+            TESTED_BASE="$FIRST_PARENT"
+            if [ "$TESTED_BASE" != "$EVENT_BASE" ]; then
+              echo "The event names ${EVENT_BASE:0:12} as the base, but CI tested the PR on ${TESTED_BASE:0:12} (the first parent of ${TESTED_MERGE:0:12}) - that one counts."
+            fi
+          else
+            TESTED_BASE="$EVENT_BASE"
+            echo "${TESTED_MERGE:0:12} is not a merge of the head commit - the event's base ${EVENT_BASE:0:12} counts."
+          fi
+
           if [ "$AUTO_APPROVE" = "true" ]; then
             if gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/reviews" -f event=APPROVE -f commit_id="$HEAD_SHA" --silent 2> "$ERR"; then
               echo "Approved $HEAD_SHA."
@@ -698,13 +879,245 @@ jobs:
             fi
           fi
 
+          # Last, right before the merge call: the base branch must still be
+          # at the commit CI tested the PR on.
+          MOVED=""
+          if [ "$PR_BASE" != "$BASE_REF" ]; then
+            MOVED="the base branch was changed from $BASE_REF to $PR_BASE"
+          elif ! TIP=$(gh api "repos/$REPO/git/ref/heads/$BASE_REF" --jq '.object.sha' 2> "$ERR"); then
+            echo "::warning title=Dependabot PR left open::CI passed, but the head of $BASE_REF could not be read to check that CI tested the PR on it: $(head -n 1 "$ERR")"
+            done_with false api-error
+          elif [ "$TIP" != "$TESTED_BASE" ]; then
+            MOVED="$BASE_REF moved from ${TESTED_BASE:0:12} (tested by CI) to ${TIP:0:12}"
+          fi
+          if [ -n "$MOVED" ]; then request_rebase; fi
+          echo "$BASE_REF is at ${TESTED_BASE:0:12}, the base CI tested the PR on."
+
           if gh pr merge "$PR_NUMBER" --repo "$REPO" "--$MERGE_METHOD" --match-head-commit "$HEAD_SHA" 2> "$ERR"; then
+            # gh also succeeds when it only added the PR to a merge queue (a
+            # base branch rule; GitHub merges it later, without this run), so
+            # the PR is read back: merged, and with which commit. An open PR's
+            # merge_commit_sha is GitHub's test merge, not a merge. A read
+            # that lags behind the merge, or fails, is retried; the last
+            # answer counts.
+            MERGED="" MERGE_COMMIT=""
+            for try in 1 2 3; do
+              if READ=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '[(.merged | tostring), (.merge_commit_sha // "-")] | @tsv' 2> "$ERR"); then
+                IFS=$'\t' read -r MERGED MERGE_COMMIT <<< "$READ"
+                if [ "$MERGED" = true ]; then break; fi
+              fi
+              if [ "$try" -lt 3 ]; then sleep 5; fi
+            done
+            if [ "$MERGED" = false ]; then
+              echo "::warning title=Dependabot PR not merged::The merge call succeeded, but the PR is still not merged - the base branch probably requires a merge queue, which merges it later without this workflow. No release is started by this run."
+              done_with false not-merged "the merge call succeeded, but the PR is not merged (merge queue?)"
+            fi
+            if [ "$MERGED" != true ]; then
+              # gh reported the merge; only the commit is unknown.
+              echo "::warning title=Merge not confirmed::gh reported the PR merged, but it could not be read back ($(head -n 1 "$ERR")), so the merge commit is unknown and the base it landed on is not checked."
+              MERGE_COMMIT=""
+            fi
+            [ "$MERGE_COMMIT" != "-" ] || MERGE_COMMIT=""
+            echo "merge-commit=$MERGE_COMMIT" >> "$GITHUB_OUTPUT"
+            # The merge commit's first parent is the base it landed on (a
+            # Dependabot PR has one commit, so this holds for squash, merge
+            # and rebase). Only a push in the moment between the base check
+            # and the merge call makes it another commit than the tested one.
+            LANDED=""
+            if [ -n "$MERGE_COMMIT" ]; then
+              LANDED=$(gh api "repos/$REPO/git/commits/$MERGE_COMMIT" --jq '.parents[0].sha // ""' 2> "$ERR") || LANDED=""
+            fi
+            if [ -n "$LANDED" ] && [ "$LANDED" != "$TESTED_BASE" ]; then
+              echo "::warning title=Merged onto an untested base::A push moved $BASE_REF to ${LANDED:0:12} in the moment between the base check and the merge, so ${MERGE_COMMIT:0:12} combines this update with a base CI did not test it on. Only the release workflow's own tests vouch for it now."
+              done_with true merged "landed on ${LANDED:0:12}, not on the tested ${TESTED_BASE:0:12}"
+            fi
             done_with true merged
           fi
           echo "::warning title=Dependabot PR left open::CI passed, but merging failed: $(head -n 1 "$ERR")"
           done_with false merge-failed
 
+      # The merge was made with the job token, and GitHub starts no workflow
+      # for a push made with it - except workflow_dispatch and
+      # repository_dispatch. So the release workflow is dispatched on the
+      # base branch, only after this run merged the PR and read it back as
+      # merged (never for a PR left open, closed, superseded or only queued,
+      # never for a CI change - those are never merged). The dispatch
+      # answers with the run it created (return_run_details); a GitHub that
+      # answers 204 without it gets the run looked up: workflow_dispatch,
+      # that workflow, the base branch, created since the dispatch, on the
+      # merge commit. A failed dispatch is retried only where that cannot
+      # start a second release run. Then the job waits for the run: anything
+      # but success fails the job - a broken release is loud, never silent.
+      # What a failing release has published by then is up to the release
+      # workflow: it has to gate its publishing jobs on its tests (needs:).
+      # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
+      - name: 🚀 Release
+        id: release
+        if: steps.merge.outputs.merged == 'true' && steps.guard.outputs.release-workflow != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          MERGE_COMMIT: ${{ steps.merge.outputs.merge-commit }}
+          RELEASE_WORKFLOW: ${{ steps.guard.outputs.release-workflow }}
+          WAIT_MINUTES: ${{ inputs.release-wait-minutes }}
+        run: |
+          set -uo pipefail
+          WORK=$(mktemp -d)
+          WORKFLOW="${RELEASE_WORKFLOW##*/}"
+          BRANCH=$(jq -rn --arg b "$BASE_REF" '$b | @uri')
+          RUN_ID=""
+          RUN_URL=""
+
+          # result: success, failed, timeout, not-waited, not-found,
+          # unreadable or dispatch-failed
+          finish() {
+            echo "result=$1" >> "$GITHUB_OUTPUT"
+            echo "detail=$2" >> "$GITHUB_OUTPUT"
+            echo "Release: $1 - $2"
+            exit "$3"
+          }
+
+          # A run created up to 2 min before the dispatch still counts: the
+          # runner's clock and GitHub's may differ a little.
+          SINCE=$(jq -rn "$(( $(date +%s) - 120 )) | todate")
+
+          # One look for the run of this dispatch: a workflow_dispatch run of
+          # the workflow on the base branch, created since the dispatch, on
+          # the merge commit. Without the merge commit nothing tells it apart.
+          find_run() {
+            [ -n "$MERGE_COMMIT" ] || return 1
+            gh api "repos/$REPO/actions/workflows/$WORKFLOW/runs?event=workflow_dispatch&branch=$BRANCH&created=%3E%3D$SINCE&per_page=20" \
+              --jq '.workflow_runs[] | [.id, .head_sha, .created_at, .html_url] | @tsv' > "$WORK/runs" 2> "$WORK/lookup-err" || return 1
+            FOUND=$(awk -F'\t' -v sha="$MERGE_COMMIT" -v since="$SINCE" '$2 == sha && $3 >= since { print $1 "\t" $4; exit }' "$WORK/runs")
+            [ -n "$FOUND" ] || return 1
+            RUN_ID="${FOUND%%$'\t'*}"
+            RUN_URL="${FOUND#*$'\t'}"
+          }
+
+          # Three attempts in all. Retried: a rate limit (the request was
+          # refused, so no run exists); an HTTP 422 once without
+          # return_run_details (a GitHub that does not know the parameter -
+          # a 422 for another reason comes back); a server or network error
+          # only after a look for its run, which may exist although the
+          # answer failed - a retry must not start a second release.
+          echo "Dispatching $RELEASE_WORKFLOW on $BASE_REF (merge commit: ${MERGE_COMMIT:-unknown})"
+          DETAILS=(-F return_run_details=true)
+          for try in 1 2 3; do
+            if gh api --method POST "repos/$REPO/actions/workflows/$WORKFLOW/dispatches" \
+                 -f ref="$BASE_REF" "${DETAILS[@]}" > "$WORK/dispatch" 2> "$WORK/err"; then
+              break
+            fi
+            ERR=$(head -n 1 "$WORK/err")
+            WHY="" RETRY=later
+            case "$(cat "$WORK/err")" in
+              *"rate limit"*|*"HTTP 429"*) ;;
+              *"HTTP 403"*|*"Resource not accessible"*) WHY="the job token may not start workflows - grant 'actions: write' in the calling workflow's permissions" ;;
+              *"HTTP 404"*) WHY="$RELEASE_WORKFLOW was not found on $BASE_REF" ;;
+              *"HTTP 422"*)
+                if [ "${#DETAILS[@]}" -gt 0 ]; then
+                  DETAILS=()
+                  RETRY=now
+                else
+                  WHY="$RELEASE_WORKFLOW cannot be dispatched - it needs an 'on: workflow_dispatch' trigger and must be enabled"
+                fi
+                ;;
+              *) RETRY=look ;;
+            esac
+            if [ -z "$WHY" ]; then
+              if [ "$RETRY" != now ]; then sleep 10; fi
+              if [ "$RETRY" = look ] && find_run; then
+                echo "The dispatch answered with an error ($ERR), but its run exists - not dispatched again."
+                break
+              fi
+              if [ "$try" -lt 3 ]; then
+                echo "Dispatch failed ($ERR) - retrying."
+                continue
+              fi
+            fi
+            echo "::error title=Release not started::The update was merged, but $RELEASE_WORKFLOW could not be dispatched on $BASE_REF: ${WHY:-$ERR}. Run it by hand to release the update. ($ERR)"
+            finish dispatch-failed "${WHY:-$ERR}" 1
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(jq -r '.workflow_run_id // empty' "$WORK/dispatch" 2> /dev/null || true)
+            RUN_URL=$(jq -r '.html_url // empty' "$WORK/dispatch" 2> /dev/null || true)
+            if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
+              RUN_ID=""
+              RUN_URL=""
+            fi
+          fi
+          if [ -z "$RUN_ID" ] && [ -n "$MERGE_COMMIT" ]; then
+            echo "The dispatch returned no run - looking it up."
+            for _ in $(seq 1 24); do
+              if find_run; then break; fi
+              sleep 5
+            done
+          fi
+          if [ -z "$RUN_ID" ]; then
+            if [ -n "$MERGE_COMMIT" ]; then
+              MSG="$RELEASE_WORKFLOW was dispatched on $BASE_REF, but its run for $MERGE_COMMIT was not found within 2 min - check the workflow's runs"
+            else
+              MSG="$RELEASE_WORKFLOW was dispatched on $BASE_REF, but GitHub did not return its run, and without the merge commit it cannot be looked up - check the workflow's runs"
+            fi
+            if [ "$WAIT_MINUTES" -eq 0 ]; then
+              echo "::warning title=Release run not found::$MSG."
+              finish not-found "$MSG" 0
+            fi
+            echo "::error title=Release not confirmed::$MSG; its result cannot be confirmed."
+            finish not-found "$MSG" 1
+          fi
+          [ -n "$RUN_URL" ] || RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/$REPO/actions/runs/$RUN_ID"
+          echo "run-id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run-url=$RUN_URL" >> "$GITHUB_OUTPUT"
+          echo "Release run: $RUN_URL"
+
+          if [ "$WAIT_MINUTES" -eq 0 ]; then
+            echo "::notice title=Release started::$RELEASE_WORKFLOW runs for the merged update: $RUN_URL (not waited for: release-wait-minutes is 0)."
+            finish not-waited "not waited for (release-wait-minutes: 0)" 0
+          fi
+
+          # Every 30 s, after 10 min every 60 s, until it has completed or
+          # release-wait-minutes are over.
+          LIMIT=$((WAIT_MINUTES * 60))
+          START=$(date +%s)
+          ERRORS=0
+          STATUS=unknown
+          while :; do
+            if gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '[.status, (.conclusion // "-")] | @tsv' > "$WORK/run" 2> "$WORK/err"; then
+              ERRORS=0
+              IFS=$'\t' read -r STATUS CONCLUSION < "$WORK/run" || true
+              if [ "$STATUS" = completed ]; then
+                echo "conclusion=$CONCLUSION" >> "$GITHUB_OUTPUT"
+                if [ "$CONCLUSION" = success ]; then
+                  echo "Release run succeeded: $RUN_URL"
+                  finish success "$RUN_URL" 0
+                fi
+                # Re-running all jobs, or a new run, finds the version that
+                # the failed run may have created already and skips its image.
+                echo "::error title=Release failed::The update was merged, but its release run $RUN_URL concluded '$CONCLUSION'. Fix the cause, then re-run the failed jobs of that run (gh run rerun $RUN_ID --failed) - not all jobs, and not a new run: once its release job created the version, a new run releases nothing and skips the image. Run $RELEASE_WORKFLOW by hand only if the run failed before its release job."
+                finish failed "$CONCLUSION" 1
+              fi
+            else
+              ERRORS=$((ERRORS + 1))
+              echo "API error $ERRORS/5: $(head -n 1 "$WORK/err")"
+              if [ "$ERRORS" -ge 5 ]; then
+                echo "::error title=Release not confirmed::The release run $RUN_URL could not be read: $(head -n 1 "$WORK/err"). Check its result there."
+                finish unreadable "$(head -n 1 "$WORK/err")" 1
+              fi
+            fi
+            NOW=$(( $(date +%s) - START ))
+            if [ "$NOW" -ge "$LIMIT" ]; then
+              echo "::error title=Release not finished::The release run $RUN_URL was still $STATUS after $WAIT_MINUTES min (release-wait-minutes). Check its result there."
+              finish timeout "still $STATUS after $WAIT_MINUTES min" 1
+            fi
+            if [ "$NOW" -lt 600 ]; then sleep 30; else sleep 60; fi
+          done
+
+      # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
       - name: 📊 Summary
+        id: summary
         if: always()
         shell: bash
         env:
@@ -721,8 +1134,19 @@ jobs:
           CI_RESULT: ${{ steps.ci.outputs.result }}
           CI_DETAIL: ${{ steps.ci.outputs.detail }}
           MERGE_REASON: ${{ steps.merge.outputs.reason }}
+          MERGE_DETAIL: ${{ steps.merge.outputs.detail }}
+          MERGED: ${{ steps.merge.outputs.merged }}
+          MERGE_COMMIT: ${{ steps.merge.outputs.merge-commit }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          RELEASE_WORKFLOW: ${{ steps.guard.outputs.release-workflow }}
+          RELEASE_RESULT: ${{ steps.release.outputs.result }}
+          RELEASE_DETAIL: ${{ steps.release.outputs.detail }}
+          RELEASE_RUN_URL: ${{ steps.release.outputs.run-url }}
           JOB_STATUS: ${{ job.status }}
         run: |
+          # A re-run of a job that merged finds the PR merged: it neither
+          # merges nor releases, whatever its first attempt's release did.
+          MERGED_BEFORE_NOTE="⚠️ Already merged before this run decided (by hand, or by an earlier attempt of this job) - this run neither merged nor released it. Re-running this job does not retry a release: re-run the failed jobs of its release run (run the release workflow by hand only if it never ran or failed before releasing)."
           case "$GUARD_REASON" in
             no-required-workflows) DECISION="⏸️ Left open: automatic merging is off - set required-workflows to the PR CI workflows that build and test the update." ;;
             ci-change)           DECISION="⏸️ Left open: a GitHub Actions update changes the CI itself, so its CI cannot vouch for it." ;;
@@ -733,11 +1157,14 @@ jobs:
               case "$CI_RESULT" in
                 green)
                   case "$MERGE_REASON" in
-                    merged)        DECISION="✅ Merged after CI passed ($CI_DETAIL)." ;;
+                    merged)        DECISION="✅ Merged after CI passed ($CI_DETAIL).${MERGE_DETAIL:+ ⚠️ Merged onto an untested base: $MERGE_DETAIL.}" ;;
+                    base-moved)    DECISION="🔄 Left open: CI passed, but not on the current base - $MERGE_DETAIL." ;;
                     closed)        DECISION="⏹️ Not merged: the PR was closed before the merge." ;;
                     superseded)    DECISION="⏹️ Not merged by this run: the PR got a new head commit." ;;
                     draft)         DECISION="⏸️ Left open: CI passed, but the PR is a draft." ;;
                     not-mergeable) DECISION="⏸️ Left open: CI passed, but the PR cannot be merged (e.g. a merge conflict)." ;;
+                    not-merged)    DECISION="⚠️ Not merged by this run: the merge call succeeded, but the PR is still open - the base branch probably requires a merge queue, which this workflow does not use." ;;
+                    merged-before) DECISION="$MERGED_BEFORE_NOTE" ;;
                     *)             DECISION="⚠️ Left open: CI passed, but the merge failed - see the annotation." ;;
                   esac ;;
                 failed)     DECISION="⏸️ Left open: CI did not pass ($CI_DETAIL)." ;;
@@ -748,11 +1175,36 @@ jobs:
                 unreadable) DECISION="⏸️ Left open: the job token cannot read CI results (grant checks: read, statuses: read and actions: read)." ;;
                 api-error)  DECISION="⏸️ Left open: CI results could not be read ($CI_DETAIL)." ;;
                 closed)     DECISION="⏹️ Not merged: $CI_DETAIL." ;;
+                merged-before) DECISION="$MERGED_BEFORE_NOTE" ;;
                 superseded) DECISION="⏹️ Not merged by this run: the PR got a new head commit." ;;
                 *)          DECISION="❌ Not completed (job status: $JOB_STATUS)." ;;
               esac ;;
             *) DECISION="❌ Not completed (job status: $JOB_STATUS)." ;;
           esac
+
+          # Merge -> release dispatched (run) -> release result
+          RELEASE_NOTE=""
+          RUN_LINK="${RELEASE_RUN_URL:+[run]($RELEASE_RUN_URL)}"
+          if [ "$MERGED" = true ] && [ -n "$RELEASE_WORKFLOW" ]; then
+            DISPATCHED="\`$RELEASE_WORKFLOW\` on \`$BASE_REF\` - ${RUN_LINK:-run not identified}"
+            case "$RELEASE_RESULT" in
+              success)         RESULT="✅ Succeeded" ;;
+              failed)          RESULT="❌ Failed: the run concluded \`$RELEASE_DETAIL\` - fix the cause, then re-run its failed jobs (\`gh run rerun ${RELEASE_RUN_URL##*/} --failed\`), not all jobs" ;;
+              timeout)         RESULT="❌ Not finished: $RELEASE_DETAIL (release-wait-minutes)" ;;
+              not-waited)      RESULT="⏭️ Not waited for (release-wait-minutes: 0)" ;;
+              unreadable)      RESULT="❌ Not confirmed: the run could not be read ($RELEASE_DETAIL)" ;;
+              not-found)       RESULT="❓ Unknown: $RELEASE_DETAIL" ;;
+              dispatch-failed) DISPATCHED="❌ Not dispatched: $RELEASE_DETAIL"
+                               RESULT="❌ No release - run \`$RELEASE_WORKFLOW\` by hand" ;;
+              *)               RESULT="❌ Not completed (job status: $JOB_STATUS)" ;;
+            esac
+          elif [ "$MERGED" = true ]; then
+            RELEASE_NOTE="ℹ️ No release started: release-workflow is not set. The merge was made with GITHUB_TOKEN, which starts no workflow. A release workflow on push runs with the next push to \`$BASE_REF\`, or by hand; whether that releases this update depends on its commit type (\`chore(deps)\` releases nothing by default)."
+          elif [ "$CI_RESULT" = merged-before ] || [ "$MERGE_REASON" = merged-before ]; then
+            RELEASE_NOTE="${RELEASE_WORKFLOW:+No release started by this run. If the release of that merge failed, re-run the failed jobs of its run; run \`$RELEASE_WORKFLOW\` by hand only if it never ran or failed before releasing.}"
+          elif [ -n "$RELEASE_WORKFLOW" ]; then
+            RELEASE_NOTE="No release started: nothing was merged."
+          fi
           {
             echo "## 🐳 Docker Maintenance (Dependabot)"
             echo ""
@@ -767,6 +1219,18 @@ jobs:
             echo "| **Merge Method** | $MERGE_METHOD |"
             echo ""
             echo "$DECISION"
+            if [ "$MERGED" = true ] && [ -n "$RELEASE_WORKFLOW" ]; then
+              echo ""
+              echo "| Step | Result |"
+              echo "|------|--------|"
+              echo "| **Merge** | ✅ Merged into \`$BASE_REF\`${MERGE_COMMIT:+ as \`${MERGE_COMMIT:0:12}\`} |"
+              echo "| **Release dispatched** | $DISPATCHED |"
+              echo "| **Release result** | $RESULT |"
+            fi
+            if [ -n "$RELEASE_NOTE" ]; then
+              echo ""
+              echo "$RELEASE_NOTE"
+            fi
             if [ -s "$RUNNER_TEMP/dependabot-ci-checks.md" ]; then
               echo ""
               echo "**Checks on the head commit** (last poll):"
