@@ -736,15 +736,17 @@ jobs:
       # meantime, and the merge is pinned to it with --match-head-commit.
       #
       # A pull_request run tests refs/pull/N/merge: the PR head merged onto
-      # the base branch as it was when the event fired - the event's
-      # pull_request.base.sha, that merge commit's first parent. Every
-      # required run of the event tested that combination (a re-run too: it
-      # keeps the event's commit). Merging after the base branch moved would
-      # land a combination no CI ran on - an unrelated push, or the PR merged
-      # just before this one. So the base branch is read last, right before
-      # the merge call, and a moved base leaves the PR open and asks
-      # Dependabot to rebase it: CI then runs on the new combination and the
-      # new head commit gets its own decision.
+      # the base branch as it was when the event fired. That merge commit is
+      # the event's github.sha, and its first parent is the base CI tested -
+      # read from the commit itself (the event's pull_request.base.sha is
+      # the same commit in practice, but GitHub does not document that).
+      # Every required run of the event tested that combination (a re-run
+      # too: it keeps the event's commit). Merging after the base branch
+      # moved would land a combination no CI ran on - an unrelated push, or
+      # the PR merged just before this one. So the base branch is read last,
+      # right before the merge call, and a moved base leaves the PR open and
+      # asks Dependabot to rebase it: CI then runs on the new combination and
+      # the new head commit gets its own decision.
       # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
       - name: 🔀 Approve and merge
         id: merge
@@ -756,7 +758,10 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
-          TESTED_BASE: ${{ github.event.pull_request.base.sha }}
+          # The merge commit the event's runs checked out, and the event's
+          # base - used only if github.sha is not a merge of the head.
+          TESTED_MERGE: ${{ github.sha }}
+          EVENT_BASE: ${{ github.event.pull_request.base.sha }}
           # Dependabot takes commands only from users with push access; only
           # the '@dependabot rebase' comment is posted with this token.
           REBASE_TOKEN: ${{ secrets.DEPENDABOT_REBASE_TOKEN }}
@@ -840,6 +845,26 @@ jobs:
           done
           if [ "$MERGEABLE" != "true" ]; then
             echo "GitHub has not computed whether the PR can be merged - the merge call decides."
+          fi
+
+          # The base CI tested: the first parent of the merge commit the
+          # event's runs checked out, whose second parent is the head commit.
+          # Not readable: nothing shows which base was tested - left open. A
+          # github.sha that is no such merge (not a pull_request event) falls
+          # back to the event's base.
+          if ! PARENTS=$(gh api "repos/$REPO/git/commits/$TESTED_MERGE" --jq '[.parents[].sha] | @tsv' 2> "$ERR"); then
+            echo "::warning title=Dependabot PR left open::CI passed, but the merge commit CI tested (${TESTED_MERGE:0:12}) could not be read to tell which base it tested: $(head -n 1 "$ERR")"
+            done_with false api-error
+          fi
+          read -r FIRST_PARENT SECOND_PARENT OTHER_PARENTS <<< "$PARENTS" || true
+          if [ -n "$FIRST_PARENT" ] && [ "$SECOND_PARENT" = "$HEAD_SHA" ] && [ -z "$OTHER_PARENTS" ]; then
+            TESTED_BASE="$FIRST_PARENT"
+            if [ "$TESTED_BASE" != "$EVENT_BASE" ]; then
+              echo "The event names ${EVENT_BASE:0:12} as the base, but CI tested the PR on ${TESTED_BASE:0:12} (the first parent of ${TESTED_MERGE:0:12}) - that one counts."
+            fi
+          else
+            TESTED_BASE="$EVENT_BASE"
+            echo "${TESTED_MERGE:0:12} is not a merge of the head commit - the event's base ${EVENT_BASE:0:12} counts."
           fi
 
           if [ "$AUTO_APPROVE" = "true" ]; then

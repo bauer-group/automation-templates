@@ -136,10 +136,13 @@ static_has   "merge is pinned to the head"       '--match-head-commit "$HEAD_SHA
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "approval is pinned to the head"    '-f commit_id="$HEAD_SHA"'
 static_lacks "no gh pr review (it approves the latest commit)" 'gh pr review'
-# The base CI tested the PR on is the event's base commit (the first parent of
-# refs/pull/N/merge); the rebase command needs a token Dependabot accepts.
+# The base CI tested the PR on is the first parent of the merge commit the
+# event's runs checked out (github.sha, refs/pull/N/merge); the event's base
+# is the fallback. The rebase command needs a token Dependabot accepts.
 # shellcheck disable=SC2016 # literal workflow text
-static_has   "merge checks the base the event tested" 'TESTED_BASE: ${{ github.event.pull_request.base.sha }}'
+static_has   "merge reads the merge commit CI tested" 'TESTED_MERGE: ${{ github.sha }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "merge knows the event's base"     'EVENT_BASE: ${{ github.event.pull_request.base.sha }}'
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "rebase token comes from the optional secret" 'REBASE_TOKEN: ${{ secrets.DEPENDABOT_REBASE_TOKEN }}'
 static_has   "rebase token is declared optional"  '      DEPENDABOT_REBASE_TOKEN:'
@@ -247,6 +250,7 @@ esac
   repos/*/commits/*/check-suites*) kind=suites ;;
   repos/*/commits/*/status\?*)     kind=status ;;
   repos/*/git/ref/heads/*)         kind=baseref ;;
+  repos/*/git/commits/tested*)     kind=tested ;;
   repos/*/git/commits/*)           kind=gitcommit ;;
   repos/*/commits/*)               kind=commit ;;
   repos/*/issues/*/comments*)      kind=comments ;;
@@ -1141,15 +1145,17 @@ PR_READY='{"state":"open","head":{"sha":"abc"},"base":{"ref":"main"},"draft":fal
 # The PR as read back after the merge: merged as m1.
 PR_MERGED='{"state":"closed","head":{"sha":"abc"},"base":{"ref":"main"},"draft":false,"mergeable":null,"mergeable_state":"unknown","merged":true,"merge_commit_sha":"m1"}'
 APPROVAL="api --method POST repos/o/r/pulls/7/reviews -f event=APPROVE -f commit_id=abc --silent"
-# The event tested the PR on base0, the head of main (git/ref) - unchanged by
-# default. After the merge the PR reads as merged, and its commit m1 sits on
-# base0. The head commit abc
-# was made at 10:00; the PR has no comments by default.
+# The event's runs checked out tested0, the head commit abc merged onto base0
+# (the event's base too), and base0 is the head of main (git/ref) - unchanged
+# by default. After the merge the PR reads as merged, and its commit m1 sits
+# on base0. The head commit abc was made at 10:00; the PR has no comments by
+# default.
 merge_dir() {
   local dir="$WORK/merge-$1"
   mkdir -p "$dir"; : > "$dir/output"; : > "$dir/calls"; : > "$dir/tokens"; echo 0 > "$dir/clock"
   echo "$PR_READY" > "$dir/pr.1.json"
   echo "$PR_MERGED" > "$dir/prmerged.1.json"
+  tested_on "$dir" base0
   echo '{"ref":"refs/heads/main","object":{"sha":"base0","type":"commit"}}' > "$dir/baseref.1.json"
   echo '{"sha":"m1","parents":[{"sha":"base0"}]}' > "$dir/gitcommit.1.json"
   echo '{"sha":"abc","commit":{"committer":{"date":"2026-01-01T10:00:00Z"}}}' > "$dir/commit.1.json"
@@ -1160,10 +1166,13 @@ merge_dir() {
 merge_run() {
   local dir="$1" approve="$2" method="$3"; shift 3
   ( cd "$dir" && env PATH="$WORK/bin:$PATH" FAKE="$dir" GITHUB_OUTPUT="$dir/output" \
-      GH_TOKEN=test REPO=o/r PR_NUMBER=7 HEAD_SHA=abc BASE_REF=main TESTED_BASE=base0 REBASE_TOKEN= \
+      GH_TOKEN=test REPO=o/r PR_NUMBER=7 HEAD_SHA=abc BASE_REF=main TESTED_MERGE=tested0 EVENT_BASE=base0 REBASE_TOKEN= \
       AUTO_APPROVE="$approve" MERGE_METHOD="$method" "$@" \
       bash --noprofile --norc -eo pipefail -c "$MERGE_BODY" ) > "$dir/log" 2>&1
 }
+# tested_on <dir> <sha>: the merge commit tested0 the event's runs checked out
+# is the head abc merged onto <sha>
+tested_on() { printf '{"sha":"tested0","parents":[{"sha":"%s"},{"sha":"abc"}]}\n' "$2" > "$1/tested.1.json"; }
 # moved_to <dir> <sha>: main is at <sha> now
 moved_to() { printf '{"ref":"refs/heads/main","object":{"sha":"%s","type":"commit"}}\n' "$2" > "$1/baseref.1.json"; }
 # comment <created_at> <login> <body> [author_association]: a comment on the
@@ -1273,6 +1282,34 @@ ORDER=$(awk '/pulls\/7\/reviews/ { a = NR } /git\/ref\/heads\/main/ { b = NR } /
 if [ "$ORDER" = ok ]; then pass "merge/base-checked-right-before-the-merge"; else fail "merge/base-checked-right-before-the-merge: lines $ORDER"; fi
 output_is merge/base-unchanged-merges "$D" merge-commit m1
 not_called merge/base-unchanged-merges "$D" "issues/7/comments"
+# The tested base is read from the merge commit the event's runs checked out.
+called merge/base-unchanged-merges "$D" "api repos/o/r/git/commits/tested0 --jq [.parents[].sha] | @tsv"
+
+# That commit decides, not the event's base.sha. Where the two differ, its
+# first parent is what CI tested: the event naming the newer base1 while CI
+# tested base0 must not let a merge onto base1 through ...
+D=$(merge_dir event-base-newer); moved_to "$D" base1
+merge_run "$D" true squash EVENT_BASE=base1
+check merge/event-base-newer-than-the-tested-one "$D" $? 0 merged false notice "main moved from base0 (tested by CI) to base1"
+logged merge/event-base-newer-than-the-tested-one "$D" "The event names base1 as the base, but CI tested the PR on base0"
+not_called merge/event-base-newer-than-the-tested-one "$D" "pr merge"
+# ... and CI having tested base1 while the event names base0 is a merge.
+D=$(merge_dir tested-base-newer); tested_on "$D" base1; moved_to "$D" base1
+echo '{"sha":"m1","parents":[{"sha":"base1"}]}' > "$D/gitcommit.1.json"
+merge_run "$D" true squash
+check merge/tested-base-from-the-merge-commit "$D" $? 0 merged true - "main is at base1, the base CI tested the PR on."
+# Not readable: nothing shows which base was tested - left open, unapproved.
+D=$(merge_dir tested-merge-unreadable); raw "$D" tested.1.json HTTP500
+merge_run "$D" true squash
+check merge/tested-merge-unreadable "$D" $? 0 merged false warning "could not be read to tell which base it tested"
+reason_is merge/tested-merge-unreadable "$D" api-error
+not_called merge/tested-merge-unreadable "$D" "pulls/7/reviews"
+not_called merge/tested-merge-unreadable "$D" "pr merge"
+# A github.sha that is not the head merged onto a base (not a pull_request
+# event): the event's base counts, as before.
+D=$(merge_dir not-a-pr-merge); echo '{"sha":"tested0","parents":[{"sha":"base9"}]}' > "$D/tested.1.json"
+merge_run "$D" true squash
+check merge/no-pr-merge-commit-uses-the-event-base "$D" $? 0 merged true - "tested0 is not a merge of the head commit - the event's base base0 counts."
 
 # An unrelated push moved main: not merged, CI runs again after a rebase. The
 # command is posted with the rebase token - Dependabot refuses the job token.
@@ -1398,7 +1435,8 @@ D=$(merge_dir merge-read-fails); raw "$D" prmerged.1.json HTTP500
 merge_run "$D" true squash
 check merge/read-back-fails "$D" $? 0 merged true warning "could not be read back"
 output_is merge/read-back-fails "$D" merge-commit ""
-not_called merge/read-back-fails "$D" "git/commits/"
+# The base the merge landed on is not looked up without the merge commit.
+not_called merge/read-back-fails "$D" ".parents[0].sha"
 
 # --- release ------------------------------------------------------------------------
 # The merge commit m1 is on main; release-workflow is docker-release.yml. The

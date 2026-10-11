@@ -553,7 +553,7 @@ the job red.
 | 17a | Tested base      | The base branch moved since CI ran, or the PR's base branch was changed ([tested combination](#only-the-combination-ci-tested))           | 🔄 Left open - rebase requested       | notice     |
 | 17b | Tested base      | As 17a, without [`DEPENDABOT_REBASE_TOKEN`](#the-rebase-token): no command is posted, the notice asks a person to comment it              | 🔄 Left open - rebase not requested   | notice     |
 | 17c | Tested base      | As 17a, but posting `@dependabot rebase` with the token failed (expired, revoked, missing permission)                                     | ⚠️ Left open - rebase not requested   | warning    |
-| 17d | Tested base      | The head of the base branch could not be read                                                                                             | ⚠️ Left open                          | warning    |
+| 17d | Tested base      | The head of the base branch, or the merge commit CI tested (`github.sha`), could not be read                                              | ⚠️ Left open                          | warning    |
 | 18  | Merge            | The merge was rejected (e.g. the base branch requires a review)                                                                           | ⚠️ Left open                          | warning    |
 | 18a | Merge            | The merge call succeeded, but the PR reads back as not merged (a merge queue only queued it)                                              | ⚠️ Not merged by this run, no release | warning    |
 | 18b | After the merge  | A push landed on the base branch in the moment between the base check and the merge call                                                  | ✅ Merged - onto an untested base     | warning    |
@@ -567,10 +567,14 @@ still waiting; the run for the new head commit decides.
 
 A `pull_request` run does not test the PR's branch alone: it tests
 `refs/pull/<n>/merge`, the PR head merged onto the base branch **as it was
-when the event fired** (the event's `pull_request.base.sha`, the first parent
-of that merge commit). Every required workflow run of the event, and every
-re-run of it, tested that one combination. Merging after the base branch has
-moved would put a combination on `main` that no CI ran on.
+when the event fired**. That merge commit is the event's `github.sha`; every
+required workflow run of the event, and every re-run of it, checked it out
+and tested that one combination. Its first parent is the base CI tested -
+the workflow reads it from the commit itself rather than trusting the
+event's `pull_request.base.sha`, which names the same commit in practice
+but is not documented to (a `github.sha` that is no merge of the head
+commit falls back to it). Merging after the base branch has moved would put
+a combination on `main` that no CI ran on.
 
 So the workflow reads the head of the base branch last - after the approval,
 immediately before the merge call - and merges only if it is still that
