@@ -29,8 +29,11 @@
 # - A release per update wanted (e.g. a security fix has to reach consumers
 #   at once)? Use "fix(deps)" - and set release-workflow below (with
 #   actions: write): the merge is made with GITHUB_TOKEN and starts no
-#   workflow, so the release workflow is dispatched after it. With
-#   "chore(deps)" there is nothing to release, so it stays unset.
+#   workflow, so the release workflow is dispatched after it. That workflow
+#   must gate publishing on its build and tests (`needs:`) and release the
+#   commit it tested (`ref: ${{ github.sha }}` on modules-semantic-release.yml)
+#   - see docs/workflows/docker-maintenance.md, "What no broken release relies
+#   on". With "chore(deps)" there is nothing to release, so it stays unset.
 #
 # Trigger: no paths: filter. A .NET repository updates more than NuGet
 # packages - GitHub Actions at least, the SDK in global.json maybe - and every

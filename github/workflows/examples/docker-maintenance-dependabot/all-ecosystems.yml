@@ -112,10 +112,13 @@
 #       prefix: "chore(ci)"
 # -----------------------------------------------------------------------------
 #
-# Release: release.yml publishes what main holds (semantic release, image,
-# packages). It is dispatched after each merge (release-workflow) - the merge
-# itself starts no workflow - needs `on: workflow_dispatch`, and publishes
-# nothing unless its build and test jobs passed (`needs:`). A merged
+# Release: release.yml publishes the commit its run built and tested
+# (semantic release, image, packages). It is dispatched after each merge
+# (release-workflow) - the merge itself starts no workflow - needs
+# `on: workflow_dispatch`, publishes nothing unless its build and test jobs
+# passed (`needs:`), and pins the release to that commit
+# (`ref: ${{ github.sha }}` on modules-semantic-release.yml - else a merge
+# that lands during its run is tagged untested and missing from its image). A merged
 # "chore(deps-dev)" update releases nothing; its run still succeeds.
 #
 # Private registries (npm, NuGet, Composer, Cargo, internal images): ci.yml's

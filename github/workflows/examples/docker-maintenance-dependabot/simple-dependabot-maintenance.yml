@@ -38,9 +38,12 @@
 #    a PR that does not start it stays open, as it was not tested. A passed
 #    check that tests nothing (e.g. a secret scan) is not enough.
 # 4. The release workflow (here the same docker-release.yml) has an
-#    `on: workflow_dispatch` trigger and publishes nothing unless its build
-#    and tests passed (`needs:`) - see docs/workflows/docker-maintenance.md,
-#    "What no broken release relies on".
+#    `on: workflow_dispatch` trigger, publishes nothing unless its build
+#    and tests passed (`needs:`), and releases the commit it tested
+#    (`ref: ${{ github.sha }}` on modules-semantic-release.yml - else a merge
+#    that lands during its run is tagged untested and missing from its
+#    image) - see docs/workflows/docker-maintenance.md, "What no broken
+#    release relies on".
 #
 # Required .github/dependabot.yml in your repo:
 # -----------------------------------------------------------------------------

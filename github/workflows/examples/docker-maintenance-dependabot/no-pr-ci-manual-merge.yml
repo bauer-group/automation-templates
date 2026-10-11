@@ -23,8 +23,10 @@
 #    actions: read in private repositories), as in
 #    simple-dependabot-maintenance.yml
 # 3. to release each merged update: set release-workflow to the release
-#    workflow file (it needs an `on: workflow_dispatch` trigger) and grant
-#    actions: write instead of actions: read, e.g.
+#    workflow file (it needs an `on: workflow_dispatch` trigger, `needs:` on
+#    its build and tests before publishing, and `ref: ${{ github.sha }}` on
+#    modules-semantic-release.yml) and grant actions: write instead of
+#    actions: read, e.g.
 #      release-workflow: .github/workflows/docker-release.yml
 # =============================================================================
 

@@ -30,9 +30,12 @@
 #
 # Release: ci.yml only builds and tests. The image is published by
 # release.yml (semantic release, then the image push) - dispatched after the
-# merge (release-workflow). It needs `on: workflow_dispatch` and must build
-# and test before it publishes (its release job `needs:` its build and test
-# jobs), so a broken update never reaches the registry.
+# merge (release-workflow). It needs `on: workflow_dispatch`, must build and
+# test before it publishes (its release job `needs:` its build and test jobs),
+# and must release the commit it tested (`ref: ${{ github.sha }}` on
+# modules-semantic-release.yml - else a merge that lands during its run is
+# tagged untested and missing from its image), so a broken update never
+# reaches the registry.
 #
 # Required .github/dependabot.yml (excerpt):
 # -----------------------------------------------------------------------------
