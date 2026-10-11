@@ -573,9 +573,15 @@ Dependabot is asked to rebase it:
 | a push lands in the second between the check and the merge call        | Merged - the check cannot pin the base. A warning *Merged onto an untested base* names the base it landed on; only the release's own tests vouch then |
 
 The command is posted **once per head commit**: a `@dependabot rebase` or
-`@dependabot recreate` comment made after the head commit was created - by a
-person, or by an earlier run of this workflow - counts as pending, and no
-second one is posted.
+`@dependabot recreate` comment made after the head commit was created counts
+as pending, and no second one is posted - if its author is the repository's
+owner, an organization member or a collaborator (`author_association`
+`OWNER`, `MEMBER` or `COLLABORATOR`): a person, or the rebase token's user in
+an earlier run of this workflow. Dependabot refuses commands from anyone
+without push access, so an outsider's comment on a public repository, or one
+by `github-actions[bot]`, does not count and the command is posted all the
+same. A member or collaborator with read access only counts as well; if
+Dependabot refused their command, comment `@dependabot rebase` yourself.
 
 ##### The rebase token
 

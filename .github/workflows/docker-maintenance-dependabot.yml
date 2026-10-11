@@ -776,8 +776,10 @@ jobs:
           # push access can use that command", so the command is posted with
           # DEPENDABOT_REBASE_TOKEN, a token of a user with push access, if the
           # caller has one. Once per head commit: a rebase or recreate command
-          # posted after the head commit was made (by anyone but
-          # github-actions[bot], whose commands Dependabot refuses) is pending.
+          # posted after the head commit was made is pending - if its author
+          # is the repository's owner, an organization member or a
+          # collaborator. Dependabot refuses others (an outsider on a public
+          # repository, github-actions[bot]), so their commands do not count.
           request_rebase() {
             if [ -z "$REBASE_TOKEN" ]; then
               echo "::notice title=Dependabot PR left open::CI passed, but $MOVED since CI ran, so CI did not test this update on the current base. Comment '@dependabot rebase' on the PR to have it tested again - Dependabot does not take the command from the job token. To request it automatically, store a token of a user with push access as the Dependabot secret DEPENDABOT_REBASE_TOKEN."
@@ -785,8 +787,8 @@ jobs:
             fi
             SINCE=$(gh api "repos/$REPO/commits/$HEAD_SHA" --jq '.commit.committer.date' 2> "$ERR") || SINCE=""
             if [ -n "$SINCE" ] && gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
-                 --jq '.[] | [.created_at, .user.login, (.body | split("\n")[0])] | @tsv' > "$COMMENTS" 2> "$ERR"; then
-              if awk -F'\t' -v since="$SINCE" '$1 >= since && $2 != "github-actions[bot]" && $3 ~ /^@dependabot (rebase|recreate)/ { found = 1 } END { exit !found }' "$COMMENTS"; then
+                 --jq '.[] | [.created_at, .user.login, .author_association, (.body | split("\n")[0])] | @tsv' > "$COMMENTS" 2> "$ERR"; then
+              if awk -F'\t' -v since="$SINCE" '$1 >= since && $2 != "github-actions[bot]" && $3 ~ /^(OWNER|MEMBER|COLLABORATOR)$/ && $4 ~ /^@dependabot (rebase|recreate)/ { found = 1 } END { exit !found }' "$COMMENTS"; then
                 echo "::notice title=Dependabot PR left open::CI passed, but $MOVED since CI ran. A rebase of this head commit is already requested - the rebased PR is tested again and gets its own decision."
                 done_with false base-moved "$MOVED; rebase already requested"
               fi

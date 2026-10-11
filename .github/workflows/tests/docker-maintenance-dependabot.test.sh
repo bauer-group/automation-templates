@@ -1158,8 +1158,9 @@ merge_run() {
 }
 # moved_to <dir> <sha>: main is at <sha> now
 moved_to() { printf '{"ref":"refs/heads/main","object":{"sha":"%s","type":"commit"}}\n' "$2" > "$1/baseref.1.json"; }
-# comment <created_at> <login> <body>: a comment on the PR
-comment() { printf '{"created_at":"%s","user":{"login":"%s"},"body":"%s"}' "$1" "$2" "$3"; }
+# comment <created_at> <login> <body> [author_association]: a comment on the
+# PR, by an organization member unless said otherwise
+comment() { printf '{"created_at":"%s","user":{"login":"%s"},"author_association":"%s","body":"%s"}' "$1" "$2" "${4:-MEMBER}" "$3"; }
 # output_is <name> <dir> <key> <want>
 output_is() {
   local got; got=$(sed -n "s/^$3=//p" "$2/output")
@@ -1311,6 +1312,23 @@ echo "[$(comment 2026-01-01T09:59:59Z karl "@dependabot rebase"),$(comment 2026-
 merge_run "$D" true squash REBASE_TOKEN=rebase-token
 check merge/base-moved-stale-requests-ignored "$D" $? 0 merged false notice "Asked Dependabot to rebase the PR"
 called merge/base-moved-stale-requests-ignored "$D" "api --method POST repos/o/r/issues/7/comments -f body=@dependabot rebase --silent"
+
+# Who asked counts: Dependabot takes commands from users with push access
+# only. The owner, a member or a collaborator asked - pending.
+for a in OWNER COLLABORATOR; do
+  D=$(merge_dir "base-moved-requested-by-$a"); moved_to "$D" base1
+  echo "[$(comment 2026-01-01T10:05:00Z someone "@dependabot rebase" "$a")]" > "$D/comments.1.json"
+  merge_run "$D" true squash REBASE_TOKEN=rebase-token
+  check "merge/base-moved-requested-by-$a" "$D" $? 0 merged false notice "already requested"
+  not_called "merge/base-moved-requested-by-$a" "$D" "--method POST repos/o/r/issues/7/comments"
+done
+# An outsider's command (a public repository), which Dependabot refuses, does
+# not hold the PR back: the rebase is requested.
+D=$(merge_dir base-moved-outsider-request); moved_to "$D" base1
+echo "[$(comment 2026-01-01T10:05:00Z visitor "@dependabot rebase" CONTRIBUTOR),$(comment 2026-01-01T10:06:00Z drive-by "@dependabot recreate" NONE)]" > "$D/comments.1.json"
+merge_run "$D" true squash REBASE_TOKEN=rebase-token
+check merge/base-moved-outsider-request-ignored "$D" $? 0 merged false notice "Asked Dependabot to rebase the PR"
+called merge/base-moved-outsider-request-ignored "$D" "api --method POST repos/o/r/issues/7/comments -f body=@dependabot rebase --silent"
 
 # Earlier requests not readable: requested anyway (a second command is harmless).
 D=$(merge_dir base-moved-comments-unreadable); moved_to "$D" base1; raw "$D" comments.1.json HTTP500
