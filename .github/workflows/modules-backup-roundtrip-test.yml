@@ -188,10 +188,11 @@ on:
           which seeds and backs up; then the images built from this commit replace it like an
           operator's upgrade (compose up -d), data and healthcheck are checked, and the OLD
           snapshot is restored with the NEW sidecar. 'latest-release' (the newest release of this
-          repository; a leading 'v' of its tag is dropped for the image tag), one image tag for
-          every build-images service (e.g. '1.4.2'), or a JSON object mapping build-images services
-          to 'latest-release', a tag or a full image reference - services left out run this
-          commit's image from the start. Empty: no upgrade test.
+          repository - while one of its images is not published, the newest of the three releases
+          before it that has them all; a leading 'v' of its tag is dropped for the image tag), one
+          image tag for every build-images service (e.g. '1.4.2'), or a JSON object mapping
+          build-images services to 'latest-release', a tag or a full image reference - services
+          left out run this commit's image from the start. Empty: no upgrade test.
         required: false
         type: string
         default: ""
@@ -911,6 +912,11 @@ jobs:
       # upgrade-from: the previous release takes the image references the
       # services resolve to, so Compose starts it like an installed release.
       # The images under test wait under staging tags until Upgrade Stack.
+      # A release is tagged before its image jobs push - minutes before, or
+      # for good when one of them fails. latest-release then starts from the
+      # newest release before it that has every image, instead of failing
+      # every run: the release job needs this round trip, so one failed image
+      # job would block every release after it.
       - name: "⏮️ Pull Previous Release"
         id: previous
         if: inputs.upgrade-from != ''
@@ -923,21 +929,118 @@ jobs:
           set -euo pipefail
           CONFIG="$ROUNDTRIP_DIR/compose-config.json"
           TAG_RE='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'
+          PULL_ERR="$ROUNDTRIP_DIR/previous-pull.err"
+          # The releases API of this repository; a private one's needs the token.
+          api() {
+            curl -fsSL --retry 3 \
+              -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/$1"
+          }
 
           # One spec per upgraded service: a tag, a full reference or
           # latest-release. A plain value applies to every build-images service.
           if [[ "$UPGRADE_FROM" == \{* ]]; then
-            PLAN="$UPGRADE_FROM"
+            REQUESTED="$UPGRADE_FROM"
           else
-            PLAN=$(jq -c --arg v "$UPGRADE_FROM" 'map({key: .service, value: $v}) | from_entries' <<< "$BUILD_IMAGES")
+            REQUESTED=$(jq -c --arg v "$UPGRADE_FROM" 'map({key: .service, value: $v}) | from_entries' <<< "$BUILD_IMAGES")
           fi
-          REQUESTED="$PLAN"
+
+          # A tag the registry does not have, in the words of both image
+          # stores: the registry's 'manifest unknown' (classic - bare from
+          # GHCR, 'manifest for <ref> not found: manifest unknown' from Docker
+          # Hub) and the resolver's 'failed to resolve reference "<ref>":
+          # <ref>: not found' (containerd) - not a layer or manifest missing
+          # under a tag that resolved ('could not fetch content ...: not
+          # found'), nor a tag published for other platforms only ('no
+          # matching manifest'). Never 'denied', 'unauthorized' or a rate
+          # limit: a permission problem must not quietly move the upgrade to
+          # an older release.
+          not_published() {
+            grep -qiE 'manifest unknown|failed to resolve reference .*: not found$' "$1" \
+              && ! grep -qiE 'denied|unauthorized|toomanyrequests' "$1"
+          }
+
+          # Pulls the previous image of every upgraded service - those of
+          # latest-release under the image tag $1 - and tags it as the
+          # reference the service resolves to. Every call starts the plan over;
+          # 'docker tag' moves a reference an earlier call tagged. Every
+          # latest-release image not published under $1 is listed in MISSING
+          # (the services) and MISSING_IMAGES: that release cannot be the
+          # previous one, and the warning names them all. Any other failed pull
+          # fails the step. Called as a command of its own, never in a
+          # condition, so set -e holds inside.
+          clear_plan() {
+            : > "$ROUNDTRIP_DIR/previous-images.txt"
+            : > "$ROUNDTRIP_DIR/upgrade-plan.tsv"
+          }
+          pull_previous() {
+            local plan entries pulled latest hint
+            MISSING=""
+            MISSING_IMAGES=""
+            PREVIOUS='{}'
+            clear_plan
+            plan=$(jq -c --arg t "$1" 'map_values(if . == "latest-release" then $t else . end)' <<< "$REQUESTED")
+            entries=$(jq -r 'to_entries[] | "\(.key)\t\(.value)"' <<< "$plan")
+            while IFS=$'\t' read -r SERVICE SPEC; do
+              REF=$(jq -r --arg s "$SERVICE" '.services[$s].image // empty' "$CONFIG")
+              if [ -z "$REF" ]; then
+                echo "::error title=Backup round trip::upgrade-from: service '$SERVICE' has no image reference in the configuration the previous release starts from"
+                exit 1
+              fi
+              # A digest names one exact registry image: Docker refuses to tag
+              # another image as it, so the previous release cannot take it.
+              if [[ "$REF" == *@* ]]; then
+                echo "::error title=Backup round trip::upgrade-from: service '$SERVICE' pins its image by digest ($REF) - no other image can be tagged as a digest reference. Give the service a tag for the round trip (env-overrides or a CI-only override file)."
+                exit 1
+              fi
+              if [[ "$SPEC" == *[/:@]* ]]; then
+                OLD="$SPEC"
+              else
+                # The repository of the reference the service resolves to, with
+                # the release's tag: ghcr.io/acme/app:stable -> ghcr.io/acme/app:1.4.2
+                REPOSITORY="$REF"
+                [[ "${REPOSITORY##*/}" != *:* ]] || REPOSITORY="${REPOSITORY%:*}"
+                OLD="$REPOSITORY:$SPEC"
+              fi
+              echo "::group::⏮️ $SERVICE: $OLD"
+              # stderr is kept to tell a missing tag from any other failure,
+              # and printed all the same: it says why a pull failed.
+              pulled=true
+              docker pull "$OLD" 2> "$PULL_ERR" || pulled=false
+              cat "$PULL_ERR" >&2
+              echo "::endgroup::"
+              if [ "$pulled" = "false" ]; then
+                latest=false
+                [ "$(jq -r --arg s "$SERVICE" '.[$s]' <<< "$REQUESTED")" != "latest-release" ] || latest=true
+                if [ "$latest" = "true" ] && not_published "$PULL_ERR"; then
+                  MISSING+="${MISSING:+, }$SERVICE"
+                  MISSING_IMAGES+="${MISSING_IMAGES:+, }$OLD"
+                  echo "⏭️ $SERVICE: $OLD is not published"
+                  continue
+                fi
+                hint=""
+                if [ "$latest" = "true" ]; then
+                  hint=" This is no missing tag, so no further release was tried: only an image that is not published (manifest unknown, not found) moves latest-release to the release before - an access error or a rate limit fails the round trip instead of hiding behind an older release."
+                fi
+                echo "::error title=Backup round trip::upgrade-from: '$OLD' could not be pulled - is the previous release published under that tag, and may this job read it (registry-login, packages: read)?$hint"
+                # A release before the latest was never chosen: the summary and
+                # the diagnostics show no plan of it.
+                [ -z "$SKIPPED" ] || clear_plan
+                exit 1
+              fi
+              docker tag "$OLD" "$REF"
+              echo "$REF" >> "$ROUNDTRIP_DIR/previous-images.txt"
+              printf '%s\t%s\t%s\n' "$SERVICE" "$OLD" "$REF" >> "$ROUNDTRIP_DIR/upgrade-plan.tsv"
+              PREVIOUS=$(jq -c --arg s "$SERVICE" --arg o "$OLD" '. + {($s): $o}' <<< "$PREVIOUS")
+              echo "✅ $SERVICE starts as $OLD (tagged $REF)"
+            done <<< "$entries"
+          }
 
           RELEASE=""
-          if jq -e 'any(.[]; . == "latest-release")' <<< "$PLAN" > /dev/null; then
-            if ! RESPONSE=$(curl -fsSL --retry 3 \
-                 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-                 "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/releases/latest"); then
+          IMAGE_TAG=""
+          SKIPPED=""
+          if jq -e 'any(.[]; . == "latest-release")' <<< "$REQUESTED" > /dev/null; then
+            if ! RESPONSE=$(api releases/latest); then
               echo "::error title=Backup round trip::upgrade-from: $GITHUB_REPOSITORY has no published release to upgrade from (GET releases/latest failed)"
               exit 1
             fi
@@ -948,54 +1051,54 @@ jobs:
               exit 1
             fi
             echo "⏮️ Latest release of $GITHUB_REPOSITORY: $RELEASE (image tag $IMAGE_TAG)"
-            PLAN=$(jq -c --arg t "$IMAGE_TAG" 'map_values(if . == "latest-release" then $t else . end)' <<< "$PLAN")
           fi
+          pull_previous "$IMAGE_TAG"
 
-          : > "$ROUNDTRIP_DIR/previous-images.txt"
-          : > "$ROUNDTRIP_DIR/upgrade-plan.tsv"
-          PREVIOUS='{}'
-          ENTRIES=$(jq -r 'to_entries[] | "\(.key)\t\(.value)"' <<< "$PLAN")
-          while IFS=$'\t' read -r SERVICE SPEC; do
-            REF=$(jq -r --arg s "$SERVICE" '.services[$s].image // empty' "$CONFIG")
-            if [ -z "$REF" ]; then
-              echo "::error title=Backup round trip::upgrade-from: service '$SERVICE' has no image reference in the configuration the previous release starts from"
+          # The latest release lacks an image. The previous release is then the
+          # newest of the three before it that has every latest-release image
+          # - one release for all of them, as an operator runs it. The list
+          # endpoint documents no order: it is sorted here by created_at, which
+          # releases/latest is sorted by, and only releases created before the
+          # latest one count - make_latest can mark an older release as latest,
+          # and a release created since the call above is none before it. Ten
+          # releases leave room for the drafts and pre-releases among the
+          # newest.
+          if [ -n "$MISSING" ]; then
+            SKIPPED="$RELEASE"
+            SKIPPED_SERVICES="$MISSING"
+            SKIPPED_IMAGES="$MISSING_IMAGES"
+            if ! LIST=$(api "releases?per_page=10") || ! jq -e 'type == "array"' <<< "$LIST" > /dev/null 2>&1; then
+              echo "::error title=Backup round trip::upgrade-from: the latest release $SKIPPED has no image for $SKIPPED_SERVICES (not published: $SKIPPED_IMAGES), and the releases before it could not be listed (GET releases failed)"
+              clear_plan
               exit 1
             fi
-            # A digest names one exact registry image: Docker refuses to tag
-            # another image as it, so the previous release cannot take it.
-            if [[ "$REF" == *@* ]]; then
-              echo "::error title=Backup round trip::upgrade-from: service '$SERVICE' pins its image by digest ($REF) - no other image can be tagged as a digest reference. Give the service a tag for the round trip (env-overrides or a CI-only override file)."
-              exit 1
-            fi
-            if [[ "$SPEC" == *[/:@]* ]]; then
-              OLD="$SPEC"
-            else
-              # The repository of the reference the service resolves to, with
-              # the release's tag: ghcr.io/acme/app:stable -> ghcr.io/acme/app:1.4.2
-              REPOSITORY="$REF"
-              [[ "${REPOSITORY##*/}" != *:* ]] || REPOSITORY="${REPOSITORY%:*}"
-              OLD="$REPOSITORY:$SPEC"
-            fi
-            echo "::group::⏮️ $SERVICE: $OLD"
-            if ! docker pull "$OLD"; then
-              echo "::endgroup::"
-              # A release exists before its images do: the release is created
-              # first and its image jobs push the tags minutes later - or
-              # never, when one of them failed.
-              HINT=""
-              if [ "$(jq -r --arg s "$SERVICE" '.[$s]' <<< "$REQUESTED")" = "latest-release" ]; then
-                HINT=" $RELEASE is the latest release, but its images may not be published yet - its image jobs push them after the release is created, or failed to. Re-run once they are published (re-run a failed image job), or set upgrade-from to the release before until then."
+            CANDIDATES=$(jq -r --arg latest "$SKIPPED" --arg created "$(jq -r '.created_at // empty' <<< "$RESPONSE")" --arg re "$TAG_RE" '
+              map(objects | select(.draft == false and .prerelease == false and .tag_name != $latest
+                                   and ($created == "" or .created_at < $created)
+                                   and (.tag_name | strings | ltrimstr("v") | test($re))))
+              | sort_by(.created_at) | reverse | .[:3][] | .tag_name' <<< "$LIST")
+            TRIED="$SKIPPED"
+            while IFS= read -r CANDIDATE; do
+              [ -n "$CANDIDATE" ] || continue
+              echo "⏮️ $SKIPPED has no image for $SKIPPED_SERVICES - trying $CANDIDATE (image tag ${CANDIDATE#v})"
+              pull_previous "${CANDIDATE#v}"
+              TRIED+=", $CANDIDATE"
+              if [ -z "$MISSING" ]; then
+                RELEASE="$CANDIDATE"
+                break
               fi
-              echo "::error title=Backup round trip::upgrade-from: '$OLD' could not be pulled - is the previous release published under that tag, and may this job read it (registry-login, packages: read)?$HINT"
+            done <<< "$CANDIDATES"
+            if [ -n "$MISSING" ]; then
+              # No release was chosen: the summary and the diagnostics show no
+              # plan of the last one tried.
+              clear_plan
+              echo "::error title=Backup round trip::upgrade-from: no release has every latest-release image published - tried $TRIED (the latest release and up to 3 before it; the pulls above name the missing images). A release exists minutes before its images, and a failed image job never pushes them: re-run the failed image job of $SKIPPED, or set upgrade-from to a tag that is published. An image that none of them has is rather a reference this commit adds or renames - a registry may answer a repository it does not have as not published (GHCR does to a logged-in pull): leave that service out of upgrade-from with the JSON form, or give its full reference."
               exit 1
             fi
-            echo "::endgroup::"
-            docker tag "$OLD" "$REF"
-            echo "$REF" >> "$ROUNDTRIP_DIR/previous-images.txt"
-            printf '%s\t%s\t%s\n' "$SERVICE" "$OLD" "$REF" >> "$ROUNDTRIP_DIR/upgrade-plan.tsv"
-            PREVIOUS=$(jq -c --arg s "$SERVICE" --arg o "$OLD" '. + {($s): $o}' <<< "$PREVIOUS")
-            echo "✅ $SERVICE starts as $OLD (tagged $REF)"
-          done <<< "$ENTRIES"
+            echo "::warning title=Backup round trip::upgrade-from: the latest release $SKIPPED has no image for $SKIPPED_SERVICES (not published: $SKIPPED_IMAGES - its image jobs have not pushed yet, or failed), so the upgrade starts from $RELEASE, the newest release before it with every image. Re-run the failed image jobs of $SKIPPED to test the upgrade from it."
+            echo "skipped-release=$SKIPPED" >> "$GITHUB_OUTPUT"
+            echo "skipped-services=$SKIPPED_SERVICES" >> "$GITHUB_OUTPUT"
+          fi
 
           # For the scripts: what the stack started from.
           echo "ROUNDTRIP_PREVIOUS_RELEASE=$RELEASE" >> "$GITHUB_ENV"
@@ -1854,6 +1957,10 @@ jobs:
           OUTCOME_PREVIOUS: ${{ steps.previous.outcome }}
           OUTCOME_PREVIOUS_RUNNING: ${{ steps.previous-running.outcome }}
           OUTCOME_UPGRADE: ${{ steps.upgrade.outcome }}
+          # latest-release fell back: the latest release and the services
+          # whose images it lacked
+          SKIPPED_RELEASE: ${{ steps.previous.outputs.skipped-release }}
+          SKIPPED_SERVICES: ${{ steps.previous.outputs.skipped-services }}
           HAS_S3: ${{ inputs.s3-destination }}
           OUTCOME_S3_UPLOAD: ${{ steps.s3-upload.outcome }}
           OUTCOME_NEW_HOST: ${{ steps.new-host.outcome }}
@@ -1954,6 +2061,10 @@ jobs:
             if [ -s "$PLAN" ]; then
               echo "### ⬆️ Upgraded from \`${ROUNDTRIP_PREVIOUS_RELEASE:-the images below}\`"
               echo ""
+              if [ -n "$SKIPPED_RELEASE" ]; then
+                echo "> ⚠️ The latest release \`$SKIPPED_RELEASE\` has no image for \`$SKIPPED_SERVICES\` - its image jobs have not pushed yet, or failed - so the upgrade started from the newest release before it with every image."
+                echo ""
+              fi
               echo "| Service | Previous release | Started as |"
               echo "|---------|------------------|------------|"
               while IFS=$'\t' read -r SERVICE OLD REF; do

@@ -12,9 +12,10 @@
 #
 # 'latest-release' resolves the newest release of this repository; its tag
 # (v1.4.2) names the images (1.4.2) the release pipeline published. The
-# release exists a few minutes before its images do - a run in that window,
-# or after a failed image job, fails at "Pull previous release": re-run the
-# image job, or set upgrade-from to the release before until then.
+# release exists a few minutes before its images do: a run in that window,
+# or after a failed image job, starts from the newest of the three releases
+# before it that has every image, with a warning. Re-run the failed image
+# job to test the upgrade from the latest release again.
 #
 # Assumed repository layout:
 #   docker-compose.yml               app, app-backup (profile: backup)

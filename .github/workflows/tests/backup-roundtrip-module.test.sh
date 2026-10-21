@@ -47,7 +47,13 @@
 #
 # upgrade-from: Pull Previous Release (id: previous) resolves 'latest-release',
 # tags and full references per service and gives the previous release the
-# references the services resolve to; Build Images Under Test (id: build)
+# references the services resolve to. When the latest release has not
+# published a latest-release image ('manifest unknown' / 'not found'), every
+# latest-release service comes from the newest of the three releases created
+# before it that has all of them, with a warning naming every missing image -
+# never after 'denied', a rate limit, a missing layer or platform, and never
+# for a tag or reference given by hand;
+# Build Images Under Test (id: build)
 # keeps an upgraded service's build under a staging tag; Check Previous
 # Release (id: previous-running) fails unless the started stack runs the
 # previous release; Upgrade Stack (id: upgrade) runs the hook first, switches
@@ -139,6 +145,14 @@ static_check "Inspect Snapshot runs after a failed create that stored a snapshot
   "if: \${{ !cancelled() && steps.create.outputs.snapshot-id != '' }}"
 static_check "the summary reports the create exit code" \
   "CREATE_EXIT: \${{ steps.create.outputs.create-exit-code }}"
+static_check "the summary reports a latest release that was skipped" \
+  "SKIPPED_RELEASE: \${{ steps.previous.outputs.skipped-release }}"
+static_check "the summary reports the services it lacked images for" \
+  "SKIPPED_SERVICES: \${{ steps.previous.outputs.skipped-services }}"
+static_check "the summary names them only after a fallback" \
+  'if [ -n "$SKIPPED_RELEASE" ]; then'
+static_check "the summary line names the release and the services" \
+  'The latest release \`$SKIPPED_RELEASE\` has no image for \`$SKIPPED_SERVICES\`'
 # Verify and everything after it must keep the implicit success(): after a
 # failed create the job ends with Inspect Snapshot.
 VERIFY_IF=$(awk '/- name: "🔍 Verify Snapshot"/ { getline; print; exit }' "$WORKFLOW_FILE")
@@ -918,13 +932,18 @@ run_host; expect_rc "new-host two jobs: a local snapshot of the second job survi
 expect_log "new-host two jobs: names it" "local snapshots survived the wipe: ${SID}_files"
 
 # === Pull Previous Release ======================================================
-# The fake docker records pulls and tags; a reference listed in unpullable
-# fails to pull. The fake curl answers the releases API from release.json.
+# The fake docker records pulls and tags; a line "REF MESSAGE" in unpullable
+# makes the pull of REF fail with MESSAGE on stderr, the way the daemon
+# answers. The fake curl answers releases/latest from release.json and the
+# release list from releases.json, both only with the token.
 cat > "$WORK/bin/docker" <<'STUB'
 #!/usr/bin/env bash
 echo "docker $*" >> "$DIR/docker.log"
 case "$1" in
-  pull) ! grep -qxF "$2" "$DIR/unpullable" ;;
+  pull)
+    ERROR=$(awk -v ref="$2" '$1 == ref { sub(/^[^ ]+ /, ""); print; exit }' "$DIR/unpullable")
+    [ -z "$ERROR" ] || { echo "Error response from daemon: $ERROR" >&2; exit 1; }
+    echo "$2: pulled" ;;
   tag)  echo "$2 -> $3" >> "$DIR/tags" ;;
   *) echo "unexpected docker call: $*" >&2; exit 2 ;;
 esac
@@ -932,8 +951,15 @@ STUB
 cat > "$WORK/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 echo "curl ${*: -1}" >> "$DIR/curl.log"
-[ -f "$DIR/release.json" ] || { echo "curl: (22) The requested URL returned error: 404" >&2; exit 22; }
-cat "$DIR/release.json"
+printf '%s\n' "$@" | grep -qxF "Authorization: Bearer $GH_TOKEN" \
+  || { echo "curl: (22) The requested URL returned error: 401" >&2; exit 22; }
+case "${*: -1}" in
+  */releases/latest) FILE="$DIR/release.json" ;;
+  */releases\?*)     FILE="$DIR/releases.json" ;;
+  *) echo "unexpected curl call: $*" >&2; exit 2 ;;
+esac
+[ -f "$FILE" ] || { echo "curl: (22) The requested URL returned error: 404" >&2; exit 22; }
+cat "$FILE"
 STUB
 chmod +x "$WORK/bin/curl"
 previous_case() {
@@ -954,6 +980,21 @@ run_previous() {
     GITHUB_API_URL=https://api.github.test GITHUB_REPOSITORY=acme/stack "$@"
 }
 tags() { tr '\n' '|' < "$DIR/tags" | sed 's/|$//'; }
+pulls() { sed -n 's/^docker pull //p' "$DIR/docker.log" | tr '\n' '|' | sed 's/|$//'; }
+plan() { cut -f 1,2 "$DIR/upgrade-plan.tsv" | tr '\t\n' ' |'; }
+previous_release() { sed -n 's/^ROUNDTRIP_PREVIOUS_RELEASE=//p' "$DIR/env"; }
+# The daemon's answers for a tag the registry does not have - classic image
+# store (Docker Hub's wording) and containerd image store - and for any other
+# failure.
+missing_tag() { echo "$1 manifest for $1 not found: manifest unknown: manifest unknown" >> "$DIR/unpullable"; }
+missing_tag_containerd() { echo "$1 failed to resolve reference \"$1\": $1: not found" >> "$DIR/unpullable"; }
+pull_error() { echo "$1 $2" >> "$DIR/unpullable"; }
+# releases.json in the order the list endpoint happens to return it, one
+# "tag created_at [draft|prerelease]" per release.
+releases() {
+  printf '%s\n' "$@" | jq -R -s '[split("\n")[] | select(length > 0) | split(" ")
+    | {tag_name: .[0], created_at: .[1], draft: (.[2] == "draft"), prerelease: (.[2] == "prerelease")}]' > "$DIR/releases.json"
+}
 
 previous_case latest; echo '{"tag_name": "v0.2.61", "name": "v0.2.61"}' > "$DIR/release.json"
 run_previous UPGRADE_FROM=latest-release; expect_rc "previous latest-release: step passes" $? 0
@@ -967,6 +1008,8 @@ expect_eq "previous latest-release: images exported for the scripts" \
   '{"app":"ghcr.io/acme/app:0.2.61","app-backup":"registry.example.com:5000/acme/app-backup:0.2.61"}'
 expect_eq "previous latest-release: plan for the upgrade and the summary" "$(cut -f 1,2 "$DIR/upgrade-plan.tsv" | tr '\t\n' ' |')" \
   "app ghcr.io/acme/app:0.2.61|app-backup registry.example.com:5000/acme/app-backup:0.2.61|"
+expect_eq "previous latest-release: nothing skipped for the summary" "$(out skipped-release)" ""
+if grep -q "::warning" "$DIR/log"; then fail "previous latest-release: no warning" "$(grep '::warning' "$DIR/log")"; else pass "previous latest-release: no warning"; fi
 
 previous_case tag
 run_previous UPGRADE_FROM=1.4.2; expect_rc "previous tag: step passes" $? 0
@@ -992,17 +1035,160 @@ previous_case odd-release; echo '{"tag_name": "release/2026-10"}' > "$DIR/releas
 run_previous UPGRADE_FROM=latest-release; expect_rc "previous: release tag that is no image tag" $? 1
 expect_log "previous: asks for the tag instead" "does not give an image tag"
 
-previous_case unpublished; echo "ghcr.io/acme/app:9.9.9" > "$DIR/unpullable"
+# A tag given by hand is what the caller asked for: never another one, even
+# with older releases at hand.
+previous_case unpublished; missing_tag "ghcr.io/acme/app:9.9.9"; releases "v9.9.8 2026-10-01T10:00:00Z"
 run_previous UPGRADE_FROM=9.9.9; expect_rc "previous: image not published under the tag" $? 1
 expect_log "previous: names the image" "'ghcr.io/acme/app:9.9.9' could not be pulled"
-if grep -q "may not be published yet" "$DIR/log"; then fail "previous: no release hint for a tag given by hand" "$(cat "$DIR/log")"; else pass "previous: no release hint for a tag given by hand"; fi
+expect_log "previous: the daemon's error stays in the log" "Error response from daemon: manifest for ghcr.io/acme/app:9.9.9 not found"
+expect_eq "previous: a tag given by hand never falls back" "$(cat "$DIR/curl.log")|$(pulls)" "|ghcr.io/acme/app:9.9.9"
+if grep -q "no further release was tried" "$DIR/log"; then fail "previous: no release hint for a tag given by hand" "$(cat "$DIR/log")"; else pass "previous: no release hint for a tag given by hand"; fi
 
-# The latest release exists, its image jobs have not pushed (yet).
-previous_case release-without-images; echo '{"tag_name": "v0.2.62"}' > "$DIR/release.json"
-echo "registry.example.com:5000/acme/app-backup:0.2.62" > "$DIR/unpullable"
+# --- latest-release without its images --------------------------------------
+# v0.2.62's image job for app-backup failed: BOTH services come from the
+# newest release before it - by created_at, not by the list's order - that
+# has both images; a draft, a pre-release, a tag that is no image tag, a
+# release created after the latest one (make_latest: false) and one with the
+# latest's created_at (the date of its commit) are never tried.
+previous_case fallback; echo '{"tag_name": "v0.2.62", "created_at": "2026-10-15T10:00:00Z"}' > "$DIR/release.json"
+missing_tag "registry.example.com:5000/acme/app-backup:0.2.62"
+releases "v0.2.62 2026-10-15T10:00:00Z" "v0.2.60 2026-10-01T10:00:00Z" "v0.2.63 2026-10-12T10:00:00Z draft" \
+  "v0.2.62-rc.1 2026-10-13T10:00:00Z prerelease" "release/2026-10 2026-10-14T10:00:00Z" "v0.2.61 2026-10-08T10:00:00Z" \
+  "v0.1.9 2026-10-17T10:00:00Z" "v0.2.62-1 2026-10-15T10:00:00Z"
+run_previous UPGRADE_FROM=latest-release; expect_rc "previous fallback: step passes" $? 0
+expect_eq "previous fallback: the latest release, then the list, both with the token" "$(tr '\n' '|' < "$DIR/curl.log")" \
+  "curl https://api.github.test/repos/acme/stack/releases/latest|curl https://api.github.test/repos/acme/stack/releases?per_page=10|"
+expect_eq "previous fallback: pulls the latest release, then the newest one before it" "$(pulls)" \
+  "ghcr.io/acme/app:0.2.62|registry.example.com:5000/acme/app-backup:0.2.62|ghcr.io/acme/app:0.2.61|registry.example.com:5000/acme/app-backup:0.2.61"
+expect_eq "previous fallback: the release before tags over what the latest one tagged" "$(tags)" \
+  "ghcr.io/acme/app:0.2.62 -> ghcr.io/acme/app:stable|ghcr.io/acme/app:0.2.61 -> ghcr.io/acme/app:stable|registry.example.com:5000/acme/app-backup:0.2.61 -> registry.example.com:5000/acme/app-backup:stable"
+expect_eq "previous fallback: every service from one release" "$(plan)" \
+  "app ghcr.io/acme/app:0.2.61|app-backup registry.example.com:5000/acme/app-backup:0.2.61|"
+expect_eq "previous fallback: references kept out of Pull Images, once each" "$(sort "$DIR/previous-images.txt" | tr '\n' ' ')" \
+  "ghcr.io/acme/app:stable registry.example.com:5000/acme/app-backup:stable "
+expect_eq "previous fallback: release exported for the scripts" "$(previous_release)" "v0.2.61"
+expect_eq "previous fallback: images exported for the scripts" "$(sed -n 's/^ROUNDTRIP_PREVIOUS_IMAGES=//p' "$DIR/env" | jq -c .)" \
+  '{"app":"ghcr.io/acme/app:0.2.61","app-backup":"registry.example.com:5000/acme/app-backup:0.2.61"}'
+expect_log "previous fallback: warns with the skipped release and the image it lacks" \
+  "::warning title=Backup round trip::upgrade-from: the latest release v0.2.62 has no image for app-backup (not published: registry.example.com:5000/acme/app-backup:0.2.62 -"
+expect_log "previous fallback: the warning names the release used instead" "so the upgrade starts from v0.2.61, the newest release before it with every image"
+expect_log "previous fallback: the daemon's error stays in the log" "Error response from daemon: manifest for registry.example.com:5000/acme/app-backup:0.2.62 not found"
+expect_eq "previous fallback: the skipped release for the summary" "$(out skipped-release)|$(out skipped-services)" "v0.2.62|app-backup"
+
+# containerd's wording, both images missing as in CS-WordPressStack v0.27.24:
+# the warning and the summary name every one. Elements of the list that are
+# no release are skipped.
+previous_case fallback-containerd; echo '{"tag_name": "v0.2.62"}' > "$DIR/release.json"
+missing_tag_containerd "ghcr.io/acme/app:0.2.62"; missing_tag_containerd "registry.example.com:5000/acme/app-backup:0.2.62"
+releases "v0.2.61 2026-10-08T10:00:00Z"
+jq '. + [null, "v0.2.99", {"tag_name": null, "draft": false, "prerelease": false, "created_at": "2026-10-09T10:00:00Z"}]' \
+  "$DIR/releases.json" > "$DIR/r.json" && mv "$DIR/r.json" "$DIR/releases.json"
+run_previous UPGRADE_FROM=latest-release; expect_rc "previous fallback, containerd image store: step passes" $? 0
+expect_eq "previous fallback, containerd image store: checks every image of the latest release" "$(pulls)" \
+  "ghcr.io/acme/app:0.2.62|registry.example.com:5000/acme/app-backup:0.2.62|ghcr.io/acme/app:0.2.61|registry.example.com:5000/acme/app-backup:0.2.61"
+expect_eq "previous fallback, containerd image store: release exported" "$(previous_release)" "v0.2.61"
+expect_log "previous fallback, two images missing: the warning names both" \
+  "has no image for app, app-backup (not published: ghcr.io/acme/app:0.2.62, registry.example.com:5000/acme/app-backup:0.2.62 -"
+expect_eq "previous fallback, two images missing: both for the summary" "$(out skipped-services)" "app, app-backup"
+
+# Only the latest-release service falls back; a reference given by hand stays.
+# GHCR's answer for a missing tag, as Docker 28 printed it for
+# CS-WordPressStack v0.27.24: a bare 'manifest unknown'.
+previous_case fallback-mixed; echo '{"tag_name": "2.0.0"}' > "$DIR/release.json"
+pull_error "ghcr.io/acme/app:2.0.0" "manifest unknown"; releases "2.0.0 2026-10-15T10:00:00Z" "1.9.0 2026-10-01T10:00:00Z"
+run_previous UPGRADE_FROM='{"app-backup": "ghcr.io/acme/legacy-backup:0.17.29", "app": "latest-release"}'
+expect_rc "previous fallback per service: step passes" $? 0
+expect_eq "previous fallback per service: the reference given by hand stays, latest-release falls back" "$(plan)" \
+  "app-backup ghcr.io/acme/legacy-backup:0.17.29|app ghcr.io/acme/app:1.9.0|"
+expect_eq "previous fallback per service: release exported" "$(previous_release)" "1.9.0"
+
+# A tag given by hand in the object fails as it is, latest-release or not.
+previous_case mixed-explicit; echo '{"tag_name": "v0.2.62"}' > "$DIR/release.json"
+missing_tag "registry.example.com:5000/acme/app-backup:0.1.0"; releases "v0.2.61 2026-10-08T10:00:00Z"
+run_previous UPGRADE_FROM='{"app": "latest-release", "app-backup": "0.1.0"}'
+expect_rc "previous per service: a tag given by hand that is not published" $? 1
+expect_eq "previous per service: no release list for it" "$(cat "$DIR/curl.log")" "curl https://api.github.test/repos/acme/stack/releases/latest"
+expect_log "previous per service: names the image" "'registry.example.com:5000/acme/app-backup:0.1.0' could not be pulled"
+
+# No missing tag: access denied, a rate limit, a platform the tag lacks, a
+# repository the registry does not know (classic image store), a layer
+# missing under a tag that resolved (containerd image store), and a registry
+# answer that joins a missing manifest with an access error or a rate limit.
+# The round trip fails - an older release must not hide them.
+for CASE in "denied|pull access denied for acme/app-backup, repository does not exist or may require 'docker login': denied: requested access to the resource is denied" \
+  "rate limit|toomanyrequests: You have reached your pull rate limit. You may increase the limit by authenticating and upgrading: https://www.docker.com/increase-rate-limit" \
+  "platform|no matching manifest for linux/amd64 in the manifest list entries: no match for platform in manifest sha256:0123: not found" \
+  "unknown repository|repository registry.example.com:5000/acme/app-backup not found: name unknown: repository name not known to registry" \
+  "missing layer|failed to copy: could not fetch content descriptor sha256:abcd (application/vnd.oci.image.layer.v1.tar+gzip) from remote: not found" \
+  "resolver error that goes on|failed to resolve reference \"registry.example.com:5000/acme/app-backup:0.2.62\": registry.example.com:5000/acme/app-backup:0.2.62: not found: mirror registry.example.com:5000 refused the request" \
+  "manifest unknown and denied|error from registry: manifest unknown denied: requested access to the resource is denied" \
+  "manifest unknown and unauthorized|error from registry: manifest unknown unauthorized: authentication required" \
+  "manifest unknown and toomanyrequests|error from registry: manifest unknown toomanyrequests: retry later"; do
+  NAME="${CASE%%|*}"
+  previous_case "hard-${NAME//[ ,]/-}"; echo '{"tag_name": "v0.2.62"}' > "$DIR/release.json"; releases "v0.2.61 2026-10-08T10:00:00Z"
+  pull_error "registry.example.com:5000/acme/app-backup:0.2.62" "${CASE#*|}"
+  run_previous UPGRADE_FROM=latest-release; expect_rc "previous, $NAME at the latest release: step fails" $? 1
+  expect_eq "previous, $NAME: no other release tried" "$(cat "$DIR/curl.log")|$(pulls)" \
+    "curl https://api.github.test/repos/acme/stack/releases/latest|ghcr.io/acme/app:0.2.62|registry.example.com:5000/acme/app-backup:0.2.62"
+  expect_log "previous, $NAME: says why" "This is no missing tag, so no further release was tried"
+  expect_eq "previous, $NAME: nothing exported" "$(previous_release)|$(out skipped-release)" "|"
+done
+
+# A release before the latest fails the same way: no further one is tried.
+previous_case hard-at-candidate; echo '{"tag_name": "v0.2.62"}' > "$DIR/release.json"
+missing_tag "registry.example.com:5000/acme/app-backup:0.2.62"
+pull_error "registry.example.com:5000/acme/app-backup:0.2.61" "denied: requested access to the resource is denied"
+releases "v0.2.61 2026-10-08T10:00:00Z" "v0.2.60 2026-10-01T10:00:00Z"
+run_previous UPGRADE_FROM=latest-release; expect_rc "previous, denied at a release before the latest: step fails" $? 1
+expect_eq "previous, denied at a release before the latest: no further release tried" "$(pulls)" \
+  "ghcr.io/acme/app:0.2.62|registry.example.com:5000/acme/app-backup:0.2.62|ghcr.io/acme/app:0.2.61|registry.example.com:5000/acme/app-backup:0.2.61"
+expect_log "previous, denied at a release before the latest: says why" "This is no missing tag, so no further release was tried"
+expect_eq "previous, denied at a release before the latest: nothing exported" "$(previous_release)|$(out skipped-release)" "|"
+expect_eq "previous, denied at a release before the latest: no plan of it for the summary" \
+  "$(cat "$DIR/upgrade-plan.tsv" "$DIR/previous-images.txt")" ""
+
+# No release before the latest has every image: the step fails naming the
+# releases tried - also with fewer than three, or none, before the latest.
+previous_case no-candidate; echo '{"tag_name": "v0.2.62"}' > "$DIR/release.json"
+for TAG in 0.2.62 0.2.61 0.2.60; do missing_tag "registry.example.com:5000/acme/app-backup:$TAG"; done
+releases "v0.2.62 2026-10-15T10:00:00Z" "v0.2.61 2026-10-08T10:00:00Z" "v0.2.60 2026-10-01T10:00:00Z"
+run_previous UPGRADE_FROM=latest-release; expect_rc "previous: no release with every image" $? 1
+expect_log "previous: names the releases tried" "no release has every latest-release image published - tried v0.2.62, v0.2.61, v0.2.60 ("
+expect_log "previous, no release with every image: points at a new or renamed reference" \
+  "An image that none of them has is rather a reference this commit adds or renames"
+expect_eq "previous, no release with every image: nothing exported, no warning" "$(previous_release)|$(grep -c '::warning' "$DIR/log")" "|0"
+expect_eq "previous, no release with every image: no plan of the last release tried for the summary" \
+  "$(cat "$DIR/upgrade-plan.tsv" "$DIR/previous-images.txt")" ""
+
+previous_case only-release; echo '{"tag_name": "v0.2.62"}' > "$DIR/release.json"
+missing_tag "ghcr.io/acme/app:0.2.62"; releases "v0.2.62 2026-10-15T10:00:00Z"
+run_previous UPGRADE_FROM=latest-release; expect_rc "previous: no release before the latest" $? 1
+expect_log "previous, no release before the latest: says so" "tried v0.2.62 ("
+
+# At most three releases before the latest are tried.
+previous_case depth; echo '{"tag_name": "v0.2.62"}' > "$DIR/release.json"
+for TAG in 0.2.62 0.2.61 0.2.60 0.2.59 0.2.58 0.2.57; do missing_tag "ghcr.io/acme/app:$TAG"; done
+releases "v0.2.57 2026-09-10T10:00:00Z" "v0.2.61 2026-10-08T10:00:00Z" "v0.2.58 2026-09-17T10:00:00Z" \
+  "v0.2.60 2026-10-01T10:00:00Z" "v0.2.59 2026-09-24T10:00:00Z" "v0.2.62 2026-10-15T10:00:00Z"
+run_previous UPGRADE_FROM=latest-release; expect_rc "previous: three releases before the latest without the image" $? 1
+expect_eq "previous: tries three releases before the latest, newest first" "$(pulls)" \
+  "ghcr.io/acme/app:0.2.62|registry.example.com:5000/acme/app-backup:0.2.62|ghcr.io/acme/app:0.2.61|registry.example.com:5000/acme/app-backup:0.2.61|ghcr.io/acme/app:0.2.60|registry.example.com:5000/acme/app-backup:0.2.60|ghcr.io/acme/app:0.2.59|registry.example.com:5000/acme/app-backup:0.2.59"
+expect_log "previous: names exactly those" "tried v0.2.62, v0.2.61, v0.2.60, v0.2.59 ("
+
+previous_case list-fails; echo '{"tag_name": "v0.2.62"}' > "$DIR/release.json"
+missing_tag "registry.example.com:5000/acme/app-backup:0.2.62"
 run_previous UPGRADE_FROM='{"app": "latest-release", "app-backup": "latest-release"}'
-expect_rc "previous: latest release without its images" $? 1
-expect_log "previous: explains the release window and the way out" "v0.2.62 is the latest release, but its images may not be published yet"
+expect_rc "previous: the release list cannot be read" $? 1
+expect_log "previous: says the releases before could not be listed" \
+  "the latest release v0.2.62 has no image for app-backup (not published: registry.example.com:5000/acme/app-backup:0.2.62), and the releases before it could not be listed"
+expect_eq "previous, release list unreadable: nothing exported" "$(previous_release)" ""
+expect_eq "previous, release list unreadable: no plan of the latest release for the summary" \
+  "$(cat "$DIR/upgrade-plan.tsv" "$DIR/previous-images.txt")" ""
+
+previous_case list-no-array; echo '{"tag_name": "v0.2.62"}' > "$DIR/release.json"
+missing_tag "ghcr.io/acme/app:0.2.62"; echo '{"message": "Not Found"}' > "$DIR/releases.json"
+run_previous UPGRADE_FROM=latest-release; expect_rc "previous: a release list that is no list" $? 1
+expect_log "previous: says so" "the releases before it could not be listed"
 
 previous_case no-image
 jq '.services.app |= del(.image)' "$DIR/compose-config.json" > "$DIR/c.json" && mv "$DIR/c.json" "$DIR/compose-config.json"
