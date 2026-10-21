@@ -4,6 +4,13 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.9.1](https://github.com/bauer-group/automation-templates/compare/v11.9.0...v11.9.1) (2026-10-21)
+
+### 🐛 Bug Fixes
+
+* **backup-roundtrip:** fell back to the last fully published release ([c761f63](https://github.com/bauer-group/automation-templates/commit/c761f6312854347ca4537b543592860293143b68))
+* **docker-build:** retried a build once after registry throttling ([2d77872](https://github.com/bauer-group/automation-templates/commit/2d778727cb6e85fd03fe70aedb1d2f99cce32b03))
+
 ## [11.9.0](https://github.com/bauer-group/automation-templates/compare/v11.8.1...v11.9.0) (2026-10-11)
 
 ### 🚀 Features
