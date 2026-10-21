@@ -141,6 +141,45 @@ jobs:
 - **With `dockerhub` / `both`,** the BuildKit and QEMU images are set up before
   *Build Docker Image* logs in, so those two pulls stay anonymous there.
 
+### Build Retry on Registry Throttling
+
+A login does not cover everything. Docker Hub also has an *abuse rate limit*,
+counted per IP address and per minute, that applies to every account alike and
+answers with a plain `429 Too Many Requests`. A burst of scheduled builds across
+the organisation can reach it for a minute or two - long enough to fail a build
+whose release is already tagged, leaving that release half-published.
+
+Each of the two builds inside the action - the local scan build and the push
+build - is therefore retried **once** when it fails for a reason that waiting can
+fix. Nothing has to be switched on.
+
+| The failed build's error (from BuildKit's build record) | What happens |
+|----------------------------------------------------------|--------------|
+| `429 Too Many Requests`, `toomanyrequests`, `408 Request Timeout`, `500` / `502` / `503` / `504`, `connection reset by peer`, a request answered with `EOF` / `unexpected EOF`, `TLS handshake timeout`, `i/o timeout`, `server misbehaving` (DNS) | Warning *Docker build retried*, a 60-90 s wait, then one retry with identical inputs |
+| Anything else - Dockerfile error, failing `RUN`, `401 Unauthorized`, `403 Forbidden` / push access denied, unknown tag, missing secret | Error *Docker build failed*, no retry - the job fails as it always has |
+| Not readable - buildx older than 0.21, a driver without build history, a failure before BuildKit started the build | Retried as for a throttle: the cause is unknown, and a needless retry is cheaper than a half-published release |
+
+- **The cause is read, not guessed.** *Check Build Failure* runs
+  `docker buildx history inspect --format json` on the builder the build just
+  used and matches only BuildKit's error message. A failing `RUN` reports
+  `process "<command>" did not complete successfully` - not what the command
+  printed - and its command text is cut out before matching, so no failing `RUN`
+  is mistaken for a registry throttle.
+- **Only the two builds are covered.** A `429` while *Set up QEMU* or *Set up
+  Docker Buildx* pulls its image is not retried; re-run the job.
+- **The wait is jittered.** 60 s lets a per-minute window turn over; the random
+  extra 0-30 s keeps the builds one burst throttled from retrying as one burst.
+- **A failure never passes.** The retry itself has no second chance: if it fails
+  too, the job fails. The outputs (`image-digest`, the digest Cosign signs) come
+  from whichever attempt succeeded, and a retried push writes every tag again,
+  so all tags end on the same digest.
+- **A green retry keeps its history.** The first attempt's `buildx failed with`
+  error stays among the run's annotations, next to the warning that explains it.
+- **Allow for it in `build-timeout`.** A retried build takes up to 90 s plus a
+  second build - mostly from cache - out of the same job timeout.
+- The retry does not help when Docker Hub's *pull* quota (counted over 6 hours)
+  is used up; see [Troubleshooting](#troubleshooting).
+
 ### Build Secrets
 
 `DOCKER_BUILD_SECRETS` passes BuildKit secrets into the build, one `id=value` per
@@ -239,6 +278,7 @@ The Docker build action provides:
 
 - Multi-platform build support
 - Advanced caching strategies
+- One retry per build on registry throttling (see [Build Retry on Registry Throttling](#build-retry-on-registry-throttling))
 - Multi-registry authentication
 - Security scanning integration
 - Image signing with Cosign
@@ -721,8 +761,14 @@ The repository includes comprehensive examples in `github/workflows/examples/doc
      `secrets: inherit` (or an explicit `secrets:` block passing both)
    - The warning *Docker Hub login failed*: the credentials are wrong or expired,
      or Docker Hub could not be reached
-   - Still `429` while logged in: the account's own pull quota is used up; how
-     large it is depends on the Docker Hub plan
+   - Still `429` while logged in: either Docker Hub's per-minute abuse limit,
+     which a burst of parallel builds reaches whatever the plan, or the account's
+     own pull quota, whose size depends on the Docker Hub plan. In the two builds
+     (*Build Docker Image (Local)*, *Push Docker Image*) a `429` is retried once
+     after 60-90 s (warning *Docker build retried*, see
+     [Build Retry on Registry Throttling](#build-retry-on-registry-throttling));
+     when the retry fails as well, the quota is usually used up. A `429` while
+     Buildx or QEMU is set up is not retried - re-run the job
 
 ### Debug Mode
 
