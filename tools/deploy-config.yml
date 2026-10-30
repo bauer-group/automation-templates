@@ -10,7 +10,6 @@ profiles:
       - "automatic-release"
       - "security-management"
       - "documentation"
-      - "teams-notifications"
     actions:
       - "teams-notification"
       - "security-generate"
@@ -29,7 +28,6 @@ profiles:
       - "python-automatic-release"
       - "security-management"
       - "documentation"
-      - "teams-notifications"
       - "docker-build"
       - "python-build"
       - "nodejs-build"
@@ -58,7 +56,6 @@ profiles:
     description: "Security management and notification workflows"
     workflows:
       - "security-management"
-      - "teams-notifications"
     actions:
       - "security-generate"
       - "teams-notification"
@@ -95,7 +92,6 @@ profiles:
       - "python-automatic-release"
       - "security-management"
       - "documentation"
-      - "teams-notifications"
       - "docker-build"
       - "repository-cleanup"
       - "pr-labeler"
@@ -178,20 +174,6 @@ workflows:
       - "pull_request"
       - "workflow_dispatch"
       - "workflow_call"
-
-  teams-notifications:
-    name: "Teams Notifications"
-    description: "Microsoft Teams notifications for repository events"
-    file: "teams-notifications.yml"
-    secrets_used:
-      - "TEAMS_WEBHOOK_URL"
-    triggers:
-      - "workflow_run"
-      - "issues"
-      - "pull_request"
-      - "push"
-      - "release"
-      - "workflow_dispatch"
 
   docker-build:
     name: "Docker Build"
@@ -451,7 +433,7 @@ secrets:
   TEAMS_WEBHOOK_URL:
     description: "Microsoft Teams webhook URL for notifications"
     required_for:
-      - "teams-notifications"
+      - "teams-notification"
     setup_url: "https://docs.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook"
 
   DOCKER_PASSWORD:
