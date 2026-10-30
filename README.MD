@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/README.template.MD instead. -->
-<!-- Generated on 2026-10-30 22:43:34 UTC -->
+<!-- Generated on 2026-10-30 22:48:00 UTC -->
 
 # BAUER GROUP - Automation Templates
 
@@ -1090,7 +1090,7 @@ gh auth status --show-token
 - [🐘 **PHP Build System**](docs/workflows/php-build.md) - PHP and Composer automation
 - [🛒 **Shopware 5 Plugin Build System**](docs/workflows/shopware5-build.md) - Shopware 5 plugin automation with store integration
 - [🔧 **Makefile Build System**](docs/workflows/makefile-build.md) - Makefile-based build automation
-- [🧠 **AI Issue Summary**](docs/workflows/ai-issue-summary.md) - Copilot-powered issue and PR summaries
+- [🧠 **AI Issue Summary**](docs/workflows/ai-issue-summary.md) - Copilot-powered issue and PR summaries (**paused**, being reworked in [#105](https://github.com/bauer-group/automation-templates/issues/105))
 - [🤖 **Claude Code AI Assistant**](docs/workflows/claude-code.md) - AI-powered code assistant
 - [🚀 **Coolify Deploy**](docs/workflows/coolify-deploy.md) - Coolify deployment automation
 - [🔄 **Meta Repository Sync**](docs/workflows/meta-repository-sync.md) - Automated submodule synchronization
@@ -1232,5 +1232,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Generated on 2026-10-30 22:43:34 UTC from [docs/README.template.MD](docs/README.template.MD)*
+*Generated on 2026-10-30 22:48:00 UTC from [docs/README.template.MD](docs/README.template.MD)*
 
