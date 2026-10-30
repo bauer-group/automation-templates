@@ -328,7 +328,10 @@ runs:
       run: |
         echo "Installing pinned, decoupled changelog notes toolchain..."
         cd "$GITHUB_ACTION_PATH/notes"
-        npm ci --omit=dev --no-audit --no-fund
+        # --ignore-scripts: this job holds the caller's write token, and an install
+        # script runs as the same user with it in reach (#109). None of the locked
+        # packages has one, so the only thing this disables is a future one.
+        npm ci --omit=dev --no-audit --no-fund --ignore-scripts
 
     - name: Semantic Release
       id: release

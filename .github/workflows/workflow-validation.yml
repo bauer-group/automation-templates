@@ -216,6 +216,13 @@ jobs:
         shell: bash
         run: bash .github/actions/semantic-release/tests/merge-exec-hooks.test.sh
 
+      # The release job holds the caller's write token (#109). Pins the notes
+      # toolchain install to --ignore-scripts, and fails when a locked package
+      # starts needing an install script that the flag would silently skip.
+      - name: "🧪 semantic-release: notes toolchain installs without install scripts"
+        shell: bash
+        run: bash .github/actions/semantic-release/tests/notes-install-scripts.test.sh
+
       # Same failure class again: the monitor stored the digest when it
       # dispatched the release, so a release that then failed was never retried
       # and the consumer stayed on the old base image without anything turning red.
