@@ -234,7 +234,7 @@ on:
         default: 'cyclonedx'
 
       attest-sbom:
-        description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true. Default false.'
+        description: 'Create a GitHub (Sigstore) SBOM attestation for the pushed image digest. Requires generate-sbom=true; skipped when nothing is pushed. Default false.'
         type: boolean
         required: false
         default: false

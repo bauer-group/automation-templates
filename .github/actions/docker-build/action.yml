@@ -166,7 +166,7 @@ inputs:
     required: false
     default: 'cyclonedx'
   attest-sbom:
-    description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true and the caller job to grant attestations:write + id-token:write. Default false = no attestation (current behaviour).'
+    description: 'Create a GitHub (Sigstore) SBOM attestation for the pushed image digest. Requires generate-sbom=true and the caller job to grant attestations:write + id-token:write. Skipped (with a notice) when no image is pushed. Default false = no attestation.'
     required: false
     default: 'false'
   # Provenance
@@ -1373,6 +1373,8 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         META_TAGS: ${{ steps.meta.outputs.tags }}
+        ATTEST_SBOM: ${{ inputs.attest-sbom }}
+        IMAGE_PUSHED: ${{ steps.build-info.outputs.pushed }}
       run: |
         echo "📋 Generating Software Bill of Materials..."
 
@@ -1380,6 +1382,16 @@ runs:
         # with "echo: write error: Broken pipe" right after a successful push.
         PRIMARY_TAG="${META_TAGS%%$'\n'*}"
         SBOM_PATH="docker-build-reports/sbom.${{ inputs.sbom-format }}.json"
+
+        # The attestation subject is the pushed image: its name without the tag, plus
+        # the push digest. Only the last path segment can carry a tag - a ':' before
+        # it is a registry port (registry:5000/org/image:tag).
+        IMAGE_NAME="$PRIMARY_TAG"
+        [[ "${PRIMARY_TAG##*/}" == *:* ]] && IMAGE_NAME="${PRIMARY_TAG%:*}"
+        echo "image-name=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+        if [ "$ATTEST_SBOM" = "true" ] && [ "$IMAGE_PUSHED" != "true" ]; then
+          echo "::notice title=SBOM not attested::attest-sbom is set, but no image was pushed in this run, so there is no image digest to attest the SBOM for. The SBOM is still generated."
+        fi
         
         # Install Syft for SBOM generation (retried as a whole, see install-tool.sh)
         if ! command -v syft >/dev/null 2>&1; then
@@ -1396,16 +1408,20 @@ runs:
 
     - name: 📜 Attest SBOM
       id: attest-sbom
-      # Opt-in: only when an SBOM was generated AND attestation was requested. The
-      # sibling action wraps actions/attest-sbom (Sigstore); the caller job must grant
-      # attestations:write + id-token:write or the attestation step fails.
-      if: inputs.generate-sbom == 'true' && inputs.attest-sbom == 'true' && steps.sbom.outputs.path != ''
+      # Opt-in: only when an SBOM was generated, attestation was requested AND the image
+      # was pushed - the attestation binds the SBOM to the pushed digest, so a build
+      # without a push has nothing to attest (#104: it used to attest the SBOM file as
+      # provenance, which no `gh attestation verify oci://...` could ever find).
+      # The caller job must grant attestations:write + id-token:write.
+      if: inputs.generate-sbom == 'true' && inputs.attest-sbom == 'true' && steps.sbom.outputs.path != '' && steps.build-info.outputs.pushed == 'true'
       uses: bauer-group/automation-templates/.github/actions/sbom-attest@main
       with:
         # sbom step writes under working-directory; steps.sbom.outputs.path is relative to it.
         sbom-path: ${{ inputs.working-directory }}/${{ steps.sbom.outputs.path }}
-        # Map the syft format (cyclonedx|spdx) to the attest action's expected value.
         sbom-format: ${{ inputs.sbom-format == 'spdx' && 'spdx-json' || 'cyclonedx-json' }}
+        subject-name: ${{ steps.sbom.outputs.image-name }}
+        # The push digest of whichever attempt succeeded (see 'Check Build Failure (Push)').
+        subject-digest: ${{ steps.build.outputs.digest || steps.build-retry.outputs.digest }}
 
     - name: 📋 Generate OpenVEX Document
       id: vex

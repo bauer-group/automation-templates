@@ -340,7 +340,7 @@ The Docker build action provides:
 | `sign-image` | Sign image with Cosign | `false` |
 | `generate-sbom` | Generate Software Bill of Materials | `false` |
 | `sbom-format` | SBOM format: `'cyclonedx'`, `'spdx'` | `'cyclonedx'` |
-| `attest-sbom` | Create a GitHub (Sigstore) attestation for the SBOM. Requires `generate-sbom: true` | `false` |
+| `attest-sbom` | Create a GitHub (Sigstore) SBOM attestation for the pushed image digest. Requires `generate-sbom: true`; skipped when nothing is pushed | `false` |
 | `provenance` | SLSA build provenance for the pushed image: `'false'`, `'true'`, or `'mode=max'`. Enabling it attaches an attestation manifest | `'false'` |
 | `generate-vex` | Generate an OpenVEX document from the Trivy scan report (requires `security-scan: true` with the `trivy` scanner) | `false` |
 
@@ -573,16 +573,22 @@ today's behaviour (off) and require no changes for existing callers:
 
 ```yaml
 generate-sbom: true
-attest-sbom: true      # Sigstore attestation for the SBOM (verifiable provenance)
+attest-sbom: true      # Sigstore-signed SBOM attestation for the pushed image digest
 provenance: 'mode=max' # SLSA build provenance attached to the pushed image
 ```
 
 The workflow already requests `attestations: write` and `id-token: write`; a caller
-using `secrets: inherit` and the default `GITHUB_TOKEN` needs no extra setup. Verify with:
+using `secrets: inherit` and the default `GITHUB_TOKEN` needs no extra setup. The
+attestation's subject is the **pushed image digest** with the SBOM as predicate, so it
+is only created when the run pushes; a build without a push logs a notice instead.
+Verify with:
 
 ```bash
-gh attestation verify <sbom-file> --repo <owner>/<repo>
+gh attestation verify oci://<registry>/<image>:<tag> --repo <owner>/<repo>
 ```
+
+> **Note:** for a multi-platform build the SBOM is generated from the image loaded on
+> the runner, i.e. the runner's platform, and attested for the pushed index digest.
 
 > **Note:** `provenance` attaches an attestation manifest, which changes the pushed
 > image from a single manifest to an image index. Leave it `'false'` (default) if you
