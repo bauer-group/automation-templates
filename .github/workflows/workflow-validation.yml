@@ -186,6 +186,14 @@ jobs:
         shell: bash
         run: bash .github/actions/security-scan/tests/python-deps.test.sh
 
+      # Ubuntu 26.04 runners ship uutils date, which a GNU-or-BSD check could not
+      # place: the security policy step of every release failed on `date -v`.
+      # Pins a next review date that needs only -u and +FORMAT, and a numeric
+      # review_cycle read through env instead of spliced into the script.
+      - name: "🧪 security-generate: next review date on every date implementation"
+        shell: bash
+        run: bash .github/actions/security-generate/tests/next-review.test.sh
+
       # Same failure class as the security-scan test above: the run stays green and
       # the release looks correct, only the version inside the artifacts stops
       # advancing. That went unnoticed for four releases across three repositories.
