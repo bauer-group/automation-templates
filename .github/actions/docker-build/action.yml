@@ -916,10 +916,12 @@ runs:
 
         case "$SCANNER" in
           trivy)
-            # Install Trivy if not available
+            # Install Trivy if not available (retried as a whole, see install-tool.sh)
             if ! command -v trivy >/dev/null 2>&1; then
               echo "Installing Trivy..."
-              curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+              bash "$GITHUB_ACTION_PATH/install-tool.sh" Trivy \
+                https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh -b /usr/local/bin \
+                || { echo "scan-passed=false" >> "$GITHUB_OUTPUT"; exit 1; }
             fi
 
             # Trivy exports the image to a tarball before analysing it, so it needs roughly
@@ -1006,10 +1008,12 @@ runs:
             ;;
 
           grype)
-            # Install Grype if not available
+            # Install Grype if not available (retried as a whole, see install-tool.sh)
             if ! command -v grype >/dev/null 2>&1; then
               echo "Installing Grype..."
-              curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+              bash "$GITHUB_ACTION_PATH/install-tool.sh" Grype \
+                https://raw.githubusercontent.com/anchore/grype/main/install.sh -b /usr/local/bin \
+                || { echo "scan-passed=false" >> "$GITHUB_OUTPUT"; exit 1; }
             fi
 
             # Emit JSON (for gating) and SARIF (for the Security tab) in one scan.
@@ -1377,10 +1381,11 @@ runs:
         PRIMARY_TAG="${META_TAGS%%$'\n'*}"
         SBOM_PATH="docker-build-reports/sbom.${{ inputs.sbom-format }}.json"
         
-        # Install Syft for SBOM generation
+        # Install Syft for SBOM generation (retried as a whole, see install-tool.sh)
         if ! command -v syft >/dev/null 2>&1; then
           echo "Installing Syft..."
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          bash "$GITHUB_ACTION_PATH/install-tool.sh" Syft \
+            https://raw.githubusercontent.com/anchore/syft/main/install.sh -b /usr/local/bin
         fi
         
         # Generate SBOM

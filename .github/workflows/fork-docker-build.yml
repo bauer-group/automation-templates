@@ -258,10 +258,30 @@ jobs:
           REPORT=".trivy/${IMAGE_NAME}-report.json"
           SARIF=".trivy/${IMAGE_NAME}-report.sarif"
 
+          # Retry the WHOLE install: the installer script and the release tarball it
+          # fetches are two downloads, and one connection reset on either failed the
+          # scan (issue #101). Saved to a file first so a cut-off download never runs
+          # truncated. This step has no `set -e`, so a failed install must stop here -
+          # otherwise it surfaces below as a missing report blamed on the vuln DB.
+          # (Same logic as .github/actions/docker-build/install-tool.sh, inlined
+          # because a reusable workflow has no action path to run it from.)
           if ! command -v trivy >/dev/null 2>&1; then
             echo "::group::Installing Trivy"
-            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+            for attempt in 1 2 3; do
+              curl -sSfL --connect-timeout 10 --max-time 60 -o "$RUNNER_TEMP/trivy-install.sh" \
+                https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+                && sh "$RUNNER_TEMP/trivy-install.sh" -b /usr/local/bin && break
+              if [ "$attempt" -lt 3 ]; then
+                echo "::warning::Installing Trivy failed (attempt $attempt of 3) - retrying in $((attempt * 10)) s."
+                sleep $((attempt * 10))
+              fi
+            done
             echo "::endgroup::"
+            if ! command -v trivy >/dev/null 2>&1; then
+              echo "::error::Installing Trivy failed after 3 attempts. This is a download failure between the runner and GitHub, not a problem with '${IMAGE_NAME}' - re-run the job."
+              echo "scan-passed=false" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
           fi
 
           # Disk precheck - the same one docker-build.yml's composite action carries.
