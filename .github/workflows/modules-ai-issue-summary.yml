@@ -79,6 +79,10 @@ jobs:
   summarize:
     name: 🧠 Generate AI Summary
     runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: 10
+    # Dependabot PRs were 94% of all triggers (#105) and need no summary: the PR body
+    # is generated from the upstream changelog already.
+    if: github.actor != 'dependabot[bot]'
 
     # A step's `if:` cannot read the `secrets` context - GitHub resolves it before
     # secrets enter the expression scope, so `${{ !secrets.ai-api-key }}` did not
@@ -480,7 +484,9 @@ jobs:
 
           # Extract labels if suggested (read from file, not variable)
           if [ "$ADD_LABELS" = "true" ]; then
-            SUGGESTED_LABELS=$(grep -oE "(bug|enhancement|documentation|question|help-wanted|good-first-issue|breaking-change|performance|security|test)" /tmp/ai_response.txt 2>/dev/null | sort -u | tr '\n' ' ' | xargs || true)
+            # -w: whole words only. Without it "test" matched inside "attest" and
+            # "bug" inside "debug", and those labels were applied (#104 got "test").
+            SUGGESTED_LABELS=$(grep -owE "(bug|enhancement|documentation|question|help-wanted|good-first-issue|breaking-change|performance|security|test)" /tmp/ai_response.txt 2>/dev/null | sort -u | tr '\n' ' ' | xargs || true)
             echo "suggested-labels=$SUGGESTED_LABELS" >> "$GITHUB_OUTPUT"
           fi
 

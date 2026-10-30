@@ -239,6 +239,13 @@ jobs:
         shell: bash
         run: bash .github/workflows/tests/auto-maintenance-commit.test.sh
 
+      # Rework items from #105 that need no decision: label names match as whole
+      # words only ("test" was found inside "attest"), Dependabot is skipped and
+      # the job has a timeout.
+      - name: "🧪 ai-issue-summary: whole-word labels, Dependabot skipped, timeout"
+        shell: bash
+        run: bash .github/workflows/tests/ai-issue-summary-labels.test.sh
+
   # The integration the unit test cannot reach: a real pull_request event, a token
   # that cannot list the pull request's commits, and the real download, checksum
   # check and commit range. In a private repository that is what
