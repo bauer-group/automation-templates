@@ -4,6 +4,21 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.9.3](https://github.com/bauer-group/automation-templates/compare/v11.9.2...v11.9.3) (2026-10-30)
+
+### 🐛 Bug Fixes
+
+* **ai-summary:** matched labels as whole words, skipped Dependabot ([4efc430](https://github.com/bauer-group/automation-templates/commit/4efc4300a5d73c934985b7f082a524d56c5d6a29)), references [#105](https://github.com/bauer-group/automation-templates/issues/105) [#104](https://github.com/bauer-group/automation-templates/issues/104) [#105](https://github.com/bauer-group/automation-templates/issues/105)
+* **deploy:** stopped deploying the removed teams-notifications workflow ([793b1a6](https://github.com/bauer-group/automation-templates/commit/793b1a69898bea4d131eaed79151588a1b6b643a)), references [#105](https://github.com/bauer-group/automation-templates/issues/105)
+* **docker-build:** retried scanner installs as a whole ([8412983](https://github.com/bauer-group/automation-templates/commit/84129831eb73d149270f93544ac9f98e94c1ade5)), closes [#101](https://github.com/bauer-group/automation-templates/issues/101)
+* **sbom-attest:** attested the SBOM for the pushed image digest ([5134b88](https://github.com/bauer-group/automation-templates/commit/5134b88cb16591fb74f5ce3956b5965c481ae87c)), closes [#104](https://github.com/bauer-group/automation-templates/issues/104)
+* **semantic-release:** installed notes toolchain without install scripts ([bc21c0f](https://github.com/bauer-group/automation-templates/commit/bc21c0f4d82c913778872c3b38c72cddd87eb4b2)), references [#109](https://github.com/bauer-group/automation-templates/issues/109)
+
+### 🔧 Maintenance
+
+* **ci:** bump cycjimmy/semantic-release-action ([e0b1fa8](https://github.com/bauer-group/automation-templates/commit/e0b1fa89c1f40b9b8a4f5c3a227fbecb0f38e222))
+* **ci:** bump google/osv-scanner-action from 2.6.0 to 2.7.0 ([22fd4c8](https://github.com/bauer-group/automation-templates/commit/22fd4c89d935eb65c182e534b7cc09c28ce6c3a6))
+
 ## [11.9.2](https://github.com/bauer-group/automation-templates/compare/v11.9.1...v11.9.2) (2026-10-30)
 
 ### 🐛 Bug Fixes
