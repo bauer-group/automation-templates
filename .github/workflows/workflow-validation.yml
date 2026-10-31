@@ -117,6 +117,13 @@ jobs:
         shell: bash
         run: bash .github/actions/docker-build/tests/install-tool.test.sh
 
+      # The single-build fast path pushes with `docker push` and names the image for
+      # Cosign and the SBOM attestation by its digest - all after the push. Pins the
+      # primary repository's digest, no SIGPIPE pipe, and one retry per tag.
+      - name: "🧪 docker-build: single-build fast path pushes and reports the right digest"
+        shell: bash
+        run: bash .github/actions/docker-build/tests/push-scanned.test.sh
+
       # Same failure class as the security-scan tests: attest-sbom produced a green
       # attestation that named the SBOM file instead of the image, so verifying the
       # image found nothing (#104). Pins image vs file mode, the inputs that select
