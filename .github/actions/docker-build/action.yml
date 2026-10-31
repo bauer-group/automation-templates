@@ -1343,9 +1343,24 @@ runs:
       # Same push gate as the standard step (respects push / push-on-pr / scan-passed).
       if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true') && inputs.single-build-scan == 'true' && inputs.multi-platform != 'true'
       shell: bash
+      env:
+        META_TAGS: ${{ steps.meta.outputs.tags }}
       run: |
         set -euo pipefail
         echo "🚀 Pushing the exact scanned image (no rebuild)..."
+
+        # One retry per tag after 60-90 s, like the standard push (see 'Check Build
+        # Failure (Push)'): a registry throttle halfway through the tags would otherwise
+        # leave a tagged release half-published. docker push leaves no build record to
+        # read the cause from, so every failure gets the one retry; a second failure
+        # fails the job. Pushing a tag again is safe - the bytes are the same.
+        push_tag() {
+          docker push "$1" && return 0
+          local backoff=$((60 + RANDOM % 31))
+          echo "::warning title=Docker push retried::docker push $1 failed - retrying once in ${backoff}s."
+          sleep "$backoff"
+          docker push "$1"
+        }
 
         # Push every tag build-local loaded (primary + any secondary-registry tags). All
         # tags reference the same local image, so this uploads the scanned bytes verbatim.
@@ -1353,18 +1368,36 @@ runs:
         while IFS= read -r TAG; do
           [ -z "$TAG" ] && continue
           echo "  → $TAG"
-          docker push "$TAG"
+          push_tag "$TAG"
           pushed_any=true
-        done <<< "${{ steps.meta.outputs.tags }}"
+        done <<< "$META_TAGS"
 
-        # Resolve the registry manifest digest from the first tag's RepoDigests.
+        # The digest Cosign and the SBOM attestation name must be the PRIMARY
+        # repository's. RepoDigests lists one entry per repository the image went to, in
+        # no guaranteed order, so its first line can be the secondary registry's. Docker
+        # Hub entries use the short name (org/app, library dropped), hence norm().
+        # Parameter expansion, not `| head -n1`: under pipefail that pipe dies of
+        # SIGPIPE once there are more tags than head reads - after the push.
+        norm() { local r="${1#docker.io/}"; r="${r#index.docker.io/}"; printf '%s' "${r#library/}"; }
+        PRIMARY_TAG="${META_TAGS%%$'\n'*}"
+        PRIMARY_REPO="$PRIMARY_TAG"
+        [[ "${PRIMARY_TAG##*/}" == *:* ]] && PRIMARY_REPO="${PRIMARY_TAG%:*}"
         DIGEST=""
         if [ "$pushed_any" = "true" ]; then
-          FIRST_TAG=$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n1)
-          DIGEST=$(docker inspect --format='{{range .RepoDigests}}{{println .}}{{end}}' "$FIRST_TAG" 2>/dev/null | head -n1 | sed 's/.*@//' || true)
+          REPO_DIGESTS=$(docker inspect --format='{{range .RepoDigests}}{{println .}}{{end}}' "$PRIMARY_TAG" 2>/dev/null) || REPO_DIGESTS=""
+          while IFS= read -r ref; do
+            if [ -n "$ref" ] && [ "$(norm "${ref%@*}")" = "$(norm "$PRIMARY_REPO")" ]; then
+              DIGEST="${ref#*@}"
+              break
+            fi
+          done <<< "$REPO_DIGESTS"
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Pushed $PRIMARY_TAG, but its RepoDigests carry no digest for $PRIMARY_REPO. Signing and the SBOM attestation name the image by that digest, so the push is not reported without one."
+            exit 1
+          fi
         fi
         echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-        echo "✅ Pushed scanned image (digest: ${DIGEST:-unknown})"
+        echo "✅ Pushed scanned image (digest: $DIGEST)"
 
     - name: 📊 Collect Build Information
       id: build-info
