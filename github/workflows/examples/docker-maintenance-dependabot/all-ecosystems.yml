@@ -1,0 +1,167 @@
+# =============================================================================
+# Dependabot Maintenance - All Ecosystems, One Required Workflow
+# =============================================================================
+# For a repository whose dependabot.yml updates more than base images: Docker,
+# Compose, npm, pip, Composer, Cargo and NuGet. One PR CI workflow, ci.yml,
+# builds and tests all of them, and its pull_request run is what vouches for
+# an update.
+#
+# Trigger: NO paths: filter - the recommendation for every repository with
+# more than the docker ecosystem. Every Dependabot PR reaches this workflow
+# and gets a decision, as an annotation and in the job summary:
+# - an update ci.yml builds and tests    -> merged once ci.yml passed
+#                                           (patch updates, merge-update-types)
+# - an update ci.yml does not build      -> left open: "Required workflow
+#   (no path of ci.yml matches it)          .github/workflows/ci.yml did not
+#                                           run for this change - not tested"
+# - a GitHub Actions update              -> left open: a CI change
+# - a minor or major update              -> left open for review
+# With a paths: filter, a PR outside it gets no run at all - no annotation,
+# no summary - and waits unnoticed. PRs not opened by Dependabot start this
+# workflow too; its job is skipped at once and uses no runner time.
+#
+# What is tested is decided by ci.yml's pull_request paths: each directory or
+# file there is one that a job of ci.yml builds or tests. A path for a file
+# ci.yml does not use would let a passing run merge an update nobody
+# exercised - so infra/ (Terraform, not built by ci.yml) is not listed, and a
+# Terraform update would stay open as "not tested".
+#
+# Several required workflows are an AND, not an OR: each listed one has to
+# run on the PR and pass. A web.yml that only runs for web/** listed next to
+# ci.yml would leave every update outside web/ open as "not tested" - see
+# docs/workflows/docker-maintenance.md, "Several required workflows".
+#
+# Matching .github/workflows/ci.yml (excerpt) - the one required workflow:
+# -----------------------------------------------------------------------------
+# name: CI
+# on:
+#   pull_request:
+#     branches: [main]
+#     paths:                    # ecosystem     - what ci.yml does with it
+#       - 'Dockerfile'          # docker        - docker build
+#       - 'compose.yaml'        # docker-compose - stack started, smoke test
+#       - 'web/**'              # npm           - npm ci, npm test
+#       - 'api/**'              # pip           - pip install, pytest
+#       - 'php/**'              # composer      - composer install, phpunit
+#       - 'native/**'           # cargo         - cargo test --locked
+#       - 'dotnet/**'           # nuget         - dotnet build, dotnet test
+# jobs:
+#   image:  ...                 # docker build + docker compose up --wait
+#   web:    ...                 # npm ci && npm test            (in web/)
+#   api:    ...                 # pip install -r requirements.txt && pytest
+#   php:    ...                 # composer install && vendor/bin/phpunit
+#   native: ...                 # cargo test --locked           (in native/)
+#   dotnet: ...                 # dotnet test                   (in dotnet/)
+# -----------------------------------------------------------------------------
+#
+# Required .github/dependabot.yml (excerpt) - an application: every merged
+# update cuts a patch release ("fix"), development dependencies do not:
+# -----------------------------------------------------------------------------
+# version: 2
+# updates:
+#   - package-ecosystem: "docker"           # Dockerfile
+#     directory: "/"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "fix(docker)"
+#   - package-ecosystem: "docker-compose"   # compose.yaml
+#     directory: "/"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "fix(docker)"
+#   - package-ecosystem: "npm"              # package.json, package-lock.json
+#     directory: "/web"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "fix(deps)"
+#       prefix-development: "chore(deps-dev)"
+#   - package-ecosystem: "pip"              # requirements.txt
+#     directory: "/api"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "fix(deps)"
+#       prefix-development: "chore(deps-dev)"
+#   - package-ecosystem: "composer"         # composer.json, composer.lock
+#     directory: "/php"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "fix(deps)"
+#       prefix-development: "chore(deps-dev)"
+#   - package-ecosystem: "cargo"            # Cargo.toml, Cargo.lock
+#     directory: "/native"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "fix(deps)"
+#   - package-ecosystem: "nuget"            # *.csproj, Directory.Packages.props
+#     directory: "/dotnet"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "fix(deps)"
+#   - package-ecosystem: "github-actions"   # never merged automatically
+#     directory: "/"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "chore(ci)"
+# -----------------------------------------------------------------------------
+#
+# Release: release.yml publishes the commit its run built and tested
+# (semantic release, image, packages). It is dispatched after each merge
+# (release-workflow) - the merge itself starts no workflow - needs
+# `on: workflow_dispatch`, publishes nothing unless its build and test jobs
+# passed (`needs:`), and pins the release to that commit
+# (`ref: ${{ github.sha }}` on modules-semantic-release.yml - else a merge
+# that lands during its run is tagged untested and missing from its image). A merged
+# "chore(deps-dev)" update releases nothing; its run still succeeds.
+#
+# Private registries (npm, NuGet, Composer, Cargo, internal images): ci.yml's
+# run on a Dependabot PR sees Dependabot secrets, not Actions secrets. Store
+# the feed credentials under Settings -> Secrets and variables -> Dependabot
+# as well, or every Dependabot PR fails its CI and stays open.
+# =============================================================================
+
+name: 🔄 Dependabot Maintenance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # No paths: on purpose - every Dependabot PR gets a decision and an
+    # annotation. ci.yml's pull_request paths decide what is tested.
+
+# The reusable workflow declares no permissions of its own: the job token has
+# exactly these. The three read scopes are needed in private repositories -
+# without them every PR stays open with a notice. In public ones they do no
+# harm.
+permissions:
+  contents: write       # merge
+  pull-requests: write  # approve, read the PR
+  checks: read          # check runs and suites - private repositories
+  statuses: read        # commit statuses - private repositories
+  actions: write        # dispatch the release; read workflow runs
+
+jobs:
+  maintenance:
+    name: Auto-merge Dependabot PRs
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
+    with:
+      # The one workflow that builds and tests every ecosystem above.
+      required-workflows: .github/workflows/ci.yml
+      # Dispatched on main after a merge; its run must succeed.
+      release-workflow: .github/workflows/release.yml
+      merge-method: 'squash'
+      auto-approve: true
+      # Patch updates only. Below 1.0.0 any update may break (SemVer 4):
+      # 0.3.1 -> 0.4.0 and 0.0.3 -> 0.0.4 count as major - checked for every
+      # dependency of a grouped PR, in every ecosystem.
+      merge-update-types: 'patch'
+      # The slowest job of ci.yml decides when CI is complete. 60 is the
+      # maximum and the default.
+      ci-wait-minutes: 60
+    secrets: inherit

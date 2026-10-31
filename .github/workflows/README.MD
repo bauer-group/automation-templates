@@ -35,8 +35,9 @@ Diese Workflows sind speziell für das `automation-templates` Repository entwick
 - Konfigurierbare Artefakt-Generierung
 - Changelog-Generierung mit generate-changelog Action
 
-#### 🤖 [ai-issue-summary.yml](./ai-issue-summary.yml) - AI Issue Zusammenfassungen
+#### 🤖 AI Issue Zusammenfassungen (pausiert)
 **Zweck:** AI-gestützte Issue-Zusammenfassungen  
+**Status:** Der Caller `ai-issue-summary.yml` wurde am 2026-09-28 aus diesem Repository und org-weit entfernt, weil kein Lauf mehr eine echte AI-Zusammenfassung lieferte. Das Modul [modules-ai-issue-summary.yml](./modules-ai-issue-summary.yml) bleibt für die Überarbeitung bestehen; Re-Rollout in [#105](https://github.com/bauer-group/automation-templates/issues/105)  
 **Module verwendet:** modules-ai-issue-summary  
 **Benötigt:** `copilot-requests: write` — im Caller **und** im Modul, da der
 `permissions:`-Block eines `workflow_call`-Workflows eine Obergrenze ist, keine
@@ -52,6 +53,18 @@ billed to the organization".
 #### 🔧 [issue-automation.yml](./issue-automation.yml) - Issue Automatisierung
 **Zweck:** Issue Management Automatisierung  
 **Module verwendet:** modules-issue-automation
+
+#### 🧪 [backup-roundtrip-selftest.yml](./backup-roundtrip-selftest.yml) - Backup Round-Trip Self-Test
+**Zweck:** Führt das Modul `modules-backup-roundtrip-test.yml` gegen einen Fixture-Stack aus ([tests/backup-roundtrip/](./tests/backup-roundtrip/): PostgreSQL, Datei-Volume als uid 1000, Meta-Image auf der öffentlichen BackupHelper-Engine) — Backup, Löschen, Restore und Datenprüfung laufen echt durch, einmal mit allen Services, einmal nur mit ausgewählten (neben einem Service, dessen Image nicht gepullt werden kann) und als Matrix pro Compose-Variante (die Proxy-Variante braucht ein externes Netzwerk, das das Modul anlegt); zwei Läufe sichern zusätzlich in einen Wegwerf-MinIO und stellen nach dem Löschen der lokalen Sidecar-Daten aus S3 wieder her; drei Läufe starten mit einem älteren Engine-Release und stellen dessen Snapshot nach dem Upgrade wieder her. Dazu Step-Tests für *Validate Inputs*, *Prepare Environment*, *Create External Networks*, die S3- und Upgrade-Schritte, *Build Images Under Test*, *Create Backup* (Exit-Code 1 bei fehlgeschlagener Komponente) und *Pull Images* ([tests/backup-roundtrip-module.test.sh](./tests/backup-roundtrip-module.test.sh)) sowie ein Test der beiden Upgrade-Prüfungen gegen das echte Docker Compose: `pull_policy: always` und `build` ersetzen beim `up` das vom Modul getaggte Image, und beide Prüfungen müssen daran scheitern ([tests/backup-roundtrip-pull-policy.test.sh](./tests/backup-roundtrip-pull-policy.test.sh))  
+**Module verwendet:** modules-backup-roundtrip-test  
+**Trigger:** Nur Änderungen am Modul, am Self-Test, an der Fixture oder am Step-Test (pfadgefiltert)  
+**Doku:** [docs/workflows/modules-backup-roundtrip-test.md](../../docs/workflows/modules-backup-roundtrip-test.md)
+
+#### ✅ [workflow-validation.yml](./workflow-validation.yml) - Workflow Validation
+**Zweck:** Prüft jede Änderung an Workflows, Actions und den ausgelieferten Beispielen, bevor sie Consumer erreicht  
+**Module verwendet:** modules-validate-workflows (actionlint + shellcheck über `.github/workflows/` und `github/workflows/examples/`, Permission-Ceiling)  
+**Step-Tests:** führen die echten Step-Bodies aus, u. a. docker-build (Plattformen, Token-Secret, Dockerfile-Write-back, Primary Tag), docker-maintenance-dependabot (Merge nach grüner CI), security-scan, docker-base-image-monitor (Digest erst nach erfolgreichem Release) und semantic-release; dazu der workflow-audit (Script-Injection, nicht deklarierte Variablen)  
+**Trigger:** PR/Push mit Änderungen unter `.github/workflows/`, `.github/actions/` oder `github/workflows/examples/`
 
 ### Reusable Workflows (Neu)
 
@@ -74,6 +87,37 @@ billed to the organization".
 #### 📦 [nodejs-build.yml](./nodejs-build.yml) - Node.js Build & Publish
 **Zweck:** Wiederverwendbarer Node.js Build und Publish Workflow  
 **Features:** npm/yarn/pnpm/bun Support, Package Publishing, Docker
+
+#### 🐳 [docker-build.yml](./docker-build.yml) - Docker Build & Publish
+**Zweck:** Multi-Platform Docker Build mit Security-Scan, SBOM und Push nach GHCR und/oder Docker Hub (Composite Action [`docker-build`](../actions/docker-build/action.yml))  
+**Features:** Trivy/Grype-Gate vor dem Push, Cosign, SBOM-Attestation, Dockerfile-Version-Write-back mit Retry, `free-disk-space` für große Images (nur GitHub-hosted Runner)  
+**Docs:** [docs/workflows/docker-build.md](../../docs/workflows/docker-build.md) · **Beispiele:** [examples/docker/](../../github/workflows/examples/docker/README.md)
+
+### Container-Wartung & Release-Gate
+
+Reusable Workflows, mit denen sich Container-Repositories selbst aktuell halten, und das Gate, das jedes Release davor bestehen muss — jeweils mit eigener Doku und kopierfertigen Beispielen:
+
+#### 🐳 [docker-maintenance-dependabot.yml](./docker-maintenance-dependabot.yml) - Docker Maintenance (Dependabot)
+**Zweck:** Merged Dependabot-PRs erst, nachdem die in `required-workflows` genannte PR-CI auf dem Head-Commit grün ist (ohne Ruleset/Branch Protection)  
+**Features:** Entscheidungstabelle mit Annotation pro Fall, nur Patch-Updates per Default (unter 1.0.0 zählen Minor- und 0.0.x-Patch-Updates als Major, SemVer §4), CI-Änderungen (`.github/`, GitHub Actions) bleiben offen, gepinnter Merge (`--match-head-commit`) nur auf der von CI getesteten Basis (sonst `@dependabot rebase`, optional mit `DEPENDABOT_REBASE_TOKEN`), optionaler Release-Dispatch nach dem Merge (`release-workflow`, braucht `actions: write`) mit Warten auf das Ergebnis — ein fehlgeschlagener Release macht den Job rot  
+**Trigger-Umfang:** Die `pull_request.paths` des Callers entscheiden, welche Dependabot-PRs das Modul erreichen; mit mehr als dem docker-Ökosystem (npm, pip, Composer, Cargo, NuGet, …) ohne `paths:`, damit jeder Dependabot-PR eine Entscheidung bekommt  
+**Docs:** [docs/workflows/docker-maintenance.md](../../docs/workflows/docker-maintenance.md) · **Beispiele:** [examples/docker-maintenance-dependabot/](../../github/workflows/examples/docker-maintenance-dependabot/README.md)
+
+#### 🔍 [modules-docker-base-image-monitor.yml](./modules-docker-base-image-monitor.yml) - Docker Base Image Monitor
+**Zweck:** Erkennt neu gebaute Base Images hinter Floating Tags und stößt Release + Rebuild an  
+**Features:** Digest-Speicherung erst nach erfolgreichem Release (`<VAR>_PENDING`), fehlgeschlagene Releases erneut dispatcht (bis zu 3 Läufe pro Digest, `max-release-attempts`), Coverage-Report, Dry Run  
+**Docs:** [docs/workflows/modules-docker-base-image-monitor.md](../../docs/workflows/modules-docker-base-image-monitor.md) ([Operator recovery](../../docs/workflows/modules-docker-base-image-monitor.md#operator-recovery)) · **Beispiele:** [examples/docker-base-image-monitor/](../../github/workflows/examples/docker-base-image-monitor/README.md)
+
+#### 🔧 [modules-auto-maintenance.yml](./modules-auto-maintenance.yml) - Auto Maintenance
+**Zweck:** Base-Image-Digests und Dependency-Updates (npm, pip, .NET, Go) in einem Lauf, validiert mit Build/Test und bei Fehlern zurückgerollt  
+**Features:** Eine JSON-Konfiguration, Commit + Release-Dispatch, Digests erst nach Push und Dispatch gespeichert, Dry Run  
+**Commit:** Nur Dependency-Manifeste und Lock-Dateien, auch unterhalb eines `working-directory`; neue Dateien nur als Lock-Datei neben ihrem versionierten Manifest ([Details](../../docs/workflows/modules-auto-maintenance.md#was-committet-wird))  
+**Docs:** [docs/workflows/modules-auto-maintenance.md](../../docs/workflows/modules-auto-maintenance.md) · **Beispiele:** [examples/auto-maintenance/](../../github/workflows/examples/auto-maintenance/README.md)
+
+#### 🧪 [modules-backup-roundtrip-test.yml](./modules-backup-roundtrip-test.yml) - Backup Round-Trip Test
+**Zweck:** Release-Gate: Startet den Compose-Stack mit den Images aus dem Commit, sichert echte Daten mit dem BackupHelper-Sidecar, löscht sie und stellt sie wieder her  
+**Features:** Opt-in Upgrade vom vorigen Release, Off-Site-S3 mit "neuem Host", Matrix pro Compose-Variante (Traefik, Coolify); Self-Test: [backup-roundtrip-selftest.yml](./backup-roundtrip-selftest.yml)  
+**Docs:** [docs/workflows/modules-backup-roundtrip-test.md](../../docs/workflows/modules-backup-roundtrip-test.md) · **Beispiele:** [examples/backup-roundtrip/](../../github/workflows/examples/backup-roundtrip/README.md)
 
 ### Fork-Automation
 
@@ -116,9 +160,11 @@ jobs:
   security-scan:
     uses: ./.github/workflows/modules-security-scan.yml
     with:
-      scan-engine: 'both'
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Gitleaks ist opt-in (Default 'none' = nur Trivy). Dieses Repository schaltet
+      # es ein; für Repositories ohne GitHub Secret Scanning gedacht, siehe
+      # docs/security/native-secret-scanning.md#gitleaks-is-opt-in
+      scan-engine: 'gitleaks'
+    secrets: inherit   # GITLEAKS_LICENSE
 
   semantic-release:
     needs: security-scan
@@ -137,9 +183,10 @@ jobs:
 | **automatic-release.yml** | Push (main) | semantic-release | Automatische Releases |
 | **documentation.yml** | Docs-Änderungen | readme-generate | Dokumentations-Management |
 | **manual-release.yml** | Workflow Dispatch | 4 Module | Kontrollierte Releases |
-| **ai-issue-summary.yml** | Issue Events | modules-ai-issue-summary | AI Zusammenfassungen |
 | **pr-labeler.yml** | Pull Request | modules-pr-labeler | PR Labeling |
 | **issue-automation.yml** | Issue/PR Events | modules-issue-automation | Issue Management |
+| **backup-roundtrip-selftest.yml** | PR/Push (Modul + Fixture) | modules-backup-roundtrip-test | Self-Test des Backup-Round-Trip-Moduls |
+| **workflow-validation.yml** | PR/Push (Workflows, Actions, Beispiele) | modules-validate-workflows | actionlint, Step-Tests, workflow-audit |
 
 ### Reusable Workflows
 | Workflow | Type | Hauptfunktionen | Plattformen |
@@ -149,7 +196,12 @@ jobs:
 | **dotnet-publish-library.yml** | workflow_call | Pack & Push NuGet (Libs + Tools) | Linux, Windows, macOS |
 | **dotnet-publish-binaries.yml** | workflow_call | Self-contained Binaries pro RID + Release-Upload | Linux (x64+arm64), Windows (x64); macOS/win-arm64 opt-in |
 | **nodejs-build.yml** | workflow_call | Build, Test, Publish, Docker | Linux, Windows, macOS |
+| **docker-build.yml** | workflow_call | Build, Scan, SBOM, Sign, Push (GHCR/Docker Hub) | Linux (GitHub-hosted oder self-hosted) |
 | **fork-docker-build.yml** | workflow_call | Multi-Image Build, Trivy-Scan, GHCR (Fork-CI) | Linux |
+| **modules-auto-maintenance.yml** | workflow_call (Caller: `schedule`) | Base Images + Dependency-Updates mit Validierung und Rollback | Linux |
+| **modules-backup-roundtrip-test.yml** | workflow_call (Caller: `pull_request`, `push`, `workflow_dispatch`) | Backup → Löschen → Restore → Prüfen eines Compose-Stacks als Release-Gate | Linux |
+| **docker-maintenance-dependabot.yml** | workflow_call (Caller: `pull_request`) | Dependabot-PRs nach grüner PR-CI mergen | Linux |
+| **modules-docker-base-image-monitor.yml** | workflow_call (Caller: `schedule`) | Digest-Überwachung, Release-Dispatch mit Bestätigung und Retries | Linux |
 | **sync-upstream.yml** | workflow_call | Fork-Sync (merge-upstream API) + Workspace-Merge | Linux |
 
 ## 🚀 Verwendung für externe Repositories
@@ -173,7 +225,7 @@ uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.y
 ## 📚 Weitere Dokumentation
 
 - **[Modulare Komponenten](./MODULES-README.MD)** - Detaillierte Modul-Dokumentation
-- **[GitHub Actions](../actions/README.MD)** - Verfügbare Action-Komponenten
+- **[GitHub Actions](../actions/README.md)** - Verfügbare Action-Komponenten
 
 ---
 

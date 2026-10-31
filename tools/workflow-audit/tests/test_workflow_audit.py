@@ -215,6 +215,40 @@ jobs:
 """
 
 # ${VAR:-} says "may be unset" on purpose; must NOT be reported
+REAL_DEFAULT_ENV = """\
+name: t
+on: [push]
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - name: s
+        run: |
+          echo "${SOME_VALUE:-fallback}"
+"""
+
+
+# The shape that shipped in dotnet-msi: a step assembles a value and writes
+# it to its own output, and a later step reads a shell variable of the same
+# name that it was never given. ${EXT_ARGS:-} made the miss silent.
+UNWIRED_STEP_OUTPUT = """\
+name: t
+on: [push]
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - name: assemble
+        id: assemble
+        run: |
+          EXT_ARGS="-ext Some.Extension"
+          echo "ext-args=${EXT_ARGS}" >> "$GITHUB_OUTPUT"
+      - name: build
+        run: |
+          some-tool ${EXT_ARGS:-} --out result
+"""
+
+
 DEFAULTED_ENV = """\
 name: t
 on: [push]
@@ -337,12 +371,34 @@ def case_env_decls_honours_job_level_env():
         r.close()
 
 
-def case_env_decls_honours_default_idiom():
+def case_env_decls_fires_on_empty_default():
     r = Repo()
     try:
         r.write(".github/workflows/a.yml", DEFAULTED_ENV)
         f = wa.check_env_decls(r.root, r.files())
-        assert f == [], f"${{VAR:-}} reported: {[str(x) for x in f]}"
+        assert len(f) == 1, f"${{VAR:-}} not reported: {[str(x) for x in f]}"
+        assert "SOME_VALUE" in f[0].detail
+    finally:
+        r.close()
+
+
+def case_env_decls_honours_real_default():
+    r = Repo()
+    try:
+        r.write(".github/workflows/a.yml", REAL_DEFAULT_ENV)
+        f = wa.check_env_decls(r.root, r.files())
+        assert f == [], f"${{VAR:-fallback}} reported: {[str(x) for x in f]}"
+    finally:
+        r.close()
+
+
+def case_env_decls_fires_on_unwired_step_output():
+    r = Repo()
+    try:
+        r.write(".github/workflows/a.yml", UNWIRED_STEP_OUTPUT)
+        f = wa.check_env_decls(r.root, r.files())
+        assert len(f) == 1, f"expected 1 finding, got {len(f)}"
+        assert "EXT_ARGS" in f[0].detail
     finally:
         r.close()
 
@@ -365,8 +421,12 @@ CASES = [
     ("a run: body using an undeclared variable is reported", case_env_decls_fires),
     ("a variable from job-level env: is not reported",
      case_env_decls_honours_job_level_env),
-    ("a variable used as ${VAR:-} is not reported",
-     case_env_decls_honours_default_idiom),
+    ("a variable used as ${VAR:-} is reported - an empty fallback is no default",
+     case_env_decls_fires_on_empty_default),
+    ("a variable used as ${VAR:-fallback} is not reported",
+     case_env_decls_honours_real_default),
+    ("a step output read as an undeclared shell variable is reported",
+     case_env_decls_fires_on_unwired_step_output),
 ]
 
 

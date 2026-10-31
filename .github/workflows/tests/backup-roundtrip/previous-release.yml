@@ -1,0 +1,17 @@
+# =============================================================================
+# Fixture: the shape of the "previous release"
+# =============================================================================
+# Merged over docker-compose.yml by the "Fixture Round Trip (upgrade)" job of
+# backup-roundtrip-selftest.yml through upgrade-from-compose-files. It stands
+# in for the override a consumer keeps when its previous release had a
+# different compose shape (CS-IAM's legacy-snapshot.yml). The previous release
+# starts from these files; the upgrade switches to docker-compose.yml alone.
+#
+# The label lets upgrade.sh prove that the stack it finds was started from
+# this file.
+# =============================================================================
+
+services:
+  backup:
+    labels:
+      roundtrip.release: "previous"

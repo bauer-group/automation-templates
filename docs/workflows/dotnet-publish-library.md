@@ -275,6 +275,49 @@ For projects that use build-time codegen (Kiota / OpenAPI / T4 / source generato
 |-----------|-------------|---------|
 | `extra-msbuild-properties` | Additional MSBuild properties appended to `dotnet restore/build/pack` (e.g., `-p:KiotaSkip=true -p:PackAsTool=false`). Use when the project needs flags the standard inputs do not expose. | `''` |
 
+### Package Validation Baselines
+
+`EnablePackageValidation` together with `PackageValidationBaselineVersion` is the .NET
+SDK's API-compatibility gate: `dotnet pack` fails with `CP0002` when a public member
+disappeared since the baseline release. Enable it through `extra-msbuild-properties` -
+**not** through `Directory.Build.props`:
+
+```yaml
+with:
+  extra-msbuild-properties: '-p:PackageValidationBaselineVersion=3.0.0'
+```
+
+`Directory.Build.props` applies the property to *every* restore of the repository,
+including jobs that only consume the projects and never pack them. The SDK acquires the
+baseline through a `PackageDownload` item (`Microsoft.NET.ApiCompat.targets`):
+
+```xml
+<ItemGroup Condition="'$(EnablePackageValidation)' == 'true' and
+                      '$(IsPackable)' == 'true' and
+                      '$(PackageValidationBaselineVersion)' != ''">
+  <PackageDownload Include="..." Version="[$(PackageValidationBaselineVersion)]" />
+</ItemGroup>
+```
+
+so each of those restores tries to download the baseline package. When the baseline lives
+on an authenticated feed, every job without that credential fails with `NU1301` /
+`401 Unauthorized`, once per referenced project - a consumer application's
+`dotnet publish`, an organisation-level dependency-submission workflow. Some of them are
+not the repository's to fix.
+
+`extra-msbuild-properties` scopes the property to this workflow's job, which configures
+the private feed before it restores - see [Private NuGet Feeds](#private-nuget-feeds).
+
+Keep `EnablePackageValidation` itself in `Directory.Build.props` if the compatible-runtime
+and compatible-framework validators should also run locally: without a baseline version no
+`PackageDownload` item is generated, so no feed is contacted.
+
+> **Do not try to route this property to `dotnet pack` alone.** `PackageDownload` is a
+> restore-only feature and the pack step runs `--no-build`, which implicitly sets
+> `--no-restore`. The baseline package would never be downloaded and
+> `PackageValidationBaselinePath` would resolve to a file that does not exist in the
+> global packages folder.
+
 ## Secrets
 
 | Secret | Required When | Description |

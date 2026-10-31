@@ -149,10 +149,9 @@ jobs:
     needs: validate-inputs
     uses: ./.github/workflows/modules-security-scan.yml
     with:
-      scan-engine: 'both'
+      scan-engine: 'gitleaks'
       scan-type: 'all'
       fail-on-findings: false
-      minimum-severity: 'medium'
     secrets: inherit
 
   # License compliance check (conditional)

@@ -462,6 +462,12 @@ runs:
         MSBUILD_PROPERTIES: ${{ inputs.msbuild-properties }}
         EULA_CLI: ${{ steps.wix.outputs.eula-cli }}
         EULA_MSBUILD: ${{ steps.wix.outputs.eula-msbuild }}
+        # The -ext arguments the extension step assembled. It writes them to its
+        # own output; a shell variable would not survive the step boundary, and
+        # for as long as this was missing every extension was installed and then
+        # never passed to `wix build` — the caller got WIX0200 "unhandled
+        # extension element" for an extension the log had just reported adding.
+        EXT_ARGS: ${{ steps.wix.outputs.ext-args }}
       run: |
         set -euo pipefail
 

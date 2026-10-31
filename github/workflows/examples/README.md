@@ -6,6 +6,18 @@ This directory contains example workflows demonstrating how to use the reusable 
 
 ```
 github/workflows/examples/
+├── auto-maintenance/        # Base images + dependency updates in one run
+│   ├── README.md
+│   ├── weekly-maintenance.yml
+│   └── maintenance-config.json
+├── backup-roundtrip/        # Backup round trip of a compose stack before release
+│   ├── README.md
+│   ├── minimal-postgres-filesystem.yml
+│   ├── gated-release-pipeline.yml
+│   ├── plugin-and-external-sources.yml
+│   ├── upgrade-from-previous-release.yml
+│   ├── offsite-s3-new-host.yml
+│   └── compose-variants-matrix.yml
 ├── ci-cd/                   # CI/CD pipeline examples
 │   ├── comprehensive-ci-cd.yml
 │   └── security-focused.yml
@@ -50,6 +62,24 @@ github/workflows/examples/
 │   ├── simple-docker-build.yml
 │   ├── dockerhub-with-readme-sync.yml
 │   └── ...
+├── fork-docker-build/       # Image build for forked repositories
+│   ├── README.md
+│   └── fork-docker-build.yml
+├── docker-base-image-monitor/      # Rebuild when a floating base image tag moves
+│   ├── README.md
+│   ├── daily-release-dispatch.yml
+│   ├── multi-image-config.yml
+│   ├── multi-image-base-images.json
+│   └── dry-run.yml
+├── docker-maintenance-dependabot/  # Merge Dependabot PRs after their PR CI passed
+│   ├── README.md
+│   ├── simple-dependabot-maintenance.yml
+│   ├── with-backup-roundtrip-gate.yml
+│   ├── own-build-and-test-workflow.yml
+│   ├── multiple-required-workflows.yml
+│   ├── all-ecosystems.yml
+│   ├── dotnet-library.yml
+│   └── no-pr-ci-manual-merge.yml
 └── claude-code/            # Claude Code Assistant examples
     ├── basic-claude-assistant.yml
     ├── code-review-assistant.yml
@@ -109,6 +139,65 @@ For building and releasing Python packages with comprehensive CI/CD
 - `python-release/nocodb-simpleclient-example.yml` - Complete Python package release
 - `python-release/README.MD` - Detailed documentation and GitHub Packages installation guide
 
+### Backup Round-Trip Test (`modules-backup-roundtrip-test.yml`)
+Starts a compose stack with its BackupHelper sidecar, seeds data, backs it up, deletes it, restores it and proves it is back — before an image is released
+
+**Examples:**
+- `backup-roundtrip/minimal-postgres-filesystem.yml` - PostgreSQL + file volume, on pull requests
+- `backup-roundtrip/gated-release-pipeline.yml` - Complete `docker-release.yml` gated on the round trip
+- `backup-roundtrip/plugin-and-external-sources.yml` - In-stack plugin source tested, external SaaS source switched off
+- `backup-roundtrip/upgrade-from-previous-release.yml` - Upgrade from the latest release: old sidecar backs up, new sidecar restores
+- `backup-roundtrip/offsite-s3-new-host.yml` - Off-site copy in a throwaway S3 bucket, restored on a "new host" with a wiped data dir
+- `backup-roundtrip/compose-variants-matrix.yml` - One round trip per compose variant (local, Traefik, Coolify), external proxy networks created
+- `backup-roundtrip/several-backup-jobs.yml` - A sidecar with several backup jobs: one snapshot per job inspected, verified and restored
+- `backup-roundtrip/README.md` - Setup and what a run proves
+
+### Docker Build (`docker-build.yml`)
+Multi-platform image build with a security scan gate before the push, SBOM, signing and Dockerfile version write-back
+
+**Examples:** see [`docker/README.md`](docker/README.md) for all of them, e.g.
+- `docker/simple-docker-build.yml` - Basic GHCR build
+- `docker/large-image-build.yml` - Images that outgrow a GitHub-hosted runner's free disk (`free-disk-space`, `cache-mode: 'min'`)
+- `docker/self-hosted-build.yml` - Self-hosted runners (`free-disk-space` is skipped there - free space on the host)
+
+### Fork Docker Build (`fork-docker-build.yml`)
+Lean multi-image builder for forks: Trivy scan before the push, workspace tags, GHCR
+
+**Examples:**
+- `fork-docker-build/fork-docker-build.yml` - Drop-in caller for the fork's `workspace` branch
+- `fork-docker-build/README.md` - Setup, per-image options, disk space
+
+### Docker Maintenance with Dependabot (`docker-maintenance-dependabot.yml`)
+Merges a Dependabot PR of any ecosystem (Docker, Compose, npm, pip, Composer, Cargo, NuGet, ...) only after every workflow in `required-workflows` has run on its head commit and passed. The caller's `on.pull_request.paths` decide which Dependabot PRs reach it at all - with more than the docker ecosystem, leave them out
+
+**Examples:**
+- `docker-maintenance-dependabot/simple-dependabot-maintenance.yml` - Smallest caller: Dockerfile updates, one PR CI workflow, release dispatched after the merge
+- `docker-maintenance-dependabot/with-backup-roundtrip-gate.yml` - Container stack: merged after the PR run of `docker-release.yml`, backup round trip included; released by the same pipeline on `main`, publishing only after its round trip passed
+- `docker-maintenance-dependabot/own-build-and-test-workflow.yml` - Image without backup: the repository's own `ci.yml` vouches; Docker and npm updates
+- `docker-maintenance-dependabot/multiple-required-workflows.yml` - Image build and a separate test suite, both required
+- `docker-maintenance-dependabot/all-ecosystems.yml` - Docker, Compose, npm, pip, Composer, Cargo and NuGet: no caller `paths:`, one `ci.yml` builds and tests all of them
+- `docker-maintenance-dependabot/dotnet-library.yml` - .NET library: NuGet updates tested by `dotnet build`/`dotnet test`, `chore(deps)` so that no update publishes a package
+- `docker-maintenance-dependabot/no-pr-ci-manual-merge.yml` - No PR CI: `required-workflows` deliberately unset, nothing is merged
+- `docker-maintenance-dependabot/README.md` - Setup, trigger scope per ecosystem, what decides a merge and the release after it
+
+### Docker Base Image Monitor (`modules-docker-base-image-monitor.yml`)
+Reads the digest behind floating tags (`stable`, `latest`) and releases a rebuild when it moves; the digest is stored once the dispatched release succeeded, failed releases are retried
+
+**Examples:**
+- `docker-base-image-monitor/daily-release-dispatch.yml` - Daily check that dispatches `docker-release.yml` with `force-release`
+- `docker-base-image-monitor/multi-image-config.yml` + `multi-image-base-images.json` - Several images (Docker Hub and internal GHCR) in one config
+- `docker-base-image-monitor/dry-run.yml` - Config changes checked on their PR; preview before recovery
+- `docker-base-image-monitor/README.md` - Setup, what a check does and what to do when a release keeps failing
+
+### Auto Maintenance (`modules-auto-maintenance.yml`)
+Base image digests and dependency updates (npm, pip, .NET, Go) in one scheduled run, validated by the repository's build and tests and rolled back on failure
+
+**Examples:**
+- `auto-maintenance/weekly-maintenance.yml` - Weekly run with a manual dry run
+- `auto-maintenance/maintenance-config.json` - Three floating base images and a release dispatch, as the container stacks run it
+- `auto-maintenance/maintenance-config-npm.json` - npm dependency updates, committed after the repository's build and tests passed
+- `auto-maintenance/README.md` - Setup, what gets committed per ecosystem, and when to use the base image monitor or Dependabot instead
+
 ### CI/CD Pipelines
 Complete CI/CD pipeline configurations
 
@@ -120,7 +209,7 @@ Complete CI/CD pipeline configurations
 Various automation and documentation workflows
 
 **Examples:**
-- `documentation/ai-issue-summary.yml` - AI-powered issue summaries
+- `documentation/ai-issue-summary.yml` - AI-powered issue summaries (**paused**, being reworked in [#105](https://github.com/bauer-group/automation-templates/issues/105))
 - `documentation/documentation.yml` - Auto-generate documentation
 - `documentation/issue-automation.yml` - Issue management automation
 - `documentation/pr-labeler.yml` - Automatic PR labeling
@@ -184,6 +273,11 @@ Most workflows support configuration through:
 
 ### Build Workflow Documentation
 - [Docker Build Documentation](../../../docs/workflows/docker-build.md)
+- [Fork Docker Build Documentation](../../../docs/workflows/fork-docker-build.md)
+- [Backup Round-Trip Test Documentation](../../../docs/workflows/modules-backup-roundtrip-test.md)
+- [Docker Maintenance Documentation](../../../docs/workflows/docker-maintenance.md)
+- [Auto Maintenance Documentation](../../../docs/workflows/modules-auto-maintenance.md)
+- [Docker Base Image Monitor Documentation](../../../docs/workflows/modules-docker-base-image-monitor.md)
 - [Python Build Documentation](../../../docs/workflows/python-build.md)
 - [.NET Desktop Build Documentation](../../../docs/workflows/dotnet-desktop-build.md)
 - [.NET Build Documentation](../../../docs/workflows/dotnet-build.md)
@@ -197,7 +291,7 @@ Most workflows support configuration through:
 ### Project Resources
 - [Contributing Guidelines](../../../CONTRIBUTING.MD) - Learn how to contribute
 - [Security Policy](../../../SECURITY.MD) - Security and vulnerability reporting
-- [Code of Conduct](../../../CODE_OF_CONDUCT.MD) - Community standards
+- [Code of Conduct](../../../CODE_OF_CONDUCT.md) - Community standards
 
 ## Contributing
 

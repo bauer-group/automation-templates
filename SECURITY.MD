@@ -1,5 +1,5 @@
 <!-- AUTO-GENERATED FILE. DO NOT EDIT. Edit docs/SECURITY.template.MD instead. -->
-<!-- Generated on 2026-09-02 18:19:03 UTC -->
+<!-- Generated on 2026-10-30 22:43:50 UTC -->
 
 # 🛡️ Security Policy
 
@@ -48,15 +48,15 @@ We actively maintain and provide security updates for supported versions:
 
 | Version | Support Status | Security Updates |
 |---------|---------------|------------------|
-| 10.3.0 (current) | ✅ Full Support | ✅ Yes |
-| v10.2.2 | ❌ End of Life | ❌ No |
-| v10.2.1 | ❌ End of Life | ❌ No |
-| v10.2.0 | ❌ End of Life | ❌ No |
-| v10.1.1 | ❌ End of Life | ❌ No |
+| 11.9.3 (current) | ✅ Full Support | ✅ Yes |
+| v11.9.2 | ❌ End of Life | ❌ No |
+| v11.9.1 | ❌ End of Life | ❌ No |
+| v11.9.0 | ❌ End of Life | ❌ No |
+| v11.8.1 | ❌ End of Life | ❌ No |
 
 ### Version Support Policy
 
-- **Current Version**: Full feature and security support for the latest release (10.3.0)
+- **Current Version**: Full feature and security support for the latest release (11.9.3)
 - **Previous Versions**: No support provided - users should upgrade to the current version
 - **Security Updates**: Only applied to the current version
 
@@ -81,12 +81,6 @@ We implement multiple layers of automated security scanning:
   uses: gitleaks/gitleaks-action@v3
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-# GitGuardian - Enterprise Secrets Detection
-- name: 🛡️ Advanced Secrets Scan (GitGuardian)
-  uses: GitGuardian/ggshield-action@v1
-  with:
-    api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
 ```
 
 ##### Dependency Scanning
@@ -152,7 +146,7 @@ Following our [Secrets Naming Convention](github/workflows/SECRETS-NAMING-CONVEN
 ```
 
 Examples:
-- `SECURITY_GITGUARDIAN_API_KEY` - GitGuardian API key
+- `SECURITY_GITLEAKS_LICENSE_KEY` - Gitleaks license key
 - `DOCKER_REGISTRY_PASSWORD` - Docker registry authentication
 - `SIGNING_CERTIFICATE_BASE64` - Code signing certificate
 
@@ -287,7 +281,7 @@ We track and report on:
 
 ### Security Tools Integration
 - **Gitleaks**: Open-source secrets detection
-- **GitGuardian**: Enterprise secrets scanning
+- **TruffleHog**: Verified secrets detection
 - **Dependabot**: Automated dependency updates
 - **CodeQL**: Semantic code analysis
 - **Trivy**: Container vulnerability scanning
@@ -318,10 +312,10 @@ We recognize security contributors through:
 
 This security policy is subject to BAUER GROUP's information security policies and applicable laws. By using this repository, you agree to follow these security guidelines and report any security issues responsibly.
 
-**Last Updated**: 2026-09-02 18:19:03 UTC  
-**Next Review**: September 2027  
+**Last Updated**: 2026-10-30 22:43:50 UTC  
+**Next Review**: October 2027  
 **Policy Version**: 1.0.0  
-**Repository Version**: 10.3.0
+**Repository Version**: 11.9.3
 
 ---
 

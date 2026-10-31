@@ -56,12 +56,26 @@ n8nio/n8n:stable
                     ▼                                   ▼
           ┌─────────────────┐                 ┌─────────────────────────┐
           │  Gleich:        │                 │  Unterschiedlich:       │
-          │  ✅ Nichts tun  │                 │  1. Variable updaten    │
-          └─────────────────┘                 │  2. Commit erstellen    │
-                                              │  3. Semantic Release    │
+          │  ✅ Nichts tun  │                 │  1. Commit erstellen    │
+          └─────────────────┘                 │  2. Semantic Release    │
                                               │     triggern            │
+                                              │  3. Variable updaten    │
+                                              │     (nur wenn 1+2 ok;   │
+                                              │     mit target-workflow │
+                                              │     erst nach Erfolg    │
+                                              │     des Release-Runs)   │
                                               └─────────────────────────┘
 ```
+
+Mit `target-workflow` zählt ein neuer Digest erst als erledigt, wenn der dispatchte
+Release-Run **erfolgreich** war. Bis dahin steht der Run in einer zweiten Variable
+`<variable>_PENDING`. Jeder folgende Check liest dessen Ergebnis: erfolgreich → Digest
+speichern; fehlgeschlagen (z.B. rotes Backup-Round-Trip-Gate) → Release erneut
+dispatchen; läuft noch → abwarten. Details: [Release confirmation](../../../docs/workflows/modules-docker-base-image-monitor.md#release-confirmation).
+
+Bestätigt wird nur das Ergebnis des dispatchten Runs. Baut ein anderer Workflow die Images
+(z.B. ausgelöst durch das veröffentlichte Release, während `target-workflow` nur
+semantic-release ausführt), sieht der Monitor einen Fehler dieses Builds nicht.
 
 ---
 
@@ -262,6 +276,7 @@ Die Standard-Konfiguration in `.github/config/release/semantic-release.json` ent
 | `commit-and-release` | boolean | `true` | Commit erstellen für Semantic Release |
 | `target-workflow` | string | - | Alternativer Workflow zum Triggern |
 | `target-workflow-ref` | string | `main` | Branch für workflow_dispatch |
+| `max-release-attempts` | number | `3` | Release-Runs pro Digest, danach gibt der Monitor auf und schlägt fehl (`0` = unbegrenzt) |
 | `dry-run` | boolean | `false` | Nur prüfen, keine Änderungen |
 | `runs-on` | string | `ubuntu-latest` | Runner-Konfiguration |
 
@@ -269,11 +284,16 @@ Die Standard-Konfiguration in `.github/config/release/semantic-release.json` ent
 
 | Output | Typ | Beschreibung |
 |--------|-----|--------------|
-| `updates-found` | boolean | `true` wenn Updates gefunden |
-| `updated-images` | JSON array | Liste der aktualisierten Image-Namen |
+| `updates-found` | boolean | `true` wenn ein Image ein Release braucht (neuer Digest oder fehlgeschlagenes Release) |
+| `updated-images` | JSON array | Image-Namen, die ein Release brauchen (neue und wiederholte) |
+| `retried-images` | JSON array | Image-Namen, deren Release fehlschlug und erneut dispatcht wurde |
+| `pending-images` | JSON array | Image-Namen, deren dispatchter Release-Run noch läuft |
+| `exhausted-images` | JSON array | Image-Namen, deren Release `max-release-attempts`-mal fehlschlug; nicht mehr dispatcht, Job rot |
 | `triggered` | boolean | `true` wenn Commit/Workflow getriggert |
 | `commit-sha` | string | SHA des erstellten Commits |
 | `new-digests` | JSON object | Neue Digests pro Image |
+| `dispatched-run-id` | string | Id des dispatchten Runs |
+| `dispatched-run-url` | string | URL des dispatchten Runs |
 
 ### JSON-Konfiguration
 
@@ -299,6 +319,9 @@ Die Standard-Konfiguration in `.github/config/release/semantic-release.json` ent
 ---
 
 ## 📝 Beispiele
+
+> **Fertige Caller-Workflows** (täglicher Check mit Release-Dispatch, mehrere Images, Dry Run) liegen in
+> [`github/workflows/examples/docker-base-image-monitor/`](../../../github/workflows/examples/docker-base-image-monitor/README.md).
 
 ### Beispiel 1: n8n mit Runner (Multi-Image)
 
@@ -498,10 +521,7 @@ So sieht der vollständige automatische Release-Flow aus:
        │
        ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  1. GitHub Variable updaten:                                                  │
-│     N8N_STABLE_DIGEST = sha256:newdigest123                                   │
-│                                                                               │
-│  2. Commit erstellen:                                                         │
+│  1. Commit erstellen:                                                         │
 │     "chore(deps): update base image n8n                                       │
 │                                                                               │
 │      Base image digest changed:                                               │
@@ -510,8 +530,14 @@ So sieht der vollständige automatische Release-Flow aus:
 │        New: sha256:newdigest123                                               │
 │                                                                               │
 │      Triggered by: Docker Base Image Monitor"                                 │
+│     (mit target-workflow endet der Betreff auf [skip ci])                     │
 │                                                                               │
-│  3. Push to main                                                              │
+│  2. Push to main (+ workflow_dispatch des target-workflow)                    │
+│                                                                               │
+│  3. GitHub Variable updaten - erst wenn 1 und 2 erfolgreich waren:            │
+│     N8N_STABLE_DIGEST = sha256:newdigest123                                   │
+│     Mit target-workflow erst, wenn der dispatchte Run erfolgreich war -       │
+│     bis dahin steht der Run in N8N_STABLE_DIGEST_PENDING                      │
 └──────────────────────────────────────────────────────────────────────────────┘
        │
        ▼
@@ -578,6 +604,45 @@ So sieht der vollständige automatische Release-Flow aus:
 - Fine-grained PAT: "Variables" Permission auf "Read and Write"
 - Classic PAT: `repo` Scope ist ausreichend
 
+### Summary meldet "❌ Release failed"
+
+**Ursache:** Der für den neuen Digest dispatchte Release-Run ist fehlgeschlagen (z.B.
+rotes Backup-Round-Trip-Gate oder Build-Fehler). Das Image basiert noch auf dem alten
+Base Image.
+
+**Verhalten:** Der Digest wird nicht gespeichert, der Release wird bei jedem Check erneut
+dispatcht, bis ein Run erfolgreich ist oder `max-release-attempts` Runs (Standard 3)
+fehlgeschlagen sind. Den Fehler im verlinkten Run beheben — solange das Limit nicht
+erreicht ist, kein manueller Eingriff am Monitor nötig.
+
+Hatte der fehlgeschlagene Run sein Release schon getaggt (Release-Job grün, danach Build,
+Scan oder Push rot), pusht der Retry vorher einen neuen leeren Release-Commit
+(`<commit-prefix>: update base image …`, im Body der fehlgeschlagene Run). Ohne ihn fände
+semantic-release nichts zu releasen, der Run übersprünge alle Builds und endete trotzdem
+grün. Ist der Base-Image-Commit noch unreleased (z.B. rotes Gate vor dem Release), wird
+ohne neuen Commit erneut dispatcht. Details: [Retry commit](../../../docs/workflows/modules-docker-base-image-monitor.md#retry-commit).
+
+### Summary meldet "🛑 Release retries exhausted", Job ist rot
+
+**Ursache:** Der Release für diesen Digest ist `max-release-attempts`-mal (Standard 3)
+fehlgeschlagen. Der Monitor dispatcht ihn nicht mehr — jeder Retry nach einem getaggten
+Release würde sonst ein weiteres Patch-Release erzeugen — und lässt den Job bei jedem
+Check fehlschlagen.
+
+**Lösung:** Ursache im verlinkten Run beheben, dann die Variable `<NAME>_PENDING` löschen
+(*Settings → Secrets and variables → Actions → Variables*). Der nächste Check dispatcht
+den Release dann wie für einen neuen Digest. Ein neuerer Digest des Images beginnt
+ohnehin von vorn.
+
+Alle Recovery-Schritte mit `gh`-Befehlen (z.B. Digest nach manuellem Release als erledigt
+markieren): [Operator recovery](../../../docs/workflows/modules-docker-base-image-monitor.md#operator-recovery).
+
+### Variable `<NAME>_PENDING` im Repository
+
+**Ursache:** Kein Fehler. Sie hält den Release-Run, der für einen neuen Digest dispatcht
+wurde (`{"digest", "run_id", "run_url", "attempt"}`), und wird entfernt, sobald der Run
+erfolgreich war. Nur nach "Release retries exhausted" von Hand löschen, sonst nicht ändern.
+
 ### Workflow läuft, aber findet nie Updates
 
 **Ursache:** Das überwachte Image ändert sich tatsächlich nicht.
@@ -591,6 +656,8 @@ So sieht der vollständige automatische Release-Flow aus:
 
 ## 📚 Weiterführende Links
 
+- [Modul-Dokumentation](../../../docs/workflows/modules-docker-base-image-monitor.md) - Release-Bestätigung, Lebenszyklus der Variablen, Operator Recovery
+- [Beispiel-Workflows](../../../github/workflows/examples/docker-base-image-monitor/README.md)
 - [GitHub Actions: Reusable Workflows](https://docs.github.com/en/actions/using-workflows/reusing-workflows)
 - [Semantic Release](https://semantic-release.gitbook.io/)
 - [Docker Manifest](https://docs.docker.com/engine/reference/commandline/manifest/)

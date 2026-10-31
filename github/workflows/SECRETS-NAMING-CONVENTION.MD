@@ -43,6 +43,18 @@ This document defines the naming convention for GitHub Secrets used in our workf
 | `DOCKER_REGISTRY_USERNAME` | Username for Docker registry authentication | Global | All build workflows |
 | `DOCKER_REGISTRY_PASSWORD` | Password for Docker registry authentication | Global | All build workflows |
 
+### 🔧 Maintenance & Base Images
+
+| Secret Name | Description | Scope | Used In |
+|------------|-------------|-------|---------|
+| `PAT_READWRITE_ORGANISATION` | PAT whose pushes start follow-up workflows; writes the base image digest variables (`<VAR>`, `<VAR>_PENDING`), dispatches the release and reads its result. Required by the base image monitor | Global | sync-upstream.yml, modules-docker-base-image-monitor.yml, modules-auto-maintenance.yml |
+| `MAINTENANCE_TOKEN` | Preferred name of the auto-maintenance PAT; takes precedence over `PAT_READWRITE_ORGANISATION` | Project | modules-auto-maintenance.yml |
+| `REGISTRY_READ_TOKEN` | **Optional.** GHCR login for registries outside this enterprise; without it the monitor reads manifests with `github.token` (`packages: read` in the caller) | Global | modules-docker-base-image-monitor.yml |
+| `DEPENDABOT_GHCR_USER` / `DEPENDABOT_GHCR_TOKEN` | Registry credentials for Dependabot itself (Dependabot secret store, not Actions) for internal or private base images | Project | `.github/dependabot.yml` |
+| `DEPENDABOT_REBASE_TOKEN` | **Optional.** Fine-grained PAT (*Pull requests: write*) of a user with push access - preferably a machine user, selected repositories only, short expiry. Posts `@dependabot rebase` when the base branch moved since a Dependabot PR's CI ran; Dependabot refuses the command from `GITHUB_TOKEN`. Stored as a **Dependabot** secret | Project / Organization | docker-maintenance-dependabot.yml |
+
+`docker-maintenance-dependabot.yml` needs no required secret and `modules-backup-roundtrip-test.yml` none at all: they run on the job's `GITHUB_TOKEN` with the permissions the caller grants (`actions: write` for the release dispatch of `docker-maintenance-dependabot.yml`). See [Secrets Reference](../../docs/secrets-reference.md).
+
 ### 📊 Code Quality & Analysis
 
 | Secret Name | Description | Scope | Used In |
@@ -55,8 +67,7 @@ This document defines the naming convention for GitHub Secrets used in our workf
 
 | Secret Name | Description | Scope | Used In |
 |------------|-------------|-------|---------|
-| `GITGUARDIAN_API_KEY` | GitGuardian API key for secret scanning | Global | modules-security-scan.yml |
-| `GITLEAKS_LICENSE_KEY` | Gitleaks license for advanced features | Global | modules-security-scan.yml |
+| `GITLEAKS_LICENSE_KEY` | Gitleaks license; the templates read it as `GITLEAKS_LICENSE`, and only when Gitleaks is enabled (opt-in) | Global | modules-security-scan.yml |
 | `FOSSA_LICENSE_API_KEY` | FOSSA API key for license compliance | Global | modules-license-compliance.yml |
 
 ### 🤖 AI & Automation

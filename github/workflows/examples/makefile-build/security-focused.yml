@@ -36,13 +36,6 @@ jobs:
         with:
           fail-on-findings: true
       
-      - name: 🛡️ GitGuardian Security Scan
-        uses: bauer-group/automation-templates/.github/actions/gitguardian-scan@main
-        with:
-          api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
-          fail-on-findings: true
-        continue-on-error: true  # GitGuardian might not be available
-      
       - name: 🔍 Semgrep Static Analysis
         uses: returntocorp/semgrep-action@v1
         with:

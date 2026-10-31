@@ -59,9 +59,11 @@ jobs:
       # current ubuntu-24.04 image, most of it the Android SDK and CodeQL.
       #
       # Runs after checkout and before the build - the only place it can, since
-      # a caller cannot inject a step into that job. Linux runners only; it
-      # skips itself elsewhere. It logs `df -h /` before and after, so the
-      # number is in the log whether or not it turned out to be the problem.
+      # a caller cannot inject a step into that job. GitHub-hosted Linux
+      # runners only; it skips itself elsewhere - on a self-hosted runner too,
+      # whose disk outlives the job (free space on that host instead). It logs
+      # `df -h /` before and after, so the number is in the log whether or not
+      # it turned out to be the problem.
       #
       # It deliberately leaves the rest of /opt/hostedtoolcache and all of
       # /usr/local/lib/node_modules alone, so `run-tests` below still finds the

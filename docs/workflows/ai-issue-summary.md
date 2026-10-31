@@ -3,8 +3,13 @@
 Generates a summary for a newly opened issue or pull request and posts it as a comment,
 optionally adding suggested labels and a priority.
 
-Workflow: [`ai-issue-summary.yml`](../../.github/workflows/ai-issue-summary.yml) ·
-Module: [`modules-ai-issue-summary.yml`](../../.github/workflows/modules-ai-issue-summary.yml)
+Module: [`modules-ai-issue-summary.yml`](../../.github/workflows/modules-ai-issue-summary.yml) ·
+Example caller: [`ai-issue-summary.yml`](../../github/workflows/examples/documentation/ai-issue-summary.yml)
+
+> **Paused.** This repository's own caller and every caller in the organisation were removed on
+> 2026-09-28 because no run produced a real AI summary any more. The module stays in place for
+> the rework; the re-rollout is tracked in
+> [#105](https://github.com/bauer-group/automation-templates/issues/105).
 
 ## Authentication — no secret required
 

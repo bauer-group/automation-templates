@@ -30,15 +30,24 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
 ### Comprehensive Security Action
 
 ```yaml
-- name: 🛡️ Multi-Engine Security Scan
+- name: 🛡️ Security Scan
   uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
   with:
-    scan-engines: 'gitleaks,gitguardian'
-    scan-scope: 'all'
-    fail-on-findings: true
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+    scan-engine: 'gitleaks'   # opt-in; the default 'none' runs Trivy only
+    scan-type: 'all'
+    fail-on-findings: 'true'
+    gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+    token: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+> **Gitleaks is opt-in.** Every template defaults to `'none'`: Trivy scans the
+> dependencies and the summaries report Gitleaks as *disabled*. Enable it in repositories
+> without GitHub secret scanning and push protection; organization repositories then need
+> `GITLEAKS_LICENSE`, for Dependabot runs as a Dependabot secret. Pull requests whose token
+> cannot list their commits (private repositories without `pull-requests: read`) are scanned
+> with the gitleaks CLI and need no licence. See
+> [Gitleaks is opt-in](docs/security/native-secret-scanning.md#gitleaks-is-opt-in) and the
+> [Security Scan Module](docs/workflows/modules-security-scan.md).
 
 ### Individual Engines
 
@@ -49,16 +58,6 @@ Enterprise-grade GitHub Actions automation repository providing comprehensive CI
   uses: gitleaks/gitleaks-action@v3
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-#### GitGuardian (Enterprise)
-
-```yaml
-- name: 🛡️ Advanced Security Scan
-  uses: GitGuardian/ggshield-action@v1
-  with:
-    api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
-    args: secret scan path .
 ```
 
 ## 📦 Release Management
@@ -75,8 +74,8 @@ on:
     inputs:
       security-scan-engines:
         type: choice
-        default: 'both'
-        options: ['gitleaks', 'gitguardian', 'both']
+        default: 'none'
+        options: ['none', 'gitleaks']
 
 jobs:
   release:
@@ -105,7 +104,6 @@ jobs:
 │   │   ├── claude-code/          # AI-powered code assistant
 │   │   ├── docker-build/         # Docker build with security scanning
 │   │   ├── generate-changelog/   # Changelog generation
-│   │   ├── gitguardian-scan/     # GitGuardian security scanning
 │   │   ├── gitleaks-scan/        # Gitleaks secret detection
 │   │   ├── labeler-triage/       # Issue/PR labeling and triage
 │   │   ├── license-compliance/   # SPDX license compliance
@@ -126,10 +124,13 @@ jobs:
 │   │   └── platformio-build/     # PlatformIO cross-platform builds
 │   ├── config/                # 📋 Configuration Templates
 │   │   ├── claude-code/          # Claude Code Assistant configurations
+│   │   ├── docker-base-image-monitor/ # Base image monitor config schema + example
 │   │   ├── docker-build/         # Docker build configurations
+│   │   ├── docker-maintenance-dependabot/ # dependabot.yml template for base image updates
 │   │   ├── dotnet-build/         # .NET build configurations
 │   │   ├── dotnet-desktop-build/ # .NET desktop build configurations
 │   │   ├── issues/               # Issue template configurations
+│   │   ├── maintenance/          # Auto maintenance config schema
 │   │   ├── makefile-build/       # Makefile build configurations
 │   │   ├── meta-repository/      # Meta repository sync configurations
 │   │   ├── nodejs-build/         # Node.js build configurations
@@ -147,16 +148,17 @@ jobs:
 │   │   ├── platformio-build/     # PlatformIO build configurations
 │   │   └── commitlint.config.mjs  # Commit linting rules
 │   └── workflows/             # 🚀 Reusable Workflows
-│       ├── ai-issue-summary.yml       # AI-powered issue summarization
 │       ├── automatic-release.yml      # Automated release management
 │       ├── claude-code.yml            # Claude Code AI assistant
 │       ├── coolify-deploy.yml         # Coolify deployment automation
 │       ├── docker-build.yml           # Docker build & deploy
+│       ├── docker-maintenance-dependabot.yml # Merge Dependabot PRs after their PR CI passed
 │       ├── documentation.yml          # Documentation automation
 │       ├── dotnet-build.yml           # .NET build & test
 │       ├── dotnet-desktop-build.yml   # .NET desktop builds
 │       ├── dotnet-package-msi.yml    # .NET MSI packaging (WiX)
 │       ├── dotnet-publish-library.yml # .NET library NuGet publishing
+│       ├── fork-docker-build.yml      # Multi-image build for forks
 │       ├── issue-automation.yml       # Automated issue management
 │       ├── makefile-build.yml         # Makefile-based builds
 │       ├── manual-release.yml         # Manual release workflow
@@ -177,6 +179,9 @@ jobs:
 │       ├── modules-validate-dockerfile.yml # Dockerfile validation (Hadolint)
 │       ├── modules-validate-compose.yml    # Docker Compose validation
 │       ├── modules-validate-shellscript.yml # Shell script validation (ShellCheck)
+│       ├── modules-auto-maintenance.yml # Base images + dependency updates with rollback
+│       ├── modules-backup-roundtrip-test.yml # Backup round trip of a compose stack
+│       ├── modules-docker-base-image-monitor.yml # Rebuild when a floating base image tag moves
 │       └── modules-*.yml              # Additional module workflows
 ├── github/                    # 🛠️ Repository Management Tools
 │   ├── branch-protect/           # Branch protection automation
@@ -185,17 +190,22 @@ jobs:
 │   ├── runner/                   # Self-hosted runner management
 │   └── workflows/                # Workflow examples & documentation
 │       └── examples/             # 📋 Usage Examples
+│           ├── auto-maintenance/     # Auto maintenance caller + config
+│           ├── backup-roundtrip/     # Backup round-trip test examples
 │           ├── ci-cd/                # General CI/CD examples
 │           ├── claude-code/          # Claude Code assistant examples
 │           ├── coolify-deploy/       # Coolify deployment examples
 │           ├── docker/               # Docker build examples
+│           ├── docker-base-image-monitor/ # Base image monitor callers
 │           ├── docker-compose/       # Docker Compose examples
+│           ├── docker-maintenance-dependabot/ # Dependabot merge callers
 │           ├── dockerfile-validation/ # Dockerfile linting examples
 │           ├── documentation/        # Documentation examples
 │           ├── dotnet-build/         # .NET project examples
 │           ├── dotnet-desktop-build/ # .NET desktop examples
 │           ├── dotnet-nuget/         # .NET NuGet publishing examples
 │           ├── dotnet-package-msi/  # .NET MSI packaging examples
+│           ├── fork-docker-build/    # Fork image build caller
 │           ├── makefile-build/       # Makefile project examples
 │           ├── meta-repository/      # Meta repository examples
 │           ├── nodejs-build/         # Node.js project examples
@@ -217,10 +227,15 @@ jobs:
 │   │   ├── claude-code.md            # Claude Code AI assistant
 │   │   ├── coolify-deploy.md         # Coolify deployment
 │   │   ├── docker-build.md           # Docker build system
+│   │   ├── docker-maintenance.md     # Docker image maintenance (Dependabot / Renovate)
 │   │   ├── dotnet-build.md           # .NET build system
 │   │   ├── dotnet-desktop-build.md   # .NET desktop builds
+│   │   ├── fork-docker-build.md      # Fork Docker build
 │   │   ├── makefile-build.md         # Makefile build system
 │   │   ├── meta-repository-sync.md   # Meta repository sync
+│   │   ├── modules-auto-maintenance.md # Auto maintenance
+│   │   ├── modules-backup-roundtrip-test.md # Backup round-trip test
+│   │   ├── modules-docker-base-image-monitor.md # Base image monitor
 │   │   ├── modules-validate-compose.md # Compose validation
 │   │   ├── modules-validate-dockerfile.md # Dockerfile validation (Hadolint)
 │   │   ├── modules-validate-shellscript.md # Shell validation
@@ -235,7 +250,7 @@ jobs:
 │   │   ├── stm32-build.md            # STM32 microcontroller builds
 │   │   └── platformio-build.md       # PlatformIO builds
 │   ├── README.template.MD        # This template file
-│   └── SECRETS-NAMING-CONVENTION.md # Secret naming standards
+│   └── secrets-reference.md      # Every secret, its workflows and scopes
 └── scripts/                   # 🔨 Utility Scripts
 ```
 
@@ -252,6 +267,8 @@ Complete Docker automation with multi-platform builds, security scanning, and en
 | **🔧 docker-build action** | Multi-platform Docker builds | Composite action with security scanning |
 | **🚀 docker-build workflow** | Complete Docker CI/CD | `uses: {{REPO_FULL_NAME}}/.github/workflows/docker-build.yml@main` |
 | **📋 Configuration Templates** | Pre-configured setups | `default`, `web-application`, `microservice`, `enterprise` |
+| **🐳 Docker maintenance (Dependabot)** | Merge Dependabot PRs of any ecosystem (base images, npm, pip, Composer, Cargo, NuGet, ...) only after the named PR CI passed on the current base; opt-in (`release-workflow`): dispatch the release after the merge and wait for it | `uses: {{REPO_FULL_NAME}}/.github/workflows/docker-maintenance-dependabot.yml@main` |
+| **🔍 Base image monitor** | Release a rebuild when a floating tag (`stable`, `latest`) moves; stored once the release succeeded | `uses: {{REPO_FULL_NAME}}/.github/workflows/modules-docker-base-image-monitor.yml@main` |
 
 **Quick Start - Docker:**
 ```yaml
@@ -312,7 +329,7 @@ Enterprise-grade security scanning and compliance automation.
 
 | Component | Purpose | Usage |
 |-----------|---------|-------|
-| **🛡️ security-scan action** | Multi-engine security scanning | Gitleaks, GitGuardian, Trivy |
+| **🛡️ security-scan action** | Dependency vulnerability scanning, secret scanning (opt-in) | Trivy, Gitleaks (opt-in) |
 | **📋 license-compliance action** | License compliance checks | SPDX, FOSSA integration |
 | **🔍 Release Management** | Automated releases | Semantic versioning, changelog generation |
 
@@ -622,7 +639,7 @@ jobs:
 | **🟢 Teams Notifications** | Available | Microsoft Teams integration | `uses: {{REPO_FULL_NAME}}/.github/workflows/teams-notifications.yml@main` |
 | **🟢 Repository Cleanup** | Available | Automated repository maintenance | `uses: {{REPO_FULL_NAME}}/.github/workflows/repository-cleanup.yml@main` |
 | **🟢 Coolify Deploy** | Available | Coolify deployment automation | `uses: {{REPO_FULL_NAME}}/.github/workflows/coolify-deploy.yml@main` |
-| **🟢 AI Issue Summary** | Available | AI-powered issue summarization | `uses: {{REPO_FULL_NAME}}/.github/workflows/ai-issue-summary.yml@main` |
+| **🟡 AI Issue Summary** | Paused - being reworked, see [#105](https://github.com/bauer-group/automation-templates/issues/105) | AI-powered issue summarization | - |
 | **🟢 Issue Automation** | Available | Automated issue management | `uses: {{REPO_FULL_NAME}}/.github/workflows/issue-automation.yml@main` |
 | **🟢 PR Labeler** | Available | Automated pull request labeling | `uses: {{REPO_FULL_NAME}}/.github/workflows/pr-labeler.yml@main` |
 
@@ -658,24 +675,6 @@ regexes = [
   '''password\s*=\s*["']?(test|demo|example)["']?''',
   '''key\s*=\s*["']?(your[_-]?key[_-]?here)["']?'''
 ]
-```
-
-#### GitGuardian Configuration (.gitguardian.yaml)
-
-```yaml
-version: 2
-
-paths-ignore:
-  - .git/**
-  - node_modules/**
-  - vendor/**
-  
-secret:
-  minimum-severity: medium
-  ignore-known-secrets: false
-  
-policies:
-  all-policies: true
 ```
 
 ### Commit Lint Configuration
@@ -740,9 +739,6 @@ export default {
    # Python publishing
    gh secret set PYPI_API_TOKEN --body "your-pypi-token"
    gh secret set CODECOV_TOKEN --body "your-codecov-token"
-   
-   # Security scanning
-   gh secret set GITGUARDIAN_API_KEY --body "your-gitguardian-key"
 
    # Shopware 5 plugins
    gh secret set SHOPWARE_ACCOUNT_EMAIL --body "your-shopware-email"
@@ -897,10 +893,10 @@ jobs:
 - name: Security Scan
   uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
   with:
-    scan-engines: 'both'
-    fail-on-findings: true
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+    scan-engine: 'gitleaks'   # opt-in, default 'none'
+    fail-on-findings: 'true'
+    gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+    token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 #### ⚡ Zephyr Build Action
@@ -923,7 +919,6 @@ jobs:
 
 - **Layered approach**: Use multiple scanning engines for comprehensive coverage
 - **Pre-commit hooks**: Implement client-side scanning with Gitleaks
-- **Continuous monitoring**: Enable GitGuardian for production environments
 - **Secret management**: Store all sensitive data in GitHub Secrets
 
 ### Release Management
@@ -999,8 +994,9 @@ jobs:
       - name: Security scan
         uses: {{REPO_FULL_NAME}}/.github/actions/security-scan@main
         with:
-          scan-engines: 'both'
-          report-format: 'sarif'
+          scan-engine: 'gitleaks'   # opt-in, default 'none'
+          gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### Policy Enforcement
@@ -1060,7 +1056,6 @@ docker-compose up -d
 ```bash
 # Test security scan configuration
 cat .gitleaks.toml
-cat .gitguardian.yaml
 
 # Validate commit format
 git log --oneline -10
@@ -1074,6 +1069,9 @@ gh auth status --show-token
 ### 🚀 Workflow Systems Documentation
 
 - [🐳 **Docker Build System**](docs/workflows/docker-build.md) - Complete Docker automation guide
+- [🐳 **Fork Docker Build**](docs/workflows/fork-docker-build.md) - Multi-image build, Trivy gate and GHCR push for forked repositories
+- [🔧 **Auto Maintenance**](docs/workflows/modules-auto-maintenance.md) - Base image digests and dependency updates (npm, pip, .NET, Go) in one scheduled run, validated and rolled back on failure; commits only dependency manifests and lock files ([what gets committed](docs/workflows/modules-auto-maintenance.md#was-committet-wird))
+- [🐳 **Docker Image Maintenance**](docs/workflows/docker-maintenance.md) - Dependabot PRs of every ecosystem merged after their PR CI passed (trigger scope, files per ecosystem, decision table, tested base, release dispatch), or Renovate
 - [🐍 **Python Build System**](docs/workflows/python-build.md) - Python application builds and testing
 - [🐍 **Python Semantic Release System**](docs/workflows/python-semantic-release.md) - Modern Python CI/CD with semantic versioning
 - [📦 **Semantic Release Config Contract**](docs/workflows/semantic-release-config.md) - What a repository's `semantic-release.json` actually controls, and what is silently ignored
@@ -1089,7 +1087,7 @@ gh auth status --show-token
 - [🐘 **PHP Build System**](docs/workflows/php-build.md) - PHP and Composer automation
 - [🛒 **Shopware 5 Plugin Build System**](docs/workflows/shopware5-build.md) - Shopware 5 plugin automation with store integration
 - [🔧 **Makefile Build System**](docs/workflows/makefile-build.md) - Makefile-based build automation
-- [🧠 **AI Issue Summary**](docs/workflows/ai-issue-summary.md) - Copilot-powered issue and PR summaries
+- [🧠 **AI Issue Summary**](docs/workflows/ai-issue-summary.md) - Copilot-powered issue and PR summaries (**paused**, being reworked in [#105](https://github.com/bauer-group/automation-templates/issues/105))
 - [🤖 **Claude Code AI Assistant**](docs/workflows/claude-code.md) - AI-powered code assistant
 - [🚀 **Coolify Deploy**](docs/workflows/coolify-deploy.md) - Coolify deployment automation
 - [🔄 **Meta Repository Sync**](docs/workflows/meta-repository-sync.md) - Automated submodule synchronization
@@ -1099,7 +1097,8 @@ gh auth status --show-token
 
 #### 🔍 Validation Modules
 
-- [🔍 **Docker Base Image Monitor**](docs/workflows/modules-docker-base-image-monitor.md) - Base image digest drift detection
+- [🧪 **Backup Round-Trip Test**](docs/workflows/modules-backup-roundtrip-test.md) - Backup, delete, restore and verify real data of a compose stack before release, per compose variant (local, Traefik, Coolify), after an upgrade from the previous release, from an off-site S3 copy on a new host and for every job of a multi-job configuration
+- [🔍 **Docker Base Image Monitor**](docs/workflows/modules-docker-base-image-monitor.md) - Base image digest drift detection; digests stored once the release succeeded, failed releases retried, [operator recovery](docs/workflows/modules-docker-base-image-monitor.md#operator-recovery)
 - [🐳 **Dockerfile Validation**](docs/workflows/modules-validate-dockerfile.md) - Dockerfile linting with Hadolint
 - [📋 **Docker Compose Validation**](docs/workflows/modules-validate-compose.md) - Docker Compose validation
 - [🐚 **Shell Script Validation**](docs/workflows/modules-validate-shellscript.md) - Shell script linting with ShellCheck
@@ -1108,7 +1107,7 @@ gh auth status --show-token
 
 #### Build Actions
 
-- [🐳 **docker-build**](.github/actions/docker-build/README.md) - Multi-platform Docker builds with security
+- [🐳 **docker-build**](docs/workflows/docker-build.md#2-composite-action) - Multi-platform Docker builds with security ([action.yml](.github/actions/docker-build/action.yml))
 - [📦 **dotnet-nuget**](.github/actions/dotnet-nuget/action.yml) - .NET NuGet build, sign, and pack
 - [🔐 **dotnet-nuget-auth**](.github/actions/dotnet-nuget-auth/action.yml) - Authenticated restore from private NuGet feeds
 - [🪟 **dotnet-msi**](.github/actions/dotnet-msi/action.yml) - WiX MSI packaging for Windows deployment
@@ -1116,34 +1115,35 @@ gh auth status --show-token
 - [📟 **esp32-build**](.github/actions/esp32-build/README.md) - ESP32 microcontroller build automation with ESP-IDF
 - [🔧 **stm32-build**](.github/actions/stm32-build/README.md) - STM32 microcontroller build automation
 - [⚡ **platformio-build**](.github/actions/platformio-build/README.md) - PlatformIO cross-platform build automation
-- [🔧 **makefile-build**](.github/actions/makefile-build/README.md) - Makefile-based build automation
+- [🔧 **makefile-build**](.github/actions/makefile-build/README.MD) - Makefile-based build automation
 
 #### Security & Compliance Actions
 
-- [🛡️ **security-scan**](.github/actions/security-scan/README.md) - Multi-engine security scanning
-- [🔒 **gitleaks-scan**](.github/actions/gitleaks-scan/README.md) - Gitleaks secret detection
-- [🛡️ **gitguardian-scan**](.github/actions/gitguardian-scan/README.md) - GitGuardian security scanning
-- [📋 **license-compliance**](.github/actions/license-compliance/README.md) - SPDX license compliance
+- [🛡️ **security-scan**](.github/actions/security-scan/action.yml) - Multi-engine security scanning
+- [🔒 **gitleaks-scan**](.github/actions/gitleaks-scan/action.yml) - Gitleaks secret detection
+- [📋 **license-compliance**](.github/actions/license-compliance/action.yml) - SPDX license compliance
 
 #### AI & Automation Actions
 
-- [🤖 **claude-code**](.github/actions/claude-code/README.md) - AI-powered code assistant
-- [🔨 **artifact-generator**](.github/actions/artifact-generator/README.md) - Multi-format artifact generation
-- [🏷️ **labeler-triage**](.github/actions/labeler-triage/README.md) - Issue/PR labeling and triage
-- [🔀 **auto-merge**](.github/actions/auto-merge/README.md) - Automated PR merging
+- [🤖 **claude-code**](.github/actions/claude-code/action.yml) - AI-powered code assistant
+- [🔨 **artifact-generator**](.github/actions/artifact-generator/action.yml) - Multi-format artifact generation
+- [🏷️ **labeler-triage**](.github/actions/labeler-triage/action.yml) - Issue/PR labeling and triage
+- [🔀 **auto-merge**](.github/actions/auto-merge/action.yml) - Automated PR merging
 
 #### Utility Actions
 
-- [📝 **readme-generate**](.github/actions/readme-generate/README.md) - Professional README generation
-- [🛡️ **security-generate**](.github/actions/security-generate/README.md) - Security policy generation
+- [📝 **readme-generate**](.github/actions/readme-generate/action.yml) - Professional README generation
+- [🛡️ **security-generate**](.github/actions/security-generate/README.MD) - Security policy generation
 - [🚀 **semantic-release**](.github/actions/semantic-release/README.md) - Automated release management
-- [📋 **generate-changelog**](.github/actions/generate-changelog/README.md) - Changelog generation
+- [📋 **generate-changelog**](.github/actions/generate-changelog/action.yml) - Changelog generation
 - [🔔 **teams-notification**](.github/actions/teams-notification/README.md) - Microsoft Teams integration
 - [🧹 **repository-cleanup**](.github/actions/repository-cleanup/README.md) - Repository maintenance automation
 
 ### 📋 Configuration References
 
 - [🐳 **Docker Configurations**](.github/config/docker-build/) - Docker build configuration templates
+- [🔍 **Docker Base Image Monitor Configuration**](.github/config/docker-base-image-monitor/README.md) - Config schema, example and setup guide
+- [🐳 **Dependabot Configuration**](.github/config/docker-maintenance-dependabot/dependabot.yml) - `dependabot.yml` template for base image updates
 - [⚡ **Zephyr Configurations**](.github/config/zephyr-build/) - Zephyr RTOS build configuration templates
 - [📟 **ESP32 Configurations**](.github/config/esp32-build/) - ESP32 build configuration templates
 - [🔧 **STM32 Configurations**](.github/config/stm32-build/) - STM32 build configuration templates
@@ -1152,11 +1152,12 @@ gh auth status --show-token
 - [🛒 **Shopware 5 Configurations**](.github/config/shopware5-build/) - Shopware 5 plugin build configuration templates
 - [🔄 **Meta Repository Configurations**](.github/config/meta-repository/) - Meta repository sync configurations
 - [⚙️ **Workflow Configuration**](.github/config/README.md) - General workflow configuration guide
-- [🔒 **Secrets Naming Convention**](docs/SECRETS-NAMING-CONVENTION.md) - Standardized secret naming
+- [🔒 **Secrets Naming Convention**](github/workflows/SECRETS-NAMING-CONVENTION.MD) - Standardized secret naming
+- [🔑 **Secrets Reference**](docs/secrets-reference.md) - Every secret, the workflows that use it and the scopes it needs
 
 ### 🛠️ Repository Management Tools
 
-- [🔐 **Branch Protection Tools**](github/branch-protect/README.md) - Automated branch protection
+- [🔐 **Branch Protection Tools**](github/branch-protect/README.MD) - Automated branch protection
 - [🤖 **Claude Code Documentation**](github/claude-code/README.md) - AI-powered code assistant documentation
 - [🧹 **Repository Cleanup Tools**](github/cleanup/README.md) - Repository maintenance utilities
 - [🏃 **Self-Hosted Runner Setup**](github/runner/README.md) - Runner deployment and management
@@ -1165,6 +1166,11 @@ gh auth status --show-token
 
 - [🐳 **Docker Examples**](github/workflows/examples/docker/) - Complete Docker workflow examples
 - [🐳 **Docker Compose Examples**](github/workflows/examples/docker-compose/) - Docker Compose workflow examples
+- [🔧 **Auto Maintenance Examples**](github/workflows/examples/auto-maintenance/) - Weekly caller and a base image config
+- [🧪 **Backup Round-Trip Examples**](github/workflows/examples/backup-roundtrip/) - Minimal, gated release pipeline, plugin sources, upgrade from the previous release, off-site S3, compose variants, several backup jobs
+- [🐳 **Fork Docker Build Examples**](github/workflows/examples/fork-docker-build/) - Drop-in caller for a fork's `workspace` branch
+- [🐳 **Docker Maintenance (Dependabot) Examples**](github/workflows/examples/docker-maintenance-dependabot/) - Merge after the PR CI: backup round-trip gate, own CI, several workflows, all ecosystems, .NET library, no PR CI
+- [🔍 **Docker Base Image Monitor Examples**](github/workflows/examples/docker-base-image-monitor/) - Daily check with release dispatch, several images, dry run
 - [🐳 **Dockerfile Validation Examples**](github/workflows/examples/dockerfile-validation/) - Dockerfile linting examples
 - [🐍 **Python Examples**](github/workflows/examples/python-build/) - Python build and test examples
 - [🐍 **Python Release Examples**](github/workflows/examples/python-release/) - Python semantic release examples
@@ -1206,7 +1212,7 @@ gh auth status --show-token
 
 - **💬 Discussions:** [GitHub Discussions]({{REPO_URL}}/discussions) - Ask questions and share ideas
 - **🛠️ Contributing:** [Contributing Guide](CONTRIBUTING.MD) - Learn how to contribute
-- **📋 Code of Conduct:** [Code of Conduct](CODE_OF_CONDUCT.MD) - Community standards
+- **📋 Code of Conduct:** [Code of Conduct](CODE_OF_CONDUCT.md) - Community standards
 - **📧 Enterprise Support:** [support@bauer-group.com](mailto:support@bauer-group.com)
 - **🌐 Support Portal:** [https://support.bauer-group.com](https://support.bauer-group.com)
 

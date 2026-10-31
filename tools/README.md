@@ -81,7 +81,6 @@ Zentrale Konfigurationsdatei für Deployment-Profile und Einstellungen.
 **Benötigte Secrets:**
 - `TEAMS_WEBHOOK_URL`
 - `DOCKER_PASSWORD`
-- `GITGUARDIAN_API_KEY`
 
 ### `security-focused` - Nur Sicherheit
 **Enthält:**
@@ -90,7 +89,6 @@ Zentrale Konfigurationsdatei für Deployment-Profile und Einstellungen.
 
 **Benötigte Secrets:**
 - `TEAMS_WEBHOOK_URL`
-- `GITGUARDIAN_API_KEY`
 
 ### `docs-only` - Nur Dokumentation
 **Enthält:**
@@ -171,7 +169,6 @@ Die folgenden Secrets müssen im Ziel-Repository konfiguriert werden:
 |--------|-------------|--------------|
 | `TEAMS_WEBHOOK_URL` | Microsoft Teams Webhook URL | Teams-Benachrichtigungen |
 | `DOCKER_PASSWORD` | Docker Hub Passwort/Token | Docker-Workflows |
-| `GITGUARDIAN_API_KEY` | GitGuardian API Key | Security-Scanning |
 
 ### Repository Variables
 Optionale Konfiguration über Repository-Variablen:

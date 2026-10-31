@@ -237,6 +237,26 @@ jobs:
     secrets: inherit
 ```
 
+## Security: Dependency Code Runs Under Your Write Token
+
+This action installs and runs npm packages in a job that holds the `token` input,
+which needs `contents: write` to push tags, release commits and GitHub Releases.
+Every step of a job runs as the same user, so any of that code can read the token:
+
+| Install | Pinned by | Install scripts |
+|---------|-----------|-----------------|
+| Changelog notes toolchain (`notes/`) | Lockfile in this action | Disabled (`--ignore-scripts`) |
+| semantic-release, its plugins, `extra-plugins` | Version ranges, resolved at run time by `cycjimmy/semantic-release-action` | Enabled |
+
+A compromised version anywhere in the second row would get write access to every
+repository that releases with this action. Until that row is locked down too
+([#109](https://github.com/bauer-group/automation-templates/issues/109)):
+
+- Keep the release job free of anything else: no build, no test, no other
+  secrets. Run those in separate jobs that the release job `needs:`.
+- Add `extra-plugins` only when a release really needs them, with an exact
+  version (`@semantic-release/npm@12.0.1`, not `@semantic-release/npm`).
+
 ## Troubleshooting
 
 ### No Release Created

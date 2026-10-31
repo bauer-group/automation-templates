@@ -1,0 +1,91 @@
+# =============================================================================
+# Backup Round Trip - Several Backup Jobs
+# =============================================================================
+# A sidecar whose BACKUP_CONFIG_JSON backs the stack up in two jobs: the
+# database every hour, the uploaded files every night. 'backuphelper create'
+# runs both; the round trip inspects, verifies and restores one snapshot per
+# job, in config order. Nothing has to be configured for it - the module reads
+# the jobs from 'backuphelper config'.
+#
+# Needs BackupHelper 1.10.0 or later in the sidecar: it names the job in the
+# snapshot id (2026-10-08_09-14-46_database) and restores each snapshot into
+# its own job. A sidecar FROM ...backuphelper:latest has it.
+#
+# Assumed repository layout:
+#   docker-compose.yml   app-backup's BACKUP_CONFIG_JSON has two jobs, e.g.
+#                        {"jobs": [
+#                          {"name": "database", "sources": [{"type": "postgres", ...}],
+#                           "schedule": {"cron": "15 * * * *"}},
+#                          {"name": "files", "sources": [{"type": "filesystem",
+#                           "name": "uploads", "path": "/srv/uploads"}],
+#                           "schedule": {"cron": "45 3 * * *"}}]}
+#   src/app-backup/Dockerfile     FROM ghcr.io/bauer-group/cs-backuphelper/backuphelper:latest
+#   tests/backup-roundtrip/       seed.sh, mutate.sh, check.sh - they seed a
+#                                 row AND a file, so both jobs have data to
+#                                 bring back
+#
+# Docs: docs/workflows/modules-backup-roundtrip-test.md#several-backup-jobs
+# =============================================================================
+
+name: 🧪 Backup Round Trip (several jobs)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'docker-compose*.yml'
+      - '.env.example'
+      - 'tests/backup-roundtrip/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup-roundtrip:
+    name: 🧪 Backup Round Trip
+    permissions:
+      contents: read
+      packages: read
+    uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+    with:
+      compose-file: 'docker-compose.yml'
+      profiles: 'backup'
+      generated-secrets: 'DATABASE_PASSWORD'
+      build-images: '[{"service": "app-backup", "context": "src/app-backup"}]'
+      backup-service: 'app-backup'
+      # Counted across the jobs: "app" (the database name) is in the database
+      # job's snapshot, "uploads" in the files job's.
+      require-components: 'app uploads'
+      services-to-stop-before-restore: 'app'
+      # Passed to every job's restore. No --only: a name must be in each
+      # job's snapshot.
+      restore-args: '--force'
+      seed-script: 'tests/backup-roundtrip/seed.sh'
+      mutate-script: 'tests/backup-roundtrip/mutate.sh'
+      check-script: 'tests/backup-roundtrip/check.sh'
+    secrets: inherit
+
+  # snapshot-ids lists every job's snapshot; snapshot-id stays the first
+  # job's, so a gate written for one job keeps working.
+  report:
+    name: 📋 Snapshots per Job
+    needs: [backup-roundtrip]
+    if: needs.backup-roundtrip.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: 📋 List Snapshots
+        env:
+          SNAPSHOT_IDS: ${{ needs.backup-roundtrip.outputs.snapshot-ids }}
+          COMPONENTS: ${{ needs.backup-roundtrip.outputs.components }}
+        run: |
+          set -euo pipefail
+          {
+            echo "| Job | Snapshot | Components |"
+            echo "|-----|----------|------------|"
+            jq -r --argjson components "$COMPONENTS" '.[] | . as $s
+              | "| `\($s.job)` | `\($s.id)` | \([$components[] | select((.job // $s.job) == $s.job) | .name] | join(", ")) |"' <<< "$SNAPSHOT_IDS"
+          } >> "$GITHUB_STEP_SUMMARY"

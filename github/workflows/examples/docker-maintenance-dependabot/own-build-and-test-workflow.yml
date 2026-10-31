@@ -1,0 +1,91 @@
+# =============================================================================
+# Docker Maintenance (Dependabot) - Own Build and Test Workflow
+# =============================================================================
+# For an image without a backup sidecar: the repository's own CI workflow
+# builds the image and runs the tests on pull requests, and that run is what
+# vouches for a Dependabot update.
+#
+# This example lets two ecosystems through - Docker base images and npm
+# packages. With more than the docker ecosystem the caller below has no
+# paths: filter, so every Dependabot PR gets a decision and an annotation;
+# ci.yml's pull_request paths decide what is tested. Every file Dependabot
+# changes for an ecosystem that may be merged must start ci.yml - leave the
+# npm files out of ci.yml's paths to keep npm updates open as "not tested".
+#
+# Matching .github/workflows/ci.yml (excerpt) - the required workflow:
+# -----------------------------------------------------------------------------
+# name: CI
+# on:
+#   pull_request:
+#     branches: [main]
+#     paths:                    # what ci.yml builds and tests
+#       - 'Dockerfile'
+#       - 'package.json'
+#       - 'package-lock.json'
+#       - 'src/**'
+# jobs:
+#   build:   ...                # docker-build.yml with push: false
+#   test:    ...                # npm ci && npm test
+# -----------------------------------------------------------------------------
+#
+# Release: ci.yml only builds and tests. The image is published by
+# release.yml (semantic release, then the image push) - dispatched after the
+# merge (release-workflow). It needs `on: workflow_dispatch`, must build and
+# test before it publishes (its release job `needs:` its build and test jobs),
+# and must release the commit it tested (`ref: ${{ github.sha }}` on
+# modules-semantic-release.yml - else a merge that lands during its run is
+# tagged untested and missing from its image), so a broken update never
+# reaches the registry.
+#
+# Required .github/dependabot.yml (excerpt):
+# -----------------------------------------------------------------------------
+# version: 2
+# updates:
+#   - package-ecosystem: "docker"
+#     directory: "/"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "fix(docker)"
+#   - package-ecosystem: "npm"
+#     directory: "/"
+#     schedule:
+#       interval: "weekly"
+#     commit-message:
+#       prefix: "fix(deps)"
+# -----------------------------------------------------------------------------
+# =============================================================================
+
+name: 🐳 Docker Maintenance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # No paths: - more than the docker ecosystem is updated, so every
+    # Dependabot PR gets a decision. ci.yml's pull_request paths (above)
+    # decide what is tested.
+
+permissions:
+  contents: write       # merge
+  pull-requests: write  # approve, read the PR
+  checks: read          # check runs and suites - private repositories
+  statuses: read        # commit statuses - private repositories
+  actions: write        # dispatch the release; read workflow runs
+
+jobs:
+  maintenance:
+    name: Auto-merge Dependabot PRs
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
+    with:
+      # The repository's own build and test workflow - no backup round trip.
+      required-workflows: .github/workflows/ci.yml
+      # Publishes the merged update; its run must succeed.
+      release-workflow: .github/workflows/release.yml
+      merge-method: 'squash'
+      auto-approve: true
+      # Patch updates only; e.g. 'patch,minor' once the tests are trusted to
+      # catch a breaking minor release. An npm package below 1.0.0 is
+      # stricter: 0.3.1 -> 0.4.0 and 0.0.3 -> 0.0.4 count as major (SemVer 4,
+      # as npm's ^ ranges read them), so 'patch,minor' leaves them open.
+      merge-update-types: 'patch'
+    secrets: inherit

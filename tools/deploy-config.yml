@@ -10,7 +10,6 @@ profiles:
       - "automatic-release"
       - "security-management"
       - "documentation"
-      - "teams-notifications"
     actions:
       - "teams-notification"
       - "security-generate"
@@ -18,7 +17,6 @@ profiles:
       - "semantic-release"
     secrets_required:
       - "TEAMS_WEBHOOK_URL"
-      - "GITGUARDIAN_API_KEY"
     variables_recommended:
       - "TEAMS_NOTIFICATION_LEVEL"
 
@@ -30,7 +28,6 @@ profiles:
       - "python-automatic-release"
       - "security-management"
       - "documentation"
-      - "teams-notifications"
       - "docker-build"
       - "python-build"
       - "nodejs-build"
@@ -48,7 +45,6 @@ profiles:
     secrets_required:
       - "TEAMS_WEBHOOK_URL"
       - "DOCKER_PASSWORD"
-      - "GITGUARDIAN_API_KEY"
       - "PYPI_API_TOKEN"
     variables_recommended:
       - "TEAMS_NOTIFICATION_LEVEL"
@@ -60,13 +56,11 @@ profiles:
     description: "Security management and notification workflows"
     workflows:
       - "security-management"
-      - "teams-notifications"
     actions:
       - "security-generate"
       - "teams-notification"
     secrets_required:
       - "TEAMS_WEBHOOK_URL"
-      - "GITGUARDIAN_API_KEY"
     variables_recommended:
       - "TEAMS_NOTIFICATION_LEVEL"
 
@@ -87,7 +81,6 @@ profiles:
       - "readme-generate"
     secrets_required:
       - "PYPI_API_TOKEN"
-      - "GITGUARDIAN_API_KEY"
     variables_recommended:
       - "PYTHON_VERSION"
 
@@ -99,12 +92,10 @@ profiles:
       - "python-automatic-release"
       - "security-management"
       - "documentation"
-      - "teams-notifications"
       - "docker-build"
       - "repository-cleanup"
       - "pr-labeler"
       - "issue-automation"
-      - "ai-issue-summary"
     actions:
       - "teams-notification"
       - "security-generate"
@@ -120,9 +111,7 @@ profiles:
     secrets_required:
       - "TEAMS_WEBHOOK_URL"
       - "DOCKER_PASSWORD"
-      - "GITGUARDIAN_API_KEY"
       - "PYPI_API_TOKEN"
-      - "OPENAI_API_KEY"
     variables_recommended:
       - "TEAMS_NOTIFICATION_LEVEL"
       - "TEAMS_MENTION_ON_FAILURE"
@@ -146,7 +135,6 @@ workflows:
     description: "Main CI/CD pipeline with semantic release and modular components"
     file: "automatic-release.yml"
     secrets_used:
-      - "GITGUARDIAN_API_KEY"
       - "GITLEAKS_LICENSE"
     triggers:
       - "push"
@@ -160,7 +148,6 @@ workflows:
     type: "workflow_call"
     secrets_used:
       - "PYPI_API_TOKEN"
-      - "GITGUARDIAN_API_KEY"
       - "GITLEAKS_LICENSE"
     triggers:
       - "workflow_call"
@@ -169,8 +156,7 @@ workflows:
     name: "Security Policy Management"
     description: "Automated security policy generation and validation"
     file: "security-management.yml"
-    secrets_used:
-      - "GITGUARDIAN_API_KEY"
+    secrets_used: []
     triggers:
       - "push"
       - "pull_request"
@@ -188,20 +174,6 @@ workflows:
       - "pull_request"
       - "workflow_dispatch"
       - "workflow_call"
-
-  teams-notifications:
-    name: "Teams Notifications"
-    description: "Microsoft Teams notifications for repository events"
-    file: "teams-notifications.yml"
-    secrets_used:
-      - "TEAMS_WEBHOOK_URL"
-    triggers:
-      - "workflow_run"
-      - "issues"
-      - "pull_request"
-      - "push"
-      - "release"
-      - "workflow_dispatch"
 
   docker-build:
     name: "Docker Build"
@@ -263,16 +235,6 @@ workflows:
     description: "Automated issue management and triage"
     file: "issue-automation.yml"
     secrets_used: []
-    triggers:
-      - "issues"
-      - "workflow_dispatch"
-
-  ai-issue-summary:
-    name: "AI Issue Summary"
-    description: "AI-powered issue summarization and analysis"
-    file: "ai-issue-summary.yml"
-    secrets_used:
-      - "OPENAI_API_KEY"
     triggers:
       - "issues"
       - "workflow_dispatch"
@@ -385,7 +347,6 @@ actions:
     path: ".github/actions/security-scan"
     inputs:
       - "scan-engine"
-      - "gitguardian-api-key"
       - "gitleaks-license"
       - "fail-on-findings"
 
@@ -397,15 +358,6 @@ actions:
       - "config-path"
       - "fail-on-findings"
       - "license"
-
-  gitguardian-scan:
-    name: "GitGuardian Scan"
-    description: "Secrets detection with GitGuardian"
-    path: ".github/actions/gitguardian-scan"
-    inputs:
-      - "api-key"
-      - "minimum-severity"
-      - "fail-on-findings"
 
   license-compliance:
     name: "License Compliance"
@@ -481,7 +433,7 @@ secrets:
   TEAMS_WEBHOOK_URL:
     description: "Microsoft Teams webhook URL for notifications"
     required_for:
-      - "teams-notifications"
+      - "teams-notification"
     setup_url: "https://docs.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook"
 
   DOCKER_PASSWORD:
@@ -490,16 +442,8 @@ secrets:
       - "docker-build"
     setup_url: "https://docs.docker.com/docker-hub/access-tokens/"
 
-  GITGUARDIAN_API_KEY:
-    description: "GitGuardian API key for secrets scanning"
-    required_for:
-      - "automatic-release"
-      - "python-automatic-release"
-      - "security-management"
-    setup_url: "https://dashboard.gitguardian.com/api/v1/docs"
-
   GITLEAKS_LICENSE:
-    description: "Gitleaks Pro license key (optional)"
+    description: "Gitleaks license key (free, optional) - only when Gitleaks is enabled (opt-in); also as a Dependabot secret"
     required_for:
       - "automatic-release"
       - "python-automatic-release"
@@ -510,12 +454,6 @@ secrets:
     required_for:
       - "python-automatic-release"
     setup_url: "https://pypi.org/help/#apitoken"
-
-  OPENAI_API_KEY:
-    description: "OpenAI API key for AI-powered features"
-    required_for:
-      - "ai-issue-summary"
-    setup_url: "https://platform.openai.com/api-keys"
 
 # Repository Variables Documentation
 variables:
@@ -545,9 +483,9 @@ variables:
     example: "18"
 
   SECURITY_SCAN_ENGINE:
-    description: "Security scanning engine to use"
-    default: "both"
-    values: ["gitleaks", "gitguardian", "both"]
+    description: "Secret scan engine: none (Gitleaks off, default) or gitleaks (opt-in for repositories without GitHub secret scanning)"
+    default: "none"
+    values: ["none", "gitleaks"]
 
   MINIMUM_COVERAGE:
     description: "Minimum test coverage percentage"

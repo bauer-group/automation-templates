@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/bauer-group/automation-templates/main/.github/config/maintenance/auto-maintenance.schema.json",
+
+  "ecosystems": {
+    "node": {
+      "version": "22",
+      "package-manager": "npm",
+      "working-directory": "."
+    }
+  },
+
+  "validation": {
+    "build-command": "npm run build",
+    "test-command": "npm test"
+  },
+
+  "release": {
+    "commit-prefix": "fix(deps)"
+  }
+}

@@ -1,0 +1,71 @@
+# =============================================================================
+# Check Base Image Updates - Daily Check That Dispatches the Release
+# =============================================================================
+# The caller every Container-Solution stack runs: once a day the monitor reads
+# the digest behind each floating tag in the config file (e.g. zammad:7,
+# backuphelper:latest). When one moved, it pushes an empty release commit
+# ("chore(deps): update base image ...") and dispatches docker-release.yml with
+# force-release, which releases that commit and rebuilds the images FROM the
+# new base - behind the release gate, e.g. the backup round trip.
+#
+# The new digest is stored only once that release run has succeeded:
+#   check 1   digest moved   -> commit + dispatch, run recorded in <VAR>_PENDING
+#   check 2   run succeeded  -> <VAR> = new digest, <VAR>_PENDING removed
+#             run failed     -> dispatched again (attempt 2, then 3)
+#             3rd run failed -> job fails on every check until the cause is
+#                               fixed and <VAR>_PENDING is deleted
+# See docs/workflows/modules-docker-base-image-monitor.md, sections
+# "State variables and lifecycle" and "Operator recovery".
+#
+# Prerequisites:
+# 1. Secret PAT_READWRITE_ORGANISATION (organisation or repository): classic
+#    `repo`, or fine-grained Contents + Variables + Actions (read/write).
+#    Not used for the registry login.
+# 2. .github/config/docker-base-image-monitor/base-images.json - see
+#    multi-image-base-images.json in this folder.
+# 3. docker-release.yml has a workflow_dispatch trigger with a force-release
+#    input and builds the images itself - see
+#    ../backup-roundtrip/gated-release-pipeline.yml. Only the result of the
+#    dispatched run is confirmed.
+# =============================================================================
+
+name: 🔍 Check Base Image Updates
+
+on:
+  schedule:
+    # Daily at 06:00 UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Only check - store, commit and dispatch nothing'
+        type: boolean
+        default: false
+
+# The monitor writes variables, commits and dispatches with the PAT. The job
+# token only reads manifests of internal or private GHCR images, which needs
+# packages: read here - a reusable workflow cannot grant it to itself.
+permissions:
+  contents: read
+  packages: read
+
+# A manual run next to the scheduled one would read the same state and could
+# dispatch the same release twice. Queue them instead.
+concurrency:
+  group: check-base-images
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check for Base Image Updates
+    uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
+    with:
+      config-file: '.github/config/docker-base-image-monitor/base-images.json'
+      # Release commit (default commit-and-release: true) plus dispatch: the
+      # dispatched run releases the commit and builds the images.
+      target-workflow: 'docker-release.yml'
+      target-workflow-inputs: '{"force-release": "true"}'
+      # Failed release runs per digest before the monitor stops and fails.
+      max-release-attempts: 3
+      dry-run: ${{ inputs.dry-run || false }}
+    secrets: inherit

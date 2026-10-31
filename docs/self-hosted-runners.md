@@ -118,7 +118,7 @@ All reusable workflows support the `runs-on` parameter:
 | `nodejs-build.yml` | `ubuntu-latest` | Cross-platform |
 | `php-build.yml` | `ubuntu-latest` | Linux recommended |
 | `python-build.yml` | `ubuntu-latest` | Cross-platform |
-| `docker-build.yml` | `ubuntu-latest` | Docker required |
+| `docker-build.yml` | `ubuntu-latest` | Docker required; `free-disk-space` is skipped on self-hosted runners |
 | `zephyr-build.yml` | `ubuntu-latest` | Linux recommended |
 | `shopware5-build.yml` | `ubuntu-latest` | PHP environment |
 | `makefile-build.yml` | `ubuntu-latest` | Make required |

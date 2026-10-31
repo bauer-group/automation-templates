@@ -87,6 +87,14 @@ jobs:
 | `check-tools` | string | `cppcheck` | Analysis tools |
 | `upload-artifacts` | boolean | `true` | Upload firmware artifacts |
 | `create-release` | boolean | `false` | Create GitHub release |
+| `security-scan-engine` | string | `none` | Secret scan: `none` (Gitleaks off) or `gitleaks` (opt-in) |
+
+> **Secret scan (Gitleaks) is opt-in.** With the default `security-scan-engine: 'none'` the
+> Security Scan job only records that Gitleaks is disabled, and the build summary shows
+> *Disabled*. Set `security-scan-engine: 'gitleaks'` in repositories without GitHub secret
+> scanning and push protection; organization repositories then also need the
+> `GITLEAKS_LICENSE` secret (`secrets: inherit`), for Dependabot runs as a Dependabot
+> secret. See [Gitleaks is opt-in](../security/native-secret-scanning.md#gitleaks-is-opt-in).
 
 ### platformio.ini Example
 

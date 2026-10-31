@@ -63,8 +63,17 @@ jobs:
       skip-pypi: false
       update-documentation: true
       update-security-policy: true
+      # security-engine: 'gitleaks'   # opt-in, siehe unten
     secrets: inherit
 ```
+
+> **Secret-Scan (Gitleaks) ist opt-in.** `security-engine` steht standardmäßig auf `'none'`:
+> Die PR-Validierung überspringt den Secret-Scan, der Security-Scan prüft nur die
+> Abhängigkeiten mit Trivy, und die Pipeline-Zusammenfassung zeigt „Trivy only - Gitleaks
+> disabled (opt-in)“. `security-engine: 'gitleaks'` (oder weiterhin `'both'`) schaltet
+> Gitleaks ein - für Repositories ohne GitHub Secret Scanning und Push Protection. In
+> Organisations-Repositories braucht es dann `GITLEAKS_LICENSE`, für Dependabot-Läufe
+> zusätzlich als Dependabot-Secret. Siehe [Gitleaks ist opt-in](../security/native-secret-scanning.md#gitleaks-is-opt-in).
 
 ## Konfiguration
 

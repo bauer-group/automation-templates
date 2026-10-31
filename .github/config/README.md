@@ -15,8 +15,7 @@ Organized configuration files for GitHub Actions workflows and modules.
 │   ├── label-actions.yml
 │   └── ai-prompts.yml
 ├── 📁 security/         # Security scanning configurations (future)
-│   ├── gitleaks.toml
-│   └── gitguardian.yml
+│   └── gitleaks.toml
 ├── 📁 license/          # License compliance configurations (future)
 │   └── allowed-licenses.yml
 ├── 📁 claude-code/      # Claude Code Assistant configurations
@@ -26,8 +25,13 @@ Organized configuration files for GitHub Actions workflows and modules.
 │   ├── security-review.yml
 │   └── minimal.yml
 ├── 📁 docker-base-image-monitor/  # Docker base image monitoring
+│   ├── README.md
 │   ├── docker-base-images.schema.json
 │   └── example.json
+├── 📁 docker-maintenance-dependabot/  # dependabot.yml template for base image updates
+│   └── dependabot.yml
+├── 📁 maintenance/      # Auto maintenance (base images + dependency updates)
+│   └── auto-maintenance.schema.json
 └── commitlint.config.mjs # Commit message linting configuration
 ```
 
@@ -73,7 +77,6 @@ Organized configuration files for GitHub Actions workflows and modules.
 **Modules:** `modules-security-scan.yml`
 
 - **`gitleaks.toml`** - Gitleaks secret detection patterns
-- **`gitguardian.yml`** - GitGuardian scanning rules
 
 ### 📋 License (future) (`license/`)
 **Module:** `modules-license-compliance.yml`
@@ -121,12 +124,31 @@ Monitors Docker base images for digest changes and triggers rebuilds. Solves the
 - Monitors multiple images via JSON config or inline definition
 - Auto-creates GitHub variables for digest storage
 - Creates semantic-release compatible commits (`chore(deps):`)
+- With a target workflow, stores a digest only once the dispatched release succeeded and dispatches a failed release again
 - Supports dry-run mode for testing
 
 **Required Secrets:**
 - `PAT_READWRITE_ORGANISATION` - Personal Access Token with:
   - Variables (Read/Write)
   - Contents (Read/Write)
+  - Actions (Read/Write) when a target workflow is dispatched
+
+**Docs:** [module page](../../docs/workflows/modules-docker-base-image-monitor.md) (lifecycle of `<VAR>`/`<VAR>_PENDING`, [operator recovery](../../docs/workflows/modules-docker-base-image-monitor.md#operator-recovery)) · [setup guide (German)](docker-base-image-monitor/README.md) · [caller examples](../../github/workflows/examples/docker-base-image-monitor/README.md)
+
+### 🐳 Dependabot for Docker Maintenance (`docker-maintenance-dependabot/`)
+**Workflow:** `docker-maintenance-dependabot.yml`
+
+- **`dependabot.yml`** - Template for `.github/dependabot.yml`: weekly Docker base image updates with the `fix(docker)` commit prefix, so a merged update releases a patch
+  - Commented `registries:` block for internal or private GHCR base images (Dependabot's own secrets `DEPENDABOT_GHCR_USER` / `DEPENDABOT_GHCR_TOKEN`)
+
+**Docs:** [Docker Maintenance](../../docs/workflows/docker-maintenance.md) · [caller examples](../../github/workflows/examples/docker-maintenance-dependabot/README.md)
+
+### 🔧 Auto Maintenance (`maintenance/`)
+**Module:** `modules-auto-maintenance.yml`
+
+- **`auto-maintenance.schema.json`** - JSON Schema for `.github/config/maintenance/config.json` in the consumer: `base-images`, `ecosystems` (node, python, dotnet, go), `validation` and `release`
+
+**Docs:** [module page (German)](../../docs/workflows/modules-auto-maintenance.md) · [caller and config example](../../github/workflows/examples/auto-maintenance/README.md)
 
 ## 📝 Naming Convention
 
@@ -199,6 +221,8 @@ with:
 | `modules-security-scan` | `security/` | `gitleaks.toml` | No | Secret patterns |
 | `modules-license-compliance` | `license/` | `allowed-licenses.yml` | No | License rules |
 | `modules-docker-base-image-monitor` | `docker-base-image-monitor/` | `*.json` | No | Base image monitoring |
+| `docker-maintenance-dependabot` | `docker-maintenance-dependabot/` | `dependabot.yml` | No (template) | Dependabot base image updates |
+| `modules-auto-maintenance` | `maintenance/` | `auto-maintenance.schema.json` | No (schema) | Base images + dependency updates |
 
 ## 🔍 Configuration Examples
 
@@ -371,7 +395,7 @@ No additional configuration needed! The workflow automatically:
 
 - [Secrets Reference](../../docs/secrets-reference.md) - All required secrets and tokens
 - [Workflow Modules](../workflows/MODULES-README.MD)
-- [GitHub Actions](../actions/README.MD)
+- [GitHub Actions](../actions/README.md)
 - [Examples](../../github/workflows/examples/)
 
 ---

@@ -46,7 +46,24 @@ on:
         type: string
         required: false
         default: ''
-      
+
+      github-token-secret-id:
+        description: >-
+          If set, pass this workflow's own GITHUB_TOKEN to the build as a BuildKit secret
+          with this id (e.g. npm_token), alongside DOCKER_BUILD_SECRETS. The Dockerfile
+          reads it with RUN --mount=type=secret,id=<id>. Installs GitHub Packages
+          dependencies without a PAT, also in Dependabot runs, which get no Actions
+          secrets. The token is not read-only: it holds this workflow's permissions
+          (contents, packages, security-events and attestations: write), which every
+          caller must grant, and every process in a RUN that mounts it can read it,
+          dependency install scripts included. Mount it only on the install RUN, use
+          npm ci --ignore-scripts where possible, and never set -x or echo in that RUN:
+          the build record that verbose-build-summary uploads is not masked. Letters,
+          digits, '_', '.' and '-' only. Empty (default) passes no token.
+        type: string
+        required: false
+        default: ''
+
       # Platform Configuration
       platforms:
         description: 'Target platforms to build and push (comma-separated, e.g. "linux/amd64,linux/arm64"). More than one platform produces a multi-arch manifest list; QEMU is registered automatically for non-native architectures.'
@@ -159,7 +176,8 @@ on:
           Remove unused preinstalled toolchains from the runner before building.
           Off by default; turn it on for images large enough that the build, the
           `load: true` copy in the daemon and the security scan no longer fit in
-          a GitHub-hosted runner's free space. Linux runners only.
+          a GitHub-hosted runner's free space. GitHub-hosted Linux runners
+          only - ignored on self-hosted runners, whose disk is persistent.
         type: boolean
         required: false
         default: false
@@ -222,7 +240,7 @@ on:
         default: 'cyclonedx'
 
       attest-sbom:
-        description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true. BREAKING: default flipped to true (secure-by-default).'
+        description: 'Create a GitHub (Sigstore) SBOM attestation for the pushed image digest. Requires generate-sbom=true; skipped when nothing is pushed. BREAKING: default flipped to true (secure-by-default).'
         type: boolean
         required: false
         default: true
@@ -337,11 +355,11 @@ on:
     
     secrets:
       DOCKER_USERNAME:
-        description: 'Docker Hub username'
+        description: 'Docker Hub username. Required for publish-to dockerhub or both. Optional for ghcr: with DOCKER_PASSWORD, pulls from Docker Hub (base images, BuildKit, QEMU) run logged in, under the quota of the account instead of the anonymous per-IP limit of the runner'
         required: false
 
       DOCKER_PASSWORD:
-        description: 'Docker Hub password/token'
+        description: 'Docker Hub password/token for DOCKER_USERNAME (for ghcr builds a read-only token is enough)'
         required: false
 
       COSIGN_PRIVATE_KEY:
@@ -353,7 +371,7 @@ on:
         required: false
       
       DOCKER_BUILD_SECRETS:
-        description: 'Docker build secrets as JSON'
+        description: 'BuildKit secrets for the build, one id=value per line (e.g. api_key=...). For a GitHub Packages token use the github-token-secret-id input instead of a PAT.'
         required: false
       
     
@@ -464,6 +482,81 @@ jobs:
           fi
           echo "✅ Docker Hub credentials present"
 
+      # The id is spliced into the `id=value` lines handed to docker/build-push-action,
+      # which splits each line at its first '=' and passes `id=<id>,src=<file>` to
+      # buildx. A newline would start a secret line of the caller's choosing, an '='
+      # would move the split, a ',' would add buildx options - so the id is held to a
+      # plain name before Build Docker Image composes anything from it. Read through
+      # env, never pasted into the script.
+      - name: 🔎 Validate GitHub Token Secret ID
+        id: validate-token-secret-id
+        if: inputs.github-token-secret-id != ''
+        shell: bash
+        env:
+          # C collation, so [A-Za-z] means ASCII letters whatever the runner's locale.
+          LC_ALL: C
+          SECRET_ID: ${{ inputs.github-token-secret-id }}
+        run: |
+          ID_PATTERN='^[A-Za-z0-9_.-]+$'
+          if [[ ! "$SECRET_ID" =~ $ID_PATTERN ]]; then
+            # The rejected value is not echoed: it may hold the very newline this rejects.
+            echo "::error::github-token-secret-id may contain only letters, digits, '_', '.' and '-' (e.g. npm_token). It becomes a BuildKit secret id, read with RUN --mount=type=secret,id=<id>."
+            exit 1
+          fi
+          echo "✅ GITHUB_TOKEN will be passed to the build as secret '$SECRET_ID'"
+
+      # Docker Hub limits anonymous pulls per IP address, and GitHub-hosted runners
+      # share theirs. A build that publishes to GHCR still pulls from Docker Hub - the
+      # FROM base images, the BuildKit image of the docker-container builder, the
+      # QEMU image of a multi-platform build - and did so anonymously, so when many
+      # builds ran at once those pulls failed with 429 'toomanyrequests'. Logged in,
+      # the account's own quota applies.
+      #
+      # GHCR only: with publish-to dockerhub or both, Build Docker Image logs in to
+      # docker.io itself, and Validate Registry Credentials makes the secrets
+      # mandatory there. Optional here - without the secrets (callers without
+      # secrets: inherit, fork PRs, Dependabot runs) Docker Hub is pulled anonymously
+      # exactly as before. A failed login only warns: the anonymous pull may still
+      # succeed, and the pull says so if not. The action's post step logs out again,
+      # so a self-hosted runner keeps no credentials.
+      #
+      # Ahead of Build Docker Image on purpose: that action sets up QEMU and Buildx,
+      # which pull from Docker Hub, before its own registry logins. Ahead of the
+      # pre-build tests too, which may start containers of their own.
+      - name: 🔎 Check Docker Hub Credentials
+        id: dockerhub-pull
+        if: inputs.publish-to == 'ghcr'
+        shell: bash
+        env:
+          # Presence only - the secret values themselves are never referenced here.
+          HAS_DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME != '' }}
+          HAS_DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD != '' }}
+        run: |
+          if [ "$HAS_DOCKER_USERNAME" = "true" ] && [ "$HAS_DOCKER_PASSWORD" = "true" ]; then
+            echo "login=true" >> "$GITHUB_OUTPUT"
+            echo "🔑 Docker Hub credentials present - pulls from Docker Hub run under the account's quota"
+          else
+            echo "login=false" >> "$GITHUB_OUTPUT"
+            echo "⚪ DOCKER_USERNAME and DOCKER_PASSWORD are not both set - Docker Hub is pulled anonymously (rate-limited per runner IP)"
+          fi
+
+      - name: 🔐 Log in to Docker Hub
+        id: dockerhub-pull-login
+        if: steps.dockerhub-pull.outputs.login == 'true'
+        continue-on-error: true
+        uses: docker/login-action@v4
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: ⚠️ Docker Hub Login Failed
+        id: dockerhub-pull-warning
+        if: steps.dockerhub-pull-login.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning title=Docker Build::Docker Hub login failed - DOCKER_USERNAME or DOCKER_PASSWORD is wrong or expired, or Docker Hub could not be reached. Docker Hub is pulled anonymously and may hit its rate limit (429 toomanyrequests)."
+
       - name: 📥 Checkout Repository
         uses: actions/checkout@v7
         with:
@@ -478,8 +571,11 @@ jobs:
       # A curated list rather than a caller-supplied command: every consumer that
       # needs this needs it for the same reason and would otherwise write the same
       # five `rm -rf` lines, each with its own idea of what is safe to remove.
+      #
+      # Never on self-hosted runners: the rm -rf would hit a persistent host and
+      # delete toolchains its other jobs rely on.
       - name: 🧹 Free Disk Space
-        if: inputs.free-disk-space && runner.os == 'Linux'
+        if: inputs.free-disk-space && runner.os == 'Linux' && runner.environment == 'github-hosted'
         shell: bash
         run: |
           BEFORE=$(df --output=avail -BM / | tail -1 | tr -dc '0-9')
@@ -548,7 +644,28 @@ jobs:
           dockerfile-path: ${{ inputs.dockerfile-path }}
           docker-context: ${{ inputs.docker-context }}
           build-args: ${{ inputs.build-args }}
-          build-secrets: ${{ secrets.DOCKER_BUILD_SECRETS }}
+          # With github-token-secret-id unset this is DOCKER_BUILD_SECRETS, exactly as
+          # before. With it set, this job's own GITHUB_TOKEN becomes the first line,
+          # `<id>=<token>`, followed by the caller's lines when there are any.
+          #
+          # The token has to come from here. A caller's `secrets:` block is evaluated in
+          # the caller, and the `github.token` it yields there was refused by
+          # npm.pkg.github.com with a 401 inside the build (issue #106). This job holds
+          # its own token - the one the GHCR login below uses - and hands it over
+          # without it ever crossing the workflow_call boundary.
+          #
+          # The separating newline is only added when DOCKER_BUILD_SECRETS has content,
+          # so an empty one adds no line at all; fromJSON is how an expression spells a
+          # newline. The token is never written to a step output or a script, and the
+          # runner masks it in the job log like any other secret. What the Dockerfile does
+          # with it is out of the mask's reach: BuildKit's own logs, kept in the build
+          # record verbose-build-summary uploads, are not masked - hence the input's
+          # advice against set -x in the RUN that reads it.
+          build-secrets: >-
+            ${{ inputs.github-token-secret-id != '' &&
+            format('{0}={1}{2}{3}', inputs.github-token-secret-id, secrets.GITHUB_TOKEN,
+            secrets.DOCKER_BUILD_SECRETS != '' && fromJSON('"\n"') || '', secrets.DOCKER_BUILD_SECRETS) ||
+            secrets.DOCKER_BUILD_SECRETS }}
           target: ${{ inputs.build-target }}
           platforms: ${{ inputs.enable-matrix && matrix.platform || inputs.platforms }}
           multi-platform: ${{ inputs.enable-matrix && 'false' || inputs.multi-platform }}

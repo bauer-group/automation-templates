@@ -1,0 +1,56 @@
+# =============================================================================
+# Check Base Image Updates - Several Images in One Config File
+# =============================================================================
+# A stack built FROM four bases: two Docker Hub images, a Docker Hub official
+# image and the internal BackupHelper engine on GHCR. One config file lists
+# them all (multi-image-base-images.json in this folder - copy it to
+# .github/config/docker-base-image-monitor/base-images.json).
+#
+# One check, one release:
+# - Every image has its own digest variable and its own <VAR>_PENDING record.
+# - All images that moved since the last check share ONE release commit and
+#   ONE dispatched run; each records that run with its own attempt number.
+# - The run confirms or retries every image it was dispatched for. An image
+#   that moves later gets a release of its own.
+#
+# Coverage: an image the job token cannot read (private package without
+# packages: read, a typo in the tag, a registry rate limit that outlasts the
+# three attempts) fails the check - "N of M configured image(s) verified" in
+# the summary - instead of reporting "up to date" for an image that was never
+# read. The other images are still checked, but nothing is stored, committed
+# or dispatched in that run.
+#
+# Docker Hub rate limits: anonymous manifest reads count against the runner's
+# shared IP. Four images once a day stay far below the limit; dozens of images
+# every hour do not.
+# =============================================================================
+
+name: 🔍 Check Base Image Updates
+
+on:
+  schedule:
+    # Weekdays at 05:30 UTC - before working hours, so a red release gate is
+    # seen the same day.
+    - cron: '30 5 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read      # the internal BackupHelper image; harmless for the others
+
+concurrency:
+  group: check-base-images
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check for Base Image Updates
+    uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
+    with:
+      config-file: '.github/config/docker-base-image-monitor/base-images.json'
+      target-workflow: 'docker-release.yml'
+      target-workflow-inputs: '{"force-release": "true"}'
+      # Default: an unreadable image fails the check. Never set this to
+      # false for a stack whose release depends on every listed image.
+      fail-on-unreachable-image: true
+    secrets: inherit

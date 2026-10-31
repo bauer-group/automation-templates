@@ -72,12 +72,6 @@ We implement multiple layers of automated security scanning:
   uses: gitleaks/gitleaks-action@v3
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-# GitGuardian - Enterprise Secrets Detection
-- name: 🛡️ Advanced Secrets Scan (GitGuardian)
-  uses: GitGuardian/ggshield-action@v1
-  with:
-    api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
 ```
 
 ##### Dependency Scanning
@@ -143,7 +137,7 @@ Following our [Secrets Naming Convention](github/workflows/SECRETS-NAMING-CONVEN
 ```
 
 Examples:
-- `SECURITY_GITGUARDIAN_API_KEY` - GitGuardian API key
+- `SECURITY_GITLEAKS_LICENSE_KEY` - Gitleaks license key
 - `DOCKER_REGISTRY_PASSWORD` - Docker registry authentication
 - `SIGNING_CERTIFICATE_BASE64` - Code signing certificate
 
@@ -278,7 +272,7 @@ We track and report on:
 
 ### Security Tools Integration
 - **Gitleaks**: Open-source secrets detection
-- **GitGuardian**: Enterprise secrets scanning
+- **TruffleHog**: Verified secrets detection
 - **Dependabot**: Automated dependency updates
 - **CodeQL**: Semantic code analysis
 - **Trivy**: Container vulnerability scanning

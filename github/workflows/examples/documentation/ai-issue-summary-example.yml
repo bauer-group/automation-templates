@@ -2,6 +2,12 @@ name: 🤖 AI-Powered Issue Analysis
 
 # Example workflow showing different configurations for AI issue summaries
 # Uses the modular AI summary component from bauer-group/automation-templates
+#
+# PAUSED: every caller in the organisation was removed on 2026-09-28 because
+# no run produced a real AI summary any more; the module stays for the
+# rework, tracked in https://github.com/bauer-group/automation-templates/issues/105.
+# Do not roll this out before #105 is closed. Reference:
+# docs/workflows/ai-issue-summary.md
 
 on:
   issues:

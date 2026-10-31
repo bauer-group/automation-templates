@@ -194,36 +194,32 @@ runs:
     - name: 📅 Calculate Dates
       id: dates
       shell: bash
+      env:
+        # Read from the caller's config file; passed via env so the value is
+        # data, not script text that ${{ }} would splice into the run body.
+        REVIEW_CYCLE: ${{ steps.config.outputs.review_cycle }}
       run: |
         # Current date
         CURRENT_DATE=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
         echo "last_updated=$CURRENT_DATE" >> "$GITHUB_OUTPUT"
-        
-        # Get review cycle from config
-        REVIEW_CYCLE="${{ steps.config.outputs.review_cycle }}"
-        
-        # Next review date (configurable months from now)
-        if command -v date >/dev/null 2>&1; then
-          if date --version 2>/dev/null | grep -q GNU; then
-            # GNU date (Linux)
-            NEXT_REVIEW=$(date -u -d "+${REVIEW_CYCLE} months" '+%B %Y')
-          else
-            # BSD date (macOS)
-            NEXT_REVIEW=$(date -u -v+${REVIEW_CYCLE}m '+%B %Y')
-          fi
-        else
-          # Fallback
-          CURRENT_YEAR=$(date -u '+%Y')
-          CURRENT_MONTH=$(date -u '+%m')
-          FUTURE_YEAR=$((CURRENT_YEAR + REVIEW_CYCLE / 12))
-          FUTURE_MONTH=$((CURRENT_MONTH + REVIEW_CYCLE % 12))
-          if [ $FUTURE_MONTH -gt 12 ]; then
-            FUTURE_YEAR=$((FUTURE_YEAR + 1))
-            FUTURE_MONTH=$((FUTURE_MONTH - 12))
-          fi
-          NEXT_REVIEW=$(date -u -d "${FUTURE_YEAR}-${FUTURE_MONTH}-01" '+%B %Y' 2>/dev/null || echo "$(date -u '+%B') $((CURRENT_YEAR + 1))")
+
+        # Bash arithmetic evaluates its operands, so only a plain number may
+        # reach the calculation below.
+        if [[ ! "$REVIEW_CYCLE" =~ ^[0-9]+$ ]]; then
+          echo "::error title=Invalid review cycle::policy.review_cycle '$REVIEW_CYCLE' is not a whole number of months."
+          exit 1
         fi
-        
+
+        # Next review date (configurable months from now). Plain month
+        # arithmetic instead of `date -d`/`date -v`: GNU, BSD and uutils date
+        # (default on Ubuntu 26.04 runners) disagree on relative dates, and
+        # uutils matches neither branch of a vendor-string check.
+        MONTHS=(January February March April May June July August September October November December)
+        YEAR=$(date -u '+%Y')
+        MONTH=$((10#$(date -u '+%m')))  # 10#: "08"/"09" are not octal
+        TARGET=$((YEAR * 12 + MONTH - 1 + 10#$REVIEW_CYCLE))
+        NEXT_REVIEW="${MONTHS[TARGET % 12]} $((TARGET / 12))"
+
         echo "next_review=$NEXT_REVIEW" >> "$GITHUB_OUTPUT"
         echo "📅 Last updated: $CURRENT_DATE"
         echo "📅 Next review: $NEXT_REVIEW (${REVIEW_CYCLE} months from now)"

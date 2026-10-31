@@ -1,19 +1,36 @@
 # =============================================================================
 # SBOM Attestation (GitHub Native)
 # =============================================================================
-# Creates a cryptographic attestation for an SBOM file using GitHub's built-in
-# attestation infrastructure (Sigstore-based). This provides verifiable
-# provenance proving the SBOM was generated in this specific workflow run.
+# Creates a Sigstore-signed GitHub attestation for an SBOM. Two modes, chosen by
+# whether the caller names the artifact the SBOM describes:
 #
-# Verification: gh attestation verify <file> --repo <owner/repo>
+#   image  subject-name + subject-digest given. An SBOM attestation whose subject
+#          is the image digest and whose predicate is the SBOM - a signed statement
+#          "this image contains these components".
+#          Verify: gh attestation verify oci://<subject-name>@<digest> --repo <owner/repo>
+#
+#   file   No subject given. Build provenance whose subject is the SBOM file
+#          itself - a signed statement "this file was produced by this workflow
+#          run". It says nothing about any image. Kept for callers that publish
+#          the SBOM as a release asset (e.g. the CRA release pipeline).
+#          Verify: gh attestation verify <sbom file> --repo <owner/repo>
+#
+# Until issue #104 the action only ever did the second, and called it an SBOM
+# attestation: it passed the SBOM to actions/attest-sbom as subject-path and never
+# set sbom-path, so actions/attest fell back to provenance mode and nothing it
+# created named the image.
 #
 # Usage:
 #   - uses: bauer-group/automation-templates/.github/actions/sbom-attest@main
 #     with:
 #       sbom-path: sbom.cdx.json
+#       subject-name: ghcr.io/org/image     # no tag
+#       subject-digest: sha256:...          # digest of the pushed image
 #
 # Prerequisites:
 #   - Workflow must have `permissions: attestations: write, id-token: write`
+#   - push-to-registry: true additionally needs write access to the registry
+#     (packages: write for GHCR)
 #   - Only works in GitHub Actions (not locally)
 #
 # References:
@@ -22,37 +39,55 @@
 # =============================================================================
 
 name: 'SBOM Attestation'
-description: 'Create a GitHub attestation for an SBOM file, providing cryptographic provenance'
+description: 'Create a GitHub attestation binding an SBOM to the image it describes, or provenance for the SBOM file'
 author: 'BAUER GROUP'
 
 inputs:
   sbom-path:
-    description: 'Path to the SBOM file to attest'
+    description: 'Path to the SBOM file (CycloneDX or SPDX JSON)'
     required: true
   sbom-format:
-    description: 'SBOM format: cyclonedx-json, spdx-json'
+    description: 'SBOM format, shown in the step summary only (actions/attest detects it from the file): cyclonedx-json, spdx-json'
     required: false
     default: 'cyclonedx-json'
+  subject-name:
+    description: 'Fully-qualified image name WITHOUT tag (e.g. ghcr.io/org/image). Set together with subject-digest to attest the SBOM for that image; leave both empty for file provenance.'
+    required: false
+    default: ''
+  subject-digest:
+    description: 'Digest of the pushed image (sha256:<64 hex>). Set together with subject-name.'
+    required: false
+    default: ''
+  push-to-registry:
+    description: 'Also store the attestation in the image registry next to the image (image mode only). Needs registry write access.'
+    required: false
+    default: 'false'
 
 outputs:
   attestation-id:
     description: 'GitHub attestation ID (empty if skipped)'
-    value: ${{ steps.attest.outputs.attestation-id }}
+    value: ${{ steps.attest-image.outputs.attestation-id || steps.attest-file.outputs.attestation-id }}
   attested:
     description: 'Whether attestation was successfully created (true/false)'
     value: ${{ steps.result.outputs.attested }}
+  mode:
+    description: "'image' (SBOM attestation for the image digest) or 'file' (build provenance for the SBOM file)"
+    value: ${{ steps.validate.outputs.mode }}
 
 runs:
   using: 'composite'
   steps:
     # ---- Validate ----
 
-    - name: 🔍 Validate SBOM file
+    - name: 🔍 Validate SBOM and subject
       id: validate
       shell: bash
+      env:
+        SBOM_PATH: ${{ inputs.sbom-path }}
+        SUBJECT_NAME: ${{ inputs.subject-name }}
+        SUBJECT_DIGEST: ${{ inputs.subject-digest }}
+        PUSH_TO_REGISTRY: ${{ inputs.push-to-registry }}
       run: |
-        SBOM_PATH="${{ inputs.sbom-path }}"
-
         if [ ! -f "$SBOM_PATH" ]; then
           echo "::error::SBOM file not found: $SBOM_PATH — attestation requires a valid SBOM"
           echo "valid=false" >> "$GITHUB_OUTPUT"
@@ -66,41 +101,103 @@ runs:
           exit 1
         fi
 
-        echo "✅ SBOM file validated: $SBOM_PATH"
+        # Half a subject is a caller mistake, not a request for file provenance:
+        # falling back would hand back a green attestation about the wrong thing.
+        if [ -n "$SUBJECT_NAME" ] && [ -n "$SUBJECT_DIGEST" ]; then
+          if ! [[ "$SUBJECT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::subject-digest must be sha256:<64 hex>, got '$SUBJECT_DIGEST'"
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          if [[ "${SUBJECT_NAME##*/}" == *:* || "$SUBJECT_NAME" == *@* ]]; then
+            echo "::error::subject-name must be the image name without tag or digest, got '$SUBJECT_NAME' - the digest identifies the image"
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          MODE=image
+        elif [ -n "$SUBJECT_NAME" ] || [ -n "$SUBJECT_DIGEST" ]; then
+          echo "::error::subject-name and subject-digest must be set together (got name='$SUBJECT_NAME', digest='$SUBJECT_DIGEST')"
+          echo "valid=false" >> "$GITHUB_OUTPUT"
+          exit 1
+        else
+          if [ "$PUSH_TO_REGISTRY" = "true" ]; then
+            echo "::error::push-to-registry needs an image: set subject-name and subject-digest"
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          MODE=file
+        fi
+
+        echo "✅ SBOM file validated: $SBOM_PATH (mode: $MODE)"
         echo "valid=true" >> "$GITHUB_OUTPUT"
+        echo "mode=$MODE" >> "$GITHUB_OUTPUT"
 
     # ---- Attest ----
+    # actions/attest directly: actions/attest-sbom is deprecated upstream and is now
+    # only a wrapper that forwards to it.
 
-    - name: 📜 Create SBOM attestation
-      id: attest
-      if: steps.validate.outputs.valid == 'true'
-      uses: actions/attest-sbom@v4
+    - name: 📜 Attest SBOM for image
+      id: attest-image
+      if: steps.validate.outputs.mode == 'image'
+      uses: actions/attest@v4
       with:
+        subject-name: ${{ inputs.subject-name }}
+        subject-digest: ${{ inputs.subject-digest }}
+        sbom-path: ${{ inputs.sbom-path }}
+        push-to-registry: ${{ inputs.push-to-registry }}
+        # A storage record needs artifact-metadata: write. Callers reach this
+        # through reusable workflows, which cannot grant more than the caller did,
+        # so requiring it would fail every caller that never granted it.
+        create-storage-record: false
+
+    - name: 📜 Attest SBOM file provenance
+      id: attest-file
+      if: steps.validate.outputs.mode == 'file'
+      uses: actions/attest@v4
+      with:
+        # No sbom-path: this is build provenance for the file, by design.
         subject-path: ${{ inputs.sbom-path }}
-        sbom-format: ${{ inputs.sbom-format }}
 
     # ---- Result ----
 
     - name: 📊 Attestation result
       id: result
       shell: bash
+      env:
+        ATTESTATION_ID: ${{ steps.attest-image.outputs.attestation-id || steps.attest-file.outputs.attestation-id }}
+        MODE: ${{ steps.validate.outputs.mode }}
+        SBOM_PATH: ${{ inputs.sbom-path }}
+        SBOM_FORMAT: ${{ inputs.sbom-format }}
+        SUBJECT_NAME: ${{ inputs.subject-name }}
+        SUBJECT_DIGEST: ${{ inputs.subject-digest }}
       run: |
-        ATTESTATION_ID="${{ steps.attest.outputs.attestation-id }}"
-
         if [ -n "$ATTESTATION_ID" ]; then
-          echo "✅ SBOM attestation created: $ATTESTATION_ID"
           echo "attested=true" >> "$GITHUB_OUTPUT"
+          if [ "$MODE" = "image" ]; then
+            KIND="SBOM attestation for the image"
+            SUBJECT="\`$SUBJECT_NAME@$SUBJECT_DIGEST\`"
+            VERIFY="gh attestation verify oci://$SUBJECT_NAME@$SUBJECT_DIGEST --repo $GITHUB_REPOSITORY"
+          else
+            KIND="Build provenance for the SBOM file (not an attestation about any image)"
+            SUBJECT="\`$SBOM_PATH\`"
+            VERIFY="gh attestation verify $SBOM_PATH --repo $GITHUB_REPOSITORY"
+          fi
+          echo "✅ $KIND: $ATTESTATION_ID"
 
-          echo "### 📜 SBOM Attestation" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Status** | ✅ Created |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Attestation ID** | \`$ATTESTATION_ID\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **SBOM File** | \`${{ inputs.sbom-path }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Format** | ${{ inputs.sbom-format }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Verify: \`gh attestation verify ${{ inputs.sbom-path }} --repo ${GITHUB_REPOSITORY}\`" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### 📜 SBOM Attestation"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| **Status** | ✅ Created |"
+            echo "| **Kind** | $KIND |"
+            echo "| **Subject** | $SUBJECT |"
+            echo "| **Attestation ID** | \`$ATTESTATION_ID\` |"
+            echo "| **SBOM File** | \`$SBOM_PATH\` |"
+            echo "| **Format** | $SBOM_FORMAT |"
+            echo ""
+            echo "Verify: \`$VERIFY\`"
+          } >> "$GITHUB_STEP_SUMMARY"
         else
           echo "⚠️ SBOM attestation was skipped or failed"
           echo "attested=false" >> "$GITHUB_OUTPUT"

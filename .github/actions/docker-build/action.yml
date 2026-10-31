@@ -21,9 +21,9 @@ inputs:
     required: false
     default: '{}'
   build-secrets:
-    description: 'Build secrets as JSON object'
+    description: 'BuildKit secrets for docker/build-push-action, one id=value per line (e.g. api_key=...). Empty (default) passes none.'
     required: false
-    default: '{}'
+    default: ''
   target:
     description: 'Docker build target stage'
     required: false
@@ -178,7 +178,7 @@ inputs:
     required: false
     default: 'cyclonedx'
   attest-sbom:
-    description: 'Create a GitHub (Sigstore) attestation for the generated SBOM. Requires generate-sbom=true and the caller job to grant attestations:write + id-token:write. BREAKING: default flipped to true (secure-by-default). A direct-action caller without those permissions must set attest-sbom=false.'
+    description: 'Create a GitHub (Sigstore) SBOM attestation for the pushed image digest. Requires generate-sbom=true and the caller job to grant attestations:write + id-token:write. Skipped (with a notice) when no image is pushed. BREAKING: default flipped to true (secure-by-default). A direct-action caller without those permissions must set attest-sbom=false.'
     required: false
     default: 'true'
   # Provenance
@@ -218,9 +218,10 @@ inputs:
 outputs:
   image-digest:
     description: 'Image digest'
-    # Prefer the standard push digest, then the single-build fast-path push digest,
-    # otherwise the local build digest.
-    value: ${{ steps.build.outputs.digest || steps.push-scanned.outputs.digest || steps.build-local.outputs.digest }}
+    # Push digest if available - standard push, its retry, or the single-build fast path -
+    # otherwise the local build digest, each from whichever attempt succeeded
+    # (see 'Check Build Failure (Local)' and 'Check Build Failure (Push)')
+    value: ${{ steps.build.outputs.digest || steps.build-retry.outputs.digest || steps.push-scanned.outputs.digest || steps.build-local.outputs.digest || steps.build-local-retry.outputs.digest }}
   image-tags:
     description: 'Generated image tags'
     value: ${{ steps.meta.outputs.tags }}
@@ -619,10 +620,13 @@ runs:
           ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-major-minor-tag || '' }}
           ${{ inputs.version-from-dockerfile == 'true' && steps.dockerfile-version.outputs.version-major-tag || '' }}
           ${{ inputs.image-tags }}
+        # org.opencontainers.image.created is left to metadata-action's own OCI labels,
+        # which carry the real build time. It used to be overridden here with a Go
+        # layout ({{date "2006-01-02T15:04:05Z07:00"}}) that metadata-action reads as a
+        # Moment.js format, so every image claimed 2006-01-02T15:04:05+00:0007:00 (#107).
         labels: |
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.source={0}/{1}', github.server_url, github.repository) || '' }}
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.revision={0}', github.sha) || '' }}
-          ${{ inputs.add-git-labels == 'true' && 'org.opencontainers.image.created={{date "2006-01-02T15:04:05Z07:00"}}' || '' }}
           ${{ inputs.custom-labels }}
 
     - name: 🏷️ Extract Metadata for Secondary Registry (Docker Hub)
@@ -651,7 +655,6 @@ runs:
         labels: |
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.source={0}/{1}', github.server_url, github.repository) || '' }}
           ${{ inputs.add-git-labels == 'true' && format('org.opencontainers.image.revision={0}', github.sha) || '' }}
-          ${{ inputs.add-git-labels == 'true' && 'org.opencontainers.image.created={{date "2006-01-02T15:04:05Z07:00"}}' || '' }}
           ${{ inputs.custom-labels }}
 
     - name: 🏷️ Combine Tags for Multi-Registry Push
@@ -744,8 +747,21 @@ runs:
           echo "📦 Build cache: DISABLED"
         fi
 
+    # ONE RETRY PER BUILD, FOR REGISTRY THROTTLING ONLY.
+    # A registry can refuse a build for a minute or two. On 2026-10-15 a burst of 31
+    # scheduled base-image monitors (~100 runs in ~45 repositories) made Docker Hub
+    # answer BuildKit's manifest HEAD requests with "429 Too Many Requests" in three
+    # builds that were logged in - Docker Hub's abuse limit counts per IP, whatever the
+    # account. Their releases were already tagged, so they ended half-published.
+    # Each build-push-action step below therefore runs with continue-on-error, followed
+    # by a 'Check Build Failure' step that either fails the job or schedules exactly one
+    # retry with identical inputs - tests/build-retry.test.sh pins both. Nothing after
+    # them may read the first attempt alone: every output is coalesced across both.
     - name: 🐳 Build Docker Image (Local)
       id: build-local
+      # Defers the verdict to 'Check Build Failure (Local)', which fails the job unless
+      # it schedules the retry - a failed build can never pass on this flag.
+      continue-on-error: true
       uses: docker/build-push-action@v7
       env:
         # v6 introduced auto-injected build summaries and build-record artifact uploads.
@@ -771,6 +787,113 @@ runs:
         provenance: false
         sbom: false
 
+    - name: ⏳ Check Build Failure (Local)
+      id: build-local-retry-check
+      if: steps.build-local.outcome == 'failure'
+      shell: bash
+      env:
+        BUILD_NAME: The local (scan) build
+      run: |
+        # Runs only after the build above failed, and ends one of two ways: retry=true
+        # after a backoff, or a failed step. It never exits 0 without scheduling the
+        # retry, so the continue-on-error above cannot let a failed build pass.
+        # Both check steps run this same script; tests/build-retry.test.sh pins that.
+        #
+        # The cause comes from BuildKit's own record of the failed build. `docker buildx
+        # history inspect` without a ref reads the newest record of the current builder -
+        # the one docker/build-push-action just used, unless other jobs build on the same
+        # daemon (builder-driver docker on a shared host: then one retry too many or too
+        # few, never a failed build that passes) - and `--format json` carries its
+        # Status ("failed") and Error.Message, since buildx 0.21 (GitHub-hosted runners
+        # ship a far newer one). Only Error.Message is matched: for a registry request it
+        # holds BuildKit's error ("unexpected status from HEAD request to ...: 429 Too
+        # Many Requests"), while a failing RUN reports 'process "<command>" did not
+        # complete successfully' - never what the command printed, only its command
+        # text, and that is cut out before matching.
+        #
+        # Retried: rate limits, 408 and 5xx answers and network failures - answers that
+        # waiting can change. A network failure is a reset or dropped connection
+        # ("connection reset by peer", EOF, "unexpected EOF"), a TLS handshake or i/o
+        # timeout, or a failing DNS server ("server misbehaving") - no other wording of a
+        # network failure is retried. EOF counts only in the form Go gives a request the
+        # server hung up on - 'Head "<url>": EOF' - since a bare EOF is part of words.
+        # Not retried: everything else (Dockerfile errors, a failing RUN, auth, an unknown
+        # tag), which fails here exactly as it did before there was a retry.
+        # When the record cannot be read at all (buildx older than 0.21, a driver without
+        # build history, a failure before BuildKit started the build) the cause is unknown
+        # and the build is retried anyway: a needless retry costs a backoff and a mostly
+        # cached rebuild, a throttle that is not retried leaves a tagged release
+        # half-published.
+        TRANSIENT='429 Too Many Requests|toomanyrequests|408 Request Timeout|50[0234] (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)|connection reset by peer|": EOF|unexpected EOF|TLS handshake timeout|i/o timeout|server misbehaving'
+
+        # `timeout` comes with GNU coreutils. Where it is missing (a macOS self-hosted
+        # runner, say) the job's timeout-minutes bounds a hung builder instead - the
+        # record must still be read, or every failed build would be retried as "unknown".
+        INSPECT=(docker buildx history inspect --format json)
+        if command -v timeout >/dev/null 2>&1; then
+          INSPECT=(timeout 60 "${INSPECT[@]}")
+        fi
+        RECORD=$("${INSPECT[@]}" 2>/dev/null) || RECORD=""
+        STATUS=$(jq -r '.Status // empty' <<< "$RECORD" 2>/dev/null) || STATUS=""
+        MESSAGE=$(jq -r '.Error.Message // empty' <<< "$RECORD" 2>/dev/null) || MESSAGE=""
+        echo "🔍 Build record status: ${STATUS:-unavailable}"
+
+        if [ "$STATUS" = "failed" ] && [ -n "$MESSAGE" ]; then
+          # Only the matched phrase is reported, never the message: the message is build
+          # output, already in the log above, and echoed into an annotation it could carry
+          # a workflow command. grep reads a here-string and the first match is cut with
+          # parameter expansion - no pipe whose SIGPIPE under pipefail (see Security
+          # Vulnerability Scan) could turn a long message's match into "not retryable".
+          # A failing RUN's command text is cut out first: BuildKit quotes it with Go's %q
+          # (an inner quote is \"), and a command may contain any phrase of TRANSIENT.
+          MATCHABLE=$(sed -E 's/process "([^"\\]|\\.)*" did not complete/process did not complete/g' <<< "$MESSAGE")
+          CAUSE=$(grep -oiE -m1 -- "$TRANSIENT" <<< "$MATCHABLE") || CAUSE=""
+          CAUSE="${CAUSE%%$'\n'*}"
+          CAUSE="${CAUSE#\": }"
+          if [ -z "$CAUSE" ]; then
+            echo "::error title=Docker build failed::$BUILD_NAME failed with an error that is not a registry rate limit or a transient registry failure, so it is not retried. The cause is the 'buildx failed with' error above."
+            exit 1
+          fi
+          REASON="with '$CAUSE' from the registry"
+        else
+          REASON="and its build record does not show why (buildx older than 0.21, or no readable record of this build)"
+        fi
+
+        # 60-90 s. Docker Hub's abuse limit - the one a logged-in build runs into - counts
+        # requests per minute and IP, so a full minute lets its window turn over. The
+        # random 0-30 s on top matter as much: the builds one burst throttled all failed
+        # within the same minute, and a fixed delay would send their retries back as one
+        # burst again.
+        BACKOFF=$((60 + RANDOM % 31))
+        echo "::warning title=Docker build retried::$BUILD_NAME failed $REASON - retrying once in ${BACKOFF}s."
+        sleep "$BACKOFF"
+        echo "retry=true" >> "$GITHUB_OUTPUT"
+
+    - name: 🔁 Build Docker Image (Local, Retry)
+      id: build-local-retry
+      # Identical to 'Build Docker Image (Local)' - only without continue-on-error, so a
+      # second failure fails the job.
+      if: steps.build-local.outcome == 'failure' && steps.build-local-retry-check.outputs.retry == 'true'
+      uses: docker/build-push-action@v7
+      env:
+        DOCKER_BUILD_SUMMARY: ${{ inputs.verbose-build-summary == 'true' && 'true' || 'false' }}
+        DOCKER_BUILD_RECORD_UPLOAD: ${{ inputs.verbose-build-summary == 'true' && 'true' || 'false' }}
+      with:
+        context: ${{ inputs.docker-context }}
+        file: ${{ inputs.dockerfile-path }}
+        platforms: ${{ steps.resolve-platforms.outputs.scan-platform }}
+        push: false
+        load: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: ${{ steps.build-args.outputs.normalised }}
+        secrets: ${{ inputs.build-secrets }}
+        target: ${{ inputs.target }}
+        cache-from: ${{ steps.cache-settings.outputs.cache-from }}
+        cache-to: ${{ steps.cache-settings.outputs.cache-to }}
+        provenance: false
+        sbom: false
+
     - name: 🛡️ Security Vulnerability Scan
       id: security
       if: inputs.security-scan == 'true'
@@ -779,6 +902,7 @@ runs:
       env:
         SECURITY_FAIL_ON: ${{ inputs.security-fail-on }}
         SECURITY_SCANNER: ${{ inputs.security-scanner }}
+        META_TAGS: ${{ steps.meta.outputs.tags }}
       run: |
         # Resolve the scanner name ONCE. The dispatch below, the vulnerability counting
         # and the missing-report message each read the raw input separately, so they
@@ -786,8 +910,10 @@ runs:
         SCANNER=$(printf '%s' "$SECURITY_SCANNER" | tr '[:upper:]' '[:lower:]')
         echo "🛡️ Running security scan with $SCANNER..."
 
-        # Use the first tag for scanning (local image)
-        PRIMARY_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+        # Use the first tag for scanning (local image). Parameter expansion, not
+        # `echo | head -1`: under pipefail that pipe fails the step with "echo: write
+        # error: Broken pipe" whenever head exits before echo has written every tag.
+        PRIMARY_TAG="${META_TAGS%%$'\n'*}"
         REPORT_PATH="docker-build-reports/security-report.json"
         SARIF_PATH="docker-build-reports/security-report.sarif"
 
@@ -823,10 +949,12 @@ runs:
 
         case "$SCANNER" in
           trivy)
-            # Install Trivy if not available
+            # Install Trivy if not available (retried as a whole, see install-tool.sh)
             if ! command -v trivy >/dev/null 2>&1; then
               echo "Installing Trivy..."
-              curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+              bash "$GITHUB_ACTION_PATH/install-tool.sh" Trivy \
+                https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh -b /usr/local/bin \
+                || { echo "scan-passed=false" >> "$GITHUB_OUTPUT"; exit 1; }
             fi
 
             # Trivy exports the image to a tarball before analysing it, so it needs roughly
@@ -874,12 +1002,12 @@ runs:
             # warning the log gives no hint that the margin was ever thin.
             if [ "$IMAGE_BYTES" -gt 0 ] && [ "$AVAIL_BYTES" -ge "$IMAGE_BYTES" ]                && [ "$AVAIL_BYTES" -lt $((IMAGE_BYTES * 2)) ]; then
               echo "::warning::Disk space is tight for this scan: ~$((AVAIL_BYTES / 1024 / 1024)) MB free for a ~$((IMAGE_BYTES / 1024 / 1024)) MB image. Trivy exports the image to a tarball and then needs room to analyse the layers, so it wants roughly $((IMAGE_BYTES * 2 / 1024 / 1024)) MB. If the scan fails below with 'no space left on device', this is why."
-              echo "::warning::  Set 'free-disk-space: true' on the docker-build workflow to reclaim the runner's unused toolchains, and/or 'cache-mode: min' to shrink the cache export."
+              echo "::warning::  On a GitHub-hosted runner, set 'free-disk-space: true' on the docker-build workflow to reclaim the runner's unused toolchains (it is skipped on self-hosted runners - free space on the host there), and/or 'cache-mode: min' to shrink the cache export."
             fi
 
             if [ "$IMAGE_BYTES" -gt 0 ] && [ "$AVAIL_BYTES" -lt "$IMAGE_BYTES" ]; then
               echo "::error::Not enough disk space to scan this image. Trivy exports it to a tarball first, so it needs about $((IMAGE_BYTES / 1024 / 1024)) MB free and only $((AVAIL_BYTES / 1024 / 1024)) MB remain."
-              echo "::error::  Options: set 'free-disk-space: true' (reclaims 10+ GB of unused runner toolchains) and/or 'cache-mode: min', shrink the image (multi-stage build, fetch large assets at runtime), or use a larger runner."
+              echo "::error::  Options: set 'free-disk-space: true' (GitHub-hosted runners only: reclaims 10+ GB of unused toolchains; on a self-hosted runner free space on the host) and/or 'cache-mode: min', shrink the image (multi-stage build, fetch large assets at runtime), or use a larger runner."
               echo "scan-passed=false" >> "$GITHUB_OUTPUT"
               exit 1
             fi
@@ -913,10 +1041,12 @@ runs:
             ;;
 
           grype)
-            # Install Grype if not available
+            # Install Grype if not available (retried as a whole, see install-tool.sh)
             if ! command -v grype >/dev/null 2>&1; then
               echo "Installing Grype..."
-              curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+              bash "$GITHUB_ACTION_PATH/install-tool.sh" Grype \
+                https://raw.githubusercontent.com/anchore/grype/main/install.sh -b /usr/local/bin \
+                || { echo "scan-passed=false" >> "$GITHUB_OUTPUT"; exit 1; }
             fi
 
             # Emit JSON (for gating) and SARIF (for the Security tab) in one scan.
@@ -1067,6 +1197,8 @@ runs:
       # (single-build-scan=true AND single-platform) - the Push Scanned Image step below
       # pushes the already-scanned image instead, closing the scan->push TOCTOU window.
       if: inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true') && (inputs.single-build-scan != 'true' || inputs.multi-platform == 'true')
+      # Defers the verdict to 'Check Build Failure (Push)' - see the local build above.
+      continue-on-error: true
       uses: docker/build-push-action@v7
       env:
         # See build-local step above for rationale - opt-in via verbose-build-summary input.
@@ -1093,6 +1225,113 @@ runs:
         # scan build uses load:true, and the docker exporter cannot hold attestations,
         # which is why single-build-scan and provenance are mutually exclusive and are
         # refused up front rather than silently dropping one.
+        provenance: ${{ inputs.provenance }}
+        sbom: false
+
+    - name: ⏳ Check Build Failure (Push)
+      id: build-retry-check
+      if: steps.build.outcome == 'failure'
+      shell: bash
+      env:
+        BUILD_NAME: The push build
+      run: |
+        # Runs only after the build above failed, and ends one of two ways: retry=true
+        # after a backoff, or a failed step. It never exits 0 without scheduling the
+        # retry, so the continue-on-error above cannot let a failed build pass.
+        # Both check steps run this same script; tests/build-retry.test.sh pins that.
+        #
+        # The cause comes from BuildKit's own record of the failed build. `docker buildx
+        # history inspect` without a ref reads the newest record of the current builder -
+        # the one docker/build-push-action just used, unless other jobs build on the same
+        # daemon (builder-driver docker on a shared host: then one retry too many or too
+        # few, never a failed build that passes) - and `--format json` carries its
+        # Status ("failed") and Error.Message, since buildx 0.21 (GitHub-hosted runners
+        # ship a far newer one). Only Error.Message is matched: for a registry request it
+        # holds BuildKit's error ("unexpected status from HEAD request to ...: 429 Too
+        # Many Requests"), while a failing RUN reports 'process "<command>" did not
+        # complete successfully' - never what the command printed, only its command
+        # text, and that is cut out before matching.
+        #
+        # Retried: rate limits, 408 and 5xx answers and network failures - answers that
+        # waiting can change. A network failure is a reset or dropped connection
+        # ("connection reset by peer", EOF, "unexpected EOF"), a TLS handshake or i/o
+        # timeout, or a failing DNS server ("server misbehaving") - no other wording of a
+        # network failure is retried. EOF counts only in the form Go gives a request the
+        # server hung up on - 'Head "<url>": EOF' - since a bare EOF is part of words.
+        # Not retried: everything else (Dockerfile errors, a failing RUN, auth, an unknown
+        # tag), which fails here exactly as it did before there was a retry.
+        # When the record cannot be read at all (buildx older than 0.21, a driver without
+        # build history, a failure before BuildKit started the build) the cause is unknown
+        # and the build is retried anyway: a needless retry costs a backoff and a mostly
+        # cached rebuild, a throttle that is not retried leaves a tagged release
+        # half-published.
+        TRANSIENT='429 Too Many Requests|toomanyrequests|408 Request Timeout|50[0234] (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)|connection reset by peer|": EOF|unexpected EOF|TLS handshake timeout|i/o timeout|server misbehaving'
+
+        # `timeout` comes with GNU coreutils. Where it is missing (a macOS self-hosted
+        # runner, say) the job's timeout-minutes bounds a hung builder instead - the
+        # record must still be read, or every failed build would be retried as "unknown".
+        INSPECT=(docker buildx history inspect --format json)
+        if command -v timeout >/dev/null 2>&1; then
+          INSPECT=(timeout 60 "${INSPECT[@]}")
+        fi
+        RECORD=$("${INSPECT[@]}" 2>/dev/null) || RECORD=""
+        STATUS=$(jq -r '.Status // empty' <<< "$RECORD" 2>/dev/null) || STATUS=""
+        MESSAGE=$(jq -r '.Error.Message // empty' <<< "$RECORD" 2>/dev/null) || MESSAGE=""
+        echo "🔍 Build record status: ${STATUS:-unavailable}"
+
+        if [ "$STATUS" = "failed" ] && [ -n "$MESSAGE" ]; then
+          # Only the matched phrase is reported, never the message: the message is build
+          # output, already in the log above, and echoed into an annotation it could carry
+          # a workflow command. grep reads a here-string and the first match is cut with
+          # parameter expansion - no pipe whose SIGPIPE under pipefail (see Security
+          # Vulnerability Scan) could turn a long message's match into "not retryable".
+          # A failing RUN's command text is cut out first: BuildKit quotes it with Go's %q
+          # (an inner quote is \"), and a command may contain any phrase of TRANSIENT.
+          MATCHABLE=$(sed -E 's/process "([^"\\]|\\.)*" did not complete/process did not complete/g' <<< "$MESSAGE")
+          CAUSE=$(grep -oiE -m1 -- "$TRANSIENT" <<< "$MATCHABLE") || CAUSE=""
+          CAUSE="${CAUSE%%$'\n'*}"
+          CAUSE="${CAUSE#\": }"
+          if [ -z "$CAUSE" ]; then
+            echo "::error title=Docker build failed::$BUILD_NAME failed with an error that is not a registry rate limit or a transient registry failure, so it is not retried. The cause is the 'buildx failed with' error above."
+            exit 1
+          fi
+          REASON="with '$CAUSE' from the registry"
+        else
+          REASON="and its build record does not show why (buildx older than 0.21, or no readable record of this build)"
+        fi
+
+        # 60-90 s. Docker Hub's abuse limit - the one a logged-in build runs into - counts
+        # requests per minute and IP, so a full minute lets its window turn over. The
+        # random 0-30 s on top matter as much: the builds one burst throttled all failed
+        # within the same minute, and a fixed delay would send their retries back as one
+        # burst again.
+        BACKOFF=$((60 + RANDOM % 31))
+        echo "::warning title=Docker build retried::$BUILD_NAME failed $REASON - retrying once in ${BACKOFF}s."
+        sleep "$BACKOFF"
+        echo "retry=true" >> "$GITHUB_OUTPUT"
+
+    - name: 🔁 Push Docker Image (Retry)
+      id: build-retry
+      # Identical to 'Push Docker Image' - only without continue-on-error, so a second
+      # failure fails the job. Pushing every tag again is safe: tags are overwritten,
+      # and the retry leaves all of them on its own digest.
+      if: steps.build.outcome == 'failure' && steps.build-retry-check.outputs.retry == 'true'
+      uses: docker/build-push-action@v7
+      env:
+        DOCKER_BUILD_SUMMARY: ${{ inputs.verbose-build-summary == 'true' && 'true' || 'false' }}
+        DOCKER_BUILD_RECORD_UPLOAD: ${{ inputs.verbose-build-summary == 'true' && 'true' || 'false' }}
+      with:
+        context: ${{ inputs.docker-context }}
+        file: ${{ inputs.dockerfile-path }}
+        platforms: ${{ steps.resolve-platforms.outputs.list }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: ${{ steps.build-args.outputs.normalised }}
+        secrets: ${{ inputs.build-secrets }}
+        target: ${{ inputs.target }}
+        cache-from: ${{ steps.cache-settings.outputs.cache-from-push }}
+        cache-to: ${{ steps.cache-settings.outputs.cache-to-push }}
         provenance: ${{ inputs.provenance }}
         sbom: false
 
@@ -1130,12 +1369,14 @@ runs:
     - name: 📊 Collect Build Information
       id: build-info
       shell: bash
+      env:
+        META_TAGS: ${{ steps.meta.outputs.tags }}
       run: |
         BUILD_END_TIME=$(date +%s)
         BUILD_DURATION=$((BUILD_END_TIME - BUILD_START_TIME))
 
-        # Get primary image tag
-        PRIMARY_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+        # Get primary image tag - first line, without a pipe (see Security Vulnerability Scan)
+        PRIMARY_TAG="${META_TAGS%%$'\n'*}"
 
         # Check if image was pushed
         IMAGE_PUSHED="${{ inputs.push == 'true' && (github.event_name != 'pull_request' || inputs.push-on-pr == 'true') && (inputs.security-scan != 'true' || steps.security.outputs.scan-passed == 'true') }}"
@@ -1172,6 +1413,9 @@ runs:
       env:
         COSIGN_PRIVATE_KEY: ${{ inputs.cosign-key }}
         COSIGN_PASSWORD: ${{ inputs.cosign-password }}
+        # The push digest of whichever push succeeded: the standard push, its retry (see
+        # 'Check Build Failure (Push)'), or the single-build fast path.
+        IMAGE_DIGEST: ${{ steps.build.outputs.digest || steps.build-retry.outputs.digest || steps.push-scanned.outputs.digest }}
       run: |
         echo "🔐 Signing image with Cosign..."
 
@@ -1181,15 +1425,14 @@ runs:
           go install github.com/sigstore/cosign/v2/cmd/cosign@latest
         fi
 
-        # Sign all tags using the push digest (standard push, or the single-build fast-path push).
-        PUSH_DIGEST="${{ steps.build.outputs.digest || steps.push-scanned.outputs.digest }}"
+        # Sign all tags using the push digest
         echo "${{ steps.meta.outputs.tags }}" | while read -r tag; do
           if [ -n "$tag" ]; then
-            echo "Signing: $tag@${PUSH_DIGEST}"
+            echo "Signing: $tag@$IMAGE_DIGEST"
             if [ -n "$COSIGN_PRIVATE_KEY" ]; then
-              echo "$COSIGN_PRIVATE_KEY" | cosign sign --key env://COSIGN_PRIVATE_KEY --yes "$tag@${PUSH_DIGEST}"
+              echo "$COSIGN_PRIVATE_KEY" | cosign sign --key env://COSIGN_PRIVATE_KEY --yes "$tag@$IMAGE_DIGEST"
             else
-              cosign sign --yes "$tag@${PUSH_DIGEST}"
+              cosign sign --yes "$tag@$IMAGE_DIGEST"
             fi
           fi
         done
@@ -1199,16 +1442,33 @@ runs:
       if: inputs.generate-sbom == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        META_TAGS: ${{ steps.meta.outputs.tags }}
+        ATTEST_SBOM: ${{ inputs.attest-sbom }}
+        IMAGE_PUSHED: ${{ steps.build-info.outputs.pushed }}
       run: |
         echo "📋 Generating Software Bill of Materials..."
-        
-        PRIMARY_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+
+        # First tag, without a pipe: `echo | head -1` under pipefail failed this step
+        # with "echo: write error: Broken pipe" right after a successful push.
+        PRIMARY_TAG="${META_TAGS%%$'\n'*}"
         SBOM_PATH="docker-build-reports/sbom.${{ inputs.sbom-format }}.json"
+
+        # The attestation subject is the pushed image: its name without the tag, plus
+        # the push digest. Only the last path segment can carry a tag - a ':' before
+        # it is a registry port (registry:5000/org/image:tag).
+        IMAGE_NAME="$PRIMARY_TAG"
+        [[ "${PRIMARY_TAG##*/}" == *:* ]] && IMAGE_NAME="${PRIMARY_TAG%:*}"
+        echo "image-name=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+        if [ "$ATTEST_SBOM" = "true" ] && [ "$IMAGE_PUSHED" != "true" ]; then
+          echo "::notice title=SBOM not attested::attest-sbom is set, but no image was pushed in this run, so there is no image digest to attest the SBOM for. The SBOM is still generated."
+        fi
         
-        # Install Syft for SBOM generation
+        # Install Syft for SBOM generation (retried as a whole, see install-tool.sh)
         if ! command -v syft >/dev/null 2>&1; then
           echo "Installing Syft..."
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          bash "$GITHUB_ACTION_PATH/install-tool.sh" Syft \
+            https://raw.githubusercontent.com/anchore/syft/main/install.sh -b /usr/local/bin
         fi
         
         # Generate SBOM
@@ -1219,16 +1479,21 @@ runs:
 
     - name: 📜 Attest SBOM
       id: attest-sbom
-      # Opt-in: only when an SBOM was generated AND attestation was requested. The
-      # sibling action wraps actions/attest-sbom (Sigstore); the caller job must grant
-      # attestations:write + id-token:write or the attestation step fails.
-      if: inputs.generate-sbom == 'true' && inputs.attest-sbom == 'true' && steps.sbom.outputs.path != ''
+      # Opt-in: only when an SBOM was generated, attestation was requested AND the image
+      # was pushed - the attestation binds the SBOM to the pushed digest, so a build
+      # without a push has nothing to attest (#104: it used to attest the SBOM file as
+      # provenance, which no `gh attestation verify oci://...` could ever find).
+      # The caller job must grant attestations:write + id-token:write.
+      if: inputs.generate-sbom == 'true' && inputs.attest-sbom == 'true' && steps.sbom.outputs.path != '' && steps.build-info.outputs.pushed == 'true'
       uses: bauer-group/automation-templates/.github/actions/sbom-attest@main
       with:
         # sbom step writes under working-directory; steps.sbom.outputs.path is relative to it.
         sbom-path: ${{ inputs.working-directory }}/${{ steps.sbom.outputs.path }}
-        # Map the syft format (cyclonedx|spdx) to the attest action's expected value.
         sbom-format: ${{ inputs.sbom-format == 'spdx' && 'spdx-json' || 'cyclonedx-json' }}
+        subject-name: ${{ steps.sbom.outputs.image-name }}
+        # The push digest of whichever push succeeded: the standard push, its retry (see
+        # 'Check Build Failure (Push)'), or the single-build fast path.
+        subject-digest: ${{ steps.build.outputs.digest || steps.build-retry.outputs.digest || steps.push-scanned.outputs.digest }}
 
     - name: 📋 Generate OpenVEX Document
       id: vex
@@ -1321,6 +1586,7 @@ runs:
         fi
 
     - name: 📝 Commit Dockerfile Version Update
+      id: dockerfile-writeback
       # Run if update-dockerfile-version is true AND NOT version-from-dockerfile AND version was updated
       # AND (release-version is set OR it's a tag push)
       if: inputs.update-dockerfile-version == 'true' && inputs.version-from-dockerfile != 'true' && steps.update-dockerfile-version.outputs.version != '' && (inputs.release-version != '' || startsWith(github.ref, 'refs/tags/v'))
@@ -1443,8 +1709,36 @@ runs:
 
         🤖 Generated by docker-build action"
 
-        # Push to default branch
-        git push origin "$DEFAULT_BRANCH"
+        # Push to the default branch, retrying. A multi-image release runs one job per
+        # image and each of them writes back its own Dockerfile within seconds of the
+        # others, so a push can lose the race to a parallel job even though the pull
+        # above was current ("cannot lock ref" / non-fast-forward), and GitHub can also
+        # answer a push with a server error. Each job edits a different Dockerfile, so
+        # rebasing onto the winner is conflict-free; a commit whose change is already
+        # upstream (two jobs, same Dockerfile) is dropped by the rebase and the push
+        # becomes a no-op. A real conflict is not retried. After the last attempt the
+        # step fails on purpose: the image is already published, but the default
+        # branch would silently lag behind it.
+        MAX_PUSH_ATTEMPTS=5
+        PUSH_ATTEMPT=1
+        until git push origin "$DEFAULT_BRANCH"; do
+          if [ "$PUSH_ATTEMPT" -ge "$MAX_PUSH_ATTEMPTS" ]; then
+            echo "::error::Pushing the Dockerfile version update to $DEFAULT_BRANCH failed after $MAX_PUSH_ATTEMPTS attempts. The image is published, but $DOCKERFILE on $DEFAULT_BRANCH still carries the previous version."
+            exit 1
+          fi
+          PUSH_DELAY=$((PUSH_ATTEMPT * 5 + RANDOM % 5))
+          echo "::warning::Push attempt $PUSH_ATTEMPT/$MAX_PUSH_ATTEMPTS to $DEFAULT_BRANCH failed (parallel write-back or GitHub error) - rebasing onto the latest $DEFAULT_BRANCH and retrying in ${PUSH_DELAY}s"
+          sleep "$PUSH_DELAY"
+          if ! git pull --rebase origin "$DEFAULT_BRANCH"; then
+            if [ -d "$(git rev-parse --git-path rebase-merge)" ] || [ -d "$(git rev-parse --git-path rebase-apply)" ]; then
+              git rebase --abort || true
+              echo "::error::The Dockerfile version commit conflicts with the current $DEFAULT_BRANCH - $DOCKERFILE was changed there in the meantime. Not retrying."
+              exit 1
+            fi
+            echo "::warning::Fetching $DEFAULT_BRANCH failed - the next attempt retries it"
+          fi
+          PUSH_ATTEMPT=$((PUSH_ATTEMPT + 1))
+        done
 
         echo "✅ Dockerfile version updated and committed to $DEFAULT_BRANCH"
         echo "   Version: $VERSION"

@@ -15,6 +15,7 @@ on:
       - '.github/actions/**'
       - '.github/actionlint.yaml'
       - 'github/workflows/examples/**'
+      - 'tools/workflow-audit/**'
   pull_request:
     branches: [main]
     paths:
@@ -22,6 +23,7 @@ on:
       - '.github/actions/**'
       - '.github/actionlint.yaml'
       - 'github/workflows/examples/**'
+      - 'tools/workflow-audit/**'
   workflow_dispatch:
 
 permissions:
@@ -48,8 +50,16 @@ jobs:
       # of scopes and has not learned this one as of 1.7.12, so it reports every
       # workflow that declares it. Remove this line once a release knows the scope.
       # https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli-in-actions
+      #
+      # job.check_run_id is a documented property of the job context. actionlint
+      # learned it in 1.7.8 (rhysd/actionlint#576); the pinned 1.7.7 rejects it.
+      # Upgrading is not a drop-in: 1.7.8 to 1.7.12 report unrelated findings in
+      # other workflows. The pattern is anchored to the job context's type, so
+      # only that property is let through. Remove it with the upgrade.
+      # https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#job-context
       ignore-patterns: |
         unknown permission scope "copilot-requests"
+        property "check_run_id" is not defined in object type \{container: \{id: string; network: string\}; services:
 
   action-tests:
     name: "🧪 Action Tests"
@@ -68,6 +78,59 @@ jobs:
       - name: "🧪 docker-build: platform resolution"
         shell: bash
         run: bash .github/actions/docker-build/tests/resolve-platforms.test.sh
+
+      # The id sits next to the workflow's own GITHUB_TOKEN in the build's secret
+      # list; a newline, '=' or ',' in it would let a caller add lines of its own.
+      - name: "🧪 docker-build: GitHub token secret id"
+        shell: bash
+        run: bash .github/actions/docker-build/tests/github-token-secret-id.test.sh
+
+      # GHCR builds log in to Docker Hub for pulls when DOCKER_USERNAME/PASSWORD are
+      # passed. ~80 callers mostly pass none (or run as Dependabot / from forks), so
+      # this pins that the login is skipped cleanly then, only warns when it fails,
+      # never puts a secret value into the script and runs before anything pulls.
+      - name: "🧪 docker-build: Docker Hub pull login"
+        shell: bash
+        run: bash .github/actions/docker-build/tests/dockerhub-pull-login.test.sh
+
+      # Image jobs of a multi-image release write back in parallel; a lost push race
+      # used to fail a release whose images were already published.
+      - name: "🧪 docker-build: Dockerfile version write-back"
+        shell: bash
+        run: bash .github/actions/docker-build/tests/dockerfile-writeback.test.sh
+
+      - name: "🧪 docker-build: primary tag and created label"
+        shell: bash
+        run: bash .github/actions/docker-build/tests/primary-tag.test.sh
+
+      # A short registry throttle (429) used to half-publish a tagged release. Pins
+      # the one retry per build: only for rate limits, 408/5xx answers and network
+      # failures, identical inputs, coalesced outputs, and no failure that passes.
+      - name: "🧪 docker-build: build retry on registry throttling"
+        shell: bash
+        run: bash .github/actions/docker-build/tests/build-retry.test.sh
+
+      # One connection reset while downloading Syft failed an already-pushed release
+      # and lost its SBOM (#101). Pins the whole-install retry for Trivy, Grype and
+      # Syft, fail-closed scan output, and that no raw `curl | sh` install is left.
+      - name: "🧪 docker-build: scanner installs survive a connection reset"
+        shell: bash
+        run: bash .github/actions/docker-build/tests/install-tool.test.sh
+
+      # Same failure class as the security-scan tests: attest-sbom produced a green
+      # attestation that named the SBOM file instead of the image, so verifying the
+      # image found nothing (#104). Pins image vs file mode, the inputs that select
+      # them, and that docker-build attests the pushed digest only.
+      - name: "🧪 sbom-attest: the SBOM is attested for the pushed image"
+        shell: bash
+        run: bash .github/actions/sbom-attest/tests/image-subject.test.sh
+
+      # Without required status checks, `gh pr merge --auto` merges at once, before
+      # CI finishes - that is how a Dependabot PR with a red check got merged. Pins
+      # the update-type guard, the wait for CI and the merge pinned to the head.
+      - name: "🧪 docker-maintenance-dependabot: merge after green CI"
+        shell: bash
+        run: bash .github/workflows/tests/docker-maintenance-dependabot.test.sh
 
       - name: "🧪 dotnet-nuget-auth: private feed credentials"
         shell: bash
@@ -95,6 +158,14 @@ jobs:
         shell: bash
         run: bash .github/actions/gitleaks-scan/tests/allowlist.test.sh
 
+      # gitleaks-action needs pull-requests: read to scan a pull request in a private
+      # repository, which modules-security-scan.yml can never pass, so every such
+      # pull request died with HTTP 403 unscanned. Pins the runner choice and the
+      # range the CLI scans.
+      - name: "🧪 security-scan: pull requests are scanned without pull-requests: read"
+        shell: bash
+        run: bash .github/actions/security-scan/tests/pull-request-scan.test.sh
+
       # A security scanner that reports "clean" when it did not run is worse than no
       # scanner. These two pin the distinction between "no secrets" and "not scanned".
       - name: "🧪 security-scan: a failed scan is never reported as clean"
@@ -105,9 +176,153 @@ jobs:
         shell: bash
         run: bash .github/actions/security-scan/tests/declared-outputs.test.sh
 
+      - name: "🧪 security-scan: engine names map as documented (Gitleaks opt-in, GitGuardian removed)"
+        shell: bash
+        run: bash .github/actions/security-scan/tests/scan-engine.test.sh
+
+      # Gitleaks is opt-in: the templates also serve repositories with GitHub secret
+      # scanning, where its licence secret fails every Dependabot run. These pin the
+      # default to 'none' everywhere and "disabled" (never "clean") in the summaries.
+      - name: "🧪 security-scan: Gitleaks stays opt-in in every template"
+        shell: bash
+        run: bash .github/actions/security-scan/tests/opt-in-defaults.test.sh
+
+      - name: "🧪 security-scan: a disabled Gitleaks is reported as disabled, not clean"
+        shell: bash
+        run: bash .github/actions/security-scan/tests/summaries.test.sh
+
+      # Trivy reported "0 vulnerabilities, 100/100" for Python projects it never read.
+      # These pin "nothing scanned" as unknown and the pyproject.toml resolution.
+      - name: "🧪 security-scan: nothing scanned is never reported as clean"
+        shell: bash
+        run: bash .github/actions/security-scan/tests/evaluate-vulnerabilities.test.sh
+
+      - name: "🧪 security-scan: Python projects without a lock file are resolved for Trivy"
+        shell: bash
+        run: bash .github/actions/security-scan/tests/python-deps.test.sh
+
+      # Ubuntu 26.04 runners ship uutils date, which a GNU-or-BSD check could not
+      # place: the security policy step of every release failed on `date -v`.
+      # Pins a next review date that needs only -u and +FORMAT, and a numeric
+      # review_cycle read through env instead of spliced into the script.
+      - name: "🧪 security-generate: next review date on every date implementation"
+        shell: bash
+        run: bash .github/actions/security-generate/tests/next-review.test.sh
+
       # Same failure class as the security-scan test above: the run stays green and
       # the release looks correct, only the version inside the artifacts stops
       # advancing. That went unnoticed for four releases across three repositories.
       - name: "🧪 semantic-release: a consumer's exec hooks survive the reservation"
         shell: bash
         run: bash .github/actions/semantic-release/tests/merge-exec-hooks.test.sh
+
+      # The release job holds the caller's write token (#109). Pins the notes
+      # toolchain install to --ignore-scripts, and fails when a locked package
+      # starts needing an install script that the flag would silently skip.
+      - name: "🧪 semantic-release: notes toolchain installs without install scripts"
+        shell: bash
+        run: bash .github/actions/semantic-release/tests/notes-install-scripts.test.sh
+
+      # Same failure class again: the monitor stored the digest when it
+      # dispatched the release, so a release that then failed was never retried
+      # and the consumer stayed on the old base image without anything turning red.
+      - name: "🧪 docker-base-image-monitor: a digest counts only after its release succeeded"
+        shell: bash
+        run: bash .github/workflows/tests/docker-base-image-monitor.test.sh
+
+      # Same failure class: auto-maintenance staged each ecosystem with one
+      # `git add` of fixed paths, which stages nothing when one path is
+      # missing. npm, pip and .NET updates were validated and then dropped
+      # while the run stayed green. Pins what gets committed per ecosystem,
+      # and that new files in unignored build or tool directories are not.
+      - name: "🧪 auto-maintenance: npm, pip and .NET updates are committed"
+        shell: bash
+        run: bash .github/workflows/tests/auto-maintenance-commit.test.sh
+
+      # Rework items from #105 that need no decision: label names match as whole
+      # words only ("test" was found inside "attest"), Dependabot is skipped and
+      # the job has a timeout.
+      - name: "🧪 ai-issue-summary: whole-word labels, Dependabot skipped, timeout"
+        shell: bash
+        run: bash .github/workflows/tests/ai-issue-summary-labels.test.sh
+
+  # The integration the unit test cannot reach: a real pull_request event, a token
+  # that cannot list the pull request's commits, and the real download, checksum
+  # check and commit range. In a private repository that is what
+  # modules-security-scan.yml's token is (no pull-requests: read), and gitleaks-action
+  # died there with HTTP 403 before scanning anything. Pull requests only: on a push
+  # the action runs, and in this organization repository it needs the licence secret
+  # this job does not get.
+  security-scan-pull-request:
+    name: "🧪 security-scan: pull request without pull-requests: read"
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: "🛡️ Scan this pull request with security-scan"
+        id: scan
+        uses: ./.github/actions/security-scan
+        with:
+          scan-engine: 'gitleaks'
+          scan-type: 'secrets'
+          # Report-only: this job proves the scan COMPLETES without the scope. Whether
+          # the pull request contains a secret is not what it asserts.
+          fail-on-findings: 'false'
+          # This repository is public, so ANY token may list its pull requests and the
+          # probe would rightly keep gitleaks-action. A token the API rejects stands in
+          # for the private-repository token that lacks pull-requests: read. The CLI
+          # path itself never uses the token.
+          token: 'token-that-cannot-list-commits'
+
+      - name: "🔍 Assert the scan completed"
+        shell: bash
+        env:
+          SECRETS_FOUND: ${{ steps.scan.outputs.secrets-found }}
+        run: |
+          case "$SECRETS_FOUND" in
+            true | false)
+              echo "Gitleaks scanned the pull request with a token that cannot list its commits (secrets-found=${SECRETS_FOUND})." ;;
+            *)
+              echo "::error::The pull request was not scanned (secrets-found='${SECRETS_FOUND}'). When the token cannot list the commits, the CLI path must run to completion."
+              exit 1 ;;
+          esac
+
+  workflow-audit:
+    name: "🔎 Workflow Audit"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v7
+
+      - name: "🐍 Setup Python"
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: "📦 Install Audit Dependencies"
+        shell: bash
+        run: pip install -r tools/workflow-audit/requirements.txt
+
+      # The checker before the checks: a silently broken audit reports "clean",
+      # which is the failure mode the audit itself exists to prevent.
+      - name: "🧪 workflow-audit: self-test"
+        shell: bash
+        run: python tools/workflow-audit/tests/test_workflow_audit.py
+
+      # Static checks for script injection and for a step reading a variable it was
+      # never given. The tool was written, tested and then never wired to anything,
+      # so it watched dotnet-msi install every WiX extension and pass none of them
+      # to `wix build`. Gating from here - any finding exits 1.
+      - name: "🔍 workflow-audit: workflows, actions and shipped examples"
+        shell: bash
+        run: python tools/workflow-audit/workflow_audit.py

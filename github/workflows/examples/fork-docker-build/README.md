@@ -33,6 +33,10 @@ On every push to the `workspace` branch, it builds each image in the `images` li
 | `platforms` | | e.g. `linux/amd64,linux/arm64` |
 | `build-args` | | Newline-separated `KEY=VALUE` |
 
+## Disk space
+
+A GitHub-hosted runner has about 4 GB free. If a large image fails with `no space left on device`, uncomment `free-disk-space: true` (reclaims 10+ GB of unused toolchains) and `cache-mode: 'min'` in the example. `free-disk-space` is skipped on self-hosted runners, whose disk outlives the job — free space on that host instead. Details: [Running out of disk space](../../../../docs/workflows/fork-docker-build.md#running-out-of-disk-space).
+
 ## Security
 
 Images are scanned **before** they are pushed. A `CRITICAL` finding (configurable via `security-fail-on`) fails the job and blocks the push; results appear under **Security → Code scanning**.

@@ -11,7 +11,7 @@ The Zephyr Build System provides enterprise-grade CI/CD automation for Zephyr RT
 - **Multi-Platform Support**: Linux, macOS, and Windows runners
 - **Hardware Testing**: Real hardware-in-the-loop testing with supported boards
 - **Compliance Checks**: Code style, commit format, and embedded standards
-- **Security Scanning**: Secret detection and dependency scanning
+- **Security Scanning**: License compliance, plus secret detection with Gitleaks (opt-in)
 - **Coverage Analysis**: Code coverage with multiple output formats
 - **Static Analysis**: Advanced code quality and safety analysis
 - **Artifact Management**: Binary generation and automated uploads
@@ -183,6 +183,15 @@ Core composite action for building Zephyr applications:
 | `static-analysis` | Enable static analysis | `false` | No |
 | `upload-artifacts` | Upload build artifacts | `true` | No |
 | `runs-on` | Runner to use | `ubuntu-latest` | No |
+| `run-compliance` | Run the Security & Compliance job | `true` | No |
+| `security-scan-engine` | Secret scan in that job: `none` (Gitleaks off) or `gitleaks` (opt-in) | `none` | No |
+
+> **Secret scan (Gitleaks) is opt-in.** With the default `security-scan-engine: 'none'` the
+> Security & Compliance job runs the license check only and notes that Gitleaks is
+> disabled. Set `security-scan-engine: 'gitleaks'` in repositories without GitHub secret
+> scanning and push protection; organization repositories then also need the
+> `GITLEAKS_LICENSE` secret (`secrets: inherit`), for Dependabot runs as a Dependabot
+> secret. See [Gitleaks is opt-in](../security/native-secret-scanning.md#gitleaks-is-opt-in).
 
 #### Self-Hosted Runner Support
 

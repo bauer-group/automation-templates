@@ -9,22 +9,51 @@ Diese Sammlung von wiederverwendbaren Workflows ermöglicht es, CI/CD-Pipelines 
 ## 📦 Verfügbare Module
 
 ### 🛡️ [Security Scan](./modules-security-scan.yml)
-**Zweck:** Secrets-Erkennung mit Gitleaks und GitGuardian + Trivy Vulnerability Scan
+**Zweck:** Trivy Vulnerability Scan + Secrets-Erkennung mit Gitleaks (opt-in)
+
+Dokumentation (Inputs, Secrets, Outputs, Troubleshooting): [docs/workflows/modules-security-scan.md](../../docs/workflows/modules-security-scan.md)
 
 ```yaml
 uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
 with:
-  scan-engine: 'both'
+  scan-engine: 'none'       # Default: Gitleaks aus; 'gitleaks' schaltet es ein (siehe unten)
   scan-type: 'all'
   fail-on-findings: true
-secrets:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+secrets: inherit           # GITLEAKS_LICENSE, nur mit scan-engine: 'gitleaks' nötig
 ```
 
+> **Gitleaks ist opt-in (seit 2026-10).** Ohne `scan-engine: 'gitleaks'` läuft nur Trivy;
+> die Zusammenfassung zeigt dann „disabled - Gitleaks is opt-in“ statt eines sauberen
+> Secret-Scans, und der Lauf scheitert nicht daran. Einschalten in Repositories **ohne**
+> GitHub Secret Scanning und Push Protection - typisch private Repositories in
+> Organisationen ohne GitHub Secret Protection (Advanced Security); öffentliche
+> Repositories können beides kostenlos einschalten. In Organisations-Repositories braucht Gitleaks das
+> Secret `GITLEAKS_LICENSE`, für Dependabot-Läufe zusätzlich als **Dependabot**-Secret.
+> Pull-Requests privater und interner Repositories scannt das Modul mit der Gitleaks-CLI über
+> dieselben Commits; dafür braucht es weder die License noch `pull-requests: read` (den Scope
+> kann ein aufgerufener Workflow nicht erhalten). Details und Prüfbefehl:
+> [Gitleaks ist opt-in](../../docs/security/native-secret-scanning.md#gitleaks-is-opt-in).
+
+> GitGuardian wurde entfernt (2026-10): Im CI scannte es nur den letzten Commit und konnte
+> Funde gar nicht melden. `scan-engine: 'both'` läuft weiter und nutzt Gitleaks,
+> `'gitguardian'` scannt keine Secrets mehr (mit Warnung im Lauf). `minimum-severity` und
+> das Secret `GITGUARDIAN_API_KEY` werden noch angenommen, aber ignoriert.
+
+**Python ohne Lock-Datei:** Trivy liest bei Python nur `requirements.txt`, `poetry.lock`,
+`uv.lock`, `Pipfile.lock` und `pylock.toml`, nie `pyproject.toml`. Für jedes `pyproject.toml`
+ohne solche Datei (auch nicht in einem übergeordneten Workspace) löst der Scan die
+Laufzeit-Abhängigkeiten vorher mit `uv pip compile` auf und legt sie unter
+`security-reports/python-deps/` ab, wo Trivy sie scannt. Gescannt werden die neuesten
+Versionen, die die Versionsbereiche erlauben; eine committete Lock-Datei (`uv lock`) hat
+immer Vorrang und ist genauer.
+
+**Nichts gescannt ist nicht sauber:** Findet Trivy keine Datei, die es lesen kann, meldet
+der Scan `vulnerabilities-found: unknown` statt `false`, und die Zusammenfassung zeigt
+„NOT scanned“ statt „Excellent“. Das lässt den Lauf nicht scheitern.
+
 **Ausgaben:**
-- `secrets-found`: Ob Secrets gefunden wurden
-- `vulnerabilities-found`: Ob Schwachstellen entdeckt wurden (via Trivy)
+- `secrets-found`: Ob Secrets gefunden wurden (`skipped` = kein Secret-Scan, z. B. weil Gitleaks nicht eingeschaltet ist; nur `false` heißt gescannt und sauber)
+- `vulnerabilities-found`: Ob Schwachstellen entdeckt wurden (via Trivy; `unknown` = nichts gescannt)
 - `security-score`: Sicherheitsbewertung (0-100)
 - `scan-results`: Zusammenfassung der Ergebnisse
 
@@ -58,7 +87,7 @@ with:
 ### 🐷 [TruffleHog Secret Scan](./modules-trufflehog-scan.yml)
 **Zweck:** Verified-first Secret-Scanning mit TruffleHog (800+ Detektoren mit Live-Verifizierung)
 
-Ergänzt Gitleaks + GitGuardian um **Verifizierung**: TruffleHog prüft per Provider-API, ob ein gefundenes Secret tatsächlich *live* ist. Standalone-Modul (nicht im Meta-Orchestrator), aber output-kompatibel.
+Ergänzt Gitleaks um **Verifizierung**: TruffleHog prüft per Provider-API, ob ein gefundenes Secret tatsächlich *live* ist. Standalone-Modul (nicht im Meta-Orchestrator), aber output-kompatibel.
 
 ```yaml
 uses: bauer-group/automation-templates/.github/workflows/modules-trufflehog-scan.yml@main
@@ -146,6 +175,123 @@ secrets: inherit   # liefert SONARQUBE_TOKEN + SONARQUBE_HOST_URL (Org-Secrets)
 
 > Auch direkt in `dotnet/nodejs/python/php-build.yml` via `enable-sonar: true` verfügbar. Fehlen Token/URL, gibt der Job nur eine Warnung aus statt zu scheitern. Projekt-Config (projectKey, Coverage-Pfade) gehört in `sonar-project.properties` im Consumer-Repo.
 
+### 🧪 [Backup Round-Trip Test](./modules-backup-roundtrip-test.yml)
+**Zweck:** Beweist vor dem Release, dass der BackupHelper-Sidecar eines Compose-Stacks echte Daten sichern **und** wiederherstellen kann
+
+Startet den Stack des Consumers mit den Images aus dem Commit, legt Testdaten an, erstellt ein Backup, löscht die Daten, stellt den Snapshot wieder her und prüft, dass die Daten zurück sind. Läuft im Consumer-Repository, Logs privater Stacks bleiben dort.
+
+```yaml
+backup-roundtrip:
+  permissions:
+    contents: read
+    packages: read
+  uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+  with:
+    compose-file: 'docker-compose.local.yml'
+    profiles: 'backup'
+    generated-secrets: 'DATABASE_PASSWORD'
+    build-images: '[{"service": "app-backup", "context": "src/app-backup"}]'
+    backup-service: 'app-backup'
+    require-components: 'app files'
+    seed-script: 'tests/backup-roundtrip/seed.sh'
+    mutate-script: 'tests/backup-roundtrip/mutate.sh'
+    check-script: 'tests/backup-roundtrip/check.sh'
+  secrets: inherit   # kein Secret nötig: Passwörter werden pro Lauf generiert
+```
+
+**Ausgaben:**
+- `snapshot-id`: Id des erstellten und wiederhergestellten Snapshots (bei mehreren Jobs der des ersten Jobs)
+- `snapshot-ids`: Alle Snapshots als JSON, einer pro Job in Konfigurationsreihenfolge (`job`, `id`)
+- `components`: Komponenten des Snapshots als JSON (`name`, `kind`, `size`, `error`; bei mehreren Jobs zusätzlich `job`)
+- `result`: Ergebnis des Jobs (`success`/`failure`/`cancelled`)
+
+> Das Check-Skript muss die Daten vor dem Backup sehen, nach dem Löschen **nicht** sehen und nach dem Restore wieder sehen — ein Restore, der nichts schreibt, kann so nicht bestehen. Doku und Skript-Vertrag: [docs/workflows/modules-backup-roundtrip-test.md](../../docs/workflows/modules-backup-roundtrip-test.md). Sieben kopierfertige Caller (minimal, Release-Pipeline, Plugin-Quellen, Upgrade, Off-Site S3, Compose-Varianten, mehrere Backup-Jobs): [github/workflows/examples/backup-roundtrip/](../../github/workflows/examples/backup-roundtrip/README.md).
+
+**Optional (Standard: aus):**
+- `upgrade-from: 'latest-release'` testet das Upgrade einer bestehenden Installation: Das vorige Release sichert, der Stack wird wie von einem Operator auf die Images aus dem Commit aktualisiert (Daten und Healthcheck geprüft), und der neue Sidecar stellt den alten Snapshot wieder her ([Upgrade](../../docs/workflows/modules-backup-roundtrip-test.md#upgrade-from-a-previous-release))
+- `s3-destination: true` + `s3-env` startet einen Wegwerf-S3-Server (MinIO) als S3-Ziel des Sidecars: Der Snapshot muss im Bucket liegen, danach werden die lokalen Daten des Sidecars wie auf einem neuen Host gelöscht, und der Restore muss ihn aus S3 zurückholen ([Off-Site S3](../../docs/workflows/modules-backup-roundtrip-test.md#off-site-s3-and-a-new-host))
+- `external-networks: 'auto'` legt die externen Proxy-Netzwerke an, die eine Traefik- oder Coolify-Variante erwartet — so läuft der Round Trip per Matrix einmal pro Compose-Variante ([Compose-Varianten](../../docs/workflows/modules-backup-roundtrip-test.md#compose-variants-traefik-coolify))
+
+Eine Konfiguration mit mehreren Backup-Jobs wird ohne weiteren Input vollständig getestet: Pro Job wird ein Snapshot geprüft, verifiziert und in Konfigurationsreihenfolge wiederhergestellt (BackupHelper ab 1.10.0, [Mehrere Jobs](../../docs/workflows/modules-backup-roundtrip-test.md#several-backup-jobs)).
+
+### 🔍 [Docker Base Image Monitor](./modules-docker-base-image-monitor.yml)
+**Zweck:** Erkennt, wenn ein Base Image unter demselben Tag neu gebaut wurde (`stable`, `latest`, `7`), und stößt den Rebuild an — der neue Digest zählt erst als erledigt, wenn der Release erfolgreich war
+
+Liest den Digest hinter jedem Tag der Konfiguration (`docker manifest inspect`, multi-arch, 3 Versuche bei Registry-Fehlern). Hat er sich bewegt: leerer Release-Commit und/oder `workflow_dispatch` des Release-Workflows. Mit `target-workflow` wird der Digest erst gespeichert, wenn der dispatchte Run erfolgreich war; bis dahin steht der Run in `<VAR>_PENDING`, ein fehlgeschlagener Release (z.B. rotes Backup-Round-Trip-Gate) wird beim nächsten Check erneut dispatcht, bis `max-release-attempts` (Standard 3) Läufe fehlgeschlagen sind; danach schlägt der Job fehl.
+
+```yaml
+check:
+  permissions:
+    contents: read
+    packages: read        # interne/private GHCR-Images
+  uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
+  with:
+    config-file: '.github/config/docker-base-image-monitor/base-images.json'
+    target-workflow: 'docker-release.yml'
+    target-workflow-inputs: '{"force-release": "true"}'
+  secrets: inherit        # PAT_READWRITE_ORGANISATION (Pflicht)
+```
+
+**Ausgaben:**
+- `updates-found`: Ob ein Image ein Release braucht (neuer Digest oder fehlgeschlagener Release)
+- `updated-images` / `retried-images` / `pending-images` / `exhausted-images`: Image-Namen je Zustand (JSON)
+- `new-digests`: Neue Digests pro Image (JSON)
+- `dispatched-run-id` / `dispatched-run-url`: Der in diesem Check dispatchte Release-Run
+- `images-configured` / `images-checked` / `unreachable-images`: Abdeckung des Checks
+
+> Release fehlgeschlagen oder „Release retries exhausted“? Lebenszyklus der Variablen und alle Recovery-Schritte mit `gh`-Befehlen: [State variables and lifecycle](../../docs/workflows/modules-docker-base-image-monitor.md#state-variables-and-lifecycle) · [Operator recovery](../../docs/workflows/modules-docker-base-image-monitor.md#operator-recovery). Beispiele: [github/workflows/examples/docker-base-image-monitor/](../../github/workflows/examples/docker-base-image-monitor/README.md).
+
+### 🐳 [Docker Maintenance (Dependabot)](./docker-maintenance-dependabot.yml)
+**Zweck:** Merged Dependabot-PRs erst, nachdem die genannte PR-CI auf dem Head-Commit gelaufen und grün ist — ohne Ruleset, Branch Protection oder „Allow auto-merge“
+
+Wartet, bis die CI des PRs vollständig und 3 Minuten unverändert ist, und merged nur, wenn jeder Workflow aus `required-workflows` per `pull_request` auf dem Head-Commit erfolgreich lief und kein Check fehlschlug (`gh pr merge --match-head-commit`). Standardmäßig nur Patch-Updates; unter 1.0.0 zählt ein Minor-Update (`0.3.1 → 0.4.0`) und ein Patch-Update von `0.0.z` als Major (SemVer §4, wie npm-`^`-Ranges) — geprüft für jede Dependency eines gruppierten PRs. GitHub-Actions-Updates und PRs, die `.github/` ändern, bleiben immer offen. Ohne `required-workflows` wird nichts gemerged.
+
+Gemerged wird nur die Kombination, die die CI getestet hat: Hat sich der Base-Branch seit dem CI-Lauf bewegt (ein anderer PR, ein Release-Commit), bleibt der PR offen und Dependabot wird per `@dependabot rebase` um einen Rebase gebeten — mit dem optionalen **Dependabot**-Secret `DEPENDABOT_REBASE_TOKEN`, denn vom `GITHUB_TOKEN` nimmt Dependabot den Befehl nicht an. Der Merge mit dem `GITHUB_TOKEN` startet keinen Workflow; mit `release-workflow` (opt-in, braucht `actions: write`) dispatcht das Modul den Release-Workflow nach dem Merge auf dem Base-Branch, verlinkt den Run in der Job-Summary und wartet auf ihn (`release-wait-minutes`) — ein Release-Run, der nicht `success` endet, macht den Job rot. Was veröffentlicht wird, entscheidet der Release-Workflow: Er muss das Veröffentlichen per `needs:` an Build, Tests und Backup-Round-Trip binden und das Release auf den getesteten Commit pinnen (`ref: ${{ github.sha }}` an `modules-semantic-release.yml`) — sonst wird ein Merge, der während des Laufs landet, ungetestet getaggt und fehlt im Image.
+
+```yaml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: ['src/app/Dockerfile']   # entscheidet, welche Dependabot-PRs das Modul erreichen
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read            # private Repositories
+  statuses: read          # private Repositories
+  actions: write          # Release-Dispatch; ohne release-workflow: actions: read
+jobs:
+  maintenance:
+    uses: bauer-group/automation-templates/.github/workflows/docker-maintenance-dependabot.yml@main
+    with:
+      required-workflows: .github/workflows/docker-release.yml
+      release-workflow: .github/workflows/docker-release.yml   # optional
+      merge-update-types: 'patch'
+    secrets: inherit      # optional: DEPENDABOT_REBASE_TOKEN (Dependabot-Secret)
+```
+
+> **Trigger-Umfang:** Die `paths:` des Callers bestimmen, welche Dependabot-PRs das Modul überhaupt erreichen. Mit reinen Dockerfile-Pfaden bleiben npm-, pip- und Composer-Updates manuelle Merges — ohne Annotation. Aktualisiert Dependabot mehr als Base Images (Compose, npm, pip, Composer, Cargo, NuGet, …), bekommt der Caller **keine** `paths:`: Jeder Dependabot-PR erhält dann eine Entscheidung mit Annotation, und die `pull_request`-`paths:` des Required Workflows entscheiden, was getestet ist. Mehrere `required-workflows` gelten als UND. Entscheidungstabelle, Trigger-Umfang, Dateien je Ökosystem und Beispiele (Backup-Round-Trip-Gate, eigener Build-/Test-Workflow, mehrere Workflows, alle Ökosysteme, .NET-Library, bewusst ohne PR-CI): [docs/workflows/docker-maintenance.md](../../docs/workflows/docker-maintenance.md#option-1-dependabot-simple) · [github/workflows/examples/docker-maintenance-dependabot/](../../github/workflows/examples/docker-maintenance-dependabot/README.md).
+
+### 🔧 [Auto Maintenance](./modules-auto-maintenance.yml)
+**Zweck:** Base-Image-Digests und Dependency-Updates (npm, pip, .NET, Go) in einem geplanten Lauf — validiert mit Build/Test/Typecheck des Repositories, bei Fehlern zurückgerollt
+
+Eine JSON-Konfiguration pro Repository. Ein Lauf mit Änderungen committet nach `main` und dispatcht den Release-Workflow; die neuen Digests werden erst danach gespeichert, ein fehlgeschlagener Push oder Dispatch speichert nichts. Anders als beim Base Image Monitor wartet der Digest nicht auf den Erfolg des Releases.
+
+```yaml
+maintenance:
+  uses: bauer-group/automation-templates/.github/workflows/modules-auto-maintenance.yml@main
+  with:
+    config-file: '.github/config/maintenance/config.json'
+  secrets: inherit        # MAINTENANCE_TOKEN oder PAT_READWRITE_ORGANISATION
+```
+
+**Ausgaben:**
+- `updates-found`: Ob Updates gefunden wurden
+- `summary`: Zusammenfassung der Änderungen
+
+> **Commit:** Nur Dependency-Manifeste und Lock-Dateien (npm/yarn/pnpm, `requirements*.txt`, `*.csproj`/`Directory.Packages.props`/`packages.lock.json`, `go.mod`/`go.sum`): versionierte, wenn der Lauf sie ändert, auch unterhalb eines `working-directory`; neue nur als Lock-Datei neben ihrem versionierten Manifest. Quellcode und nicht versionierte Build- und Tool-Verzeichnisse (`dist/`, `.venv/`) bleiben draußen ([Details](../../docs/workflows/modules-auto-maintenance.md#was-committet-wird)).
+>
+> Doku: [docs/workflows/modules-auto-maintenance.md](../../docs/workflows/modules-auto-maintenance.md) · Beispiele: [github/workflows/examples/auto-maintenance/](../../github/workflows/examples/auto-maintenance/README.md)
+
 ### 🚀 [Semantic Release](./modules-semantic-release.yml)
 **Zweck:** Automatisierte Release-Erstellung mit Semantic Release
 
@@ -190,12 +336,16 @@ secrets:
 uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@main
 with:
   enable-security-scan: true
+  security-scan-engine: 'none'   # Default; 'gitleaks' für Repos ohne GitHub Secret Scanning
   enable-license-check: true
   enable-commit-lint: true
   fail-on-security-issues: true
-secrets:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+secrets: inherit
 ```
+
+> Der Secret-Scan der PR-Validierung ist Gitleaks und damit opt-in: Mit
+> `security-scan-engine: 'none'` (Default) wird der Schritt übersprungen und in der
+> Zusammenfassung als „Gitleaks disabled (opt-in)“ ausgewiesen.
 
 ### 🏷️ [PR Labeler & Triage](./modules-pr-labeler.yml)
 **Zweck:** Automatisches Labeling und Triage von Pull Requests
@@ -250,7 +400,8 @@ jobs:
   secrets:
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: 'both'
+      scan-engine: 'gitleaks'   # opt-in: Repo ohne GitHub Secret Scanning / Push Protection
+    secrets: inherit            # GITLEAKS_LICENSE
 
   vulnerabilities:
     uses: bauer-group/automation-templates/.github/workflows/modules-vulnerability-scan.yml@main
@@ -277,6 +428,33 @@ jobs:
       fail-on-security-issues: true
       fail-on-license-issues: false
 ```
+
+### 4. Release erst nach erfolgreichem Backup-Round-Trip
+```yaml
+jobs:
+  backup-roundtrip:
+    permissions:
+      contents: read
+      packages: read
+    uses: bauer-group/automation-templates/.github/workflows/modules-backup-roundtrip-test.yml@main
+    with:
+      backup-service: 'app-backup'
+      # ... siehe Modul-Doku
+    secrets: inherit
+
+  release:
+    needs: backup-roundtrip
+    if: needs.backup-roundtrip.result == 'success' && github.event_name != 'pull_request'
+    uses: bauer-group/automation-templates/.github/workflows/modules-semantic-release.yml@main
+    secrets: inherit
+```
+
+### 5. Wartungskreislauf eines Container-Stacks
+Drei Caller, ein Gate: Der Base Image Monitor dispatcht `docker-release.yml`, wenn ein Floating Tag sich bewegt; Dependabot-PRs für fixierte Tags werden erst gemerged, wenn der PR-Lauf desselben `docker-release.yml` grün ist. In beiden Fällen entscheidet der Backup-Round-Trip, ob ein Release entsteht.
+
+- `check-base-images.yml` → [daily-release-dispatch.yml](../../github/workflows/examples/docker-base-image-monitor/daily-release-dispatch.yml)
+- `docker-maintenance.yml` → [with-backup-roundtrip-gate.yml](../../github/workflows/examples/docker-maintenance-dependabot/with-backup-roundtrip-gate.yml)
+- `docker-release.yml` → [gated-release-pipeline.yml](../../github/workflows/examples/backup-roundtrip/gated-release-pipeline.yml)
 
 ## 🛠️ Anpassung und Konfiguration
 

@@ -24,8 +24,8 @@ on:
       security-engine:
         description: 'Security scan engine'
         type: choice
-        default: 'both'
-        options: ['gitleaks', 'gitguardian', 'both']
+        default: 'gitleaks'
+        options: ['gitleaks']
       force-release:
         description: 'Force create release'
         type: boolean
@@ -50,7 +50,7 @@ jobs:
       package-source-path: 'src'  # Adjust to your package structure
       
       # Security Configuration  
-      security-engine: ${{ inputs.security-engine || 'both' }}
+      security-engine: ${{ inputs.security-engine || 'gitleaks' }}
       
       # Release Configuration
       force-release: ${{ inputs.force-release || false }}

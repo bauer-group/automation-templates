@@ -8,7 +8,7 @@
 
 This directory contains modular, reusable GitHub Actions designed for enterprise environments. Each action follows industry best practices for security, reliability, and maintainability.
 
-> **💡 Empfehlung:** Nutze die neuen **[modularen Workflows](../modules/)** für noch bessere Komposition und Wiederverwendbarkeit! Diese Actions werden als Bausteine in den modularen Workflows verwendet.
+> **💡 Empfehlung:** Nutze die neuen **[modularen Workflows](../workflows/MODULES-README.MD)** für noch bessere Komposition und Wiederverwendbarkeit! Diese Actions werden als Bausteine in den modularen Workflows verwendet.
 
 ## 📦 Available Actions
 
@@ -16,9 +16,8 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 
 | Action | Purpose | Engine | Performance | Modularer Workflow |
 |--------|---------|---------|-------------|---------------------|
-| [`security-scan`](./security-scan/) | Comprehensive secrets detection | Gitleaks + GitGuardian | ⚡⚡⚡ | [modules-security-scan.yml](../workflows/modules-security-scan.yml) |
-| [`security-scan-meta`](./security-scan-meta/) | Advanced multi-engine scanning | Gitleaks + GitGuardian | ⚡⚡⚡ | Erweiterte Sicherheitsanalyse |
-| [`gitguardian-scan`](./gitguardian-scan/) | ML-based policy enforcement | GitGuardian | ⚡⚡ | GitGuardian-spezifisch |
+| [`security-scan`](./security-scan/) | Dependency vulnerabilities + secrets (opt-in) | Trivy + Gitleaks (opt-in) | ⚡⚡⚡ | [modules-security-scan.yml](../workflows/modules-security-scan.yml) |
+| [`security-scan-meta`](./security-scan-meta/) | Vulnerabilities + secrets (opt-in, gitleaks-scan based) | Trivy + Gitleaks (opt-in) | ⚡⚡⚡ | Erweiterte Sicherheitsanalyse |
 | [`gitleaks-scan`](./gitleaks-scan/) | Fast secrets detection | Gitleaks | ⚡⚡⚡ | Gitleaks-spezifisch |
 | [`trufflehog-scan`](./trufflehog-scan/) | Verified-first secrets detection | TruffleHog | ⚡⚡ | [modules-trufflehog-scan.yml](../workflows/modules-trufflehog-scan.yml) |
 | [`license-compliance`](./license-compliance/) | SPDX license validation | FOSSA + SPDX | ⚡⚡⚡ | [modules-license-compliance.yml](../workflows/modules-license-compliance.yml) |
@@ -33,6 +32,12 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 | [`auto-merge`](./auto-merge/) | Intelligent PR merging | GitHub API | PR-Automatisierung |
 | [`artifact-generator`](./artifact-generator/) | Multi-format artifact creation | GitHub Releases | [modules-artifact-generation.yml](../workflows/modules-artifact-generation.yml) |
 
+### 🐳 Container
+
+| Action | Purpose | Engine | Modularer Workflow |
+|--------|---------|--------|---------------------|
+| [`docker-build`](./docker-build/) | Multi-platform build, security scan gate, SBOM, signing, push, Dockerfile version write-back | BuildKit + Trivy/Grype + Cosign | [docker-build.yml](../workflows/docker-build.yml) · Doku: [docker-build.md](../../docs/workflows/docker-build.md#2-composite-action) |
+
 ### 🤖 AI & Automation
 
 | Action                          | Purpose                   | Engine           | Modularer Workflow                               |
@@ -43,7 +48,7 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 
 | Action | Purpose | Scope | Modularer Workflow |
 |--------|---------|-------|---------------------|
-| [`readme-generate`](./readme-generate/) | Dynamic documentation | Repository-wide | [readme.yml](../workflows/examples/readme.yml) |
+| [`readme-generate`](./readme-generate/) | Dynamic documentation | Repository-wide | [readme.yml](../../github/workflows/examples/documentation/readme.yml) |
 
 ### 🐍 Python Development
 
@@ -53,7 +58,7 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 
 ## 🚀 Quick Start
 
-> **💪 Empfehlung:** Verwende die [modularen Workflows](../modules/) für optimale Komposition!
+> **💪 Empfehlung:** Verwende die [modularen Workflows](../workflows/MODULES-README.MD) für optimale Komposition!
 
 ### 🧩 Modulare Workflows (Empfohlen)
 
@@ -63,11 +68,14 @@ jobs:
   security:
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: both
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+      scan-engine: gitleaks   # opt-in, Default 'none' - nur für Repos ohne GitHub Secret Scanning
+    secrets: inherit
 ```
+
+> **Gitleaks ist opt-in.** `scan-engine` steht standardmäßig auf `'none'`: Dann läuft nur
+> Trivy, und die Zusammenfassung meldet Gitleaks als *disabled*. `'gitleaks'` schaltet es
+> ein - sinnvoll in Repositories ohne GitHub Secret Scanning und Push Protection. Siehe
+> [Gitleaks ist opt-in](../../docs/security/native-secret-scanning.md#gitleaks-is-opt-in).
 
 **Release Management:**
 ```yaml
@@ -121,11 +129,11 @@ jobs:
 - name: 🛡️ Security Scan
   uses: bauer-group/automation-templates/.github/actions/security-scan@main
   with:
-    scan-engine: both
+    scan-engine: gitleaks   # opt-in, Default 'none'
     scan-type: all
     fail-on-findings: true
     token: ${{ secrets.GITHUB_TOKEN }}
-    gitguardian-api-key: ${{ secrets.GITGUARDIAN_API_KEY }}
+    gitleaks-license: ${{ secrets.GITLEAKS_LICENSE }}
 ```
 
 **Release Management:**
@@ -198,7 +206,7 @@ jobs:
 ```yaml
 secrets:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}           # Always available
-  GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }} # For GitGuardian scanning
+  GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}   # Only with Gitleaks enabled, in organization repositories
   FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}         # For license compliance
 ```
 
@@ -215,7 +223,7 @@ permissions:
 ## 🏛️ Enterprise Features
 
 ### Multi-Engine Security Scanning
-- **Dual-engine approach**: Gitleaks (speed) + GitGuardian (accuracy)
+- **Layered secret scanning**: TruffleHog (live verification) + Gitleaks (full history, opt-in for repositories without GitHub secret scanning)
 - **Custom rule sets**: Organization-specific security policies
 - **SARIF integration**: Native GitHub Security tab integration
 - **False positive management**: Intelligent filtering and allowlists
@@ -240,9 +248,8 @@ jobs:
   security:
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
     with:
-      scan-engine: both
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      scan-engine: gitleaks   # opt-in
+    secrets: inherit
   
   compliance:
     needs: security
@@ -307,20 +314,20 @@ act -j test-security-scan --secret-file .env
 ## 📚 Documentation
 
 ### Individual Actions
-- [Security Scanning Action](./security-scan/README.md)
+- [Security Scanning Action](./security-scan/action.yml)
 - [Semantic Release Action](./semantic-release/README.md)
-- [Changelog Generator Action](./generate-changelog/README.md)
-- [Auto-Merge Action](./auto-merge/README.md)
-- [License Compliance Action](./license-compliance/README.md)
-- [Artifact Generator Action](./artifact-generator/README.md)
-- [README Generator Action](./readme-generate/README.md)
+- [Changelog Generator Action](./generate-changelog/action.yml)
+- [Auto-Merge Action](./auto-merge/action.yml)
+- [License Compliance Action](./license-compliance/action.yml)
+- [Artifact Generator Action](./artifact-generator/action.yml)
+- [README Generator Action](./readme-generate/action.yml)
 
 ### Modulare Workflows (Empfohlen)
-- [Modulare Workflow-Komponenten](../modules/README.md)
-- [Workflow-Beispiele](../workflows/examples/README.MD)
-- [Security-Scan Workflow](../modules/security-scan.yml)
-- [Release-Management Workflow](../modules/release-management.yml)
-- [License-Compliance Workflow](../modules/license-compliance.yml)
+- [Modulare Workflow-Komponenten](../workflows/MODULES-README.MD)
+- [Workflow-Beispiele](../../github/workflows/examples/README.md)
+- [Security-Scan Workflow](../workflows/modules-security-scan.yml)
+- [Release-Management Workflow](../workflows/modules-semantic-release.yml)
+- [License-Compliance Workflow](../workflows/modules-license-compliance.yml)
 
 ## 🛠️ Support
 

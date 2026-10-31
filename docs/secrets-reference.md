@@ -11,13 +11,12 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 | `CODECOV_TOKEN` | Empfohlen | Global Upload Token für Code Coverage |
 | `DOCKER_USERNAME` | Optional | Docker Hub Benutzername |
 | `DOCKER_PASSWORD` | Optional | Docker Hub Passwort/Token |
-| `GITGUARDIAN_API_KEY` | Optional | GitGuardian Secret Scanning |
-| `GITLEAKS_LICENSE` | Optional | Gitleaks Enterprise License |
+| `GITLEAKS_LICENSE` | Optional | Gitleaks License (kostenlos), nur wenn Gitleaks eingeschaltet ist (opt-in) |
 | `NUGET_API_KEY` | Optional | NuGet.org API Key (Publishing) |
 | `DOTNET_NUGET_RESTORE_CREDENTIALS` | Optional | PAT (`read:packages`) für Restore aus privaten NuGet-Feeds |
 | `PYPI_API_TOKEN` | Optional | PyPI Publishing Token |
 | `TEAMS_WEBHOOK_URL` | Optional | Microsoft Teams Notifications |
-| `PAT_READWRITE_ORGANISATION` | Optional | PAT für Fork-Sync & Auto-Wartung (triggert Folge-Workflows) |
+| `PAT_READWRITE_ORGANISATION` | Optional | PAT für Fork-Sync, Auto-Wartung und Base-Image-Monitor (triggert Folge-Workflows, schreibt Digest-Variablen) |
 
 ## Secrets nach Kategorie
 
@@ -52,31 +51,42 @@ Für die meisten Projekte werden folgende **Organization Secrets** benötigt:
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
-| `DOCKER_USERNAME` | docker-build, dotnet-build, nodejs-build | Docker Hub Benutzername | [hub.docker.com](https://hub.docker.com) Account Settings |
-| `DOCKER_PASSWORD` | docker-build, dotnet-build, nodejs-build | Docker Hub Access Token | Docker Hub → Account Settings → Security → Access Tokens |
+| `DOCKER_USERNAME` | docker-build (bei `publish-to: ghcr` optional), dotnet-build, nodejs-build, backup-roundtrip (optional) | Docker Hub Benutzername | [hub.docker.com](https://hub.docker.com) Account Settings |
+| `DOCKER_PASSWORD` | docker-build (bei `publish-to: ghcr` optional), dotnet-build, nodejs-build, backup-roundtrip (optional) | Docker Hub Access Token | Docker Hub → Account Settings → Security → Access Tokens |
 | `COSIGN_PRIVATE_KEY` | docker-build | Sigstore Cosign Private Key | `cosign generate-key-pair` |
 | `COSIGN_PASSWORD` | docker-build | Passwort für Cosign Key | Selbst festlegen |
 
 > **Fork Docker Build** (`fork-docker-build.yml`) benötigt **kein** konfiguriertes Secret — der GHCR-Login läuft über den automatischen `GITHUB_TOKEN`.
 
+> **Docker Build mit `publish-to: ghcr`** (`docker-build.yml`, Standard) benötigt `DOCKER_USERNAME` / `DOCKER_PASSWORD` **nicht**. Mit `secrets: inherit` übergeben, meldet sich der Build vor dem ersten Pull bei Docker Hub an: Base-Images sowie das BuildKit- und QEMU-Image werden dann unter dem Kontingent des Kontos statt anonym gezogen, und parallele Builds laufen nicht mehr in Docker Hubs Pull-Limit pro Runner-IP (`429 toomanyrequests`). Ein Access Token mit Leserechten genügt dafür. Ohne die Secrets (Forks, Dependabot-Läufe, Caller ohne `secrets: inherit`) wird anonym gezogen wie bisher; ein fehlgeschlagener Login erzeugt nur eine Warnung. Bei `publish-to: dockerhub` / `both` bleiben beide Secrets Pflicht (dort mit Schreibrechten). Siehe [Docker Build → Docker Hub Pull Login](./workflows/docker-build.md#docker-hub-pull-login).
+
+> **Backup Round-Trip Test** (`modules-backup-roundtrip-test.yml`) benötigt **kein** Secret. `DOCKER_USERNAME` / `DOCKER_PASSWORD` sind optional: Mit `secrets: inherit` übergeben, zieht das Modul von Docker Hub angemeldet statt anonym und läuft nicht in Docker Hubs Pull-Limit pro Runner-IP (`429 toomanyrequests`). Der GHCR-Login nutzt den automatischen `GITHUB_TOKEN` (der aufrufende Job muss `packages: read` gewähren), und jedes Passwort, das der Stack braucht, wird pro Lauf über `generated-secrets` erzeugt und maskiert — ebenso die Zugangsdaten des Wegwerf-S3-Servers (`s3-destination`). Produktions-Credentials gehören weder in `env-overrides` noch ins Repository — Quellen, die ein externes Konto brauchen, werden für den Test abgeschaltet. Siehe [Backup Round-Trip Test → Secrets](./workflows/modules-backup-roundtrip-test.md#secrets).
+
+> **GitHub Packages im Docker-Build** (`docker-build.yml`) braucht **keinen** PAT: `github-token-secret-id: npm_token` reicht den eigenen `GITHUB_TOKEN` des Workflows als BuildKit-Secret in den Build — auch in Dependabot-Läufen, die keine Actions-Secrets erhalten. Der Token ist dabei **nicht** nur lesend: Er trägt die Rechte von `docker-build.yml` (u. a. `contents: write` und `packages: write`) und ist für jeden Prozess im `RUN` lesbar, der ihn mountet. Deshalb nur im Install-`RUN` mounten, wo möglich `npm ci --ignore-scripts`, dort kein `set -x`. Siehe [Docker Build → Build Secrets](./workflows/docker-build.md#build-secrets).
+
 ### Fork-Automation & Wartung (PAT)
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
-| `PAT_READWRITE_ORGANISATION` | sync-upstream, modules-auto-maintenance, modules-docker-base-image-monitor | PAT für Pushes/Commits, die **Folge-Workflows triggern** (ein `GITHUB_TOKEN`-Push tut das nicht). Bei `sync-upstream` nötig, damit der `workspace`-Push den Build startet. Bei den Base-Image-Monitoren zusätzlich für den GHCR-Login. | [github.com/settings/tokens](https://github.com/settings/tokens) → Classic: Scopes `repo` + `workflow` + `read:packages` · Fine-grained: **Contents** + **Workflows** + **Issues** (Read/Write) + **Packages** (Read) |
+| `PAT_READWRITE_ORGANISATION` | sync-upstream, modules-auto-maintenance, modules-docker-base-image-monitor | PAT für Pushes/Commits, die **Folge-Workflows triggern** (ein `GITHUB_TOKEN`-Push tut das nicht). Bei `sync-upstream` nötig, damit der `workspace`-Push den Build startet. Beim Base-Image-Monitor (Pflicht) zusätzlich für die Digest-Variablen `<VAR>` und `<VAR>_PENDING`, den `workflow_dispatch` des Release-Workflows und das Lesen von dessen Ergebnis. In `modules-auto-maintenance` auch für den GHCR-Login, wenn kein `MAINTENANCE_TOKEN` gesetzt ist. | [github.com/settings/tokens](https://github.com/settings/tokens) → Classic: Scopes `repo` + `workflow` (+ `read:packages`, siehe unten) · Fine-grained: **Contents** + **Variables** + **Actions** + **Workflows** + **Issues** (Read/Write) |
+| `MAINTENANCE_TOKEN` | modules-auto-maintenance | Empfohlener Name für den PAT der Auto-Wartung. Reihenfolge: `MAINTENANCE_TOKEN` → `PAT_READWRITE_ORGANISATION` → `GITHUB_TOKEN` (kann keine Variablen schreiben, also kein Base-Image-Monitoring; den Release dispatcht er nur, wenn der Caller `actions: write` gewährt). Wird auch für den GHCR-Login genutzt. | Classic: `repo` (+ `read:packages`, siehe unten) · Fine-grained: **Contents** + **Variables** + **Actions** (Read/Write) |
+| `REGISTRY_READ_TOKEN` | modules-docker-base-image-monitor | **Optional.** GHCR-Login für Registries **außerhalb** dieser Enterprise. Ohne ihn liest der Monitor die Manifeste mit `github.token`. | Classic: `read:packages` |
 
-> **`read:packages` / Packages (Read)** wird nur für die Base-Image-Monitore benötigt, und dort nur, wenn **interne oder private** Images überwacht werden. Fehlt der Scope, gelingt der Login und der anschließende Manifest-Zugriff wird abgelehnt — ein lauter, aber leicht fehlzudeutender Fehler. Siehe [GHCR Internal Visibility](./ghcr-internal-visibility.md).
+> **Registry-Login der Base-Image-Checks:** `modules-docker-base-image-monitor` nutzt für den GHCR-Login **nicht** den PAT, sondern `github.token` — der **aufrufende** Workflow muss dafür `packages: read` gewähren (auch org-übergreifend innerhalb der Enterprise); `PAT_READWRITE_ORGANISATION` braucht dort keinen Packages-Scope. `modules-auto-maintenance` loggt sich dagegen mit `MAINTENANCE_TOKEN` bzw. `PAT_READWRITE_ORGANISATION` ein: Dieser PAT braucht `read:packages`, wenn **interne oder private** Images überwacht werden. Fehlt der Scope, gelingt der Login und der anschließende Manifest-Zugriff wird abgelehnt — ein lauter, aber leicht fehlzudeutender Fehler. Siehe [GHCR Internal Visibility](./ghcr-internal-visibility.md) und [Docker Base Image Monitor → Secrets](./workflows/modules-docker-base-image-monitor.md#secrets).
+
+> **Docker Maintenance (Dependabot)** (`docker-maintenance-dependabot.yml`) benötigt **kein** Pflicht-Secret: Es merged mit dem `GITHUB_TOKEN` des Jobs, dessen Rechte allein der aufrufende Workflow festlegt (`contents: write`, `pull-requests: write`, in privaten Repositories zusätzlich `checks: read`, `statuses: read`, `actions: read`; mit `release-workflow` — der Release-Workflow wird nach dem Merge per `workflow_dispatch` gestartet — `actions: write` statt `actions: read`). Siehe [Docker Maintenance → Permissions](./workflows/docker-maintenance.md#permissions). Optional ist `DEPENDABOT_REBASE_TOKEN` (nächster Abschnitt, **Dependabot**-Secret): Hat sich der Base-Branch seit dem CI-Lauf bewegt, merged der Workflow nicht, sondern bittet Dependabot per `@dependabot rebase` um einen Rebase — diesen Befehl nimmt Dependabot nur von Benutzern mit Push-Rechten an, nicht vom `GITHUB_TOKEN`. Dependabots eigene Registry-Secrets: nächster Abschnitt.
 
 > Als **Organization Secret** hinterlegen (gilt dann für alle Repos) — oder als **Repository-Secret** pro Fork, falls dieser unter einem **persönlichen Account** liegt (dort gibt es keine Org-Secrets). Fehlt der PAT, laufen Sync & Merge weiterhin, aber der nachgelagerte Build wird **nicht** automatisch getriggert (Warnung im Log).
 
 ### Dependabot (eigener Secret-Store!)
 
-Nur nötig, wenn Dependabot **interne oder private** Base-Images aktualisieren soll.
+Nur nötig, wenn Dependabot **interne oder private** Base-Images aktualisieren soll — oder, für `DEPENDABOT_REBASE_TOKEN`, wenn Dependabot-PRs auf einem bewegten Base-Branch automatisch neu getestet werden sollen.
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
 | `DEPENDABOT_GHCR_USER` | — (Dependabot selbst) | GitHub-Benutzername, zu dem der Token gehört | Settings → Secrets and variables → **Dependabot** |
 | `DEPENDABOT_GHCR_TOKEN` | — (Dependabot selbst) | PAT mit `read:packages` | [github.com/settings/tokens](https://github.com/settings/tokens) → Classic: `read:packages` |
+| `DEPENDABOT_REBASE_TOKEN` | docker-maintenance-dependabot | **Optional.** Postet `@dependabot rebase`, wenn sich der Base-Branch seit dem CI-Lauf eines Dependabot-PRs bewegt hat (nur die von CI getestete Kombination wird gemerged). Muss einem Benutzer **mit Push-Rechten** gehören — Befehle vom `GITHUB_TOKEN` (`github-actions[bot]`) lehnt Dependabot ab. Wird nur für diesen einen Kommentar genutzt. Ohne ihn bleibt ein solcher PR mit Hinweis offen. Siehe [Docker Maintenance → The rebase token](./workflows/docker-maintenance.md#the-rebase-token) | Fine-grained PAT: **Pull requests** (Read/Write), nur die betroffenen Repositories, kurze Laufzeit, möglichst eines **Maschinen-Benutzers** (*Pull requests: write* erlaubt auch Reviews; ein Approval eines Benutzers mit Push-Rechten zählt für Required Reviews) · als **Dependabot**-Secret (Repository oder Organisation) |
 
 > **Achtung, häufige Fehlerquelle:** Dependabot liest **nicht** aus den Actions-Secrets, sondern aus einem **separaten Store** (*Settings → Secrets and variables → **Dependabot***). Der automatische `GITHUB_TOKEN` steht dort nicht zur Verfügung. Ohne diese Secrets fragt Dependabot die Registry anonym ab, wird abgewiesen und meldet **"keine Updates"** — still und dauerhaft. Template und Anleitung: [`.github/config/docker-maintenance-dependabot/dependabot.yml`](../.github/config/docker-maintenance-dependabot/dependabot.yml), Hintergrund: [GHCR Internal Visibility](./ghcr-internal-visibility.md).
 >
@@ -122,9 +132,44 @@ Nur nötig, wenn Dependabot **interne oder private** Base-Images aktualisieren s
 
 | Secret | Workflows | Beschreibung | Einrichtung |
 |--------|-----------|--------------|-------------|
-| `GITGUARDIAN_API_KEY` | security-scan-meta, gitleaks-scan | GitGuardian API Key | [gitguardian.com](https://dashboard.gitguardian.com) → API → Personal Access Tokens |
-| `GITLEAKS_LICENSE` | gitleaks-scan | Gitleaks Enterprise License Key | Gitleaks Enterprise Subscription |
+| `GITLEAKS_LICENSE` | modules-security-scan, modules-pr-validation, python-semantic-release, esp32-build, stm32-build, platformio-build, zephyr-build (Action `security-scan`) | License Key für `gitleaks/gitleaks-action`; nur gelesen, wenn Gitleaks per Engine-Input `'gitleaks'` eingeschaltet ist. Pull-Requests privater und interner Repositories ohne `pull-requests: read` (bei modules-security-scan immer) scannt die Gitleaks-CLI ohne License | [gitleaks.io](https://gitleaks.io) → kostenloser License Key (Formular) |
 | `FOSSA_API_KEY` | license-compliance | FOSSA License Scanning | [fossa.com](https://fossa.com) → Account Settings |
+
+> **Gitleaks ist opt-in (seit Oktober 2026).** Standardmäßig läuft Gitleaks in keinem Template,
+> `GITLEAKS_LICENSE` wird dann nicht gebraucht. Einschalten (`scan-engine: 'gitleaks'`,
+> `security-scan-engine: 'gitleaks'` bzw. `security-engine: 'gitleaks'`) in Repositories **ohne**
+> GitHub Secret Scanning und Push Protection — siehe
+> [Gitleaks ist opt-in](./security/native-secret-scanning.md#gitleaks-is-opt-in). Ist es
+> eingeschaltet, verlangt `gitleaks-action` die License in **Organisations**-Repositories
+> (persönliche Repositories brauchen keine) und bricht ohne sie mit „missing gitleaks license“ ab.
+>
+> **Dependabot:** Von Dependabot ausgelöste Läufe erhalten **keine** Actions-Secrets. Wer Gitleaks
+> einschaltet und Dependabot-PRs hat, muss `GITLEAKS_LICENSE` zusätzlich als **Dependabot-Secret**
+> anlegen (*Settings → Secrets and variables → **Dependabot***, oder auf Organisationsebene),
+> sonst scheitert der Secret-Scan auf jedem Dependabot-Lauf, der `gitleaks-action` nutzt
+> (Pull-Requests privater Repositories über `modules-security-scan` nicht, siehe unten):
+>
+> ```bash
+> gh secret set GITLEAKS_LICENSE --app dependabot --org your-org --visibility all
+> ```
+>
+> **Pull-Requests:** `gitleaks-action` liest die Commits eines Pull-Requests über die API und
+> braucht dafür in privaten und internen Repositories `pull-requests: read`.
+> `modules-security-scan` kann diesen Scope nicht weitergeben (ein aufgerufener Workflow kann
+> das Token des Aufrufers nur einschränken). Die Action `security-scan` erkennt ein Token, das
+> die Commits nicht lesen darf, und scannt sie mit der Gitleaks-CLI - diese Läufe, auch die von
+> Dependabot, brauchen **keine** License. Wo das Token die Commits lesen darf (in öffentlichen
+> Repositories jedes Token, sonst eines mit dem Scope wie bei `modules-pr-validation`), läuft
+> `gitleaks-action` unverändert und braucht sie weiterhin.
+> Details: [How Gitleaks scans each event](./workflows/modules-security-scan.md#how-gitleaks-scans-each-event).
+>
+> Die Action `gitleaks-scan` (genutzt von `makefile-build` und `security-scan-meta`) installiert
+> das Gitleaks-Binary direkt und braucht **keine** License.
+
+> **`GITGUARDIAN_API_KEY` wird nicht mehr verwendet.** GitGuardian wurde im Oktober 2026 aus
+> den Security-Workflows entfernt (im CI wurde nur der letzte Commit gescannt, Funde konnten
+> nicht gemeldet werden). Die Workflows nehmen das Secret noch an, damit kein Aufrufer bricht,
+> lesen es aber nicht. Das Organization Secret kann gelöscht werden.
 
 > **Kein Secret nötig:** `modules-trufflehog-scan`, `modules-codeql` und `modules-dependency-review` benötigen **kein** zusätzliches Secret — sie laufen mit dem automatischen `GITHUB_TOKEN`. (TruffleHog verifiziert nur die *gefundenen* Credentials, es gibt keinen TruffleHog-Service-Key.)
 
@@ -216,8 +261,7 @@ GitHub Organization → Settings → Secrets and variables → Actions → New o
 **Empfohlene Organization Secrets:**
 - `CODECOV_TOKEN` (Global Upload Token)
 - `DOCKER_USERNAME` / `DOCKER_PASSWORD`
-- `GITGUARDIAN_API_KEY`
-- `GITLEAKS_LICENSE`
+- `GITLEAKS_LICENSE` (nur für Repositories, die Gitleaks einschalten; zusätzlich als Dependabot-Secret)
 - `SONARQUBE_TOKEN` / `SONARQUBE_HOST_URL`
 - `NUGET_API_KEY`
 - `DOTNET_NUGET_RESTORE_CREDENTIALS`
@@ -314,12 +358,24 @@ secrets:
   CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}             # Coverage Upload
 ```
 
+### modules-docker-base-image-monitor.yml
+
+```yaml
+permissions:
+  contents: read
+  packages: read                  # GHCR-Login mit github.token (interne/private Images)
+jobs:
+  check:
+    uses: bauer-group/automation-templates/.github/workflows/modules-docker-base-image-monitor.yml@main
+    secrets: inherit              # PAT_READWRITE_ORGANISATION (Pflicht), REGISTRY_READ_TOKEN (optional)
+```
+
 ### docker-build.yml
 
 ```yaml
 secrets:
-  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}         # Docker Hub Auth
-  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}         # Docker Hub Auth
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}         # Docker Hub: Push (dockerhub/both), Pull-Login (ghcr, optional)
+  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}         # Docker Hub: Push (dockerhub/both), Pull-Login (ghcr, optional)
   COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}   # Image Signing
   COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}         # Cosign Key Password
 ```

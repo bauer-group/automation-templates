@@ -149,10 +149,13 @@ jobs:
     needs: validate-inputs
     uses: ./.github/workflows/modules-security-scan.yml
     with:
-      scan-engine: 'both'
+      # Gitleaks is opt-in (default 'none'); enabled here on purpose. Drop it in
+      # repositories that have GitHub secret scanning and push protection.
+      # Organization repositories need GITLEAKS_LICENSE (for Dependabot runs as a
+      # Dependabot secret).
+      scan-engine: 'gitleaks'
       scan-type: 'all'
       fail-on-findings: false
-      minimum-severity: 'medium'
     secrets: inherit
 
   # License compliance check (conditional)

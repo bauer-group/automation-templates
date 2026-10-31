@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/bauer-group/automation-templates/main/.github/config/maintenance/auto-maintenance.schema.json",
+
+  "base-images": [
+    {
+      "name": "n8n",
+      "image": "n8nio/n8n",
+      "tag": "stable",
+      "variable": "N8N_STABLE_DIGEST",
+      "description": "n8n workflow automation platform"
+    },
+    {
+      "name": "n8n-runner",
+      "image": "n8nio/runners",
+      "tag": "stable",
+      "variable": "N8N_RUNNER_STABLE_DIGEST",
+      "description": "n8n task runner for code execution"
+    },
+    {
+      "name": "python-alpine",
+      "image": "python",
+      "tag": "3.14-alpine",
+      "variable": "PYTHON_ALPINE_DIGEST",
+      "description": "Python base image of the init container"
+    }
+  ],
+
+  "release": {
+    "commit-prefix": "fix(deps)",
+    "trigger-workflow": "docker-release.yml",
+    "trigger-inputs": { "force-release": "true" }
+  }
+}

@@ -4,6 +4,206 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.9.3](https://github.com/bauer-group/automation-templates/compare/v11.9.2...v11.9.3) (2026-10-30)
+
+### 🐛 Bug Fixes
+
+* **ai-summary:** matched labels as whole words, skipped Dependabot ([4efc430](https://github.com/bauer-group/automation-templates/commit/4efc4300a5d73c934985b7f082a524d56c5d6a29)), references [#105](https://github.com/bauer-group/automation-templates/issues/105) [#104](https://github.com/bauer-group/automation-templates/issues/104) [#105](https://github.com/bauer-group/automation-templates/issues/105)
+* **deploy:** stopped deploying the removed teams-notifications workflow ([793b1a6](https://github.com/bauer-group/automation-templates/commit/793b1a69898bea4d131eaed79151588a1b6b643a)), references [#105](https://github.com/bauer-group/automation-templates/issues/105)
+* **docker-build:** retried scanner installs as a whole ([8412983](https://github.com/bauer-group/automation-templates/commit/84129831eb73d149270f93544ac9f98e94c1ade5)), closes [#101](https://github.com/bauer-group/automation-templates/issues/101)
+* **sbom-attest:** attested the SBOM for the pushed image digest ([5134b88](https://github.com/bauer-group/automation-templates/commit/5134b88cb16591fb74f5ce3956b5965c481ae87c)), closes [#104](https://github.com/bauer-group/automation-templates/issues/104)
+* **semantic-release:** installed notes toolchain without install scripts ([bc21c0f](https://github.com/bauer-group/automation-templates/commit/bc21c0f4d82c913778872c3b38c72cddd87eb4b2)), references [#109](https://github.com/bauer-group/automation-templates/issues/109)
+
+### 🔧 Maintenance
+
+* **ci:** bump cycjimmy/semantic-release-action ([e0b1fa8](https://github.com/bauer-group/automation-templates/commit/e0b1fa89c1f40b9b8a4f5c3a227fbecb0f38e222))
+* **ci:** bump google/osv-scanner-action from 2.6.0 to 2.7.0 ([22fd4c8](https://github.com/bauer-group/automation-templates/commit/22fd4c89d935eb65c182e534b7cc09c28ce6c3a6))
+
+## [11.9.2](https://github.com/bauer-group/automation-templates/compare/v11.9.1...v11.9.2) (2026-10-30)
+
+### 🐛 Bug Fixes
+
+* **security-generate:** calculated the next review without relative dates ([#135](https://github.com/bauer-group/automation-templates/issues/135)) ([1fa86e1](https://github.com/bauer-group/automation-templates/commit/1fa86e105d64033cc9a2d736c0b05fbce041fc70))
+
+## [11.9.1](https://github.com/bauer-group/automation-templates/compare/v11.9.0...v11.9.1) (2026-10-21)
+
+### 🐛 Bug Fixes
+
+* **backup-roundtrip:** fell back to the last fully published release ([c761f63](https://github.com/bauer-group/automation-templates/commit/c761f6312854347ca4537b543592860293143b68))
+* **docker-build:** retried a build once after registry throttling ([2d77872](https://github.com/bauer-group/automation-templates/commit/2d778727cb6e85fd03fe70aedb1d2f99cce32b03))
+
+## [11.9.0](https://github.com/bauer-group/automation-templates/compare/v11.8.1...v11.9.0) (2026-10-11)
+
+### 🚀 Features
+
+* **dependabot:** release after the merge, merge only tested combinations ([#132](https://github.com/bauer-group/automation-templates/issues/132)) ([97609ca](https://github.com/bauer-group/automation-templates/commit/97609cadd0e903ca2482f016c6908bc42ac925a9))
+
+## [11.8.1](https://github.com/bauer-group/automation-templates/compare/v11.8.0...v11.8.1) (2026-10-10)
+
+### 🐛 Bug Fixes
+
+* **auto-maintenance:** committed npm, pip and .NET dependency updates ([c096d53](https://github.com/bauer-group/automation-templates/commit/c096d539f28b3fb2ca1565d50b95c99c93ccaec7))
+
+## [11.8.0](https://github.com/bauer-group/automation-templates/compare/v11.7.2...v11.8.0) (2026-10-10)
+
+### 🚀 Features
+
+* **backup-roundtrip:** tested every job of a multi-job configuration ([7f25048](https://github.com/bauer-group/automation-templates/commit/7f25048df12409cb39054d3826e6fba70575b0cd))
+
+## [11.7.2](https://github.com/bauer-group/automation-templates/compare/v11.7.1...v11.7.2) (2026-10-10)
+
+### 🐛 Bug Fixes
+
+* **dependabot:** counted 0.x minor and 0.0.x patch updates as major ([78dbb1c](https://github.com/bauer-group/automation-templates/commit/78dbb1c97098d66ac28ce743ff5f6fec37e8ac50))
+* **dependabot:** left PRs open when the versions cannot be read ([898d68a](https://github.com/bauer-group/automation-templates/commit/898d68a8705ddbfac632e275fad38c1b3fe8003c))
+
+## [11.7.1](https://github.com/bauer-group/automation-templates/compare/v11.7.0...v11.7.1) (2026-10-10)
+
+### 🐛 Bug Fixes
+
+* **security-scan:** fixed HTTP 403 on Gitleaks pull request scans ([15f782c](https://github.com/bauer-group/automation-templates/commit/15f782c6c81dfcc37f13753a98f7f9eeda337c5c))
+
+## [11.7.0](https://github.com/bauer-group/automation-templates/compare/v11.6.0...v11.7.0) (2026-10-10)
+
+### 🚀 Features
+
+* **docker-build:** added an optional Docker Hub login for pulls ([5cd7339](https://github.com/bauer-group/automation-templates/commit/5cd7339a56763d957f879eb25f7403928399d47b))
+
+## [11.6.0](https://github.com/bauer-group/automation-templates/compare/v11.5.0...v11.6.0) (2026-10-09)
+
+### 🚀 Features
+
+* **backup-roundtrip:** added an optional Docker Hub login for pulls ([c56133a](https://github.com/bauer-group/automation-templates/commit/c56133ac6d2fe012c885a4d2eebabf56921038ec))
+
+## [11.5.0](https://github.com/bauer-group/automation-templates/compare/v11.4.0...v11.5.0) (2026-10-09)
+
+### 🚀 Features
+
+* **security:** made Gitleaks opt-in in every scan template ([22291c7](https://github.com/bauer-group/automation-templates/commit/22291c77ba78d571f7a6ad66ec2b122a2a424010))
+
+### 🔧 Maintenance
+
+* **ci:** bump google/osv-scanner-action from 2.5.1 to 2.6.0 ([#103](https://github.com/bauer-group/automation-templates/issues/103)) ([4763d65](https://github.com/bauer-group/automation-templates/commit/4763d65b582ba1c4ed7f22969a50c863aa78ce52))
+
+## [11.4.0](https://github.com/bauer-group/automation-templates/compare/v11.3.0...v11.4.0) (2026-10-09)
+
+### 🚀 Features
+
+* **backup-roundtrip:** added an off-site S3 destination test ([2807f32](https://github.com/bauer-group/automation-templates/commit/2807f32dac1f04448728c40902a2679f00fa59e0))
+* **backup-roundtrip:** added an upgrade test from a previous release ([941df4c](https://github.com/bauer-group/automation-templates/commit/941df4c09045087cd729a68e394d4a94b7546bf9))
+* **backup-roundtrip:** added external networks for compose variants ([7dff260](https://github.com/bauer-group/automation-templates/commit/7dff260652dd5f02e27f58cf62f6c4a54ba0b6b3))
+
+### 🐛 Bug Fixes
+
+* **backup-roundtrip:** checked the upgrade against the tagged image ids ([316fe04](https://github.com/bauer-group/automation-templates/commit/316fe0403c27068125f60e7c59b3a5402c443427))
+* **backup-roundtrip:** explained a latest release without its images ([c498370](https://github.com/bauer-group/automation-templates/commit/c4983700644113b780cd6b64f9bfd29720fc0194))
+* **backup-roundtrip:** kept s3-env clear of secret scanner matches ([0c7a0af](https://github.com/bauer-group/automation-templates/commit/0c7a0afdc6f16778865ec7af9f0b9f8cda017fc2))
+* **backup-roundtrip:** masked the .env values upgrade-script changes ([0446986](https://github.com/bauer-group/automation-templates/commit/044698684570528ab8d7152eaf01a259e6ffd03f))
+* **backup-roundtrip:** rejected images under test pinned by digest ([8f9d1e0](https://github.com/bauer-group/automation-templates/commit/8f9d1e0613aceeead83871041dad43398b19b0a9))
+* **backup-roundtrip:** rejected one s3-env variable for two settings ([4e44c2d](https://github.com/bauer-group/automation-templates/commit/4e44c2dc9520f3815f903be05d24acc5bb5d1eb2))
+* **backup-roundtrip:** wiped a sidecar data dir that lies below a mount ([d3078e5](https://github.com/bauer-group/automation-templates/commit/d3078e589b6a2a14200f7bd2bb15911ef0fc9996))
+
+### 💄 UI/UX Improvements
+
+* **backup-roundtrip:** cleared the module's two shellcheck notes ([e523382](https://github.com/bauer-group/automation-templates/commit/e523382e6d58549f2a3c799f067ba6f710c8243b))
+
+## [11.3.0](https://github.com/bauer-group/automation-templates/compare/v11.2.4...v11.3.0) (2026-10-09)
+
+### 🚀 Features
+
+* **docker-maintenance:** merged Dependabot PRs after green CI ([#115](https://github.com/bauer-group/automation-templates/issues/115)) ([5d1d506](https://github.com/bauer-group/automation-templates/commit/5d1d5061ab5497f0388bffa8a7c490bb919720de))
+
+## [11.2.4](https://github.com/bauer-group/automation-templates/compare/v11.2.3...v11.2.4) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* **base-images:** pushed a new release commit for post-tag retries ([bb75445](https://github.com/bauer-group/automation-templates/commit/bb754454b74906f60f22d373e7bfadf459870b82))
+* **base-images:** stopped retrying a release after three failed runs ([75fe29e](https://github.com/bauer-group/automation-templates/commit/75fe29ea2bffd9b220bd4e59b49f287a3a0d6279))
+* **base-images:** stored digests only after a successful release ([b24e1c4](https://github.com/bauer-group/automation-templates/commit/b24e1c40ef1e090b484330a9f64872c852b04a9b))
+
+## [11.2.3](https://github.com/bauer-group/automation-templates/compare/v11.2.2...v11.2.3) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* **backup-roundtrip:** inspected the snapshot after a failed create ([7bff667](https://github.com/bauer-group/automation-templates/commit/7bff667d16259a1ad2787263c50a924880fbbd3f))
+* **backup-roundtrip:** pulled only the services that are started ([8b3bb83](https://github.com/bauer-group/automation-templates/commit/8b3bb83e86b8877fff56a409bf694f2e8d962467))
+
+## [11.2.2](https://github.com/bauer-group/automation-templates/compare/v11.2.1...v11.2.2) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* **deploy:** removed the deleted ai-issue-summary workflow ([6d35ef4](https://github.com/bauer-group/automation-templates/commit/6d35ef4efb2abe7d6c4424f18d8f259625e59a05))
+
+## [11.2.1](https://github.com/bauer-group/automation-templates/compare/v11.2.0...v11.2.1) (2026-10-09)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** scoped the disk-space hint to hosted runners ([56b2a4d](https://github.com/bauer-group/automation-templates/commit/56b2a4d1b64dca68aecca21121d7218a7a995100))
+* **docker-build:** skipped free-disk-space on self-hosted runners ([2ac18a3](https://github.com/bauer-group/automation-templates/commit/2ac18a3dfc9f9743a63f5f5a9b5398de77398bec))
+
+## [11.2.0](https://github.com/bauer-group/automation-templates/compare/v11.1.4...v11.2.0) (2026-10-08)
+
+### 🚀 Features
+
+* **backup-roundtrip:** added reusable backup round-trip test module ([#114](https://github.com/bauer-group/automation-templates/issues/114)) ([b030d9a](https://github.com/bauer-group/automation-templates/commit/b030d9a38d425fb2fd14843f856628977ffc3f3c))
+
+## [11.1.4](https://github.com/bauer-group/automation-templates/compare/v11.1.3...v11.1.4) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **docker-maintenance:** guarded Dependabot auto-merge behind CI ([#113](https://github.com/bauer-group/automation-templates/issues/113)) ([fe9edd8](https://github.com/bauer-group/automation-templates/commit/fe9edd88c5c85128fd1593327ee9e26beaf1e1f1)), references [CS-BillingStack#12](https://github.com/CS-BillingStack/issues/12) [#9](https://github.com/bauer-group/automation-templates/issues/9) [#10](https://github.com/bauer-group/automation-templates/issues/10) [#14](https://github.com/bauer-group/automation-templates/issues/14) [#19](https://github.com/bauer-group/automation-templates/issues/19) [#39](https://github.com/bauer-group/automation-templates/issues/39)
+
+## [11.1.3](https://github.com/bauer-group/automation-templates/compare/v11.1.2...v11.1.3) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **security-scan:** removed GitGuardian and scanned unlocked Python ([a5ef672](https://github.com/bauer-group/automation-templates/commit/a5ef67288dc33eadb85357ca8c12c2ed4f6ee8eb))
+
+## [11.1.2](https://github.com/bauer-group/automation-templates/compare/v11.1.1...v11.1.2) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** retried write-back, fixed SBOM pipe and label ([#111](https://github.com/bauer-group/automation-templates/issues/111)) ([19b6686](https://github.com/bauer-group/automation-templates/commit/19b66867827b6a7fa3ec79aefe67593ca22d218e)), closes [#107](https://github.com/bauer-group/automation-templates/issues/107)
+
+## [11.1.1](https://github.com/bauer-group/automation-templates/compare/v11.1.0...v11.1.1) (2026-10-07)
+
+### 🐛 Bug Fixes
+
+* **base-images:** stored digests only after the release was triggered ([#110](https://github.com/bauer-group/automation-templates/issues/110)) ([6cf1a1a](https://github.com/bauer-group/automation-templates/commit/6cf1a1a22c393a2834032ea75a47ffdd7be8b784))
+
+## [11.1.0](https://github.com/bauer-group/automation-templates/compare/v11.0.1...v11.1.0) (2026-10-06)
+
+### 🚀 Features
+
+* **docker-build:** added github-token-secret-id for GitHub Packages ([1cd4442](https://github.com/bauer-group/automation-templates/commit/1cd4442e3e2a203323d16d91fdabe92187ef1a5c)), closes [#106](https://github.com/bauer-group/automation-templates/issues/106)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** corrected the action's build-secrets default ([461ff38](https://github.com/bauer-group/automation-templates/commit/461ff385a7a7695b94fecd9c9fba85c48a2eaa98))
+
+### 🔧 Maintenance
+
+* **ci:** removed issue AI summary workflow ([ee115a7](https://github.com/bauer-group/automation-templates/commit/ee115a7320dc763d0d9cab19320cc49bd453a61c)), references [#105](https://github.com/bauer-group/automation-templates/issues/105)
+
+## [11.0.1](https://github.com/bauer-group/automation-templates/compare/v11.0.0...v11.0.1) (2026-09-04)
+
+### 🐛 Bug Fixes
+
+* **msi:** pass wix-extensions through to wix build ([babd02d](https://github.com/bauer-group/automation-templates/commit/babd02d0efdcaf411a9a2f10d77cb6ef0412575b))
+
+## [11.0.0](https://github.com/bauer-group/automation-templates/compare/v10.3.0...v11.0.0) (2026-09-02)
+
+### ⚠ BREAKING CHANGES
+
+* **ci:** the security gate now actually enforces. Images that previously
+  passed under a grype scanner or a LOW threshold may now be blocked. Set
+  security-fail-on to a higher severity, or security-scan: false, to restore the
+  prior non-blocking behaviour.
+
+### 🐛 Bug Fixes
+
+* **ci:** enforced grype gate & LOW severity threshold ([63cfcbf](https://github.com/bauer-group/automation-templates/commit/63cfcbf19750646a41ea84669eb6a99ecb10f675)), references [#68](https://github.com/bauer-group/automation-templates/issues/68) [#68](https://github.com/bauer-group/automation-templates/issues/68)
+
 ## [10.3.0](https://github.com/bauer-group/automation-templates/compare/v10.2.2...v10.3.0) (2026-09-02)
 
 ### 🚀 Features

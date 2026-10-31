@@ -89,12 +89,172 @@ The `publish-to` input controls where Docker images are published:
 
 | Secret | Required When | Description |
 |--------|---------------|-------------|
-| `DOCKER_USERNAME` | `publish-to: 'dockerhub'` or `'both'` | Docker Hub username |
-| `DOCKER_PASSWORD` | `publish-to: 'dockerhub'` or `'both'` | Docker Hub password or access token |
+| `DOCKER_USERNAME` | `publish-to: 'dockerhub'` or `'both'`. Optional with `'ghcr'` - see [Docker Hub Pull Login](#docker-hub-pull-login) | Docker Hub username |
+| `DOCKER_PASSWORD` | `publish-to: 'dockerhub'` or `'both'`. Optional with `'ghcr'` | Docker Hub password or access token (read-only is enough for `'ghcr'`) |
 | `COSIGN_PRIVATE_KEY` | `sign-image: true` | Cosign private key for image signing |
 | `COSIGN_PASSWORD` | `sign-image: true` | Cosign key password |
+| `DOCKER_BUILD_SECRETS` | The Dockerfile mounts build secrets | BuildKit secrets, one `id=value` per line. Not needed for a GitHub Packages token - see [Build Secrets](#build-secrets) |
 
 **Note:** For GHCR, `GITHUB_TOKEN` is automatically available and used for authentication.
+
+### Docker Hub Pull Login
+
+A build that publishes to GHCR still pulls from Docker Hub: the `FROM` base
+images, the BuildKit image of the `docker-container` builder and, for a
+multi-platform build, the QEMU image. Docker Hub limits anonymous pulls per IP
+address, and GitHub-hosted runners share theirs - so once many builds run at the
+same time, those pulls fail with `429 Too Many Requests` (`toomanyrequests`).
+
+With `publish-to: 'ghcr'` (the default) the build therefore logs in to Docker Hub
+before anything pulls, as soon as `DOCKER_USERNAME` and `DOCKER_PASSWORD` reach the
+workflow. Logged in, the account's own pull quota applies instead of the runner
+IP's. There is nothing to switch on: `secrets: inherit` passes both when they exist
+as organisation or repository secrets.
+
+```yaml
+jobs:
+  docker-build:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      publish-to: 'ghcr'
+    secrets: inherit   # passes DOCKER_USERNAME / DOCKER_PASSWORD when they exist
+```
+
+| `publish-to` | Secrets that reach the workflow | Docker Hub pulls |
+|--------------|---------------------------------|------------------|
+| `ghcr` | `DOCKER_USERNAME` and `DOCKER_PASSWORD` | Logged in - *Check Docker Hub Credentials*, then *Log in to Docker Hub* |
+| `ghcr` | neither, or only one of them | Anonymous, exactly as before |
+| `dockerhub` / `both` | both (mandatory) | These steps are skipped: *Build Docker Image* logs in to Docker Hub for its push, which covers the base images |
+
+- **Optional, and quiet without secrets.** A caller without `secrets: inherit`, a
+  pull request from a fork and a Dependabot run (Dependabot reads its own secret
+  store) get no secrets. *Check Docker Hub Credentials* says so in its log and the
+  build pulls anonymously, as it always has - no failure, no warning.
+- **A failed login only warns.** Wrong or expired credentials, or Docker Hub being
+  unreachable, add the warning *Docker Hub login failed* and the build carries on
+  anonymously; the pull itself then shows whether the anonymous quota was enough.
+- **A read-only access token is enough** for this login. With `dockerhub` / `both`
+  the same secrets push the image, so the token there needs write access.
+- **The credentials stay outside the image.** They live in the runner's Docker
+  config, which BuildKit consults to pull - no `RUN` instruction can read them -
+  and the login action's post step removes them when the job ends.
+- **With `dockerhub` / `both`,** the BuildKit and QEMU images are set up before
+  *Build Docker Image* logs in, so those two pulls stay anonymous there.
+
+### Build Retry on Registry Throttling
+
+A login does not cover everything. Docker Hub also has an *abuse rate limit*,
+counted per IP address and per minute, that applies to every account alike and
+answers with a plain `429 Too Many Requests`. A burst of scheduled builds across
+the organisation can reach it for a minute or two - long enough to fail a build
+whose release is already tagged, leaving that release half-published.
+
+Each of the two builds inside the action - the local scan build and the push
+build - is therefore retried **once** when it fails for a reason that waiting can
+fix. Nothing has to be switched on.
+
+| The failed build's error (from BuildKit's build record) | What happens |
+|----------------------------------------------------------|--------------|
+| `429 Too Many Requests`, `toomanyrequests`, `408 Request Timeout`, `500` / `502` / `503` / `504`, `connection reset by peer`, a request answered with `EOF` / `unexpected EOF`, `TLS handshake timeout`, `i/o timeout`, `server misbehaving` (DNS) | Warning *Docker build retried*, a 60-90 s wait, then one retry with identical inputs |
+| Anything else - Dockerfile error, failing `RUN`, `401 Unauthorized`, `403 Forbidden` / push access denied, unknown tag, missing secret | Error *Docker build failed*, no retry - the job fails as it always has |
+| Not readable - buildx older than 0.21, a driver without build history, a failure before BuildKit started the build | Retried as for a throttle: the cause is unknown, and a needless retry is cheaper than a half-published release |
+
+- **The cause is read, not guessed.** *Check Build Failure* runs
+  `docker buildx history inspect --format json` on the builder the build just
+  used and matches only BuildKit's error message. A failing `RUN` reports
+  `process "<command>" did not complete successfully` - not what the command
+  printed - and its command text is cut out before matching, so no failing `RUN`
+  is mistaken for a registry throttle.
+- **Only the two builds are covered.** A `429` while *Set up QEMU* or *Set up
+  Docker Buildx* pulls its image is not retried; re-run the job.
+- **The wait is jittered.** 60 s lets a per-minute window turn over; the random
+  extra 0-30 s keeps the builds one burst throttled from retrying as one burst.
+- **A failure never passes.** The retry itself has no second chance: if it fails
+  too, the job fails. The outputs (`image-digest`, the digest Cosign signs) come
+  from whichever attempt succeeded, and a retried push writes every tag again,
+  so all tags end on the same digest.
+- **A green retry keeps its history.** The first attempt's `buildx failed with`
+  error stays among the run's annotations, next to the warning that explains it.
+- **Allow for it in `build-timeout`.** A retried build takes up to 90 s plus a
+  second build - mostly from cache - out of the same job timeout.
+- The retry does not help when Docker Hub's *pull* quota (counted over 6 hours)
+  is used up; see [Troubleshooting](#troubleshooting).
+
+### Build Secrets
+
+`DOCKER_BUILD_SECRETS` passes BuildKit secrets into the build, one `id=value` per
+line. The Dockerfile reads each one with `RUN --mount=type=secret,id=<id>`, which
+keeps it out of the image layers and the image history (unlike an `ARG`).
+
+#### GitHub Packages dependencies without a PAT
+
+A Dockerfile that installs dependencies from GitHub Packages (for example
+`npm.pkg.github.com`) needs a registry token during the build. Set
+`github-token-secret-id` and the workflow passes **its own** `GITHUB_TOKEN` to the
+build as a secret with that id. Callers no longer need a PAT for this:
+
+```yaml
+jobs:
+  docker:
+    uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
+    with:
+      github-token-secret-id: npm_token
+    secrets: inherit
+```
+
+```dockerfile
+# .npmrc maps the scope and reads the token from the environment:
+#   @bauer-group:registry=https://npm.pkg.github.com
+#   //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+COPY package.json package-lock.json .npmrc ./
+# The token is mounted on this RUN only, and no dependency script runs while
+# it is readable. No `set -x` in this RUN (see below).
+RUN --mount=type=secret,id=npm_token \
+    NODE_AUTH_TOKEN="$(cat /run/secrets/npm_token)" npm ci --ignore-scripts
+# Only if a dependency needs its install script: run it here, without the token.
+RUN npm rebuild
+```
+
+- **Why not `npm_token=${{ github.token }}` in `DOCKER_BUILD_SECRETS`?** The
+  caller's `secrets:` block is evaluated in the caller, and the token it yields
+  there is refused by the registry with a 401 inside the build
+  ([#106](https://github.com/bauer-group/automation-templates/issues/106)). The
+  workflow's own token never crosses the `workflow_call` boundary.
+- **Dependabot:** runs triggered by Dependabot receive no Actions secrets, so a
+  PAT stored as one arrives empty there unless it is also stored as a Dependabot
+  secret. `GITHUB_TOKEN` is always available, so these builds need neither.
+- **The token is not read-only.** `docker-build.yml` declares `contents`,
+  `packages`, `security-events`, `attestations` and `id-token: write`, and a called
+  workflow can never hold more than its caller grants - so every caller grants
+  them, and the token in the build carries `contents: write`, `packages: write`,
+  `security-events: write` and `attestations: write` until the job ends. A caller
+  cannot narrow it to `packages: read`. Dependabot runs are no exception: their
+  token starts read-only, and the caller's `permissions:` block raises it to the
+  same set. Inside the build, every process in a `RUN` that mounts the secret can
+  read it, dependency install scripts included - a compromised package could push
+  to the repository or publish packages with it. Without this input, code in the
+  build sees no GitHub token unless `DOCKER_BUILD_SECRETS` passes one (the GHCR
+  login stays in the runner's Docker config, outside the build). So:
+  - mount the secret only on the `RUN` that installs, never on the steps that
+    build or test the project;
+  - install with `npm ci --ignore-scripts` where the project allows it, and give a
+    dependency that needs its install script an `npm rebuild` in a later `RUN`
+    without the mount. This matters most in Dependabot runs, which install freshly
+    bumped versions;
+  - never enable `set -x` or echo anything in that `RUN`. The runner masks the
+    token in the job log, but not in BuildKit's own logs, and with
+    `verbose-build-summary: true` those are uploaded unmasked in the build-record
+    artifact. xtrace prints `NODE_AUTH_TOKEN=<token>` after expansion.
+- **Private packages:** for a private or internal package the calling repository
+  also needs read access to it (package settings → *Manage Actions access*), as for
+  any job that installs it with `GITHUB_TOKEN`.
+- **Alongside other secrets:** lines in `DOCKER_BUILD_SECRETS` are still passed;
+  the token is added as the first line. Use an id that `DOCKER_BUILD_SECRETS` does
+  not also define.
+- **Id format:** letters, digits, `_`, `.` and `-` only. Anything else fails the
+  run before checkout, because the id is written into the secret list next to the
+  token.
+- Unset (default), no token is passed and the build behaves exactly as before.
 
 ## Components
 
@@ -118,6 +278,7 @@ The Docker build action provides:
 
 - Multi-platform build support
 - Advanced caching strategies
+- One retry per build on registry throttling (see [Build Retry on Registry Throttling](#build-retry-on-registry-throttling))
 - Multi-registry authentication
 - Security scanning integration
 - Image signing with Cosign
@@ -155,6 +316,7 @@ The Docker build action provides:
 | `docker-context` | Docker build context | `'.'` |
 | `build-target` | Docker build target stage | `''` |
 | `build-args` | Build arguments as JSON object | `'{}'` |
+| `github-token-secret-id` | Pass the workflow's own `GITHUB_TOKEN` to the build as a BuildKit secret with this id (e.g. `npm_token`), alongside `DOCKER_BUILD_SECRETS`. Replaces a PAT for GitHub Packages dependencies. The token is write-scoped - see [Build Secrets](#build-secrets) before mounting it | `''` |
 | `platforms` | Target platforms to build and push (comma-separated). Listing more than one produces a multi-arch manifest list | `'linux/amd64'` |
 | `multi-platform` | **Deprecated** - ignored. `platforms` alone decides what is built | `false` |
 | `checkout-fetch-depth` | Git history depth for the build checkout. `0` = full history (required for Dockerfile-version write-back and semver derivation); set `1` for a faster shallow checkout when neither is used | `0` |
@@ -178,7 +340,7 @@ The Docker build action provides:
 | `sign-image` | Sign image with Cosign | `false` |
 | `generate-sbom` | Generate Software Bill of Materials | `false` |
 | `sbom-format` | SBOM format: `'cyclonedx'`, `'spdx'` | `'cyclonedx'` |
-| `attest-sbom` | Create a GitHub (Sigstore) attestation for the SBOM. Requires `generate-sbom: true` | `false` |
+| `attest-sbom` | Create a GitHub (Sigstore) SBOM attestation for the pushed image digest. Requires `generate-sbom: true`; skipped when nothing is pushed | `false` |
 | `provenance` | SLSA build provenance for the pushed image: `'false'`, `'true'`, or `'mode=max'`. Enabling it attaches an attestation manifest | `'false'` |
 | `generate-vex` | Generate an OpenVEX document from the Trivy scan report (requires `security-scan: true` with the `trivy` scanner) | `false` |
 
@@ -195,7 +357,7 @@ The Docker build action provides:
 |-----------|-------------|---------|
 | `cache-enabled` | Enable build caching | `true` |
 | `cache-mode` | Cache mode: `'min'`, `'max'`, `'inline'` | `'max'` |
-| `free-disk-space` | Remove unused runner toolchains before building (Linux only) | `false` |
+| `free-disk-space` | Remove unused runner toolchains before building (GitHub-hosted Linux runners only; ignored on self-hosted runners) | `false` |
 | `builder-driver` | Builder driver: `'docker'`, `'docker-container'`, `'kubernetes'` | `'docker-container'` |
 | `build-timeout` | Build timeout in minutes | `30` |
 
@@ -222,6 +384,10 @@ removes toolchains no Docker build uses - the CodeQL bundle, Android SDK, .NET,
 GHC, Swift, PowerShell - and logs `df -h /` before and after, so the number is in
 the log whether or not it turned out to matter. Over 10 GB on a current
 `ubuntu-24.04` runner, most of it the Android SDK and the CodeQL bundle.
+
+Only on GitHub-hosted Linux runners. On a self-hosted runner the step is skipped
+even when the input is `true`: its disk outlives the job, and the `rm -rf` would
+remove toolchains the host's other jobs rely on.
 
 Deliberately not the whole of `/opt/hostedtoolcache`: only its CodeQL bundle,
 which is the bulk of it and is never used inside a build job. The rest holds the
@@ -274,6 +440,10 @@ runs-on: '["self-hosted", "linux", "docker"]'
 ```
 
 See [Self-Hosted Runner Documentation](../self-hosted-runners.md) for details.
+
+`free-disk-space` is skipped on self-hosted runners even when set to `true`: their
+disk outlives the job, and removing toolchains there would break the host's other
+jobs. Free space on the host itself - see [Running out of disk space](#running-out-of-disk-space).
 
 ### Deployment
 
@@ -359,6 +529,8 @@ When `update-dockerfile-version: true` and a Git tag is pushed (e.g., `v1.2.3`):
 
 This ensures the Dockerfile version stays in sync with release tags.
 
+In a release that builds several images, each image job writes back its own Dockerfile at almost the same moment. A push that loses that race, or that GitHub answers with a server error, is retried up to 5 times with backoff after rebasing onto the latest default branch. If the last attempt fails too, or the rebase hits a real conflict, the job fails: the image is already published, but the default branch would otherwise silently lag behind it.
+
 **Note:** The workflow requires `contents: write` permission to commit the Dockerfile update:
 
 ```yaml
@@ -401,16 +573,22 @@ today's behaviour (off) and require no changes for existing callers:
 
 ```yaml
 generate-sbom: true
-attest-sbom: true      # Sigstore attestation for the SBOM (verifiable provenance)
+attest-sbom: true      # Sigstore-signed SBOM attestation for the pushed image digest
 provenance: 'mode=max' # SLSA build provenance attached to the pushed image
 ```
 
 The workflow already requests `attestations: write` and `id-token: write`; a caller
-using `secrets: inherit` and the default `GITHUB_TOKEN` needs no extra setup. Verify with:
+using `secrets: inherit` and the default `GITHUB_TOKEN` needs no extra setup. The
+attestation's subject is the **pushed image digest** with the SBOM as predicate, so it
+is only created when the run pushes; a build without a push logs a notice instead.
+Verify with:
 
 ```bash
-gh attestation verify <sbom-file> --repo <owner>/<repo>
+gh attestation verify oci://<registry>/<image>:<tag> --repo <owner>/<repo>
 ```
+
+> **Note:** for a multi-platform build the SBOM is generated from the image loaded on
+> the runner, i.e. the runner's platform, and attested for the pushed index digest.
 
 > **Note:** `provenance` attaches an attestation manifest, which changes the pushed
 > image from a single manifest to an image index. Leave it `'false'` (default) if you
@@ -580,6 +758,46 @@ The repository includes comprehensive examples in `github/workflows/examples/doc
    - Ensure `publish-to` is `'dockerhub'` or `'both'`
    - Verify `DOCKER_USERNAME` and `DOCKER_PASSWORD` are set
    - Check README file exists and is readable
+
+5. **401 from GitHub Packages inside the build** (e.g. `npm ci`)
+   - Do not pass `${{ github.token }}` through `DOCKER_BUILD_SECRETS`; set
+     `github-token-secret-id` instead (see [Build Secrets](#build-secrets))
+   - For a private or internal package, grant the repository read access under the
+     package's *Manage Actions access*
+
+6. **Dockerfile write-back failed** (`update-dockerfile-version: true`)
+   - The image is already published; only the commit of the new version to the
+     default branch failed
+   - A push that lost the race against another image job, or got a server error,
+     is retried up to 5 times after a rebase - a failure after the 5th attempt or
+     a real rebase conflict fails the job (see
+     [Update Dockerfile Version from Git Tag](#update-dockerfile-version-from-git-tag))
+   - Re-run the failed job, or commit the version by hand
+
+7. **"no space left on device" in the scan step**
+   - See [Running out of disk space](#running-out-of-disk-space): `free-disk-space: true`
+     (GitHub-hosted runners only) and `cache-mode: 'min'`
+
+8. **Pulls fail with `429 Too Many Requests` / `toomanyrequests`**
+   - Docker Hub's anonymous pull limit for the runner's IP address is used up -
+     typically when many builds run at the same time. It hits the `FROM` base
+     images in *Build Docker Image*, or the BuildKit / QEMU image while Buildx
+     and QEMU are set up
+   - Pass `DOCKER_USERNAME` and `DOCKER_PASSWORD` with `secrets: inherit`, see
+     [Docker Hub Pull Login](#docker-hub-pull-login)
+   - *Check Docker Hub Credentials* reports they are not set although the
+     organisation or repository has them: the calling job lacks
+     `secrets: inherit` (or an explicit `secrets:` block passing both)
+   - The warning *Docker Hub login failed*: the credentials are wrong or expired,
+     or Docker Hub could not be reached
+   - Still `429` while logged in: either Docker Hub's per-minute abuse limit,
+     which a burst of parallel builds reaches whatever the plan, or the account's
+     own pull quota, whose size depends on the Docker Hub plan. In the two builds
+     (*Build Docker Image (Local)*, *Push Docker Image*) a `429` is retried once
+     after 60-90 s (warning *Docker build retried*, see
+     [Build Retry on Registry Throttling](#build-retry-on-registry-throttling));
+     when the retry fails as well, the quota is usually used up. A `429` while
+     Buildx or QEMU is set up is not retried - re-run the job
 
 ### Debug Mode
 
