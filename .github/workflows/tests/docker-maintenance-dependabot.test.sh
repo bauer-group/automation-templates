@@ -31,8 +31,13 @@
 #
 # Without this, `gh pr merge --auto` on a branch without required checks merged
 # at once - bauer-group/CS-BillingStack#12 three seconds after its label check
-# went red. That PR was the redpanda 26.1 -> 26.2 bump: a semver-minor, which
-# is why only patch updates are merged by default. And "any passed check" is
+# went red. That PR was the redpanda 26.1 -> 26.2 bump: a semver-minor. The CI
+# wait came with a patch-only default; it would have held #12 only because of
+# that unrelated red label check - compose validation was green, the redpanda
+# image build was skipped, and nothing in the CI started redpanda. Since
+# 2026-11-08 the default merges minor updates too, once the required PR CI
+# passed (the owner's decision); majors stay open, and a caller that needs
+# patch-only sets merge-update-types: 'patch'. And "any passed check" is
 # not a test: bauer-group/CI-GitHubRunner#13 had only GitGuardian (success) and
 # CodeQL (neutral), CS-GitHubBackup#1 only notification and AI-summary jobs -
 # their build workflows never ran, which is why the named required workflows
@@ -452,9 +457,29 @@ P="version-update:semver-patch"
 MI="version-update:semver-minor"
 MA="version-update:semver-major"
 
-guard_case patch-default          "$P"  "patch"               false 0 true  patch                -
-guard_case minor-default          "$MI" "patch"               false 0 false update-type          notice
-guard_case major-default          "$MA" "patch"               false 0 false update-type          notice
+# The default of merge-update-types, as the workflow declares it: what a
+# caller that does not set the input gets.
+DEFAULT_TYPES=$(awk '
+  $0 == "      merge-update-types:" { found = 1; next }
+  found && /^        default: / { sub(/^        default: /, ""); gsub(/\047/, ""); print; exit }
+  found && /^      [^ ]/ { exit }
+' "$WORKFLOW_FILE")
+if [ "$DEFAULT_TYPES" = "patch,minor" ]; then
+  pass "merge-update-types defaults to patch,minor - majors stay open"
+else
+  fail "merge-update-types default is '$DEFAULT_TYPES', want 'patch,minor'"
+fi
+
+# Default: patch and minor updates are merged (after the required CI passed),
+# majors stay open. A caller that sets 'patch' keeps patch-only.
+guard_case patch-default          "$P"  "$DEFAULT_TYPES"      false 0 true  patch                -
+guard_case minor-default          "$MI" "$DEFAULT_TYPES"      false 0 true  minor                -
+guard_case major-default          "$MA" "$DEFAULT_TYPES"      false 0 false update-type          notice
+if grep -qF "Merged automatically: patch minor (input merge-update-types)" "$WORK/guard-major-default/log"; then pass "guard/major-default: notice names patch and minor"; else fail "guard/major-default: notice lacks 'patch minor'"; fi
+guard_case patch-only-patch       "$P"  "patch"               false 0 true  patch                -
+guard_case patch-only-minor       "$MI" "patch"               false 0 false update-type          notice
+guard_case patch-only-major       "$MA" "patch"               false 0 false update-type          notice
+guard_case allow-major-default    "$MA" "$DEFAULT_TYPES"      true  0 true  major                -
 guard_case minor-opted-in         "$MI" "patch,minor"         false 0 true  minor                -
 guard_case major-opted-in-spaces  "$MA" "patch, minor, major" false 0 true  major                -
 guard_case case-insensitive       "$P"  "Patch"               false 0 true  patch                -
@@ -476,6 +501,8 @@ guard_case wait-not-a-number      "$P"  "patch"               false 1 ""    ""  
 GUARD_REQUIRED=""         guard_case required-empty        "$P"  "patch" false 0 false no-required-workflows notice
 GUARD_REQUIRED=" , "      guard_case required-blank        "$P"  "patch" false 0 false no-required-workflows notice
 GUARD_REQUIRED=""         guard_case required-empty-major  "$MA" "patch" true  0 false no-required-workflows notice
+# The default merges minor updates only through the required CI as well.
+GUARD_REQUIRED=""         guard_case required-empty-minor-default "$MI" "$DEFAULT_TYPES" false 0 false no-required-workflows notice
 if grep -qF "required-workflows: .github/workflows/docker-release.yml" "$WORK/guard-required-empty/log"; then pass "guard/required-empty: notice says how to set it"; else fail "guard/required-empty: notice lacks the example"; fi
 # Workflow files as GitHub names them in a run's `path`, directly in
 # .github/workflows - anything else is a typo that would never match.
@@ -523,6 +550,7 @@ GUARD_RELEASE_WAIT=-5   guard_case release-wait-negative  "$P" "patch" false 1 "
 # names the ecosystem as the branch name does: dependabot/github_actions/...
 GUARD_ECOSYSTEM=github_actions                   guard_case actions-update             "$P"  "patch"             false 0 false ci-change notice
 GUARD_ECOSYSTEM=github_actions                   guard_case actions-update-all-types   "$MA" "patch,minor,major" false 0 false ci-change notice
+GUARD_ECOSYSTEM=github_actions                   guard_case actions-update-minor-default "$MI" "$DEFAULT_TYPES" false 0 false ci-change notice
 GUARD_ECOSYSTEM=github_actions GUARD_REQUIRED="" guard_case actions-update-no-required "$P"  "patch"             false 0 false ci-change notice
 if grep -qF "GitHub Actions updates change the CI itself" "$WORK/guard-actions-update/log"; then pass "guard/actions-update: notice says why"; else fail "guard/actions-update: notice lacks the reason"; fi
 # Invalid input is still an error for a GitHub Actions update.
@@ -552,9 +580,12 @@ type_note_is zero-minor-minor-allowed "0.x minor treated as major: lib 0.3.1 -> 
 GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")") guard_case zero-minor-all-allowed    "$MI" "patch,minor,major" false 0 true  major       -
 glogged     zero-minor-all-allowed "0.x minor treated as major: lib 0.3.1 -> 0.4.0"
 GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")") guard_case zero-minor-allow-major    "$MI" "patch"             true  0 true  major       -
-GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")") guard_case zero-minor-default        "$MI" "patch"             false 0 false update-type notice
-# 0.0.3 -> 0.0.4: merged by the default (patch) before - now left open.
-GUARD_DEPS=$(deps "$(dep lib 0.0.3 0.0.4 "$P")")  guard_case zero-zero-patch-default   "$P"  "patch"             false 0 false update-type notice
+# The default (patch,minor) merges no 0.x minor update.
+GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")") guard_case zero-minor-default        "$MI" "$DEFAULT_TYPES"    false 0 false update-type notice
+glogged     zero-minor-default "0.x minor treated as major: lib 0.3.1 -> 0.4.0"
+GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")") guard_case zero-minor-patch-only     "$MI" "patch"             false 0 false update-type notice
+# 0.0.3 -> 0.0.4: merged as a patch before the 0.x rule - now left open.
+GUARD_DEPS=$(deps "$(dep lib 0.0.3 0.0.4 "$P")")  guard_case zero-zero-patch-default   "$P"  "$DEFAULT_TYPES"    false 0 false update-type notice
 glogged     zero-zero-patch-default "0.0.x patch treated as major: lib 0.0.3 -> 0.0.4"
 type_note_is zero-zero-patch-default "0.0.x patch treated as major: lib 0.0.3 -> 0.0.4"
 GUARD_DEPS=$(deps "$(dep lib 0.0.3 0.0.4 "$P")")  guard_case zero-zero-patch-all       "$P"  "patch,minor,major" false 0 true  major       -

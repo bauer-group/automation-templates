@@ -12,10 +12,15 @@
 #    build and test the update. Without it nothing is merged - a passed check
 #    alone (GitGuardian, a notification job) tests nothing.
 # 2. Update type: only the types listed in `merge-update-types` are merged
-#    (default: patch). Everything else stays open for review. Below 1.0.0
-#    any change may break (SemVer 4): as in npm's caret ranges, a minor
-#    update of a 0.y.z version and a patch update of a 0.0.z version count
-#    as major - checked per dependency, the strictest one decides.
+#    (default since 2026-11-08: patch,minor - majors stay open for review).
+#    A minor update is merged under the same rules as a patch update: only
+#    the head commit the named PR CI built and tested, on the base it was
+#    tested on. CI that does not exercise what a minor update can break (an
+#    image is built, its service never started) cannot vouch for it - such a
+#    caller sets `patch`. Below 1.0.0 any change may break
+#    (SemVer 4): as in npm's caret ranges, a minor update of a 0.y.z version
+#    and a patch update of a 0.0.z version count as major - checked per
+#    dependency, the strictest one decides.
 # 3. CI: the job waits until every other check run, check suite, commit status
 #    and workflow run on the PR head commit has completed and nothing has
 #    changed for 3 minutes (5 minutes after the start at the earliest), so a
@@ -134,10 +139,10 @@ on:
         default: true
 
       merge-update-types:
-        description: 'Semver update types that are merged, comma separated: patch, minor, major. Other updates stay open for review. A minor update of a 0.y.z version and a patch update of a 0.0.z version count as major.'
+        description: 'Semver update types that are merged, comma separated: patch, minor, major. Other updates stay open for review. Default: patch and minor, merged once the required PR CI passed (majors stay open); patch: patch updates only. A minor update of a 0.y.z version and a patch update of a 0.0.z version count as major.'
         type: string
         required: false
-        default: 'patch'
+        default: 'patch,minor'
 
       allow-major:
         description: 'Deprecated, use merge-update-types. true is the same as merge-update-types: patch, minor, major.'

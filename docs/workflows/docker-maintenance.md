@@ -227,8 +227,9 @@ jobs:
       release-workflow: .github/workflows/docker-release.yml
       merge-method: 'squash'
       auto-approve: true
-      # merge-update-types: 'patch,minor'  # default: patch; below 1.0.0 a
-      #                                    # minor update counts as major
+      # merge-update-types: 'patch'  # default: patch,minor (majors stay
+      #                              # open); below 1.0.0 a minor update
+      #                              # counts as major
     secrets: inherit
 ```
 
@@ -533,12 +534,12 @@ warns *Dependabot PR already merged* and neither merges nor releases (see
 2. **Required workflows set** - with `required-workflows` empty nothing is
    merged: the job ends at once with a notice, without waiting for CI.
 3. **Update type** - only the semver types in `merge-update-types` are merged
-   (default `patch`). A `minor` or `major` update, or one whose type cannot be
-   determined (digest, non-semver tag), stays open for review. The redpanda
-   `26.1 → 26.2` bump that took a production stack down was a semver-*minor*.
-   Below 1.0.0 any update may break: a minor update of a `0.y.z` version and
-   a patch update of a `0.0.z` version count as `major`, checked for every
+   (default `patch,minor`). A `major` update, or one whose type cannot be
+   determined (digest, non-semver tag), stays open for review. Below 1.0.0
+   any update may break: a minor update of a `0.y.z` version and a patch
+   update of a `0.0.z` version count as `major`, checked for every
    dependency of the PR - see [Updates below 1.0.0](#updates-below-100).
+   See [Why minor updates are merged by default](#why-minor-updates-are-merged-by-default).
 4. **Wait for CI** - the job polls the check runs, check suites, commit
    statuses and workflow runs of the PR head commit (every 30 s, after 5 min
    every 60 s, after 15 min every 3 min), leaving out its own job and other
@@ -697,6 +698,45 @@ toward required reviews. So:
 - give it a **short expiry** and renew it - an expired token shows as the
   warning *rebase could not be requested*, never as a merge.
 
+#### Why minor updates are merged by default
+
+`merge-update-types` defaults to `patch,minor`: since 2026-11-08 - the
+owner's decision - minor updates are merged once the required PR CI has
+passed, under the same rules as patch updates (see the
+[decision table](#decision-table)). `major` updates stay open for review.
+Callers that need patch-only set `merge-update-types: 'patch'`.
+
+The previous default, `patch`, came in together with the CI wait, after the
+redpanda `26.1 → 26.2` bump of CS-BillingStack (a semver-*minor*) took a
+production stack down. Its PR (#12) was merged while an unrelated base-image
+label check was red; compose validation was green and the redpanda image
+build was skipped. The CI wait would have held it only because of that
+unrelated failure - nothing in the required CI started redpanda, so once the
+label check was fixed the bump would have merged anyway. What the required
+CI does not exercise, it cannot vouch for. Set
+`merge-update-types: 'patch'` where that matters for minor updates:
+
+- **The CI builds an image but never starts its service** - a database,
+  broker or proxy whose minor release may change behaviour, configuration or
+  the on-disk format. Starting the stack in the PR CI narrows this, but
+  [with-backup-roundtrip-gate.yml](../../github/workflows/examples/docker-maintenance-dependabot/with-backup-roundtrip-gate.yml),
+  which does, still keeps `patch` on purpose for database and broker images.
+- **A library** passes every dependency update it merges on to its
+  consumers: see
+  [dotnet-library.yml](../../github/workflows/examples/docker-maintenance-dependabot/dotnet-library.yml).
+- **Image tags below 1.0.0 that are not plain `X.Y.Z`**, such as
+  `0.3-alpine`: the [0.x rule](#updates-below-100) cannot read them, so
+  `0.3-alpine → 0.4-alpine` counts as minor.
+
+A caller that sets `merge-update-types` keeps its value; only callers that
+leave it out merge minor updates now.
+
+Together with the [report-only audit on Dependabot PRs](./nodejs-build.md#dependabot-pull-requests-report-only-audit)
+of nodejs-build, a minor update that brings in a new *high* advisory passes
+a nodejs-build required workflow and is merged; *critical* findings still
+block. Where that matters, add
+[dependency review](./modules-dependency-review.md) to `required-workflows`.
+
 #### Updates below 1.0.0
 
 [SemVer 4](https://semver.org/#spec-item-4): a `0.y.z` version is initial
@@ -742,17 +782,18 @@ workflow therefore counts update types the way npm's caret ranges do
 
 What this means for `merge-update-types`:
 
-| `merge-update-types` | `0.3.1 → 0.3.2` | `0.3.1 → 0.4.0`           | `0.0.3 → 0.0.4`           |
-|----------------------|-----------------|---------------------------|---------------------------|
-| `patch` (default)    | merged          | left open                 | left open (merged before) |
-| `patch,minor`        | merged          | left open (merged before) | left open (merged before) |
-| `patch,minor,major`  | merged          | merged                    | merged                    |
+| `merge-update-types`    | `0.3.1 → 0.3.2` | `0.3.1 → 0.4.0`           | `0.0.3 → 0.0.4`           |
+|-------------------------|-----------------|---------------------------|---------------------------|
+| `patch`                 | merged          | left open                 | left open (merged before) |
+| `patch,minor` (default) | merged          | left open (merged before) | left open (merged before) |
+| `patch,minor,major`     | merged          | merged                    | merged                    |
 
 "Merged" always means: after the required CI passed, as for every other
 update.
 
-**Example.** A caller with `merge-update-types: 'patch,minor'`; Dependabot
-updates an image tag from `0.3.1` to `0.4.0`. The guard's log reads:
+**Example.** A caller with the default `merge-update-types` (`patch,minor`);
+Dependabot updates an image tag from `0.3.1` to `0.4.0`. The guard's log
+reads:
 
 ```text
 Merged update types: patch minor
@@ -1001,9 +1042,10 @@ workflow.
   stop the merge. Choose workflows whose PR run always builds and tests.
 - **0.x versions are recognised in plain `X.Y.Z` form only.** A tag such as
   `0.3-alpine` or a date keeps the update type Dependabot reported, so a
-  `0.3-alpine → 0.4-alpine` update is a minor one for `merge-update-types`.
-  Keep `minor` out of it for images with such tags, or merge them by hand -
-  see [Updates below 1.0.0](#updates-below-100).
+  `0.3-alpine → 0.4-alpine` update is a minor one for `merge-update-types` -
+  merged by the default `patch,minor`. Set `merge-update-types: 'patch'` for
+  images with such tags, or merge them by hand - see
+  [Updates below 1.0.0](#updates-below-100).
 - **Matched by file path.** A required workflow that is renamed or moved no
   longer matches: every PR stays open with "did not run" until
   `required-workflows` is updated.
@@ -1080,7 +1122,7 @@ workflow.
 | `required-workflows`   | PR CI workflow files that must have run on the PR and passed, comma or newline separated, e.g. `.github/workflows/ci.yml`              | `''` (no merge)   |
 | `merge-method`         | squash, merge, or rebase                                                                                                               | `squash`          |
 | `auto-approve`         | Approve the PR before merging it                                                                                                       | `true`            |
-| `merge-update-types`   | Semver update types to merge: `patch`, `minor`, `major`; [0.x updates](#updates-below-100) count stricter                              | `patch`           |
+| `merge-update-types`   | Semver update types to merge: `patch`, `minor`, `major`; [0.x updates](#updates-below-100) count stricter                              | `patch,minor`     |
 | `ci-wait-minutes`      | How long to wait for CI to finish and settle (10-60) before leaving the PR open                                                        | `60`              |
 | `release-workflow`     | Release workflow file dispatched on the base branch after a merge, e.g. `.github/workflows/docker-release.yml`; needs `actions: write` | `''` (no release) |
 | `release-wait-minutes` | How long to wait for the dispatched release run (0-180); a run that does not succeed within it fails the job. `0`: do not wait         | `60`              |
@@ -1354,7 +1396,7 @@ say why - see the [decision table](#decision-table). The usual ones:
 | Annotation says                                        | Fix                                                                                                                                                  |
 |--------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
 | automatic merging is off: required-workflows           | Set `required-workflows`, see [Choosing `required-workflows`](#choosing-required-workflows)                                                          |
-| update type is not merged automatically                | Expected for minor/major; merge by hand, or widen `merge-update-types`                                                                               |
+| update type is not merged automatically                | Expected for major (and minor with `merge-update-types: 'patch'`); merge by hand, or widen `merge-update-types`                                      |
 | semver-major update (0.x minor/0.0.x patch ...)        | Expected below 1.0.0, any update may break: review and merge by hand, or add `major` to `merge-update-types`                                         |
 | versions of the updated dependencies could not be read | No `jq` on a self-hosted runner: install it. Otherwise merge by hand - the 0.x rule could not be checked                                             |
 | change the CI itself / changes CI files                | Expected: review and merge by hand. GitHub Actions updates and PRs that change `.github/` are never merged automatically                             |
@@ -1465,12 +1507,12 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 - **CI changes stay open**: a GitHub Actions update or a PR that changes `.github/` is never merged automatically - a `pull_request` run uses the PR's own version of a changed workflow, and push- or schedule-only workflows do not run before the merge
 - **Pinned merge**: the Dependabot merge and its approval name the head commit whose CI was checked
 - **Release only after a merge, failures loud**: `release-workflow` is dispatched only after this run merged the PR, needs nothing but `actions: write` on the job token, and a release run that does not succeed fails the job. What gets published is gated by the release workflow's own tests, and is what they ran on only if its release is pinned to the commit the run tested (`ref: ${{ github.sha }}`) - see [what "no broken release" relies on](#what-no-broken-release-relies-on), also for the window a pipeline that tags before it pushes leaves open
-- **Released without a person in between**: with `release-workflow`, a merged dependency update is built and released by the dispatched run - with the release workflow's write permissions and the repository's secrets (registry credentials, signing keys) - without anyone looking at it first. Without it, the release waited for the next human push. That is a supply-chain trade-off to accept knowingly: an update whose harmful change passes the required CI reaches the registry automatically. Keep `merge-update-types` narrow (the default `patch`), the release gated on its tests, and `release-workflow` unset where a person should approve each release
+- **Released without a person in between**: with `release-workflow`, a merged dependency update is built and released by the dispatched run - with the release workflow's write permissions and the repository's secrets (registry credentials, signing keys) - without anyone looking at it first. Without it, the release waited for the next human push. That is a supply-chain trade-off to accept knowingly: an update whose harmful change passes the required CI reaches the registry automatically. Keep `merge-update-types` narrow (`patch`; the default `patch,minor` also releases minor updates this way) where the required CI does not exercise what an update can break, the release gated on its tests, and `release-workflow` unset where a person should approve each release
 - **Only the tested combination**: a Dependabot PR is merged only while the base branch is still at the commit its CI was merged onto; otherwise it is rebased and tested again. A push in the seconds between that check and the merge call - most likely a sibling Dependabot PR merged at the same time - is merged onto and reported with the warning *Merged onto an untested base*; a release pinned to the commit it tested builds and tests that combination before publishing it. The optional `DEPENDABOT_REBASE_TOKEN` is used for that one `@dependabot rebase` comment and nothing else; keep it on a machine user, limited to the selected repositories and short-lived (see [the rebase token](#the-rebase-token))
 - **Dependabot only**: the Dependabot job acts only on Dependabot's PRs, on events Dependabot raised, with verified Dependabot commits only; it never checks out PR code
 - **Auto-approve optional**: Can be disabled for manual review
 - **Audit trail**: All updates tracked in PRs and git history
-- **Update types**: Dependabot merges patch updates only unless `merge-update-types` widens it, and below 1.0.0 a minor update (and below 0.1.0 a patch update) counts as major; Renovate leaves majors for review
+- **Update types**: Dependabot merges patch and minor updates (after the required CI passed) and leaves majors for review unless `merge-update-types` narrows it to `patch` or widens it; below 1.0.0 a minor update (and below 0.1.0 a patch update) counts as major - see [why minor is in the default](#why-minor-updates-are-merged-by-default); Renovate leaves majors for review
 
 ## Related Documentation
 
