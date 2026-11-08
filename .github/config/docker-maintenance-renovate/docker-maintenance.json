@@ -7,7 +7,7 @@
   ],
   "labels": ["dependencies", "automated"],
   "timezone": "Etc/UTC",
-  "schedule": ["after 6:30am on sunday"],
+  "schedule": ["after 1:30pm on sunday"],
   "platformAutomerge": true,
   "commitMessagePrefix": "fix(docker):",
   "commitMessageAction": "update",

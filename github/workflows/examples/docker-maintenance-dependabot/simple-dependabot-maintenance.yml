@@ -9,7 +9,7 @@
 # - Simpler configuration
 #
 # How it works:
-# 1. Dependabot scans Dockerfiles for base image updates (Sundays 06:30 UTC)
+# 1. Dependabot scans Dockerfiles for base image updates (Sundays from 13:30 UTC)
 # 2. Creates a PR with commit prefix "fix(docker):" for semantic release
 # 3. CI runs your Docker build workflow on the PR
 # 4. This workflow waits for that CI - until it is complete and has not
@@ -54,7 +54,7 @@
 #     schedule:
 #       interval: "weekly"
 #       day: "sunday"
-#       time: "06:30"
+#       time: "13:30"   # your own step: docs/workflows/docker-maintenance.md#dependabot-schedule
 #       timezone: "Etc/UTC"
 #     labels:
 #       - "dependencies"

@@ -111,7 +111,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "sunday"
-      time: "06:30"
+      time: "13:30"          # your repository's own step, see Dependabot schedule below
       timezone: "Etc/UTC"
     labels:
       - "dependencies"
@@ -129,6 +129,67 @@ For every other ecosystem add an `updates:` entry of its own, with the commit
 prefix from [Other ecosystems and libraries](#other-ecosystems-and-libraries) -
 [all-ecosystems.yml](../../github/workflows/examples/docker-maintenance-dependabot/all-ecosystems.yml)
 shows one for each.
+
+##### Dependabot schedule
+
+Every weekly Dependabot schedule runs on **Sunday afternoon, from 13:30 UTC** - outside the slot grid of the [base image monitors](./modules-docker-base-image-monitor.md#schedule-slots) (00:07-09:52 UTC, reserve 22:07-23:52 UTC), so update PRs and monitor releases never meet. Daily and monthly entries keep their interval at the same time of day. Until 2026-11-08 most repositories ran at Sunday 06:30 UTC (this template's time), inside that grid.
+
+- Repositories **without** auto-merge run at 13:30 UTC; their PR runs build no release.
+- Repositories **with** auto-merge (callers of this module) get a step of their own from 13:35, 5 minutes apart: first in the order of the monitor slot table (producers first), then the repositories without a monitor slot, alphabetically. Their PR builds pull the same base images from Docker Hub and every merge releases, so one shared time would start all those builds in the same minute - the kind of burst that, from the monitors' shared 10:00 UTC cron, half-published releases on 2026-10-15 and 2026-11-07.
+- Every schedule entry of a repository uses its time; `weekly` entries run on `sunday`, all in `Etc/UTC`. Quote the time: unquoted, YAML 1.1 reads `13:30` as the number 810.
+
+| UTC (Sunday) | Repository with auto-merge |
+|--------------|----------------------------|
+| 13:35 | CS-BackupHelper |
+| 13:40 | CS-MinIO |
+| 13:45 | CS-StatusMonitor |
+| 13:50 | CS-LinkStack |
+| 13:55 | CS-DocumentSigning |
+| 14:00 | CS-MTASTS |
+| 14:05 | CS-Outline |
+| 14:10 | CS-CloudflareTunnel |
+| 14:15 | IP-CloudflareTerraform |
+| 14:20 | CS-NGINXProxy |
+| 14:25 | CS-BillingStack |
+| 14:30 | CS-NATS |
+| 14:35 | CS-PairDrop |
+| 14:40 | CS-IAM |
+| 14:45 | OT-CAN2IP |
+| 14:50 | IP-ZAMMAD-MCPServer |
+| 14:55 | CS-FileServer |
+| 15:00 | CS-IAMStack |
+| 15:05 | IP-Kleinanzeigen-MCPServer |
+| 15:10 | CS-ZAMMAD |
+| 15:15 | CS-NocoDB |
+| 15:20 | CS-URLShortener |
+| 15:25 | CS-WordPressStack |
+| 15:30 | CS-RabbitMQ |
+| 15:35 | IP-Shlink-MCPServer |
+| 15:40 | IP-n8n-MCPServer |
+| 15:45 | XPD-SonarQube |
+| 15:50 | covalida/SaaS-CovalidaIAM |
+| 15:55 | CS-DVCS |
+| 16:00 | covalida/SaaS-PPWRCompliacePlatform |
+| 16:05 | CS-n8n |
+| 16:10 | covalida/SaaS-TrustCenter |
+| 16:15 | covalida/SaaS-AccessibilityToolkit |
+| 16:20 | CI-GitHubRunner |
+| 16:25 | CS-ApplicationErrorObservability |
+| 16:30 | CS-ClientPublicIP |
+| 16:35 | CS-GitHubBackup |
+| 16:40 | CS-ScreenRecorder |
+| 16:45 | DEMO-HotChocolate |
+| 16:50 | DEMO-PHP-Symfony |
+| 16:55 | DEMO-Pocketbase |
+| 17:00 | IP-HardwareIDAllocator |
+| 17:05 | LIB-Shared-Business-Models-NET |
+| 17:10 | LIB-Shared-Business-NET |
+| 17:15 | LIB-Shared-NET |
+| 17:20 | OT-CAN2IP-Clients |
+| 17:25 | OT-Shared-Industrial-NET |
+| 17:30 | covalida/SaaS-MailAdressValidator |
+
+A new repository with auto-merge takes the next free step (17:35, then every 5 minutes) and enters it here in the same change.
 
 #### 2. Create Maintenance Workflow
 
@@ -1079,7 +1140,7 @@ Create `renovate.json` in your repository root:
 
 The preset includes:
 - `commitMessagePrefix: "fix(docker):"` for semantic release compatibility
-- Schedule: Sundays at 06:30 UTC
+- Schedule: Sundays after 13:30 UTC
 - Auto-merge for patch and minor updates
 - Manual review required for major updates
 
@@ -1154,7 +1215,7 @@ Renovate creates an issue showing:
 
 ```json
 {
-  "schedule": ["after 6:30am on sunday"],
+  "schedule": ["after 1:30pm on sunday"],
   "timezone": "Etc/UTC"
 }
 ```

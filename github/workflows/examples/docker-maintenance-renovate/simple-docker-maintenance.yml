@@ -10,7 +10,7 @@
 # - Advanced package rules
 #
 # How it works:
-# 1. Renovate scans Dockerfiles for base image updates (Sundays 06:30 UTC)
+# 1. Renovate scans Dockerfiles for base image updates (Sundays after 13:30 UTC)
 # 2. Creates a PR with commit prefix "fix(docker):" for semantic release
 # 3. CI runs your Docker build workflow on the PR
 # 4. If all checks pass, PR is automatically merged
@@ -33,7 +33,7 @@
 # -----------------------------------------------------------------------------
 # The preset includes:
 # - commitMessagePrefix: "fix(docker):" for semantic release PATCH
-# - schedule: Sundays 06:30 UTC
+# - schedule: Sundays after 13:30 UTC
 # - Auto-merge for patch/minor, manual review for major
 # =============================================================================
 

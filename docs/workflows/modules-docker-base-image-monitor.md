@@ -157,6 +157,8 @@ Every caller of this module runs at a **slot of its own** from the [slot table](
 | 2026-11-07 | `node:24-alpine` throttled: CS-DocumentSigning v0.19.1 was tagged, its main image never published |
 | 2026-11-08 | A GitHub release asset answered `504` in the same 10:10-10:15 UTC window |
 
+Dependabot runs outside the slot grid (00:07-09:52 UTC, reserve 22:07-23:52 UTC), on Sunday from 13:30 UTC - see [Dependabot schedule](./docker-maintenance.md#dependabot-schedule).
+
 GitHub also delays scheduled runs under load, and may drop them, at the [start of every hour](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 
 **Rules**

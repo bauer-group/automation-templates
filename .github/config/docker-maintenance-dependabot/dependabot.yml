@@ -44,7 +44,9 @@ updates:
     schedule:
       interval: "weekly"
       day: "sunday"
-      time: "06:30"
+      # Replace 13:30 with this repository's own step (Sunday, UTC) from
+      # docs/workflows/docker-maintenance.md#dependabot-schedule - every entry uses it.
+      time: "13:30"
       timezone: "Etc/UTC"
     labels:
       - "dependencies"
@@ -74,7 +76,7 @@ updates:
   #   schedule:
   #     interval: "weekly"
   #     day: "sunday"
-  #     time: "06:30"
+  #     time: "13:30"
   #     timezone: "Etc/UTC"
   #   labels:
   #     - "dependencies"
