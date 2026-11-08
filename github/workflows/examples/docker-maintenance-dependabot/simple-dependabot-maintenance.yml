@@ -15,8 +15,8 @@
 # 4. This workflow waits for that CI - until it is complete and has not
 #    changed for 3 minutes, 5 minutes after the start at the earliest - and
 #    merges the PR if no check failed and every workflow in
-#    required-workflows ran on the PR and passed. Patch updates only by
-#    default (merge-update-types); minor and major updates, failed CI and
+#    required-workflows ran on the PR and passed. Patch and minor updates
+#    by default (merge-update-types); major updates, failed CI and
 #    PRs the required workflow did not test stay open. So do GitHub Actions
 #    updates and every other PR that changes .github/ - CI that the PR
 #    itself changes cannot vouch for it
@@ -105,9 +105,10 @@ jobs:
       release-workflow: .github/workflows/docker-release.yml
       merge-method: 'squash'
       auto-approve: true
-      # e.g. 'patch,minor' to merge minor updates too. Below 1.0.0 any update
+      # The default; 'patch' keeps minor updates for review, e.g. where the
+      # PR CI builds the image but never starts it. Below 1.0.0 any update
       # may break, so a minor update of 0.y.z (0.3.1 -> 0.4.0) and a patch
       # update of 0.0.z (0.0.3 -> 0.0.4) count as major and stay open unless
       # 'major' is listed too.
-      merge-update-types: 'patch'
+      merge-update-types: 'patch,minor'
     secrets: inherit
