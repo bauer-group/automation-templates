@@ -19,7 +19,7 @@ Full reference: [`docs/workflows/modules-docker-base-image-monitor.md`](../../..
 2. **List the images** in `.github/config/docker-base-image-monitor/base-images.json` — `name`, `image` (without tag), `tag` and `variable` (`^[A-Z][A-Z0-9_]*$`) per image. The variables are created on the first run.
 3. **Make the release dispatchable.** `docker-release.yml` needs `workflow_dispatch` with a `force-release` input, and must build the images itself: the monitor confirms only the run it dispatched. A complete pipeline with a release gate is [`gated-release-pipeline.yml`](../backup-roundtrip/gated-release-pipeline.yml).
 4. **Grant `packages: read`** in the caller when an image is an internal or private GHCR package. A partial `permissions:` block without it sets it to `none`.
-5. **Copy an example** to `.github/workflows/check-base-images.yml` and run it once by hand with `dry-run: true`. An image without a stored digest counts as moved, so the first real check releases once; to avoid that, store the digests from the dry run's **New digests** block first (`gh variable set <VAR> --body sha256:...`).
+5. **Copy an example** to `.github/workflows/check-base-images.yml` and give it a [schedule slot](../../../../docs/workflows/modules-docker-base-image-monitor.md#schedule-slots) of its own - the `7 22 * * *` in the examples is a placeholder - and enter the repository in the slot table in the same change. Run it once by hand with `dry-run: true`. An image without a stored digest counts as moved, so the first real check releases once; to avoid that, store the digests from the dry run's **New digests** block first (`gh variable set <VAR> --body sha256:...`).
 
 ## What a check does
 

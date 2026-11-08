@@ -37,7 +37,7 @@ n8nio/n8n:stable
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  1. Scheduled Trigger (z.B. täglich 07:00 UTC)                               │
+│  1. Scheduled Trigger (eigener Slot je Repository, z.B. 22:07 UTC)           │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
@@ -99,8 +99,8 @@ name: 🔄 Check Base Image Updates
 
 on:
   schedule:
-    - cron: '0 7 * * *'  # Täglich 07:00 UTC
-  workflow_dispatch:     # Manueller Trigger
+    - cron: '7 22 * * *'  # Beispiel-Slot 22:07 UTC - eigenen Slot nehmen, siehe unten
+  workflow_dispatch:      # Manueller Trigger
 
 jobs:
   check:
@@ -119,6 +119,14 @@ jobs:
 ```
 
 **Fertig!** Der Workflow prüft jetzt täglich, ob ein neues n8n Base Image verfügbar ist.
+
+> **Eigener Zeitplan pro Repository.** Die Cron-Zeit ist nur ein Beispiel. Jedes Repository
+> läuft in einem eigenen Slot im 15-Minuten-Raster (`:07`, `:22`, `:37`, `:52` UTC, nie zur
+> vollen Stunde). Als alle zur selben Zeit liefen, starteten bei einem gemeinsamen Base Image
+> bis zu elf Release-Builds in derselben Minute, und Docker Hub antwortete mit
+> `429 Too Many Requests`. Freien Slot wählen und das Repository im selben Change in die
+> [Slot-Tabelle](../../../docs/workflows/modules-docker-base-image-monitor.md#schedule-slots)
+> eintragen.
 
 ### Interne oder private GHCR-Images überwachen
 
@@ -213,8 +221,10 @@ name: 🔄 Check Base Image Updates
 
 on:
   schedule:
-    # Täglich um 07:00 UTC (08:00 MEZ / 09:00 MESZ)
-    - cron: '0 7 * * *'
+    # Täglich um 22:07 UTC (23:07 MEZ / 00:07 MESZ) - nur ein Beispiel-Slot.
+    # Eigenen Slot aus der Slot-Tabelle nehmen und dort eintragen:
+    # docs/workflows/modules-docker-base-image-monitor.md#schedule-slots
+    - cron: '7 22 * * *'
 
   workflow_dispatch:
     inputs:
@@ -360,7 +370,7 @@ name: 🔄 Check Base Image Updates
 
 on:
   schedule:
-    - cron: '0 7 * * *'
+    - cron: '7 22 * * *'  # Beispiel-Slot - eigenen Slot aus der Slot-Tabelle nehmen
   workflow_dispatch:
     inputs:
       dry-run:
@@ -440,7 +450,7 @@ name: 🔄 Check Base Image Updates
 
 on:
   schedule:
-    - cron: '0 7 * * *'
+    - cron: '7 22 * * *'  # Beispiel-Slot - eigenen Slot aus der Slot-Tabelle nehmen
   workflow_dispatch:
 
 jobs:
@@ -475,7 +485,7 @@ name: 🔄 Check Base Image Updates
 
 on:
   schedule:
-    - cron: '0 7 * * *'
+    - cron: '7 22 * * *'  # Beispiel-Slot - eigenen Slot aus der Slot-Tabelle nehmen
 
 jobs:
   check-updates:
@@ -507,7 +517,7 @@ jobs:
 So sieht der vollständige automatische Release-Flow aus:
 
 ```
-07:00 UTC - Scheduled Trigger
+22:07 UTC - Scheduled Trigger (eigener Slot des Repositorys)
        │
        ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐

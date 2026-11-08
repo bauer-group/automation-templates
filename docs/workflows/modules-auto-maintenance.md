@@ -173,7 +173,9 @@ name: "Auto-Maintenance"
 
 on:
   schedule:
-    - cron: "0 6 * * 1"  # Woechentlich Montag 06:00 UTC
+    # Beispiel-Slot (Mo 22:07 UTC): jedes Repository bekommt einen eigenen Slot aus der
+    # Slot-Tabelle, nie die volle Stunde - siehe modules-docker-base-image-monitor.md#schedule-slots
+    - cron: "7 22 * * 1"
   workflow_dispatch:
     inputs:
       dry-run:
@@ -249,7 +251,7 @@ Optionale Anpassungen:
 
 | Parameter | Default | Wann aendern |
 |-----------|---------|--------------|
-| `cron` | `0 6 * * 1` (Mo 06:00 UTC) | Anderer Schedule |
+| `cron` | `7 22 * * 1` (Beispiel-Slot) | Immer: eigener Slot aus der [Slot-Tabelle](./modules-docker-base-image-monitor.md#schedule-slots), dort im selben Change eintragen |
 | `config-file` | `.github/config/maintenance/config.json` | Abweichender Pfad |
 | `runs-on` | `ubuntu-latest` | Self-hosted Runner |
 | `dry-run` | `false` | Zum Testen |

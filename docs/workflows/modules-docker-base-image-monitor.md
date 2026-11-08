@@ -16,7 +16,7 @@ Base images like `n8nio/n8n:stable` or `ghcr.io/bauer-group/cs-iamstack/logto` a
 
 > **A release failed, or the job is red with "Release retries exhausted"?** Go to [Operator recovery](#operator-recovery). How a digest moves from "dispatched" to "stored" is shown in [State variables and lifecycle](#state-variables-and-lifecycle).
 
-**Contents:** [Quick Start](#quick-start) · [Input Parameters](#input-parameters) · [Outputs](#outputs) · [Configuration file](#configuration-file) · [Release confirmation](#release-confirmation) · [State variables and lifecycle](#state-variables-and-lifecycle) · [Operator recovery](#operator-recovery) · [Unreachable images](#unreachable-images) · [Secrets](#secrets) · [Examples](#examples)
+**Contents:** [Quick Start](#quick-start) · [Input Parameters](#input-parameters) · [Outputs](#outputs) · [Configuration file](#configuration-file) · [Schedule slots](#schedule-slots) · [Release confirmation](#release-confirmation) · [State variables and lifecycle](#state-variables-and-lifecycle) · [Operator recovery](#operator-recovery) · [Unreachable images](#unreachable-images) · [Secrets](#secrets) · [Examples](#examples)
 
 ## Quick Start
 
@@ -24,7 +24,9 @@ Base images like `n8nio/n8n:stable` or `ghcr.io/bauer-group/cs-iamstack/logto` a
 name: Check Base Images
 on:
   schedule:
-    - cron: '0 5 * * *'
+    # Example slot (22:07 UTC). Take your repository's own slot from the
+    # slot table: docs/workflows/modules-docker-base-image-monitor.md#schedule-slots
+    - cron: '7 22 * * *'
   workflow_dispatch:
 
 permissions:
@@ -38,6 +40,8 @@ jobs:
       config-file: '.github/config/docker-base-image-monitor/base-images.json'
     secrets: inherit
 ```
+
+Never copy the cron as is: every caller runs at a slot of its own, see [Schedule slots](#schedule-slots).
 
 ### Inline configuration instead of a config file
 
@@ -139,6 +143,91 @@ Schema: [`.github/config/docker-base-image-monitor/docker-base-images.schema.jso
 ```
 
 Each image requires `name`, `image`, `tag` and `variable`. The `variable` name must match `^[A-Z][A-Z0-9_]*$` and is created automatically on first run.
+
+## Schedule slots
+
+Every caller of this module runs at a **slot of its own** from the [slot table](#slot-table). The callers' `schedule` comments point here. The table covers every scheduled caller in the bauer-group and covalida organisations that dispatches a forced release - this module and [`modules-auto-maintenance`](./modules-auto-maintenance.md) alike.
+
+**Why.** All 39 callers once ran at `0 10 * * *`. When a base image many of them share moved - `backuphelper:latest` (11 repositories), `python:3.14-alpine` (11), `node:24-alpine` (4) - up to ~11 release builds started in the same minute, and Docker Hub answered BuildKit's manifest requests with `429 Too Many Requests` although the builds were logged in: its abuse limit counts per IP, not per account.
+
+| Date | What failed |
+|------|-------------|
+| 2026-10-15 | 31 monitors at once; three builds throttled after their release was tagged and ended half-published - the reason for the one retry per build in [`docker-build`](../../.github/actions/docker-build/action.yml) |
+| 2026-11-06 | `postgres:18` throttled in the CS-DocumentSigning backup round trips |
+| 2026-11-07 | `node:24-alpine` throttled: CS-DocumentSigning v0.19.1 was tagged, its main image never published |
+| 2026-11-08 | A GitHub release asset answered `504` in the same 10:10-10:15 UTC window |
+
+GitHub also delays scheduled runs under load, and may drop them, at the [start of every hour](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+
+**Rules**
+
+- **Grid:** 15 minutes on odd minutes (`:07`, `:22`, `:37`, `:52`), 00:07-09:52 UTC, reserve 22:07-23:52 UTC; never a full hour.
+- **Producers first:** CS-BackupHelper (00:07) and CS-MinIO (00:22) build internal base images, so their consumers pick up a new image the same night.
+- **Shared base image:** repositories that share one are at least 30 minutes apart; only the two producers are 15 minutes apart.
+- **Heavy builds on `hh:07`.**
+- **Template consumers after their producer**, from 08:07.
+
+### Slot table
+
+`backuphelper` is `ghcr.io/bauer-group/cs-backuphelper/backuphelper:latest`, `cs-minio/*` the images of `ghcr.io/bauer-group/cs-minio`. CET = UTC+1 (MEZ), CEST = UTC+2 (MESZ).
+
+| UTC | CET / CEST | Repository | Base images |
+|-----|------------|------------|-------------|
+| 00:07 | 01:07 / 02:07 | CS-BackupHelper | **Producer** of `backuphelper`; `python:3.14-alpine` |
+| 00:22 | 01:22 / 02:22 | CS-MinIO | **Producer** of `cs-minio/*`; `golang:1.26-alpine`, `node:22-alpine`, `python:3.14-alpine`, `alpine:3.23` |
+| 00:37 | 01:37 / 02:37 | CS-StatusMonitor | `uptime-kuma:2` |
+| 00:52 | 01:52 / 02:52 | CS-LinkStack | `linkstack:latest` |
+| 01:07 | 02:07 / 03:07 | CS-DocumentSigning | `backuphelper`, `node:24-alpine`, `golang:1.26-alpine` |
+| 01:22 | 02:22 / 03:22 | CS-Rustdesk | `rustdesk-server(-pro):latest` |
+| 01:37 | 02:37 / 03:37 | CS-MTASTS | `python:3.14-alpine` |
+| 01:52 | 02:52 / 03:52 | CS-AIRouter | `litellm-non_root:main-stable` |
+| 02:07 | 03:07 / 04:07 | CS-Outline | `backuphelper`, `cs-minio/*`, `python:3.14-alpine`, `pgvector`, `redis:8-alpine` |
+| 02:22 | 03:22 / 04:22 | CS-CloudflareTunnel | `cloudflared:latest`, `golang:1.26-alpine` |
+| 02:37 | 03:37 / 04:37 | IP-CloudflareTerraform | `backuphelper`, opentofu |
+| 02:52 | 03:52 / 04:52 | CS-NGINXProxy | `nginx-proxy-manager:2` |
+| 03:07 | 04:07 / 05:07 | CS-BillingStack | `backuphelper`, `node:24-alpine`, `golang:1.26-alpine`, `golang:1.25`, ruby, nginx, rust, debian, clickhouse, redpanda; **producer** of `cs-billingstack/*:stable` |
+| 03:22 | 04:22 / 05:22 | COM-WhistleblowerApp | `globaleaks:latest` |
+| 03:37 | 04:37 / 05:37 | CS-NATS | `nats:2-alpine`, `python:3.14-alpine`, nats-box, nats-exporter |
+| 03:52 | 04:52 / 05:52 | CS-PairDrop | `linuxserver/pairdrop`, coturn, `alpine:latest` |
+| 04:07 | 05:07 / 06:07 | CS-IAM | `backuphelper`, `python:3.14-alpine`, `postgres:18-alpine`, zitadel, `alpine:3.23` |
+| 04:22 | 05:22 / 06:22 | OT-CAN2IP | `rust:1.98-trixie`, `distroless/static` |
+| 04:37 | 05:37 / 06:37 | IP-ZAMMAD-MCPServer | `python:3.14-alpine` |
+| 04:52 | 05:52 / 06:52 | CS-FileServer | `debian:stable-slim`, `python:3.15-slim-trixie`, `node:lts-alpine`, `nginx:alpine` |
+| 05:07 | 06:07 / 07:07 | CS-IAMStack | `backuphelper`, `python:3.14-alpine`, `node:24-alpine`, `postgres:18-alpine`, logto; **producer** of `cs-iamstack/*:stable` |
+| 05:22 | 06:22 / 07:22 | IP-Kleinanzeigen-MCPServer | `python:3.14-slim` |
+| 05:37 | 06:37 / 07:37 | CS-ZAMMAD | `backuphelper`, `zammad:7` |
+| 05:52 | 06:52 / 07:52 | OT-CAN2IP-WebUI | `node:24-alpine`, `nginx-unprivileged:alpine` |
+| 06:07 | 07:07 / 08:07 | CS-NocoDB | `backuphelper`, `python:3.14-alpine`, nocodb |
+| 06:22 | 07:22 / 08:22 | CS-URLShortener | shlink, `postgres:18` |
+| 06:37 | 07:37 / 08:37 | CS-WordPressStack | `backuphelper`, wordpress, mariadb, `redis:8-alpine`, `nginx:stable`, `debian:stable-slim` |
+| 06:52 | 07:52 / 08:52 | CS-RabbitMQ | `rabbitmq:4-management`, `python:3.14-alpine`, traefik-certs-dumper |
+| 07:07 | 08:07 / 09:07 | CS-AIChat | `backuphelper`, `librechat:latest` |
+| 07:22 | 08:22 / 09:22 | IP-Shlink-MCPServer | `redis:8-alpine`, `python:3.14-alpine` |
+| 07:37 | 08:37 / 09:37 | IP-n8n-MCPServer | `node:26-alpine` |
+| 07:52 | 08:52 / 09:52 | XPD-SonarQube | `backuphelper`, `postgres:18-alpine`, sonarqube, busybox |
+| 08:07 | 09:07 / 10:07 | covalida/SaaS-CovalidaBilling | Consumer of `cs-billingstack/*:stable`; default of CS-BillingStack `template/consumer` |
+| 08:22 | 09:22 / 10:22 | covalida/SaaS-CovalidaIAM | Consumer of `cs-iamstack/*:stable`; default of CS-IAMStack `template/consumer` |
+| 08:37 | 09:37 / 10:37 | CS-DVCS (`modules-auto-maintenance`) | `python:3.14-alpine` |
+| 08:52 | 09:52 / 10:52 | covalida/SaaS-PPWRCompliacePlatform | `node:24-slim`, `postgres:18`, `cs-minio/*`, valkey, nginx |
+| 09:07 | 10:07 / 11:07 | CS-n8n (`modules-auto-maintenance`) | n8n, n8n runners, `python:3.14-alpine`, searxng, n8n-sandbox |
+| 09:22 | 10:22 / 11:22 | covalida/SaaS-TrustCenter | `node:24-alpine` |
+| 09:37 | 10:37 / 11:37 | covalida/SaaS-AccessibilityToolkit | `node:24-slim`, playwright, `postgres:18-alpine`, `redis:8-alpine`, `cs-minio/*` |
+| 09:52 | 10:52 / 11:52 | *free* | |
+| 22:07 | 23:07 / 00:07 | *free (reserve)* | |
+| 22:22 | 23:22 / 00:22 | *free (reserve)* | |
+| 22:37 | 23:37 / 00:37 | *free (reserve)* | |
+| 22:52 | 23:52 / 00:52 | *free (reserve)* | |
+| 23:07 | 00:07 / 01:07 | *free (reserve)* | |
+| 23:22 | 00:22 / 01:22 | *free (reserve)* | |
+| 23:37 | 00:37 / 01:37 | *free (reserve)* | |
+| 23:52 | 00:52 / 01:52 | *free (reserve)* | |
+
+### Adding a repository
+
+1. List its base images: the `base-images.json` entries and the `FROM` lines its release builds.
+2. Take the first *free* slot whose neighbours within 30 minutes, before and after, share none of them.
+3. Write it minute first: 08:37 UTC is `cron: '37 8 * * *'`, 01:07 UTC is `'7 1 * * *'`.
+4. Enter the repository in its row of the slot table **in the same change**. A slot that exists only in a caller is invisible to the next repository. Moving a repository works the same way.
 
 ## Release confirmation
 

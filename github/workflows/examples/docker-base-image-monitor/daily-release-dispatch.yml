@@ -33,8 +33,11 @@ name: 🔍 Check Base Image Updates
 
 on:
   schedule:
-    # Daily at 06:00 UTC
-    - cron: '0 6 * * *'
+    # Daily at 22:07 UTC - an example slot. Every repository runs at a slot of
+    # its own, never on the full hour: take a free one from the slot table and
+    # enter the repository there in the same change.
+    # Slot table: bauer-group/automation-templates docs/workflows/modules-docker-base-image-monitor.md#schedule-slots
+    - cron: '7 22 * * *'
   workflow_dispatch:
     inputs:
       dry-run:

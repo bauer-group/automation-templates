@@ -35,8 +35,10 @@ name: 🔧 Auto Maintenance
 
 on:
   schedule:
-    # Weekly, Monday 06:00 UTC
-    - cron: '0 6 * * 1'
+    # Weekly, Monday 22:07 UTC - an example slot. Every repository runs at a slot
+    # of its own, never on the full hour: take a free one from the slot table.
+    # Slot table: bauer-group/automation-templates docs/workflows/modules-docker-base-image-monitor.md#schedule-slots
+    - cron: '7 22 * * 1'
   workflow_dispatch:
     inputs:
       dry-run:
