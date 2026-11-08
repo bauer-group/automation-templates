@@ -150,6 +150,12 @@ on:
         required: false
         default: false
 
+      audit-dependabot-report-only:
+        description: 'On pull requests opened by Dependabot, report audit findings below critical (warning + step summary) instead of failing the job. Critical findings, and a failed audit whose critical count cannot be determined, still fail it. Push, merge queue, release, manual runs and all other pull requests stay blocking.'
+        type: boolean
+        required: false
+        default: true
+
       # Bundle Analysis
       analyze-bundle:
         description: 'Analyze bundle size'
@@ -644,9 +650,23 @@ jobs:
         env:
           # Caller-supplied value - kept out of the script body.
           AUDIT_LEVEL: ${{ inputs.audit-level }}
+          # "true" only on a pull request OPENED BY Dependabot: there findings
+          # below critical are reported and do not fail the job. The audit checks
+          # the whole lockfile, so a Dependabot PR that bumps one package failed on
+          # every OTHER open advisory and could never turn green - not even the PR
+          # fixing one of them. Build and tests still run and still decide the PR.
+          # Critical findings still fail it - see the report-only block below.
+          # The PR author, not github.actor: the actor is whoever caused this run
+          # (a maintainer pushing to the branch, merging main into it, reopening
+          # it), the author stays dependabot[bot]. Push, merge_group, release/tag,
+          # workflow_dispatch, workflow_run and schedule carry no pull request, so
+          # this is "false" there and the audit blocks, as on every other PR.
+          AUDIT_REPORT_ONLY: ${{ inputs.audit-dependabot-report-only && github.event.pull_request.user.login == 'dependabot[bot]' }}
+        # Tested by .github/workflows/tests/nodejs-build-audit.test.sh
         run: |
           PM="${{ steps.detect-pm.outputs.package-manager }}"
           AUDIT_FILE="${{ runner.temp }}/audit-output.txt"
+          CRITICAL_FILE="${{ runner.temp }}/audit-critical.txt"
           AUDIT_EXIT=0
           # Whether an audit actually ran. Never report a pass without one.
           AUDITED=true
@@ -655,15 +675,21 @@ jobs:
             OMIT_FLAG="--omit=dev"
           fi
 
+          # The audit command of each package manager at level $1, output to $2;
+          # returns the package manager's exit code. Report-only (below) runs it
+          # a second time at level critical - the same command, other level.
+          run_audit() {
+            case $PM in
+              npm)  npm audit --audit-level="$1" $OMIT_FLAG > "$2" 2>&1 ;;
+              yarn) yarn audit --level "$1" > "$2" 2>&1 ;;
+              pnpm) pnpm audit --audit-level "$1" ${{ inputs.audit-production-only == true && '--prod' || '' }} > "$2" 2>&1 ;;
+              bun)  bun audit --audit-level="$1" > "$2" 2>&1 ;;
+            esac
+          }
+
           case $PM in
-            npm)
-              npm audit --audit-level=${{ inputs.audit-level }} $OMIT_FLAG > "$AUDIT_FILE" 2>&1 || AUDIT_EXIT=$?
-              ;;
-            yarn)
-              yarn audit --level ${{ inputs.audit-level }} > "$AUDIT_FILE" 2>&1 || AUDIT_EXIT=$?
-              ;;
-            pnpm)
-              pnpm audit --audit-level ${{ inputs.audit-level }} ${{ inputs.audit-production-only == true && '--prod' || '' }} > "$AUDIT_FILE" 2>&1 || AUDIT_EXIT=$?
+            npm|yarn|pnpm)
+              run_audit "$AUDIT_LEVEL" "$AUDIT_FILE" || AUDIT_EXIT=$?
               ;;
             bun)
               # `bun audit` exists since Bun 1.2.15. This branch used to print
@@ -677,12 +703,9 @@ jobs:
                 if [ "${{ inputs.audit-production-only }}" = "true" ]; then
                   echo "Note: bun audit has no production-only mode - auditing all dependencies"
                 fi
-                # `if ! cmd; then rc=$?` would capture the status of the negation,
-                # so run it plainly with -e off and read the real exit code.
-                set +e
-                bun audit --audit-level="$AUDIT_LEVEL" > "$AUDIT_FILE" 2>&1
-                AUDIT_EXIT=$?
-                set -e
+                # `cmd || rc=$?` reads the real exit code (`if ! cmd; then rc=$?`
+                # would read the status of the negation).
+                run_audit "$AUDIT_LEVEL" "$AUDIT_FILE" || AUDIT_EXIT=$?
                 if [ "$AUDIT_EXIT" -ne 0 ] && grep -qE 'nothing to audit|missing lockfile' "$AUDIT_FILE"; then
                   # There was nothing installed to audit. That is not a finding - and
                   # not a clean bill of health either, so report "NOT audited" instead
@@ -701,7 +724,9 @@ jobs:
           cat "$AUDIT_FILE"
           echo "audited=$AUDITED" >> "$GITHUB_OUTPUT"
 
-          # Parse vulnerability summary for job summary
+          # Parse vulnerability summary for job summary. COUNTED: the output
+          # carries the package manager's own counts - the audit ran and reported.
+          COUNTED=false
           if [ "$AUDITED" != "true" ]; then
             # Fail closed in the report: "could not audit" must never render as "no issues found".
             echo "::warning::Security audit was requested but could not run - dependencies were NOT audited"
@@ -710,9 +735,74 @@ jobs:
             SUMMARY=$(grep -oE '[0-9]+ (low|moderate|high|critical) severity' "$AUDIT_FILE" | tr '\n' ', ' | sed 's/, $//' || echo "")
             # bun prints "12 vulnerabilities (2 critical, 4 high, 6 moderate)" instead of npm's "N low severity"
             [ -z "$SUMMARY" ] && SUMMARY=$(grep -oE '[0-9]+ vulnerabilit(y|ies)( \([^)]*\))?' "$AUDIT_FILE" | tail -n 1 || echo "")
+            [ -n "$SUMMARY" ] && COUNTED=true
+            # A failed audit with no countable findings (registry unreachable, no
+            # lockfile) is not "no issues" - least of all once it stops failing below.
+            if [ -z "$SUMMARY" ] && [ "$AUDIT_EXIT" -ne 0 ]; then
+              SUMMARY="audit exited with $AUDIT_EXIT - see step log"
+            fi
             [ -z "$SUMMARY" ] && SUMMARY="No issues above threshold"
           fi
           echo "audit-summary=$SUMMARY" >> "$GITHUB_OUTPUT"
+
+          # Report-only (Dependabot pull request, see AUDIT_REPORT_ONLY above)
+          # covers findings BELOW critical: they stay visible - a warning
+          # annotation and the audit output in the step summary - but the job
+          # goes on. Only the literal "true" downgrades, and only when "nothing
+          # critical" is known. Everything else keeps the audit's own exit code:
+          # - critical findings (npm reports malware as critical);
+          # - a failed audit without countable findings (registry unreachable, no
+          #   lockfile, a Yarn without `yarn audit` such as Berry) - whether one
+          #   is critical cannot be determined;
+          # - npm, pnpm and bun exit non-zero only for findings at or above the
+          #   level they are given, and on registry errors: the same audit runs
+          #   again at level critical and must exit 0;
+          # - yarn classic exits with a bit mask of every severity it found (16 =
+          #   critical) whatever --level says - that only filters what it prints -
+          #   so the exit code above already tells.
+          REPORT_ONLY_FINDINGS=false
+          BLOCK_REASON=""
+          if [ "$AUDIT_EXIT" -ne 0 ] && [ "$AUDIT_REPORT_ONLY" = "true" ]; then
+            if [ "$COUNTED" != "true" ]; then
+              BLOCK_REASON="it failed without countable findings, so whether one is critical cannot be determined"
+            elif [ "$PM" = "yarn" ]; then
+              if [ "$AUDIT_EXIT" -gt 31 ] || [ $((AUDIT_EXIT & 16)) -ne 0 ]; then
+                BLOCK_REASON="yarn's exit code $AUDIT_EXIT does not rule out critical advisories (16 = critical)"
+              fi
+            elif ! run_audit critical "$CRITICAL_FILE"; then
+              cat "$CRITICAL_FILE"
+              BLOCK_REASON="the same audit at level critical failed too - critical advisories, or it could not run (output above)"
+            fi
+            if [ -z "$BLOCK_REASON" ]; then
+              REPORT_ONLY_FINDINGS=true
+            fi
+          fi
+          if [ -n "$BLOCK_REASON" ]; then
+            echo "::error title=Security audit (blocking)::${SUMMARY} at audit level ${AUDIT_LEVEL} - blocking on this Dependabot pull request too: ${BLOCK_REASON}. Report-only covers findings below critical only; critical ones (npm reports malware as critical) block everywhere."
+          fi
+          if [ "$REPORT_ONLY_FINDINGS" = "true" ]; then
+            echo "::warning title=Security audit (report-only)::${SUMMARY} at audit level ${AUDIT_LEVEL}, none critical. Not blocking on this Dependabot pull request; critical findings would, and the audit still blocks pushes, merge queues, releases, manual runs and all other pull requests."
+            {
+              echo "### 🔍 Security Audit - report-only (Dependabot pull request)"
+              echo ""
+              echo "\`$PM audit\` exited with $AUDIT_EXIT at level \`$AUDIT_LEVEL\`: $SUMMARY."
+              echo "None of them is critical, so they do not block here: one dependency update cannot clear the other open advisories."
+              echo "Critical findings block this pull request too; pushes, merge queues, releases, manual runs and all other pull requests block at level \`$AUDIT_LEVEL\`."
+              echo ""
+              echo "<details><summary>Audit output</summary>"
+              echo ""
+              echo '```text'
+              head -n 300 "$AUDIT_FILE"
+              if [ "$(wc -l < "$AUDIT_FILE")" -gt 300 ]; then
+                echo "... truncated after 300 lines - full output in the step log"
+              fi
+              echo '```'
+              echo ""
+              echo "</details>"
+            } >> "$GITHUB_STEP_SUMMARY"
+            AUDIT_EXIT=0
+          fi
+          echo "report-only-findings=$REPORT_ONLY_FINDINGS" >> "$GITHUB_OUTPUT"
 
           exit $AUDIT_EXIT
       
@@ -1195,6 +1285,7 @@ jobs:
           # the environment instead of being interpolated into the script body.
           AUDIT_SUMMARY: ${{ steps.audit.outputs.audit-summary }}
           AUDIT_PERFORMED: ${{ steps.audit.outputs.audited }}
+          AUDIT_REPORT_ONLY_FINDINGS: ${{ steps.audit.outputs.report-only-findings }}
           COVERAGE_PCT: ${{ steps.coverage.outputs.coverage-pct }}
         run: |
           # --- Status helper ---
@@ -1228,11 +1319,14 @@ jobs:
             echo "|-------|--------|---------|"
 
             # Security Audit - a package manager that could not be audited (e.g. a
-            # Bun too old for `bun audit`) must not render as a passed audit.
+            # Bun too old for `bun audit`) must not render as a passed audit, and
+            # findings on a Dependabot PR (report-only) must not render as one either.
             if [ "${{ inputs.run-audit }}" != "true" ]; then
               echo "| 🔍 Security Audit | ➖ Disabled | |"
             elif [ "$AUDIT_PERFORMED" = "false" ]; then
               echo "| 🔍 Security Audit | ⚠️ Not audited | Level: \`${{ inputs.audit-level }}\` — ${AUDIT_SUMMARY} |"
+            elif [ "$AUDIT_REPORT_ONLY_FINDINGS" = "true" ]; then
+              echo "| 🔍 Security Audit | ⚠️ Report-only | Level: \`${{ inputs.audit-level }}\` — ${AUDIT_SUMMARY} (Dependabot pull request: none critical, not blocking) |"
             else
               echo "| 🔍 Security Audit | $(status ${{ steps.audit.outcome }}) | Level: \`${{ inputs.audit-level }}\` — ${AUDIT_SUMMARY} |"
             fi
