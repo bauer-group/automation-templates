@@ -132,6 +132,15 @@ jobs:
         shell: bash
         run: bash .github/workflows/tests/docker-maintenance-dependabot.test.sh
 
+      # The other half of that: the npm/pnpm/yarn/bun audit checks the whole
+      # lockfile, so a Dependabot PR failed on every OTHER open advisory and its
+      # CI could never pass. Pins report-only below critical on pull requests
+      # opened by Dependabot (by PR author, not github.actor) - critical or
+      # undeterminable findings still block there - and blocking everywhere else.
+      - name: "🧪 nodejs-build: audit report-only below critical on Dependabot PRs"
+        shell: bash
+        run: bash .github/workflows/tests/nodejs-build-audit.test.sh
+
       - name: "🧪 dotnet-nuget-auth: private feed credentials"
         shell: bash
         run: bash .github/actions/dotnet-nuget-auth/tests/configure-credentials.test.sh

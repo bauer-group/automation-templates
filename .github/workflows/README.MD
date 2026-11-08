@@ -63,7 +63,7 @@ billed to the organization".
 #### ✅ [workflow-validation.yml](./workflow-validation.yml) - Workflow Validation
 **Zweck:** Prüft jede Änderung an Workflows, Actions und den ausgelieferten Beispielen, bevor sie Consumer erreicht  
 **Module verwendet:** modules-validate-workflows (actionlint + shellcheck über `.github/workflows/` und `github/workflows/examples/`, Permission-Ceiling)  
-**Step-Tests:** führen die echten Step-Bodies aus, u. a. docker-build (Plattformen, Token-Secret, Dockerfile-Write-back, Primary Tag), docker-maintenance-dependabot (Merge nach grüner CI), security-scan, docker-base-image-monitor (Digest erst nach erfolgreichem Release) und semantic-release; dazu der workflow-audit (Script-Injection, nicht deklarierte Variablen)  
+**Step-Tests:** führen die echten Step-Bodies aus, u. a. docker-build (Plattformen, Token-Secret, Dockerfile-Write-back, Primary Tag), docker-maintenance-dependabot (Merge nach grüner CI), nodejs-build (Audit auf Dependabot-PRs unterhalb von critical nur berichtend), security-scan, docker-base-image-monitor (Digest erst nach erfolgreichem Release) und semantic-release; dazu der workflow-audit (Script-Injection, nicht deklarierte Variablen)  
 **Trigger:** PR/Push mit Änderungen unter `.github/workflows/`, `.github/actions/` oder `github/workflows/examples/`
 
 ### Reusable Workflows (Neu)

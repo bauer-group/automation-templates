@@ -175,6 +175,35 @@ jobs:
 |-------|-------------|---------|---------|
 | `run-audit` | Security audit | `true` | `true`, `false` |
 | `audit-level` | Audit level | `moderate` | `low`, `moderate`, `high`, `critical` |
+| `audit-production-only` | Audit production dependencies only (npm `--omit=dev`, pnpm `--prod`) | `false` | `true`, `false` |
+| `audit-dependabot-report-only` | On pull requests opened by Dependabot, report findings below critical instead of failing the job; critical findings still fail it - see [Dependabot pull requests](#dependabot-pull-requests-report-only-audit) | `true` | `true`, `false` |
+
+#### Dependabot pull requests: report-only audit
+
+The audit checks the whole lockfile, not the change. A Dependabot pull request that bumps one package therefore failed on every **other** open advisory, and because the audit runs before build and tests, it never got further. Every such PR stayed red - including the ones that fix an advisory - and the [auto-merge module](docker-maintenance.md) never saw a passed CI.
+
+On a pull request **opened by Dependabot** the audit is now report-only for findings **below critical**. Critical findings keep blocking there - npm reports malware as critical:
+
+| Event | Findings at or above `audit-level`, none critical | Critical findings, or a failed audit whose critical count cannot be determined |
+|-------|---------------------------------------------------|-------------------------------------------------------------------------------|
+| Pull request opened by Dependabot (`pull_request`, `pull_request_target`) | ⚠️ Warning annotation, audit output in the step summary, `⚠️ Report-only` in the job summary - the job goes on, build and tests decide | ❌ Job fails, an error annotation says why |
+| Any other `pull_request` | ❌ Job fails (unchanged) | ❌ Job fails (unchanged) |
+| `push` (default branch and others), release / tag | ❌ Job fails (unchanged) | ❌ Job fails (unchanged) |
+| `merge_group` (merge queue) | ❌ Job fails (unchanged) | ❌ Job fails (unchanged) |
+| `workflow_dispatch`, `workflow_run`, `schedule` | ❌ Job fails (unchanged) | ❌ Job fails (unchanged) |
+
+- **Detection:** `github.event.pull_request.user.login == 'dependabot[bot]'` - the author of the pull request. Not `github.actor`: that is whoever caused the run (a maintainer pushing to the branch, merging `main` into it, reopening it), while the author stays `dependabot[bot]`. Commits a person adds to a Dependabot PR are therefore audited report-only too; the auto-merge module never merges such a PR. `merge_group`, `push` and the other events carry no pull request, so the audit blocks there.
+- **How "none critical" is decided:** only when it is known. npm, pnpm and bun exit non-zero only for findings at or above the level they are given, so the same audit runs a second time at level `critical` and must pass. yarn classic exits with a bit mask of every severity it found (16 = critical) whatever `--level` says, so its exit code decides. An audit that failed without countable findings - registry unreachable, no lockfile, Yarn Berry (it has no `yarn audit`) - cannot tell and fails the job.
+- **Nothing is hidden:** the step still runs, still prints the full audit output to the log, and an audit that could not run is reported as `audit exited with N - see step log`, never as "no issues".
+- **Still blocking after the merge:** the push to the default branch audits again and fails while an advisory at or above `audit-level` is open. A repository that runs this workflow **only** on `pull_request` gets its next blocking audit on the next pull request not opened by Dependabot.
+- **New vulnerable dependencies:** a version bump that pulls in a new vulnerable package below critical is no longer stopped by the audit on its PR. That is the job of [dependency review](modules-dependency-review.md), which checks only what the PR changes.
+- **Rollout:** a Dependabot PR that is already red stays red on a plain re-run - a re-run uses the reusable-workflow version of its first run. Comment `@dependabot recreate`, or rebase it, to get a run with the current version.
+- **Opt out** (blocking on Dependabot PRs at `audit-level`, as before):
+
+```yaml
+with:
+  audit-dependabot-report-only: false
+```
 
 ### Bundle Analysis
 
