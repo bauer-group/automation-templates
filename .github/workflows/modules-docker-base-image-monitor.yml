@@ -6,6 +6,11 @@
 #
 # Features:
 # - Monitors multiple images via JSON config or inline definition
+# - Takes the watched tag from the image's Dockerfile when an entry names one
+#   ("dockerfile"), so a Dependabot bump of the FROM line moves the monitor
+#   with it instead of leaving it on the old tag. An entry whose tag cannot be
+#   read is not checked and fails the job at the end; the other images are
+#   checked and released as usual
 # - Retries transient registry errors (3 attempts, 10s/20s backoff)
 # - Auto-creates GitHub variables for digest storage
 # - Creates semantic-release compatible commits for automatic versioning
@@ -170,6 +175,9 @@ on:
       unreachable-images:
         description: "JSON array of image references that could not be read"
         value: ${{ jobs.monitor.outputs.unreachable-images }}
+      unresolved-images:
+        description: "JSON array of names of entries with 'dockerfile' that were not checked: their tag could not be read from the Dockerfile, or their variable is shared with an entry on another image:tag. The job fails; [] when there is none"
+        value: ${{ jobs.monitor.outputs.unresolved-images }}
 
 jobs:
   monitor:
@@ -193,6 +201,8 @@ jobs:
       images-configured: ${{ steps.check.outputs.images-configured }}
       images-checked: ${{ steps.check.outputs.images-checked }}
       unreachable-images: ${{ steps.check.outputs.unreachable-images }}
+      # From the resolve step: also set when the check failed or never ran.
+      unresolved-images: ${{ steps.resolve.outputs.unresolved-names || '[]' }}
 
     steps:
       - name: "🔐 Validate PAT_READWRITE_ORGANISATION secret"
@@ -260,12 +270,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.REGISTRY_READ_TOKEN || github.token }}
 
+      # A fixed 'tag' drifts: Dependabot bumps the FROM line, never the config,
+      # and the monitor then watched a tag the image was no longer built on -
+      # rebuilds when the unused tag moved, none when the real one did. On
+      # 2026-11-10 eight repositories drifted in one day. An entry with
+      # 'dockerfile' is monitored on the tag of its FROM line instead.
+      # An entry whose tag cannot be read is left out of the check and fails
+      # the job in the last step, after every other image was checked,
+      # released and stored - see "Fail on tags not read from the Dockerfile".
+      # Without such an entry this step sets no output and needs no Python;
+      # the check below then runs on the configured tags exactly as before.
+      - name: "🧭 Resolve base image tags from Dockerfiles"
+        id: resolve
+        uses: bauer-group/automation-templates/.github/actions/docker-base-image-resolve@main
+        with:
+          config-file: ${{ inputs.config-file }}
+          images: ${{ inputs.images }}
+
       - name: "🔍 Check for image updates"
         id: check
         env:
           GH_TOKEN: ${{ secrets.PAT_READWRITE_ORGANISATION }}
           CONFIG_FILE: ${{ inputs.config-file }}
           INLINE_IMAGES: ${{ inputs.images }}
+          RESOLVED_IMAGES: ${{ steps.resolve.outputs.images }}
+          UNRESOLVED_IMAGES: ${{ steps.resolve.outputs.unresolved }}
           COMMIT_PREFIX_INPUT: ${{ inputs.commit-prefix }}
           DRY_RUN: ${{ inputs.dry-run }}
           FAIL_ON_UNREACHABLE: ${{ inputs.fail-on-unreachable-image }}
@@ -315,10 +344,22 @@ jobs:
 
           # Save commit-prefix for later steps
           echo "commit-prefix=$COMMIT_PREFIX" >> "$GITHUB_OUTPUT"
+
+          # The same list with 'tag' taken from the Dockerfile for entries with
+          # 'dockerfile' (resolve step). Empty when no entry has one: the list
+          # above is then used as loaded. Entries whose tag could not be read
+          # are not in it but in UNRESOLVED: configured, never checked.
+          UNRESOLVED="[]"
+          if [ -n "${RESOLVED_IMAGES:-}" ]; then
+            IMAGES="$RESOLVED_IMAGES"
+            UNRESOLVED="${UNRESOLVED_IMAGES:-[]}"
+            echo "🧭 Tags of entries with 'dockerfile' are taken from their Dockerfile"
+          fi
           echo "::endgroup::"
 
           echo "::group::📋 Image Configuration"
-          printf '%s' "$IMAGES" | jq -r '.[] | "  - \(.name): \(.image):\(.tag)"'
+          printf '%s' "$IMAGES" | jq -r '.[] | "  - \(.name): \(.image):\(.tag)" + (if .dockerfile then " (FROM in \(.dockerfile))" else "" end)'
+          printf '%s' "$UNRESOLVED" | jq -r '.[] | "  - \(.name): \(.image) (FROM in \(.dockerfile)) - tag not read, not checked"'
           echo "::endgroup::"
 
           UPDATES_FOUND="false"
@@ -349,7 +390,7 @@ jobs:
 
           # Must be initialised before first read: `set -euo pipefail` above enables
           # -u, which aborts on an unset variable.
-          CONFIGURED_COUNT=$(printf '%s' "$IMAGES" | jq 'length')
+          CONFIGURED_COUNT=$(printf '%s' "$IMAGES" | jq --argjson u "$UNRESOLVED" 'length + ($u | length)')
           CHECKED_COUNT=0
           UNREACHABLE_IMAGES="[]"
 
@@ -669,7 +710,7 @@ jobs:
           if [ "$UPDATES_FOUND" = "true" ]; then
             echo "Updated images: $(printf '%s' "$UPDATED_IMAGES" | jq -r 'join(", ")')"
           fi
-          for LIST in "Release retries exhausted:$EXHAUSTED" "Release retried:$RETRIED" "Release running:$PENDING" "Release confirmed:$CONFIRMED"; do
+          for LIST in "Tag not read from the Dockerfile, not checked:$UNRESOLVED" "Release retries exhausted:$EXHAUSTED" "Release retried:$RETRIED" "Release running:$PENDING" "Release confirmed:$CONFIRMED"; do
             if [ "$(printf '%s' "${LIST#*:}" | jq 'length')" -gt 0 ]; then
               echo "${LIST%%:*}: $(printf '%s' "${LIST#*:}" | jq -r 'map(.name) | join(", ")')"
             fi
@@ -904,6 +945,7 @@ jobs:
           fi
 
       - name: "📋 Summary"
+        id: summary
         if: always()
         env:
           DRY_RUN: ${{ inputs.dry-run }}
@@ -927,13 +969,16 @@ jobs:
           IMAGES_CONFIGURED: ${{ steps.check.outputs.images-configured }}
           IMAGES_CHECKED: ${{ steps.check.outputs.images-checked }}
           UNREACHABLE_JSON: ${{ steps.check.outputs.unreachable-images }}
+          UNRESOLVED_JSON: ${{ steps.resolve.outputs.unresolved }}
         shell: bash
+        # Tested by .github/workflows/tests/docker-base-image-monitor.test.sh
         run: |
           # Length of a JSON array output; 0 when the check never wrote it.
           count() {
             if [ -n "$1" ]; then printf '%s' "$1" | jq 'length'; else echo 0; fi
           }
           UNREACHABLE_COUNT=$(count "$UNREACHABLE_JSON")
+          UNRESOLVED_COUNT=$(count "$UNRESOLVED_JSON")
           RETRIED_COUNT=$(count "$RETRIED_JSON")
           PENDING_COUNT=$(count "$PENDING_JSON")
           CONFIRMED_COUNT=$(count "$CONFIRMED_JSON")
@@ -969,6 +1014,15 @@ jobs:
               echo ""
               echo "A common cause is an internal or private package: the calling workflow must grant \`packages: read\`."
               echo "See [GHCR Internal Visibility](https://github.com/bauer-group/automation-templates/blob/main/docs/ghcr-internal-visibility.md)."
+              echo ""
+            fi
+
+            if [ "$UNRESOLVED_COUNT" -gt 0 ]; then
+              echo "### 🛑 Tag not read from the Dockerfile"
+              echo ""
+              echo "These entries were **not** checked - the monitor does not check a guessed tag - and do not hold back the other images. This job fails until the entry or its Dockerfile is fixed."
+              echo ""
+              printf '%s' "$UNRESOLVED_JSON" | jq -r '.[] | "- `\(.name)` (`\(.dockerfile)`): \(.error)"'
               echo ""
             fi
 
@@ -1041,10 +1095,10 @@ jobs:
                   echo "> ⚠️ GitHub returned no run id, so the result of this release is not tracked - the new digests were stored right away."
                 fi
               fi
-            elif [ "$UNREACHABLE_COUNT" -gt 0 ]; then
+            elif [ "$((UNREACHABLE_COUNT + UNRESOLVED_COUNT))" -gt 0 ]; then
               echo "### ℹ️ No updates among the images that could be read"
               echo ""
-              echo "This is **not** a clean result - $UNREACHABLE_COUNT image(s) were never checked."
+              echo "This is **not** a clean result - $((UNREACHABLE_COUNT + UNRESOLVED_COUNT)) image(s) were never checked."
             elif [ "$PENDING_COUNT" -eq 0 ] && [ "$CONFIRMED_COUNT" -eq 0 ] && [ "$EXHAUSTED_COUNT" -eq 0 ]; then
               echo "### ℹ️ No updates found"
               echo ""
@@ -1082,10 +1136,30 @@ jobs:
       # Last, after the summary. Failing the check itself would also hold
       # back the updates and confirmations of every other image.
       - name: "🛑 Fail on exhausted release retries"
+        id: fail-exhausted
         if: steps.check.outputs.exhausted-images != '' && steps.check.outputs.exhausted-images != '[]'
         env:
           EXHAUSTED_IMAGES: ${{ steps.check.outputs.exhausted-images }}
         shell: bash
         run: |
           echo "::error::The release of $(printf '%s' "$EXHAUSTED_IMAGES" | jq -r 'join(", ")') failed max-release-attempts times and is no longer dispatched - see the summary"
+          exit 1
+
+      # Last as well, for the same reason. An entry whose tag could not be
+      # read from its Dockerfile was not checked, while every other image
+      # was checked, released and stored above. Failing the resolve step
+      # instead would stop the security rebuilds of all the repository's
+      # base images whenever a Dockerfile refactor renames a stage, moves
+      # the file or adds an ARG without a default. !cancelled(): it names
+      # the entries also when a step before it failed - the exhausted
+      # retries above, or the check itself.
+      - name: "🛑 Fail on tags not read from the Dockerfile"
+        id: fail-unresolved
+        if: ${{ !cancelled() && steps.resolve.outputs.unresolved != '' && steps.resolve.outputs.unresolved != '[]' }}
+        env:
+          UNRESOLVED: ${{ steps.resolve.outputs.unresolved }}
+        shell: bash
+        # Tested by .github/workflows/tests/docker-base-image-monitor.test.sh
+        run: |
+          echo "::error::Not checked because the tag could not be read from the Dockerfile: $(printf '%s' "$UNRESOLVED" | jq -r 'map(.name) | join(", ")') - see the summary and the errors of the step that resolves the tags"
           exit 1

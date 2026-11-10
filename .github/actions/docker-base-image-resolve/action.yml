@@ -1,0 +1,126 @@
+# =============================================================================
+# Docker Base Image Resolve
+# =============================================================================
+# Fills in the watched tag of Docker Base Image Monitor entries that name a
+# Dockerfile: the monitor then checks the tag the image is actually built on.
+#
+# A fixed 'tag' in base-images.json drifts as soon as Dependabot bumps the FROM
+# line (python:3.14-alpine -> 3.15-alpine) - Dependabot updates the Dockerfile,
+# never the monitor config. The monitor then rebuilt whenever the unused tag
+# moved and missed every security rebuild of the real one. On 2026-11-10 eight
+# repositories drifted in one day.
+#
+# An entry with "dockerfile" (path relative to the repository root) gets its
+# tag from that Dockerfile's FROM line, see resolve_base_images.py for what is
+# resolved (ARG defaults, digest pins, --platform, stages). "image" stays the
+# cross-check: a FROM line of another image is an error for the entry. A
+# configured "tag" that differs is reported with a ::notice:: and ignored.
+#
+# Used by modules-docker-base-image-monitor.yml, after the checkout:
+#   - id: resolve
+#     uses: bauer-group/automation-templates/.github/actions/docker-base-image-resolve@main
+#     with:
+#       config-file: ${{ inputs.config-file }}
+#       images: ${{ inputs.images }}
+#
+# Output 'images' is the image list with "tag" set for every entry with a
+# "dockerfile". An entry whose tag cannot be read gets an ::error:: and is
+# left out - it is never checked on a guessed tag - and is listed in output
+# 'unresolved' instead (its name also in 'unresolved-names'), as is one that
+# shares its "variable" with an entry checked on another image:tag. The step
+# does not fail for it: the monitor checks the other images and fails the job
+# in its last step, so a renamed stage or a moved Dockerfile does not hold
+# back the rebuilds of every other image. If the resolver cannot run at all
+# (no python3, an error of its own), every entry with "dockerfile" is
+# unresolved.
+#
+# All outputs stay EMPTY when no entry has a "dockerfile": the monitor then
+# uses its own list unchanged, and the step needs no Python - existing
+# callers run exactly as before.
+#
+# Requires jq (as the monitor) and, for entries with "dockerfile", python3.
+# Both are preinstalled on GitHub-hosted Ubuntu runners.
+# =============================================================================
+
+name: 'Docker Base Image Resolve'
+description: 'Resolve the watched tag of Docker Base Image Monitor entries from the FROM line of their Dockerfile'
+author: 'BAUER GROUP'
+branding:
+  icon: 'search'
+  color: 'blue'
+
+inputs:
+  config-file:
+    description: 'Path to the monitor config file; its "images" array is read. Takes precedence over images, as in the monitor.'
+    required: false
+    default: ''
+  images:
+    description: 'Inline JSON array of images (alternative to config-file)'
+    required: false
+    default: ''
+
+outputs:
+  images:
+    description: 'JSON array of the images to check, with "tag" taken from the Dockerfile for every entry with "dockerfile"; without the unresolved entries. Empty when no entry has "dockerfile"'
+    value: ${{ steps.resolve.outputs.images }}
+  unresolved:
+    description: 'JSON array of the entries with "dockerfile" whose tag could not be read, as {"name", "image", "dockerfile", "error"}; they are not in images. Empty when no entry has "dockerfile"'
+    value: ${{ steps.resolve.outputs.unresolved }}
+  unresolved-names:
+    description: 'JSON array of the names of the entries in unresolved. Empty when no entry has "dockerfile"'
+    value: ${{ steps.resolve.outputs.unresolved-names }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: "🧭 Resolve base image tags from Dockerfiles"
+      id: resolve
+      shell: bash
+      env:
+        CONFIG_FILE: ${{ inputs.config-file }}
+        INLINE_IMAGES: ${{ inputs.images }}
+      # Tested by .github/workflows/tests/docker-base-image-monitor.test.sh and
+      # tests/test_resolve_base_images.py
+      run: |
+        set -euo pipefail
+
+        # Read the way the monitor's check reads it. A list that cannot be
+        # loaded is left to that check, which reports it as it always has.
+        IMAGES=""
+        if [ -n "$CONFIG_FILE" ]; then
+          if [ -f "$CONFIG_FILE" ]; then
+            IMAGES=$(jq -c '.images' "$CONFIG_FILE" 2>/dev/null || true)
+          fi
+        else
+          IMAGES="$INLINE_IMAGES"
+        fi
+
+        if ! printf '%s' "$IMAGES" | jq -e 'type == "array" and any(.[]; type == "object" and has("dockerfile"))' > /dev/null 2>&1; then
+          echo "ℹ️  No entry names a 'dockerfile' - every tag comes from the configuration"
+          exit 0
+        fi
+
+        # -I: the working directory is the caller's checkout; none of its
+        # files or PYTHON* variables may change what runs here.
+        RESULT="$RUNNER_TEMP/docker-base-images.resolved.json"
+        REASON=""
+        if ! command -v python3 > /dev/null 2>&1; then
+          REASON="python3 is not installed on the runner - install it, or use 'tag' instead of 'dockerfile'"
+        elif ! printf '%s' "$IMAGES" | python3 -I "$GITHUB_ACTION_PATH/resolve_base_images.py" --output "$RESULT"; then
+          REASON="the resolver failed, see the log of the step that resolves the tags"
+        fi
+        # Never a fallback to a configured tag: without the resolver every
+        # entry with 'dockerfile' is unresolved, the others are checked.
+        if [ -n "$REASON" ]; then
+          echo "::error::The entries with 'dockerfile' are not checked in this run: $REASON."
+          printf '%s' "$IMAGES" | jq -c --arg reason "$REASON" '{
+            images: map(select(type != "object" or (has("dockerfile") | not))),
+            unresolved: [.[] | select(type == "object" and has("dockerfile"))
+                         | {name: (.name // .image), image, dockerfile, error: $reason}]
+          }' > "$RESULT"
+        fi
+        {
+          echo "images=$(jq -c '.images' "$RESULT")"
+          echo "unresolved=$(jq -c '.unresolved' "$RESULT")"
+          echo "unresolved-names=$(jq -c '.unresolved | map(.name)' "$RESULT")"
+        } >> "$GITHUB_OUTPUT"

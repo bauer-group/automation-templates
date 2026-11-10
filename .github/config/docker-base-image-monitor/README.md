@@ -212,6 +212,8 @@ Erstelle `.github/config/docker-base-image-monitor/base-images.json`:
 }
 ```
 
+Ist das Image die Basis eines Dockerfiles im Repository, statt `tag` besser `dockerfile` angeben — dann folgt der Monitor jedem Dependabot-Bump der `FROM`-Zeile, siehe [Tag aus dem Dockerfile](#tag-aus-dem-dockerfile-empfohlen).
+
 ### Schritt 4: Workflow-Datei erstellen
 
 Erstelle `.github/workflows/check-base-images.yml`:
@@ -313,8 +315,11 @@ Die Standard-Konfiguration in `.github/config/release/semantic-release.json` ent
   "images": [
     {
       "name": "string",        // Anzeigename (required)
-      "image": "string",       // Docker Image ohne Tag (required)
-      "tag": "string",         // Tag zum Überwachen (required)
+      "image": "string",       // Docker Image ohne Tag (required); mit dockerfile auch der Abgleich mit der FROM-Zeile
+      "dockerfile": "string",  // Dockerfile, dessen FROM-Zeile den Tag liefert (optional, empfohlen)
+      "stage": "string",       // Nur mit dockerfile: Stage (FROM ... AS <stage>), wenn das Image mit verschiedenen Tags vorkommt
+      "from-index": 0,         // Nur mit dockerfile: Alternative zu stage, FROM-Zeile ab 0 gezählt
+      "tag": "string",         // Tag zum Überwachen (required ohne dockerfile)
       "variable": "string",    // GitHub Variable Name (required)
       "description": "string"  // Optionale Beschreibung
     }
@@ -325,6 +330,34 @@ Die Standard-Konfiguration in `.github/config/release/semantic-release.json` ent
   }
 }
 ```
+
+### Tag aus dem Dockerfile (empfohlen)
+
+Dependabot aktualisiert die `FROM`-Zeile im Dockerfile (`python:3.14-alpine` → `3.15-alpine`), aber nie `base-images.json`. Mit festem `tag` überwacht der Monitor danach einen Tag, auf dem das Image gar nicht mehr gebaut wird: Rebuilds, wenn sich der ungenutzte Tag bewegt, und keine, wenn sich der echte bewegt. Am 2026-11-10 betraf das acht Repositories an einem Tag.
+
+Mit `dockerfile` liest der Monitor den Tag aus der `FROM`-Zeile — das Dockerfile ist dann die einzige Stelle, an der er steht:
+
+```json
+{
+  "name": "python",
+  "image": "python",
+  "dockerfile": "src/app/Dockerfile",
+  "variable": "PYTHON_ALPINE_DIGEST"
+}
+```
+
+- Aufgelöst werden `ARG`-Defaults vor dem ersten `FROM` (`$VAR`, `${VAR}`, `${VAR:-default}` …), Digest-Pins (`tag@sha256:…`), `--platform` und Stages; `FROM <stage>` ist kein Image und wird übersprungen, ebenso der Inhalt von Heredocs (`RUN <<EOF` … `EOF`). Build-Args zur Build-Zeit sieht der Monitor nicht, es zählt der Default.
+- **Ausnahme — `tag` behalten**, wenn das Release das Image mit einem `--build-arg` baut, das das `ARG` der `FROM`-Zeile überschreibt: der Default ist dann nicht, was gebaut wird. Beispiel XPD-SonarQube: der Monitor beobachtet bewusst den fließenden Tag `sonarqube:community`, jedes Release wählt die neueste plugin-kompatible `SONARQUBE_VERSION`, übergibt sie per `--build-arg` und schreibt sie ins `ARG` zurück. Mit `dockerfile` würde der Monitor den Default `26.8.0.126808-community` beobachten, und das automatische Upgrade bliebe stehen.
+- **Ein Eintrag pro Dockerfile.** Nutzen mehrere Dockerfiles das Image, bekommt jedes einen eigenen Eintrag mit eigener `variable`. Dependabot aktualisiert jedes `docker`-Verzeichnis in einem eigenen PR, die Tags laufen also auseinander (CS-MinIO baut `src/minio-worker` auf `python:3.14-alpine`, `src/minio-init` auf `3.15-alpine`) — ein Eintrag für nur eines ließe die anderen unbeobachtet. Solange sie denselben Tag nutzen, bleibt ein Tag-Wechsel **ein** Release.
+- `image` bleibt Pflicht und ist der **Abgleich**: nutzt die `FROM`-Zeile ein anderes Image, wird der Eintrag mit `::error::` gemeldet und nicht geprüft, statt still ein anderes Image zu überwachen. `python`, `library/python` und `docker.io/library/python` gelten als dasselbe Image.
+- Lässt sich der Tag eines Eintrags nicht lesen, wird **nur dieser Eintrag** nicht geprüft — weder auf einem geratenen noch auf dem konfigurierten Tag (`::error::`, Abschnitt *🛑 Tag not read from the Dockerfile* im Summary, Output `unresolved-images`). Alle anderen Images werden normal geprüft, released und gespeichert; der Job schlägt erst im letzten Schritt fehl.
+- Mehrere `FROM`-Zeilen desselben Images (z.B. `builder`, `test`, `prod`) sind in Ordnung, solange der Tag gleich ist; sonst `stage` oder `from-index` setzen. Ebenso, wenn sich Image oder Tag einer `FROM`-Zeile nicht lesen lassen (`ARG` ohne Default, unlesbare Zeile): sie könnte das Image mit einem anderen Tag nutzen. Nur eine Zeile, deren Repository ausgeschrieben ein anderes Image ist (`FROM golang:${GO_VERSION}`), zählt sicher nicht.
+- Einträge, die sich eine `variable` teilen, aber auf verschiedene `image:tag` auflösen, werden nicht geprüft (die Einträge mit `dockerfile`; einer ohne läuft wie bisher) — beide würden mit demselben gespeicherten Digest verglichen und jeder Check löste ein Release aus.
+- Ein zusätzlich gesetzter, abweichender `tag` wird ignoriert und per `::notice::` als veraltet gemeldet — am besten entfernen.
+- Nach einem Tag-Bump löst der nächste Check **ein** Release aus: der gespeicherte Digest gehört zum alten Tag. Die Variablen `<variable>` und `<variable>_PENDING` funktionieren unverändert.
+- Einträge ohne `dockerfile` laufen exakt wie bisher. Der Schritt braucht `python3` nur, wenn ein Eintrag `dockerfile` hat (auf GitHub-gehosteten Ubuntu-Runnern vorinstalliert); ohne `python3` werden diese Einträge nicht geprüft.
+
+Umstellung bestehender Einträge, Auflösungsregeln und Fehlerfälle: [Tag from the Dockerfile](../../../docs/workflows/modules-docker-base-image-monitor.md#tag-from-the-dockerfile) · [Migrating an existing entry](../../../docs/workflows/modules-docker-base-image-monitor.md#migrating-an-existing-entry).
 
 ---
 
@@ -588,6 +621,48 @@ So sieht der vollständige automatische Release-Flow aus:
 **Lösung:**
 - Pfad muss relativ zum Repository-Root sein
 - Beispiel: `.github/config/docker-base-image-monitor/base-images.json`
+
+### Fehler: "no FROM line in … uses '…'" oder "… uses 'x', not 'y'"
+
+**Ursache:** Der Eintrag hat `dockerfile`, aber keine `FROM`-Zeile des Dockerfiles nutzt `image` — oder die mit `stage`/`from-index` gewählte Zeile nennt ein anderes Image. Die Meldung listet alle `FROM`-Zeilen mit Zeilennummer.
+
+**Lösung:** `image` korrigieren oder die richtige `FROM`-Zeile mit `stage` bzw. `from-index` wählen.
+
+### Fehler: "… uses '…' with different tags"
+
+**Ursache:** Das Dockerfile nutzt das Image in mehreren `FROM`-Zeilen mit verschiedenen Tags; welcher überwacht werden soll, ist nicht eindeutig.
+
+**Lösung:** `stage` (Name aus `FROM … AS <stage>`) oder `from-index` (ab 0) setzen.
+
+### Fehler: "${…} has no default value in the Dockerfile" oder "the default of 'ARG …' cannot be read"
+
+**Ursache:** Die `FROM`-Zeile nutzt ein `ARG` ohne Default — oder eines, dessen Default ein solches `ARG` nutzt (`ARG MAJOR`, `ARG VERSION=${MAJOR}.15`). Sein Wert entsteht erst beim Build (`--build-arg`), der Monitor kann ihn nicht kennen.
+
+**Lösung:** Dem `ARG` vor dem ersten `FROM` einen Default geben (`ARG VERSION=3.15-alpine`) oder `${VERSION:-3.15-alpine}` schreiben.
+
+### Fehler: "the image or tag of line … cannot be read, so it may use '…' on another tag"
+
+**Ursache:** Ohne `stage`/`from-index` zählen alle `FROM`-Zeilen des Images. Eine davon lässt sich nicht lesen (meist ein `ARG` ohne Default) und könnte das Image mit einem anderen Tag nutzen; den Tag der übrigen zu überwachen wäre geraten.
+
+**Lösung:** Die genannte Zeile lesbar machen (Default für das `ARG`) oder die zu überwachende `FROM`-Zeile mit `stage` bzw. `from-index` wählen.
+
+### Fehler: "'variable' … is used by entries checked on different images"
+
+**Ursache:** Mehrere Einträge nutzen dieselbe `variable`, lösen aber auf verschiedene `image:tag` auf — typisch nach dem Kopieren eines Eintrags für ein zweites Dockerfile. Beide würden mit demselben gespeicherten Digest verglichen, jeder Check löste ein Release aus.
+
+**Lösung:** Jedem Eintrag eine eigene `variable` geben, siehe [One entry per Dockerfile](../../../docs/workflows/modules-docker-base-image-monitor.md#one-entry-per-dockerfile), oder den alten Eintrag ohne `dockerfile` entfernen.
+
+### Fehler: "Not checked because the tag could not be read from the Dockerfile: …"
+
+**Ursache:** Der letzte Schritt des Jobs: für mindestens einen Eintrag mit `dockerfile` ließ sich der Tag nicht lesen (eine der Meldungen oben, als `::error::` am Dockerfile). Nur diese Einträge wurden nicht geprüft; alle anderen Images wurden normal geprüft, released und gespeichert.
+
+**Lösung:** Den Eintrag oder sein Dockerfile korrigieren. Der nächste Check liest den Tag wieder und released, falls sich der Digest inzwischen bewegt hat.
+
+### Hinweis: "the configured tag '…' is stale"
+
+**Ursache:** Kein Fehler. `tag` im Eintrag weicht von der `FROM`-Zeile ab; überwacht wird der Tag aus dem Dockerfile.
+
+**Lösung:** `tag` aus dem Eintrag entfernen — außer das Release überschreibt das `ARG` der `FROM`-Zeile per `--build-arg` (wie bei XPD-SonarQube): dann `dockerfile` entfernen und `tag` behalten.
 
 ### Fehler: "Could not fetch digest"
 

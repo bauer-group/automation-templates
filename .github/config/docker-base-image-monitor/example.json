@@ -14,6 +14,13 @@
       "tag": "stable",
       "variable": "N8N_RUNNER_STABLE_DIGEST",
       "description": "n8n task runner for code execution"
+    },
+    {
+      "name": "python",
+      "image": "python",
+      "dockerfile": "src/sidecar/Dockerfile",
+      "variable": "PYTHON_ALPINE_DIGEST",
+      "description": "Sidecar base image - the tag is read from the FROM line of src/sidecar/Dockerfile, so a Dependabot bump (3.14-alpine -> 3.15-alpine) moves the monitor with it"
     }
   ],
   "settings": {
