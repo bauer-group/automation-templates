@@ -19,8 +19,23 @@
 #     ... for the max-release-attempts'th time -> not dispatched again, the job fails
 #   no target workflow (commit mode)        -> digest stored after the push, as before
 #
-# The step bodies are extracted from the workflow at runtime rather than
-# duplicated here and run the way a `shell: bash` step runs (-eo pipefail).
+# A fixed 'tag' also drifted: Dependabot bumps the FROM line, never
+# base-images.json, and the monitor kept watching the old tag (2026-11-10:
+# eight repositories). An entry with 'dockerfile' is watched on the tag of its
+# FROM line, resolved by the docker-base-image-resolve action:
+#
+#   no entry with 'dockerfile'              -> no resolved list, no Python, check as before
+#   'dockerfile' set                        -> the FROM line's tag is checked, a stale 'tag' noted
+#   tag not readable (another image, a      -> that entry is not checked and its state is left
+#     renamed stage, no python3)               alone; every other image is checked, released
+#                                              and stored, and the job fails in its last step
+#   two entries, one variable, two tags     -> left out as well
+#   exhausted retries and such an entry     -> both last steps fail the job, each naming its images
+#   Dependabot bumps the FROM tag           -> one release for the new tag, then only it counts
+#
+# The step bodies are extracted from the workflow and the action at runtime
+# rather than duplicated here and run the way a `shell: bash` step runs
+# (-eo pipefail).
 # `gh` and `docker` are replaced by stubs that keep repository variables and
 # workflow runs in a directory; `gh api --jq` filters are applied with jq.
 # Each scenario gets a real git repository with a local bare origin, so the
@@ -32,12 +47,16 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKFLOW_FILE="$SCRIPT_DIR/../modules-docker-base-image-monitor.yml"
+ACTION_DIR="$(cd "$SCRIPT_DIR/../../actions/docker-base-image-resolve" 2>/dev/null && pwd)"
+ACTION_FILE="$ACTION_DIR/action.yml"
 
-if [ ! -f "$WORKFLOW_FILE" ]; then
-  echo "FATAL: workflow not found at $WORKFLOW_FILE"
-  exit 1
-fi
-for TOOL in jq git; do
+for FILE in "$WORKFLOW_FILE" "$ACTION_FILE"; do
+  if [ ! -f "$FILE" ]; then
+    echo "FATAL: $(basename "$FILE") not found at $FILE"
+    exit 1
+  fi
+done
+for TOOL in jq git python3; do
   if ! command -v "$TOOL" > /dev/null; then
     echo "FATAL: $TOOL is required"
     exit 1
@@ -60,7 +79,7 @@ extract_step() {
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-for STEP in check release dispatch persist; do
+for STEP in check release dispatch persist summary fail-exhausted fail-unresolved; do
   extract_step "$STEP" > "$WORK/$STEP.sh"
   if [ ! -s "$WORK/$STEP.sh" ]; then
     echo "FATAL: could not extract the '$STEP' run block from the workflow."
@@ -68,6 +87,21 @@ for STEP in check release dispatch persist; do
     exit 1
   fi
 done
+
+# The resolve step of the action: a composite step, indented two less.
+awk '
+  $0 == "      id: resolve" { found = 1; next }
+  found && /^      run: \|$/ { collecting = 1; next }
+  collecting {
+    if ($0 == "") { print ""; next }
+    if ($0 ~ /^        /) { sub(/^        /, ""); print; next }
+    exit
+  }
+' "$ACTION_FILE" > "$WORK/resolve.sh"
+if [ ! -s "$WORK/resolve.sh" ]; then
+  echo "FATAL: could not extract the 'resolve' run block from $ACTION_FILE - update this test."
+  exit 1
+fi
 
 PASSED=0
 FAILED=0
@@ -93,6 +127,30 @@ static_check "persist reads the attempt numbers" "DISPATCH_ATTEMPTS: \${{ steps.
 static_check "exhausted retries fail the job" \
   "if: steps.check.outputs.exhausted-images != '' && steps.check.outputs.exhausted-images != '[]'"
 static_check "job has a timeout" "    timeout-minutes: "
+static_check "the resolve step is the template's action" \
+  "uses: bauer-group/automation-templates/.github/actions/docker-base-image-resolve@main"
+static_check "the resolve step reads the same config file" "          config-file: \${{ inputs.config-file }}"
+static_check "the resolve step reads the same inline images" "          images: \${{ inputs.images }}"
+static_check "the check reads the tags resolved from Dockerfiles" "RESOLVED_IMAGES: \${{ steps.resolve.outputs.images }}"
+static_check "the check reads the entries whose tag was not read" "UNRESOLVED_IMAGES: \${{ steps.resolve.outputs.unresolved }}"
+static_check "the summary lists them" "UNRESOLVED_JSON: \${{ steps.resolve.outputs.unresolved }}"
+static_check "the job reports them, also when the check did not run" \
+  "unresolved-images: \${{ steps.resolve.outputs.unresolved-names || '[]' }}"
+static_check "an entry whose tag was not read fails the job, also after a failed step" \
+  "if: \${{ !cancelled() && steps.resolve.outputs.unresolved != '' && steps.resolve.outputs.unresolved != '[]' }}"
+if awk '$0 == "        id: resolve" { r = NR } $0 == "        id: check" { c = NR } END { exit !(r && c && r < c) }' "$WORKFLOW_FILE"; then
+  pass "the tags are resolved before the check"
+else
+  fail "the tags are resolved before the check" "the resolve step is missing or comes after the check"
+fi
+# Failing any earlier would hold back the releases and stored digests of
+# every other image, as failing the resolve step itself did.
+if awk '$0 == "        id: persist" { p = NR } $0 == "        id: summary" { s = NR } $0 == "        id: fail-unresolved" { f = NR }
+        END { exit !(p && s && f && p < f && s < f) }' "$WORKFLOW_FILE"; then
+  pass "an entry whose tag was not read fails the job only after persist and summary"
+else
+  fail "an entry whose tag was not read fails the job only after persist and summary" "the fail-unresolved step is missing or too early"
+fi
 
 # --- stubs --------------------------------------------------------------------
 # State lives in $FAKE: vars/<NAME> (repository variables), runs/<ID> (run JSON),
@@ -157,6 +215,15 @@ export GIT_CONFIG_GLOBAL="$WORK/gitconfig" GIT_CONFIG_NOSYSTEM=1
 # The persist step backs off between attempts; the test does not wait.
 printf '#!/usr/bin/env bash\nexit 0\n' > "$WORK/bin/sleep"
 chmod +x "$WORK/bin/gh" "$WORK/bin/docker" "$WORK/bin/sleep"
+# Put first on PATH, this python3 records that it was called and fails.
+# $* and $FAKE are the stub's, expanded when it runs.
+mkdir -p "$WORK/nopy"
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\necho "python3 $*" >> "$FAKE/python-calls"\nexit 1\n' > "$WORK/nopy/python3"
+chmod +x "$WORK/nopy/python3"
+# As the only PATH entry: a runner without python3 at all.
+mkdir -p "$WORK/nopython"
+for TOOL in bash jq; do ln -s "$(command -v "$TOOL")" "$WORK/nopython/$TOOL"; done
 
 REPO="acme/app"
 SERVER="https://github.com"
@@ -209,13 +276,62 @@ run_step() {
   (cd "$FAKE/repo" && env PATH="$WORK/bin:$PATH" GH_TOKEN=dummy \
     GITHUB_OUTPUT="$FAKE/output" GITHUB_ENV="$FAKE/env" \
     GITHUB_REPOSITORY="$REPO" GITHUB_SERVER_URL="$SERVER" \
-    CONFIG_FILE="" INLINE_IMAGES="$IMAGES" COMMIT_PREFIX_INPUT="chore(deps)" \
+    CONFIG_FILE="" INLINE_IMAGES="$IMAGES" RESOLVED_IMAGES="" UNRESOLVED_IMAGES="" COMMIT_PREFIX_INPUT="chore(deps)" \
     DRY_RUN=false FAIL_ON_UNREACHABLE=true TARGET_WORKFLOW="docker-release.yml" MAX_ATTEMPTS=3 \
     TARGET_REF=main TARGET_INPUTS='{"force-release": "true"}' \
     COMMIT_PREFIX="chore(deps)" UPDATED_IMAGES_JSON='[]' UPDATE_DETAILS="" \
     VARIABLE_UPDATES='{}' DISPATCH_UPDATES='{}' DISPATCH_ATTEMPTS='{}' PENDING_DELETES='[]' RUN_ID="" RUN_URL="" \
     "$@" bash -eo pipefail "$WORK/$step.sh") > "$FAKE/log" 2>&1
 }
+
+# Runs the action's resolve step in the checkout, as the job runs it before
+# the check. Extra VAR=value pairs override the defaults.
+run_resolve() {
+  : > "$FAKE/output"; mkdir -p "$FAKE/tmp"
+  (cd "$FAKE/repo" && env PATH="$WORK/bin:$PATH" GITHUB_OUTPUT="$FAKE/output" RUNNER_TEMP="$FAKE/tmp" \
+    GITHUB_ACTION_PATH="$ACTION_DIR" CONFIG_FILE="" INLINE_IMAGES="$IMAGES" \
+    "$@" bash -eo pipefail "$WORK/resolve.sh") > "$FAKE/log" 2>&1
+}
+# Whether GitHub runs a step, from its `if:` - for the expressions the last
+# steps use: !cancelled(), always(), success(), failure() and
+# steps.<id>.outputs.<name> compared with a string, joined by &&. Without a
+# status function GitHub adds success(): the step is skipped once an earlier
+# step failed. Usage:
+#   step_runs <step id> <true after a failed step> [steps.<id>.outputs.<name>=<value>]...
+step_runs() {
+  local id="$1" failed="$2" cond rest term status=success name op want got pair
+  local compare="^(steps\.[a-z0-9_-]+\.outputs\.[a-z0-9_-]+) (==|!=) '([^']*)'$"
+  shift 2
+  cond=$(awk -v id="        id: $id" '$0 == id { found = 1; next }
+    found && /^        if: / { sub(/^        if: /, ""); print; exit } found && /^      - / { exit }' "$WORKFLOW_FILE")
+  if [ -z "$cond" ]; then echo "FATAL: no 'if:' after 'id: $id' in the workflow - update this test"; exit 1; fi
+  cond="${cond#"\${{ "}"; rest="${cond%" }}"}"
+  while [ -n "$rest" ]; do
+    term="${rest%% && *}"
+    if [ "$term" = "$rest" ]; then rest=""; else rest="${rest#* && }"; fi
+    if [ "$term" = "!cancelled()" ] || [ "$term" = "always()" ]; then
+      status=always
+    elif [ "$term" = "success()" ] || [ "$term" = "failure()" ]; then
+      status="${term%()}"
+    elif [[ $term =~ $compare ]]; then
+      name="${BASH_REMATCH[1]}"; op="${BASH_REMATCH[2]}"; want="${BASH_REMATCH[3]}"; got=""
+      for pair in "$@"; do if [ "${pair%%=*}" = "$name" ]; then got="${pair#*=}"; fi; done
+      if [ "$op" = "==" ]; then [ "$got" = "$want" ] || return 1; else [ "$got" != "$want" ] || return 1; fi
+    else
+      echo "FATAL: step_runs cannot evaluate '$term' of step $id - update this test"; exit 1
+    fi
+  done
+  case "$status" in
+    always) return 0 ;;
+    failure) [ "$failed" = true ] ;;
+    *) [ "$failed" = false ] ;;
+  esac
+}
+
+# put <path> <content>: a file in the checkout.
+put() { mkdir -p "$(dirname "$FAKE/repo/$1")"; printf '%s' "$2" > "$FAKE/repo/$1"; }
+CFG=".github/config/docker-base-image-monitor/base-images.json"
+config() { put "$CFG" "{\"images\": [$1], \"settings\": {\"commit-prefix\": \"chore(deps)\"}}"; }
 
 expect_eq() {
   local name="$1" got="$2" want="$3"
@@ -444,6 +560,118 @@ run_step check DRY_RUN=true; expect_rc "dry run: step succeeds" $? 0
 expect_eq "dry run: retry reported" "$(out retried-images)" '["app"]'
 if grep -qE "^gh variable (set|delete)" "$FAKE/calls.log"; then fail "dry run: writes nothing" "wrote a variable"; else pass "dry run: writes nothing"; fi
 
+# === tag from the Dockerfile ==================================================
+
+reset resolve-none
+run_resolve PATH="$WORK/nopy:$WORK/bin:$PATH"; expect_rc "no dockerfile: the resolve step succeeds" $? 0
+expect_eq "no dockerfile: no resolved list, the check keeps its own" "$(out images)" ""
+expect_eq "no dockerfile: nothing unresolved" "$(out unresolved)$(out unresolved-names)" ""
+if [ -f "$FAKE/python-calls" ]; then fail "no dockerfile: python is not needed" "$(cat "$FAKE/python-calls")"; else pass "no dockerfile: python is not needed"; fi
+
+reset resolve-none-config
+config '{"name": "app", "image": "ghcr.io/acme/base", "tag": "stable", "variable": "APP_DIGEST"}'
+run_resolve PATH="$WORK/nopy:$WORK/bin:$PATH" CONFIG_FILE="$CFG"; expect_rc "no dockerfile, config file: the resolve step succeeds" $? 0
+expect_eq "no dockerfile, config file: no resolved list" "$(out images)" ""
+
+# A config that cannot be loaded is left to the check, which reports it as before.
+reset resolve-missing-config
+run_resolve CONFIG_FILE="missing.json"; expect_rc "missing config file: the resolve step leaves it to the check" $? 0
+RESOLVED=$(out images)
+run_step check CONFIG_FILE="missing.json" RESOLVED_IMAGES="$RESOLVED"; expect_rc "missing config file: the check fails as before" $? 1
+if grep -qF "::error::Config file not found: missing.json" "$FAKE/log"; then pass "missing config file: same error as before"; else fail "missing config file: same error as before" "$(tr '\n' ' ' < "$FAKE/log" | cut -c1-300)"; fi
+
+# The drift of 2026-11-10: the Dockerfile moved to 3.15-alpine, the config
+# still says 3.14-alpine, and only 3.15-alpine has a new digest.
+reset resolve-drift
+put src/app/Dockerfile $'ARG PYTHON_VERSION=3.15\nFROM python:${PYTHON_VERSION}-alpine AS prod\n'
+config '{"name": "python", "image": "python", "tag": "3.14-alpine", "dockerfile": "src/app/Dockerfile", "variable": "PYTHON_DIGEST"}'
+manifest python:3.14-alpine "$D_OLD"; manifest python:3.15-alpine "$D_NEW"; set_var PYTHON_DIGEST "$D_OLD"
+run_step check CONFIG_FILE="$CFG"
+expect_eq "drift, configured tag only: the move of the real tag is missed" "$(out updates-found)" false
+run_resolve CONFIG_FILE="$CFG"; expect_rc "drift: the resolve step succeeds" $? 0
+RESOLVED=$(out images)
+expect_eq "drift: tag of the FROM line" "$(printf '%s' "$RESOLVED" | jq -r '.[0].tag')" "3.15-alpine"
+expect_eq "drift: the rest of the entry is kept" "$(printf '%s' "$RESOLVED" | jq -c '.[0] | del(.tag)')" \
+  '{"name":"python","image":"python","dockerfile":"src/app/Dockerfile","variable":"PYTHON_DIGEST"}'
+if grep -qF "::notice file=src/app/Dockerfile,line=2::python: the configured tag '3.14-alpine' is stale" "$FAKE/log"; then
+  pass "drift: the stale tag is reported"
+else
+  fail "drift: the stale tag is reported" "$(tr '\n' ' ' < "$FAKE/log" | cut -c1-300)"
+fi
+run_step check CONFIG_FILE="$CFG" RESOLVED_IMAGES="$RESOLVED"; expect_rc "drift, resolved: the check succeeds" $? 0
+expect_eq "drift, resolved: the real tag's new digest is an update" "$(out new-images)" '["python"]'
+if details "$FAKE/env" | grep -qF -- "- python (python:3.15-alpine)"; then pass "drift, resolved: the commit names the real tag"; else fail "drift, resolved: the commit names the real tag" "$(details "$FAKE/env" | tr '\n' '|')"; fi
+if grep -qF "python: python:3.15-alpine (FROM in src/app/Dockerfile)" "$FAKE/log"; then pass "drift, resolved: the log names the Dockerfile"; else fail "drift, resolved: the log names the Dockerfile" "missing"; fi
+
+# The step does not fail for an entry: the job fails in its last step, after
+# the other images were checked (see "one entry not resolved" below).
+reset resolve-mismatch
+put Dockerfile $'FROM golang:1.26-alpine\n'
+run_resolve INLINE_IMAGES='[{"name": "python", "image": "python", "dockerfile": "Dockerfile", "variable": "PYTHON_DIGEST"}]'
+expect_rc "FROM line of another image: the resolve step succeeds" $? 0
+if grep -qF "::error file=Dockerfile::python: no FROM line in Dockerfile uses 'python'" "$FAKE/log"; then pass "FROM line of another image: error annotation"; else fail "FROM line of another image: error annotation" "$(tr '\n' ' ' < "$FAKE/log" | cut -c1-300)"; fi
+expect_eq "FROM line of another image: not in the list for the check" "$(out images)" "[]"
+expect_eq "FROM line of another image: listed as unresolved" "$(out unresolved | jq -c 'map([.name, .dockerfile])')" '[["python","Dockerfile"]]'
+expect_eq "FROM line of another image: named for the job output" "$(out unresolved-names)" '["python"]'
+
+# Without python3, or when the resolver itself fails, every entry with
+# 'dockerfile' is unresolved - never checked on its configured tag - and the
+# entries without one are still checked.
+MIXED='[{"name": "app", "image": "ghcr.io/acme/base", "tag": "stable", "variable": "APP_DIGEST"},
+        {"name": "python", "image": "python", "tag": "3.14-alpine", "dockerfile": "Dockerfile", "variable": "PYTHON_DIGEST"}]'
+reset resolve-no-python
+put Dockerfile $'FROM python:3.15-alpine\n'
+run_resolve PATH="$WORK/nopython" INLINE_IMAGES="$MIXED"; expect_rc "no python3: the resolve step succeeds" $? 0
+if grep -qF "::error::The entries with 'dockerfile' are not checked in this run: python3 is not installed on the runner" "$FAKE/log"; then
+  pass "no python3: error annotation"
+else
+  fail "no python3: error annotation" "$(tr '\n' ' ' < "$FAKE/log" | cut -c1-300)"
+fi
+expect_eq "no python3: the entry without dockerfile is checked" "$(out images | jq -c 'map(.name)')" '["app"]'
+expect_eq "no python3: the entry with dockerfile is unresolved, not checked on its configured tag" \
+  "$(out unresolved | jq -c 'map(.name)') $(out unresolved-names)" '["python"] ["python"]'
+reset resolve-crash
+put Dockerfile $'FROM python:3.15-alpine\n'
+run_resolve PATH="$WORK/nopy:$WORK/bin:$PATH" INLINE_IMAGES="$MIXED"; expect_rc "resolver fails: the resolve step succeeds" $? 0
+if grep -qF "not checked in this run: the resolver failed" "$FAKE/log"; then pass "resolver fails: error annotation"; else fail "resolver fails: error annotation" "$(tr '\n' ' ' < "$FAKE/log" | cut -c1-300)"; fi
+expect_eq "resolver fails: the entry without dockerfile is checked" "$(out images | jq -c 'map(.name)')" '["app"]'
+expect_eq "resolver fails: the entry with dockerfile is unresolved" "$(out unresolved | jq -c 'map(.name)')" '["python"]'
+
+reset resolve-inline-mixed
+put Dockerfile $'FROM python:3.15-alpine\n'
+run_resolve INLINE_IMAGES='[{"name": "app", "image": "ghcr.io/acme/base", "tag": "stable", "variable": "APP_DIGEST"},
+                            {"name": "python", "image": "python", "dockerfile": "Dockerfile", "variable": "PYTHON_DIGEST"}]'
+expect_rc "inline, mixed: the resolve step succeeds" $? 0
+expect_eq "inline, mixed: tags" "$(out images | jq -c 'map(.tag)')" '["stable","3.15-alpine"]'
+expect_eq "inline, mixed: an entry without dockerfile is unchanged" "$(out images | jq -c '.[0]')" \
+  '{"name":"app","image":"ghcr.io/acme/base","tag":"stable","variable":"APP_DIGEST"}'
+
+# An entry copied for a second Dockerfile, its variable left as it was. Both
+# checked, each would find the other's digest new and release every time.
+reset resolve-shared-variable
+put src/a/Dockerfile $'FROM python:3.15-alpine\n'
+put src/b/Dockerfile $'FROM python:3.14-alpine\n'
+run_resolve INLINE_IMAGES='[{"name": "a", "image": "python", "dockerfile": "src/a/Dockerfile", "variable": "PYTHON_DIGEST"},
+                            {"name": "b", "image": "python", "dockerfile": "src/b/Dockerfile", "variable": "PYTHON_DIGEST"}]'
+expect_rc "shared variable, two tags: the resolve step succeeds" $? 0
+expect_eq "shared variable, two tags: neither entry is checked" "$(out images) $(out unresolved-names)" '[] ["a","b"]'
+if grep -qF "::error file=src/b/Dockerfile,line=1::b: 'variable' PYTHON_DIGEST is used by entries checked on different images" "$FAKE/log"; then
+  pass "shared variable, two tags: error annotation"
+else
+  fail "shared variable, two tags: error annotation" "$(tr '\n' ' ' < "$FAKE/log" | cut -c1-300)"
+fi
+
+reset summary-unresolved
+run_step summary GITHUB_STEP_SUMMARY="$FAKE/summary" IMAGES_CONFIGURED=2 IMAGES_CHECKED=1 UPDATES_FOUND=false \
+  RETRIED_JSON='[]' PENDING_JSON='[]' CONFIRMED_JSON='[]' EXHAUSTED_JSON='[]' UNREACHABLE_JSON='[]' \
+  UNRESOLVED_JSON='[{"name":"worker","image":"python","dockerfile":"src/worker/Dockerfile","error":"no stage"}]'
+if grep -qF "**not** a clean result - 1 image(s) were never checked" "$FAKE/summary"; then pass "entry unresolved, no updates: not a clean result"; else fail "entry unresolved, no updates: not a clean result" "$(tr '\n' '|' < "$FAKE/summary")"; fi
+if grep -qF "All base images are up to date" "$FAKE/summary"; then fail "entry unresolved, no updates: not reported as up to date" "it is"; else pass "entry unresolved, no updates: not reported as up to date"; fi
+reset summary-clean
+run_step summary GITHUB_STEP_SUMMARY="$FAKE/summary" IMAGES_CONFIGURED=1 IMAGES_CHECKED=1 UPDATES_FOUND=false \
+  RETRIED_JSON='[]' PENDING_JSON='[]' CONFIRMED_JSON='[]' EXHAUSTED_JSON='[]' UNREACHABLE_JSON='[]'
+if grep -qF "All base images are up to date" "$FAKE/summary"; then pass "clean check: still reported as up to date"; else fail "clean check: still reported as up to date" "$(tr '\n' '|' < "$FAKE/summary")"; fi
+
 # === release commit ===========================================================
 
 reset release
@@ -533,11 +761,11 @@ if has_var APP_DIGEST_PENDING; then pass "persist failure: record kept"; else fa
 
 # === the whole cycle ==========================================================
 # Runs the steps the way the job chains them: each step's `if:` as in the
-# workflow, success() gates persist.
+# workflow, success() gates persist. VAR=value pairs go to the check.
 cycle() {
-  run_step check || return 1
+  run_step check "$@" || return 1
   # Kept for the assertions: the later steps overwrite the step output files.
-  cp "$FAKE/output" "$FAKE/check-output"; cp "$FAKE/env" "$FAKE/check-env"
+  cp "$FAKE/output" "$FAKE/check-output"; cp "$FAKE/env" "$FAKE/check-env"; cp "$FAKE/log" "$FAKE/check-log"
   local dispatch_updates dispatch_attempts variable_updates pending_deletes run_id="" run_url=""
   dispatch_updates=$(out dispatch-updates); variable_updates=$(out variable-updates)
   pending_deletes=$(out pending-deletes); dispatch_attempts=$(out dispatch-attempts)
@@ -623,6 +851,155 @@ if [ -f "$FAKE/dispatch-path" ]; then fail "exhausted cycle: nothing dispatched"
 expect_eq "exhausted cycle: no commit" "$(origin_count)" "$COMMITS"
 expect_eq "exhausted cycle: record kept" "$(var APP_DIGEST_PENDING | jq -r .run_id)" 301
 expect_eq "exhausted cycle: digest not stored" "$(var APP_DIGEST)" "$D_OLD"
+
+# A Dependabot tag bump with 'dockerfile'. The bump is a fix(docker) commit
+# whose own release already built the image on the new tag. The first check
+# after it compares the new tag's digest with the stored digest of the old
+# tag and releases once more - attempt 1, confirmed as usual; the state
+# variables work as for any new digest. From then on only the new tag counts.
+reset cycle-tag-bump
+put src/app/Dockerfile $'FROM python:3.14-alpine AS prod\n'
+config '{"name": "python", "image": "python", "dockerfile": "src/app/Dockerfile", "variable": "PYTHON_DIGEST"}'
+git -C "$FAKE/repo" add -A; commit "feat: app"; release_tagged 1.0.0; git -C "$FAKE/repo" push -q origin HEAD
+manifest python:3.14-alpine "$D_OLD"; manifest python:3.15-alpine "$D_NEW"; set_var PYTHON_DIGEST "$D_OLD"
+resolved_cycle() {
+  run_resolve CONFIG_FILE="$CFG" || return 1
+  cp "$FAKE/output" "$FAKE/resolve-output"
+  local images unresolved; images=$(out images); unresolved=$(out unresolved)
+  cycle CONFIG_FILE="$CFG" RESOLVED_IMAGES="$images" UNRESOLVED_IMAGES="$unresolved"
+}
+checked() { grep "^$1=" "$FAKE/check-output" | tail -n 1 | cut -d= -f2-; }
+resolved() { grep "^$1=" "$FAKE/resolve-output" | tail -n 1 | cut -d= -f2-; }
+
+dispatch_returns 401
+resolved_cycle; expect_rc "tag bump cycle 1 (before the bump): succeeds" $? 0
+expect_eq "tag bump cycle 1: nothing to do" "$(checked updates-found)" false
+
+put src/app/Dockerfile $'FROM python:3.15-alpine AS prod\n'
+git -C "$FAKE/repo" add -A; commit "fix(docker): bump python from 3.14-alpine to 3.15-alpine"
+release_tagged 1.0.1; git -C "$FAKE/repo" push -q origin HEAD
+COMMITS=$(origin_count)
+resolved_cycle; expect_rc "tag bump cycle 2 (after the bump): succeeds" $? 0
+expect_eq "tag bump cycle 2: the new tag is one new update" "$(checked new-images)" '["python"]'
+expect_eq "tag bump cycle 2: one release commit" "$(origin_count)" "$((COMMITS + 1))"
+expect_eq "tag bump cycle 2: one release run, attempt 1" "$(var PYTHON_DIGEST_PENDING | jq -c '[.digest, .run_id, .attempt]')" "[\"$D_NEW\",401,1]"
+expect_eq "tag bump cycle 2: old digest kept until confirmed" "$(var PYTHON_DIGEST)" "$D_OLD"
+
+run_fixture 401 completed '"success"'; rm -f "$FAKE/dispatch-path"
+resolved_cycle; expect_rc "tag bump cycle 3 (release succeeded): succeeds" $? 0
+expect_eq "tag bump cycle 3: the new tag's digest is stored" "$(var PYTHON_DIGEST)" "$D_NEW"
+if has_var PYTHON_DIGEST_PENDING; then fail "tag bump cycle 3: record removed" "still there"; else pass "tag bump cycle 3: record removed"; fi
+if [ -f "$FAKE/dispatch-path" ]; then fail "tag bump cycle 3: nothing dispatched" "dispatched"; else pass "tag bump cycle 3: nothing dispatched"; fi
+
+# The old tag moves: it is no longer the base, so no rebuild.
+manifest python:3.14-alpine "$D_NEWER"
+resolved_cycle; expect_rc "tag bump cycle 4 (old tag moved): succeeds" $? 0
+expect_eq "tag bump cycle 4: a move of the old tag is ignored" "$(checked updates-found)" false
+if [ -f "$FAKE/dispatch-path" ]; then fail "tag bump cycle 4: nothing dispatched" "dispatched"; else pass "tag bump cycle 4: nothing dispatched"; fi
+
+# The new tag moves: the security rebuild a drifted config missed.
+manifest python:3.15-alpine "$D_NEWER"; dispatch_returns 402
+resolved_cycle; expect_rc "tag bump cycle 5 (new tag moved): succeeds" $? 0
+expect_eq "tag bump cycle 5: a move of the new tag is released" "$(checked new-images)" '["python"]'
+expect_eq "tag bump cycle 5: run recorded" "$(var PYTHON_DIGEST_PENDING | jq -c '[.digest, .run_id]')" "[\"$D_NEWER\",402]"
+
+# One entry whose tag cannot be read - a Dockerfile refactor renamed the stage
+# it selects - must not hold back the others. They are checked, released and
+# stored as usual, the entry's own state is left alone, the summary names it
+# and the job fails in its last step.
+reset unresolved-entry
+put src/app/Dockerfile $'FROM python:3.15-alpine\n'
+put src/worker/Dockerfile $'FROM python:3.15-alpine AS runtime\n'
+config '{"name": "app", "image": "ghcr.io/acme/base", "tag": "stable", "variable": "APP_DIGEST"},
+        {"name": "python", "image": "python", "dockerfile": "src/app/Dockerfile", "variable": "PYTHON_DIGEST"},
+        {"name": "worker", "image": "python", "dockerfile": "src/worker/Dockerfile", "stage": "build", "variable": "WORKER_DIGEST"}'
+git -C "$FAKE/repo" add -A; commit "feat: app"; release_tagged 1.0.0; git -C "$FAKE/repo" push -q origin HEAD
+manifest ghcr.io/acme/base:stable "$D_NEW"; manifest python:3.15-alpine "$D_NEW"
+set_var APP_DIGEST "$D_OLD"; set_var PYTHON_DIGEST "$D_OLD"; set_var WORKER_DIGEST "$D_OLD"
+run_resolve CONFIG_FILE="$CFG"; expect_rc "one entry not resolved: the resolve step succeeds" $? 0
+RESOLVED=$(out images); UNRESOLVED=$(out unresolved)
+expect_eq "one entry not resolved: reported for the job output" "$(out unresolved-names)" '["worker"]'
+if grep -qF "::error file=src/worker/Dockerfile::worker: src/worker/Dockerfile has no stage 'build' (stages: runtime)" "$FAKE/log"; then
+  pass "one entry not resolved: error annotation"
+else
+  fail "one entry not resolved: error annotation" "$(tr '\n' ' ' < "$FAKE/log" | cut -c1-300)"
+fi
+expect_eq "one entry not resolved: the others go to the check" "$(printf '%s' "$RESOLVED" | jq -c 'map(.name)')" '["app","python"]'
+COMMITS=$(origin_count)
+dispatch_returns 501
+cycle CONFIG_FILE="$CFG" RESOLVED_IMAGES="$RESOLVED" UNRESOLVED_IMAGES="$UNRESOLVED"
+expect_rc "one entry not resolved: the check, release and persist of the others succeed" $? 0
+expect_eq "one entry not resolved: the others' updates are released" "$(checked new-images)" '["app","python"]'
+expect_eq "one entry not resolved: one release commit" "$(origin_count)" "$((COMMITS + 1))"
+expect_eq "one entry not resolved: the others' runs are recorded" \
+  "$(var APP_DIGEST_PENDING | jq -r .run_id) $(var PYTHON_DIGEST_PENDING | jq -r .run_id)" "501 501"
+expect_eq "one entry not resolved: configured, not checked" "$(checked images-configured) $(checked images-checked)" "3 2"
+if grep -q "WORKER_DIGEST" "$FAKE/calls.log"; then fail "one entry not resolved: its state is left alone" "$(grep WORKER_DIGEST "$FAKE/calls.log" | head -1)"; else pass "one entry not resolved: its state is left alone"; fi
+if grep -qF -- "- worker: python (FROM in src/worker/Dockerfile) - tag not read, not checked" "$FAKE/check-log"; then
+  pass "one entry not resolved: the check's log names it"
+else
+  fail "one entry not resolved: the check's log names it" "$(tr '\n' ' ' < "$FAKE/check-log" | cut -c1-300)"
+fi
+run_step summary GITHUB_STEP_SUMMARY="$FAKE/summary" UPDATES_FOUND=true UPDATED_IMAGES_JSON='["app","python"]' NEW_DIGESTS_JSON='{}' \
+  IMAGES_CONFIGURED="$(checked images-configured)" IMAGES_CHECKED="$(checked images-checked)" UNREACHABLE_JSON='[]' \
+  RETRIED_JSON='[]' PENDING_JSON='[]' CONFIRMED_JSON='[]' EXHAUSTED_JSON='[]' UNRESOLVED_JSON="$UNRESOLVED"
+if grep -qF "**Coverage:** 2 of 3 configured image(s) verified" "$FAKE/summary" \
+   && grep -qF "### 🛑 Tag not read from the Dockerfile" "$FAKE/summary" \
+   && grep -qF -- "- \`worker\` (\`src/worker/Dockerfile\`): src/worker/Dockerfile has no stage 'build'" "$FAKE/summary"; then
+  pass "one entry not resolved: the summary names it"
+else
+  fail "one entry not resolved: the summary names it" "$(tr '\n' '|' < "$FAKE/summary")"
+fi
+run_step fail-unresolved UNRESOLVED="$UNRESOLVED"; expect_rc "one entry not resolved: the last step fails the job" $? 1
+if grep -qF "::error::Not checked because the tag could not be read from the Dockerfile: worker - see the summary" "$FAKE/log"; then pass "one entry not resolved: the last step names it"; else fail "one entry not resolved: the last step names it" "$(cat "$FAKE/log")"; fi
+
+# The stage is fixed: the entry is resolved and checked again. Its tag moved
+# while it was not checked, so it is released now.
+put src/worker/Dockerfile $'FROM python:3.15-alpine AS build\n'
+run_fixture 501 completed '"success"'; dispatch_returns 502
+resolved_cycle; expect_rc "entry fixed: succeeds" $? 0
+expect_eq "entry fixed: nothing unresolved" "$(resolved unresolved-names)" '[]'
+expect_eq "entry fixed: its missed update is released" "$(checked new-images)" '["worker"]'
+
+# Exhausted release retries and an entry whose tag was not read, in one run.
+# The exhausted step fails the job first; the last step must still run and
+# name the entry - with a plain `if:` GitHub skips it after a failed step.
+reset exhausted-and-unresolved
+put src/worker/Dockerfile $'FROM python:3.15-alpine AS runtime\n'
+config '{"name": "app", "image": "ghcr.io/acme/base", "tag": "stable", "variable": "APP_DIGEST"},
+        {"name": "worker", "image": "python", "dockerfile": "src/worker/Dockerfile", "stage": "build", "variable": "WORKER_DIGEST"}'
+git -C "$FAKE/repo" add -A; commit "feat: app"; base_commit app; release_tagged 1.0.1; git -C "$FAKE/repo" push -q origin HEAD
+set_var APP_DIGEST "$D_OLD"; manifest ghcr.io/acme/base:stable "$D_NEW"
+pending APP_DIGEST "$D_NEW" 301 3; run_fixture 301 completed '"failure"'; dispatch_returns 302
+resolved_cycle; expect_rc "exhausted and unresolved: the steps before the last two succeed" $? 0
+EXHAUSTED=$(checked exhausted-images); UNRESOLVED=$(resolved unresolved)
+expect_eq "exhausted and unresolved: both reported" "$EXHAUSTED $(resolved unresolved-names)" '["app"] ["worker"]'
+# The last two steps, chained as the job chains them.
+JOB_FAILED=false; RAN=""; : > "$FAKE/last-errors"
+for STEP in fail-exhausted fail-unresolved; do
+  if step_runs "$STEP" "$JOB_FAILED" "steps.check.outputs.exhausted-images=$EXHAUSTED" "steps.resolve.outputs.unresolved=$UNRESOLVED"; then
+    RAN="$RAN $STEP"
+    run_step "$STEP" EXHAUSTED_IMAGES="$EXHAUSTED" UNRESOLVED="$UNRESOLVED" || JOB_FAILED=true
+    grep '^::error::' "$FAKE/log" >> "$FAKE/last-errors"
+  fi
+done
+expect_eq "exhausted and unresolved: both last steps run" "$RAN" " fail-exhausted fail-unresolved"
+expect_eq "exhausted and unresolved: the job fails" "$JOB_FAILED" true
+if grep -qF "::error::The release of app failed max-release-attempts times" "$FAKE/last-errors"; then
+  pass "exhausted and unresolved: the exhausted image is named"
+else
+  fail "exhausted and unresolved: the exhausted image is named" "$(cat "$FAKE/last-errors")"
+fi
+if grep -qF "::error::Not checked because the tag could not be read from the Dockerfile: worker" "$FAKE/last-errors"; then
+  pass "exhausted and unresolved: the entry is named after the failed step"
+else
+  fail "exhausted and unresolved: the entry is named after the failed step" "$(cat "$FAKE/last-errors")"
+fi
+# The same after a check that failed itself (an unreachable image, say), and
+# the evaluator's own rules: a plain `if:` is skipped after a failed step.
+if step_runs fail-unresolved true "steps.resolve.outputs.unresolved=$UNRESOLVED"; then pass "check failed: the entry is still named"; else fail "check failed: the entry is still named" "skipped"; fi
+if step_runs fail-exhausted true "steps.check.outputs.exhausted-images=$EXHAUSTED"; then fail "a plain if: is skipped after a failed step" "ran"; else pass "a plain if: is skipped after a failed step"; fi
+if step_runs fail-unresolved false "steps.resolve.outputs.unresolved=[]"; then fail "nothing unresolved: the last step is skipped" "ran"; else pass "nothing unresolved: the last step is skipped"; fi
 
 echo ""
 echo "$PASSED passed, $FAILED failed"

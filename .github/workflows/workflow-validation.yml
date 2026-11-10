@@ -235,9 +235,21 @@ jobs:
       # Same failure class again: the monitor stored the digest when it
       # dispatched the release, so a release that then failed was never retried
       # and the consumer stayed on the old base image without anything turning red.
+      # Also runs the docker-base-image-resolve step before the check, so a tag
+      # taken from a Dockerfile is the one whose digest is compared.
       - name: "🧪 docker-base-image-monitor: a digest counts only after its release succeeded"
         shell: bash
         run: bash .github/workflows/tests/docker-base-image-monitor.test.sh
+
+      # And once more: the monitor watched a fixed tag that Dependabot never
+      # updates. After the FROM lines moved to python:3.15-alpine, eight
+      # repositories were still checked on 3.14-alpine (2026-11-10). Pins how
+      # the resolver reads a FROM line (ARG defaults, stages, digest pins,
+      # --platform, continuations), which line it picks, and that it fails
+      # instead of monitoring a guessed tag.
+      - name: "🧪 docker-base-image-resolve: the monitored tag comes from the Dockerfile"
+        shell: bash
+        run: python3 .github/actions/docker-base-image-resolve/tests/test_resolve_base_images.py
 
       # Same failure class: auto-maintenance staged each ecosystem with one
       # `git add` of fixed paths, which stages nothing when one path is

@@ -37,6 +37,7 @@ This directory contains modular, reusable GitHub Actions designed for enterprise
 | Action | Purpose | Engine | Modularer Workflow |
 |--------|---------|--------|---------------------|
 | [`docker-build`](./docker-build/) | Multi-platform build, security scan gate, SBOM, signing, push, Dockerfile version write-back | BuildKit + Trivy/Grype + Cosign | [docker-build.yml](../workflows/docker-build.yml) · Doku: [docker-build.md](../../docs/workflows/docker-build.md#2-composite-action) |
+| [`docker-base-image-resolve`](./docker-base-image-resolve/) | Monitored base image tag from the Dockerfile's FROM line (ARG defaults, stages, digest pins) | Python 3 (stdlib) | [modules-docker-base-image-monitor.yml](../workflows/modules-docker-base-image-monitor.yml) · Doku: [Tag from the Dockerfile](../../docs/workflows/modules-docker-base-image-monitor.md#tag-from-the-dockerfile) |
 
 ### 🤖 AI & Automation
 

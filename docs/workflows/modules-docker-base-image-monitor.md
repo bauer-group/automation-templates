@@ -7,6 +7,7 @@ Detects when a Docker base image has been rebuilt upstream and triggers a rebuil
 Base images like `n8nio/n8n:stable` or `ghcr.io/bauer-group/cs-iamstack/logto` are rebuilt regularly under the same tag. The tag does not change, so nothing signals that your derived image is now stale. This module polls the **digest** behind each tag and reacts when it moves.
 
 - **Digest polling** — `docker manifest inspect` per configured image, multi-arch aware, with up to 3 attempts (10s/20s backoff) for transient registry errors such as `429 toomanyrequests`; auth errors and unknown tags fail at once
+- **Tag from the Dockerfile** — an entry with `dockerfile` is watched on the tag of its FROM line, so a Dependabot bump of that line moves the monitor with it, see [Tag from the Dockerfile](#tag-from-the-dockerfile)
 - **State in repository variables** — the last handled digest is stored per image and created automatically
 - **Two reaction modes** — an empty commit that lets semantic-release cut a patch, and/or a `workflow_dispatch` of a target workflow
 - **Release confirmation** — with a target workflow, a new digest counts as handled only once the dispatched run has succeeded; a failed run (for example a red release gate) is dispatched again by the next check, see [Release confirmation](#release-confirmation)
@@ -16,7 +17,7 @@ Base images like `n8nio/n8n:stable` or `ghcr.io/bauer-group/cs-iamstack/logto` a
 
 > **A release failed, or the job is red with "Release retries exhausted"?** Go to [Operator recovery](#operator-recovery). How a digest moves from "dispatched" to "stored" is shown in [State variables and lifecycle](#state-variables-and-lifecycle).
 
-**Contents:** [Quick Start](#quick-start) · [Input Parameters](#input-parameters) · [Outputs](#outputs) · [Configuration file](#configuration-file) · [Schedule slots](#schedule-slots) · [Release confirmation](#release-confirmation) · [State variables and lifecycle](#state-variables-and-lifecycle) · [Operator recovery](#operator-recovery) · [Unreachable images](#unreachable-images) · [Secrets](#secrets) · [Examples](#examples)
+**Contents:** [Quick Start](#quick-start) · [Input Parameters](#input-parameters) · [Outputs](#outputs) · [Configuration file](#configuration-file) · [Tag from the Dockerfile](#tag-from-the-dockerfile) · [Migrating an existing entry](#migrating-an-existing-entry) · [Schedule slots](#schedule-slots) · [Release confirmation](#release-confirmation) · [State variables and lifecycle](#state-variables-and-lifecycle) · [Operator recovery](#operator-recovery) · [Unreachable images](#unreachable-images) · [Secrets](#secrets) · [Examples](#examples)
 
 ## Quick Start
 
@@ -120,6 +121,7 @@ Complete callers - daily check, several images, dry run - are in [`github/workfl
 | `images-configured` | Number of images declared in the configuration |
 | `images-checked` | Number of images whose digest was actually read |
 | `unreachable-images` | JSON array of image references that could not be read |
+| `unresolved-images` | JSON array of names of entries with `dockerfile` that were not checked - their tag could not be read, or their `variable` is shared with an entry on another image:tag - and that fail the job, see [Fails instead of guessing](#fails-instead-of-guessing). `[]` when there is none; set by the step that resolves the tags, so also when the check failed |
 
 ## Configuration file
 
@@ -129,11 +131,18 @@ Schema: [`.github/config/docker-base-image-monitor/docker-base-images.schema.jso
 {
   "images": [
     {
+      "name": "python",
+      "image": "python",
+      "dockerfile": "src/directory-sync/Dockerfile",
+      "variable": "PYTHON_ALPINE_DIGEST",
+      "description": "Tag from the FROM line of src/directory-sync/Dockerfile"
+    },
+    {
       "name": "logto",
       "image": "ghcr.io/bauer-group/cs-iamstack/logto",
       "tag": "stable",
       "variable": "LOGTO_STABLE_DIGEST",
-      "description": "Logto identity service base image"
+      "description": "Logto identity service base image, pulled at runtime"
     }
   ],
   "settings": {
@@ -142,7 +151,107 @@ Schema: [`.github/config/docker-base-image-monitor/docker-base-images.schema.jso
 }
 ```
 
-Each image requires `name`, `image`, `tag` and `variable`. The `variable` name must match `^[A-Z][A-Z0-9_]*$` and is created automatically on first run.
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Shown in logs, the summary and the release commit |
+| `image` | yes | Repository without tag (`n8nio/n8n`, `library/postgres`, `ghcr.io/…`). With `dockerfile` also the cross-check for the FROM line |
+| `variable` | yes | Repository variable holding the handled digest, `^[A-Z][A-Z0-9_]*$`, created on the first run |
+| `tag` | without `dockerfile` | The tag to watch. With `dockerfile` leave it out: a different value is reported as stale and ignored |
+| `dockerfile` | no | Path of the Dockerfile, relative to the repository root, whose FROM line names the tag - see [Tag from the Dockerfile](#tag-from-the-dockerfile). One Dockerfile per entry: an image several Dockerfiles build on gets [one entry per Dockerfile](#one-entry-per-dockerfile) |
+| `stage` | no | With `dockerfile`: the stage (`FROM … AS <stage>`) whose FROM line counts, for a Dockerfile that uses the image with different tags |
+| `from-index` | no | Alternative to `stage`: the FROM line counted from 0, as `COPY --from=<n>` counts stages |
+| `description` | no | Free text |
+
+Use `dockerfile` for every image that is the base of a Dockerfile in the repository - pinned tags that Dependabot bumps (`python:3.15-alpine`, `postgres:18`) and floating ones (`stable`, `latest`) alike: the Dockerfile is then the only place the tag is written down. `tag` remains for images no Dockerfile of the repository names, such as one a stack pulls at runtime, and for one exception:
+
+> **Keep `tag` when the release builds the image with a `--build-arg` that overrides the ARG of the FROM line.** The ARG default is then not what is built, so the Dockerfile names the wrong tag to watch. XPD-SonarQube is such a case: it watches the floating `sonarqube:community` on purpose. Every release the monitor dispatches picks the newest plugin-compatible `SONARQUBE_VERSION`, passes it as `--build-arg` and writes it back into the ARG. Watching the ARG default (`26.8.0.126808-community`) would never signal a new SonarQube release, and the automatic upgrade would stop.
+
+Name new variables without the version Dependabot bumps (`POSTGRES_ALPINE_DIGEST`, not `POSTGRES_18_ALPINE_DIGEST`); existing names stay valid, they are only names.
+
+### Tag from the Dockerfile
+
+**Why.** Dependabot bumps the FROM line of a Dockerfile, never `base-images.json`. With a fixed `tag` the monitor kept watching a tag the image was no longer built on: a rebuild whenever the unused tag moved, and none when the real one did - the security rebuilds the monitor exists for. On 2026-11-10, once auto-merge let tag bumps through on their own, eight repositories (CS-BackupHelper, CS-IAM, CS-MinIO, CS-NocoDB, CS-Outline, CS-RabbitMQ, IP-Shlink-MCPServer, IP-ZAMMAD-MCPServer) were monitored on `python:3.14-alpine` while they built on `python:3.15-alpine`.
+
+**How.** Before the check, the [`docker-base-image-resolve`](../../.github/actions/docker-base-image-resolve/action.yml) action reads the Dockerfile of every entry with `dockerfile` and takes the tag from its FROM line, resolved as BuildKit resolves it for a build without `--build-arg`:
+
+| FROM line | Watched tag |
+|-----------|-------------|
+| `ARG PYTHON_VERSION=3.15` before the first FROM, then `FROM python:${PYTHON_VERSION}-alpine` | `3.15-alpine` - also `$VAR`, `${VAR:-default}`, `${VAR-default}`, `${VAR:+x}`, `${VAR+x}` and defaults built from earlier ARGs |
+| `FROM ${BASE_IMAGE}:${BASE_VERSION}` | image and tag from the ARG defaults |
+| `FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build` | `1.26-alpine` - flags and the stage name are skipped |
+| `FROM python:3.15-alpine@sha256:…` | `3.15-alpine` - see digest pins below |
+| `FROM python` | `latest` |
+| `FROM build` (an earlier stage) | none - not an image, skipped |
+
+Comment lines, blank lines and `\` continuations are read as BuildKit reads them, also inside a continued instruction. The body of a heredoc (`RUN <<EOF` … `EOF`, also in COPY and ADD) is part of its instruction, so the `from PIL import Image` of a Python heredoc is no FROM line. ARGs declared after the first FROM belong to a stage and do not reach later FROM lines, as in a build.
+
+Which FROM line counts:
+
+- **No selector:** the FROM lines that use `image`. Several are fine as long as they agree on the tag - the `builder`, `test` and `prod` stages of one `python:3.15-alpine`. Different tags of the image fail the check with both lines named: set a selector. So does a FROM line whose image or tag cannot be read - an ARG without a default, a line that cannot be parsed - since it may use `image` on another tag; only a line whose repository is written out as another image (`FROM golang:${GO_VERSION}`) is known not to. Give the ARG a default, or select the line to monitor.
+- **`stage`:** the line `FROM … AS <stage>`, case-insensitive.
+- **`from-index`:** the n-th FROM line, counted from 0.
+
+`image` stays the **cross-check**. If no FROM line uses `image`, or the line that `stage` or `from-index` selects names another image, the entry gets an `::error::` on the Dockerfile that lists the FROM lines found, and it is not checked, see [Fails instead of guessing](#fails-instead-of-guessing). The monitor never switches to another image silently. `python`, `library/python` and `docker.io/library/python` are the same image. If `tag` is set as well and differs, the Dockerfile wins and a `::notice::` on the FROM line says the configured tag is stale.
+
+**Not resolved:** `--build-arg` values the release passes (the ARG default counts - where the release overrides the FROM line's ARG, keep `tag`, see the exception above), and the `# escape=` parser directive.
+
+**Digest pins.** A FROM line pinned to a digest builds on that digest, not on whatever the tag points to. Dependabot updates such pins itself. The monitor still watches the tag and releases when it moves, a rebuild that only changes the image once the pin has been updated as well.
+
+**Requirements.** `python3` on the runner - preinstalled on GitHub-hosted Ubuntu runners; without it the entries with `dockerfile` are not checked, see below. Without an entry with `dockerfile` the step does nothing, needs no Python, and the check runs on the configured tags exactly as before.
+
+#### One entry per Dockerfile
+
+An entry reads one Dockerfile. When an image is the base of several - `node:24-alpine` in three Dockerfiles of CS-BillingStack - give **each Dockerfile an entry of its own**, each with its own `variable`. The Dockerfiles do not move together: Dependabot updates each `docker` directory in a pull request of its own, and auto-merge lets each one through on its own. CS-MinIO already builds `src/minio-worker` on `python:3.14-alpine` and `src/minio-init` on `3.15-alpine`. An entry for only one of them leaves the others unwatched - the drift `dockerfile` removes, back again. Entries that share a `variable` but resolve to different image:tag pairs are not checked, see [Fails instead of guessing](#fails-instead-of-guessing): both would be compared with the one stored digest, and every check would release again.
+
+```json
+{
+  "images": [
+    { "name": "node-api",    "image": "node", "dockerfile": "src/api/Dockerfile",    "variable": "NODE_ALPINE_DIGEST" },
+    { "name": "node-worker", "image": "node", "dockerfile": "src/worker/Dockerfile", "variable": "NODE_ALPINE_WORKER_DIGEST" }
+  ]
+}
+```
+
+While the Dockerfiles share a tag, a move of it is still **one** release: every update of a check goes into one release commit and one dispatch. A Dockerfile that only a test builds needs no entry. A new variable has no stored digest, so its first check releases once; while both Dockerfiles use the same tag, seed it from the existing entry instead: `gh variable set NODE_ALPINE_WORKER_DIGEST --body "$(gh variable get NODE_ALPINE_DIGEST)"`.
+
+#### Fails instead of guessing
+
+An entry whose tag cannot be read is **not checked** in that run - neither on a guessed tag nor on a configured `tag`. Its `<variable>` and `<variable>_PENDING` are left as they are. This applies to that entry alone:
+
+- every other image is checked, released, confirmed and stored as usual
+- the entry gets an `::error::` on its Dockerfile (on the FROM line where one applies), a **🛑 Tag not read from the Dockerfile** section in the summary, and is listed in the `unresolved-images` output; the coverage line counts it as configured, not verified
+- the job fails in its last step, after the summary - as with [exhausted release retries](#release-confirmation). A Dockerfile refactor that renames a stage, moves the file or adds an ARG without a default must not hold back the security rebuilds of the repository's other images. `fail-on-unreachable-image` does not change this: the cause is in the repository, not in a registry
+
+Once the entry is fixed, the next check reads its tag again and releases if the digest moved in the meantime. The cases:
+
+- the Dockerfile does not exist, or the path leaves the repository
+- no FROM line uses `image`, or the selected line names another image or an earlier stage
+- the image appears with different tags and no `stage` or `from-index` is set
+- the FROM line uses an ARG without a default (`ARG VERSION`, `FROM python:${VERSION}`) - its value only exists at build time. Give the ARG a default, or write `${VERSION:-3.15-alpine}`. The same for an ARG whose default uses such an ARG (`ARG MAJOR`, `ARG VERSION=${MAJOR}.15`), however the FROM line uses it
+- without a selector: a FROM line whose image or tag cannot be read, next to the lines that use `image`
+- the FROM line pins only a digest (`python@sha256:…`), so there is no tag to watch
+- the tag or the digest is not valid
+- the entry shares its `variable` with an entry checked on another image:tag (the entries with `dockerfile` are left out; one without `dockerfile` is checked as before)
+- `stage` together with `from-index`, a stage that does not exist, an index past the last FROM line
+
+If the resolver cannot run at all - no `python3` on a self-hosted runner, or an error of the resolver itself - every entry with `dockerfile` is handled this way, and the entries without one are still checked.
+
+### A tag bump releases once more
+
+When Dependabot bumps the FROM tag, the next check compares the digest of the **new** tag with the stored digest of the **old** one, finds them different and releases once: attempt 1, confirmed and stored like any new digest. `<variable>`, `<variable>_PENDING`, release confirmation and `max-release-attempts` work exactly as before - only the tag behind the variable changed. From then on a move of the old tag is ignored and a move of the new one is released.
+
+That release confirms more than it fixes: the bump has usually released the image on the new tag already. Dependabot commits it as `fix(docker): bump …`, which the gated release pipeline releases as a patch. On 2026-11-10, CS-BackupHelper #25 became 1.10.9 and IP-ZAMMAD-MCPServer #9 became 6.1.9 within five minutes, CS-Outline #75 became 0.6.42 within eight, each with a successful *Release & Docker Build* on the bump commit. The monitor cannot tell, because it does not store which tag a digest belongs to, and one extra patch release per bump is cheaper than a second piece of state. To skip it, store the new tag's digest by hand after the bump: take it from the **New digests** block of a [dry run](../../github/workflows/examples/docker-base-image-monitor/dry-run.yml) and `gh variable set <variable> --body sha256:…`.
+
+### Migrating an existing entry
+
+Entries without `dockerfile` keep working unchanged; nothing has to be migrated at once.
+
+1. Add `dockerfile` with the path of the Dockerfile whose FROM line uses the image, and remove `tag`. Is the image the base of several Dockerfiles, add [one entry per Dockerfile](#one-entry-per-dockerfile). Does the release override the FROM line's ARG with a `--build-arg`, keep `tag` (see the exception under [Configuration file](#configuration-file)).
+2. Keep `name` and `variable` as they are. A new variable has no stored digest, so its first check would release once.
+3. Run the check with `dry-run: true`. The log shows `🧭 <name>: <image>:<tag> from <Dockerfile> line <n>`; a `::notice::` names a tag that had drifted.
+4. If the configured tag had drifted, the first real check releases once, because the stored digest is the old tag's. That release is the rebuild the drifted entry held back. To skip it, store the digest by hand as in [A tag bump releases once more](#a-tag-bump-releases-once-more).
+
+The change touches only the config, so commit it with `[skip ci]` (for example `ci(monitor): took the base image tags from the Dockerfiles [skip ci]`). When migrating many repositories, stagger the pushes rather than pushing them all at once.
 
 ## Schedule slots
 

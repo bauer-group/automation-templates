@@ -16,7 +16,16 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["name", "image", "tag", "variable"],
+        "required": ["name", "image", "variable"],
+        "anyOf": [
+          { "required": ["tag"] },
+          { "required": ["dockerfile"] }
+        ],
+        "dependencies": {
+          "stage": ["dockerfile"],
+          "from-index": ["dockerfile"]
+        },
+        "not": { "required": ["stage", "from-index"] },
         "properties": {
           "name": {
             "type": "string",
@@ -26,19 +35,38 @@
           },
           "image": {
             "type": "string",
-            "description": "Docker image name without tag (e.g., 'n8nio/n8n', 'library/postgres')",
+            "description": "Docker image name without tag (e.g., 'n8nio/n8n', 'library/postgres'). With 'dockerfile' also the cross-check: the FROM line must use this image ('python', 'library/python' and 'docker.io/library/python' are the same), otherwise the entry is not checked and the job fails at the end.",
             "pattern": "^[a-z0-9][a-z0-9._/-]*[a-z0-9]$",
             "examples": ["n8nio/n8n", "n8nio/runners", "library/node"]
           },
           "tag": {
             "type": "string",
-            "description": "Docker tag to monitor (typically floating tags like 'stable', 'latest')",
+            "description": "Docker tag to monitor (typically floating tags like 'stable', 'latest'). Required without 'dockerfile'. With 'dockerfile' leave it out: the tag of the FROM line is monitored, and a different value here is reported as stale and ignored.",
             "minLength": 1,
             "examples": ["stable", "latest", "lts", "alpine"]
           },
+          "dockerfile": {
+            "type": "string",
+            "description": "Path of the Dockerfile this image is the base of, relative to the repository root. The monitor then watches the tag of its FROM line - ARG defaults before the first FROM, digest pins (tag@sha256:...) and --platform resolved - so a Dependabot bump of that line moves the monitor with it. One Dockerfile per entry: an image several Dockerfiles build on needs one entry per Dockerfile. Build args given at build time are not seen; the ARG default counts - keep 'tag' instead when the release overrides the FROM line's ARG with --build-arg.",
+            "minLength": 1,
+            "pattern": "^[^/\\\\]",
+            "examples": ["Dockerfile", "src/app/Dockerfile"]
+          },
+          "stage": {
+            "type": "string",
+            "description": "Only with 'dockerfile', when it has FROM lines of this image on different tags, or a FROM line whose image or tag cannot be read (an ARG without a default): the stage name (FROM ... AS <stage>, case-insensitive) whose FROM line is monitored. Not needed when all FROM lines of the image use the same tag.",
+            "minLength": 1,
+            "examples": ["prod", "runtime"]
+          },
+          "from-index": {
+            "type": "integer",
+            "description": "Alternative to 'stage': the FROM line to monitor, counted from 0 as COPY --from=<n> counts stages.",
+            "minimum": 0,
+            "examples": [0, 2]
+          },
           "variable": {
             "type": "string",
-            "description": "GitHub repository variable name to store the digest",
+            "description": "GitHub repository variable name to store the digest. One per watched image:tag - entries with 'dockerfile' that share it with an entry on another image:tag are not checked.",
             "pattern": "^[A-Z][A-Z0-9_]*$",
             "examples": ["N8N_STABLE_DIGEST", "RUNNER_STABLE_DIGEST"]
           },
@@ -79,6 +107,13 @@
           "tag": "stable",
           "variable": "N8N_STABLE_DIGEST",
           "description": "n8n workflow automation platform"
+        },
+        {
+          "name": "python",
+          "image": "python",
+          "dockerfile": "src/app/Dockerfile",
+          "variable": "PYTHON_ALPINE_DIGEST",
+          "description": "Tag taken from the FROM line of src/app/Dockerfile"
         }
       ],
       "settings": {
