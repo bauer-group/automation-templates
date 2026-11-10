@@ -1095,6 +1095,12 @@ jobs:
                   echo "> ⚠️ GitHub returned no run id, so the result of this release is not tracked - the new digests were stored right away."
                 fi
               fi
+            elif [ -z "$IMAGES_CONFIGURED" ]; then
+              # The check never wrote its outputs: it, or a step before it,
+              # failed. "Up to date" would claim a check that never ran.
+              echo "### ❌ The check did not run"
+              echo ""
+              echo "No image was checked. See the error annotations of this run - for example a missing secret, or a config file that could not be loaded."
             elif [ "$((UNREACHABLE_COUNT + UNRESOLVED_COUNT))" -gt 0 ]; then
               echo "### ℹ️ No updates among the images that could be read"
               echo ""
