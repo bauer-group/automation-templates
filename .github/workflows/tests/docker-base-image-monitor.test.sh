@@ -31,6 +31,7 @@
 #                                              and stored, and the job fails in its last step
 #   two entries, one variable, two tags     -> left out as well
 #   exhausted retries and such an entry     -> both last steps fail the job, each naming its images
+#   check never ran (e.g. missing secret)   -> the summary says so, never "up to date"
 #   Dependabot bumps the FROM tag           -> one release for the new tag, then only it counts
 #
 # The step bodies are extracted from the workflow and the action at runtime
@@ -661,6 +662,20 @@ else
   fail "shared variable, two tags: error annotation" "$(tr '\n' ' ' < "$FAKE/log" | cut -c1-300)"
 fi
 
+# A step before the check that fails - a missing secret, say - or a check
+# that fails before its outputs (a config file not found) leaves every
+# output empty. The summary runs anyway (if: always()) and must not call that
+# "up to date".
+reset summary-not-run
+run_step summary GITHUB_STEP_SUMMARY="$FAKE/summary"; expect_rc "check never ran: the summary step succeeds" $? 0
+if grep -qF "### ❌ The check did not run" "$FAKE/summary"; then pass "check never ran: the summary says so"; else fail "check never ran: the summary says so" "$(tr '\n' '|' < "$FAKE/summary")"; fi
+if grep -qF "All base images are up to date" "$FAKE/summary"; then fail "check never ran: not reported as up to date" "it is"; else pass "check never ran: not reported as up to date"; fi
+# The resolve step ran and found an entry it could not resolve, then the check failed.
+reset summary-not-run-unresolved
+run_step summary GITHUB_STEP_SUMMARY="$FAKE/summary" \
+  UNRESOLVED_JSON='[{"name":"worker","image":"python","dockerfile":"src/worker/Dockerfile","error":"no stage"}]'
+if grep -qF "### ❌ The check did not run" "$FAKE/summary"; then pass "check never ran, entry unresolved: the check did not run"; else fail "check never ran, entry unresolved: the check did not run" "$(tr '\n' '|' < "$FAKE/summary")"; fi
+if grep -qF "No updates among the images that could be read" "$FAKE/summary"; then fail "check never ran, entry unresolved: no claim about read images" "claimed"; else pass "check never ran, entry unresolved: no claim about read images"; fi
 reset summary-unresolved
 run_step summary GITHUB_STEP_SUMMARY="$FAKE/summary" IMAGES_CONFIGURED=2 IMAGES_CHECKED=1 UPDATES_FOUND=false \
   RETRIED_JSON='[]' PENDING_JSON='[]' CONFIRMED_JSON='[]' EXHAUSTED_JSON='[]' UNREACHABLE_JSON='[]' \
