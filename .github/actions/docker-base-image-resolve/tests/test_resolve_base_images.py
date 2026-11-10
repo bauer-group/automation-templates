@@ -467,6 +467,26 @@ class ResolveEntry(RepoCase):
         self.assertEqual(self.resolve(WHISTLEBLOWER, image="globaleaks/globaleaks").tag, "latest")
         self.assertEqual(self.resolve(WHISTLEBLOWER).tag, "3-alpine")
 
+    def test_an_unterminated_heredoc_fails(self):
+        # BuildKit rejects it; reading on would silently drop the FROM lines
+        # after it - here the 9.9 line, which BuildKit's build would use.
+        text = "FROM python:1.0 AS b\nRUN cat <<EOF\nno terminator\nFROM python:9.9\n"
+        error = self.fails(text, "unterminated heredoc <<EOF", "Dockerfile")
+        self.assertEqual(error.line, 2)
+        self.assertEqual(error.file, "Dockerfile")
+
+    def test_odd_quoting_cannot_hide_from_lines(self):
+        # A quote that starts mid-word makes the << look like a heredoc to the
+        # word splitter; the missing terminator must fail, not watch 1.0.
+        text = 'FROM python:1.0 AS b\nRUN FOO="x <<EOF y" true\nFROM python:9.9\n'
+        self.fails(text, "unterminated heredoc")
+
+    def test_a_lone_carriage_return_does_not_end_a_line(self):
+        # read_dockerfile() opens with newline="", so a lone CR inside a RUN
+        # stays in that instruction (BuildKit splits at line feeds only).
+        text = "FROM python:3.15-alpine\nRUN echo a\rFROM python:9.9\n"
+        self.assertEqual(self.resolve(text).tag, "3.15-alpine")
+
     def test_a_selector_chooses_past_an_unreadable_line(self):
         text = "ARG PY\nFROM python:3.15-alpine AS builder\nFROM python:${PY}-alpine AS prod\n"
         self.assertEqual(self.resolve(text, stage="builder").tag, "3.15-alpine")

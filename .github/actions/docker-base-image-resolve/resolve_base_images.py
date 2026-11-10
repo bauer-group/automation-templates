@@ -166,11 +166,21 @@ def logical_lines(text: str) -> List[Tuple[int, str]]:
         result.append((start, instruction))
         parts = []
         for terminator, strip_tabs in _heredocs(instruction):
+            closed = False
             while number < len(lines):
                 body = lines[number]
                 number += 1
                 if (body.lstrip("\t") if strip_tabs else body) == terminator:
+                    closed = True
                     break
+            if not closed:
+                # BuildKit rejects an unterminated heredoc. Reading on would
+                # silently drop every FROM line after it - and a << that only
+                # looks like a heredoc here (odd quoting) would do the same.
+                raise ResolveError(
+                    f"line {start}: unterminated heredoc <<{terminator} - BuildKit "
+                    "rejects this Dockerfile, so its FROM lines cannot be trusted",
+                    None, start)
     if parts:
         result.append((start, "".join(parts).strip()))
     return result
@@ -374,7 +384,9 @@ def read_dockerfile(root: str, path: str) -> str:
         raise ResolveError(f"'dockerfile' {path} points outside the repository")
     if not os.path.isfile(full):
         raise ResolveError(f"Dockerfile not found: {path} (relative to the repository root)")
-    with open(full, encoding="utf-8", errors="replace") as handle:
+    # newline="": no universal newlines, so a lone CR stays in the text and
+    # logical_lines() splits at line feeds only, as BuildKit does.
+    with open(full, encoding="utf-8", errors="replace", newline="") as handle:
         return handle.read()
 
 
@@ -477,7 +489,12 @@ def resolve_entry(entry: dict, root: str) -> Resolved:
     if "stage" in entry and "from-index" in entry:
         raise ResolveError("set either 'stage' or 'from-index', not both")
 
-    froms = parse_dockerfile(read_dockerfile(root, path))
+    try:
+        froms = parse_dockerfile(read_dockerfile(root, path))
+    except ResolveError as exc:
+        if exc.file is None and exc.line is not None:
+            raise ResolveError(f"{path} {exc}", path, exc.line) from exc
+        raise
     if not froms:
         raise ResolveError(f"{path} has no FROM line", path)
     picked = _select(entry, path, froms, expected)
