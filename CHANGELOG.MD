@@ -4,6 +4,17 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.11.0](https://github.com/bauer-group/automation-templates/compare/v11.10.0...v11.11.0) (2026-11-11)
+
+### 🚀 Features
+
+* **monitor:** took the watched base image tag from the Dockerfile ([f000102](https://github.com/bauer-group/automation-templates/commit/f000102273e34d26e968c7fadf408d2afbba50fe)), references [#25](https://github.com/bauer-group/automation-templates/issues/25) [#9](https://github.com/bauer-group/automation-templates/issues/9) [#75](https://github.com/bauer-group/automation-templates/issues/75)
+
+### 🐛 Bug Fixes
+
+* **monitor:** rejected unterminated heredocs in Dockerfiles ([d699b13](https://github.com/bauer-group/automation-templates/commit/d699b13052c8970adba4c42dca2e6debb1b92ae1))
+* **monitor:** stopped reporting "up to date" when the check never ran ([800a7b8](https://github.com/bauer-group/automation-templates/commit/800a7b8a9d971d28bc5792ca461b7d378bd9d7da))
+
 ## [11.10.0](https://github.com/bauer-group/automation-templates/compare/v11.9.3...v11.10.0) (2026-11-09)
 
 ### 🚀 Features
