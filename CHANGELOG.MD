@@ -4,6 +4,14 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.12.0](https://github.com/bauer-group/automation-templates/compare/v11.11.0...v11.12.0) (2026-11-13)
+
+### 🚀 Features
+
+* **auto-maintenance:** compared the linux/amd64 base image digest ([17746be](https://github.com/bauer-group/automation-templates/commit/17746bed0872792741307482737d3960db740f3f))
+* **docker-maintenance:** handed released base digests to the monitor ([743a4af](https://github.com/bauer-group/automation-templates/commit/743a4af6fc34b30724eb7478dba0dbb78c716e0c))
+* **monitor:** compared linux/amd64 and accepted Dependabot handoffs ([89de0f2](https://github.com/bauer-group/automation-templates/commit/89de0f21c3473ee7bffeab2913ae7a9654d43c37))
+
 ## [11.11.0](https://github.com/bauer-group/automation-templates/compare/v11.10.0...v11.11.0) (2026-11-11)
 
 ### 🚀 Features
