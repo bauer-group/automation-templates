@@ -217,8 +217,19 @@ else
   fail "build outputs are consumed" "expected at least the image-digest output and the signing digest, found $REFS lines"
 fi
 
-assert_line "image-digest coalesces push, push retry, local, local retry - in that order" "$(cat "$ACTION_FILE")" \
-  "    value: \${{ steps.build.outputs.digest || steps.build-retry.outputs.digest || steps.build-local.outputs.digest || steps.build-local-retry.outputs.digest }}"
+assert_line "image-digest coalesces push, push retry, fast-path push, local, local retry - in that order" "$(cat "$ACTION_FILE")" \
+  "    value: \${{ steps.build.outputs.digest || steps.build-retry.outputs.digest || steps.push-scanned.outputs.digest || steps.build-local.outputs.digest || steps.build-local-retry.outputs.digest }}"
+
+# single-build-scan pushes in its own step (push-scanned), so a push digest has three
+# sources. A consumer that reads only build/build-retry passes the pairing check above
+# and still gets an empty digest on the fast path - for the SBOM attestation that
+# fails the release after the push.
+MISSING_FAST_PATH=$(grep -nF 'steps.build.outputs.digest' "$ACTION_FILE" | grep -vF 'steps.push-scanned.outputs.digest')
+if [ -z "$MISSING_FAST_PATH" ]; then
+  pass "every push-digest consumer also reads the single-build fast path"
+else
+  fail "every push-digest consumer also reads the single-build fast path" "missing in: $MISSING_FAST_PATH"
+fi
 assert_line "the workflow takes the digest from the action's coalesced output" "$(cat "$WORKFLOW_FILE")" \
   "      image-digest: \${{ steps.docker-build.outputs.image-digest }}"
 assert_no_text "the workflow never reads the action's inner build steps" "$(cat "$WORKFLOW_FILE")" \
