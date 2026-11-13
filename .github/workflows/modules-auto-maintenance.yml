@@ -9,8 +9,9 @@
 #
 # Features:
 # - Docker base image digest monitoring (floating tags like stable/latest);
-#   new digests are stored only after the commit was pushed and the release
-#   dispatched, so a failed run is retried next time
+#   compares the linux/amd64 manifest of a multi-arch index; new digests are
+#   stored only after the commit was pushed and the release dispatched, so a
+#   failed run is retried next time
 # - Multi-ecosystem dependency updates (Node.js, Python, .NET, Go)
 # - Build/Test/Typecheck validation with automatic rollback on failure
 # - Selective staging: only dependency manifests and lock files are
@@ -246,6 +247,7 @@ jobs:
           DRY_RUN: ${{ inputs.dry-run }}
           FAIL_ON_UNREACHABLE: ${{ inputs.fail-on-unreachable-image }}
         shell: bash
+        # Tested by .github/workflows/tests/auto-maintenance-base-images.test.sh
         run: |
           set -euo pipefail
 
@@ -259,11 +261,148 @@ jobs:
           # whenever a later step failed or the commit was skipped: the next run
           # read the new digest back and reported "No update".
           VARIABLE_UPDATES="{}"
+          # Variable name -> linux/amd64 digest for stored state that only
+          # changes its platform (see check_migration). Not an update: nothing
+          # is committed or released for it, so the "Persist migrated digests"
+          # step stores it without waiting for a commit.
+          MIGRATION_UPDATES="{}"
+          MIGRATED_IMAGES="[]"
 
           # Must be initialised before first read: -u aborts on an unset variable.
           CONFIGURED_COUNT=$(printf '%s' "$BASE_IMAGES" | jq 'length')
           CHECKED_COUNT=0
           UNREACHABLE_IMAGES="[]"
+
+          # The digest a check compares. The images built on these bases are
+          # linux/amd64. For a multi-arch index this used to take the first
+          # manifest sorted by architecture - linux/386 whenever an index has
+          # one, as "386" sorts before "amd64". docker-library builds each
+          # architecture separately, so 386 can lag an amd64 security rebuild
+          # (released late) or be rebuilt alone (a release with nothing changed
+          # for us). An index without linux/amd64 keeps the old pick.
+          # Shared verbatim with the base image monitor and the Dependabot
+          # module - keep the three byte-identical.
+          DIGEST_FILTER='
+          if .config.digest then
+            .config.digest
+          elif .manifests then
+            ([.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")]
+              | (map(select((.platform.variant // "") == "")) + .) | first | .digest)
+            // (.manifests | sort_by(.platform.architecture) | .[0].digest)
+          else
+            empty
+          end
+          '
+          # The pick of the previous version (for most Docker official images
+          # the linux/386 manifest). Used ONLY to recognise the state it stored.
+          LEGACY_DIGEST_FILTER='if .config.digest then .config.digest elif .manifests then .manifests | sort_by(.platform.architecture) | .[0].digest else empty end'
+
+          # RFC 3339 -> epoch seconds; empty for anything else, because `date -d`
+          # alone also takes "now", "2 years ago", "Jan 1 2024" or "" (GNU date
+          # reads "" as today 00:00) - a build time read from such a value
+          # would switch a digest without evidence. Same rule as the base
+          # image monitor. Fractional seconds are dropped first so that every
+          # date implementation reads the value (Ubuntu 26.04 runners ship
+          # uutils date).
+          to_epoch() {
+            local value="$1"
+            [[ "$value" =~ ^([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$ ]] || return 0
+            value="${BASH_REMATCH[1]}${BASH_REMATCH[3]}"
+            value=$(date -u -d "$value" +%s 2>/dev/null) || value=""
+            case "$value" in
+              ''|*[!0-9]*) ;;
+              *) printf '%s' "$value" ;;
+            esac
+          }
+
+          # Creation time of the repository's latest release, read at most
+          # once per run (on the first migration candidate).
+          RELEASE_LOOKED_UP="false"
+          RELEASED_AT=""
+          RELEASED_EPOCH=""
+          RELEASE_PROBLEM=""
+          lookup_latest_release() {
+            local out=""
+            RELEASE_LOOKED_UP="true"
+            if out=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .created_at 2>&1); then
+              RELEASED_AT="$out"
+              RELEASED_EPOCH=$(to_epoch "$out")
+              if [ -z "$RELEASED_EPOCH" ]; then
+                RELEASE_PROBLEM="the creation time of the latest release could not be read"
+              fi
+              return 0
+            fi
+            case "$out" in
+              *404*|*"Not Found"*) RELEASE_PROBLEM="the repository has no release yet" ;;
+              *) RELEASE_PROBLEM="the latest release could not be read (${out%%$'\n'*})" ;;
+            esac
+          }
+
+          # One-time migration of the state stored by the previous version.
+          # Comparing amd64 turns every stored 386 digest into an "update" - a
+          # release with unchanged content in every repository - unless that
+          # state is recognised. A stored digest equal to the old pick of THIS
+          # index means the 386 manifest has not changed since it was stored;
+          # the amd64 manifest may have (386 lag), and missing that security
+          # rebuild is far worse than a redundant release. So the stored value
+          # is replaced without a release only when the amd64 image is more
+          # than MIGRATION_MARGIN_HOURS older than the latest release.
+          # "created" is when an image was built, not when it reached the tag:
+          # docker-library adds each architecture to the index on its own.
+          # python:3.15-alpine on 2026-11-05: amd64 built 19:27, in the tag
+          # at 23:06, 386 there since 20:06. A check in between stored the new
+          # 386 digest and released on the OLD amd64 image; compared with that
+          # release alone, the newer amd64 image looked older and would have
+          # been migrated - never shipped. The margin covers that delay (hours)
+          # and the snapshot timestamp debian carries as "created" (about 11h
+          # before the push). Images whose "created" is a fixed source date
+          # (busybox: months old) put all platforms into the tag together
+          # (seconds apart), so there is no window to fall into. Images built
+          # by one multi-platform buildx run change all platform digests
+          # together, so for them the old match already implies an unchanged
+          # amd64 manifest. The job summary and the doc name the margin too.
+          MIGRATION_MARGIN_HOURS=48
+          # Sets MIGRATION_REASON to why the candidate is released after all;
+          # empty means migrate. Runs in this shell, not in $(...), so that
+          # the release lookup stays cached.
+          check_migration() {
+            local ref="$1" inspect="" created="" created_epoch="" attempt
+            MIGRATION_CREATED=""
+            MIGRATION_REASON=""
+            for attempt in 1 2; do
+              if inspect=$(docker buildx imagetools inspect "$ref" --format '{{json .Image}}'); then
+                break
+              fi
+              inspect=""
+              if [ "$attempt" -lt 2 ]; then
+                echo "⏳ Reading the creation time of $ref failed, retrying in 10s" >&2
+                sleep 10
+              fi
+            done
+            created=$(printf '%s' "$inspect" | jq -r '.created // empty' 2>/dev/null) || created=""
+            created_epoch=$(to_epoch "$created")
+            if [ -z "$created_epoch" ]; then
+              MIGRATION_REASON="the creation time of the linux/amd64 image could not be read"
+              return 0
+            fi
+            # Before 1980-01-01 is a placeholder of reproducible builds
+            # (1970-01-01T00:00:00Z, nixpkgs 00:00:01Z), not a build time;
+            # SOURCE_DATE_EPOCH tools clamp to 1980 at the lowest. Same
+            # floor as the base image monitor.
+            if [ "$created_epoch" -lt 315532800 ]; then
+              MIGRATION_REASON="the linux/amd64 image has no usable creation time ($created)"
+              return 0
+            fi
+            MIGRATION_CREATED="$created"
+            if [ "$RELEASE_LOOKED_UP" != "true" ]; then
+              lookup_latest_release
+            fi
+            if [ -z "$RELEASED_EPOCH" ]; then
+              MIGRATION_REASON="$RELEASE_PROBLEM"
+            elif [ $((created_epoch + MIGRATION_MARGIN_HOURS * 3600)) -ge "$RELEASED_EPOCH" ]; then
+              MIGRATION_REASON="the linux/amd64 image ($created) is not more than ${MIGRATION_MARGIN_HOURS}h older than the latest release ($RELEASED_AT)"
+            fi
+          }
 
           # Reads a manifest with up to 3 attempts (backoff 10s, 20s). Rate limits,
           # 5xx answers and network resets are transient; errors that waiting
@@ -320,15 +459,7 @@ jobs:
               continue
             fi
 
-            CURRENT_DIGEST=$(echo "$MANIFEST_OUTPUT" | jq -r '
-              if .config.digest then
-                .config.digest
-              elif .manifests then
-                .manifests | sort_by(.platform.architecture) | .[0].digest
-              else
-                empty
-              end
-            ' 2>/dev/null || echo "")
+            CURRENT_DIGEST=$(echo "$MANIFEST_OUTPUT" | jq -r "$DIGEST_FILTER" 2>/dev/null || echo "")
 
             if [ -z "$CURRENT_DIGEST" ]; then
               echo "::error::Could not extract digest for $IMAGE:$TAG"
@@ -349,6 +480,26 @@ jobs:
               echo "ℹ️ Variable $VARIABLE does not exist (will be created)"
             else
               echo "📦 Stored digest: ${STORED_DIGEST:0:20}..."
+            fi
+
+            LEGACY_DIGEST=$(echo "$MANIFEST_OUTPUT" | jq -r "$LEGACY_DIGEST_FILTER" 2>/dev/null || echo "")
+            if [ "$CURRENT_DIGEST" != "$STORED_DIGEST" ] && [ -n "$STORED_DIGEST" ] \
+              && [ "$STORED_DIGEST" = "$LEGACY_DIGEST" ] && [ "$LEGACY_DIGEST" != "$CURRENT_DIGEST" ]; then
+              echo "🔁 The stored digest is this index's pick of the previous version (linux/386 for most official images)"
+              check_migration "$IMAGE@$CURRENT_DIGEST"
+              if [ -z "$MIGRATION_REASON" ]; then
+                echo "✅ Migrated $NAME to its linux/amd64 digest - the image ($MIGRATION_CREATED) is more than ${MIGRATION_MARGIN_HOURS}h older than the latest release ($RELEASED_AT), nothing to release"
+                MIGRATION_UPDATES=$(printf '%s' "$MIGRATION_UPDATES" | jq -c --arg v "$VARIABLE" --arg d "$CURRENT_DIGEST" '. + {($v): $d}')
+                MIGRATED_IMAGES=$(printf '%s' "$MIGRATED_IMAGES" | jq -c --arg name "$NAME" '. + [$name]')
+                if [ "$DRY_RUN" != "true" ]; then
+                  echo "💾 Variable $VARIABLE will be stored without a commit"
+                else
+                  echo "🔍 DRY RUN: Would set variable $VARIABLE"
+                fi
+                echo "::endgroup::"
+                continue
+              fi
+              echo "::notice::$NAME ($IMAGE:$TAG): released as an update - its stored digest is the previous linux/386 pick, but $MIGRATION_REASON"
             fi
 
             # Compare digests
@@ -387,6 +538,8 @@ jobs:
           echo "updated-images=$UPDATED_IMAGES" >> "$GITHUB_OUTPUT"
           echo "new-digests=$NEW_DIGESTS" >> "$GITHUB_OUTPUT"
           echo "variable-updates=$VARIABLE_UPDATES" >> "$GITHUB_OUTPUT"
+          echo "migration-updates=$MIGRATION_UPDATES" >> "$GITHUB_OUTPUT"
+          echo "migrated-images=$MIGRATED_IMAGES" >> "$GITHUB_OUTPUT"
           echo "images-configured=$CONFIGURED_COUNT" >> "$GITHUB_OUTPUT"
           echo "images-checked=$CHECKED_COUNT" >> "$GITHUB_OUTPUT"
           echo "unreachable-images=$UNREACHABLE_IMAGES" >> "$GITHUB_OUTPUT"
@@ -403,6 +556,9 @@ jobs:
 
           echo ""
           echo "📊 Base images checked: $CHECKED_COUNT of $CONFIGURED_COUNT configured"
+          if [ "$MIGRATED_IMAGES" != "[]" ]; then
+            echo "🔁 Migrated to the linux/amd64 digest without a release: $(printf '%s' "$MIGRATED_IMAGES" | jq -r 'join(", ")')"
+          fi
 
           if [ "$UNREACHABLE_COUNT" -gt 0 ]; then
             echo "Unreachable: $(printf '%s' "$UNREACHABLE_IMAGES" | jq -r 'join(", ")')"
@@ -412,6 +568,37 @@ jobs:
             fi
             echo "::warning::$UNREACHABLE_COUNT of $CONFIGURED_COUNT base image(s) could not be checked (fail-on-unreachable-image is false). This run did NOT verify them."
           fi
+
+      # A migration only moves stored state from the previous version's pick
+      # (linux/386) to the linux/amd64 digest of the same index, after the
+      # check found the amd64 image more than 48h older than the latest
+      # release (see MIGRATION_MARGIN_HOURS in the check). There is
+      # nothing to commit or release for it, so it is stored here and not by
+      # "Persist new digests", which stays reserved for real updates and keeps
+      # waiting for their commit and release. Its evidence does not depend on
+      # anything this run does later. Not storing it loses nothing: the next
+      # run evaluates it again - hence a warning, not a failed job.
+      - name: "💾 Persist migrated digests"
+        id: persist-migrations
+        if: steps.base-images.outputs.migration-updates != '' && steps.base-images.outputs.migration-updates != '{}' && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          MIGRATION_UPDATES: ${{ steps.base-images.outputs.migration-updates }}
+        shell: bash
+        # Tested by .github/workflows/tests/auto-maintenance-base-images.test.sh
+        run: |
+          set -euo pipefail
+
+          ALL_STORED="true"
+          while IFS=$'\t' read -r VARIABLE DIGEST; do
+            if gh variable set "$VARIABLE" --body "$DIGEST" < /dev/null; then
+              echo "✅ Stored $VARIABLE = ${DIGEST:0:20}... (linux/amd64, no release)"
+            else
+              echo "::warning::Could not store the migrated digest of $VARIABLE - the next run checks it again"
+              ALL_STORED="false"
+            fi
+          done < <(printf '%s' "$MIGRATION_UPDATES" | jq -r 'to_entries[] | "\(.key)\t\(.value)"')
+          echo "all-stored=$ALL_STORED" >> "$GITHUB_OUTPUT"
 
       # =====================================================================
       # Step 5: Setup Node.js
@@ -988,10 +1175,13 @@ jobs:
       # Step 18: Job Summary
       # =====================================================================
       - name: "📋 Job Summary"
+        id: summary
         if: always()
         env:
           DRY_RUN: ${{ inputs.dry-run }}
           PERSIST_OUTCOME: ${{ steps.persist.outcome }}
+          MIGRATED_IMAGES_JSON: ${{ steps.base-images.outputs.migrated-images }}
+          MIGRATION_STORED: ${{ steps.persist-migrations.outputs.all-stored }}
           CONFIG_FILE: ${{ inputs.config-file }}
           TOKEN_SOURCE: ${{ steps.auth.outputs.token-source }}
           # Config flags
@@ -1065,6 +1255,18 @@ jobs:
                 fi
               else
                 echo "ℹ️ All base images are up to date."
+              fi
+              if [ -n "$MIGRATED_IMAGES_JSON" ] && [ "$MIGRATED_IMAGES_JSON" != "[]" ]; then
+                echo ""
+                echo "🔁 **Moved to the linux/amd64 digest without a release** (the stored digest was the previous linux/386 pick and the amd64 image is more than 48h older than the latest release):"
+                printf '%s' "$MIGRATED_IMAGES_JSON" | jq -r '.[] | "- `" + . + "`"' 2>/dev/null || echo "- (unknown)"
+                if [ "$DRY_RUN" = "true" ]; then
+                  echo ""
+                  echo "> 🔍 Dry run: not stored."
+                elif [ "$MIGRATION_STORED" != "true" ]; then
+                  echo ""
+                  echo "> ⚠️ Not stored. The next run checks these images again."
+                fi
               fi
               echo ""
             fi

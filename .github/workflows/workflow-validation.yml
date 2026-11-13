@@ -260,6 +260,18 @@ jobs:
         shell: bash
         run: bash .github/workflows/tests/auto-maintenance-commit.test.sh
 
+      # The base image check compared the first manifest of an index sorted
+      # by architecture - linux/386, while everything built on these bases is
+      # amd64. 386 can lag an amd64 security rebuild or be rebuilt alone.
+      # Pins the amd64 comparison, the fallback for an index without amd64,
+      # and the one-time migration of stored 386 digests: stored without a
+      # release only when the amd64 image is more than 48h older than the
+      # latest release (it can reach the tag hours after its build),
+      # released whenever that cannot be shown.
+      - name: "🧪 auto-maintenance: the base image check compares linux/amd64"
+        shell: bash
+        run: bash .github/workflows/tests/auto-maintenance-base-images.test.sh
+
       # Rework items from #105 that need no decision: label names match as whole
       # words only ("test" was found inside "attest"), Dependabot is skipped and
       # the job has a timeout.
