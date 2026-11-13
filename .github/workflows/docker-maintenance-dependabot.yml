@@ -5,7 +5,10 @@
 # status checks and no "Allow auto-merge" setting needed:
 #
 # 0. Only Dependabot's PRs, on events Dependabot raised, with nothing but
-#    verified Dependabot commits. Nothing from the PR is checked out or run.
+#    verified Dependabot commits. Nothing from the PR is checked out or run:
+#    before the merge nothing is checked out at all; after it, only the base
+#    image handoff (rule 6) checks out the merge commit on the default branch
+#    and reads it as data - nothing of it is executed.
 #    A PR that changes CI - a GitHub Actions update, any file under .github/
 #    - is never merged: its own CI cannot vouch for it.
 # 1. Required CI: `required-workflows` names the PR CI workflow files that
@@ -52,6 +55,18 @@
 #    (workflow_dispatch is exempt from that rule), its run is shown in the
 #    job summary, and the job waits for it (`release-wait-minutes`): a run
 #    that does not succeed fails the job.
+#    Base image handoff (`base-image-config`, the repository's Docker Base
+#    Image Monitor config): a FROM tag bump released here has a digest the
+#    monitor has not stored - its next check released the same content once
+#    more, one needless production redeploy per bump. So for a merge into
+#    the default branch (the branch the monitor checks), right before the
+#    dispatch the digests (linux/amd64) of the entries whose Dockerfile the
+#    PR changed are read from the registry, and once the release run
+#    succeeded and cut a release that contains the merge they are recorded
+#    as a git note on the merge commit (refs/notes/base-image-monitor). The
+#    monitor stores them instead of releasing. Anything that cannot be read
+#    or verified is not recorded - the monitor then releases once more, as
+#    before. The handoff never fails the job and never holds back the release.
 #
 # Why not GitHub's native auto-merge: without required status checks GitHub
 # merges an auto-merge PR at once, before CI has finished. Required checks need
@@ -89,7 +104,10 @@
 # without `checks: read`, `statuses: read` and `actions: read` leaves every PR
 # open with a notice. With `release-workflow` the caller grants
 # `actions: write` (it includes read); without it the dispatch fails with an
-# error naming that permission.
+# error naming that permission. The base image handoff pushes its note with
+# the `contents: write` the merge needs; internal or private GHCR base images
+# are read for it only if the caller also grants `packages: read` - without
+# it they are not recorded and the monitor releases once more.
 #
 # Requirements:
 # - Dependabot must be enabled in repository settings
@@ -113,6 +131,10 @@
 #   release workflow - a failure after its semantic release (e.g. the image
 #   push) leaves a version without its image, see
 #   docs/workflows/docker-maintenance.md.
+# - With `base-image-config` (on by default; a repository without that file
+#   records nothing): docker and python3 on the runner (preinstalled on
+#   GitHub-hosted runners) to read the digests and the FROM lines. Without
+#   them nothing is recorded.
 # =============================================================================
 
 name: 🐳 Docker Maintenance (Dependabot)
@@ -168,6 +190,12 @@ on:
         required: false
         default: 60
 
+      base-image-config:
+        description: 'Docker Base Image Monitor config of this repository (modules-docker-base-image-monitor.yml). For a merge into the default branch only: after a release run that succeeded and cut a release containing the merge, the base image digests of the entries whose Dockerfile the PR changed are recorded for the monitor (git note in refs/notes/base-image-monitor on the merge commit), so that its next check does not release the same update again. No such file: nothing is recorded. Empty: off.'
+        type: string
+        required: false
+        default: '.github/config/docker-base-image-monitor/base-images.json'
+
       runs-on:
         description: 'Runner to use. Use string for GitHub-hosted (e.g., "ubuntu-latest") or JSON array for self-hosted (e.g., ["self-hosted", "linux"])'
         type: string
@@ -184,6 +212,12 @@ on:
       release-result:
         description: 'success, failed, timeout, not-waited, not-found, unreadable or dispatch-failed; empty if no release was dispatched'
         value: ${{ jobs.maintenance.outputs.release-result }}
+      base-image-handoff:
+        description: 'recorded (the base image digests were recorded for the monitor), not-verified (no release containing the merge was found), failed (the note could not be written), skipped (nothing could be recorded, e.g. release-wait-minutes 0 or no digest readable) or none (no monitor config, or the PR changed no Dockerfile it watches); empty if the handoff did not run. Only recorded follows a successful release - after any other release result it is none, skipped or empty. Anything but recorded: the monitor releases the update once more.'
+        value: ${{ jobs.maintenance.outputs.base-image-handoff }}
+      base-image-handoff-images:
+        description: 'JSON array of the names of the base images whose digests were recorded for the monitor; empty unless base-image-handoff is recorded'
+        value: ${{ jobs.maintenance.outputs.base-image-handoff-images }}
 
     secrets:
       DEPENDABOT_REBASE_TOKEN:
@@ -204,12 +238,18 @@ jobs:
     # after it, the merge takes up to 1 min, the rest covers setup: 75. With
     # release-workflow, finding the release run takes up to 2 min more,
     # release-wait-minutes is at most 180 and its last poll up to 1 min
-    # after it: 255. (An expression cannot add the inputs.)
-    timeout-minutes: ${{ inputs.release-workflow != '' && 255 || 75 }}
+    # after it: 255; the base image handoff steps run only with it and add
+    # at most 11 (their timeout-minutes): 266. (An expression cannot add the
+    # inputs.)
+    timeout-minutes: ${{ inputs.release-workflow != '' && 266 || 75 }}
     outputs:
       merged: ${{ steps.merge.outputs.merged }}
       release-run-url: ${{ steps.release.outputs.run-url }}
       release-result: ${{ steps.release.outputs.result }}
+      # The step that decided last: the note after the release, else the
+      # step that stopped the handoff before the dispatch.
+      base-image-handoff: ${{ steps.handoff-note.outputs.result || steps.handoff-digests.outputs.result || steps.handoff-files.outputs.result }}
+      base-image-handoff-images: ${{ steps.handoff-note.outputs.images }}
     # One decision per PR: a newer event (e.g. Dependabot rebased the PR)
     # replaces the run that is still waiting for the old head commit.
     concurrency:
@@ -941,6 +981,288 @@ jobs:
           echo "::warning title=Dependabot PR left open::CI passed, but merging failed: $(head -n 1 "$ERR")"
           done_with false merge-failed
 
+      # --- Base image handoff, before the dispatch ---------------------------
+      # A Dependabot bump of a FROM tag is released by the dispatch below. The
+      # base image monitor then saw the new tag's digest differ from the one
+      # it had stored (the old tag's) and released the same content once
+      # more - one needless production redeploy per bump. So the digests this
+      # release is built from are handed over: the steps up to the dispatch
+      # read them from the registry, the step after the release records them
+      # for the monitor - only if that release succeeded and contains the
+      # merge (see "Base image handoff - record for the monitor").
+      #
+      # A missed base image security update is far worse than a redundant
+      # release: whatever is missing, unreadable or unverified is not
+      # recorded, and the monitor releases as it did before. None of these
+      # steps can fail the job (continue-on-error, errors handled inside), the
+      # release step's `if:` does not depend on them, and each has a short
+      # timeout - they delay the dispatch.
+      #
+      # Only a merge into the default branch is handed over: the monitor
+      # checks the default branch's Dockerfiles, and the contract promises
+      # the monitor notes on that branch's merge commits only. A Dependabot
+      # `target-branch` (e.g. release) is merged and released as before, but
+      # a note on its merge commit would vouch for digests the default
+      # branch may not build on - the monitor could store a digest there
+      # without releasing it. Every later handoff step hangs on this one.
+      #
+      # The merge commit on the default branch, checked out to read the
+      # monitor config and the Dockerfiles it names: after the merge, never
+      # before - nothing of an unmerged PR is checked out (rule 0) - and as
+      # data only. The resolve action reads them with jq and its own resolver
+      # (python3 -I, from the action); nothing of the checkout is executed.
+      # The default credential persistence stays: the note is pushed from
+      # this checkout with the job token after the release.
+      - name: 📥 Base image handoff - check out the merge commit
+        id: handoff-checkout
+        if: steps.merge.outputs.merged == 'true' && steps.guard.outputs.release-workflow != '' && inputs.base-image-config != '' && steps.merge.outputs.merge-commit != '' && github.event.pull_request.base.ref == github.event.repository.default_branch
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.merge.outputs.merge-commit }}
+          fetch-depth: 1
+
+      # Which entries of the monitor config this PR changed. Only an entry
+      # with "dockerfile" whose Dockerfile is among the changed files is
+      # recorded: its FROM line is what the PR changed and the release
+      # builds. Any other image's digest may have moved for other reasons,
+      # and whether the release rebuilt it is not known here - left to the
+      # monitor. Entries with a fixed "tag" are never recorded. A variable is
+      # recorded only if every entry using it qualifies: the monitor stores
+      # one digest per variable.
+      # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
+      - name: 🧾 Base image handoff - changed Dockerfiles
+        id: handoff-files
+        if: steps.handoff-checkout.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 1
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CONFIG_FILE: ${{ inputs.base-image-config }}
+          MERGE_COMMIT: ${{ steps.merge.outputs.merge-commit }}
+          WAIT_MINUTES: ${{ inputs.release-wait-minutes }}
+        run: |
+          set -euo pipefail
+          WORK=$(mktemp -d)
+
+          # result: none (nothing to record) or skipped (not recorded); the
+          # details are fixed texts - error output goes to the log only.
+          finish() {
+            echo "result=$1" >> "$GITHUB_OUTPUT"
+            echo "detail=$2" >> "$GITHUB_OUTPUT"
+            echo "Base image handoff: $1 - $2"
+            exit 0
+          }
+          not_recorded() {
+            echo "::notice title=Base image digests not recorded::$2 The base image monitor releases this update once more on its next check."
+            finish skipped "$1"
+          }
+
+          # Most repositories have no base image monitor: nothing to say.
+          if [ ! -f "$CONFIG_FILE" ]; then
+            finish none "no base image monitor config"
+          fi
+
+          # Dockerfile paths as the resolver reads them, relative to the
+          # repository root: "./Dockerfile" is "Dockerfile". Changed files
+          # come as GitHub lists them, without "./".
+          if ! gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" --jq '.[].filename' > "$WORK/files" 2> "$WORK/err"; then
+            not_recorded "changed files not readable" "The changed files of this PR could not be read ($(head -n 1 "$WORK/err"))."
+          fi
+          if ! WANTED=$(jq -c --rawfile files "$WORK/files" '
+                def norm: split("/") | reduce .[] as $s ([];
+                  if $s == "" or $s == "." then .
+                  elif $s == ".." and length > 0 and .[-1] != ".." then .[:-1]
+                  else . + [$s] end) | join("/");
+                ($files | split("\n") | map(select(. != ""))) as $changed
+                | [.images[]? | select(type == "object" and (.variable | type) == "string")]
+                | group_by(.variable)
+                | map(select(all(.[]; (.dockerfile | type) == "string" and (.dockerfile | norm | IN($changed[])))))
+                | map({key: .[0].variable,
+                       value: {entries: length, ghcr: any(.[]; (.image | type) == "string" and (.image | startswith("ghcr.io/")))}})
+                | from_entries' "$CONFIG_FILE" 2> "$WORK/err"); then
+            not_recorded "config not readable" "$CONFIG_FILE could not be read ($(head -n 1 "$WORK/err"))."
+          fi
+          if [ "$WANTED" = "{}" ]; then
+            finish none "this PR changed no Dockerfile the base image monitor watches"
+          fi
+          echo "Changed Dockerfiles of the monitor's entries, by variable: $WANTED"
+
+          # The note says that the release succeeded - without the wait
+          # nobody knows.
+          if [ "$WAIT_MINUTES" -eq 0 ]; then
+            not_recorded "release-wait-minutes is 0" "release-wait-minutes is 0, so this run does not see whether the release succeeds."
+          fi
+          if [[ ! "$MERGE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            not_recorded "merge commit unknown" "The merge commit is not known, so nothing can be recorded on it."
+          fi
+          # Only these entries are resolved: every entry of a variable is
+          # among them, so the resolver's check for a variable shared across
+          # image:tags sees what the monitor's sees.
+          if ! ENTRIES=$(jq -c --argjson wanted "$WANTED" '[.images[]? | select(type == "object" and (.variable | type) == "string")
+                | select(.variable as $v | $wanted | has($v))]' "$CONFIG_FILE" 2> "$WORK/err"); then
+            not_recorded "config not readable" "$CONFIG_FILE could not be read ($(head -n 1 "$WORK/err"))."
+          fi
+          {
+            echo "variables=$WANTED"
+            echo "entries=$ENTRIES"
+            echo "ghcr=$(jq -r 'any(.[]; .ghcr)' <<< "$WANTED")"
+            echo "go=true"
+          } >> "$GITHUB_OUTPUT"
+
+      # The tags of these entries, read from their Dockerfiles as the monitor
+      # reads them. An entry it cannot resolve gets its ::error:: from the
+      # action (the monitor reports it too) and is not recorded.
+      - name: 🧭 Base image handoff - resolve the tags
+        id: handoff-resolve
+        if: steps.handoff-files.outputs.go == 'true'
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: bauer-group/automation-templates/.github/actions/docker-base-image-resolve@main
+        with:
+          images: ${{ steps.handoff-files.outputs.entries }}
+
+      # Only for GHCR images. Callers grant no `packages: read` by default, so
+      # internal and private GHCR images stay unreadable - they are not
+      # recorded (a notice), and the monitor releases them once more.
+      - name: 🔐 Base image handoff - log in to GHCR
+        id: handoff-login
+        if: steps.handoff-files.outputs.go == 'true' && steps.handoff-files.outputs.ghcr == 'true'
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The digest the monitor compares, read right before the dispatch: the
+      # release run starts after it, so it builds on this digest or a newer
+      # one. For a multi-arch index the linux/amd64 manifest - the primary
+      # platform; the filter is the monitor's, byte for byte. Reads mirror the
+      # monitor's: 3 attempts, 10 s and 20 s apart, none more for an auth
+      # error or an unknown manifest.
+      # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
+      - name: 🧾 Base image handoff - read the digests
+        id: handoff-digests
+        if: steps.handoff-files.outputs.go == 'true'
+        continue-on-error: true
+        timeout-minutes: 3
+        shell: bash
+        env:
+          CHANGED_VARIABLES: ${{ steps.handoff-files.outputs.variables }}
+          RESOLVED_IMAGES: ${{ steps.handoff-resolve.outputs.images }}
+        run: |
+          set -euo pipefail
+
+          finish() {
+            echo "result=$1" >> "$GITHUB_OUTPUT"
+            echo "detail=$2" >> "$GITHUB_OUTPUT"
+            echo "Base image handoff: $1 - $2"
+            exit 0
+          }
+          not_recorded() {
+            echo "::notice title=Base image digests not recorded::$2 The base image monitor releases this update once more on its next check."
+            finish skipped "$1"
+          }
+
+          DIGEST_FILTER='
+          if .config.digest then
+            .config.digest
+          elif .manifests then
+            ([.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")]
+              | (map(select((.platform.variant // "") == "")) + .) | first | .digest)
+            // (.manifests | sort_by(.platform.architecture) | .[0].digest)
+          else
+            empty
+          end
+          '
+
+          inspect_manifest() {
+            local ref="$1" out="" attempt
+            for attempt in 1 2 3; do
+              if out=$(docker manifest inspect "$ref" 2>&1); then
+                printf '%s' "$out"
+                return 0
+              fi
+              case "$out" in
+                *unauthorized*|*denied*|*forbidden*|*401*|*403*|*"manifest unknown"*|*"no such manifest"*)
+                  break
+                  ;;
+              esac
+              if [ "$attempt" -lt 3 ]; then
+                echo "⏳ Attempt $attempt/3 for $ref failed (${out%%$'\n'*}), retrying in $((attempt * 10))s" >&2
+                sleep $((attempt * 10))
+              fi
+            done
+            printf '%s' "$out"
+            return 1
+          }
+
+          if ! command -v docker > /dev/null 2>&1; then
+            not_recorded "docker not installed" "docker is not installed on the runner, so the base image digests could not be read."
+          fi
+          # Per variable of the changed entries: every entry using it resolved
+          # (none left out as unresolved), all on one image:tag.
+          if [ -z "$RESOLVED_IMAGES" ] || ! PICKS=$(jq -r --argjson wanted "$CHANGED_VARIABLES" '
+                [.[] | select(type == "object" and (.variable | type) == "string")
+                     | select(.variable as $v | $wanted | has($v))]
+                | group_by(.variable)[]
+                | select(length == $wanted[.[0].variable].entries)
+                | select(all(.[]; (.image | type) == "string" and (.tag | type) == "string"))
+                | select([.[] | "\(.image):\(.tag)"] | unique | length == 1)
+                | [.[0].variable, (.[0].name // .[0].image | tostring), "\(.[0].image):\(.[0].tag)"]
+                | @tsv' <<< "$RESOLVED_IMAGES" 2> /dev/null) || [ -z "$PICKS" ]; then
+            not_recorded "tags not resolved" "The tags of the changed Dockerfiles could not be resolved (see the step that resolves them)."
+          fi
+          LEFT=$(jq -r --arg picks "$PICKS" 'keys - ($picks | split("\n") | map(split("\t")[0])) | join(", ")' <<< "$CHANGED_VARIABLES" 2> /dev/null || true)
+          [ -z "$LEFT" ] || echo "Not recorded - not every entry using it was resolved on one tag: $LEFT"
+
+          DIGESTS='{}'
+          NAMES='[]'
+          while IFS=$'\t' read -r VARIABLE NAME REF; do
+            if [[ ! "$VARIABLE" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+              echo "Not recorded: $NAME - its variable is no name the monitor can store."
+              continue
+            fi
+            if ! MANIFEST=$(inspect_manifest "$REF" < /dev/null); then
+              case "$MANIFEST" in
+                *unauthorized*|*denied*|*forbidden*|*401*|*403*)
+                  echo "::notice title=Base image digest not recorded::$REF could not be read (access denied) - for an internal or private GHCR image the calling workflow has to grant 'packages: read'. The base image monitor releases this update once more on its next check."
+                  ;;
+                *)
+                  echo "::notice title=Base image digest not recorded::$REF could not be read. The base image monitor releases this update once more on its next check."
+                  ;;
+              esac
+              echo "${MANIFEST%%$'\n'*}"
+              continue
+            fi
+            DIGEST=$(printf '%s' "$MANIFEST" | jq -r "$DIGEST_FILTER" 2> /dev/null || true)
+            if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::notice title=Base image digest not recorded::No digest could be read from the manifest of $REF. The base image monitor releases this update once more on its next check."
+              continue
+            fi
+            echo "$NAME: $REF is $DIGEST"
+            DIGESTS=$(jq -c --arg v "$VARIABLE" --arg d "$DIGEST" '. + {($v): $d}' <<< "$DIGESTS")
+            NAMES=$(jq -c --arg n "$NAME" '. + [$n]' <<< "$NAMES")
+          done <<< "$PICKS"
+
+          if [ "$DIGESTS" = "{}" ]; then
+            finish skipped "no base image digest read"
+          fi
+          # Taken last: everything the release builds is pulled after it.
+          RECORDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          {
+            echo "digests=$DIGESTS"
+            echo "images=$NAMES"
+            echo "recorded-at=$RECORDED_AT"
+          } >> "$GITHUB_OUTPUT"
+          echo "Read at $RECORDED_AT, before the dispatch: $DIGESTS"
+
       # The merge was made with the job token, and GitHub starts no workflow
       # for a push made with it - except workflow_dispatch and
       # repository_dispatch. So the release workflow is dispatched on the
@@ -1120,6 +1442,131 @@ jobs:
             if [ "$NOW" -lt 600 ]; then sleep 30; else sleep 60; fi
           done
 
+      # Records the digests read before the dispatch for the base image
+      # monitor - only after the release run succeeded, and only if it really
+      # cut a release for the merge: a run can succeed and publish nothing
+      # (semantic-release found nothing to release, or a pinned run whose
+      # base branch had moved on). So the latest release must have been
+      # published after the digests were read, and its tag must contain the
+      # merge commit. Its published_at counts, not its created_at: GitHub
+      # documents created_at as the date of the tagged commit - for a release
+      # that tags the merge commit itself, older than the digests.
+      #
+      # Contract with modules-docker-base-image-monitor.yml (the reader): one
+      # note per merge commit on the default branch (the checkout's gate) in
+      # refs/notes/base-image-monitor, exactly one JSON object
+      # {"schema": 1, "source": "docker-maintenance-dependabot",
+      # "recorded_at", "merge_commit", "release", "release_run_url",
+      # "digests": {"<variable>": "sha256:..."}}: the release run was built
+      # from these digests or newer ones. Pushing a notes ref needs
+      # `contents: write`, the same right as pushing to the default branch -
+      # the trust anchor. An artifact or a PR comment would not be one: any
+      # job can upload an artifact.
+      #
+      # Each attempt builds on the notes ref as origin has it and pushes
+      # without force: a push another run made in between is rejected, and
+      # the next attempt adds this note on top of it - a note of another
+      # merge commit is never lost. Anything unverified or failed is not
+      # recorded (the monitor releases once more); the job never fails here.
+      # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
+      - name: 📝 Base image handoff - record for the monitor
+        id: handoff-note
+        if: steps.release.outputs.result == 'success' && steps.handoff-digests.outputs.digests != ''
+        continue-on-error: true
+        timeout-minutes: 3
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          MERGE_COMMIT: ${{ steps.merge.outputs.merge-commit }}
+          RELEASE_RUN_URL: ${{ steps.release.outputs.run-url }}
+          DIGESTS: ${{ steps.handoff-digests.outputs.digests }}
+          IMAGES: ${{ steps.handoff-digests.outputs.images }}
+          RECORDED_AT: ${{ steps.handoff-digests.outputs.recorded-at }}
+        run: |
+          set -euo pipefail
+          # An error nobody expected is a warning, never a red step.
+          trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "::warning title=Base image digests not recorded::Unexpected error (exit $rc). The base image monitor releases this update once more on its next check."; echo "result=failed" >> "$GITHUB_OUTPUT"; echo "detail=unexpected error" >> "$GITHUB_OUTPUT"; exit 0; fi' EXIT
+          WORK=$(mktemp -d)
+          NOTES_REF=refs/notes/base-image-monitor
+
+          # result: recorded, not-verified or failed; the details are fixed
+          # texts - error output goes to the log and the annotation only.
+          finish() {
+            echo "result=$1" >> "$GITHUB_OUTPUT"
+            echo "detail=$2" >> "$GITHUB_OUTPUT"
+            echo "Base image handoff: $1 - $2"
+            exit 0
+          }
+          not_verified() {
+            echo "::notice title=Base image digests not recorded::$2 The base image monitor releases this update once more on its next check."
+            finish not-verified "$1"
+          }
+          failed() {
+            echo "::warning title=Base image digests not recorded::$2 The base image monitor releases this update once more on its next check."
+            finish failed "$1"
+          }
+
+          if [[ ! "$MERGE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || [[ ! "$RECORDED_AT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || [ -z "$RELEASE_RUN_URL" ] \
+             || ! jq -e 'type == "object" and length > 0 and all(to_entries[];
+                   (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.value | type == "string" and test("^sha256:[0-9a-f]{64}$")))' <<< "$DIGESTS" > /dev/null 2>&1 \
+             || ! IMAGES=$(jq -c 'if type == "array" then . else error("not a list") end' <<< "$IMAGES" 2> /dev/null); then
+            failed "invalid input" "The merge commit, the digests or the time they were read are missing or malformed."
+          fi
+
+          # The release this run's release run cut: the latest one, published
+          # after the digests were read, its tag containing the merge commit.
+          if ! gh api "repos/$REPO/releases/latest" --jq '[(.tag_name // ""), (.published_at // "")] | @tsv' > "$WORK/latest" 2> "$WORK/err"; then
+            not_verified "latest release not readable" "The latest release could not be read ($(head -n 1 "$WORK/err")), so it is not known whether the release run cut one."
+          fi
+          IFS=$'\t' read -r TAG PUBLISHED < "$WORK/latest" || true
+          if [[ ! "$TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
+            not_verified "latest release not readable" "The latest release has no tag that can be compared with the merge commit."
+          fi
+          if ! jq -en --arg p "$PUBLISHED" --arg r "$RECORDED_AT" '($p | fromdate) >= ($r | fromdate)' > /dev/null 2>&1; then
+            not_verified "no release after the dispatch" "The release run succeeded, but the latest release ($TAG, published ${PUBLISHED:-at an unknown time}) is not newer than the digests read before the dispatch ($RECORDED_AT) - the run cut no release."
+          fi
+          if ! STATUS=$(gh api "repos/$REPO/compare/$MERGE_COMMIT...$TAG" --jq '.status' 2> "$WORK/err"); then
+            not_verified "release not compared" "Whether release $TAG contains the merge commit could not be read ($(head -n 1 "$WORK/err"))."
+          fi
+          case "$STATUS" in
+            ahead|identical) ;;
+            *) not_verified "release does not contain the merge" "Release $TAG does not contain the merge commit ${MERGE_COMMIT:0:12} (compare: ${STATUS:-unknown})." ;;
+          esac
+          echo "Release $TAG (published $PUBLISHED) contains ${MERGE_COMMIT:0:12} ($STATUS)."
+
+          jq -cn --arg recorded_at "$RECORDED_AT" --arg merge_commit "$MERGE_COMMIT" --arg release "$TAG" \
+                 --arg release_run_url "$RELEASE_RUN_URL" --argjson digests "$DIGESTS" \
+            '{schema: 1, source: "docker-maintenance-dependabot", recorded_at: $recorded_at, merge_commit: $merge_commit,
+              release: $release, release_run_url: $release_run_url, digests: $digests}' > "$WORK/note"
+          echo "Note: $(cat "$WORK/note")"
+
+          export GIT_AUTHOR_NAME="github-actions[bot]" GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+          export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME" GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+          for try in 1 2 3; do
+            # Start from origin's notes (none yet: this note starts the ref).
+            REMOTE=0
+            git ls-remote --exit-code origin "$NOTES_REF" > /dev/null 2> "$WORK/err" || REMOTE=$?
+            if [ "$REMOTE" -eq 0 ]; then
+              git fetch --quiet --no-tags origin "+$NOTES_REF:$NOTES_REF" 2> "$WORK/err" || REMOTE=fetch-failed
+            elif [ "$REMOTE" -eq 2 ]; then
+              git update-ref -d "$NOTES_REF" 2> /dev/null || true
+              REMOTE=0
+            fi
+            if [ "$REMOTE" = 0 ] && git notes --ref="$NOTES_REF" add --force --file="$WORK/note" "$MERGE_COMMIT" 2> "$WORK/err" \
+               && git push --quiet origin "$NOTES_REF:$NOTES_REF" 2> "$WORK/err"; then
+              echo "images=$IMAGES" >> "$GITHUB_OUTPUT"
+              echo "release=$TAG" >> "$GITHUB_OUTPUT"
+              echo "Recorded on ${MERGE_COMMIT:0:12} in $NOTES_REF."
+              finish recorded "release $TAG"
+            fi
+            # Rejected: another run pushed a note in between - start over
+            # from origin's notes.
+            echo "Attempt $try/3 to record the note failed: $(head -n 1 "$WORK/err")"
+            if [ "$try" -lt 3 ]; then sleep 2; fi
+          done
+          failed "note not pushed" "The note could not be pushed to $NOTES_REF: $(head -n 1 "$WORK/err")."
+
       # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
       - name: 📊 Summary
         id: summary
@@ -1147,6 +1594,10 @@ jobs:
           RELEASE_RESULT: ${{ steps.release.outputs.result }}
           RELEASE_DETAIL: ${{ steps.release.outputs.detail }}
           RELEASE_RUN_URL: ${{ steps.release.outputs.run-url }}
+          HANDOFF_RESULT: ${{ steps.handoff-note.outputs.result || steps.handoff-digests.outputs.result || steps.handoff-files.outputs.result }}
+          HANDOFF_DETAIL: ${{ steps.handoff-note.outputs.detail || steps.handoff-digests.outputs.detail || steps.handoff-files.outputs.detail }}
+          HANDOFF_IMAGES: ${{ steps.handoff-note.outputs.images }}
+          HANDOFF_RELEASE: ${{ steps.handoff-note.outputs.release }}
           JOB_STATUS: ${{ job.status }}
         run: |
           # A re-run of a job that merged finds the PR merged: it neither
@@ -1203,6 +1654,16 @@ jobs:
                                RESULT="❌ No release - run \`$RELEASE_WORKFLOW\` by hand" ;;
               *)               RESULT="❌ Not completed (job status: $JOB_STATUS)" ;;
             esac
+            # Base image handoff: none (no monitor config, no watched
+            # Dockerfile changed) and not run show no row.
+            HANDOFF_NOTE="the base image monitor releases this update once more on its next check"
+            case "$HANDOFF_RESULT" in
+              recorded)     HANDOFF="✅ Recorded for the base image monitor: $(printf '%s' "$HANDOFF_IMAGES" | jq -r 'join(", ")' 2> /dev/null || true) (release \`$HANDOFF_RELEASE\`) - its next check stores these digests instead of releasing again" ;;
+              not-verified) HANDOFF="⏭️ Not recorded: $HANDOFF_DETAIL - $HANDOFF_NOTE" ;;
+              skipped)      HANDOFF="⏭️ Not recorded: $HANDOFF_DETAIL - $HANDOFF_NOTE" ;;
+              failed)       HANDOFF="⚠️ Not recorded: $HANDOFF_DETAIL - $HANDOFF_NOTE" ;;
+              *)            HANDOFF="" ;;
+            esac
           elif [ "$MERGED" = true ]; then
             RELEASE_NOTE="ℹ️ No release started: release-workflow is not set. The merge was made with GITHUB_TOKEN, which starts no workflow. A release workflow on push runs with the next push to \`$BASE_REF\`, or by hand; whether that releases this update depends on its commit type (\`chore(deps)\` releases nothing by default)."
           elif [ "$CI_RESULT" = merged-before ] || [ "$MERGE_REASON" = merged-before ]; then
@@ -1231,6 +1692,9 @@ jobs:
               echo "| **Merge** | ✅ Merged into \`$BASE_REF\`${MERGE_COMMIT:+ as \`${MERGE_COMMIT:0:12}\`} |"
               echo "| **Release dispatched** | $DISPATCHED |"
               echo "| **Release result** | $RESULT |"
+              if [ -n "$HANDOFF" ]; then
+                echo "| **Base image handoff** | $HANDOFF |"
+              fi
             fi
             if [ -n "$RELEASE_NOTE" ]; then
               echo ""

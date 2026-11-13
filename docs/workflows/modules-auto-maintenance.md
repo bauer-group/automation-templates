@@ -6,6 +6,7 @@ Vollautomatische Repository-Wartung: Base Image Monitoring, Dependency Updates, 
 
 - [Problemstellung](#problemstellung)
 - [Funktionsweise](#funktionsweise)
+  - [Welcher Digest verglichen wird](#welcher-digest-verglichen-wird)
   - [Was committet wird](#was-committet-wird)
 - [Schnellstart](#schnellstart)
 - [Vollstaendige Einrichtung](#vollstaendige-einrichtung)
@@ -93,6 +94,25 @@ VORHER (pro Repo, bis zu 3 Workflows):        NACHHER (pro Repo):
 **Unterschied zum Base Image Monitor:** Hier zählt ein Digest als erledigt, sobald der Release-Workflow gestartet wurde. Muss ein Release-Gate (z. B. der Backup-Round-Trip) erst bestehen und soll ein fehlgeschlagener Release automatisch wiederholt werden, ist [`modules-docker-base-image-monitor.yml`](./modules-docker-base-image-monitor.md#release-confirmation) das passende Modul.
 
 **Digest-Variablen werden zuletzt gespeichert:** erst nachdem der Commit gepusht und der Release-Workflow gestartet wurde. Schlägt einer dieser Schritte fehl oder wird der Commit übersprungen (z. B. fehlgeschlagene Validierung), bleibt der alte Digest stehen und der nächste Lauf erkennt das Update erneut. Der leere Commit für reine Base-Image-Updates endet auf `[skip ci]`, wenn `release.trigger-workflow` gesetzt ist; der per `workflow_dispatch` gestartete Release läuft trotzdem. `docker manifest inspect` wird bei vorübergehenden Registry-Fehlern (z. B. `429`) bis zu 3-mal versucht.
+
+### Welcher Digest verglichen wird
+
+Bei einem Multi-Arch-Index (z. B. `python:3.15-alpine`, `n8nio/n8n:stable`) vergleicht der Check den Digest des **`linux/amd64`-Manifests** — der Plattform, für die die Images auf diesen Basen gebaut werden. Gibt es mehrere `linux/amd64`-Einträge, zählt der ohne `variant`. Ein Index ohne `linux/amd64` (z. B. nur `arm64`) behält die bisherige Auswahl: das erste Manifest nach Architektur sortiert. Ein Single-Platform-Image wird wie bisher über `config.digest` verglichen.
+
+> **Bis zu dieser Änderung** nahm der Check bei jedem Index das erste Manifest nach Architektur sortiert — bei Docker Official Images `linux/386`, weil `386` vor `amd64` sortiert. docker-library baut jede Architektur einzeln: `386` kann einem amd64-Sicherheits-Rebuild hinterherhinken (das Update wurde verspätet released) oder allein neu gebaut werden (ein Release, in dem sich für uns nichts geändert hat).
+
+**Einmalige Umstellung der gespeicherten Digests:** Nach dem Update enthalten die Variablen zunächst noch den `386`-Digest. Damit nicht jedes Repository einmal ohne Grund released, erkennt der Check diesen Stand: Ist der gespeicherte Digest genau die bisherige Auswahl **desselben** Index, hat sich das `386`-Manifest seitdem nicht geändert — das `amd64`-Manifest aber womöglich schon. Ein verpasstes Sicherheitsupdate wiegt schwerer als ein überflüssiges Release, deshalb wird nur ohne Release umgestellt, wenn das belegt ist:
+
+| Fall | Ergebnis |
+|------|----------|
+| Das `linux/amd64`-Image ist **mehr als 48 Stunden** älter als das letzte Release des Repositories (`created` laut `docker buildx imagetools inspect` gegen `created_at` von `releases/latest`) | **Umgestellt:** Die Variable bekommt den `amd64`-Digest, ohne Commit und ohne Release. Das ist kein Update, `updates-found` bleibt `false`. |
+| Das `amd64`-Image ist höchstens 48 Stunden älter als das letzte Release, gleich alt oder neuer | Normales Update mit Release; ein `::notice::` nennt den Grund |
+| `created` nicht lesbar (ein Retry nach 10 s) oder vor 1980 (Platzhalter reproduzierbarer Builds wie `1970-01-01`), das Repository hat noch kein Release (404) oder das letzte Release ist nicht lesbar | Normales Update mit Release; ein `::notice::` nennt den Grund |
+| Der gespeicherte Digest ist weder die alte noch die neue Auswahl (beide Plattformen geändert) | Normales Update mit Release |
+
+**Warum 48 Stunden Abstand:** `created` sagt, wann ein Image gebaut wurde, nicht wann es unter dem Tag erschien. docker-library nimmt jede Architektur einzeln in den Index auf. Bei `python:3.15-alpine` am 05.11.2026 wurde das `amd64`-Image um 19:27 UTC gebaut, stand aber erst um 23:06 im Tag; das neue `386`-Image stand dort schon seit 20:06. Ein Check der alten Version in diesem Fenster speicherte den neuen `386`-Digest und released auf dem **alten** `amd64`-Image. Ohne Abstand sähe das neuere `amd64`-Image älter aus als dieses Release und würde umgestellt, also nie ausgeliefert. Der Abstand deckt diese Verzögerung (Stunden) ab, ebenso den Snapshot-Zeitpunkt, den `debian` als `created` trägt (bei `debian:trixie-slim` rund 11 Stunden vor dem Push). Images mit festem Quelldatum als `created` (z. B. `busybox`, Monate alt) bringen alle Plattformen sekundengleich in den Tag, dort gibt es kein solches Fenster. Bei Images aus einem einzigen Multi-Platform-Build ändern sich ohnehin alle Plattform-Digests gemeinsam, dort belegt schon der unveränderte alte Digest ein unverändertes `amd64`-Manifest. Der Abstand kostet höchstens ein überflüssiges Release, wenn das letzte Release kurz nach dem `amd64`-Build lag. Das letzte Release wird pro Lauf höchstens einmal gelesen.
+
+Umgestellte Digests speichert der Schritt „Persist migrated digests“ direkt nach dem Check — es gibt keinen Commit und kein Release, auf das sie warten müssten, und der Nachweis hängt von nichts ab, was der Lauf danach tut. Echte Updates speichert weiterhin nur „Persist new digests“, nach Commit und Release. Mit `dry-run` oder wenn das Speichern fehlschlägt (Warnung, der Job läuft weiter) bleibt der alte Digest stehen, und der nächste Lauf prüft das Image erneut. Log und Job Summary nennen die umgestellten Images. Getestet wird das Verhalten von [`auto-maintenance-base-images.test.sh`](../../.github/workflows/tests/auto-maintenance-base-images.test.sh) in der Workflow-Validierung.
 
 ### Was committet wird
 
@@ -261,7 +281,7 @@ Outputs des Reusable Workflows:
 
 | Output | Beschreibung |
 |--------|--------------|
-| `updates-found` | `true`, wenn der Lauf Base-Image- oder Dependency-Updates gefunden hat — auch dann, wenn keine davon committet wurde (fehlgeschlagene Validierung, nur nicht committbare Dateien, `dry-run`) |
+| `updates-found` | `true`, wenn der Lauf Base-Image- oder Dependency-Updates gefunden hat — auch dann, wenn keine davon committet wurde (fehlgeschlagene Validierung, nur nicht committbare Dateien, `dry-run`). Die [Umstellung eines gespeicherten Digests auf `linux/amd64`](#welcher-digest-verglichen-wird) zählt nicht. |
 | `summary` | Kurzfassung, z. B. `Updates found: base images + dependencies` oder `No updates found` |
 
 ---
@@ -279,6 +299,8 @@ Jeder Block ist **optional**. Man konfiguriert nur was man braucht.
 | `tag` | string | Ja | Docker Tag zum Ueberwachen (z.B. `stable`) |
 | `variable` | string | Ja | GitHub Variable Name (z.B. `N8N_STABLE_DIGEST`) |
 | `description` | string | Nein | Beschreibung fuer Dokumentation |
+
+Bei Multi-Arch-Images wird der Digest des `linux/amd64`-Manifests verglichen, siehe [Welcher Digest verglichen wird](#welcher-digest-verglichen-wird).
 
 ### `ecosystems` - Dependency Updates
 
@@ -586,6 +608,10 @@ Docker Hub Rate Limits oder das Image existiert nicht. Pruefen:
 ```bash
 docker manifest inspect IMAGE:TAG
 ```
+
+### "released as an update - its stored digest is the previous linux/386 pick, but ..."
+
+Einmalig nach der Umstellung auf `linux/amd64`: Der gespeicherte Digest war noch die alte `386`-Auswahl, aber dass das `amd64`-Image mehr als 48 Stunden älter ist als das letzte Release, ließ sich nicht belegen — der Grund steht am Ende der Meldung. Der Lauf released deshalb wie bei einem Update; danach steht der `amd64`-Digest in der Variable. Siehe [Welcher Digest verglichen wird](#welcher-digest-verglichen-wird).
 
 ### "No dependency files to commit"
 

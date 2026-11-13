@@ -489,6 +489,11 @@ to start every caller that does not grant them.
 | `statuses: read`       | commit statuses of the head commit                                                              | not needed        | required - without it every PR stays open with a notice                   |
 | `actions: read`        | workflow runs of the head commit - whether the required workflows passed                        | not needed        | required - without it every PR stays open with a notice                   |
 | `actions: write`       | with `release-workflow`: dispatching the release and reading its run (includes `actions: read`) | required          | required - without it the merged update is not released and the job fails |
+| `packages: read`       | base image handoff: reading internal or private GHCR base images                                | optional          | optional - without it such images are not recorded: one more release      |
+
+The [base image handoff](#handing-the-released-base-images-to-the-monitor)
+pushes its git note with the `contents: write` the merge needs; `packages: read`
+only widens which base images it can read.
 
 Public repositories need none of the three read scopes because their CI results
 are public; probed with a job token that had only `contents` and
@@ -1029,6 +1034,113 @@ token's read-only default, which GitHub allows for Dependabot runs.
 The release commit the run pushes with `GITHUB_TOKEN` starts no further
 workflow.
 
+#### Handing the released base images to the monitor
+
+A repository that also runs the
+[Docker Base Image Monitor](./modules-docker-base-image-monitor.md) got every
+Dependabot bump of a `FROM` tag released **twice**: this workflow released the
+merge, and the monitor's next check saw the new tag's digest differ from the
+one it had stored - the old tag's - and released the same content again. One
+needless production redeploy per bump. So after a release this workflow hands
+the base image digests it released over to the monitor, which then stores them
+instead of releasing (input `base-image-config`, on by default):
+
+1. **Before the dispatch** - only after a merge into the **default branch**,
+   with `release-workflow` set - the merge commit is checked out (shallow,
+   read as data: nothing of it is executed, and nothing of an unmerged PR is
+   ever checked out). A merge into another branch (a Dependabot
+   `target-branch`) is merged and released as before, but nothing is handed
+   over: the monitor checks the default branch, and a note on a commit that is
+   not on it could make the monitor store a digest the default branch's image
+   was never built from. No monitor config at `base-image-config`: nothing
+   happens, without a word - most repositories have none. With
+   `release-wait-minutes: 0` nothing is recorded (a notice, if there would
+   have been something): without the wait the release's result is not known.
+2. **Only what the PR changed** is recorded: entries with `"dockerfile"` whose
+   Dockerfile (relative to the repository root, `./Dockerfile` is
+   `Dockerfile`) is among the PR's changed files - their `FROM` line is what
+   was merged and released. Any other image's digest may have moved for other
+   reasons, and whether the release rebuilt it is not known here: it stays the
+   monitor's. Entries with a fixed `"tag"` are never recorded, and a variable
+   only if every entry that uses it qualifies (the monitor stores one digest
+   per variable).
+3. Their tags are resolved from the Dockerfiles by the same
+   [resolve action](../../.github/actions/docker-base-image-resolve/action.yml)
+   the monitor uses, and their digests are read from the registry - right
+   before the dispatch, so the release run builds on that digest or a newer
+   one. For a multi-arch index the **linux/amd64** manifest counts, the
+   primary platform - the same filter as the monitor's, byte for byte. Reads
+   are retried as the monitor retries them (3 attempts, 10 s and 20 s apart;
+   an auth error or an unknown manifest at once).
+4. **After a release run that succeeded**, the release must also have been
+   cut for the merge - a run can succeed and publish nothing. The latest
+   release must have been **published** after the digests were read (its
+   `published_at`; GitHub documents `created_at` as the date of the tagged
+   commit, older than that for a release that tags the merge commit itself),
+   and its tag must contain the merge commit (compare: `ahead` or
+   `identical`).
+5. Then the digests are recorded as a **git note on the merge commit** in
+   `refs/notes/base-image-monitor`, pushed with the job token. A push that
+   meets a note another run pushed in the meantime is rejected; the next
+   attempt (three in all) adds the note on top of origin's notes, so a note of
+   another merge commit is never lost.
+
+The note is exactly one JSON object - the contract with the monitor, which
+reads it:
+
+```json
+{"schema":1,"source":"docker-maintenance-dependabot","recorded_at":"2026-11-15T13:52:10Z","merge_commit":"<40-hex sha of the annotated commit>","release":"v1.4.0","release_run_url":"https://github.com/<owner>/<repo>/actions/runs/<id>","digests":{"PYTHON_DIGEST":"sha256:<64 hex>"}}
+```
+
+It says: the release run - dispatched after the merge, succeeded, and it cut a
+release that contains the merge commit - was built from these base image
+digests; each was read from the registry right before the dispatch, so the
+build pulled that digest or a newer one.
+
+**Why a git note.** It is a trust anchor: pushing a notes ref needs
+`contents: write`, the same right as pushing to the default branch. An artifact
+or a PR comment would not be one - any job can upload an artifact, and comments
+are open to far more than the workflow.
+
+**Never at the cost of a release.** A missed base image security update is far
+worse than a redundant release, so whatever is missing, unreadable or not
+verified is not recorded, and the monitor releases once more, as it did
+before. None of the handoff steps can fail the job, the release does not
+depend on them, and each has a short timeout (11 minutes in all, also on the
+job timeout) - they run before the dispatch and delay it by seconds.
+
+| Situation                                                                                      | Recorded                       | Annotation                                 |
+|------------------------------------------------------------------------------------------------|--------------------------------|--------------------------------------------|
+| No monitor config, or the PR changed no Dockerfile the monitor watches                         | -                              | -                                          |
+| The PR was merged into another branch than the default branch                                  | -                              | -                                          |
+| `release-wait-minutes: 0` - whether the release succeeds is not seen                           | no                             | notice                                     |
+| An internal or private GHCR image without `packages: read`, or an image that cannot be read    | not that image, the others yes | notice                                     |
+| The tag of a changed entry cannot be resolved                                                  | not that entry                 | error (from the resolve action) and notice |
+| The release run did not succeed                                                                | no                             | the release's own error                    |
+| No release published after the digests were read, or its tag does not contain the merge commit | no                             | notice                                     |
+| The note could not be pushed (three attempts)                                                  | no                             | warning                                    |
+
+**`packages: read`.** Callers grant no `packages: read` by default, so an
+internal or private GHCR base image is not readable for the handoff: it is not
+recorded, and the monitor releases it once more, as before. To cover such
+images, grant it in the calling workflow:
+
+```yaml
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+  actions: write
+  packages: read        # base image handoff: internal GHCR base images
+```
+
+The handoff needs `docker` (to read the digests) and `python3` (the resolver)
+on the runner - both preinstalled on GitHub-hosted runners. Set
+`base-image-config: ''` to switch it off, or to another path if the monitor is
+called with another `config-file`. The job output `base-image-handoff` and the
+row **Base image handoff** in the job summary say what happened.
+
 ### Limits
 
 - **Only `.github/` counts as CI.** A GitHub Actions update and a PR that
@@ -1056,10 +1168,11 @@ workflow.
   started by hand; with it, the release is dispatched after the merge - see
   [Releasing the merged update](#releasing-the-merged-update).
 - **The release is waited for in the same job.** The runner stays busy for up
-  to `release-wait-minutes` after the merge. The job timeout is 255 minutes
-  with `release-workflow`, enough for the longest CI and release waits, and
-  75 minutes without it. Lower `release-wait-minutes`, or set `0` to only
-  dispatch, if the release workflow is reliably watched elsewhere.
+  to `release-wait-minutes` after the merge. The job timeout is 266 minutes
+  with `release-workflow`, enough for the longest CI and release waits and
+  the base image handoff, and 75 minutes without it. Lower
+  `release-wait-minutes`, or set `0` to only dispatch, if the release
+  workflow is reliably watched elsewhere.
 - **One merge at a time - as a rule.** Every Dependabot PR is merged only on
   the base CI tested it on, so of several PRs that passed CI together one is
   normally merged and each of the others is rebased and tested again (see
@@ -1117,17 +1230,18 @@ workflow.
 
 ### Workflow Options
 
-| Input                  | Description                                                                                                                            | Default           |
-|------------------------|----------------------------------------------------------------------------------------------------------------------------------------|-------------------|
-| `required-workflows`   | PR CI workflow files that must have run on the PR and passed, comma or newline separated, e.g. `.github/workflows/ci.yml`              | `''` (no merge)   |
-| `merge-method`         | squash, merge, or rebase                                                                                                               | `squash`          |
-| `auto-approve`         | Approve the PR before merging it                                                                                                       | `true`            |
-| `merge-update-types`   | Semver update types to merge: `patch`, `minor`, `major`; [0.x updates](#updates-below-100) count stricter                              | `patch,minor`     |
-| `ci-wait-minutes`      | How long to wait for CI to finish and settle (10-60) before leaving the PR open                                                        | `60`              |
-| `release-workflow`     | Release workflow file dispatched on the base branch after a merge, e.g. `.github/workflows/docker-release.yml`; needs `actions: write` | `''` (no release) |
-| `release-wait-minutes` | How long to wait for the dispatched release run (0-180); a run that does not succeed within it fails the job. `0`: do not wait         | `60`              |
-| `allow-major`          | Deprecated: `true` equals `merge-update-types: patch,minor,major`                                                                      | `false`           |
-| `runs-on`              | Runner label, or a JSON array of labels for self-hosted runners                                                                        | `ubuntu-latest`   |
+| Input                  | Description                                                                                                                                                                                                                                           | Default                                                     |
+|------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------|
+| `required-workflows`   | PR CI workflow files that must have run on the PR and passed, comma or newline separated, e.g. `.github/workflows/ci.yml`                                                                                                                             | `''` (no merge)                                             |
+| `merge-method`         | squash, merge, or rebase                                                                                                                                                                                                                              | `squash`                                                    |
+| `auto-approve`         | Approve the PR before merging it                                                                                                                                                                                                                      | `true`                                                      |
+| `merge-update-types`   | Semver update types to merge: `patch`, `minor`, `major`; [0.x updates](#updates-below-100) count stricter                                                                                                                                             | `patch,minor`                                               |
+| `ci-wait-minutes`      | How long to wait for CI to finish and settle (10-60) before leaving the PR open                                                                                                                                                                       | `60`                                                        |
+| `release-workflow`     | Release workflow file dispatched on the base branch after a merge, e.g. `.github/workflows/docker-release.yml`; needs `actions: write`                                                                                                                | `''` (no release)                                           |
+| `release-wait-minutes` | How long to wait for the dispatched release run (0-180); a run that does not succeed within it fails the job. `0`: do not wait                                                                                                                        | `60`                                                        |
+| `base-image-config`    | Docker Base Image Monitor config; after a verified release of a merge into the default branch, the base image digests of the Dockerfiles the PR changed are recorded - see [the handoff](#handing-the-released-base-images-to-the-monitor). `''`: off | `.github/config/docker-base-image-monitor/base-images.json` |
+| `allow-major`          | Deprecated: `true` equals `merge-update-types: patch,minor,major`                                                                                                                                                                                     | `false`                                                     |
+| `runs-on`              | Runner label, or a JSON array of labels for self-hosted runners                                                                                                                                                                                       | `ubuntu-latest`                                             |
 
 See [Choosing `required-workflows`](#choosing-required-workflows).
 
@@ -1135,11 +1249,13 @@ See [Choosing `required-workflows`](#choosing-required-workflows).
 |---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
 | `DEPENDABOT_REBASE_TOKEN` | Token of a user with push access that posts `@dependabot rebase` when the base branch moved since CI ran - a **Dependabot** secret, see [the rebase token](#the-rebase-token) | no       |
 
-| Output            | Description                                                                                                           |
-|-------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `merged`          | `true` if this run merged the PR                                                                                      |
-| `release-run-url` | URL of the dispatched release run; empty if none was dispatched or it was not found                                   |
-| `release-result`  | `success`, `failed`, `timeout`, `not-waited`, `not-found`, `unreadable` or `dispatch-failed`; empty without a release |
+| Output                      | Description                                                                                                                                                                                                                                                                              |
+|-----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `merged`                    | `true` if this run merged the PR                                                                                                                                                                                                                                                         |
+| `release-run-url`           | URL of the dispatched release run; empty if none was dispatched or it was not found                                                                                                                                                                                                      |
+| `release-result`            | `success`, `failed`, `timeout`, `not-waited`, `not-found`, `unreadable` or `dispatch-failed`; empty without a release                                                                                                                                                                    |
+| `base-image-handoff`        | `recorded`, `not-verified`, `failed`, `skipped` or `none` (nothing to record); empty if the handoff did not run. Only `recorded` follows a successful release - after any other release result it is `none`, `skipped` or empty. Anything but `recorded`: the monitor releases once more |
+| `base-image-handoff-images` | JSON array of the names of the base images recorded for the monitor; empty unless `recorded`                                                                                                                                                                                             |
 
 ### Examples
 
@@ -1509,7 +1625,7 @@ The Renovate workflow uses GitHub's native auto-merge, which only waits for
 - **Release only after a merge, failures loud**: `release-workflow` is dispatched only after this run merged the PR, needs nothing but `actions: write` on the job token, and a release run that does not succeed fails the job. What gets published is gated by the release workflow's own tests, and is what they ran on only if its release is pinned to the commit the run tested (`ref: ${{ github.sha }}`) - see [what "no broken release" relies on](#what-no-broken-release-relies-on), also for the window a pipeline that tags before it pushes leaves open
 - **Released without a person in between**: with `release-workflow`, a merged dependency update is built and released by the dispatched run - with the release workflow's write permissions and the repository's secrets (registry credentials, signing keys) - without anyone looking at it first. Without it, the release waited for the next human push. That is a supply-chain trade-off to accept knowingly: an update whose harmful change passes the required CI reaches the registry automatically. Keep `merge-update-types` narrow (`patch`; the default `patch,minor` also releases minor updates this way) where the required CI does not exercise what an update can break, the release gated on its tests, and `release-workflow` unset where a person should approve each release
 - **Only the tested combination**: a Dependabot PR is merged only while the base branch is still at the commit its CI was merged onto; otherwise it is rebased and tested again. A push in the seconds between that check and the merge call - most likely a sibling Dependabot PR merged at the same time - is merged onto and reported with the warning *Merged onto an untested base*; a release pinned to the commit it tested builds and tests that combination before publishing it. The optional `DEPENDABOT_REBASE_TOKEN` is used for that one `@dependabot rebase` comment and nothing else; keep it on a machine user, limited to the selected repositories and short-lived (see [the rebase token](#the-rebase-token))
-- **Dependabot only**: the Dependabot job acts only on Dependabot's PRs, on events Dependabot raised, with verified Dependabot commits only; it never checks out PR code
+- **Dependabot only**: the Dependabot job acts only on Dependabot's PRs, on events Dependabot raised, with verified Dependabot commits only; it never checks out an unmerged PR. Only after the merge, the [base image handoff](#handing-the-released-base-images-to-the-monitor) checks out the merge commit on the default branch and reads it as data - nothing of it is executed - and records its digests as a git note, which needs `contents: write` just like a push to the default branch
 - **Auto-approve optional**: Can be disabled for manual review
 - **Audit trail**: All updates tracked in PRs and git history
 - **Update types**: Dependabot merges patch and minor updates (after the required CI passed) and leaves majors for review unless `merge-update-types` narrows it to `patch` or widens it; below 1.0.0 a minor update (and below 0.1.0 a patch update) counts as major - see [why minor is in the default](#why-minor-updates-are-merged-by-default); Renovate leaves majors for review

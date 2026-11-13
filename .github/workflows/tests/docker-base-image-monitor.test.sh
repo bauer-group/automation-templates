@@ -34,6 +34,29 @@
 #   check never ran (e.g. missing secret)   -> the summary says so, never "up to date"
 #   Dependabot bumps the FROM tag           -> one release for the new tag, then only it counts
 #
+# A multi-arch index was compared by its first manifest sorted by
+# architecture - linux/386 whenever it has one - while the images are amd64.
+# 386 lags amd64 or is rebuilt alone. The linux/amd64 manifest is compared now:
+#
+#   index with 386 and amd64                -> amd64; without a variant first, then any linux/amd64
+#   index without linux/amd64               -> the old pick
+#   stored digest is the old pick           -> switched without a release only if the amd64
+#                                              image is more than 48h older than the latest
+#                                              release; built later or within 48h before it,
+#                                              build time or release unreadable, no release
+#                                              -> released as an update
+#   <var>_PENDING records the old pick      -> running: wait; failed: retry for amd64;
+#                                              succeeded: switched as above, record dropped
+#
+# docker-maintenance-dependabot.yml releases a base image update it merged
+# itself and hands the digests over in a git note (refs/notes/base-image-monitor):
+#
+#   note for the current digest, recorded   -> stored, no commit, no dispatch
+#     after the variable was last stored
+#   stale note, another digest, unreadable  -> released as before (a stored old pick is
+#     last update                              still switched, then nothing claims a release)
+#   malformed note, commit not on the branch -> ignored (malformed: with a warning)
+#
 # The step bodies are extracted from the workflow and the action at runtime
 # rather than duplicated here and run the way a `shell: bash` step runs
 # (-eo pipefail).
@@ -80,7 +103,7 @@ extract_step() {
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-for STEP in check release dispatch persist summary fail-exhausted fail-unresolved; do
+for STEP in handoff check release dispatch persist summary fail-exhausted fail-unresolved; do
   extract_step "$STEP" > "$WORK/$STEP.sh"
   if [ ! -s "$WORK/$STEP.sh" ]; then
     echo "FATAL: could not extract the '$STEP' run block from the workflow."
@@ -128,6 +151,13 @@ static_check "persist reads the attempt numbers" "DISPATCH_ATTEMPTS: \${{ steps.
 static_check "exhausted retries fail the job" \
   "if: steps.check.outputs.exhausted-images != '' && steps.check.outputs.exhausted-images != '[]'"
 static_check "job has a timeout" "    timeout-minutes: "
+# The switch of a stored old pick follows the same rule in both modules.
+static_check "the switch margin is 48h" "          MIGRATION_MARGIN_HOURS=48"
+if grep -qxF "          MIGRATION_MARGIN_HOURS=48" "$SCRIPT_DIR/../modules-auto-maintenance.yml"; then
+  pass "the switch margin is the one of modules-auto-maintenance.yml"
+else
+  fail "the switch margin is the one of modules-auto-maintenance.yml" "MIGRATION_MARGIN_HOURS=48 not found there"
+fi
 static_check "the resolve step is the template's action" \
   "uses: bauer-group/automation-templates/.github/actions/docker-base-image-resolve@main"
 static_check "the resolve step reads the same config file" "          config-file: \${{ inputs.config-file }}"
@@ -152,11 +182,35 @@ if awk '$0 == "        id: persist" { p = NR } $0 == "        id: summary" { s =
 else
   fail "an entry whose tag was not read fails the job only after persist and summary" "the fail-unresolved step is missing or too early"
 fi
+static_check "the check reads the releases handed over" "HANDOFFS: \${{ steps.handoff.outputs.handoffs }}"
+static_check "the summary reads the switched digests" "MIGRATED_JSON: \${{ steps.check.outputs.migrated }}"
+static_check "the summary reads the handed over digests" "HANDED_OFF_JSON: \${{ steps.check.outputs.handed-off }}"
+static_check "the job reports the switched digests" "migrated-images: \${{ steps.check.outputs.migrated-images }}"
+static_check "the job reports the handed over digests" "handed-off-images: \${{ steps.check.outputs.handed-off-images }}"
+static_check "the module reports the switched digests" "value: \${{ jobs.monitor.outputs.migrated-images }}"
+static_check "the module reports the handed over digests" "value: \${{ jobs.monitor.outputs.handed-off-images }}"
+# Reading the notes must never be what stops the security rebuilds.
+if awk '$0 == "        id: handoff" { h = NR } h && NR == h + 1 { exit !($0 == "        continue-on-error: true") }
+        END { if (!h) exit 1 }' "$WORKFLOW_FILE"; then
+  pass "a failure to read the notes does not stop the check"
+else
+  fail "a failure to read the notes does not stop the check" "the handoff step is missing or lacks continue-on-error: true"
+fi
+if awk '$0 == "        id: handoff" { h = NR } $0 == "        id: check" { c = NR } END { exit !(h && c && h < c) }' "$WORKFLOW_FILE"; then
+  pass "the notes are read before the check"
+else
+  fail "the notes are read before the check" "the handoff step is missing or comes after the check"
+fi
 
 # --- stubs --------------------------------------------------------------------
-# State lives in $FAKE: vars/<NAME> (repository variables), runs/<ID> (run JSON),
+# State lives in $FAKE: vars/<NAME> (repository variables), var-updated/<NAME>
+# (their updated_at, set by `gh variable set`), var-error/<NAME> (stderr of a
+# failing read of the variable's metadata), runs/<ID> (run JSON),
 # runs/<ID>.error (stderr of a failing read), manifests/<ref with / and : as _>,
-# dispatch-response, workflows.json, fail-set/<NAME>. Every call is logged.
+# images/<ref@digest with /, : and @ as _> (image config for
+# `docker buildx imagetools inspect`), release-latest (JSON; absent = no
+# release), release-latest.error, dispatch-response, workflows.json,
+# fail-set/<NAME>. Every gh call and every buildx call is logged.
 mkdir -p "$WORK/bin"
 cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -168,7 +222,8 @@ case "$1 $2" in
   "variable set")
     [ "$4" = "--body" ] || { echo "unexpected: $*" >&2; exit 2; }
     [ ! -f "$FAKE/fail-set/$3" ] || { echo "HTTP 500" >&2; exit 1; }
-    printf '%s' "$5" > "$FAKE/vars/$3"; exit 0 ;;
+    printf '%s' "$5" > "$FAKE/vars/$3"
+    date -u +%Y-%m-%dT%H:%M:%SZ > "$FAKE/var-updated/$3"; exit 0 ;;
   "variable delete")
     [ -f "$FAKE/vars/$3" ] || { echo "HTTP 404: Not Found" >&2; exit 1; }
     rm -f "$FAKE/vars/$3"; exit 0 ;;
@@ -199,12 +254,33 @@ case "$method $path" in
     [ -f "$FAKE/runs/$id" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
     if [ -n "$filter" ]; then jq -r "$filter" "$FAKE/runs/$id"; else cat "$FAKE/runs/$id"; fi
     exit 0 ;;
+  "GET repos/"*"/releases/latest")
+    if [ -f "$FAKE/release-latest.error" ]; then cat "$FAKE/release-latest.error" >&2; exit 1; fi
+    [ -f "$FAKE/release-latest" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+    if [ -n "$filter" ]; then jq -r "$filter" "$FAKE/release-latest"; else cat "$FAKE/release-latest"; fi
+    exit 0 ;;
+  "GET repos/"*"/actions/variables/"*)
+    name="${path##*/}"
+    if [ -f "$FAKE/var-error/$name" ]; then cat "$FAKE/var-error/$name" >&2; exit 1; fi
+    [ -f "$FAKE/vars/$name" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+    updated=$(cat "$FAKE/var-updated/$name" 2>/dev/null || echo "2026-11-01T00:00:00Z")
+    json=$(jq -nc --arg n "$name" --rawfile v "$FAKE/vars/$name" --arg u "$updated" \
+      '{name: $n, value: $v, created_at: "2026-01-01T00:00:00Z", updated_at: $u}')
+    if [ -n "$filter" ]; then printf '%s' "$json" | jq -r "$filter"; else printf '%s' "$json"; fi
+    exit 0 ;;
 esac
 echo "unexpected gh api call: $method $path" >&2
 exit 2
 STUB
 cat > "$WORK/bin/docker" <<'STUB'
 #!/usr/bin/env bash
+if [ "$1 $2 $3" = "buildx imagetools inspect" ]; then
+  echo "docker $*" >> "$FAKE/calls.log"
+  [ "$5 $6" = "--format {{json .Image}}" ] && [ $# -eq 6 ] || { echo "unexpected docker call: $*" >&2; exit 2; }
+  f="$FAKE/images/$(printf '%s' "$4" | tr '/:@' '___')"
+  [ -f "$f" ] || { echo "ERROR: $4: not found" >&2; exit 1; }
+  cat "$f"; exit 0
+fi
 [ "$1 $2" = "manifest inspect" ] || { echo "unexpected docker call: $*" >&2; exit 2; }
 f="$FAKE/manifests/$(printf '%s' "$3" | tr '/:' '__')"
 [ -f "$f" ] || { echo "manifest unknown" ; exit 1; }
@@ -240,7 +316,7 @@ TWO_IMAGES='[{"name": "app", "image": "ghcr.io/acme/base", "tag": "stable", "var
 reset() {
   FAKE="$WORK/fake-$1"
   rm -rf "$FAKE"
-  mkdir -p "$FAKE/vars" "$FAKE/runs" "$FAKE/manifests" "$FAKE/fail-set"
+  mkdir -p "$FAKE/vars" "$FAKE/var-updated" "$FAKE/var-error" "$FAKE/runs" "$FAKE/manifests" "$FAKE/images" "$FAKE/fail-set"
   : > "$FAKE/calls.log"
   git init -q --bare "$FAKE/origin.git"
   git init -q "$FAKE/repo"
@@ -269,6 +345,49 @@ pending() { jq -nc --arg d "$2" --argjson r "$3" --arg a "${4:-}" \
   '{digest: $d, run_id: $r, run_url: "x"} + (if $a == "" then {} else {attempt: ($a | tonumber)} end)' > "$FAKE/vars/$1_PENDING"; }
 out() { grep "^$1=" "$FAKE/output" | tail -n 1 | cut -d= -f2-; }
 
+# Platform manifests of a multi-arch index: digest_of <hex char>.
+digest_of() { printf 'sha256:%s' "$(printf '%064d' 0 | tr 0 "$1")"; }
+D_386=$(digest_of 4); D_3862=$(digest_of b); D_AMD=$(digest_of 5); D_AMD2=$(digest_of a)
+D_ARM=$(digest_of 6); D_ARMV7=$(digest_of 7); D_V3=$(digest_of 8); D_WIN=$(digest_of 9)
+# index REF OS/ARCH[/VARIANT]=DIGEST... - in the given order, as the registry lists them.
+index() {
+  local ref="$1" entries="[]" pair os arch variant; shift
+  for pair in "$@"; do
+    IFS=/ read -r os arch variant <<< "${pair%%=*}"
+    entries=$(printf '%s' "$entries" | jq -c --arg d "${pair#*=}" --arg os "$os" --arg arch "$arch" --arg v "${variant:-}" \
+      '. + [{mediaType: "application/vnd.oci.image.manifest.v1+json", digest: $d, size: 1,
+             platform: ({os: $os, architecture: $arch} + (if $v == "" then {} else {variant: $v} end))}]')
+  done
+  jq -nc --argjson m "$entries" '{schemaVersion: 2, mediaType: "application/vnd.oci.image.index.v1+json", manifests: $m}' \
+    > "$FAKE/manifests/$(printf '%s' "$ref" | tr '/:' '__')"
+}
+# built REF@DIGEST CREATED: the image config `docker buildx imagetools inspect` shows.
+built() { jq -nc --arg c "$2" '{created: $c, architecture: "amd64", os: "linux"}' > "$FAKE/images/$(printf '%s' "$1" | tr '/:@' '___')"; }
+latest_release() { jq -nc --arg c "$1" '{tag_name: "v1.0.0", created_at: $c}' > "$FAKE/release-latest"; }
+var_updated() { printf '%s' "$2" > "$FAKE/var-updated/$1"; }
+head_sha() { git -C "$FAKE/repo" rev-parse HEAD; }
+has_ref() { git -C "$FAKE/repo" show-ref --verify -q "$1"; }
+# handoff VARIABLE DIGEST RECORDED_AT: the handoff step's output for one note.
+handoff() {
+  jq -nc --arg v "$1" --arg d "$2" --arg r "$3" --argjson e "$(date -u -d "$3" +%s)" --arg u "$SERVER/$REPO/actions/runs/777" \
+    '[{variable: $v, digest: $d, recorded_at: $r, recorded_epoch: $e, release: "v1.2.3", release_run_url: $u,
+       merge_commit: "0123456789abcdef0123456789abcdef01234567"}]'
+}
+# note_json COMMIT DIGESTS_JSON RECORDED_AT: a note as docker-maintenance-dependabot.yml writes it.
+note_json() {
+  jq -nc --arg c "$1" --argjson d "$2" --arg r "$3" --arg u "$SERVER/$REPO/actions/runs/900" \
+    '{schema: 1, source: "docker-maintenance-dependabot", recorded_at: $r, merge_commit: $c, release: "v1.0.1", release_run_url: $u, digests: $d}'
+}
+# note COMMIT CONTENT: attaches a note and pushes the notes ref to origin, as
+# the Dependabot module does. The checkout keeps no local ref: a fresh
+# checkout has none, and the handoff step has to fetch it.
+note() {
+  git -C "$FAKE/repo" fetch -q origin "+refs/notes/base-image-monitor:refs/notes/base-image-monitor" 2>/dev/null || true
+  git -C "$FAKE/repo" notes --ref=base-image-monitor add -f -m "$2" "$1"
+  git -C "$FAKE/repo" push -q -f origin refs/notes/base-image-monitor
+  git -C "$FAKE/repo" update-ref -d refs/notes/base-image-monitor
+}
+
 # Runs a step with the environment of the workflow. Extra VAR=value pairs
 # before the step name override the defaults.
 run_step() {
@@ -281,7 +400,7 @@ run_step() {
     DRY_RUN=false FAIL_ON_UNREACHABLE=true TARGET_WORKFLOW="docker-release.yml" MAX_ATTEMPTS=3 \
     TARGET_REF=main TARGET_INPUTS='{"force-release": "true"}' \
     COMMIT_PREFIX="chore(deps)" UPDATED_IMAGES_JSON='[]' UPDATE_DETAILS="" \
-    VARIABLE_UPDATES='{}' DISPATCH_UPDATES='{}' DISPATCH_ATTEMPTS='{}' PENDING_DELETES='[]' RUN_ID="" RUN_URL="" \
+    VARIABLE_UPDATES='{}' DISPATCH_UPDATES='{}' DISPATCH_ATTEMPTS='{}' PENDING_DELETES='[]' RUN_ID="" RUN_URL="" HANDOFFS="" \
     "$@" bash -eo pipefail "$WORK/$step.sh") > "$FAKE/log" 2>&1
 }
 
@@ -561,6 +680,330 @@ run_step check DRY_RUN=true; expect_rc "dry run: step succeeds" $? 0
 expect_eq "dry run: retry reported" "$(out retried-images)" '["app"]'
 if grep -qE "^gh variable (set|delete)" "$FAKE/calls.log"; then fail "dry run: writes nothing" "wrote a variable"; else pass "dry run: writes nothing"; fi
 
+# === linux/amd64 digest =======================================================
+# A multi-arch index used to be compared by its first manifest sorted by
+# architecture: linux/386 whenever it has one. The images are amd64.
+
+reset amd64
+index ghcr.io/acme/base:stable linux/amd64="$D_AMD" linux/arm/v7="$D_ARMV7" linux/arm64="$D_ARM" linux/386="$D_386"
+set_var APP_DIGEST "$D_AMD"
+run_step check; expect_rc "386 and amd64: step succeeds" $? 0
+expect_eq "386 and amd64: the stored amd64 digest is unchanged" "$(out updates-found) $(out state-changed)" "false false"
+set_var APP_DIGEST "$D_OLD"
+run_step check
+expect_eq "386 and amd64: the amd64 digest is the new one" "$(out new-digests)" "{\"app\":\"$D_AMD\"}"
+if grep -q "docker buildx" "$FAKE/calls.log"; then fail "a stored digest that is not the old pick: no switch considered" "inspected"; else pass "a stored digest that is not the old pick: no switch considered"; fi
+
+reset arm-only
+index ghcr.io/acme/base:stable linux/arm64="$D_ARM" linux/arm/v7="$D_ARMV7"
+set_var APP_DIGEST "$D_OLD"
+run_step check; expect_rc "no linux/amd64: step succeeds" $? 0
+expect_eq "no linux/amd64: the old pick is kept" "$(out new-digests)" "{\"app\":\"$D_ARMV7\"}"
+
+reset amd64-variant
+index ghcr.io/acme/base:stable windows/amd64="$D_WIN" linux/amd64/v3="$D_V3" linux/amd64="$D_AMD" linux/386="$D_386"
+set_var APP_DIGEST "$D_OLD"
+run_step check
+expect_eq "amd64 variants: linux/amd64 without a variant wins" "$(out new-digests)" "{\"app\":\"$D_AMD\"}"
+reset amd64-variant-only
+index ghcr.io/acme/base:stable linux/386="$D_386" linux/amd64/v2="$D_V3"
+set_var APP_DIGEST "$D_OLD"
+run_step check
+expect_eq "amd64 with a variant only: that one" "$(out new-digests)" "{\"app\":\"$D_V3\"}"
+
+# --- one-time switch of a stored old pick -------------------------------------
+# The stored digest is the 386 manifest of this very index. Switched without
+# a release only while the amd64 image is more than 48h older than the latest
+# release.
+migration_setup() {
+  index ghcr.io/acme/base:stable linux/amd64="$D_AMD" linux/arm64="$D_ARM" linux/386="$D_386"
+  set_var APP_DIGEST "$D_386"
+}
+
+reset migrate
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 2026-11-05T19:27:56.890249894Z; latest_release 2026-11-08T08:00:00Z
+run_step check; expect_rc "switch: step succeeds" $? 0
+expect_eq "switch: listed" "$(out migrated-images)" '["app"]'
+expect_eq "switch: stored" "$(out variable-updates)" "{\"APP_DIGEST\":\"$D_AMD\"}"
+expect_eq "switch: state changed, so persist stores it" "$(out state-changed)" true
+expect_eq "switch: not an update" "$(out updates-found) $(out updated-images) $(out new-images) $(out new-digests)" 'false [] [] {}'
+expect_eq "switch: no commit, no dispatch" "$(out commit-needed) $(out commit-images) $(out dispatch-updates)" 'false [] {}'
+expect_eq "switch: old and new digest" "$(out migrated | jq -r '.[0] | "\(.old) \(.new)"')" "$D_386 $D_AMD"
+expect_eq "switch: the platform manifest is inspected" "$(grep -c "^docker buildx imagetools inspect ghcr.io/acme/base@$D_AMD --format" "$FAKE/calls.log")" 1
+
+reset migrate-newer-amd64
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 2026-11-07T10:00:00Z; latest_release 2026-11-06T08:00:00Z
+run_step check; expect_rc "amd64 built after the release: step succeeds" $? 0
+expect_eq "amd64 built after the release: released" "$(out new-images) $(out dispatch-updates)" "[\"app\"] {\"APP_DIGEST\":\"$D_AMD\"}"
+expect_eq "amd64 built after the release: not switched" "$(out migrated-images)" '[]'
+if grep -qF "::notice::app (ghcr.io/acme/base:stable): the stored digest is the one an earlier version of this module compared" "$FAKE/log" \
+   && grep -qF "(built 2026-11-07T10:00:00Z) is not more than 48h older than the latest release (2026-11-06T08:00:00Z)" "$FAKE/log"; then
+  pass "amd64 built after the release: notice names the reason"
+else
+  fail "amd64 built after the release: notice names the reason" "$(grep '::notice::' "$FAKE/log")"
+fi
+
+reset migrate-same-second
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 2026-11-06T08:00:00Z; latest_release 2026-11-06T08:00:00Z
+run_step check
+expect_eq "amd64 built in the second of the release: released" "$(out new-images)" '["app"]'
+
+# "created" is the build time, not the time the image reached the tag:
+# python:3.15-alpine on 2026-11-05 - amd64 built 19:27, in the tag at 23:06,
+# 386 there since 20:06. A release at 21:00 was built on the OLD amd64 image.
+reset migrate-in-margin
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 2026-11-05T19:27:56Z; latest_release 2026-11-05T21:00:00Z
+run_step check; expect_rc "amd64 built 2h before the release: step succeeds" $? 0
+expect_eq "amd64 built 2h before the release: released" "$(out new-images) $(out migrated-images)" '["app"] []'
+if grep -qF "(built 2026-11-05T19:27:56Z) is not more than 48h older than the latest release (2026-11-05T21:00:00Z)" "$FAKE/log"; then
+  pass "amd64 built 2h before the release: notice names the margin"
+else
+  fail "amd64 built 2h before the release: notice names the margin" "$(grep '::notice::' "$FAKE/log")"
+fi
+
+reset migrate-margin-boundary
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 2026-11-05T19:27:56Z; latest_release 2026-11-07T19:27:56Z
+run_step check
+expect_eq "amd64 exactly 48h older than the release: released" "$(out new-images) $(out migrated-images)" '["app"] []'
+
+reset migrate-margin-past
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 2026-11-05T19:27:56Z; latest_release 2026-11-07T19:27:57Z
+run_step check
+expect_eq "amd64 48h and 1s older than the release: switched" "$(out migrated-images) $(out new-images)" '["app"] []'
+
+# Image build times carry nanoseconds; a date that does not read fractions
+# (uutils date on ubuntu-latest may not) must still get a time, or every
+# stored old pick would be released at once.
+mkdir -p "$WORK/strictdate"
+REAL_DATE=$(command -v date)
+cat > "$WORK/strictdate/date" <<EOF
+#!/usr/bin/env bash
+for a in "\$@"; do
+  case "\$a" in *T*:*:*.[0-9]*) echo "date: invalid date '\$a'" >&2; exit 1 ;; esac
+done
+exec "$REAL_DATE" "\$@"
+EOF
+chmod +x "$WORK/strictdate/date"
+STRICT_PATH="$WORK/strictdate:$WORK/bin:$PATH"
+reset migrate-strict-date
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 2026-11-05T19:27:56.890249894Z; latest_release 2026-11-08T08:00:00Z
+run_step check PATH="$STRICT_PATH"; expect_rc "build time in nanoseconds, date without fractions: step succeeds" $? 0
+expect_eq "build time in nanoseconds, date without fractions: switched" "$(out migrated-images) $(out new-images)" '["app"] []'
+
+reset migrate-no-created
+migration_setup; latest_release 2026-11-06T08:00:00Z
+run_step check; expect_rc "build time unreadable: step succeeds" $? 0
+expect_eq "build time unreadable: released" "$(out new-images) $(out migrated-images)" '["app"] []'
+expect_eq "build time unreadable: one retry" "$(grep -c '^docker buildx imagetools inspect' "$FAKE/calls.log")" 2
+if grep -qF "::notice::app (ghcr.io/acme/base:stable)" "$FAKE/log" && grep -qF "the build time of the linux/amd64 image could not be read" "$FAKE/log"; then
+  pass "build time unreadable: notice"; else fail "build time unreadable: notice" "$(grep '::notice::' "$FAKE/log")"; fi
+
+reset migrate-epoch-zero
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 1970-01-01T00:00:00Z; latest_release 2026-11-06T08:00:00Z
+run_step check
+expect_eq "build time of a reproducible build (1970): released" "$(out new-images)" '["app"]'
+# nixpkgs dockerTools writes 1970-01-01T00:00:01Z; anything before 1980 is a
+# placeholder, 1980-01-01 itself the lowest real SOURCE_DATE_EPOCH.
+reset migrate-epoch-one
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 1970-01-01T00:00:01Z; latest_release 2026-11-08T08:00:00Z
+run_step check
+expect_eq "build time 1970-01-01T00:00:01Z (nixpkgs): released" "$(out new-images) $(out migrated-images)" '["app"] []'
+reset migrate-epoch-1980
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 1980-01-01T00:00:00Z; latest_release 2026-11-08T08:00:00Z
+run_step check
+expect_eq "build time 1980-01-01 (SOURCE_DATE_EPOCH floor): switched" "$(out migrated-images) $(out new-images)" '["app"] []'
+
+reset migrate-garbage-created
+migration_setup; built "ghcr.io/acme/base@$D_AMD" "now"; latest_release 2026-11-06T08:00:00Z
+run_step check
+expect_eq "build time not RFC 3339: released" "$(out new-images)" '["app"]'
+
+reset migrate-no-release
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 2026-11-05T19:27:56Z
+run_step check; expect_rc "no release yet: step succeeds" $? 0
+expect_eq "no release yet: released" "$(out new-images) $(out migrated-images)" '["app"] []'
+if grep -qF "the repository has no release" "$FAKE/log"; then pass "no release yet: notice"; else fail "no release yet: notice" "$(grep '::notice::' "$FAKE/log")"; fi
+
+reset migrate-release-unreadable
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 2026-11-05T19:27:56Z; echo "gh: Server Error (HTTP 502)" > "$FAKE/release-latest.error"
+run_step check
+expect_eq "latest release unreadable: released" "$(out new-images)" '["app"]'
+
+# Both images are candidates: the latest release is read once.
+reset migrate-two
+index ghcr.io/acme/base:stable linux/amd64="$D_AMD" linux/386="$D_386"
+index ghcr.io/acme/engine:latest linux/amd64="$D_AMD2" linux/386="$D_3862"
+set_var APP_DIGEST "$D_386"; set_var ENGINE_DIGEST "$D_3862"
+built "ghcr.io/acme/base@$D_AMD" 2026-11-05T19:27:56Z; built "ghcr.io/acme/engine@$D_AMD2" 2026-11-07T10:00:00Z
+latest_release 2026-11-08T08:00:00Z
+run_step check INLINE_IMAGES="$TWO_IMAGES"; expect_rc "two candidates: step succeeds" $? 0
+expect_eq "two candidates: each decided on its own" "$(out migrated-images) $(out new-images)" '["app"] ["engine"]'
+expect_eq "two candidates: only the released one is committed" "$(out commit-images)" '["engine"]'
+expect_eq "two candidates: the latest release is read once" "$(grep -c 'releases/latest' "$FAKE/calls.log")" 1
+
+reset migrate-dry-run
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 2026-11-05T19:27:56Z; latest_release 2026-11-08T08:00:00Z
+run_step check DRY_RUN=true; expect_rc "switch, dry run: step succeeds" $? 0
+expect_eq "switch, dry run: reported" "$(out migrated-images)" '["app"]'
+if grep -qE "^gh variable (set|delete)" "$FAKE/calls.log"; then fail "switch, dry run: writes nothing" "wrote a variable"; else pass "switch, dry run: writes nothing"; fi
+if grep -qF "DRY RUN: nothing is stored (APP_DIGEST would be stored, without a release)" "$FAKE/log"; then pass "switch, dry run: says so"; else fail "switch, dry run: says so" "missing"; fi
+
+reset migrate-commit-mode
+migration_setup; built "ghcr.io/acme/base@$D_AMD" 2026-11-05T19:27:56Z; latest_release 2026-11-08T08:00:00Z
+run_step check TARGET_WORKFLOW=""; expect_rc "switch, commit mode: step succeeds" $? 0
+expect_eq "switch, commit mode: stored, no commit" "$(out migrated-images) $(out variable-updates) $(out commit-needed)" \
+  "[\"app\"] {\"APP_DIGEST\":\"$D_AMD\"} false"
+if grep -q "_PENDING" "$FAKE/calls.log"; then fail "switch, commit mode: no pending lookup" "read a _PENDING variable"; else pass "switch, commit mode: no pending lookup"; fi
+
+# --- a record of the old pick in <variable>_PENDING ---------------------------
+# An earlier version dispatched a release for the 386 digest of this index.
+reset legacy-running
+index ghcr.io/acme/base:stable linux/amd64="$D_AMD" linux/386="$D_386"; set_var APP_DIGEST "$D_OLD"
+pending APP_DIGEST "$D_386" 601; run_fixture 601 in_progress null
+run_step check; expect_rc "old pick's release running: step succeeds" $? 0
+expect_eq "old pick's release running: waits" "$(out pending-images) $(out updates-found) $(out state-changed)" '["app"] false false'
+
+reset legacy-unreadable
+index ghcr.io/acme/base:stable linux/amd64="$D_AMD" linux/386="$D_386"; set_var APP_DIGEST "$D_OLD"
+pending APP_DIGEST "$D_386" 606; echo "gh: Server Error (HTTP 502)" > "$FAKE/runs/606.error"
+run_step check
+expect_eq "old pick's release unreadable: waits" "$(out pending | jq -r '.[0].state') $(out updates-found)" 'unknown false'
+
+reset legacy-failed
+index ghcr.io/acme/base:stable linux/amd64="$D_AMD" linux/386="$D_386"; set_var APP_DIGEST "$D_OLD"
+release_tagged 1.0.0; base_commit app
+pending APP_DIGEST "$D_386" 603 2; run_fixture 603 completed '"failure"'
+run_step check; expect_rc "old pick's release failed: step succeeds" $? 0
+expect_eq "old pick's release failed: retried" "$(out retried-images)" '["app"]'
+expect_eq "old pick's release failed: dispatched for the amd64 digest" "$(out dispatch-updates)" "{\"APP_DIGEST\":\"$D_AMD\"}"
+expect_eq "old pick's release failed: next attempt" "$(out dispatch-attempts)" '{"APP_DIGEST":3}'
+expect_eq "old pick's release failed before the tag: no new commit" "$(out commit-needed)" false
+if grep -q "docker buildx" "$FAKE/calls.log"; then fail "old pick's release failed: no switch considered" "inspected"; else pass "old pick's release failed: no switch considered"; fi
+
+reset legacy-exhausted
+index ghcr.io/acme/base:stable linux/amd64="$D_AMD" linux/386="$D_386"; set_var APP_DIGEST "$D_OLD"
+pending APP_DIGEST "$D_386" 605 3; run_fixture 605 completed '"failure"'
+run_step check
+expect_eq "old pick's release failed the last attempt: exhausted" "$(out exhausted-images) $(out dispatch-updates)" '["app"] {}'
+
+reset legacy-confirmed
+index ghcr.io/acme/base:stable linux/amd64="$D_AMD" linux/386="$D_386"; set_var APP_DIGEST "$D_OLD"
+pending APP_DIGEST "$D_386" 602; run_fixture 602 completed '"success"'
+built "ghcr.io/acme/base@$D_AMD" 2026-11-05T19:27:56Z; latest_release 2026-11-08T08:00:00Z
+run_step check; expect_rc "old pick's release succeeded: step succeeds" $? 0
+expect_eq "old pick's release succeeded: switched" "$(out migrated-images) $(out variable-updates)" "[\"app\"] {\"APP_DIGEST\":\"$D_AMD\"}"
+expect_eq "old pick's release succeeded: record dropped" "$(out pending-deletes)" '["APP_DIGEST"]'
+expect_eq "old pick's release succeeded: not an update, not confirmed" "$(out updates-found) $(out confirmed)" 'false []'
+expect_eq "old pick's release succeeded: run named" "$(out migrated | jq -r '.[0].run_url')" "$SERVER/$REPO/actions/runs/602"
+run_step persist VARIABLE_UPDATES="$(grep '^variable-updates=' "$FAKE/output" | cut -d= -f2-)" PENDING_DELETES='["APP_DIGEST"]'
+expect_eq "old pick's release succeeded: persist stores the amd64 digest" "$(var APP_DIGEST)" "$D_AMD"
+if has_var APP_DIGEST_PENDING; then fail "old pick's release succeeded: persist drops the record" "still there"; else pass "old pick's release succeeded: persist drops the record"; fi
+
+reset legacy-confirmed-newer
+index ghcr.io/acme/base:stable linux/amd64="$D_AMD" linux/386="$D_386"; set_var APP_DIGEST "$D_OLD"
+pending APP_DIGEST "$D_386" 604; run_fixture 604 completed '"success"'
+built "ghcr.io/acme/base@$D_AMD" 2026-11-07T10:00:00Z; latest_release 2026-11-06T08:00:00Z
+run_step check
+expect_eq "old pick released, amd64 newer: released as attempt 1" "$(out new-images) $(out dispatch-attempts)" '["app"] {"APP_DIGEST":1}'
+expect_eq "old pick released, amd64 newer: the record is replaced by the dispatch, not dropped" "$(out pending-deletes)" '[]'
+if grep -qF "::notice::app (ghcr.io/acme/base:stable): APP_DIGEST_PENDING records a successful release of the digest an earlier version of this module compared" "$FAKE/log" \
+   && ! grep -qF "the stored digest is the one an earlier version" "$FAKE/log"; then
+  pass "old pick released, amd64 newer: the notice names the record, not the stored digest"
+else
+  fail "old pick released, amd64 newer: the notice names the record, not the stored digest" "$(grep '::notice::' "$FAKE/log")"
+fi
+
+# --- handed over by the Dependabot module -------------------------------------
+reset handoff
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"; var_updated APP_DIGEST 2026-11-01T00:00:00Z
+run_step check HANDOFFS="$(handoff APP_DIGEST "$D_NEW" 2026-11-10T10:00:00Z)"; expect_rc "handoff: step succeeds" $? 0
+expect_eq "handoff: listed" "$(out handed-off-images)" '["app"]'
+expect_eq "handoff: stored" "$(out variable-updates) $(out state-changed)" "{\"APP_DIGEST\":\"$D_NEW\"} true"
+expect_eq "handoff: not an update" "$(out updates-found) $(out new-images) $(out new-digests)" 'false [] {}'
+expect_eq "handoff: no commit, no dispatch" "$(out commit-needed) $(out dispatch-updates)" 'false {}'
+expect_eq "handoff: release named" "$(out handed-off | jq -r '.[0] | "\(.release) \(.release_run_url)"')" "v1.2.3 $SERVER/$REPO/actions/runs/777"
+
+reset handoff-same-second
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"; var_updated APP_DIGEST 2026-11-10T10:00:00Z
+run_step check HANDOFFS="$(handoff APP_DIGEST "$D_NEW" 2026-11-10T10:00:00Z)"
+expect_eq "handoff recorded in the second of the last update: counts" "$(out handed-off-images)" '["app"]'
+
+reset handoff-stale
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"; var_updated APP_DIGEST 2026-11-11T00:00:00Z
+run_step check HANDOFFS="$(handoff APP_DIGEST "$D_NEW" 2026-11-10T10:00:00Z)"; expect_rc "stale handoff: step succeeds" $? 0
+expect_eq "stale handoff: released" "$(out new-images) $(out handed-off-images)" '["app"] []'
+if grep -qF "::notice::app (ghcr.io/acme/base:stable): a Dependabot update recorded this digest as released, but the note was recorded before APP_DIGEST was last stored" "$FAKE/log"; then
+  pass "stale handoff: notice"; else fail "stale handoff: notice" "$(grep '::notice::' "$FAKE/log")"; fi
+
+# The note is not used, but the stored old pick is switched: no release, so
+# no annotation may claim one.
+reset handoff-stale-switched
+migration_setup; var_updated APP_DIGEST 2026-11-11T00:00:00Z
+built "ghcr.io/acme/base@$D_AMD" 2026-11-05T19:27:56Z; latest_release 2026-11-08T08:00:00Z
+run_step check HANDOFFS="$(handoff APP_DIGEST "$D_AMD" 2026-11-10T10:00:00Z)"; expect_rc "stale handoff, old pick switched: step succeeds" $? 0
+expect_eq "stale handoff, old pick switched: switched, not released" "$(out migrated-images) $(out new-images) $(out handed-off-images)" '["app"] [] []'
+if grep -qF "released as an update" "$FAKE/log"; then fail "stale handoff, old pick switched: no release claimed" "$(grep '::notice::' "$FAKE/log")"; else pass "stale handoff, old pick switched: no release claimed"; fi
+reset handoff-stale-not-switched
+migration_setup; var_updated APP_DIGEST 2026-11-11T00:00:00Z
+built "ghcr.io/acme/base@$D_AMD" 2026-11-07T10:00:00Z; latest_release 2026-11-06T08:00:00Z
+run_step check HANDOFFS="$(handoff APP_DIGEST "$D_AMD" 2026-11-10T10:00:00Z)"
+expect_eq "stale handoff, old pick not switched: released" "$(out new-images) $(out migrated-images)" '["app"] []'
+if grep -qF "::notice::app (ghcr.io/acme/base:stable): a Dependabot update recorded this digest as released, but the note was recorded before APP_DIGEST was last stored - released as an update" "$FAKE/log"; then
+  pass "stale handoff, old pick not switched: notice"; else fail "stale handoff, old pick not switched: notice" "$(grep '::notice::' "$FAKE/log")"; fi
+
+reset handoff-other-digest
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"
+run_step check HANDOFFS="$(handoff APP_DIGEST "$D_NEWER" 2026-11-10T10:00:00Z)"
+expect_eq "handoff of another digest: released" "$(out new-images) $(out handed-off-images)" '["app"] []'
+if grep -q "actions/variables" "$FAKE/calls.log"; then fail "handoff of another digest: the last update is not read" "read"; else pass "handoff of another digest: the last update is not read"; fi
+
+reset handoff-other-variable
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"
+run_step check HANDOFFS="$(handoff ENGINE_DIGEST "$D_NEW" 2026-11-10T10:00:00Z)"
+expect_eq "handoff of another variable: released" "$(out new-images)" '["app"]'
+
+reset handoff-new-variable
+manifest ghcr.io/acme/base:stable "$D_NEW"
+run_step check HANDOFFS="$(handoff APP_DIGEST "$D_NEW" 2026-11-10T10:00:00Z)"; expect_rc "handoff, variable missing: step succeeds" $? 0
+expect_eq "handoff, variable missing: stored" "$(out handed-off-images) $(out variable-updates)" "[\"app\"] {\"APP_DIGEST\":\"$D_NEW\"}"
+
+reset handoff-variable-unreadable
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"; echo "gh: Server Error (HTTP 500)" > "$FAKE/var-error/APP_DIGEST"
+run_step check HANDOFFS="$(handoff APP_DIGEST "$D_NEW" 2026-11-10T10:00:00Z)"
+expect_eq "handoff, last update unreadable: released" "$(out new-images) $(out handed-off-images)" '["app"] []'
+if grep -qF "the last update of APP_DIGEST could not be read" "$FAKE/log"; then pass "handoff, last update unreadable: notice"; else fail "handoff, last update unreadable: notice" "$(grep '::notice::' "$FAKE/log")"; fi
+
+reset handoff-commit-mode
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"
+run_step check TARGET_WORKFLOW="" HANDOFFS="$(handoff APP_DIGEST "$D_NEW" 2026-11-10T10:00:00Z)"
+expect_eq "handoff, commit mode: stored, no commit" "$(out handed-off-images) $(out commit-needed)" '["app"] false'
+
+# The monitor's own release of the digest decides first.
+reset handoff-own-release-running
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"
+pending APP_DIGEST "$D_NEW" 607; run_fixture 607 in_progress null
+run_step check HANDOFFS="$(handoff APP_DIGEST "$D_NEW" 2026-11-10T10:00:00Z)"
+expect_eq "handoff while the monitor's own release runs: waits for it" "$(out pending-images) $(out handed-off-images)" '["app"] []'
+
+# The old pick's release succeeded and Dependabot released the amd64 digest.
+reset handoff-legacy-confirmed
+index ghcr.io/acme/base:stable linux/amd64="$D_AMD" linux/386="$D_386"; set_var APP_DIGEST "$D_OLD"
+pending APP_DIGEST "$D_386" 608; run_fixture 608 completed '"success"'
+run_step check HANDOFFS="$(handoff APP_DIGEST "$D_AMD" 2026-11-10T10:00:00Z)"
+expect_eq "handoff after the old pick's release: stored, record dropped" "$(out handed-off-images) $(out pending-deletes)" '["app"] ["APP_DIGEST"]'
+if grep -q "docker buildx" "$FAKE/calls.log"; then fail "handoff after the old pick's release: no switch needed" "inspected"; else pass "handoff after the old pick's release: no switch needed"; fi
+
+reset handoff-garbage
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"
+run_step check HANDOFFS="not json"; expect_rc "handoff list unreadable: step succeeds" $? 0
+expect_eq "handoff list unreadable: released" "$(out new-images)" '["app"]'
+
+reset handoff-dry-run
+manifest ghcr.io/acme/base:stable "$D_NEW"; set_var APP_DIGEST "$D_OLD"
+run_step check DRY_RUN=true HANDOFFS="$(handoff APP_DIGEST "$D_NEW" 2026-11-10T10:00:00Z)"
+expect_eq "handoff, dry run: reported" "$(out handed-off-images)" '["app"]'
+if grep -qE "^gh variable (set|delete)" "$FAKE/calls.log"; then fail "handoff, dry run: writes nothing" "wrote a variable"; else pass "handoff, dry run: writes nothing"; fi
+
 # === tag from the Dockerfile ==================================================
 
 reset resolve-none
@@ -687,6 +1130,118 @@ run_step summary GITHUB_STEP_SUMMARY="$FAKE/summary" IMAGES_CONFIGURED=1 IMAGES_
   RETRIED_JSON='[]' PENDING_JSON='[]' CONFIRMED_JSON='[]' EXHAUSTED_JSON='[]' UNREACHABLE_JSON='[]'
 if grep -qF "All base images are up to date" "$FAKE/summary"; then pass "clean check: still reported as up to date"; else fail "clean check: still reported as up to date" "$(tr '\n' '|' < "$FAKE/summary")"; fi
 
+# === handoff step: notes of the Dependabot module =============================
+
+reset handoff-step-none
+run_step handoff; expect_rc "no notes ref: step succeeds" $? 0
+expect_eq "no notes ref: nothing handed over" "$(out handoffs)" '[]'
+if grep -q "::warning::" "$FAKE/log"; then fail "no notes ref: normal, no warning" "$(grep '::warning::' "$FAKE/log")"; else pass "no notes ref: normal, no warning"; fi
+
+reset handoff-step-fetch-error
+git -C "$FAKE/repo" remote set-url origin "$FAKE/missing.git"
+run_step handoff; expect_rc "notes not fetched: step succeeds" $? 0
+expect_eq "notes not fetched: nothing handed over" "$(out handoffs)" '[]'
+if grep -qF "::warning::Could not fetch refs/notes/base-image-monitor" "$FAKE/log"; then pass "notes not fetched: warning"; else fail "notes not fetched: warning" "$(tr '\n' ' ' < "$FAKE/log" | cut -c1-300)"; fi
+
+reset handoff-step
+commit "fix(docker): bump python from 3.14-alpine to 3.15-alpine"; M1=$(head_sha)
+commit "fix(docker): bump node from 22-alpine to 24-alpine"; M2=$(head_sha)
+git -C "$FAKE/repo" push -q origin HEAD
+note "$M1" "$(note_json "$M1" '{"PYTHON_DIGEST": "'"$D_NEW"'"}' 2026-11-10T10:00:00Z)"
+note "$M2" "$(note_json "$M2" '{"NODE_DIGEST": "'"$D_NEWER"'", "PYTHON_DIGEST": "'"$D_NEW"'"}' 2026-11-11T10:00:00Z)"
+run_step handoff; expect_rc "notes: step succeeds" $? 0
+HANDED=$(out handoffs)
+expect_eq "notes: one entry per variable" "$(printf '%s' "$HANDED" | jq -c 'map([.variable, .digest[0:8]])')" '[["NODE_DIGEST","sha256:3"],["PYTHON_DIGEST","sha256:2"]]'
+expect_eq "notes: the newest note of a digest counts" "$(printf '%s' "$HANDED" | jq -r '.[] | select(.variable == "PYTHON_DIGEST") | "\(.merge_commit) \(.recorded_at) \(.recorded_epoch)"')" \
+  "$M2 2026-11-11T10:00:00Z $(date -u -d 2026-11-11T10:00:00Z +%s)"
+expect_eq "notes: release and run" "$(printf '%s' "$HANDED" | jq -r '.[0] | "\(.release) \(.release_run_url)"')" "v1.0.1 $SERVER/$REPO/actions/runs/900"
+if has_ref refs/notes/base-image-monitor; then pass "notes: fetched into the checkout"; else fail "notes: fetched into the checkout" "missing"; fi
+if grep -q "::warning::" "$FAKE/log"; then fail "notes: no warning" "$(grep '::warning::' "$FAKE/log")"; else pass "notes: no warning"; fi
+
+# Only the newest note of a variable is kept, so the list - one environment
+# value of the check - stays bounded however many updates were handed over.
+# Its recorded_at has a fraction, which a date without fractions must read.
+reset handoff-step-per-variable
+commit "fix(docker): bump python from 3.14-alpine to 3.15-alpine"; M1=$(head_sha)
+commit "fix(docker): bump python from 3.15-alpine to 3.16-alpine"; M2=$(head_sha)
+git -C "$FAKE/repo" push -q origin HEAD
+note "$M1" "$(note_json "$M1" '{"PYTHON_DIGEST": "'"$D_NEW"'"}' 2026-11-10T10:00:00Z)"
+note "$M2" "$(note_json "$M2" '{"PYTHON_DIGEST": "'"$D_NEWER"'"}' 2026-11-11T10:00:00.5Z)"
+run_step handoff PATH="$STRICT_PATH"; expect_rc "two notes of one variable: step succeeds" $? 0
+expect_eq "two notes of one variable: only the newest counts" "$(out handoffs | jq -c 'map([.variable, .digest, .merge_commit])')" "[[\"PYTHON_DIGEST\",\"$D_NEWER\",\"$M2\"]]"
+expect_eq "two notes of one variable: recorded_at with a fraction is read" "$(out handoffs | jq -r '.[0].recorded_epoch')" "$(date -u -d 2026-11-11T10:00:00Z +%s)"
+if grep -q "::warning::" "$FAKE/log"; then fail "two notes of one variable: no warning" "$(grep '::warning::' "$FAKE/log")"; else pass "two notes of one variable: no warning"; fi
+
+reset handoff-step-malformed
+BAD=0
+# bad_note LABEL CONTENT - on a commit of its own; @C@ in CONTENT is that commit.
+bad_note() { commit "fix(docker): bump $1"; local c; c=$(head_sha); note "$c" "${2//@C@/$c}"; BAD=$((BAD + 1)); }
+APP_NEW="{\"APP_DIGEST\": \"$D_NEW\"}"
+commit "fix(docker): bump good"; GOOD=$(head_sha); note "$GOOD" "$(note_json "$GOOD" "$APP_NEW" 2026-11-10T10:00:00Z)"
+bad_note "not-json" "not json"
+bad_note "two-objects" "$(note_json @C@ "$APP_NEW" 2026-11-10T10:00:00Z) {}"
+bad_note "array" '[]'
+bad_note "schema-2" "$(note_json @C@ "$APP_NEW" 2026-11-10T10:00:00Z | jq -c '.schema = 2')"
+bad_note "schema-string" "$(note_json @C@ "$APP_NEW" 2026-11-10T10:00:00Z | jq -c '.schema = "1"')"
+bad_note "other-commit" "$(note_json "$GOOD" "$APP_NEW" 2026-11-10T10:00:00Z)"
+bad_note "bad-digest" "$(note_json @C@ '{"APP_DIGEST": "sha256:XYZ"}' 2026-11-10T10:00:00Z)"
+bad_note "digest-not-a-string" "$(note_json @C@ '{"APP_DIGEST": 1}' 2026-11-10T10:00:00Z)"
+bad_note "bad-variable" "$(note_json @C@ "{\"../../x\": \"$D_NEW\"}" 2026-11-10T10:00:00Z)"
+bad_note "no-digests" "$(note_json @C@ 'null' 2026-11-10T10:00:00Z)"
+bad_note "recorded-free-form" "$(note_json @C@ "$APP_NEW" now)"
+bad_note "recorded-not-utc" "$(note_json @C@ "$APP_NEW" 2026-11-10T10:00:00+01:00)"
+bad_note "recorded-invalid" "$(note_json @C@ "$APP_NEW" 2026-13-40T10:00:00Z)"
+git -C "$FAKE/repo" push -q origin HEAD
+run_step handoff; expect_rc "malformed notes: step succeeds" $? 0
+expect_eq "malformed notes: only the valid note counts" "$(out handoffs | jq -c 'map(.merge_commit)')" "[\"$GOOD\"]"
+expect_eq "malformed notes: a warning for each" "$(grep -c '^::warning::Ignored the malformed note on' "$FAKE/log")" "$BAD"
+if grep -qF "../../x" "$FAKE/log"; then fail "malformed notes: their content is not echoed" "echoed"; else pass "malformed notes: their content is not echoed"; fi
+reset handoff-step-unsafe-fields
+commit "fix(docker): bump app"; C=$(head_sha); git -C "$FAKE/repo" push -q origin HEAD
+note "$C" "$(note_json "$C" '{"APP_DIGEST": "'"$D_NEW"'"}' 2026-11-10T10:00:00Z | jq -c '.release = "v1 | `x`" | .release_run_url = "javascript:alert(1)"')"
+run_step handoff
+expect_eq "unsafe release fields: blanked, the note still counts" "$(out handoffs | jq -c '.[0] | [.variable, .release, .release_run_url]')" '["APP_DIGEST","",""]'
+
+reset handoff-step-unreachable
+git -C "$FAKE/repo" checkout -q -b side; commit "fix(docker): bump on a side branch"; SIDE=$(head_sha); git -C "$FAKE/repo" checkout -q main
+note "$SIDE" "$(note_json "$SIDE" '{"APP_DIGEST": "'"$D_NEW"'"}' 2026-11-10T10:00:00Z)"
+run_step handoff; expect_rc "note on a commit not on the branch: step succeeds" $? 0
+expect_eq "note on a commit not on the branch: ignored" "$(out handoffs)" '[]'
+if grep -qF "Ignored the note on ${SIDE:0:12}: the commit is not on the checked out branch" "$FAKE/log"; then pass "note on a commit not on the branch: logged"; else fail "note on a commit not on the branch: logged" "$(tr '\n' ' ' < "$FAKE/log" | cut -c1-300)"; fi
+
+# === summary: stored without a release ========================================
+
+SUMMARY_LISTS=(RETRIED_JSON='[]' PENDING_JSON='[]' CONFIRMED_JSON='[]' EXHAUSTED_JSON='[]' UNREACHABLE_JSON='[]')
+MIGRATED_ENTRY="[{\"name\":\"app\",\"old\":\"$D_386\",\"new\":\"$D_AMD\",\"created\":\"x\",\"released\":\"y\",\"run_url\":\"\"},
+                 {\"name\":\"engine\",\"old\":\"$D_OLD\",\"new\":\"$D_AMD2\",\"created\":\"x\",\"released\":\"y\",\"run_url\":\"$SERVER/$REPO/actions/runs/602\"}]"
+HANDED_ENTRY="[{\"name\":\"python\",\"digest\":\"$D_NEW\",\"release\":\"v1.0.1\",\"release_run_url\":\"$SERVER/$REPO/actions/runs/900\",\"merge_commit\":\"x\"}]"
+reset summary-store-only
+run_step summary GITHUB_STEP_SUMMARY="$FAKE/summary" IMAGES_CONFIGURED=2 IMAGES_CHECKED=2 UPDATES_FOUND=false STATE_CHANGED=true PERSIST_OUTCOME=success \
+  "${SUMMARY_LISTS[@]}" MIGRATED_JSON="$MIGRATED_ENTRY" HANDED_OFF_JSON="$HANDED_ENTRY"
+expect_rc "stored without a release: the summary step succeeds" $? 0
+if grep -qF "All base images are up to date" "$FAKE/summary"; then pass "stored without a release: still up to date"; else fail "stored without a release: still up to date" "$(tr '\n' '|' < "$FAKE/summary")"; fi
+if grep -qF "### 🔀 Switched to the linux/amd64 digest" "$FAKE/summary" \
+   && grep -qF "| \`app\` | \`${D_386:0:19}…\` → \`${D_AMD:0:19}…\` | Stored digest is the old pick |" "$FAKE/summary"; then
+  pass "switch: summary section"; else fail "switch: summary section" "$(tr '\n' '|' < "$FAKE/summary")"; fi
+# The stored digest of a switch after the old pick's release is no old pick.
+if grep -qF "| \`engine\` | \`${D_OLD:0:19}…\` → \`${D_AMD2:0:19}…\` | Release of the old pick succeeded: [run 602]($SERVER/$REPO/actions/runs/602) |" "$FAKE/summary"; then
+  pass "switch after the old pick's release: evidence is the run"; else fail "switch after the old pick's release: evidence is the run" "$(tr '\n' '|' < "$FAKE/summary")"; fi
+if grep -qF "or the release an earlier version dispatched for the old pick succeeded" "$FAKE/summary"; then
+  pass "switch: the text covers both kinds of evidence"; else fail "switch: the text covers both kinds of evidence" "$(tr '\n' '|' < "$FAKE/summary")"; fi
+if grep -qF "### 🤝 Already released with a Dependabot update" "$FAKE/summary" \
+   && grep -qF "| \`python\` | \`v1.0.1\` | [run 900]($SERVER/$REPO/actions/runs/900) |" "$FAKE/summary"; then
+  pass "handoff: summary section"; else fail "handoff: summary section" "$(tr '\n' '|' < "$FAKE/summary")"; fi
+expect_eq "stored without a release: both say stored" "$(grep -c 'the digest is stored' "$FAKE/summary")" 2
+reset summary-store-only-dry-run
+run_step summary GITHUB_STEP_SUMMARY="$FAKE/summary" DRY_RUN=true IMAGES_CONFIGURED=2 IMAGES_CHECKED=2 UPDATES_FOUND=false STATE_CHANGED=true \
+  "${SUMMARY_LISTS[@]}" MIGRATED_JSON="$MIGRATED_ENTRY" \
+  HANDED_OFF_JSON='[{"name":"python","digest":"x","release":"","release_run_url":"","merge_commit":"x"}]'
+expect_eq "stored without a release, dry run: says not stored" "$(grep -c 'the digest is not stored (dry run)' "$FAKE/summary")" 2
+if grep -qF '| `python` | - | - |' "$FAKE/summary"; then pass "handoff without release fields: dashes"; else fail "handoff without release fields: dashes" "$(tr '\n' '|' < "$FAKE/summary")"; fi
+reset summary-no-store-only
+run_step summary GITHUB_STEP_SUMMARY="$FAKE/summary" IMAGES_CONFIGURED=1 IMAGES_CHECKED=1 UPDATES_FOUND=false "${SUMMARY_LISTS[@]}" MIGRATED_JSON='[]' HANDED_OFF_JSON='[]'
+if grep -qE "Switched to the linux/amd64|Already released with a Dependabot" "$FAKE/summary"; then fail "nothing stored without a release: no sections" "present"; else pass "nothing stored without a release: no sections"; fi
+
 # === release commit ===========================================================
 
 reset release
@@ -778,7 +1333,10 @@ if has_var APP_DIGEST_PENDING; then pass "persist failure: record kept"; else fa
 # Runs the steps the way the job chains them: each step's `if:` as in the
 # workflow, success() gates persist. VAR=value pairs go to the check.
 cycle() {
-  run_step check "$@" || return 1
+  local handoffs
+  run_step handoff || return 1
+  handoffs=$(out handoffs)
+  run_step check HANDOFFS="$handoffs" "$@" || return 1
   # Kept for the assertions: the later steps overwrite the step output files.
   cp "$FAKE/output" "$FAKE/check-output"; cp "$FAKE/env" "$FAKE/check-env"; cp "$FAKE/log" "$FAKE/check-log"
   local dispatch_updates dispatch_attempts variable_updates pending_deletes run_id="" run_url=""
@@ -1015,6 +1573,56 @@ fi
 if step_runs fail-unresolved true "steps.resolve.outputs.unresolved=$UNRESOLVED"; then pass "check failed: the entry is still named"; else fail "check failed: the entry is still named" "skipped"; fi
 if step_runs fail-exhausted true "steps.check.outputs.exhausted-images=$EXHAUSTED"; then fail "a plain if: is skipped after a failed step" "ran"; else pass "a plain if: is skipped after a failed step"; fi
 if step_runs fail-unresolved false "steps.resolve.outputs.unresolved=[]"; then fail "nothing unresolved: the last step is skipped" "ran"; else pass "nothing unresolved: the last step is skipped"; fi
+
+# The first check after the upgrade, on an image whose stored digest is the
+# old 386 pick: switched once, without a commit or a dispatch; then quiet.
+reset cycle-migration
+migration_setup; release_tagged 1.0.0; git -C "$FAKE/repo" push -q origin HEAD
+built "ghcr.io/acme/base@$D_AMD" 2026-11-05T19:27:56Z; latest_release 2026-11-08T08:00:00Z
+dispatch_returns 701; COMMITS=$(origin_count)
+cycle; expect_rc "switch cycle 1: succeeds" $? 0
+expect_eq "switch cycle 1: switched" "$(checked migrated-images)" '["app"]'
+expect_eq "switch cycle 1: persist stored the amd64 digest" "$(var APP_DIGEST)" "$D_AMD"
+expect_eq "switch cycle 1: no commit" "$(origin_count)" "$COMMITS"
+if [ -f "$FAKE/dispatch-path" ]; then fail "switch cycle 1: nothing dispatched" "dispatched"; else pass "switch cycle 1: nothing dispatched"; fi
+if has_var APP_DIGEST_PENDING; then fail "switch cycle 1: no record" "recorded"; else pass "switch cycle 1: no record"; fi
+cycle; expect_rc "switch cycle 2: succeeds" $? 0
+expect_eq "switch cycle 2: up to date" "$(checked updates-found) $(checked migrated-images) $(checked state-changed)" 'false [] false'
+# The 386 manifest moves alone (rebuilt by docker-library): nothing for us.
+index ghcr.io/acme/base:stable linux/amd64="$D_AMD" linux/arm64="$D_ARM" linux/386="$D_3862"
+cycle; expect_rc "switch cycle 3 (386 rebuilt alone): succeeds" $? 0
+expect_eq "switch cycle 3: no release" "$(checked updates-found) $(checked state-changed)" 'false false'
+# The amd64 manifest moves: released.
+index ghcr.io/acme/base:stable linux/amd64="$D_AMD2" linux/arm64="$D_ARM" linux/386="$D_3862"
+cycle; expect_rc "switch cycle 4 (amd64 rebuilt): succeeds" $? 0
+expect_eq "switch cycle 4: released" "$(checked new-images)" '["app"]'
+expect_eq "switch cycle 4: run recorded for the amd64 digest" "$(var APP_DIGEST_PENDING | jq -c '[.digest, .run_id]')" "[\"$D_AMD2\",701]"
+
+# A Dependabot tag bump whose release the Dependabot module handed over: the
+# monitor stores the new tag's digest instead of releasing once more.
+reset cycle-tag-bump-handoff
+put src/app/Dockerfile $'FROM python:3.14-alpine AS prod\n'
+config '{"name": "python", "image": "python", "dockerfile": "src/app/Dockerfile", "variable": "PYTHON_DIGEST"}'
+git -C "$FAKE/repo" add -A; commit "feat: app"; release_tagged 1.0.0; git -C "$FAKE/repo" push -q origin HEAD
+manifest python:3.14-alpine "$D_OLD"; manifest python:3.15-alpine "$D_NEW"
+set_var PYTHON_DIGEST "$D_OLD"; var_updated PYTHON_DIGEST 2026-11-09T00:00:00Z
+put src/app/Dockerfile $'FROM python:3.15-alpine AS prod\n'
+git -C "$FAKE/repo" add -A; commit "fix(docker): bump python from 3.14-alpine to 3.15-alpine"; MERGE=$(head_sha)
+release_tagged 1.0.1; git -C "$FAKE/repo" push -q origin HEAD
+note "$MERGE" "$(note_json "$MERGE" "{\"PYTHON_DIGEST\": \"$D_NEW\"}" 2026-11-10T12:00:00Z)"
+COMMITS=$(origin_count); dispatch_returns 801
+resolved_cycle; expect_rc "handoff cycle 1 (after the bump): succeeds" $? 0
+expect_eq "handoff cycle 1: handed over, no update" "$(checked handed-off-images) $(checked new-images)" '["python"] []'
+expect_eq "handoff cycle 1: the new tag's digest is stored" "$(var PYTHON_DIGEST)" "$D_NEW"
+expect_eq "handoff cycle 1: no commit" "$(origin_count)" "$COMMITS"
+if [ -f "$FAKE/dispatch-path" ]; then fail "handoff cycle 1: nothing dispatched" "dispatched"; else pass "handoff cycle 1: nothing dispatched"; fi
+resolved_cycle; expect_rc "handoff cycle 2: succeeds" $? 0
+expect_eq "handoff cycle 2: up to date" "$(checked updates-found) $(checked handed-off-images)" 'false []'
+# The new tag moves: the note is for the old digest, so this is released.
+manifest python:3.15-alpine "$D_NEWER"
+resolved_cycle; expect_rc "handoff cycle 3 (new tag moved): succeeds" $? 0
+expect_eq "handoff cycle 3: released" "$(checked new-images)" '["python"]'
+expect_eq "handoff cycle 3: run recorded" "$(var PYTHON_DIGEST_PENDING | jq -c '[.digest, .run_id]')" "[\"$D_NEWER\",801]"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"
