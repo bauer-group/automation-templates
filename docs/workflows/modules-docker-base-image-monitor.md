@@ -6,7 +6,8 @@ Detects when a Docker base image has been rebuilt upstream and triggers a rebuil
 
 Base images like `n8nio/n8n:stable` or `ghcr.io/bauer-group/cs-iamstack/logto` are rebuilt regularly under the same tag. The tag does not change, so nothing signals that your derived image is now stale. This module polls the **digest** behind each tag and reacts when it moves.
 
-- **Digest polling** — `docker manifest inspect` per configured image, multi-arch aware, with up to 3 attempts (10s/20s backoff) for transient registry errors such as `429 toomanyrequests`; auth errors and unknown tags fail at once
+- **Digest polling** — `docker manifest inspect` per configured image, with up to 3 attempts (10s/20s backoff) for transient registry errors such as `429 toomanyrequests`; auth errors and unknown tags fail at once. For a multi-arch tag the **linux/amd64** manifest is compared, see [Compared digest: linux/amd64](#compared-digest-linuxamd64)
+- **No second release after a Dependabot update** — a base image digest that [`docker-maintenance-dependabot.yml`](./docker-maintenance.md) has already released after merging the update is stored instead of released again, see [Releases handed over by the Dependabot module](#releases-handed-over-by-the-dependabot-module)
 - **Tag from the Dockerfile** — an entry with `dockerfile` is watched on the tag of its FROM line, so a Dependabot bump of that line moves the monitor with it, see [Tag from the Dockerfile](#tag-from-the-dockerfile)
 - **State in repository variables** — the last handled digest is stored per image and created automatically
 - **Two reaction modes** — an empty commit that lets semantic-release cut a patch, and/or a `workflow_dispatch` of a target workflow
@@ -17,7 +18,7 @@ Base images like `n8nio/n8n:stable` or `ghcr.io/bauer-group/cs-iamstack/logto` a
 
 > **A release failed, or the job is red with "Release retries exhausted"?** Go to [Operator recovery](#operator-recovery). How a digest moves from "dispatched" to "stored" is shown in [State variables and lifecycle](#state-variables-and-lifecycle).
 
-**Contents:** [Quick Start](#quick-start) · [Input Parameters](#input-parameters) · [Outputs](#outputs) · [Configuration file](#configuration-file) · [Tag from the Dockerfile](#tag-from-the-dockerfile) · [Migrating an existing entry](#migrating-an-existing-entry) · [Schedule slots](#schedule-slots) · [Release confirmation](#release-confirmation) · [State variables and lifecycle](#state-variables-and-lifecycle) · [Operator recovery](#operator-recovery) · [Unreachable images](#unreachable-images) · [Secrets](#secrets) · [Examples](#examples)
+**Contents:** [Quick Start](#quick-start) · [Input Parameters](#input-parameters) · [Outputs](#outputs) · [Configuration file](#configuration-file) · [Tag from the Dockerfile](#tag-from-the-dockerfile) · [Migrating an existing entry](#migrating-an-existing-entry) · [Compared digest: linux/amd64](#compared-digest-linuxamd64) · [Releases handed over by the Dependabot module](#releases-handed-over-by-the-dependabot-module) · [Schedule slots](#schedule-slots) · [Release confirmation](#release-confirmation) · [State variables and lifecycle](#state-variables-and-lifecycle) · [Operator recovery](#operator-recovery) · [Unreachable images](#unreachable-images) · [Secrets](#secrets) · [Examples](#examples)
 
 ## Quick Start
 
@@ -113,6 +114,8 @@ Complete callers - daily check, several images, dry run - are in [`github/workfl
 | `retried-images` | JSON array of image names whose dispatched release failed and that were dispatched again |
 | `pending-images` | JSON array of image names whose dispatched release has not finished yet |
 | `exhausted-images` | JSON array of image names whose release failed `max-release-attempts` times; they are no longer dispatched and the job fails |
+| `migrated-images` | JSON array of image names whose stored digest - the old pick of earlier versions - was switched to the linux/amd64 digest without a release, see [Switching stored digests](#switching-stored-digests). Not in `updated-images` |
+| `handed-off-images` | JSON array of image names whose new digest the Dependabot module had already released; stored without a release, see [Releases handed over by the Dependabot module](#releases-handed-over-by-the-dependabot-module). Not in `updated-images` |
 | `new-digests` | JSON object mapping image name to its new digest |
 | `triggered` | `true` if a commit was pushed or a workflow dispatched |
 | `commit-sha` | SHA of the created commit |
@@ -236,11 +239,14 @@ Once the entry is fixed, the next check reads its tag again and releases if the 
 
 If the resolver cannot run at all - no `python3` on a self-hosted runner, or an error of the resolver itself - every entry with `dockerfile` is handled this way, and the entries without one are still checked.
 
-### A tag bump releases once more
+### A tag bump
 
-When Dependabot bumps the FROM tag, the next check compares the digest of the **new** tag with the stored digest of the **old** one, finds them different and releases once: attempt 1, confirmed and stored like any new digest. `<variable>`, `<variable>_PENDING`, release confirmation and `max-release-attempts` work exactly as before - only the tag behind the variable changed. From then on a move of the old tag is ignored and a move of the new one is released.
+When Dependabot bumps the FROM tag, the next check compares the digest of the **new** tag with the stored digest of the **old** one and finds them different. From then on a move of the old tag is ignored and a move of the new one is released.
 
-That release confirms more than it fixes: the bump has usually released the image on the new tag already. Dependabot commits it as `fix(docker): bump …`, which the gated release pipeline releases as a patch. On 2026-11-10, CS-BackupHelper #25 became 1.10.9 and IP-ZAMMAD-MCPServer #9 became 6.1.9 within five minutes, CS-Outline #75 became 0.6.42 within eight, each with a successful *Release & Docker Build* on the bump commit. The monitor cannot tell, because it does not store which tag a digest belongs to, and one extra patch release per bump is cheaper than a second piece of state. To skip it, store the new tag's digest by hand after the bump: take it from the **New digests** block of a [dry run](../../github/workflows/examples/docker-base-image-monitor/dry-run.yml) and `gh variable set <variable> --body sha256:…`.
+The bump has usually released the image on the new tag already: Dependabot commits it as `fix(docker): bump …`, and [`docker-maintenance-dependabot.yml`](./docker-maintenance.md) with `release-workflow` merges it, dispatches the release and waits for it. On 2026-11-10, CS-BackupHelper #25 became 1.10.9 and IP-ZAMMAD-MCPServer #9 became 6.1.9 within five minutes, CS-Outline #75 became 0.6.42 within eight, each with a successful *Release & Docker Build* on the bump commit - and each check after them released the identical content once more.
+
+- **Released by the Dependabot module:** it hands the digests its release was built from over to the monitor. The next check stores the new tag's digest without a release, see [Releases handed over by the Dependabot module](#releases-handed-over-by-the-dependabot-module).
+- **Otherwise** (merged by hand, by another workflow, or the note is missing or stale): the check releases once - attempt 1, confirmed and stored like any new digest. `<variable>`, `<variable>_PENDING`, release confirmation and `max-release-attempts` work exactly as before - only the tag behind the variable changed. To skip that release, store the new tag's digest by hand after the bump: take it from the **New digests** block of a [dry run](../../github/workflows/examples/docker-base-image-monitor/dry-run.yml) and `gh variable set <variable> --body sha256:…`.
 
 ### Migrating an existing entry
 
@@ -249,9 +255,78 @@ Entries without `dockerfile` keep working unchanged; nothing has to be migrated 
 1. Add `dockerfile` with the path of the Dockerfile whose FROM line uses the image, and remove `tag`. Is the image the base of several Dockerfiles, add [one entry per Dockerfile](#one-entry-per-dockerfile). Does the release override the FROM line's ARG with a `--build-arg`, keep `tag` (see the exception under [Configuration file](#configuration-file)).
 2. Keep `name` and `variable` as they are. A new variable has no stored digest, so its first check would release once.
 3. Run the check with `dry-run: true`. The log shows `🧭 <name>: <image>:<tag> from <Dockerfile> line <n>`; a `::notice::` names a tag that had drifted.
-4. If the configured tag had drifted, the first real check releases once, because the stored digest is the old tag's. That release is the rebuild the drifted entry held back. To skip it, store the digest by hand as in [A tag bump releases once more](#a-tag-bump-releases-once-more).
+4. If the configured tag had drifted, the first real check releases once, because the stored digest is the old tag's. That release is the rebuild the drifted entry held back. To skip it, store the digest by hand as in [A tag bump](#a-tag-bump).
 
 The change touches only the config, so commit it with `[skip ci]` (for example `ci(monitor): took the base image tags from the Dockerfiles [skip ci]`). When migrating many repositories, stagger the pushes rather than pushing them all at once.
+
+## Compared digest: linux/amd64
+
+For a multi-arch tag (an image index) the check compares the digest of the **linux/amd64** manifest - without a variant if the index has one, else any linux/amd64. An index without linux/amd64 keeps the earlier pick, the first manifest sorted by architecture. A single-arch tag is compared by its image config digest, as before.
+
+**Why.** The check used to compare the first manifest sorted by architecture - **linux/386** whenever the index has one, because `386` sorts before `amd64`. Every image built on these bases is amd64, the primary platform; nothing in the organisations is built for 386. docker-library, which builds the official images, builds each architecture on its own, so the 386 manifest:
+
+- **lags** amd64: an amd64 security rebuild is released only once 386 follows, hours or days later
+- **is rebuilt alone**: a release of identical content, a production redeploy for nothing
+
+The jq filter is the same, byte for byte, in [`modules-auto-maintenance.yml`](./modules-auto-maintenance.md) and [`docker-maintenance-dependabot.yml`](./docker-maintenance.md) - the digest the Dependabot module hands over must be the digest compared here. Change all three together.
+
+### Switching stored digests
+
+The `<variable>` of a multi-arch image with a 386 manifest still holds the 386 digest from before. Compared with the amd64 digest it would count as an update - one release per such image on the first check, all of them at once. The check switches the stored value instead, **without a release**, but only where that cannot hide a real amd64 update:
+
+1. **Candidate:** the stored digest is the old pick of this very index - the 386 manifest has not changed since it was stored. The amd64 manifest may have (386 lag).
+2. **Switched** only if the amd64 image was built **more than 48 hours** before the repository's latest release: `created` of `docker buildx imagetools inspect <image>@<amd64 digest>` plus 48 hours is older than `created_at` of `repos/<repo>/releases/latest`. That release was then built on it.
+3. **Released as an update** otherwise, with a `::notice::` naming the reason: the amd64 image was built after the latest release or less than 48 hours before it, its build time or the latest release cannot be read, the build time is before 1980 (a placeholder of reproducible builds such as `1970-01-01`), or the repository has no release yet.
+
+**Why 48 hours.** `created` is when an image was built, not when it reached the tag: docker-library adds each architecture to the index on its own. `python:3.15-alpine` on 2026-11-05: amd64 built at 19:27, in the tag at 23:06, 386 there since 20:06. A check in between released the new 386 digest - built on the *old* amd64 image. Compared with that release alone, the newer amd64 image looks older and would be switched, never shipped. The margin covers that delay (hours) and the snapshot timestamp debian carries as `created` (about 11 hours before the push). Within it, the image is released once more - a redundant release at worst, never a missed one. Images whose `created` is a fixed source date (busybox: months old) put all platforms into the tag together, and images built by one multi-platform buildx run change all platform digests together; for them the match of the old pick already means the amd64 manifest is unchanged. [`modules-auto-maintenance.yml`](./modules-auto-maintenance.md) applies the same rule and margin.
+
+A switched image appears under **🔀 Switched to the linux/amd64 digest** in the summary - with its evidence: the stored old pick, or the successful release run of the old pick (below) - and in the `migrated-images` output. It is not an update: no release commit, no dispatch, not in `updated-images`. The latest release is read once per run.
+
+A release run that an earlier version dispatched for the 386 digest and recorded in `<variable>_PENDING` still counts for this update:
+
+| Recorded run of the 386 digest | Check does |
+|--------------------------------|------------|
+| Queued, running or unreadable | Waits, as for any recorded run |
+| Failed | Dispatches the release again for the amd64 digest, with the next attempt number; `max-release-attempts` applies |
+| Succeeded | Switches as above and removes the record; if the switch does not apply, the amd64 digest is released (attempt 1) |
+
+Each image switches once. Afterwards the stored digest is the amd64 one and the rules above no longer apply.
+
+## Releases handed over by the Dependabot module
+
+When Dependabot bumps a FROM tag, [`docker-maintenance-dependabot.yml`](./docker-maintenance.md) merges the PR, dispatches the release workflow and waits for it. The next check of this module found the new tag's digest different from the stored one - the old tag's - and released again with identical content: one needless production redeploy per bump. The Dependabot module therefore hands the digests it released over to the monitor, which stores them instead of releasing.
+
+**Contract.** Writer `docker-maintenance-dependabot.yml`, reader this module:
+
+- Notes ref `refs/notes/base-image-monitor`: one git note per merge commit on the default branch, attached to that merge commit.
+- Content: exactly one JSON object:
+
+  ```json
+  {"schema":1,"source":"docker-maintenance-dependabot","recorded_at":"2026-11-15T13:52:10Z","merge_commit":"<40-hex sha of the annotated commit>","release":"<release tag>","release_run_url":"<url of the release run>","digests":{"<VARIABLE>":"sha256:<64 hex>"}}
+  ```
+
+- Meaning: the release run - dispatched after the merge, succeeded, and it cut a release containing the merge commit - was built from these base image digests. Each digest was read from the registry right **before** the release was dispatched, so the build pulled that digest or a newer one.
+
+**Trust anchor.** Pushing a notes ref needs `contents: write` - the same right as pushing to the default branch. An artifact or a PR comment would be no anchor: any job can upload an artifact.
+
+**Reading.** After the checkout, a step of its own (`handoff`) fetches the ref. A repository without it is the normal case. Every note is checked locally, and only accepted if:
+
+- the annotated commit is an ancestor of the checked out `HEAD`
+- the content is one JSON object with `schema` 1 and `merge_commit` equal to the annotated commit
+- `recorded_at` is a UTC time (`…Z`)
+- every variable name matches `^[A-Za-z_][A-Za-z0-9_]*$` and every digest `^sha256:[0-9a-f]{64}$`
+
+A malformed note is ignored with a `::warning::`; a note on a commit that is not on the branch is ignored. A fetch that fails for another reason gets a `::warning::` and no note counts. The step never fails the job (`continue-on-error`): without notes the check releases exactly as before.
+
+**Effect.** A note counts for an image when it records the image's `variable` with exactly the digest the check reads now, and its `recorded_at` is not older than the variable's last update (`updated_at` of the repository variable, read only when such a note exists; a variable that does not exist yet takes any note). The digest is then stored without a commit or a dispatch, listed under **🤝 Already released with a Dependabot update** with the release and its run, and in the `handed-off-images` output. Everything else releases as before:
+
+- the tag moved again after the digest was read - the note's digest no longer matches
+- a newer note records another digest for the variable - only the newest note per variable is read, which keeps the handed-over list, one environment value of the check, bounded by the number of variables
+- the variable was stored after the note was recorded - the note describes a release from before the stored value
+- the variable's last update cannot be read (`::notice::`)
+- a release run of the monitor itself is recorded for the digest - that run decides, as in [Release confirmation](#release-confirmation)
+
+An unused note does not stop the [switch of a stored old pick](#switching-stored-digests); the `::notice::` that names why the note was not used is written only when the digest is released.
 
 ## Schedule slots
 
@@ -378,7 +453,7 @@ Each configured image owns up to two repository variables (*Settings → Secrets
 
 | Variable | Holds | Written | Removed |
 |----------|-------|---------|---------|
-| `<variable>`, e.g. `N8N_STABLE_DIGEST` | The digest whose release is done: confirmed by a successful run, or (without `target-workflow`) whose release commit was pushed | By the check that confirms the release; created on first use | Never |
+| `<variable>`, e.g. `N8N_STABLE_DIGEST` | The digest whose release is done: confirmed by a successful run, (without `target-workflow`) whose release commit was pushed, [handed over](#releases-handed-over-by-the-dependabot-module) by the Dependabot module, or [switched](#switching-stored-digests) to linux/amd64 | By the check that confirms the release, or stores a digest without a release; created on first use | Never |
 | `<variable>_PENDING`, e.g. `N8N_STABLE_DIGEST_PENDING` | `{"digest", "run_id", "run_url", "attempt"}` of the release dispatched for a new digest | On every dispatch for that digest, with the attempt number | By the check that finds the run succeeded |
 
 With `target-workflow`, a new digest goes through these states - one step per scheduled check; the job never waits for the release itself:
@@ -417,6 +492,10 @@ The summary of every check names the state of each image and links the release r
 | Released by hand meanwhile, and that run succeeded | The record still points at the failed run, so the next check would dispatch once more | Store the recorded digest as handled and delete the record (commands below) |
 | An upstream digest must not be released (known-bad build) | - | Store that digest as handled (commands below); the next newer digest is detected as usual |
 | A digest was stored although its release failed (stored before release confirmation existed) | The monitor reports "No update" | Delete `<variable>`: the next check treats the image as updated |
+| 🔀 **Switched to the linux/amd64 digest** | The stored digest was replaced by the linux/amd64 one once, without a release; the Evidence column says why, see [Switching stored digests](#switching-stored-digests) | None |
+| `::notice::` *… released as an update instead of switched silently* | The stored digest was the old pick - or `<variable>_PENDING` recorded a successful release of it - but the amd64 image is not more than 48h older than the latest release or could not be checked | None - the release is the rebuild the 386 lag held back, or the safe side of missing evidence |
+| 🤝 **Already released with a Dependabot update** | The Dependabot module released this digest; it was stored without a release | None |
+| `::warning::Ignored the malformed note …` | A note in `refs/notes/base-image-monitor` does not follow the [contract](#releases-handed-over-by-the-dependabot-module); the image is released as before | Fix the writer. Remove the note with `git notes --ref=base-image-monitor remove <commit>` and push the ref, or leave it: it is ignored on every check |
 
 Delete a `_PENDING` record only while no release run for it is queued or running: without the record, the next check dispatches a second release.
 
@@ -441,7 +520,7 @@ gh variable delete "${VAR}_PENDING" --repo "$REPO"
 gh variable delete "$VAR" --repo "$REPO"
 ```
 
-The digest the monitor compares is not always the one `docker pull` prints: for a multi-arch tag it is the first platform manifest (sorted by architecture), for a single-arch tag the image config digest. Take it from the `_PENDING` record or from the **New digests** block of the check summary instead of computing it.
+The digest the monitor compares is not always the one `docker pull` prints: for a multi-arch tag it is the linux/amd64 platform manifest (see [Compared digest: linux/amd64](#compared-digest-linuxamd64)), for a single-arch tag the image config digest. Take it from the `_PENDING` record or from the **New digests** block of the check summary instead of computing it.
 
 ## Unreachable images
 
@@ -468,7 +547,7 @@ Set it to `false` to downgrade to a warning — but note that the run will then 
 
 | Secret | Required | Purpose |
 |--------|----------|---------|
-| `PAT_READWRITE_ORGANISATION` | yes | Variable read/write, checkout, commit and push, workflow dispatch and reading the dispatched run |
+| `PAT_READWRITE_ORGANISATION` | yes | Variable read/write, checkout, commit and push, workflow dispatch and reading the dispatched run; reading the notes ref, the latest release and a variable's last update (no further scope) |
 | `REGISTRY_READ_TOKEN` | no | GHCR login for registries outside this enterprise. Without it the login uses `github.token` |
 
 Scopes of `PAT_READWRITE_ORGANISATION`:

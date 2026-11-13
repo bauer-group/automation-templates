@@ -11,6 +11,17 @@
 #   with it instead of leaving it on the old tag. An entry whose tag cannot be
 #   read is not checked and fails the job at the end; the other images are
 #   checked and released as usual
+# - Compares the linux/amd64 manifest of a multi-arch tag, the platform the
+#   images are built for. Earlier versions compared the first manifest by
+#   architecture - linux/386 whenever the index has one - which docker-library
+#   rebuilds on its own schedule. A digest stored that way is switched to the
+#   linux/amd64 one without a release only while that image is more than 48h
+#   older than the repository's latest release; otherwise it is released as
+#   an update
+# - Skips the release of a digest that docker-maintenance-dependabot.yml has
+#   already released after merging a base image update: its git note in
+#   refs/notes/base-image-monitor hands the digest over, and the monitor only
+#   stores it
 # - Retries transient registry errors (3 attempts, 10s/20s backoff)
 # - Auto-creates GitHub variables for digest storage
 # - Creates semantic-release compatible commits for automatic versioning
@@ -151,6 +162,12 @@ on:
       exhausted-images:
         description: "JSON array of image names whose release failed max-release-attempts times; they are no longer dispatched and the job fails"
         value: ${{ jobs.monitor.outputs.exhausted-images }}
+      migrated-images:
+        description: "JSON array of image names whose stored digest - the first manifest by architecture that earlier versions compared - was switched to the linux/amd64 digest without a release, because that image is more than 48h older than the latest release"
+        value: ${{ jobs.monitor.outputs.migrated-images }}
+      handed-off-images:
+        description: "JSON array of image names whose new digest a Dependabot update had already released (git note in refs/notes/base-image-monitor, written by docker-maintenance-dependabot.yml); stored without a release"
+        value: ${{ jobs.monitor.outputs.handed-off-images }}
       dispatched-run-id:
         description: "Id of the target workflow run dispatched by this check (empty if none was dispatched or GitHub did not return it)"
         value: ${{ jobs.monitor.outputs.dispatched-run-id }}
@@ -193,6 +210,8 @@ jobs:
       retried-images: ${{ steps.check.outputs.retried-images }}
       pending-images: ${{ steps.check.outputs.pending-images }}
       exhausted-images: ${{ steps.check.outputs.exhausted-images }}
+      migrated-images: ${{ steps.check.outputs.migrated-images }}
+      handed-off-images: ${{ steps.check.outputs.handed-off-images }}
       dispatched-run-id: ${{ steps.dispatch.outputs.run-id }}
       dispatched-run-url: ${{ steps.dispatch.outputs.run-url }}
       triggered: ${{ steps.release.outputs.triggered || steps.dispatch.outputs.triggered || 'false' }}
@@ -287,6 +306,109 @@ jobs:
           config-file: ${{ inputs.config-file }}
           images: ${{ inputs.images }}
 
+      # When Dependabot bumps a FROM tag, docker-maintenance-dependabot.yml
+      # merges the PR and dispatches the release itself. The next check then
+      # found the new tag's digest different from the stored one (the old
+      # tag's) and released again with identical content - one needless
+      # production redeploy per bump. That module now records, as a git note
+      # on the merge commit, the base image digests its successful release
+      # was built from; the check stores such a digest instead of releasing.
+      # Contract (both modules must match it):
+      #   ref      refs/notes/base-image-monitor, one note per merge commit
+      #            on the default branch, attached to that merge commit
+      #   content  {"schema":1,"source":"docker-maintenance-dependabot",
+      #             "recorded_at":"<UTC, ...Z>","merge_commit":"<sha>",
+      #             "release":"<tag>","release_run_url":"<url>",
+      #             "digests":{"<VARIABLE>":"sha256:<64 hex>"}}
+      # A git note and not an artifact or a PR comment: pushing a notes ref
+      # needs contents: write, the right that pushing to the default branch
+      # needs as well, while any job can upload an artifact.
+      # Only reads. Everything that is missing or unreadable here leaves the
+      # list empty, and an empty list releases exactly as before - a missed
+      # base image security update is far worse than a redundant release.
+      # continue-on-error for the same reason: this step must never be what
+      # stops the check.
+      - name: "🤝 Read base image releases handed over by Dependabot"
+        id: handoff
+        continue-on-error: true
+        shell: bash
+        # Tested by .github/workflows/tests/docker-base-image-monitor.test.sh
+        run: |
+          set -euo pipefail
+
+          NOTES_REF="refs/notes/base-image-monitor"
+
+          # The checkout fetches branches and tags, never notes. A repository
+          # without the ref is the normal case: the Dependabot module has not
+          # released a base image update there yet.
+          if ! FETCH_OUT=$(git fetch --no-tags origin "+${NOTES_REF}:${NOTES_REF}" 2>&1 < /dev/null); then
+            case "$FETCH_OUT" in
+              *"couldn't find remote ref"*)
+                echo "ℹ️  No base image release handed over: $NOTES_REF does not exist"
+                ;;
+              *)
+                echo "::warning::Could not fetch $NOTES_REF, so base image digests a Dependabot update has already released are released once more: ${FETCH_OUT%%$'\n'*}"
+                ;;
+            esac
+            echo "handoffs=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The note must be exactly one JSON object written for the commit it
+          # is attached to. release and release_run_url are only shown in the
+          # summary: a value that is not a plain tag or a run URL is blanked
+          # there rather than rejecting the note.
+          # shellcheck disable=SC2016
+          NOTE_FILTER='
+            select(length == 1) | .[0]
+            | select(type == "object"
+                and .schema == 1
+                and .merge_commit == $commit
+                and (.recorded_at | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"))
+                and (.digests | type == "object")
+                and all(.digests | to_entries[];
+                      (.key | test("^[A-Za-z_][A-Za-z0-9_]*$"))
+                      and (.value | type == "string" and test("^sha256:[0-9a-f]{64}$"))))
+            | {recorded_at, merge_commit, digests,
+               release: (.release | if type == "string" and test("^[A-Za-z0-9._+-]{1,128}$") then . else "" end),
+               release_run_url: (.release_run_url | if type == "string" and test("^https://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~-]+)+/actions/runs/[0-9]+$") then . else "" end)}'
+
+          ENTRIES=""
+          while read -r NOTE_OBJECT COMMIT; do
+            if [[ ! "$COMMIT" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]] || [[ ! "$NOTE_OBJECT" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ ]]; then
+              continue
+            fi
+            # Only a merge that is on the checked out branch released anything
+            # this check builds on.
+            if ! git merge-base --is-ancestor "$COMMIT" HEAD 2>/dev/null; then
+              echo "ℹ️  Ignored the note on ${COMMIT:0:12}: the commit is not on the checked out branch"
+              continue
+            fi
+            RECORDED_EPOCH=""
+            # The fraction of recorded_at is dropped before `date -d`: not every
+            # date implementation reads it (ubuntu-latest ships uutils date).
+            if ! CONTENT=$(git cat-file blob "$NOTE_OBJECT" 2>/dev/null) \
+               || ! NOTE=$(printf '%s' "$CONTENT" | jq -sce --arg commit "$COMMIT" "$NOTE_FILTER" 2>/dev/null) \
+               || ! RECORDED_EPOCH=$(date -u -d "$(printf '%s' "$NOTE" | jq -r '.recorded_at | sub("\\.[0-9]+Z$"; "Z")')" +%s 2>/dev/null); then
+              echo "::warning::Ignored the malformed note on ${COMMIT:0:12} in $NOTES_REF: it is not one JSON object with schema 1, this commit as merge_commit, a UTC recorded_at and digests of the form {\"<VARIABLE>\": \"sha256:<64 hex>\"}"
+              continue
+            fi
+            ENTRIES="${ENTRIES}$(printf '%s' "$NOTE" | jq -c --argjson e "$RECORDED_EPOCH" '. as $n
+              | [.digests | to_entries[] | {variable: .key, digest: .value, recorded_at: $n.recorded_at, recorded_epoch: $e,
+                                            release: $n.release, release_run_url: $n.release_run_url, merge_commit: $n.merge_commit}]')"$'\n'
+          done < <(git notes --ref="$NOTES_REF" list 2>/dev/null || true)
+
+          # Only the newest note per variable counts: the check compares the
+          # digest of the tag now, and an older note of the same variable
+          # describes an older digest. That bounds the list by the number of
+          # variables instead of every release ever handed over - it reaches
+          # the check as one environment value, which Linux caps at 128 KiB.
+          # A note dropped here can only cause a release.
+          HANDOFFS=$(printf '%s' "$ENTRIES" | jq -cs 'add // [] | group_by(.variable) | map(max_by(.recorded_epoch))')
+          printf '%s' "$HANDOFFS" | jq -r '.[] | "🤝 \(.variable) = \(.digest[0:19])... released as \(if .release == "" then "?" else .release end) (merge \(.merge_commit[0:12]), recorded \(.recorded_at))"'
+          echo "ℹ️  $(printf '%s' "$HANDOFFS" | jq 'length') base image digest(s) handed over by Dependabot updates"
+          echo "handoffs=$HANDOFFS" >> "$GITHUB_OUTPUT"
+
       - name: "🔍 Check for image updates"
         id: check
         env:
@@ -300,10 +422,19 @@ jobs:
           FAIL_ON_UNREACHABLE: ${{ inputs.fail-on-unreachable-image }}
           TARGET_WORKFLOW: ${{ inputs.target-workflow }}
           MAX_ATTEMPTS: ${{ inputs.max-release-attempts }}
+          HANDOFFS: ${{ steps.handoff.outputs.handoffs }}
         shell: bash
         # Tested by .github/workflows/tests/docker-base-image-monitor.test.sh
         run: |
           set -euo pipefail
+
+          # Releases handed over by docker-maintenance-dependabot.yml (handoff
+          # step): [{variable, digest, recorded_at, recorded_epoch, release,
+          # release_run_url, merge_commit}]. Empty or unreadable = none.
+          HANDOFFS="${HANDOFFS:-}"
+          if [ -z "$HANDOFFS" ] || ! printf '%s' "$HANDOFFS" | jq -e 'type == "array"' > /dev/null 2>&1; then
+            HANDOFFS="[]"
+          fi
 
           if [[ ! "$MAX_ATTEMPTS" =~ ^[0-9]+$ ]]; then
             echo "::error::max-release-attempts must be a whole number (0 = no limit), got '$MAX_ATTEMPTS'"
@@ -372,6 +503,10 @@ jobs:
           PENDING="[]"
           CONFIRMED="[]"
           EXHAUSTED="[]"
+          # Stored without a release (see the comments in the loop): never an
+          # update, never committed or dispatched.
+          MIGRATED="[]"
+          HANDED_OFF="[]"
           # Only collected here; the "Persist state" step writes them once
           # commit, push and dispatch have succeeded.
           #   VARIABLE_UPDATES  variable -> digest that counts as handled
@@ -458,6 +593,136 @@ jobs:
             fi
           }
 
+          # The digest a check compares. For a multi-arch index it was the
+          # first manifest sorted by architecture: linux/386 whenever the index
+          # has one ("386" sorts before "amd64"), while every image built on
+          # these bases is amd64. docker-library builds each architecture on
+          # its own, so 386 can lag amd64 - an amd64 security rebuild was
+          # released late - or be rebuilt alone - a release with nothing
+          # changed for us. This filter prefers linux/amd64 without a variant,
+          # then any linux/amd64; an index without linux/amd64 keeps the old
+          # pick. Byte-identical in modules-auto-maintenance.yml and
+          # docker-maintenance-dependabot.yml (the digest that module hands
+          # over must be the digest compared here): change all three together.
+          DIGEST_FILTER='
+          if .config.digest then
+            .config.digest
+          elif .manifests then
+            ([.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")]
+              | (map(select((.platform.variant // "") == "")) + .) | first | .digest)
+            // (.manifests | sort_by(.platform.architecture) | .[0].digest)
+          else
+            empty
+          end
+          '
+          # The pick before, only to recognise a digest stored by an earlier
+          # version of this module - never compared.
+          LEGACY_DIGEST_FILTER='
+          if .config.digest then .config.digest elif .manifests then .manifests | sort_by(.platform.architecture) | .[0].digest else empty end
+          '
+
+          # Epoch seconds of an RFC 3339 time; fails for anything else, because
+          # `date -d` alone also takes "now", "tomorrow" or an empty string.
+          # The fraction is dropped first: not every date implementation reads
+          # it (ubuntu-latest ships uutils date), and image build times carry
+          # nanoseconds.
+          to_epoch() {
+            [[ "$1" =~ ^([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$ ]] || return 1
+            date -u -d "${BASH_REMATCH[1]}${BASH_REMATCH[3]}" +%s 2>/dev/null
+          }
+
+          # The newest release handed over for this variable and digest, if it
+          # was recorded after the variable was last stored: HANDOFF_ENTRY (the
+          # entry as JSON) and HANDOFF_SKIPPED (why a matching note was not
+          # used). A note older than the stored value would describe a release
+          # from before it - the digest came back since, the image was built
+          # from another one in between.
+          find_handoff() {
+            local variable="$1" digest="$2" candidate recorded_epoch out updated_epoch
+            HANDOFF_ENTRY=""
+            HANDOFF_SKIPPED=""
+            # The name goes into an API path; a note never carries another.
+            [[ "$variable" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 0
+            candidate=$(printf '%s' "$HANDOFFS" | jq -c --arg v "$variable" --arg d "$digest" \
+              '[.[] | select(type == "object" and .variable == $v and .digest == $d)] | max_by(.recorded_epoch) // empty' 2>/dev/null || true)
+            [ -n "$candidate" ] || return 0
+            recorded_epoch=$(printf '%s' "$candidate" | jq -r '.recorded_epoch' 2>/dev/null || true)
+            if [[ ! "$recorded_epoch" =~ ^[0-9]+$ ]]; then
+              HANDOFF_SKIPPED="the note has no readable recorded_at"
+              return 0
+            fi
+            # Read only now: most checks find no matching note.
+            if out=$(gh api "repos/${GITHUB_REPOSITORY}/actions/variables/${variable}" --jq '.updated_at' 2>&1 < /dev/null); then
+              if ! updated_epoch=$(to_epoch "$out"); then
+                HANDOFF_SKIPPED="the last update of $variable could not be read"
+                return 0
+              fi
+            else
+              case "$out" in
+                # No stored digest at all: any note is newer.
+                *"HTTP 404"*) updated_epoch=0 ;;
+                *)
+                  HANDOFF_SKIPPED="the last update of $variable could not be read (${out%%$'\n'*})"
+                  return 0
+                  ;;
+              esac
+            fi
+            if [ "$recorded_epoch" -lt "$updated_epoch" ]; then
+              HANDOFF_SKIPPED="the note was recorded before $variable was last stored"
+              return 0
+            fi
+            HANDOFF_ENTRY="$candidate"
+          }
+
+          # How much older than the latest release an amd64 image must be for
+          # a stored old pick to be switched without a release (see the
+          # switch below). Same value in modules-auto-maintenance.yml.
+          MIGRATION_MARGIN_HOURS=48
+
+          # Latest release of the repository, read once per run: RELEASED_AT
+          # and RELEASED_EPOCH, or RELEASED_ERROR.
+          RELEASED_READ=""
+          RELEASED_AT=""
+          RELEASED_EPOCH=""
+          RELEASED_ERROR=""
+          read_latest_release() {
+            local out
+            RELEASED_READ="true"
+            if ! out=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.created_at' 2>&1 < /dev/null); then
+              case "$out" in
+                *"HTTP 404"*) RELEASED_ERROR="the repository has no release" ;;
+                *) RELEASED_ERROR="the latest release could not be read (${out%%$'\n'*})" ;;
+              esac
+              return 0
+            fi
+            if RELEASED_EPOCH=$(to_epoch "$out"); then
+              RELEASED_AT="$out"
+            else
+              RELEASED_EPOCH=""
+              RELEASED_ERROR="the creation time of the latest release could not be read"
+            fi
+          }
+
+          # Build time ("created") of the image behind a platform manifest
+          # digest; one retry after 10s.
+          image_created() {
+            local ref="$1" out created attempt
+            for attempt in 1 2; do
+              if out=$(docker buildx imagetools inspect "$ref" --format '{{json .Image}}' 2>/dev/null < /dev/null); then
+                created=$(printf '%s' "$out" | jq -r '.created // empty' 2>/dev/null || true)
+                if [ -n "$created" ]; then
+                  printf '%s' "$created"
+                  return 0
+                fi
+              fi
+              if [ "$attempt" -eq 1 ]; then
+                echo "⏳ Could not read the build time of $ref, retrying in 10s" >&2
+                sleep 10
+              fi
+            done
+            return 1
+          }
+
           # Process each image (using process substitution to preserve variables)
           while IFS= read -r img; do
             NAME=$(printf '%s' "$img" | jq -r '.name')
@@ -492,15 +757,7 @@ jobs:
             fi
 
             # Try to extract digest (handles both single and multi-arch)
-            CURRENT_DIGEST=$(echo "$MANIFEST_OUTPUT" | jq -r '
-              if .config.digest then
-                .config.digest
-              elif .manifests then
-                .manifests | sort_by(.platform.architecture) | .[0].digest
-              else
-                empty
-              end
-            ' 2>/dev/null || echo "")
+            CURRENT_DIGEST=$(echo "$MANIFEST_OUTPUT" | jq -r "$DIGEST_FILTER" 2>/dev/null || echo "")
 
             if [ -z "$CURRENT_DIGEST" ]; then
               echo "::error::Could not extract digest for $IMAGE:$TAG"
@@ -508,10 +765,19 @@ jobs:
               echo "::endgroup::"
               continue
             fi
+            # What an earlier version compared for the same index. Equal to
+            # CURRENT_DIGEST unless the index has a linux/386 manifest (or
+            # lists another amd64 manifest first) - then nothing below treats
+            # a stored digest as the old pick.
+            LEGACY_DIGEST=$(echo "$MANIFEST_OUTPUT" | jq -r "$LEGACY_DIGEST_FILTER" 2>/dev/null || echo "")
+            [ -n "$LEGACY_DIGEST" ] || LEGACY_DIGEST="$CURRENT_DIGEST"
 
             CHECKED_COUNT=$((CHECKED_COUNT + 1))
 
             echo "📦 Current digest: ${CURRENT_DIGEST:0:20}..."
+            if [ "$LEGACY_DIGEST" != "$CURRENT_DIGEST" ]; then
+              echo "   (linux/amd64; earlier versions of this module compared ${LEGACY_DIGEST:0:20}..., the first manifest by architecture)"
+            fi
 
             # Get stored digest from variable (auto-create if missing)
             echo "🔎 Fetching stored digest from variable $VARIABLE..."
@@ -536,9 +802,27 @@ jobs:
             REASON="new"
             # Attempt number of the release run this check dispatches.
             ATTEMPT=1
+            # URL of a successful release run that an earlier version of this
+            # module dispatched for LEGACY_DIGEST - evidence for the switch to
+            # the linux/amd64 digest below.
+            LEGACY_RELEASED=""
             if [ -n "$TARGET_WORKFLOW" ]; then
               PENDING_RECORD=$(gh variable get "${VARIABLE}_PENDING" 2>/dev/null < /dev/null || echo "")
               read -r RUN_STATE RUN_CONCLUSION RUN_URL <<< "$(release_state "$PENDING_RECORD" "$CURRENT_DIGEST")"
+              # A run an earlier version dispatched for the old pick of this
+              # very index is the release of this update as well: waited for
+              # while it runs, retried for the linux/amd64 digest when it
+              # failed, and evidence for the switch below when it succeeded.
+              # Without this, the first check after the upgrade would dispatch
+              # a second release next to a running one.
+              RECORD_DIGEST="$CURRENT_DIGEST"
+              if [ "$RUN_STATE" = "none" ] && [ "$LEGACY_DIGEST" != "$CURRENT_DIGEST" ]; then
+                read -r RUN_STATE RUN_CONCLUSION RUN_URL <<< "$(release_state "$PENDING_RECORD" "$LEGACY_DIGEST")"
+                if [ "$RUN_STATE" != "none" ]; then
+                  RECORD_DIGEST="$LEGACY_DIGEST"
+                  echo "ℹ️  ${VARIABLE}_PENDING records the release run of ${LEGACY_DIGEST:0:20}..., the digest an earlier version compared for this index"
+                fi
+              fi
               ENTRY=$(jq -nc --arg name "$NAME" --arg state "$RUN_STATE" --arg conclusion "$RUN_CONCLUSION" --arg url "$RUN_URL" \
                 '{name: $name, state: $state, conclusion: $conclusion, url: $url}')
               case "$RUN_STATE" in
@@ -553,13 +837,19 @@ jobs:
                   continue
                   ;;
                 success)
-                  echo "✅ The release dispatched for this digest succeeded: $RUN_URL"
-                  echo "💾 $VARIABLE will be stored"
-                  CONFIRMED=$(printf '%s' "$CONFIRMED" | jq -c --argjson e "$ENTRY" '. + [$e]')
-                  VARIABLE_UPDATES=$(printf '%s' "$VARIABLE_UPDATES" | jq -c --arg v "$VARIABLE" --arg d "$CURRENT_DIGEST" '. + {($v): $d}')
-                  PENDING_DELETES=$(printf '%s' "$PENDING_DELETES" | jq -c --arg v "$VARIABLE" '. + [$v]')
-                  echo "::endgroup::"
-                  continue
+                  if [ "$RECORD_DIGEST" = "$CURRENT_DIGEST" ]; then
+                    echo "✅ The release dispatched for this digest succeeded: $RUN_URL"
+                    echo "💾 $VARIABLE will be stored"
+                    CONFIRMED=$(printf '%s' "$CONFIRMED" | jq -c --argjson e "$ENTRY" '. + [$e]')
+                    VARIABLE_UPDATES=$(printf '%s' "$VARIABLE_UPDATES" | jq -c --arg v "$VARIABLE" --arg d "$CURRENT_DIGEST" '. + {($v): $d}')
+                    PENDING_DELETES=$(printf '%s' "$PENDING_DELETES" | jq -c --arg v "$VARIABLE" '. + [$v]')
+                    echo "::endgroup::"
+                    continue
+                  fi
+                  # It released the old pick, which says nothing yet about the
+                  # linux/amd64 image: the switch below decides.
+                  echo "✅ The release dispatched for ${LEGACY_DIGEST:0:20}... succeeded: $RUN_URL"
+                  LEGACY_RELEASED="$RUN_URL"
                   ;;
                 failed)
                   # Records without an attempt count as the first one.
@@ -583,8 +873,106 @@ jobs:
               esac
             fi
 
+            # Neither of the two below is an update: the digest is only
+            # stored (VARIABLE_UPDATES), never committed or dispatched. Both
+            # need positive evidence that a release already contains it, and
+            # release as an update whenever that evidence is missing - a
+            # missed base image security update is far worse than a redundant
+            # release.
+            STORE_ONLY=""
+            HANDOFF_SKIPPED=""
+            if [ "$REASON" = "new" ]; then
+              # Released by docker-maintenance-dependabot.yml right after it
+              # merged a base image update (handoff step): releasing this
+              # digest again would redeploy identical content.
+              find_handoff "$VARIABLE" "$CURRENT_DIGEST"
+              if [ -n "$HANDOFF_ENTRY" ]; then
+                echo "🤝 Already released with a Dependabot update: $(printf '%s' "$HANDOFF_ENTRY" | jq -r '"\(if .release == "" then "release" else .release end), merge \(.merge_commit[0:12]), recorded \(.recorded_at)"')"
+                HANDED_OFF=$(printf '%s' "$HANDED_OFF" | jq -c --arg name "$NAME" --argjson e "$HANDOFF_ENTRY" \
+                  '. + [{name: $name, digest: $e.digest, release: $e.release, release_run_url: $e.release_run_url, merge_commit: $e.merge_commit}]')
+                STORE_ONLY="handoff"
+              fi
+              # An unused note (HANDOFF_SKIPPED) is reported on the update path
+              # below, not here: the switch that follows may still store the
+              # digest without a release.
+            fi
+
+            # One-time switch of state stored by an earlier version. When the
+            # stored digest is the old pick of this very index, the 386
+            # manifest has not changed since it was stored - the amd64 one may
+            # have (386 lag). It is switched without a release only if the
+            # amd64 image is more than MIGRATION_MARGIN_HOURS older than the
+            # repository's latest release, so that release was built on it.
+            # "created" is when an image was built, not when it reached the
+            # tag: docker-library adds each architecture to the index on its
+            # own. python:3.15-alpine on 2026-11-05: amd64 built 19:27, in the
+            # tag at 23:06, 386 there since 20:06. A check in between released
+            # the new 386 digest on the OLD amd64 image; compared with that
+            # release alone, the newer amd64 image looked older and would have
+            # been switched - never shipped. The margin covers that delay
+            # (hours) and the snapshot timestamp debian carries as "created"
+            # (about 11h before the push). Images whose "created" is a fixed
+            # source date (busybox: months old) put all platforms into the tag
+            # together, and images built by one multi-platform buildx run
+            # change all platform digests together: for them the old match
+            # already implies an unchanged amd64 manifest. Same rule and margin
+            # as modules-auto-maintenance.yml.
+            if [ "$REASON" = "new" ] && [ -z "$STORE_ONLY" ] \
+               && { [ -n "$LEGACY_RELEASED" ] || { [ "$STORED_DIGEST" = "$LEGACY_DIGEST" ] && [ "$LEGACY_DIGEST" != "$CURRENT_DIGEST" ]; }; }; then
+              [ -n "$RELEASED_READ" ] || read_latest_release
+              MIGRATION_BLOCKER=""
+              CREATED_AT=""
+              CREATED_EPOCH=""
+              if [ -n "$RELEASED_ERROR" ]; then
+                MIGRATION_BLOCKER="$RELEASED_ERROR"
+              elif ! CREATED_AT=$(image_created "$IMAGE@$CURRENT_DIGEST"); then
+                MIGRATION_BLOCKER="the build time of the linux/amd64 image could not be read"
+              elif ! CREATED_EPOCH=$(to_epoch "$CREATED_AT") || [ "$CREATED_EPOCH" -lt 315532800 ]; then
+                # Before 1980-01-01 is a placeholder of reproducible builds
+                # (1970-01-01T00:00:00Z, nixpkgs 00:00:01Z), not a build time;
+                # SOURCE_DATE_EPOCH tools clamp to 1980 at the lowest.
+                MIGRATION_BLOCKER="the linux/amd64 image has no usable build time"
+              elif [ $((CREATED_EPOCH + MIGRATION_MARGIN_HOURS * 3600)) -ge "$RELEASED_EPOCH" ]; then
+                MIGRATION_BLOCKER="the linux/amd64 image (built $CREATED_AT) is not more than ${MIGRATION_MARGIN_HOURS}h older than the latest release ($RELEASED_AT)"
+              fi
+              if [ -z "$MIGRATION_BLOCKER" ]; then
+                echo "🔀 Switched to the linux/amd64 digest: ${STORED_DIGEST:-<none>} -> $CURRENT_DIGEST"
+                if [ -n "$LEGACY_RELEASED" ]; then
+                  echo "   The release of ${LEGACY_DIGEST:0:20}... succeeded ($LEGACY_RELEASED), and the linux/amd64 image (built $CREATED_AT) is more than ${MIGRATION_MARGIN_HOURS}h older than the latest release ($RELEASED_AT)"
+                else
+                  echo "   The stored digest is the one an earlier version compared for this index, and the linux/amd64 image (built $CREATED_AT) is more than ${MIGRATION_MARGIN_HOURS}h older than the latest release ($RELEASED_AT)"
+                fi
+                MIGRATED=$(printf '%s' "$MIGRATED" | jq -c --arg name "$NAME" --arg old "$STORED_DIGEST" --arg new "$CURRENT_DIGEST" \
+                  --arg created "$CREATED_AT" --arg released "$RELEASED_AT" --arg run "$LEGACY_RELEASED" \
+                  '. + [{name: $name, old: $old, new: $new, created: $created, released: $released, run_url: $run}]')
+                STORE_ONLY="migration"
+              elif [ -n "$LEGACY_RELEASED" ]; then
+                echo "::notice::$NAME ($IMAGE:$TAG): ${VARIABLE}_PENDING records a successful release of the digest an earlier version of this module compared (the first manifest by architecture, not linux/amd64; $LEGACY_RELEASED). The linux/amd64 digest is released as an update instead of switched silently: $MIGRATION_BLOCKER"
+              else
+                echo "::notice::$NAME ($IMAGE:$TAG): the stored digest is the one an earlier version of this module compared (the first manifest by architecture, not linux/amd64). It is released as an update instead of switched silently: $MIGRATION_BLOCKER"
+              fi
+            fi
+
+            if [ -n "$STORE_ONLY" ]; then
+              VARIABLE_UPDATES=$(printf '%s' "$VARIABLE_UPDATES" | jq -c --arg v "$VARIABLE" --arg d "$CURRENT_DIGEST" '. + {($v): $d}')
+              # The record of the old pick's successful run is resolved now.
+              if [ -n "$LEGACY_RELEASED" ]; then
+                PENDING_DELETES=$(printf '%s' "$PENDING_DELETES" | jq -c --arg v "$VARIABLE" '. + [$v]')
+              fi
+              if [ "$DRY_RUN" != "true" ]; then
+                echo "💾 $VARIABLE will be stored, without a release"
+              else
+                echo "🔍 DRY RUN: nothing is stored ($VARIABLE would be stored, without a release)"
+              fi
+              echo "::endgroup::"
+              continue
+            fi
+
             echo ""
             if [ "$REASON" = "new" ]; then
+              if [ -n "$HANDOFF_SKIPPED" ]; then
+                echo "::notice::$NAME ($IMAGE:$TAG): a Dependabot update recorded this digest as released, but $HANDOFF_SKIPPED - released as an update"
+              fi
               echo "✅ Update detected for $NAME!"
               echo "   Old: ${STORED_DIGEST:-<none>}"
               echo "   New: $CURRENT_DIGEST"
@@ -681,6 +1069,10 @@ jobs:
             echo "confirmed=$CONFIRMED"
             echo "exhausted=$EXHAUSTED"
             echo "exhausted-images=$(printf '%s' "$EXHAUSTED" | jq -c 'map(.name)')"
+            echo "migrated=$MIGRATED"
+            echo "migrated-images=$(printf '%s' "$MIGRATED" | jq -c 'map(.name)')"
+            echo "handed-off=$HANDED_OFF"
+            echo "handed-off-images=$(printf '%s' "$HANDED_OFF" | jq -c 'map(.name)')"
             echo "dispatch-attempts=$DISPATCH_ATTEMPTS"
             echo "variable-updates=$VARIABLE_UPDATES"
             echo "dispatch-updates=$DISPATCH_UPDATES"
@@ -710,7 +1102,8 @@ jobs:
           if [ "$UPDATES_FOUND" = "true" ]; then
             echo "Updated images: $(printf '%s' "$UPDATED_IMAGES" | jq -r 'join(", ")')"
           fi
-          for LIST in "Tag not read from the Dockerfile, not checked:$UNRESOLVED" "Release retries exhausted:$EXHAUSTED" "Release retried:$RETRIED" "Release running:$PENDING" "Release confirmed:$CONFIRMED"; do
+          for LIST in "Tag not read from the Dockerfile, not checked:$UNRESOLVED" "Release retries exhausted:$EXHAUSTED" "Release retried:$RETRIED" "Release running:$PENDING" "Release confirmed:$CONFIRMED" \
+                      "Switched to the linux/amd64 digest:$MIGRATED" "Already released with a Dependabot update:$HANDED_OFF"; do
             if [ "$(printf '%s' "${LIST#*:}" | jq 'length')" -gt 0 ]; then
               echo "${LIST%%:*}: $(printf '%s' "${LIST#*:}" | jq -r 'map(.name) | join(", ")')"
             fi
@@ -958,6 +1351,8 @@ jobs:
           PENDING_JSON: ${{ steps.check.outputs.pending }}
           CONFIRMED_JSON: ${{ steps.check.outputs.confirmed }}
           EXHAUSTED_JSON: ${{ steps.check.outputs.exhausted }}
+          MIGRATED_JSON: ${{ steps.check.outputs.migrated }}
+          HANDED_OFF_JSON: ${{ steps.check.outputs.handed-off }}
           MAX_ATTEMPTS: ${{ inputs.max-release-attempts }}
           RETRY_COMMIT: ${{ steps.check.outputs.retry-commit }}
           RELEASE_TRIGGERED: ${{ steps.release.outputs.triggered }}
@@ -983,6 +1378,8 @@ jobs:
           PENDING_COUNT=$(count "$PENDING_JSON")
           CONFIRMED_COUNT=$(count "$CONFIRMED_JSON")
           EXHAUSTED_COUNT=$(count "$EXHAUSTED_JSON")
+          MIGRATED_COUNT=$(count "$MIGRATED_JSON")
+          HANDED_OFF_COUNT=$(count "$HANDED_OFF_JSON")
           STORED_LABEL="stored"
           if [ "$DRY_RUN" = "true" ]; then
             STORED_LABEL="not stored (dry run)"
@@ -1131,6 +1528,31 @@ jobs:
               printf '%s' "$CONFIRMED_JSON" | jq -r '.[] | "| `\(.name)` | [\(.url | split("/") | last)](\(.url)) | ✅ Succeeded |"'
               echo ""
               echo "The new digests are $STORED_LABEL."
+            fi
+
+            # Neither is an update, so a run with nothing else still reports
+            # "up to date" above.
+            if [ "$MIGRATED_COUNT" -gt 0 ]; then
+              echo ""
+              echo "### 🔀 Switched to the linux/amd64 digest"
+              echo ""
+              echo "The monitor compares the linux/amd64 manifest of a multi-arch tag. Earlier versions compared the first manifest by architecture - linux/386 for most official images - and stored or released that digest. For each of these images either the stored digest is still the old pick of the tag, or the release an earlier version dispatched for the old pick succeeded (see Evidence); and the linux/amd64 image is more than 48h older than the latest release, which was therefore built on it. No release is needed: the digest is $STORED_LABEL."
+              echo ""
+              echo "| Image | Digest | Evidence |"
+              echo "|-------|--------|----------|"
+              # run_url: the release run of the old pick, set only on that path.
+              printf '%s' "$MIGRATED_JSON" | jq -r '.[] | "| `\(.name)` | `\(if .old == "" then "<none>" else .old[0:19] + "…" end)` → `\(.new[0:19])…` | \(if (.run_url // "") == "" then "Stored digest is the old pick" else "Release of the old pick succeeded: [run \(.run_url | split("/") | last)](\(.run_url))" end) |"'
+            fi
+
+            if [ "$HANDED_OFF_COUNT" -gt 0 ]; then
+              echo ""
+              echo "### 🤝 Already released with a Dependabot update"
+              echo ""
+              echo "The Dependabot update module released these digests right after it merged a base image update (git note in \`refs/notes/base-image-monitor\`). Releasing them again would redeploy identical content. No release is needed: the digest is $STORED_LABEL."
+              echo ""
+              echo "| Image | Release | Release run |"
+              echo "|-------|---------|-------------|"
+              printf '%s' "$HANDED_OFF_JSON" | jq -r '.[] | "| `\(.name)` | \(if .release == "" then "-" else "`\(.release)`" end) | \(if .release_run_url == "" then "-" else "[run \(.release_run_url | split("/") | last)](\(.release_run_url))" end) |"'
             fi
 
             if [ "$DRY_RUN" != "true" ] && [ "$STATE_CHANGED" = "true" ] && [ "$PERSIST_OUTCOME" != "success" ]; then
