@@ -27,7 +27,26 @@
 #                        the base branch, finds its run (returned by the
 #                        dispatch, or looked up), waits for it and fails the
 #                        job unless it succeeded
+#   base image handoff (ids: handoff-*) - after a merge into the default
+#                        branch with release-workflow:
+#                        reads the base image monitor config from the merge
+#                        commit, the PR's changed files, resolves the entries
+#                        (the resolve action's own body) and reads the
+#                        linux/amd64 digests of the entries whose Dockerfile
+#                        the PR changed - before the dispatch; after a
+#                        release run that succeeded and cut a release
+#                        containing the merge, records them as a git note
+#                        (refs/notes/base-image-monitor) for the monitor -
+#                        a real repository with a bare origin; never fails
+#                        the job, never holds back the release
 #   summary (id: summary) - Merge -> Release dispatched (run) -> Release result
+#                        -> Base image handoff
+#
+# The handoff exists because the base image monitor released every Dependabot
+# FROM bump a second time: it saw the new tag's digest differ from the one it
+# had stored (the old tag's) - one needless production redeploy per bump.
+# A missed base image security update is far worse than a redundant release,
+# so everything the handoff cannot read or verify is left to the monitor.
 #
 # Without this, `gh pr merge --auto` on a branch without required checks merged
 # at once - bauer-group/CS-BillingStack#12 three seconds after its label check
@@ -65,15 +84,28 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKFLOW_FILE="$SCRIPT_DIR/../docker-maintenance-dependabot.yml"
+ACTION_DIR="$(cd "$SCRIPT_DIR/../../actions/docker-base-image-resolve" 2>/dev/null && pwd)"
+ACTION_FILE="$ACTION_DIR/action.yml"
 
 if [ ! -f "$WORKFLOW_FILE" ]; then
   echo "FATAL: workflow not found at $WORKFLOW_FILE"
+  exit 1
+fi
+if [ ! -f "$ACTION_FILE" ]; then
+  echo "FATAL: the docker-base-image-resolve action was not found at $ACTION_FILE"
   exit 1
 fi
 if ! command -v jq > /dev/null; then
   echo "FATAL: jq is required to evaluate the steps' --jq filters"
   exit 1
 fi
+# The base image handoff: notes in a real repository, the real resolver.
+for tool in git python3; do
+  if ! command -v "$tool" > /dev/null; then
+    echo "FATAL: $tool is required for the base image handoff cases"
+    exit 1
+  fi
+done
 
 extract_step() {
   awk -v id="        id: $1" '
@@ -92,7 +124,21 @@ CI_BODY=$(extract_step ci)
 MERGE_BODY=$(extract_step merge)
 RELEASE_BODY=$(extract_step release)
 SUMMARY_BODY=$(extract_step summary)
-for step in GUARD_BODY CI_BODY MERGE_BODY RELEASE_BODY SUMMARY_BODY; do
+HFILES_BODY=$(extract_step handoff-files)
+HDIGESTS_BODY=$(extract_step handoff-digests)
+HNOTE_BODY=$(extract_step handoff-note)
+# The resolve action's step, which the handoff uses: a composite step,
+# indented two less.
+RESOLVE_BODY=$(awk '
+  $0 == "      id: resolve" { found = 1; next }
+  found && /^      run: \|$/ { collecting = 1; next }
+  collecting {
+    if ($0 == "") { print ""; next }
+    if ($0 ~ /^        /) { sub(/^        /, ""); print; next }
+    exit
+  }
+' "$ACTION_FILE")
+for step in GUARD_BODY CI_BODY MERGE_BODY RELEASE_BODY SUMMARY_BODY HFILES_BODY HDIGESTS_BODY HNOTE_BODY RESOLVE_BODY; do
   if [ -z "${!step}" ]; then
     echo "FATAL: could not extract the run block for $step from the workflow."
     echo "       The step was renamed, removed, or re-indented - update this test."
@@ -191,8 +237,55 @@ static_has   "job exposes merged"                'merged: ${{ steps.merge.output
 static_has   "release result is a workflow output" 'value: ${{ jobs.maintenance.outputs.release-result }}'
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "job exposes the release result"    'release-result: ${{ steps.release.outputs.result }}'
-# A failed release fails the job: no step may swallow its failure.
-static_lacks "no step continues on error"        'continue-on-error'
+# One line per step: <id, else name> <continue-on-error> <timeout-minutes> <uses>
+# A step starts at any "      - " line, whichever key comes first.
+STEP_ATTRS=$(awk '
+  function flush() { if (n) printf "%s\t%s\t%s\t%s\n", (id != "" ? id : (name != "" ? name : "<unnamed>")), coe, tmo, uses }
+  /^      - / {
+    flush(); n++; name = ""; id = ""; coe = "-"; tmo = "-"; uses = "-"; first = substr($0, 9)
+    if (first ~ /^name: /) name = substr(first, 7)
+    else if (first ~ /^id: /) id = substr(first, 5)
+    else if (first ~ /^uses: /) uses = substr(first, 7)
+    else if (first ~ /^continue-on-error: /) coe = substr(first, 20)
+    next
+  }
+  n && /^        name: / { name = substr($0, 15) }
+  n && /^        id: / { id = substr($0, 13) }
+  n && /^        continue-on-error: / { coe = substr($0, 28) }
+  n && /^        timeout-minutes: / { tmo = substr($0, 26) }
+  n && /^        uses: / { uses = substr($0, 15) }
+  END { flush() }
+' "$WORKFLOW_FILE")
+HANDOFF_STEPS="handoff-checkout handoff-files handoff-resolve handoff-login handoff-digests handoff-note"
+# A failed release fails the job: no step may swallow its failure - but the
+# base image handoff's, which must never fail the job.
+got=$(awk -F'\t' '$2 != "-" { printf "%s%s", sep, $1; sep = " " }' <<< "$STEP_ATTRS")
+if [ "$got" = "$HANDOFF_STEPS" ]; then pass "only the base image handoff continues on error"; else fail "steps with continue-on-error: '$got', want '$HANDOFF_STEPS'"; fi
+# The same over the whole file, whatever the layout: one continue-on-error per
+# handoff step, each at step level - none on the job, where it would hide a
+# failed release.
+got="$(grep -cE '^ *continue-on-error:' "$WORKFLOW_FILE") $(grep -cE '^        continue-on-error: true$' "$WORKFLOW_FILE")"
+want="$(wc -w <<< "$HANDOFF_STEPS" | tr -d ' ')"
+if [ "$got" = "$want $want" ]; then pass "continue-on-error only on the handoff steps (whole file)"; else fail "continue-on-error lines (all, step-level true): '$got', want '$want $want'"; fi
+got=$(awk -F'\t' '$1 ~ /^handoff-/ && $2 != "true" { printf " %s", $1 }' <<< "$STEP_ATTRS")
+if [ -z "$got" ]; then pass "every handoff step has continue-on-error: true"; else fail "handoff steps without continue-on-error: true:$got"; fi
+# In the job's order: the handoff reads the digests between the merge and the
+# release, and records them after the release.
+got=$(awk -F'\t' '{ printf "%s%s", sep, $1; sep = " " }' <<< "$STEP_ATTRS")
+want="metadata guard ci merge handoff-checkout handoff-files handoff-resolve handoff-login handoff-digests release handoff-note summary"
+if [ "$got" = "$want" ]; then pass "step order: merge, handoff, release, note, summary"; else fail "step order '$got', want '$want'"; fi
+# They delay the dispatch: each has a short timeout, and the job timeout
+# covers them on top of the CI and release waits.
+HANDOFF_MINUTES=$(awk -F'\t' '$1 ~ /^handoff-/ { if ($3 !~ /^[0-9]+$/) bad = 1; sum += $3 } END { print bad ? "x" : sum }' <<< "$STEP_ATTRS")
+if [ "$HANDOFF_MINUTES" != x ] && [ -n "$TIMEOUT_RELEASE" ] && [ "$TIMEOUT_RELEASE" -ge $((255 + HANDOFF_MINUTES)) ]; then
+  pass "every handoff step has a timeout, covered by the job timeout ($HANDOFF_MINUTES of $TIMEOUT_RELEASE min)"
+else
+  fail "handoff step timeouts '$HANDOFF_MINUTES' not covered by the job timeout '$TIMEOUT_RELEASE' (255 + them)"
+fi
+# The release step does not depend on the handoff: its gate is the line
+# checked below, and nothing in it reads a handoff output.
+got=$(awk '$0 == "        id: release" { found = 1; next } found && /^      - / { exit } found && /handoff/ { print }' "$WORKFLOW_FILE")
+if [ -z "$got" ]; then pass "the release step reads nothing of the handoff"; else fail "the release step reads the handoff: $got"; fi
 # The self filter keys on the job's display name and on the file name in the
 # callers' referenced_workflows.
 static_has   "self filter matches the job name"  'SELF_JOB_NAME: Docker Maintenance'
@@ -203,7 +296,70 @@ static_line  "job runs for Dependabot's PRs and events only" "    if: github.eve
 # fetch-metadata's own author and signature checks stay on.
 static_lacks "fetch-metadata verification is not skipped" 'skip-verification|skip-commit-verification'
 # The job runs with a write token: nothing from the PR is checked out or run.
-static_lacks "nothing is checked out"            'actions/checkout|git (clone|fetch|checkout)'
+# The one checkout is the base image handoff's: the merge commit, after the
+# merge (step order above), gated on it; read as data. git fetches nothing but
+# the notes ref, and the checkout keeps its credentials for that ref's push.
+got=$(awk -F'\t' '$4 ~ /^actions\/checkout@/ { printf "%s%s", sep, $1; sep = " " }' <<< "$STEP_ATTRS")
+if [ "$got" = handoff-checkout ]; then pass "one checkout, the handoff's"; else fail "checkout steps: '$got'"; fi
+# The same over the whole file, whatever the layout of a step.
+got=$(grep -cE 'actions/checkout@' "$WORKFLOW_FILE")
+if [ "$got" = 1 ]; then pass "one checkout in the whole file"; else fail "actions/checkout@ appears $got times, want 1"; fi
+# ... and only after a merge into the default branch: the monitor checks that
+# branch, and the contract promises notes on its merge commits only.
+static_line  "the checkout runs only after a merge into the default branch" "        if: steps.merge.outputs.merged == 'true' && steps.guard.outputs.release-workflow != '' && inputs.base-image-config != '' && steps.merge.outputs.merge-commit != '' && github.event.pull_request.base.ref == github.event.repository.default_branch"
+# shellcheck disable=SC2016 # literal workflow text
+static_line  "the checkout is the merge commit"  '          ref: ${{ steps.merge.outputs.merge-commit }}'
+static_line  "the checkout is shallow"           "          fetch-depth: 1"
+static_lacks "the checkout keeps its credentials for the notes push" 'persist-credentials'
+static_lacks "nothing is cloned or switched to"  'git (clone|checkout|switch)|submodules:|lfs:'
+# shellcheck disable=SC2016 # literal workflow text
+if [ "$(grep -c 'git fetch' "$WORKFLOW_FILE")" -eq 1 ] && grep -qF 'git fetch --quiet --no-tags origin "+$NOTES_REF:$NOTES_REF"' "$WORKFLOW_FILE"; then
+  pass "git fetches the notes ref only"
+else
+  fail "git fetch of something else than the notes ref"
+fi
+# The handoff gates: each step only after the one before it decided to go on;
+# the note only after a release that succeeded.
+static_line  "handoff files after the checkout"  "        if: steps.handoff-checkout.outcome == 'success'"
+static_line  "GHCR login only for GHCR images"   "        if: steps.handoff-files.outputs.go == 'true' && steps.handoff-files.outputs.ghcr == 'true'"
+if [ "$(grep -cxF "        if: steps.handoff-files.outputs.go == 'true'" "$WORKFLOW_FILE")" -eq 2 ]; then pass "resolve and digests only when the files step goes on"; else fail "resolve/digests gates changed"; fi
+static_line  "note only after a successful release" "        if: steps.release.outputs.result == 'success' && steps.handoff-digests.outputs.digests != ''"
+# shellcheck disable=SC2016 # literal workflow text
+static_line  "the resolver gets the changed entries" '          images: ${{ steps.handoff-files.outputs.entries }}'
+static_line  "the resolve action is the monitor's" "        uses: bauer-group/automation-templates/.github/actions/docker-base-image-resolve@main"
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "the digests step gets the changed variables" 'CHANGED_VARIABLES: ${{ steps.handoff-files.outputs.variables }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "the digests step gets the resolved tags" 'RESOLVED_IMAGES: ${{ steps.handoff-resolve.outputs.images }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "the note gets the digests"         'DIGESTS: ${{ steps.handoff-digests.outputs.digests }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "the note gets the time they were read" 'RECORDED_AT: ${{ steps.handoff-digests.outputs.recorded-at }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "the files step reads the config input" 'CONFIG_FILE: ${{ inputs.base-image-config }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "handoff result is a workflow output" 'value: ${{ jobs.maintenance.outputs.base-image-handoff }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "handoff images are a workflow output" 'value: ${{ jobs.maintenance.outputs.base-image-handoff-images }}'
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "job exposes the handoff result" 'base-image-handoff: ${{ steps.handoff-note.outputs.result || steps.handoff-digests.outputs.result || steps.handoff-files.outputs.result }}'
+# The default is the path every caller of the monitor uses.
+got=$(awk '$0 == "      base-image-config:" { found = 1; next } found && /^        default: / { sub(/^        default: /, ""); gsub(/\047/, ""); print; exit } found && /^      [^ ]/ { exit }' "$WORKFLOW_FILE")
+if [ "$got" = ".github/config/docker-base-image-monitor/base-images.json" ]; then pass "base-image-config defaults to the monitor's config"; else fail "base-image-config default '$got'"; fi
+# The digest a check compares - byte for byte the filter of the monitor and
+# of auto-maintenance: linux/amd64 without a variant, then any linux/amd64,
+# an index without linux/amd64 the legacy pick.
+WANT_FILTER='if .config.digest then
+  .config.digest
+elif .manifests then
+  ([.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")]
+    | (map(select((.platform.variant // "") == "")) + .) | first | .digest)
+  // (.manifests | sort_by(.platform.architecture) | .[0].digest)
+else
+  empty
+end'
+got=$(awk "/^DIGEST_FILTER='\$/ { found = 1; next } found && /^'\$/ { exit } found { print }" <<< "$HDIGESTS_BODY")
+if [ "$got" = "$WANT_FILTER" ]; then pass "the digest filter is the shared one, verbatim"; else fail "the digest filter differs from the shared one: $got"; fi
 # Event data (PR title, branch, labels, ...) reaches the scripts only through
 # env, never as an expression inside a run block, where it would become code.
 EXPR_IN_RUN=$(awk '
@@ -276,6 +432,8 @@ esac
   repos/*/actions/runs\?*)         kind=actions ;;
   repos/*/actions/runs/*)          kind=release ;;
   repos/*/actions/workflows/*/runs\?*) kind=lookup ;;
+  repos/*/releases/latest)         kind=latest ;;
+  repos/*/compare/*)               kind=compare ;;
   *) echo "unexpected path: $path" >&2; exit 2 ;;
 esac
 n=$(( $(cat "$FAKE/$kind.count" 2>/dev/null || echo 0) + 1 ))
@@ -1687,6 +1845,553 @@ for c in base-moved conflict merge-rejected merge-queued merged-before; do
   not_called "flow/$c-no-release" "$D" "/dispatches"
 done
 
+# --- base image handoff ---------------------------------------------------------------
+# Each case: a checkout of the merge commit ($D/repo) with a bare origin
+# ($D/origin.git), the monitor config and the Dockerfiles in it; the PR's
+# changed files, the latest release and the compare answer as gh fixtures; the
+# registry as files for the docker stub. The steps run in the job's order,
+# each only if its `if:` - read from the workflow - holds for the outputs of
+# the steps before it (hstep_runs). The uses: steps are stood in for: the
+# checkout is $D/repo, the resolve step is the action's own body with its
+# real resolver, the GHCR login is only noted.
+mkdir -p "$WORK/hbin" "$WORK/racebin"
+cp "$WORK/bin/gh" "$WORK/hbin/gh"
+cat > "$WORK/hbin/docker" <<'STUB'
+#!/usr/bin/env bash
+# docker manifest inspect <ref>: answers from $FAKE/manifests/<ref, / and :
+# as _>; no file: an unknown manifest. A file holding DENIED answers as GHCR
+# does without packages: read; FLAKY fails once, then answers with its other
+# lines.
+echo "$*" >> "$FAKE/docker-calls"
+[ "${1:-} ${2:-}" = "manifest inspect" ] || { echo "unexpected docker call: $*" >&2; exit 2; }
+f="$FAKE/manifests/$(printf '%s' "$3" | tr '/:' '__')"
+[ -f "$f" ] || { echo "manifest unknown: manifest unknown" >&2; exit 1; }
+case "$(head -n 1 "$f")" in
+  DENIED) echo "Error response from daemon: Head \"https://ghcr.io/v2/acme/base/manifests/1.2\": denied: denied" >&2; exit 1 ;;
+  FLAKY)
+    if [ ! -f "$f.failed" ]; then : > "$f.failed"; echo "Get \"https://registry-1.docker.io/v2/\": net/http: TLS handshake timeout" >&2; exit 1; fi
+    tail -n +2 "$f"; exit 0 ;;
+esac
+cat "$f"
+STUB
+# shellcheck disable=SC2016 # expanded when the stub runs
+printf '#!/usr/bin/env bash\necho "$1" >> "$FAKE/sleeps"\n' > "$WORK/hbin/sleep"
+# The first push of the notes ref meets a note another run pushed in the
+# meantime - on another merge commit - and is rejected.
+cat > "$WORK/racebin/git" <<'STUB'
+#!/usr/bin/env bash
+if [ "${1:-}" = push ] && [ ! -f "$FAKE/raced" ]; then
+  : > "$FAKE/raced"
+  "$REAL_GIT" -C "$FAKE/other" notes --ref=refs/notes/base-image-monitor add -f -m '{"schema":1,"other":true}' "$(cat "$FAKE/other-commit")" || exit 3
+  "$REAL_GIT" -C "$FAKE/other" push -q origin refs/notes/base-image-monitor || exit 3
+fi
+exec "$REAL_GIT" "$@"
+STUB
+chmod +x "$WORK/hbin/docker" "$WORK/hbin/sleep" "$WORK/racebin/git"
+REAL_GIT=$(command -v git)
+export REAL_GIT
+# Git must not pick up the identity, signing or hooks of the machine - and the
+# note step sets its own identity.
+printf '[init]\n\tdefaultBranch = main\n[commit]\n\tgpgsign = false\n' > "$WORK/gitconfig"
+export GIT_CONFIG_GLOBAL="$WORK/gitconfig" GIT_CONFIG_NOSYSTEM=1
+
+NOTES_REF=refs/notes/base-image-monitor
+BOT="github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+HCFG=".github/config/docker-base-image-monitor/base-images.json"
+hex() { printf '%064d' 0 | tr 0 "$1"; }
+D_PY="sha256:$(hex a)"; D_PY386="sha256:$(hex 3)"; D_NODE="sha256:$(hex b)"; D_BASE="sha256:$(hex c)"
+# index <linux/amd64 digest> <linux/386 digest>: a Docker official image's
+# multi-arch index - 386 sorts first, an attestation entry last.
+index() {
+  printf '{"schemaVersion":2,"manifests":[{"digest":"%s","platform":{"architecture":"386","os":"linux"}},{"digest":"%s","platform":{"architecture":"amd64","os":"linux"}},{"digest":"sha256:%s","platform":{"architecture":"unknown","os":"unknown"}}]}' "$2" "$1" "$(hex 9)"
+}
+# The monitor config of most cases:
+#   python  ./Dockerfile      the PR bumps its FROM line (3.14 -> 3.15)
+#   node    web/Dockerfile    not changed by the PR
+#   redis   a fixed tag       never recorded
+HCONFIG='{"images": [
+  {"name": "python", "image": "python", "dockerfile": "./Dockerfile", "variable": "PYTHON_DIGEST"},
+  {"name": "node", "image": "node", "dockerfile": "web/Dockerfile", "variable": "NODE_DIGEST"},
+  {"name": "redis", "image": "redis", "tag": "7-alpine", "variable": "REDIS_DIGEST"}
+], "settings": {"commit-prefix": "chore(deps)"}}'
+
+# Fixed dates: the same content makes the same commits in every case.
+hcommit() {
+  GIT_AUTHOR_DATE=2026-11-01T10:00:00Z GIT_COMMITTER_DATE=2026-11-01T10:00:00Z \
+    git -C "$1/repo" -c user.name=test -c user.email=test@example.invalid commit -q -am "$2"
+}
+# hput <dir> <path> <content>: a file in the checkout
+hput() { mkdir -p "$(dirname "$1/repo/$2")"; printf '%s\n' "$3" > "$1/repo/$2"; }
+# hmanifest <dir> <image:tag> <manifest|DENIED|FLAKY...>: the registry's answer
+hmanifest() { printf '%s\n' "$3" > "$1/manifests/$(printf '%s' "$2" | tr '/:' '__')"; }
+handoff_dir() {
+  local dir="$WORK/handoff-$1"
+  mkdir -p "$dir/manifests" "$dir/temp"
+  : > "$dir/output"; : > "$dir/calls"; : > "$dir/ctx"; : > "$dir/steps"; : > "$dir/log"; : > "$dir/docker-calls"
+  echo 1760000000 > "$dir/clock"
+  git init -q --bare "$dir/origin.git"
+  git init -q "$dir/repo"
+  git -C "$dir/repo" remote add origin "$dir/origin.git"
+  hput "$dir" "$HCFG" "$HCONFIG"
+  hput "$dir" Dockerfile 'FROM python:3.14-alpine'
+  hput "$dir" web/Dockerfile 'FROM node:22-alpine'
+  git -C "$dir/repo" add -A
+  hcommit "$dir" "feat: initial"
+  git -C "$dir/repo" rev-parse HEAD > "$dir/other-commit"
+  hput "$dir" Dockerfile 'FROM python:3.15-alpine'
+  hcommit "$dir" "build(deps): bump python from 3.14-alpine to 3.15-alpine"
+  git -C "$dir/repo" push -q origin HEAD:main
+  git -C "$dir/repo" rev-parse HEAD > "$dir/merge-commit"
+  echo '[{"filename":"Dockerfile","status":"modified"}]' > "$dir/files.1.json"
+  hmanifest "$dir" python:3.15-alpine "$(index "$D_PY" "$D_PY386")"
+  hmanifest "$dir" node:22-alpine "$(index "$D_NODE" "sha256:$(hex 4)")"
+  hmanifest "$dir" redis:7-alpine "$(index "sha256:$(hex 5)" "sha256:$(hex 6)")"
+  # created_at is the date of the tagged commit (GitHub's docs): older than
+  # the digests. published_at is when the release run published it.
+  echo '{"tag_name":"v1.4.0","created_at":"2000-01-01T00:00:00Z","published_at":"2099-01-01T00:00:00Z"}' > "$dir/latest.1.json"
+  echo '{"status":"ahead","ahead_by":1,"behind_by":0}' > "$dir/compare.1.json"
+  echo "$dir"
+}
+
+# hctx <dir> <name>: a value the steps' `if:` and env see (the last one set)
+hctx() { awk -v k="$2=" 'index($0, k) == 1 { v = substr($0, length(k) + 1) } END { print v }' "$1/ctx"; }
+hout() { hctx "$1" "steps.$2.outputs.$3"; }
+# hstep_runs <dir> <step id>: whether GitHub runs the step - its `if:` from the
+# workflow: terms joined by &&, each steps.<id>.outputs.<name>,
+# steps.<id>.outcome, inputs.<name> or github.event.<path> compared (== or !=)
+# with a string or with another of these.
+hstep_runs() {
+  local dir="$1" id="$2" cond rest term got want left op right literal other
+  local ctx="steps\.[a-z0-9_-]+\.(outputs\.[a-z0-9_-]+|outcome)|inputs\.[a-z0-9_-]+|github\.event\.[a-z0-9_.]+"
+  local compare="^($ctx) (==|!=) ('([^']*)'|($ctx))$"
+  cond=$(awk -v id="        id: $id" '$0 == id { found = 1; next }
+    found && /^        if: / { sub(/^        if: /, ""); print; exit } found && /^      - / { exit }' "$WORKFLOW_FILE")
+  if [ -z "$cond" ]; then echo "FATAL: no 'if:' after 'id: $id' in the workflow - update this test"; exit 1; fi
+  rest="$cond"
+  while [ -n "$rest" ]; do
+    term="${rest%% && *}"
+    if [ "$term" = "$rest" ]; then rest=""; else rest="${rest#* && }"; fi
+    if [[ ! $term =~ $compare ]]; then echo "FATAL: hstep_runs cannot evaluate '$term' of step $id - update this test"; exit 1; fi
+    left="${BASH_REMATCH[1]}" op="${BASH_REMATCH[3]}" right="${BASH_REMATCH[4]}" literal="${BASH_REMATCH[5]}" other="${BASH_REMATCH[6]}"
+    got=$(hctx "$dir" "$left")
+    if [ "${right:0:1}" = "'" ]; then want="$literal"; else want=$(hctx "$dir" "$other"); fi
+    if [ "$op" = "==" ]; then [ "$got" = "$want" ] || return 1; else [ "$got" != "$want" ] || return 1; fi
+  done
+}
+# hrun <dir> <step id> <body> [VAR=value ...]: runs a step in the checkout, as
+# a `shell: bash` step runs; its outputs and outcome go to the context.
+hrun() {
+  local dir="$1" id="$2" body="$3" rc line; shift 3
+  : > "$dir/out-$id"
+  ( cd "$dir/repo" && env PATH="$WORK/hbin:$PATH" FAKE="$dir" GITHUB_OUTPUT="$dir/out-$id" RUNNER_TEMP="$dir/temp" \
+      GH_TOKEN=test REPO=o/r PR_NUMBER=7 "$@" bash --noprofile --norc -eo pipefail -c "$body" ) >> "$dir/log" 2>&1
+  rc=$?
+  echo "$id" >> "$dir/steps"
+  while IFS= read -r line; do echo "steps.$id.outputs.$line" >> "$dir/ctx"; done < "$dir/out-$id"
+  if [ "$rc" -eq 0 ]; then echo "steps.$id.outcome=success" >> "$dir/ctx"; else echo "steps.$id.outcome=failure" >> "$dir/ctx"; fi
+}
+# handoff_before <dir> [KEY=value ...]: the handoff steps before the dispatch,
+# after a merge as the merge step reports it. KEY: CONFIG (the input
+# base-image-config), WAIT (release-wait-minutes), MERGED, MERGE_COMMIT,
+# CHECKOUT (its outcome), HPATH (put first on PATH of the bash steps),
+# BASE_REF (the PR's base branch) and DEFAULT_BRANCH (the repository's; both
+# main by default).
+handoff_before() {
+  local dir="$1" kv config="$HCFG" wait=60 merged=true checkout=success mc hpath="" base_ref=main default_branch=main; shift
+  mc=$(cat "$dir/merge-commit")
+  for kv in "$@"; do
+    case "$kv" in
+      CONFIG=*) config="${kv#*=}" ;; WAIT=*) wait="${kv#*=}" ;; MERGED=*) merged="${kv#*=}" ;;
+      MERGE_COMMIT=*) mc="${kv#*=}" ;; CHECKOUT=*) checkout="${kv#*=}" ;; HPATH=*) hpath="${kv#*=}:" ;;
+      BASE_REF=*) base_ref="${kv#*=}" ;; DEFAULT_BRANCH=*) default_branch="${kv#*=}" ;;
+    esac
+  done
+  {
+    echo "github.event.pull_request.base.ref=$base_ref"
+    echo "github.event.repository.default_branch=$default_branch"
+    echo "inputs.base-image-config=$config"
+    echo "steps.merge.outputs.merged=$merged"
+    echo "steps.merge.outputs.merge-commit=$mc"
+    echo "steps.guard.outputs.release-workflow=$REL_WF"
+  } >> "$dir/ctx"
+  if hstep_runs "$dir" handoff-checkout; then
+    echo handoff-checkout >> "$dir/steps"; echo "steps.handoff-checkout.outcome=$checkout" >> "$dir/ctx"
+  fi
+  if hstep_runs "$dir" handoff-files; then
+    hrun "$dir" handoff-files "$HFILES_BODY" PATH="$hpath$WORK/hbin:$PATH" CONFIG_FILE="$config" MERGE_COMMIT="$mc" WAIT_MINUTES="$wait"
+  fi
+  if hstep_runs "$dir" handoff-resolve; then
+    hrun "$dir" handoff-resolve "$RESOLVE_BODY" GITHUB_ACTION_PATH="$ACTION_DIR" CONFIG_FILE="" INLINE_IMAGES="$(hout "$dir" handoff-files entries)"
+  fi
+  if hstep_runs "$dir" handoff-login; then
+    echo handoff-login >> "$dir/steps"; echo "steps.handoff-login.outcome=success" >> "$dir/ctx"
+  fi
+  if hstep_runs "$dir" handoff-digests; then
+    hrun "$dir" handoff-digests "$HDIGESTS_BODY" PATH="$hpath$WORK/hbin:$PATH" \
+      CHANGED_VARIABLES="$(hout "$dir" handoff-files variables)" RESOLVED_IMAGES="$(hout "$dir" handoff-resolve images)"
+  fi
+}
+# handoff_after <dir> [VAR=value ...]: the note step, after the release step
+# reported its result (steps.release.outputs.* in the context).
+handoff_after() {
+  local dir="$1"; shift
+  if hstep_runs "$dir" handoff-note; then
+    hrun "$dir" handoff-note "$HNOTE_BODY" MERGE_COMMIT="$(hctx "$dir" steps.merge.outputs.merge-commit)" \
+      RELEASE_RUN_URL="$(hout "$dir" release run-url)" DIGESTS="$(hout "$dir" handoff-digests digests)" \
+      IMAGES="$(hout "$dir" handoff-digests images)" RECORDED_AT="$(hout "$dir" handoff-digests recorded-at)" "$@"
+  fi
+}
+# handoff_flow <dir> [KEY=value ...]: before, a release run that ended with
+# RELEASE (default success), after. NOTE_PATH: put first on the note's PATH.
+handoff_flow() {
+  local dir="$1" kv release=success note_path=""; shift
+  for kv in "$@"; do
+    case "$kv" in RELEASE=*) release="${kv#*=}" ;; NOTE_PATH=*) note_path="${kv#*=}:" ;; esac
+  done
+  handoff_before "$dir" "$@"
+  echo "steps.release.outputs.result=$release" >> "$dir/ctx"
+  echo "steps.release.outputs.run-url=$RUN_555" >> "$dir/ctx"
+  handoff_after "$dir" PATH="$note_path$WORK/hbin:$PATH"
+}
+
+# hresult <name> <dir> <want>: the handoff's verdict, as the job output
+# base-image-handoff takes it (the note's, else the digests', else the files').
+hresult() {
+  local got
+  got=$(hout "$2" handoff-note result); [ -n "$got" ] || got=$(hout "$2" handoff-digests result); [ -n "$got" ] || got=$(hout "$2" handoff-files result)
+  if [ "$got" = "$3" ]; then pass "$1: handoff $3"; else fail "$1: handoff '$got', want '$3'"; sed 's/^/     | /' "$2/log"; fi
+}
+heq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1: '$2', want '$3'"; fi; }
+hran() { if grep -qx "$3" "$2/steps"; then pass "$1: $3 ran"; else fail "$1: $3 did not run"; fi; }
+hskipped() { if grep -qx "$3" "$2/steps"; then fail "$1: $3 ran"; else pass "$1: $3 skipped"; fi; }
+# hannotations <name> <dir> <want>: the annotation kinds in the log, e.g.
+# "notice" or "notice warning"; "-": none
+hannotations() {
+  local got; got=$(sed -n 's/^::\(notice\|warning\|error\)[ :].*/\1/p' "$2/log" | sort -u | paste -sd' ' -)
+  [ -n "$got" ] || got="-"
+  if [ "$got" = "$3" ]; then pass "$1: annotations '$3'"; else fail "$1: annotations '$got', want '$3'"; sed 's/^/     | /' "$2/log"; fi
+}
+note_of() { git -C "$1/origin.git" notes --ref="$NOTES_REF" show "$2" 2>/dev/null; }
+no_note() { if git -C "$2/origin.git" rev-parse -q --verify "$NOTES_REF" > /dev/null; then fail "$1: origin has a note"; else pass "$1: no note on origin"; fi; }
+
+# The bump of python's FROM line, released: the linux/amd64 digest of the new
+# tag is recorded on the merge commit, nothing else.
+D=$(handoff_dir recorded); MC=$(cat "$D/merge-commit")
+handoff_flow "$D"
+hresult handoff/recorded "$D" recorded
+hannotations handoff/recorded "$D" -
+heq "handoff/recorded: only the changed Dockerfile's digest, linux/amd64 (not 386)" "$(hout "$D" handoff-digests digests)" "{\"PYTHON_DIGEST\":\"$D_PY\"}"
+heq "handoff/recorded: names" "$(hout "$D" handoff-note images)" '["python"]'
+heq "handoff/recorded: release" "$(hout "$D" handoff-note release)" v1.4.0
+heq "handoff/recorded: only the changed image was read" "$(cat "$D/docker-calls")" "manifest inspect python:3.15-alpine"
+hskipped handoff/recorded "$D" handoff-login
+RECORDED_AT=$(hout "$D" handoff-digests recorded-at)
+if [[ "$RECORDED_AT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then pass "handoff/recorded: read at $RECORDED_AT (UTC)"; else fail "handoff/recorded: recorded-at '$RECORDED_AT'"; fi
+called handoff/recorded "$D" "api repos/o/r/releases/latest --jq [(.tag_name // \"\"), (.published_at // \"\")] | @tsv"
+called handoff/recorded "$D" "api repos/o/r/compare/$MC...v1.4.0 --jq .status"
+# The contract with the monitor: exactly one JSON object, in this shape.
+NOTE=$(note_of "$D" "$MC")
+WANT=$(jq -cn --arg t "$RECORDED_AT" --arg m "$MC" --arg u "$RUN_555" --arg d "$D_PY" \
+  '{schema: 1, source: "docker-maintenance-dependabot", recorded_at: $t, merge_commit: $m, release: "v1.4.0", release_run_url: $u, digests: {PYTHON_DIGEST: $d}}')
+heq "handoff/recorded: the note is the contract's object" "$(jq -c . <<< "$NOTE" 2>/dev/null)" "$WANT"
+heq "handoff/recorded: one line, one JSON value" "$(printf '%s\n' "$NOTE" | wc -l | tr -d ' ') $(jq -s length <<< "$NOTE")" "1 1"
+heq "handoff/recorded: keys in the contract's order" "$(jq -c keys_unsorted <<< "$NOTE")" '["schema","source","recorded_at","merge_commit","release","release_run_url","digests"]'
+heq "handoff/recorded: schema is a number" "$(jq -r '.schema | type' <<< "$NOTE")" number
+heq "handoff/recorded: notes commit by github-actions[bot]" "$(git -C "$D/origin.git" log -1 --format='%an <%ae>|%cn <%ce>' "$NOTES_REF")" "$BOT|$BOT"
+heq "handoff/recorded: the merge commit has the only note" "$(git -C "$D/origin.git" notes --ref="$NOTES_REF" list | awk '{ print $2 }')" "$MC"
+
+# Only the changed entries are resolved: a broken entry the PR did not touch
+# (its Dockerfile is gone) is the monitor's to report, not this job's.
+D=$(handoff_dir unrelated-broken)
+hput "$D" "$HCFG" "$(jq -c '.images += [{"name": "worker", "image": "golang", "dockerfile": "worker/Dockerfile", "variable": "GO_DIGEST"}]' <<< "$HCONFIG")"
+handoff_flow "$D"
+hresult handoff/unrelated-broken-entry "$D" recorded
+hannotations handoff/unrelated-broken-entry "$D" -
+heq "handoff/unrelated-broken-entry: only python resolved" "$(hout "$D" handoff-files entries | jq -c 'map(.name)')" '["python"]'
+
+# Entries with a fixed tag are never recorded - also when the PR changed the
+# Dockerfile that uses the image - and nothing is resolved or read.
+D=$(handoff_dir fixed-tag)
+hput "$D" "$HCFG" '{"images": [{"name": "python", "image": "python", "tag": "3.15-alpine", "variable": "PYTHON_DIGEST"}]}'
+handoff_flow "$D"
+hresult handoff/fixed-tag "$D" none
+hannotations handoff/fixed-tag "$D" -
+hskipped handoff/fixed-tag "$D" handoff-resolve
+hskipped handoff/fixed-tag "$D" handoff-digests
+heq "handoff/fixed-tag: no registry read" "$(cat "$D/docker-calls")" ""
+no_note handoff/fixed-tag "$D"
+# One digest per variable: a variable is recorded only if every entry using
+# it names a Dockerfile the PR changed.
+D=$(handoff_dir shared-variable)
+hput "$D" "$HCFG" '{"images": [{"name": "python", "image": "python", "dockerfile": "Dockerfile", "variable": "PYTHON_DIGEST"},
+                               {"name": "python-tools", "image": "python", "tag": "3.15-alpine", "variable": "PYTHON_DIGEST"}]}'
+handoff_flow "$D"
+hresult handoff/shared-with-a-fixed-tag "$D" none
+no_note handoff/shared-with-a-fixed-tag "$D"
+# The PR changed only web/Dockerfile: node is recorded, python - whose
+# digest may have moved too - is left to the monitor.
+D=$(handoff_dir other-dockerfile)
+hput "$D" web/Dockerfile 'FROM node:24-alpine'; hcommit "$D" "build(deps): bump node"; git -C "$D/repo" rev-parse HEAD > "$D/merge-commit"
+echo '[{"filename":"web/Dockerfile","status":"modified"}]' > "$D/files.1.json"
+hmanifest "$D" node:24-alpine "$(index "$D_NODE" "sha256:$(hex 4)")"
+handoff_flow "$D"
+hresult handoff/only-the-changed-dockerfile "$D" recorded
+heq "handoff/only-the-changed-dockerfile: node only" "$(jq -c .digests <<< "$(note_of "$D" "$(cat "$D/merge-commit")")")" "{\"NODE_DIGEST\":\"$D_NODE\"}"
+# A PR that changed no watched Dockerfile (an npm update): nothing to say.
+D=$(handoff_dir no-dockerfile); echo '[{"filename":"package-lock.json","status":"modified"}]' > "$D/files.1.json"
+handoff_flow "$D"
+hresult handoff/no-watched-dockerfile-changed "$D" none
+hannotations handoff/no-watched-dockerfile-changed "$D" -
+hskipped handoff/no-watched-dockerfile-changed "$D" handoff-resolve
+
+# Most repositories have no monitor: skipped without a word, before any API call.
+D=$(handoff_dir no-config); rm "$D/repo/$HCFG"
+handoff_flow "$D"
+hresult handoff/no-config "$D" none
+hannotations handoff/no-config "$D" -
+not_called handoff/no-config "$D" "pulls/7/files"
+hskipped handoff/no-config "$D" handoff-resolve
+no_note handoff/no-config "$D"
+# base-image-config empty: off - not even the checkout.
+D=$(handoff_dir input-empty)
+handoff_flow "$D" CONFIG=
+heq "handoff/input-empty: no handoff step ran" "$(cat "$D/steps")" ""
+no_note handoff/input-empty "$D"
+# Nothing merged, no release workflow, merge commit unknown: no checkout.
+D=$(handoff_dir not-merged); handoff_flow "$D" MERGED=false
+heq "handoff/not-merged: no handoff step ran" "$(cat "$D/steps")" ""
+D=$(handoff_dir merge-commit-unknown); handoff_flow "$D" MERGE_COMMIT=
+heq "handoff/merge-commit-unknown: no handoff step ran" "$(cat "$D/steps")" ""
+# A Dependabot target-branch other than the default branch (here: release):
+# merged and released as before, but nothing handed over - the monitor checks
+# the default branch, and a note on a commit that is not on it could make the
+# monitor store a digest the default branch's image was never built from.
+D=$(handoff_dir other-base-branch); handoff_flow "$D" BASE_REF=release
+heq "handoff/other-base-branch: no handoff step ran" "$(cat "$D/steps")" ""
+heq "handoff/other-base-branch: no API call" "$(cat "$D/calls")" ""
+heq "handoff/other-base-branch: no registry read" "$(cat "$D/docker-calls")" ""
+no_note handoff/other-base-branch "$D"
+# The gate compares the two branches, not a name: a default branch called
+# develop is handed over like main.
+D=$(handoff_dir default-branch-develop); handoff_flow "$D" BASE_REF=develop DEFAULT_BRANCH=develop
+hresult handoff/default-branch-develop "$D" recorded
+heq "handoff/default-branch-develop: the note is on the merge commit" "$(jq -r .merge_commit <<< "$(note_of "$D" "$(cat "$D/merge-commit")")")" "$(cat "$D/merge-commit")"
+D=$(handoff_dir checkout-failed); handoff_flow "$D" CHECKOUT=failure
+heq "handoff/checkout-failed: nothing after the checkout" "$(cat "$D/steps")" "handoff-checkout"
+# release-wait-minutes 0: whether the release succeeds is not seen - a notice,
+# and nothing resolved or read.
+D=$(handoff_dir wait-zero); handoff_flow "$D" WAIT=0
+hresult handoff/wait-zero "$D" skipped
+hannotations handoff/wait-zero "$D" notice
+logged handoff/wait-zero "$D" "release-wait-minutes is 0, so this run does not see whether the release succeeds."
+hskipped handoff/wait-zero "$D" handoff-resolve
+heq "handoff/wait-zero: no registry read" "$(cat "$D/docker-calls")" ""
+# The changed files not readable: a notice, nothing recorded.
+D=$(handoff_dir files-unreadable); raw "$D" files.1.json HTTP500
+handoff_flow "$D"
+hresult handoff/files-unreadable "$D" skipped
+hannotations handoff/files-unreadable "$D" notice
+
+# Two changed images: the internal GHCR one is unreadable (callers grant no
+# packages: read) - a notice, the other is recorded. "web/./Dockerfile" is
+# normalised as the resolver reads it.
+D=$(handoff_dir ghcr-denied)
+hput "$D" "$HCFG" '{"images": [{"name": "python", "image": "python", "dockerfile": "Dockerfile", "variable": "PYTHON_DIGEST"},
+                               {"name": "base", "image": "ghcr.io/acme/base", "dockerfile": "web/./Dockerfile", "variable": "BASE_DIGEST"}]}'
+hput "$D" web/Dockerfile 'FROM ghcr.io/acme/base:1.2'; hcommit "$D" "build(deps): bump both"; git -C "$D/repo" rev-parse HEAD > "$D/merge-commit"
+echo '[{"filename":"Dockerfile"},{"filename":"web/Dockerfile"}]' > "$D/files.1.json"
+hmanifest "$D" ghcr.io/acme/base:1.2 DENIED
+handoff_flow "$D"
+hresult handoff/ghcr-denied "$D" recorded
+hran handoff/ghcr-denied "$D" handoff-login
+hannotations handoff/ghcr-denied "$D" notice
+logged handoff/ghcr-denied "$D" "ghcr.io/acme/base:1.2 could not be read (access denied) - for an internal or private GHCR image the calling workflow has to grant 'packages: read'."
+heq "handoff/ghcr-denied: the readable one recorded" "$(hout "$D" handoff-digests digests)" "{\"PYTHON_DIGEST\":\"$D_PY\"}"
+heq "handoff/ghcr-denied: access denied is not retried" "$(grep -c 'ghcr.io/acme/base:1.2' "$D/docker-calls")" 1
+# Both readable: both recorded.
+D=$(handoff_dir two-images)
+hput "$D" "$HCFG" '{"images": [{"name": "python", "image": "python", "dockerfile": "Dockerfile", "variable": "PYTHON_DIGEST"},
+                               {"name": "base", "image": "ghcr.io/acme/base", "dockerfile": "web/./Dockerfile", "variable": "BASE_DIGEST"}]}'
+hput "$D" web/Dockerfile 'FROM ghcr.io/acme/base:1.2'; hcommit "$D" "build(deps): bump both"; git -C "$D/repo" rev-parse HEAD > "$D/merge-commit"
+echo '[{"filename":"Dockerfile"},{"filename":"web/Dockerfile"}]' > "$D/files.1.json"
+hmanifest "$D" ghcr.io/acme/base:1.2 "{\"schemaVersion\":2,\"config\":{\"digest\":\"$D_BASE\"}}"
+handoff_flow "$D"
+hresult handoff/two-images "$D" recorded
+heq "handoff/two-images: both recorded" "$(jq -cS .digests <<< "$(note_of "$D" "$(cat "$D/merge-commit")")")" "{\"BASE_DIGEST\":\"$D_BASE\",\"PYTHON_DIGEST\":\"$D_PY\"}"
+heq "handoff/two-images: names" "$(hout "$D" handoff-note images)" '["base","python"]'
+# A transient registry error is retried (10 s later); an unknown manifest is not.
+D=$(handoff_dir flaky); hmanifest "$D" python:3.15-alpine "$(printf 'FLAKY\n%s' "$(index "$D_PY" "$D_PY386")")"
+handoff_flow "$D"
+hresult handoff/transient-error-retried "$D" recorded
+heq "handoff/transient-error-retried: waited 10 s" "$(paste -sd' ' - 2>/dev/null < "$D/sleeps")" 10
+D=$(handoff_dir unknown-manifest); rm "$D/manifests/python_3.15-alpine"
+handoff_flow "$D"
+hresult handoff/unknown-manifest "$D" skipped
+hannotations handoff/unknown-manifest "$D" notice
+heq "handoff/unknown-manifest: not retried" "$(wc -l < "$D/docker-calls" | tr -d ' ')" 1
+hskipped handoff/unknown-manifest "$D" handoff-note
+# An index without linux/amd64 keeps the legacy pick; a manifest without a
+# digest is not recorded.
+D=$(handoff_dir no-amd64)
+hmanifest "$D" python:3.15-alpine "{\"manifests\":[{\"digest\":\"$D_PY386\",\"platform\":{\"architecture\":\"arm64\",\"os\":\"linux\"}},{\"digest\":\"$D_NODE\",\"platform\":{\"architecture\":\"386\",\"os\":\"linux\"}}]}"
+handoff_flow "$D"
+heq "handoff/index-without-amd64: the legacy pick" "$(hout "$D" handoff-digests digests)" "{\"PYTHON_DIGEST\":\"$D_NODE\"}"
+D=$(handoff_dir no-digest); hmanifest "$D" python:3.15-alpine '{"schemaVersion":2}'
+handoff_flow "$D"
+hresult handoff/manifest-without-digest "$D" skipped
+hannotations handoff/manifest-without-digest "$D" notice
+# The FROM line names another image than the entry: the resolver's error, and
+# that entry is not recorded.
+D=$(handoff_dir not-resolved); hput "$D" Dockerfile 'FROM pypy:3.11'; hcommit "$D" "build(deps): switch"; git -C "$D/repo" rev-parse HEAD > "$D/merge-commit"
+handoff_flow "$D"
+hresult handoff/tag-not-resolved "$D" skipped
+hannotations handoff/tag-not-resolved "$D" "error notice"
+heq "handoff/tag-not-resolved: no registry read" "$(cat "$D/docker-calls")" ""
+
+# Only after a release run that succeeded: anything else, no note.
+for r in failed timeout not-found unreadable dispatch-failed; do
+  D=$(handoff_dir "release-$r"); handoff_flow "$D" RELEASE="$r"
+  hskipped "handoff/release-$r" "$D" handoff-note
+  no_note "handoff/release-$r" "$D"
+done
+# The run succeeded, but did it cut a release for the merge? No release at
+# all, one published before the digests were read (its created_at - the
+# tagged commit's date - newer does not count), one without the merge commit,
+# answers that cannot be read: a notice, no note.
+D=$(handoff_dir no-release); raw "$D" latest.1.json HTTP404
+handoff_flow "$D"
+hresult handoff/no-release "$D" not-verified
+hannotations handoff/no-release "$D" notice
+no_note handoff/no-release "$D"
+D=$(handoff_dir old-release)
+echo '{"tag_name":"v1.3.9","created_at":"2099-01-01T00:00:00Z","published_at":"2000-01-01T00:00:00Z"}' > "$D/latest.1.json"
+handoff_flow "$D"
+hresult handoff/release-older-than-the-digests "$D" not-verified
+logged handoff/release-older-than-the-digests "$D" "is not newer than the digests read before the dispatch"
+not_called handoff/release-older-than-the-digests "$D" "compare/"
+no_note handoff/release-older-than-the-digests "$D"
+D=$(handoff_dir draft-like); echo '{"tag_name":"v1.4.0","created_at":"2099-01-01T00:00:00Z","published_at":null}' > "$D/latest.1.json"
+handoff_flow "$D"
+hresult handoff/release-without-publish-time "$D" not-verified
+for s in behind diverged; do
+  D=$(handoff_dir "compare-$s"); echo "{\"status\":\"$s\"}" > "$D/compare.1.json"
+  handoff_flow "$D"
+  hresult "handoff/release-$s-the-merge" "$D" not-verified
+  logged "handoff/release-$s-the-merge" "$D" "does not contain the merge commit"
+  no_note "handoff/release-$s-the-merge" "$D"
+done
+D=$(handoff_dir compare-unreadable); raw "$D" compare.1.json HTTP500
+handoff_flow "$D"
+hresult handoff/compare-unreadable "$D" not-verified
+no_note handoff/compare-unreadable "$D"
+D=$(handoff_dir identical); echo '{"status":"identical"}' > "$D/compare.1.json"
+handoff_flow "$D"
+hresult handoff/release-tags-the-merge-commit "$D" recorded
+
+# A note of another merge commit on origin stays.
+D=$(handoff_dir earlier-note); MC=$(cat "$D/merge-commit"); OTHER=$(cat "$D/other-commit")
+git -C "$D/repo" -c user.name=test -c user.email=test@example.invalid notes --ref="$NOTES_REF" add -m '{"schema":1,"earlier":true}' "$OTHER"
+git -C "$D/repo" push -q origin "$NOTES_REF"; git -C "$D/repo" update-ref -d "$NOTES_REF"
+handoff_flow "$D"
+hresult handoff/earlier-note "$D" recorded
+heq "handoff/earlier-note: still there" "$(note_of "$D" "$OTHER")" '{"schema":1,"earlier":true}'
+heq "handoff/earlier-note: this one added" "$(jq -r .merge_commit <<< "$(note_of "$D" "$MC")")" "$MC"
+# Another run pushed a note in between: the push is rejected, the next attempt
+# adds this note on top of origin's - both notes are there.
+D=$(handoff_dir race); MC=$(cat "$D/merge-commit"); OTHER=$(cat "$D/other-commit")
+git clone -q "$D/origin.git" "$D/other"
+handoff_flow "$D" NOTE_PATH="$WORK/racebin"
+hresult handoff/push-rejected-once "$D" recorded
+hannotations handoff/push-rejected-once "$D" -
+logged handoff/push-rejected-once "$D" "Attempt 1/3 to record the note failed"
+heq "handoff/push-rejected-once: the other run's note" "$(note_of "$D" "$OTHER")" '{"schema":1,"other":true}'
+heq "handoff/push-rejected-once: this run's note" "$(jq -r .merge_commit <<< "$(note_of "$D" "$MC")")" "$MC"
+# Pushing is refused for good: three attempts, a warning - the step and the
+# job stay green.
+D=$(handoff_dir push-refused)
+printf '#!/bin/sh\necho "push refused by policy" >&2\nexit 1\n' > "$D/origin.git/hooks/pre-receive"; chmod +x "$D/origin.git/hooks/pre-receive"
+handoff_flow "$D"
+hresult handoff/push-refused "$D" failed
+hannotations handoff/push-refused "$D" warning
+heq "handoff/push-refused: the step succeeds" "$(hctx "$D" steps.handoff-note.outcome)" success
+heq "handoff/push-refused: three attempts" "$(grep -c 'to record the note failed' "$D/log")" 3
+no_note handoff/push-refused "$D"
+# Malformed input (never written by the digests step): a warning, no note.
+D=$(handoff_dir bad-input); MC=$(cat "$D/merge-commit")
+echo "steps.merge.outputs.merge-commit=$MC" >> "$D/ctx"; echo "steps.release.outputs.run-url=$RUN_555" >> "$D/ctx"
+hrun "$D" handoff-note "$HNOTE_BODY" MERGE_COMMIT="$MC" RELEASE_RUN_URL="$RUN_555" DIGESTS='{"PYTHON_DIGEST":"sha256:short"}' IMAGES='["python"]' RECORDED_AT=2026-11-12T10:00:00Z
+hresult handoff/malformed-digests "$D" failed
+hannotations handoff/malformed-digests "$D" warning
+not_called handoff/malformed-digests "$D" "releases/latest"
+no_note handoff/malformed-digests "$D"
+# git not usable: three attempts, a warning.
+D=$(handoff_dir no-git); mkdir -p "$D/nogit"; printf '#!/usr/bin/env bash\nexit 127\n' > "$D/nogit/git"; chmod +x "$D/nogit/git"
+handoff_flow "$D" NOTE_PATH="$D/nogit"
+heq "handoff/git-broken: the step succeeds" "$(hctx "$D" steps.handoff-note.outcome)" success
+hresult handoff/git-broken "$D" failed
+hannotations handoff/git-broken "$D" warning
+# An error nobody expected (here: no temporary directory) is a warning too,
+# never a red step.
+D=$(handoff_dir unexpected); mkdir -p "$D/nomktemp"; printf '#!/usr/bin/env bash\nexit 1\n' > "$D/nomktemp/mktemp"; chmod +x "$D/nomktemp/mktemp"
+handoff_flow "$D" NOTE_PATH="$D/nomktemp"
+heq "handoff/unexpected-error: the step succeeds" "$(hctx "$D" steps.handoff-note.outcome)" success
+hresult handoff/unexpected-error "$D" failed
+hannotations handoff/unexpected-error "$D" warning
+logged handoff/unexpected-error "$D" "Unexpected error (exit 1)"
+no_note handoff/unexpected-error "$D"
+
+# --- merge -> base image handoff -> release -> note ----------------------------------
+# The job's chain with the real merge and release steps. The release step
+# behaves the same, byte for byte, whatever the handoff did: recorded, its
+# checkout failed, or its tools are broken (jq missing).
+full_flow() {
+  local dir="$1" mc; shift
+  mc=$(cat "$dir/merge-commit")
+  echo "$PR_READY" > "$dir/pr.1.json"
+  echo "${PR_MERGED/\"m1\"/\"$mc\"}" > "$dir/prmerged.1.json"
+  tested_on "$dir" base0
+  echo '{"ref":"refs/heads/main","object":{"sha":"base0","type":"commit"}}' > "$dir/baseref.1.json"
+  echo "{\"sha\":\"$mc\",\"parents\":[{\"sha\":\"base0\"}]}" > "$dir/gitcommit.1.json"
+  echo '{"sha":"abc","commit":{"committer":{"date":"2026-01-01T10:00:00Z"}}}' > "$dir/commit.1.json"
+  echo '[]' > "$dir/comments.1.json"
+  printf '{"workflow_run_id":555,"html_url":"%s"}\n' "$RUN_555" > "$dir/dispatch.1.json"
+  relrun completed success > "$dir/release.1.json"
+  merge_run "$dir" true squash; cp "$dir/log" "$dir/merge.log"; : > "$dir/log"
+  handoff_before "$dir" MERGED="$(sed -n 's/^merged=//p' "$dir/output")" MERGE_COMMIT="$(sed -n 's/^merge-commit=//p' "$dir/output")" "$@"
+  cp "$dir/log" "$dir/handoff.log"
+  : > "$dir/output"
+  release_run "$dir" MERGE_COMMIT="$(hctx "$dir" steps.merge.outputs.merge-commit)"; echo "rc=$?" >> "$dir/log"
+  cp "$dir/log" "$dir/release.log"; cp "$dir/output" "$dir/release.output"
+  while IFS= read -r line; do echo "steps.release.outputs.$line" >> "$dir/ctx"; done < "$dir/output"
+  cp "$dir/handoff.log" "$dir/log"
+  handoff_after "$dir" PATH="$WORK/hbin:$PATH"
+}
+D=$(handoff_dir full-recorded); full_flow "$D"; FULL="$D"
+hresult flow/handoff-recorded "$D" recorded
+heq "flow/handoff-recorded: merged" "$(hctx "$D" steps.merge.outputs.merged)" true
+heq "flow/handoff-recorded: released" "$(sed -n 's/^result=//p' "$D/release.output")" success
+called flow/handoff-recorded "$D" "$DISPATCH"
+ORDER=$(awk '/^pr merge/ { a = NR } /pulls\/7\/files/ { b = NR } /dispatches/ { c = NR } /releases\/latest/ { d = NR } END { print (a && a < b && b < c && c < d) ? "ok" : a " " b " " c " " d }' "$D/calls")
+if [ "$ORDER" = ok ]; then pass "flow/handoff-recorded: merge, digests, dispatch, note - in that order"; else fail "flow/handoff-recorded: order $ORDER"; fi
+heq "flow/handoff-recorded: the note is on the merge commit" "$(jq -r .merge_commit <<< "$(note_of "$D" "$(cat "$D/merge-commit")")")" "$(cat "$D/merge-commit")"
+for c in checkout-failed tools-broken; do
+  D=$(handoff_dir "full-$c")
+  case "$c" in
+    checkout-failed) full_flow "$D" CHECKOUT=failure ;;
+    tools-broken)
+      mkdir -p "$D/nojq"; printf '#!/usr/bin/env bash\necho "jq: command not found" >&2\nexit 127\n' > "$D/nojq/jq"; chmod +x "$D/nojq/jq"
+      full_flow "$D" HPATH="$D/nojq" ;;
+  esac
+  hskipped "flow/handoff-$c" "$D" handoff-note
+  no_note "flow/handoff-$c" "$D"
+  if cmp -s "$FULL/release.log" "$D/release.log" && cmp -s "$FULL/release.output" "$D/release.output"; then
+    pass "flow/handoff-$c: the release step ran exactly as with the handoff recorded"
+  else
+    fail "flow/handoff-$c: the release step behaved differently"; diff "$FULL/release.log" "$D/release.log" | sed 's/^/     | /'
+  fi
+  heq "flow/handoff-$c: release dispatched once" "$(calls_to "$D" "/dispatches")" 1
+done
+
 # --- summary ------------------------------------------------------------------------
 # summary_run <name> [VAR=value ...]: the job summary for these step outputs,
 # in $WORK/summary-<name>/summary
@@ -1768,6 +2473,22 @@ shows summary/merged-by-hand-release "$S" "⚠️ Already merged before this run
 shows summary/merged-by-hand-release "$S" "No release started by this run. If the release of that merge failed, re-run the failed jobs of its run"
 lacks summary/merged-by-hand-release "$S" "nothing was merged"
 lacks summary/merged-by-hand-release "$S" "**Release dispatched**"
+# The base image handoff: one row after the release result - none for "none"
+# (no monitor config, no watched Dockerfile changed) or when it did not run.
+lacks summary/released "$WORK/summary-released" "Base image handoff"
+for r in "recorded|release v1.4.0|✅ Recorded for the base image monitor: python, node (release \`v1.4.0\`) - its next check stores these digests instead of releasing again" \
+         "not-verified|no release after the dispatch|⏭️ Not recorded: no release after the dispatch - the base image monitor releases this update once more on its next check" \
+         "skipped|release-wait-minutes is 0|⏭️ Not recorded: release-wait-minutes is 0 - the base image monitor releases this update once more on its next check" \
+         "failed|note not pushed|⚠️ Not recorded: note not pushed - the base image monitor releases this update once more on its next check"; do
+  IFS='|' read -r result detail row <<< "$r"
+  summary_run "handoff-$result" MERGE_REASON=merged MERGED=true MERGE_COMMIT=m1 RELEASE_WORKFLOW="$REL_WF" \
+    RELEASE_RESULT=success RELEASE_DETAIL="$RUN_555" RELEASE_RUN_URL="$RUN_555" \
+    HANDOFF_RESULT="$result" HANDOFF_DETAIL="$detail" HANDOFF_IMAGES='["python","node"]' HANDOFF_RELEASE=v1.4.0
+  shows "summary/handoff-$result" "$WORK/summary-handoff-$result" "| **Base image handoff** | $row |"
+done
+summary_run handoff-none MERGE_REASON=merged MERGED=true MERGE_COMMIT=m1 RELEASE_WORKFLOW="$REL_WF" \
+  RELEASE_RESULT=success RELEASE_DETAIL="$RUN_555" RELEASE_RUN_URL="$RUN_555" HANDOFF_RESULT=none HANDOFF_DETAIL="no base image monitor config"
+lacks summary/handoff-none "$WORK/summary-handoff-none" "Base image handoff"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"
