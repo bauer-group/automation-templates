@@ -23,7 +23,11 @@
 #    caller sets `patch`. Below 1.0.0 any change may break
 #    (SemVer 4): as in npm's caret ranges, a minor update of a 0.y.z version
 #    and a patch update of a 0.0.z version count as major - checked per
-#    dependency, the strictest one decides.
+#    dependency, the strictest one decides. An updated requirement range
+#    (pip `>=5.1.0,<7.0.0` -> `>=5.1.0,<8.0.0`) counts as major as well:
+#    the type fetch-metadata works out for a range says nothing about how
+#    far it now reaches. A dependency without an update type of its own (a
+#    range in a grouped update) leaves the PR open.
 # 3. CI: the job waits until every other check run, check suite, commit status
 #    and workflow run on the PR head commit has completed and nothing has
 #    changed for 3 minutes (5 minutes after the start at the earliest), so a
@@ -161,7 +165,7 @@ on:
         default: true
 
       merge-update-types:
-        description: 'Semver update types that are merged, comma separated: patch, minor, major. Other updates stay open for review. Default: patch and minor, merged once the required PR CI passed (majors stay open); patch: patch updates only. A minor update of a 0.y.z version and a patch update of a 0.0.z version count as major.'
+        description: 'Semver update types that are merged, comma separated: patch, minor, major. Other updates stay open for review. Default: patch and minor, merged once the required PR CI passed (majors stay open); patch: patch updates only. A minor update of a 0.y.z version, a patch update of a 0.0.z version and an updated requirement range (>=5.1.0,<8.0.0) count as major.'
         type: string
         required: false
         default: 'patch,minor'
@@ -263,8 +267,8 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Decides from the inputs, the ecosystem, the update type and the
-      # versions of the updated dependencies alone - no API call.
+      # Decides from the inputs, the ecosystem, the update type, the versions
+      # of the updated dependencies and the PR title alone - no API call.
       # Tested by .github/workflows/tests/docker-maintenance-dependabot.test.sh
       - name: 🛡️ Merge guard
         id: guard
@@ -273,6 +277,7 @@ jobs:
           PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
           UPDATED_DEPENDENCIES_JSON: ${{ steps.metadata.outputs.updated-dependencies-json }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
           MERGE_UPDATE_TYPES: ${{ inputs.merge-update-types }}
           ALLOW_MAJOR: ${{ inputs.allow-major }}
           MERGE_METHOD: ${{ inputs.merge-method }}
@@ -387,7 +392,7 @@ jobs:
             version-update:semver-minor) TYPE="minor" ;;
             version-update:semver-major) TYPE="major" ;;
             *)
-              echo "::notice title=Dependabot PR left open::The update type could not be determined (no semver versions, e.g. a digest or a non-semver tag), so it cannot be shown to be one of:$ALLOWED. Review and merge it by hand."
+              echo "::notice title=Dependabot PR left open::The update type could not be determined (no semver versions, e.g. a digest, a non-semver tag or the requirement ranges of a grouped update), so it cannot be shown to be one of:$ALLOWED. Review and merge it by hand."
               decide false unknown-update-type
               exit 0
               ;;
@@ -397,12 +402,60 @@ jobs:
           # caret ranges (^0.3.1 allows < 0.4.0, ^0.0.3 allows < 0.0.4), a
           # minor update of a 0.y.z version and a patch update of a 0.0.z
           # version count as major. Each updated dependency is checked - in a
-          # grouped PR the strictest one decides. Only plain X.Y.Z versions are
-          # read (a leading v and a pre-release or build suffix allowed); any
-          # other version - a tag like 18-alpine, a date, a digest - keeps the
-          # type Dependabot reported. Versions that cannot be read at all leave
-          # the PR open: a merge gate must not merge what it could not check.
+          # grouped PR the strictest one decides. The new version is read, and
+          # only in plain X.Y.Z form (a leading v and a pre-release or build
+          # suffix allowed); any other one - a tag like 18-alpine, a date, a
+          # digest - keeps the type Dependabot reported. The new version is
+          # enough: a minor update keeps the major number, a patch update the
+          # minor number too, so a minor update to 0.y.z comes from a 0.x
+          # version and a patch update to 0.0.z from a 0.0.x one. That also
+          # covers previous versions that are missing or short: fetch-metadata
+          # lists none for NuGet, and for a Cargo or Composer requirement
+          # (0.24, ^0.5 without its ^) updated to the newest release it lists
+          # the requirement - 0.24 -> 0.30.0 is a 0.x minor update.
+          # A dependency without an update type of its own (fetch-metadata
+          # found no previous version to compare: a requirement range in a
+          # grouped update) cannot be checked, and the PR's type then comes
+          # from the other dependencies alone - the PR is left open as if its
+          # type were unknown. So are versions that cannot be read at all: a
+          # merge gate must not merge what it could not check.
+          #
+          # Requirement ranges count as major. For a manifest that names a
+          # range (pip/uv `pypdf>=5.1.0,<7.0.0`) Dependabot updates the range,
+          # and fetch-metadata cannot say how far the new range reaches: its
+          # newVersion is the newest release, its prevVersion the old range
+          # from the PR title with only the first operator cut off - for pip
+          # the upper bound, which Dependabot writes first.
+          # bauer-group/IP-ZAMMAD-MCPServer#10 widened `<7.0.0,>=5.1.0` to
+          # `>=5.1.0,<8.0.0`, which lets in pypdf 7, a major; fetch-metadata
+          # compared `7.0.0,>=5.1.0` with 7.0.1, reported semver-patch, and the
+          # PR was merged. A floor raised under the same cap reads as major the
+          # same way (`3,>=2.14.2` -> 2.14.3). So a previous or new version
+          # with range syntax - < > = ~ ^ ! , * | ( ) [ ] or a space - is not
+          # read: that dependency counts as major, and unless major updates are
+          # merged the PR is left open (range-update). One range keeps a plain
+          # previous version: an upper bound or an exclusion alone (`<8` ->
+          # `<9` gives prevVersion 8, and the newest 8.x reads as minor). The
+          # PR title shows it ("update x requirement from <8 to <9"), so it
+          # counts as major too. The title is free text that anyone who may
+          # edit the PR can change: it only ever tightens the decision, is
+          # matched without its control characters and is never written to an
+          # output or the log. A floor alone (`>=2.12.0` -> `>=2.14.0`) and a
+          # single caret, tilde or exact requirement leave a previous version
+          # that is right - their type counts as before.
+          # Working the type out from the ranges was rejected: the new range is
+          # in no field of fetch-metadata - only in the title of a single
+          # dependency's PR (in one syntax per ecosystem) or in the manifest
+          # diff of a grouped one - and the ranges a parser would turn into
+          # patch or minor updates (a floor raised under an unchanged cap) were
+          # left open as major before. See docs/workflows/docker-maintenance.md.
           TYPE_NOTE=""
+          RANGE=false
+          count_as_major() {
+            echo "$1: $2"
+            TYPE_NOTE="${TYPE_NOTE:+$TYPE_NOTE; }$1: $2"
+            TYPE=major
+          }
           if ! DEPS=$(printf '%s' "$UPDATED_DEPENDENCIES_JSON" | jq -r '
                 if type == "array" then .[] else error("not a list") end
                 | select(type == "object")
@@ -414,10 +467,23 @@ jobs:
             exit 0
           else
             SEMVER='^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+            RANGE_SYNTAX='[][<>=~^!,*|()[:space:]]'
+            UNTYPED=""
+            CHANGES=""
             while IFS=$'\t' read -r DEP PREV NEW DEP_TYPE; do
+              CHANGE="$DEP $PREV -> $NEW"
+              [ "$PREV" != - ] || CHANGE="$DEP -> $NEW"
+              CHANGES="${CHANGES:+$CHANGES, }$CHANGE"
+              if [ "$DEP_TYPE" = - ]; then
+                UNTYPED="${UNTYPED:+$UNTYPED, }$DEP"
+                continue
+              fi
+              if [[ "$PREV" =~ $RANGE_SYNTAX || "$NEW" =~ $RANGE_SYNTAX ]]; then
+                RANGE=true
+                count_as_major "requirement range treated as major" "$CHANGE"
+                continue
+              fi
               [[ "$NEW" =~ $SEMVER ]] || continue
-              # Matched last, so BASH_REMATCH holds the previous version.
-              [[ "$PREV" =~ $SEMVER ]] || continue
               [ "${BASH_REMATCH[1]}" = 0 ] || continue
               case "$DEP_TYPE" in
                 version-update:semver-minor) RULE="0.x minor treated as major" ;;
@@ -427,18 +493,34 @@ jobs:
                   ;;
                 *) continue ;;
               esac
-              echo "$RULE: $DEP $PREV -> $NEW"
-              TYPE_NOTE="${TYPE_NOTE:+$TYPE_NOTE; }$RULE: $DEP $PREV -> $NEW"
-              TYPE=major
+              count_as_major "$RULE" "$CHANGE"
             done <<< "$DEPS"
+            if [ -n "$UNTYPED" ]; then
+              echo "::notice title=Dependabot PR left open::The update type of $UNTYPED could not be determined (no previous version, e.g. a requirement range in a grouped update), so this PR cannot be shown to be one of:$ALLOWED. Review and merge it by hand."
+              decide false unknown-update-type
+              exit 0
+            fi
+          fi
+          # An upper bound or an exclusion alone - the versions look plain.
+          # Grouped updates have no such title; their versions decide.
+          TITLE="${PR_TITLE//[[:cntrl:]]/ }"
+          UPPER_BOUND_FIRST='[Uu]pdate .+ requirement from[[:space:]]+[<!]'
+          if [ "$RANGE" = false ] && [[ "$TITLE" =~ $UPPER_BOUND_FIRST ]]; then
+            RANGE=true
+            count_as_major "requirement range treated as major" "$CHANGES (range in the PR title)"
           fi
           echo "type-note=$TYPE_NOTE" >> "$GITHUB_OUTPUT"
 
           case " $ALLOWED " in
             *" $TYPE "*) decide true "$TYPE" ;;
             *)
-              echo "::notice title=Dependabot PR left open::semver-$TYPE update${TYPE_NOTE:+ ($TYPE_NOTE)} - left open for review. Merged automatically:$ALLOWED (input merge-update-types)."
-              decide false update-type
+              if [ "$RANGE" = true ]; then
+                echo "::notice title=Dependabot PR left open::A requirement range was updated ($TYPE_NOTE). dependabot/fetch-metadata cannot tell how far an updated range reaches - it reads part of the old range as the previous version and the newest release as the new one, so a raised upper bound that lets in a new major version can come out as a patch. Counted as major - left open for review. Merged automatically:$ALLOWED (input merge-update-types)."
+                decide false range-update
+              else
+                echo "::notice title=Dependabot PR left open::semver-$TYPE update${TYPE_NOTE:+ ($TYPE_NOTE)} - left open for review. Merged automatically:$ALLOWED (input merge-update-types)."
+                decide false update-type
+              fi
               ;;
           esac
 
@@ -1607,6 +1689,7 @@ jobs:
             no-required-workflows) DECISION="⏸️ Left open: automatic merging is off - set required-workflows to the PR CI workflows that build and test the update." ;;
             ci-change)           DECISION="⏸️ Left open: a GitHub Actions update changes the CI itself, so its CI cannot vouch for it." ;;
             update-type)         DECISION="⏸️ Left open: only $ALLOWED updates are merged automatically (merge-update-types)." ;;
+            range-update)        DECISION="⏸️ Left open: a requirement range was updated - the update type dependabot/fetch-metadata works out for a range does not show how far it reaches, so it counted as major; only $ALLOWED updates are merged automatically (merge-update-types)." ;;
             unknown-update-type) DECISION="⏸️ Left open: the update type could not be determined." ;;
             versions-unreadable) DECISION="⏸️ Left open: the versions of the updated dependencies could not be read, so the 0.x rule could not be checked." ;;
             patch|minor|major)
@@ -1671,6 +1754,13 @@ jobs:
           elif [ -n "$RELEASE_WORKFLOW" ]; then
             RELEASE_NOTE="No release started: nothing was merged."
           fi
+          # Versions and the type note can hold a range: a | (^1.0 || ^2.0)
+          # would end the table cell, and ~ * < read as markdown outside a
+          # code span. Quoted, the replacement is taken as it is in every bash.
+          PIPE='\|'
+          TYPE_CELL="${TYPE_NOTE//|/"$PIPE"}"
+          FROM_CELL="${PREVIOUS_VERSION//|/"$PIPE"}"
+          TO_CELL="${NEW_VERSION//|/"$PIPE"}"
           {
             echo "## 🐳 Docker Maintenance (Dependabot)"
             echo ""
@@ -1678,10 +1768,10 @@ jobs:
             echo "|----------|-------|"
             echo "| **PR** | #$PR_NUMBER |"
             echo "| **Dependency** | \`$DEPENDENCIES\` |"
-            echo "| **Update Type** | $UPDATE_TYPE${TYPE_NOTE:+ - counted as semver-major ($TYPE_NOTE)} |"
+            echo "| **Update Type** | $UPDATE_TYPE${TYPE_CELL:+ - counted as semver-major (\`$TYPE_CELL\`)} |"
             echo "| **Required Workflows** | \`${REQUIRED:-none}\` |"
-            echo "| **From** | \`$PREVIOUS_VERSION\` |"
-            echo "| **To** | \`$NEW_VERSION\` |"
+            echo "| **From** | \`$FROM_CELL\` |"
+            echo "| **To** | \`$TO_CELL\` |"
             echo "| **Merge Method** | $MERGE_METHOD |"
             echo ""
             echo "$DECISION"

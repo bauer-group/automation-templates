@@ -544,6 +544,9 @@ warns *Dependabot PR already merged* and neither merges nor releases (see
    any update may break: a minor update of a `0.y.z` version and a patch
    update of a `0.0.z` version count as `major`, checked for every
    dependency of the PR - see [Updates below 1.0.0](#updates-below-100).
+   An updated requirement range (pip `>=5.1.0,<7.0.0` → `>=5.1.0,<8.0.0`)
+   counts as `major` too: the type `fetch-metadata` works out for a range is
+   not reliable - see [Requirement ranges](#requirement-ranges).
    See [Why minor updates are merged by default](#why-minor-updates-are-merged-by-default).
 4. **Wait for CI** - the job polls the check runs, check suites, commit
    statuses and workflow runs of the PR head commit (every 30 s, after 5 min
@@ -603,8 +606,9 @@ the job red.
 | 3   | Inputs           | `merge-method`, `ci-wait-minutes`, `merge-update-types`, `required-workflows`, `release-workflow` or `release-wait-minutes` is invalid    | ❌ Job fails                          | error      |
 | 4   | Ecosystem        | GitHub Actions update (`package-ecosystem: "github-actions"`)                                                                             | ⏸️ Left open - a CI change            | notice     |
 | 5   | Required CI      | `required-workflows` is not set - automatic merging is off                                                                                | ⏸️ Left open, without waiting for CI  | notice     |
-| 6   | Update type      | Type unknown (digest, non-semver tag), or not in `merge-update-types` ([0.x updates](#updates-below-100) count stricter)                  | ⏸️ Left open for review               | notice     |
+| 6   | Update type      | Type unknown (digest, non-semver tag, any dependency of a group), or not in `merge-update-types` ([0.x](#updates-below-100) stricter)     | ⏸️ Left open for review               | notice     |
 | 6a  | Update type      | The versions of the updated dependencies cannot be read, so the [0.x rule](#updates-below-100) cannot be checked                          | ⏸️ Left open for review               | notice     |
+| 6b  | Update type      | A [requirement range](#requirement-ranges) was updated - it counts as major, and `major` is not in `merge-update-types`                   | ⏸️ Left open for review               | notice     |
 | 7   | PR state         | The PR was closed or got a new head commit meanwhile (checked on every poll)                                                              | ⏹️ Not merged by this run             | notice     |
 | 7a  | PR state         | The PR was merged before this run decided - by hand, or by the first attempt of a job that is re-run                                      | ⏹️ Not merged by this run, no release | warning    |
 | 8   | Commits          | Not every commit of the PR is a verified commit by Dependabot                                                                             | ⏸️ Left open                          | notice     |
@@ -762,21 +766,38 @@ workflow therefore counts update types the way npm's caret ranges do
 | `v0.3.1`               | `v0.4.0`               | minor              | **major**   | a leading `v` is read                          |
 | `0.3.1-rc.1`           | `0.4.0+build.7`        | minor              | **major**   | a pre-release or build suffix is read          |
 | `0.3.1-alpine3.20`     | `0.4.0-alpine3.20`     | minor              | **major**   | an image variant reads as a pre-release suffix |
+| `0.24`                 | `0.30.0`               | minor              | **major**   | a Cargo or Composer requirement                |
+| `0.24`                 | `0.24.3`               | patch              | patch       | within `^0.24` - unchanged                     |
+| none (NuGet)           | `0.58.0`               | minor              | **major**   | the previous version is not needed             |
+| `0.3-alpine`           | `0.4.0`                | minor              | **major**   | the previous version is not read               |
 | `0.3-alpine`           | `0.4-alpine`           | minor              | minor       | not `X.Y.Z` - the reported type counts         |
 | `18-alpine`            | `19-alpine`            | major              | major       | not `X.Y.Z` - the reported type counts         |
 | `2024-01-15`, a digest | `2024-02-01`, a digest | as reported        | as reported | not `X.Y.Z` - the reported type counts         |
 
-- **Only plain `X.Y.Z` versions are read**, both the previous and the new
-  one: three numbers without leading zeros, optionally a leading `v`, a
-  `-pre-release` and a `+build` suffix. Any other version keeps the update
-  type Dependabot reported - it never fails the job.
-- **The previous version decides** whether the rule applies: `0.y.z` turns a
-  minor update into a major one, `0.0.z` a patch update as well. A patch
-  update of `0.y.z` with `y > 0` stays a patch.
+- **The new version is read, in plain `X.Y.Z` form only**: three numbers
+  without leading zeros, optionally a leading `v`, a `-pre-release` and a
+  `+build` suffix. Any other new version keeps the update type Dependabot
+  reported - it never fails the job.
+- **The new version and the reported type decide** whether the rule
+  applies. A minor update keeps the major number and a patch update the
+  minor number as well, so a minor update to `0.y.z` comes from a 0.x
+  version and a patch update to `0.0.z` from a 0.0.x one. A patch update to
+  `0.y.z` with `y > 0` stays a patch.
+- **The previous version is not needed** - which matters where
+  `fetch-metadata` does not list one as a version: for NuGet it lists none,
+  and for a Cargo or Composer requirement (`0.24`, i.e. `^0.24`; `^0.5` loses
+  its `^`) updated to the newest release it lists the requirement. Before,
+  the rule read the previous version, and these passed it as minor updates:
+  `0.24 → 0.30.0` (OT-CAN2IP-Clients#1, CS-WordPressStack#18) and every
+  NuGet package below 1.0.
 - **Every dependency of the PR is checked** - the `updated-dependencies-json`
   of `dependabot/fetch-metadata` lists each with its own versions and update
   type. In a grouped update the strictest dependency decides: one
-  `0.3.1 → 0.4.0` among ten patch updates makes the PR a major update.
+  `0.3.1 → 0.4.0` among ten patch updates makes the PR a major update. A
+  dependency listed without an update type of its own (no previous version
+  to compare - a [requirement range](#requirement-ranges) in a grouped
+  update) cannot be checked: the PR is **left open**, reason
+  `unknown-update-type`, whatever the other dependencies are.
 - **Logged**: each dependency counted as major gets a line such as
   `0.x minor treated as major: lib 0.3.1 -> 0.4.0`; the notice of a PR left
   open and the job summary (*Update Type*) name it as well.
@@ -813,6 +834,81 @@ major: example/tool 0.3.1 -> 0.4.0) - left open for review. Merged
 automatically: patch minor (input merge-update-types).* Review the release
 notes and merge it by hand, or add `major` to `merge-update-types` to let the
 required CI decide such updates as well.
+
+#### Requirement ranges
+
+A manifest can name a range instead of a version: pip/uv
+(`pypdf>=5.1.0,<7.0.0` in `pyproject.toml` or a requirements file), Cargo
+(`0.24`), Composer (`^0.5`), Terraform (`~> 2.0`, `>= 4.0, < 5.0`). Dependabot
+then updates the range itself (*update pypdf requirement from <7.0.0,>=5.1.0
+to >=5.1.0,<8.0.0*), and `dependabot/fetch-metadata` cannot say how far the
+new range reaches:
+
+- its `newVersion` is the newest release, not the new range;
+- its `prevVersion` is the old range from the PR title with only the first
+  operator cut off - for pip, where Dependabot writes the upper bound first,
+  the old cap and the rest of the range: `7.0.0,>=5.1.0`;
+- its update type compares the two.
+
+So a cap raised by one major reads as a patch or minor update, and a floor
+raised under the same cap as a major one:
+
+| Old range        | New range        | fetch-metadata            | Reported | Really                        |
+|------------------|------------------|---------------------------|----------|-------------------------------|
+| `<7.0.0,>=5.1.0` | `>=5.1.0,<8.0.0` | `7.0.0,>=5.1.0` → `7.0.1` | patch    | major - pypdf 7 now allowed   |
+| `<3,>=2.14.2`    | `>=2.14.3,<3`    | `3,>=2.14.2` → `2.14.3`   | major    | patch - only the floor rose   |
+| `<3.0,>=2.0`     | `>=2.0`          | `3.0,>=2.0` → `3.1.0`     | minor    | major - the cap is gone       |
+| `<8`             | `<9`             | `8` → `8.2.1`             | minor    | major - 8.x now allowed       |
+| `>=2.12.0`       | `>=2.14.0`       | `2.12.0` → `2.14.0`       | minor    | minor - right                 |
+
+The first row is bauer-group/IP-ZAMMAD-MCPServer#10, which this workflow
+merged on 2026-11-15 as a patch update. The guard therefore does not read a
+range:
+
+- **A version with range syntax** - `<`, `>`, `=`, `~`, `^`, `!`, `,`, `*`,
+  `|`, `(`, `)`, `[`, `]` or a space - as the previous or the new version of
+  any updated dependency counts as **major**. The log reads
+  `requirement range treated as major: pypdf 7.0.0,>=5.1.0 -> 7.0.1`; the
+  notice and the job summary (*Update Type*) name it as well.
+- **An upper bound or an exclusion alone** (`<8`, `<=1.9`, `!=1.2.3`) leaves
+  a previous version that looks plain (`8`). The PR title still shows the
+  range - *update sphinx requirement from <8 to <9* - so it counts as major
+  too: `requirement range treated as major: sphinx 8 -> 8.2.1 (range in the
+  PR title)`. The title only ever makes the decision stricter; anyone who
+  may edit the PR can change it, so it is never copied into an output or the
+  log.
+- **In a grouped update** Dependabot writes a range without a previous
+  version (*Updates `pypdf` to 7.0.1*) and without an update type, so
+  `fetch-metadata` lists neither, and the PR's type comes from the other
+  dependencies alone - a patch for a group of a plain `5.0.0 → 5.0.1` and
+  that range. A dependency without an update type cannot be checked: the PR
+  is left open, reason `unknown-update-type`, also when `major` is merged.
+  So is a group of ranges only, whose type is unknown as a whole.
+- Unless `major` is in `merge-update-types`, the PR is **left open** with a
+  notice, reason `range-update`. A caller that merges major updates merges it
+  once the required CI passed, as before.
+- **As before:** a floor alone (`>=2.12.0 → >=2.14.0`) and a single caret,
+  tilde, pessimistic or exact requirement (`^4.17.0`, `~> 2.0`, `==1.2.3`):
+  the previous version is the old floor or version, and the reported type is
+  right. A Cargo or Composer requirement below 1.0 falls under the
+  [0.x rule](#updates-below-100).
+
+| `merge-update-types`    | `<7.0.0,>=5.1.0 → >=5.1.0,<8.0.0` | `<3,>=2.14.2 → >=2.14.3,<3` | `>=2.12.0 → >=2.14.0` |
+|-------------------------|-----------------------------------|-----------------------------|-----------------------|
+| `patch`                 | left open (merged before)         | left open                   | left open             |
+| `patch,minor` (default) | left open (merged before)         | left open                   | merged                |
+| `patch,minor,major`     | merged                            | merged                      | merged                |
+
+The type is not worked out from the ranges instead: the new range is in none
+of `fetch-metadata`'s outputs - only in the title of a single dependency's PR,
+in a different syntax per ecosystem, or in the manifest diff of a grouped
+update, which the guard does not read. In the 245 range PRs of bauer-group and
+covalida from January to November 2026, `fetch-metadata` misread 141 of the
+158 single-dependency PRs whose range has an upper bound; the other 17 came
+out right only by coincidence. The 118 that a range parser would have turned
+into patch or minor updates (a floor raised under an unchanged cap) were left
+open as major already. Counting ranges as major keeps them where they were
+and closes the other direction without parsing a range.
 
 ### Releasing the merged update
 
@@ -1152,12 +1248,17 @@ row **Base image handoff** in the job summary say what happened.
   `success`; which of its jobs run is up to the workflow. A job it skips by
   its own `if:` (e.g. a round trip that runs only for some paths) does not
   stop the merge. Choose workflows whose PR run always builds and tests.
-- **0.x versions are recognised in plain `X.Y.Z` form only.** A tag such as
-  `0.3-alpine` or a date keeps the update type Dependabot reported, so a
-  `0.3-alpine → 0.4-alpine` update is a minor one for `merge-update-types` -
-  merged by the default `patch,minor`. Set `merge-update-types: 'patch'` for
-  images with such tags, or merge them by hand - see
-  [Updates below 1.0.0](#updates-below-100).
+- **0.x versions are recognised in plain `X.Y.Z` form only** - the new
+  version's. A new tag such as `0.4-alpine` or a date keeps the update type
+  Dependabot reported, so a `0.3-alpine → 0.4-alpine` update is a minor one
+  for `merge-update-types` - merged by the default `patch,minor`. Set
+  `merge-update-types: 'patch'` for images with such tags, or merge them by
+  hand - see [Updates below 1.0.0](#updates-below-100).
+- **Requirement ranges are not read.** An updated range with an upper bound
+  counts as major, whichever way it moved - a floor raised under the same cap
+  stays open like a raised cap. A range in a grouped update has no update
+  type at all, so the whole group stays open. Merge such PRs by hand - see
+  [Requirement ranges](#requirement-ranges).
 - **Matched by file path.** A required workflow that is renamed or moved no
   longer matches: every PR stays open with "did not run" until
   `required-workflows` is updated.
@@ -1235,7 +1336,7 @@ row **Base image handoff** in the job summary say what happened.
 | `required-workflows`   | PR CI workflow files that must have run on the PR and passed, comma or newline separated, e.g. `.github/workflows/ci.yml`                                                                                                                             | `''` (no merge)                                             |
 | `merge-method`         | squash, merge, or rebase                                                                                                                                                                                                                              | `squash`                                                    |
 | `auto-approve`         | Approve the PR before merging it                                                                                                                                                                                                                      | `true`                                                      |
-| `merge-update-types`   | Semver update types to merge: `patch`, `minor`, `major`; [0.x updates](#updates-below-100) count stricter                                                                                                                                             | `patch,minor`                                               |
+| `merge-update-types`   | Semver update types to merge: `patch`, `minor`, `major`; [0.x updates](#updates-below-100) and [requirement ranges](#requirement-ranges) count stricter                                                                                               | `patch,minor`                                               |
 | `ci-wait-minutes`      | How long to wait for CI to finish and settle (10-60) before leaving the PR open                                                                                                                                                                       | `60`                                                        |
 | `release-workflow`     | Release workflow file dispatched on the base branch after a merge, e.g. `.github/workflows/docker-release.yml`; needs `actions: write`                                                                                                                | `''` (no release)                                           |
 | `release-wait-minutes` | How long to wait for the dispatched release run (0-180); a run that does not succeed within it fails the job. `0`: do not wait                                                                                                                        | `60`                                                        |
@@ -1514,6 +1615,8 @@ say why - see the [decision table](#decision-table). The usual ones:
 | automatic merging is off: required-workflows           | Set `required-workflows`, see [Choosing `required-workflows`](#choosing-required-workflows)                                                          |
 | update type is not merged automatically                | Expected for major (and minor with `merge-update-types: 'patch'`); merge by hand, or widen `merge-update-types`                                      |
 | semver-major update (0.x minor/0.0.x patch ...)        | Expected below 1.0.0, any update may break: review and merge by hand, or add `major` to `merge-update-types`                                         |
+| a requirement range was updated                        | Expected: `fetch-metadata`'s type for a range is unreliable. Check what the range allows; merge by hand, or add `major` to `merge-update-types`      |
+| update type ... could not be determined                | Expected for a digest, a non-semver tag or a requirement range in a grouped update: review and merge by hand                                         |
 | versions of the updated dependencies could not be read | No `jq` on a self-hosted runner: install it. Otherwise merge by hand - the 0.x rule could not be checked                                             |
 | change the CI itself / changes CI files                | Expected: review and merge by hand. GitHub Actions updates and PRs that change `.github/` are never merged automatically                             |
 | CI did not pass                                        | Fix the check, or merge by hand; a re-run of the check alone does not merge - re-run this job, or `@dependabot rebase`                               |

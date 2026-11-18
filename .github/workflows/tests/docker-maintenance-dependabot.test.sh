@@ -8,8 +8,9 @@
 #   guard  (id: guard) - GitHub Actions updates (never merged), required-
 #                        workflows (empty: nothing is merged), update type
 #                        against merge-update-types / allow-major (a minor
-#                        update of 0.y.z and a patch update of 0.0.z count as
-#                        major, per dependency), input validation
+#                        update of 0.y.z, a patch update of 0.0.z and an
+#                        updated requirement range count as major, per
+#                        dependency), input validation
 #   wait   (id: ci)    - checks that every commit is a verified Dependabot
 #                        commit and that no changed file is under .github/,
 #                        polls check runs, check suites, commit statuses
@@ -179,6 +180,11 @@ static_has   "guard reads every dependency's versions" 'UPDATED_DEPENDENCIES_JSO
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "summary shows a 0.x update counted as major" 'TYPE_NOTE: ${{ steps.guard.outputs.type-note }}'
 static_has   "summary explains unreadable versions" 'versions-unreadable) DECISION='
+# A range with only an upper bound reads as a plain version - its title
+# shows it (through env, as all event data).
+# shellcheck disable=SC2016 # literal workflow text
+static_has   "guard reads the PR title"          'PR_TITLE: ${{ github.event.pull_request.title }}'
+static_has   "summary explains range updates"    'range-update)        DECISION='
 # shellcheck disable=SC2016 # literal workflow text
 static_has   "wait gets the checked list"        'REQUIRED: ${{ steps.guard.outputs.required }}'
 static_line  "merge is gated by green CI"        "        if: steps.ci.outputs.result == 'green'"
@@ -592,7 +598,9 @@ deps() { echo "[$(join "$@")]"; }
 # $GUARD_RELEASE_WAIT (default 60); the
 # ecosystem is $GUARD_ECOSYSTEM, if set (also empty), else docker; the updated
 # dependencies are $GUARD_DEPS, if set (also empty), else one 7.2.4 -> 7.2.5
-# update of the given type (1.0.0 or later: the 0.x rule does not apply).
+# update of the given type (1.0.0 or later: the 0.x rule does not apply);
+# the PR title is $GUARD_TITLE (default: one Dependabot writes for a plain
+# version bump).
 # $GUARD_PATH replaces PATH (to take jq away).
 guard_case() {
   local name="$1" dir="$WORK/guard-$1"
@@ -600,6 +608,7 @@ guard_case() {
   ( cd "$dir" && PATH="${GUARD_PATH-$PATH}" GITHUB_OUTPUT="$dir/output" PACKAGE_ECOSYSTEM="${GUARD_ECOSYSTEM-docker}" \
       UPDATE_TYPE="$2" MERGE_UPDATE_TYPES="$3" ALLOW_MAJOR="$4" \
       UPDATED_DEPENDENCIES_JSON="${GUARD_DEPS-$(deps "$(dep redis 7.2.4 7.2.5 "$2")")}" \
+      PR_TITLE="${GUARD_TITLE-chore(deps): bump redis from 7.2.4 to 7.2.5}" \
       MERGE_METHOD="${9:-squash}" WAIT_MINUTES="${10:-60}" REQUIRED_WORKFLOWS="${GUARD_REQUIRED-$REQ_CI}" \
       RELEASE_WORKFLOW="${GUARD_RELEASE-}" RELEASE_WAIT_MINUTES="${GUARD_RELEASE_WAIT-60}" \
       bash --noprofile --norc -eo pipefail -c "$GUARD_BODY" ) > "$dir/log" 2>&1
@@ -763,10 +772,10 @@ GUARD_DEPS=$(deps "$(dep redpanda v0.3.1 v0.4.0 "$MI")")                guard_ca
 glogged     zero-minor-v-prefix "0.x minor treated as major: redpanda v0.3.1 -> v0.4.0"
 GUARD_DEPS=$(deps "$(dep lib 0.3.1-rc.1 0.4.0+build.7 "$MI")")         guard_case zero-minor-suffixes  "$MI" "patch,minor" false 0 false update-type notice
 GUARD_DEPS=$(deps "$(dep app 0.3.1-alpine3.20 0.4.0-alpine3.20 "$MI")") guard_case zero-minor-tag-variant "$MI" "patch,minor" false 0 false update-type notice
-# Anything else keeps the type Dependabot reported - and never fails the job:
-# a two-part tag, a tag like 18-alpine, leading zeros, a date, a digest, a
-# missing version, a new version that is not plain semver.
-for v in "0.3 0.4" "0.3-alpine 0.4-alpine" "0.03.1 0.04.0" "2024-01-15 2024-02-01" "- 0.4.0" "0.3.1 0.4" "0.3.1 0.4.0.1" "V0.3.1 V0.4.0" "0.3.1 sha256:0123abcd"; do
+# The new version is read: anything else keeps the type Dependabot reported -
+# and never fails the job: a two-part tag, a tag like 18-alpine, leading
+# zeros, a date, a digest, a new version that is not plain semver.
+for v in "0.3 0.4" "0.3-alpine 0.4-alpine" "0.03.1 0.04.0" "2024-01-15 2024-02-01" "0.3.1 0.4" "0.3.1 0.4.0.1" "V0.3.1 V0.4.0" "0.3.1 sha256:0123abcd"; do
   read -r prev new <<< "$v"; [ "$prev" = "-" ] && prev=""
   name="not-plain-semver-${prev:-none}-$new"; name="${name//[^A-Za-z0-9.-]/_}"
   GUARD_DEPS=$(deps "$(dep lib "$prev" "$new" "$MI")") guard_case "$name" "$MI" "patch,minor" false 0 true minor -
@@ -774,9 +783,50 @@ for v in "0.3 0.4" "0.3-alpine 0.4-alpine" "0.03.1 0.04.0" "2024-01-15 2024-02-0
 done
 GUARD_DEPS='[{"dependencyName":"lib","updateType":"version-update:semver-minor","prevVersion":null}]' \
                                                  guard_case versions-missing          "$MI" "patch,minor"       false 0 true  minor       -
-# The update type of each dependency is the one fetch-metadata lists for it;
-# without one (no versions it could compare) the dependency changes nothing.
-GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "")")   guard_case dependency-type-unknown   "$MI" "patch,minor"       false 0 true  minor       -
+# The update type of each dependency is the one fetch-metadata lists for it.
+# Without one (no previous version it could compare) the dependency cannot be
+# checked, and the PR's type comes from the others alone: left open as an
+# unknown type, whatever merge-update-types allows.
+GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "")")   guard_case dependency-type-unknown   "$MI" "patch,minor"       false 0 false unknown-update-type notice
+glogged     dependency-type-unknown "The update type of lib could not be determined"
+GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "")")   guard_case dependency-type-unknown-all "$MI" "patch,minor,major" false 0 false unknown-update-type notice
+# The new version decides, with the reported type: a minor update keeps the
+# major number, so a minor update to 0.y.z comes from a 0.x version - also
+# where fetch-metadata lists no previous version. It lists none for NuGet.
+GUARD_ECOSYSTEM=nuget GUARD_TITLE="deps(dotnet): Bump Spectre.Console from 0.57.2 to 0.58.0" \
+  GUARD_DEPS=$(deps "$(dep Spectre.Console "" 0.58.0 "$MI")")   guard_case zero-nuget-minor       "$MI" "$DEFAULT_TYPES" false 0 false update-type notice
+glogged     zero-nuget-minor "0.x minor treated as major: Spectre.Console -> 0.58.0"
+type_note_is zero-nuget-minor "0.x minor treated as major: Spectre.Console -> 0.58.0"
+GUARD_ECOSYSTEM=nuget GUARD_DEPS=$(deps "$(dep Spectre.Console "" 0.57.3 "$P")") \
+                                                 guard_case zero-nuget-patch          "$P"  "patch"             false 0 true  patch       -
+gnot_logged zero-nuget-patch "treated as major"
+GUARD_ECOSYSTEM=nuget GUARD_DEPS=$(deps "$(dep Tiny.Lib "" 0.0.9 "$P")") \
+                                                 guard_case zero-nuget-zero-zero      "$P"  "patch"             false 0 false update-type notice
+glogged     zero-nuget-zero-zero "0.0.x patch treated as major: Tiny.Lib -> 0.0.9"
+# A previous version of one or two numbers and a plain X.Y.Z new one: a Cargo
+# or Composer requirement (0.24, ^0.5 - fetch-metadata drops the ^) updated
+# to the newest release. 0.24 -> 0.30.0 is a 0.x minor update. Reported as
+# minor, they passed the 0.x rule before (OT-CAN2IP-Clients#1,
+# CS-WordPressStack#18, EMB-USBMultiBusBridge#6), which read the previous
+# version.
+GUARD_ECOSYSTEM=cargo GUARD_TITLE="deps(cargo): update tokio-tungstenite requirement from 0.24 to 0.30 in /clients/rust" \
+  GUARD_DEPS=$(deps "$(dep tokio-tungstenite 0.24 0.30.0 "$MI")") guard_case zero-short-cargo     "$MI" "$DEFAULT_TYPES" false 0 false update-type notice
+glogged     zero-short-cargo "0.x minor treated as major: tokio-tungstenite 0.24 -> 0.30.0"
+GUARD_ECOSYSTEM=composer GUARD_TITLE="chore(deps): update wordpress/mcp-adapter requirement from ^0.5 to ^0.6 in /src/wordpress" \
+  GUARD_DEPS=$(deps "$(dep wordpress/mcp-adapter 0.5 0.6.1 "$MI")") guard_case zero-short-composer "$MI" "$DEFAULT_TYPES" false 0 false update-type notice
+glogged     zero-short-composer "0.x minor treated as major: wordpress/mcp-adapter 0.5 -> 0.6.1"
+GUARD_DEPS=$(deps "$(dep nusb 0 0.2.3 "$MI")")     guard_case zero-short-one-number   "$MI" "patch,minor"       false 0 false update-type notice
+GUARD_DEPS=$(deps "$(dep lib 0.0 0.0.4 "$P")")     guard_case zero-short-zero-zero    "$P"  "patch,minor"       false 0 false update-type notice
+glogged     zero-short-zero-zero "0.0.x patch treated as major: lib 0.0 -> 0.0.4"
+# Within the caret range, and 1.0 or later: as reported.
+GUARD_DEPS=$(deps "$(dep lib 0.24 0.24.3 "$P")")   guard_case zero-short-patch        "$P"  "patch"             false 0 true  patch       -
+gnot_logged zero-short-patch "treated as major"
+GUARD_DEPS=$(deps "$(dep boto3 1.34 1.43.24 "$MI")") guard_case one-short-minor       "$MI" "patch,minor"       false 0 true  minor       -
+gnot_logged one-short-minor "treated as major"
+# The previous version is not read: a short tag before a plain new version
+# is a 0.x minor update as well.
+GUARD_DEPS=$(deps "$(dep app 0.3-alpine 0.4.0 "$MI")") guard_case zero-short-tag      "$MI" "patch,minor"       false 0 false update-type notice
+glogged     zero-short-tag "0.x minor treated as major: app 0.3-alpine -> 0.4.0"
 
 # A grouped update: the strictest dependency decides.
 GUARD_DEPS=$(deps "$(dep redis 7.2.4 7.2.5 "$P")" "$(dep lib 0.3.1 0.4.0 "$MI")") \
@@ -814,6 +864,172 @@ GUARD_REQUIRED="" GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")") \
                                                  guard_case zero-required-empty       "$MI" "patch,minor"       false 0 false no-required-workflows notice
 GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "")")  guard_case zero-unknown-update-type  ""    "patch,minor,major" false 0 false unknown-update-type notice
 gnot_logged zero-unknown-update-type "treated as major"
+
+# --- guard: requirement ranges ---------------------------------------------------
+# A manifest may name a range instead of a version (pip/uv, Cargo, Composer,
+# Terraform). Dependabot then updates the range, and dependabot/fetch-metadata
+# (v3) misreads it: newVersion is the newest release, prevVersion the old
+# range from the PR title with only its first operator cut off, and the update
+# type compares the two. bauer-group/IP-ZAMMAD-MCPServer#10 widened pypdf from
+# <7.0.0,>=5.1.0 to >=5.1.0,<8.0.0 - pypdf 7, a major, now allowed;
+# fetch-metadata compared 7.0.0,>=5.1.0 with 7.0.1, reported semver-patch, and
+# the module merged it. A version with range syntax is not read: the
+# dependency counts as major, and unless major updates are merged the PR is
+# left open (range-update).
+PYPDF=$(dep pypdf "7.0.0,>=5.1.0" 7.0.1 "$P")
+PYPDF_TITLE="chore(deps-dev): update pypdf requirement from <7.0.0,>=5.1.0 to >=5.1.0,<8.0.0 in /app/bg-zammad-mcp"
+PYPDF_NOTE="requirement range treated as major: pypdf 7.0.0,>=5.1.0 -> 7.0.1"
+GUARD_ECOSYSTEM=pip GUARD_TITLE="$PYPDF_TITLE" GUARD_DEPS=$(deps "$PYPDF") guard_case range-pypdf-default     "$P" "$DEFAULT_TYPES"    false 0 false range-update notice
+glogged      range-pypdf-default "$PYPDF_NOTE"
+glogged      range-pypdf-default "A requirement range was updated ($PYPDF_NOTE)."
+glogged      range-pypdf-default "Counted as major - left open for review. Merged automatically: patch minor (input merge-update-types)."
+type_note_is range-pypdf-default "$PYPDF_NOTE"
+# The versions found it; the title adds nothing.
+gnot_logged  range-pypdf-default "(PR title)"
+# The versions decide on their own - without the title too.
+GUARD_ECOSYSTEM=pip GUARD_TITLE=""             GUARD_DEPS=$(deps "$PYPDF") guard_case range-pypdf-no-title    "$P" "$DEFAULT_TYPES"    false 0 false range-update notice
+GUARD_ECOSYSTEM=pip GUARD_TITLE="$PYPDF_TITLE" GUARD_DEPS=$(deps "$PYPDF") guard_case range-pypdf-patch-only  "$P" "patch"            false 0 false range-update notice
+# A caller that merges major updates merges every type - a range's too.
+GUARD_ECOSYSTEM=pip GUARD_TITLE="$PYPDF_TITLE" GUARD_DEPS=$(deps "$PYPDF") guard_case range-pypdf-all-types   "$P" "patch,minor,major" false 0 true  major       -
+type_note_is range-pypdf-all-types "$PYPDF_NOTE"
+GUARD_ECOSYSTEM=pip GUARD_TITLE="$PYPDF_TITLE" GUARD_DEPS=$(deps "$PYPDF") guard_case range-pypdf-allow-major "$P" "patch"            true  0 true  major       -
+# CS-FileServer#62: a floor raised under the same cap (<3,>=2.14.2 ->
+# >=2.14.3,<3). fetch-metadata compared the cap 3 with 2.14.3: semver-major.
+# Left open as before - now named as what it is.
+GUARD_ECOSYSTEM=pip GUARD_TITLE="fix(deps): update pydantic requirement from <3,>=2.14.2 to >=2.14.3,<3 in /src/fileserver-init in the fileserver-init-python group across 1 directory" \
+  GUARD_DEPS=$(deps "$(dep pydantic "3,>=2.14.2" 2.14.3 "$MA")")   guard_case range-pydantic-floor    "$MA" "$DEFAULT_TYPES"   false 0 false range-update notice
+type_note_is range-pydantic-floor "requirement range treated as major: pydantic 3,>=2.14.2 -> 2.14.3"
+# A cap removed (<3.0,>=2.0 -> >=2.0) allows every 3.x now; fetch-metadata
+# splits 3.0,>=2.0 at its dots against 3.1.0 and reports semver-minor.
+GUARD_ECOSYSTEM=pip GUARD_TITLE="chore(deps): update requests requirement from <3.0,>=2.0 to >=2.0" \
+  GUARD_DEPS=$(deps "$(dep requests "3.0,>=2.0" 3.1.0 "$MI")")     guard_case range-cap-removed       "$MI" "$DEFAULT_TYPES"   false 0 false range-update notice
+# npm caret and tilde ranges, should the operator reach fetch-metadata's
+# versions (it cuts only the first one off a title).
+GUARD_ECOSYSTEM=npm_and_yarn GUARD_TITLE="" \
+  GUARD_DEPS=$(deps "$(dep lodash "^4.17.0" 4.18.2 "$MI")")        guard_case range-caret             "$MI" "$DEFAULT_TYPES"   false 0 false range-update notice
+glogged      range-caret "requirement range treated as major: lodash ^4.17.0 -> 4.18.2"
+GUARD_ECOSYSTEM=npm_and_yarn GUARD_TITLE="" \
+  GUARD_DEPS=$(deps "$(dep left-pad "~1.2.3" "~1.2.9" "$P")")      guard_case range-tilde             "$P"  "patch"            false 0 false range-update notice
+# Any range syntax, in the previous or in the new version.
+n=0
+for v in "!=1.2.3@1.2.4" "1.0|^2.0@2.0.1" "1.0||2.0@2.0.1" "1.2.*@1.3.0" "[1.0,2.0)@2.0.1" "1.0 <2.0@2.0.1" "=1.2.3@1.2.4" ">1.0@1.2.4" \
+         "1.2.3@>=1.3.0" "1.2.3@1.3.*" "1.2.3@^1.3.0"; do
+  IFS=@ read -r prev new <<< "$v"
+  n=$((n + 1)); name="range-syntax-$n-$prev-$new"; name="${name//[^A-Za-z0-9.-]/_}"
+  GUARD_TITLE="" GUARD_DEPS=$(deps "$(dep lib "$prev" "$new" "$P")") guard_case "$name" "$P" "patch" false 0 false range-update notice
+  glogged "$name" "requirement range treated as major: lib $prev -> $new"
+done
+
+# A grouped update in which one dependency has range syntax: it decides, the
+# others are not named.
+GUARD_DEPS=$(deps "$(dep redis 7.2.4 7.2.5 "$P")" "$PYPDF") guard_case range-group-one     "$P"  "$DEFAULT_TYPES"    false 0 false range-update notice
+type_note_is range-group-one "$PYPDF_NOTE"
+gnot_logged  range-group-one "redis 7.2.4 -> 7.2.5"
+GUARD_DEPS=$(deps "$(dep lib 0.3.1 0.4.0 "$MI")" "$PYPDF")  guard_case range-group-zero    "$MI" "patch,minor"       false 0 false range-update notice
+type_note_is range-group-zero "0.x minor treated as major: lib 0.3.1 -> 0.4.0; $PYPDF_NOTE"
+GUARD_DEPS=$(deps "$(dep redis 7.2.4 7.2.5 "$P")" "$PYPDF") guard_case range-group-all     "$P"  "patch,minor,major" false 0 true  major       -
+# A grouped requirement update lists no previous versions: its type is
+# unknown, as before (CS-FileServer#68).
+GUARD_ECOSYSTEM=pip GUARD_TITLE="fix(deps): bump the fileserver-admin-python group across 1 directory with 2 updates" \
+  GUARD_DEPS=$(deps "$(dep fastapi "" 0.162.5 "")" "$(dep pydantic "" 2.14.3 "")") \
+                                                            guard_case range-group-no-versions "" "$DEFAULT_TYPES"  false 0 false unknown-update-type notice
+# A group that mixes a plain bump with a range, as fetch-metadata (v3) lists
+# it: Dependabot writes "Updates `pypdf` to 7.0.1" (no "from") and no
+# update-type for the range, so pypdf has neither a previous version nor a
+# type - and the PR's type, semver-patch, comes from redis alone. pypdf may
+# now allow 7.x: left open, also where every type is merged.
+MIXED_GROUP=$(deps "$(dep redis 5.0.0 5.0.1 "$P")" "$(dep pypdf "" 7.0.1 "")")
+MIXED_TITLE="fix(deps): bump the app-python group across 1 directory with 2 updates"
+GUARD_ECOSYSTEM=pip GUARD_TITLE="$MIXED_TITLE" GUARD_DEPS="$MIXED_GROUP" \
+                                                            guard_case range-group-mixed       "$P" "$DEFAULT_TYPES"     false 0 false unknown-update-type notice
+glogged      range-group-mixed "The update type of pypdf could not be determined (no previous version, e.g. a requirement range in a grouped update)"
+GUARD_ECOSYSTEM=pip GUARD_TITLE="$MIXED_TITLE" GUARD_DEPS="$MIXED_GROUP" \
+                                                            guard_case range-group-mixed-all   "$P" "patch,minor,major"  false 0 false unknown-update-type notice
+GUARD_ECOSYSTEM=pip GUARD_TITLE="$MIXED_TITLE" GUARD_DEPS="$MIXED_GROUP" \
+                                                            guard_case range-group-mixed-major "$P" "patch"              true  0 false unknown-update-type notice
+# The same with an untyped 0.x dependency, and with two of them: all named.
+GUARD_DEPS=$(deps "$(dep redis 7.2.4 7.2.5 "$P")" "$(dep lib "" 0.4.0 "")" "$(dep other "" 0.0.2 "")") \
+                                                            guard_case range-group-mixed-zero  "$P" "$DEFAULT_TYPES"     false 0 false unknown-update-type notice
+glogged      range-group-mixed-zero "The update type of lib, other could not be determined"
+
+# One range keeps a plain previous version: an upper bound or an exclusion
+# alone. fetch-metadata cuts the < off: <8 -> <9 lists 8 -> 8.2.1, which it
+# calls semver-minor - the default would merge sphinx 8. The PR title shows
+# the range, so it counts as major too.
+SPHINX_TITLE="chore(deps): update sphinx requirement from <8 to <9 in /docs"
+GUARD_ECOSYSTEM=pip GUARD_TITLE="$SPHINX_TITLE" GUARD_DEPS=$(deps "$(dep sphinx 8 8.2.1 "$MI")") \
+                                                            guard_case range-title-upper-bound "$MI" "$DEFAULT_TYPES" false 0 false range-update notice
+type_note_is range-title-upper-bound "requirement range treated as major: sphinx 8 -> 8.2.1 (range in the PR title)"
+gnot_logged  range-title-upper-bound "from <8"
+GUARD_ECOSYSTEM=pip GUARD_TITLE="$SPHINX_TITLE" GUARD_DEPS=$(deps "$(dep sphinx 8 8.2.1 "$MI")") \
+                                                            guard_case range-title-all-types   "$MI" "patch,minor,major" false 0 true major   -
+# The title is free text, editable by anyone who may edit the PR: matched
+# without its control characters, never written to an output or the log. A
+# newline or CR in it adds no output line - required and release-workflow,
+# validated before, stay as they are - and no workflow command.
+# outputs_once <name>: every output line is one of the guard's keys, each once
+outputs_once() {
+  local out="$WORK/guard-$1/output" keys
+  keys=$(sed 's/=.*//' "$out" | sort)
+  if [ "$keys" = "$(printf '%s\n' allowed ok reason release-workflow required type-note)" ]; then
+    pass "guard/$1: each output once"
+  else
+    fail "guard/$1: outputs '$(tr '\n' ' ' <<< "$keys")'"; sed 's/^/     | /' "$out"
+  fi
+}
+for c in "lf|"$'\n' "cr|"$'\r' "crlf|"$'\r\n'; do
+  eol="${c%%|*}"; sep="${c#*|}"
+  GUARD_ECOSYSTEM=pip GUARD_DEPS=$(deps "$(dep sphinx 8 8.2.1 "$MI")") \
+    GUARD_TITLE="chore(deps): update sphinx requirement from <8 to <9${sep}required=.github/workflows/always-green.yml${sep}release-workflow=.github/workflows/deploy-prod.yml${sep}::warning::injected" \
+                                                            guard_case "range-title-$eol"      "$MI" "patch,minor,major" false 0 true major   -
+  outputs_once "range-title-$eol"
+  release_is "range-title-$eol" ""
+  got=$(sed -n 's/^required=//p' "$WORK/guard-range-title-$eol/output")
+  if [ "$got" = "$REQ_CI" ]; then pass "guard/range-title-$eol: required unchanged"; else fail "guard/range-title-$eol: required='$got'"; fi
+  type_note_is "range-title-$eol" "requirement range treated as major: sphinx 8 -> 8.2.1 (range in the PR title)"
+  gnot_logged "range-title-$eol" "injected"
+done
+GUARD_TITLE="Update foo requirement from <=1.9 to <=2.3" GUARD_DEPS=$(deps "$(dep foo 1.9 2.3.0 "$MA")") \
+                                                            guard_case range-title-at-most     "$MA" "patch,minor"       false 0 false range-update notice
+GUARD_TITLE="Update foo requirement from !=1.2.3 to !=1.2.4" GUARD_DEPS=$(deps "$(dep foo 1.2.3 1.2.4 "$P")") \
+                                                            guard_case range-title-exclusion   "$P"  "patch"             false 0 false range-update notice
+
+# As before: a floor alone, and a single caret or pessimistic requirement -
+# fetch-metadata's previous version is the old floor, and its type is right.
+GUARD_ECOSYSTEM=pip GUARD_TITLE="fix(cleanup-manager)(deps): update pydantic-settings requirement from >=2.12.0 to >=2.14.0 in /src/cleanup-manager" \
+  GUARD_DEPS=$(deps "$(dep pydantic-settings 2.12.0 2.14.0 "$MI")") guard_case range-floor-only      "$MI" "$DEFAULT_TYPES" false 0 true  minor       -
+GUARD_ECOSYSTEM=pip GUARD_TITLE="chore(deps): Update boto3 requirement from >=1.34 to >=1.43.24 in /src/zitadel-backup" \
+  GUARD_DEPS=$(deps "$(dep boto3 1.34 1.43.24 "$MI")")              guard_case range-floor-two-numbers "$MI" "$DEFAULT_TYPES" false 0 true  minor      -
+GUARD_ECOSYSTEM=npm_and_yarn GUARD_TITLE="chore(deps): update lodash requirement from ^4.17.0 to ^4.18.0" \
+  GUARD_DEPS=$(deps "$(dep lodash 4.17.0 4.18.2 "$MI")")            guard_case range-caret-alone      "$MI" "$DEFAULT_TYPES" false 0 true  minor       -
+GUARD_ECOSYSTEM=terraform GUARD_TITLE="chore(deps): update zitadel/zitadel requirement from ~> 2.0 to ~> 3.0 in /terraform" \
+  GUARD_DEPS=$(deps "$(dep zitadel/zitadel 2.0 3.0.0 "$MA")")       guard_case range-pessimistic      "$MA" "$DEFAULT_TYPES" false 0 false update-type notice
+# Plain versions, tags and digests as Dependabot reports them (the controls
+# of the corpus): as before.
+GUARD_TITLE="fix(docker): bump python from 3.14-alpine to 3.15-alpine" \
+  GUARD_DEPS=$(deps "$(dep python 3.14-alpine 3.15-alpine "$MI")")  guard_case plain-tag-variant      "$MI" "$DEFAULT_TYPES" false 0 true  minor       -
+GUARD_ECOSYSTEM=docker_compose GUARD_TITLE="chore(deps): bump mysql from 26.7 to 26.10" \
+  GUARD_DEPS=$(deps "$(dep mysql 26.7 26.10 "$MI")")                guard_case plain-two-numbers      "$MI" "$DEFAULT_TYPES" false 0 true  minor       -
+GUARD_TITLE="chore(docker): bump redpandadata/redpanda from v26.1.13 to v26.2.3 in /src/redpanda" \
+  GUARD_DEPS=$(deps "$(dep redpandadata/redpanda v26.1.13 v26.2.3 "$MI")") guard_case plain-v-prefix  "$MI" "$DEFAULT_TYPES" false 0 true  minor       -
+GUARD_ECOSYSTEM=nuget GUARD_TITLE="deps(dotnet): Bump Microsoft.Web.WebView2 from 1.0.4191.47 to 1.0.4258.31" \
+  GUARD_DEPS=$(deps "$(dep Microsoft.Web.WebView2 "" 1.0.4258.31 "$P")") guard_case plain-four-numbers "$P" "patch"          false 0 true  patch       -
+GUARD_ECOSYSTEM=pip GUARD_TITLE="Bump soupsieve from 2.5 to 2.8.4 in /app" \
+  GUARD_DEPS=$(deps "$(dep soupsieve 2.5 2.8.4 "$MI")")             guard_case plain-short-previous   "$MI" "$DEFAULT_TYPES" false 0 true  minor       -
+GUARD_TITLE="chore(deps): bump node from 22.11.0-alpine to 22.12.0-alpine" \
+  GUARD_DEPS=$(deps "$(dep node 22.11.0-alpine@sha256:0123abcd 22.12.0-alpine@sha256:4567cdef "$MI")") \
+                                                                    guard_case plain-tag-digest       "$MI" "$DEFAULT_TYPES" false 0 true  minor       -
+for c in range-floor-only range-floor-two-numbers range-caret-alone range-pessimistic plain-tag-variant plain-two-numbers plain-v-prefix plain-four-numbers plain-short-previous plain-tag-digest; do
+  gnot_logged "$c" "treated as major"
+  type_note_is "$c" ""
+done
+
+# The order stays: a GitHub Actions update and an unknown update type decide
+# before the versions are looked at.
+GUARD_ECOSYSTEM=github_actions GUARD_DEPS=$(deps "$PYPDF") guard_case range-actions-update      "$P" "$DEFAULT_TYPES" false 0 false ci-change notice
+GUARD_DEPS=$(deps "$PYPDF")                                guard_case range-unknown-update-type ""   "$DEFAULT_TYPES" false 0 false unknown-update-type notice
+gnot_logged range-unknown-update-type "treated as major"
+GUARD_TITLE="$SPHINX_TITLE"                                guard_case range-title-unknown-type  ""   "$DEFAULT_TYPES" false 0 false unknown-update-type notice
 
 # --- wait for CI ----------------------------------------------------------------
 # run_ci <dir> [VAR=value ...]   (REQUIRED: the guard's checked list)
@@ -2489,6 +2705,24 @@ done
 summary_run handoff-none MERGE_REASON=merged MERGED=true MERGE_COMMIT=m1 RELEASE_WORKFLOW="$REL_WF" \
   RELEASE_RESULT=success RELEASE_DETAIL="$RUN_555" RELEASE_RUN_URL="$RUN_555" HANDOFF_RESULT=none HANDOFF_DETAIL="no base image monitor config"
 lacks summary/handoff-none "$WORK/summary-handoff-none" "Base image handoff"
+# A requirement range left open by the guard: why, and what it counted as.
+summary_run range-update GUARD_REASON=range-update ALLOWED="patch minor" CI_RESULT="" CI_DETAIL="" DEPENDENCIES=pypdf \
+  PREVIOUS_VERSION="7.0.0,>=5.1.0" NEW_VERSION=7.0.1 TYPE_NOTE="$PYPDF_NOTE"
+S="$WORK/summary-range-update"
+shows summary/range-update "$S" "⏸️ Left open: a requirement range was updated - the update type dependabot/fetch-metadata works out for a range does not show how far it reaches, so it counted as major; only patch minor updates are merged automatically (merge-update-types)."
+shows summary/range-update "$S" "| **Update Type** | version-update:semver-patch - counted as semver-major (\`$PYPDF_NOTE\`) |"
+shows summary/range-update "$S" "| **From** | \`7.0.0,>=5.1.0\` |"
+lacks summary/range-update "$S" "Not completed"
+# A | in a range would end the table cell: escaped, in a code span.
+summary_run range-pipe GUARD_REASON=range-update ALLOWED="patch minor" CI_RESULT="" CI_DETAIL="" DEPENDENCIES=c/d \
+  PREVIOUS_VERSION="^1.0 || ^2.0" NEW_VERSION=2.0.1 TYPE_NOTE="requirement range treated as major: c/d ^1.0 || ^2.0 -> 2.0.1"
+S="$WORK/summary-range-pipe"
+shows summary/range-pipe "$S" "| **Update Type** | version-update:semver-patch - counted as semver-major (\`requirement range treated as major: c/d ^1.0 \|\| ^2.0 -> 2.0.1\`) |"
+shows summary/range-pipe "$S" "| **From** | \`^1.0 \|\| ^2.0\` |"
+# No note: no "counted as" text.
+summary_run no-type-note GUARD_REASON=update-type ALLOWED=patch CI_RESULT="" CI_DETAIL="" UPDATE_TYPE=version-update:semver-minor
+lacks summary/no-type-note "$WORK/summary-no-type-note" "counted as"
+shows summary/no-type-note "$WORK/summary-no-type-note" "| **Update Type** | version-update:semver-minor |"
 
 echo ""
 echo "$PASSED passed, $FAILED failed"

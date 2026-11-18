@@ -159,7 +159,8 @@ jobs:
       auto-approve: true
       # Patch updates only. Below 1.0.0 any update may break (SemVer 4):
       # 0.3.1 -> 0.4.0 and 0.0.3 -> 0.0.4 count as major - checked for every
-      # dependency of a grouped PR, in every ecosystem.
+      # dependency of a grouped PR, in every ecosystem. So does an updated
+      # requirement range (pip >=5.1.0,<7.0.0 -> >=5.1.0,<8.0.0).
       merge-update-types: 'patch'
       # The slowest job of ci.yml decides when CI is complete. 60 is the
       # maximum and the default.
