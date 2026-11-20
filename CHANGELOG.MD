@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.12.2](https://github.com/bauer-group/automation-templates/compare/v11.12.1...v11.12.2) (2026-11-20)
+
+### 🐛 Bug Fixes
+
+* **docker-build:** granted actions read to the build job's SARIF upload ([d8165f3](https://github.com/bauer-group/automation-templates/commit/d8165f3de60400998f60c4d82f233d9cd6cc840e))
+
 ## [11.12.1](https://github.com/bauer-group/automation-templates/compare/v11.12.0...v11.12.1) (2026-11-18)
 
 ### 🐛 Bug Fixes
