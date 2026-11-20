@@ -425,6 +425,7 @@ permissions:
   security-events: write # For uploading SARIF reports to GitHub Security
   attestations: write    # For SBOM attestation (opt-in via attest-sbom; no effect otherwise)
   id-token: write        # OIDC token required by Sigstore-based SBOM attestation
+  actions: read          # upload-sarif reads this workflow run (GET /actions/runs/{id}) - private repos only allow it with this scope
 
 jobs:
   build:
