@@ -13,7 +13,7 @@ It is purpose-built for continuous fork CI: rebuild on every `workspace` push, t
 - ✅ **Workspace-oriented tags** — branch, short SHA, timestamp, and `latest` on the default branch
 - ✅ **Per-image build cache** — GitHub Actions cache scoped per image (no cross-image collisions)
 - ✅ **GHCR out of the box** — authenticates with the automatic `GITHUB_TOKEN`; no secret required
-- ✅ **SARIF to Security tab** — scan results uploaded via CodeQL SARIF upload
+- ✅ **SARIF to Security tab** — scan results uploaded via CodeQL SARIF upload (public repositories; see [Private repositories](#private-repositories))
 - ✅ **Runner-flex** — GitHub-hosted or self-hosted via the `runs-on` input
 
 ## Quick Start
@@ -136,6 +136,12 @@ None required. GHCR uses `github.actor` + the automatic `GITHUB_TOKEN`. Callers 
 ## Security model
 
 Each image is built locally first (`load: true`, amd64), scanned with Trivy, and only then built-and-pushed (a near-instant cache hit). If the scan finds vulnerabilities at or above `security-fail-on`, the job **fails and the push is skipped** — a vulnerable image never reaches the registry. Scan results are uploaded to the repository's **Security → Code scanning** tab as SARIF (one category per image). `fail-fast: false` means one image's finding does not cancel the others.
+
+### Private repositories
+
+The SARIF upload reads the current workflow run (`GET /repos/{owner}/{repo}/actions/runs/{run_id}`) to name the analysis. A public repository allows that with any token; a private one only with `actions: read`, which this workflow does not request. In a private fork the upload therefore fails with `Resource not accessible by integration`. The step is `continue-on-error`, so the build, the scan gate and the push are unaffected — only the findings do not reach the Security tab (the job log still shows the CRITICAL / HIGH / MEDIUM counts).
+
+The scope is left out on purpose: a called workflow can never hold more than its caller grants, so requesting it would stop every caller that grants the three permissions from the [Quick Start](#quick-start) from starting at all. Should a private fork need the Security tab, it takes two steps — the callers grant `actions: read` first, the workflow requests it afterwards — and code scanning must be available in that repository (GitHub Code Security). [`docker-build.yml`](docker-build.md) already requests it.
 
 ## Why not `docker-build.yml`
 

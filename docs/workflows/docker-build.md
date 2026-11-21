@@ -224,9 +224,11 @@ RUN npm rebuild
   PAT stored as one arrives empty there unless it is also stored as a Dependabot
   secret. `GITHUB_TOKEN` is always available, so these builds need neither.
 - **The token is not read-only.** `docker-build.yml` declares `contents`,
-  `packages`, `security-events`, `attestations` and `id-token: write`, and a called
-  workflow can never hold more than its caller grants - so every caller grants
-  them, and the token in the build carries `contents: write`, `packages: write`,
+  `packages`, `security-events`, `attestations` and `id-token: write` plus
+  `actions: read` (the SARIF upload reads its own workflow run, which a private
+  repository allows only with that scope), and a called workflow can never hold
+  more than its caller grants - so every caller grants them, and the token in the
+  build carries `contents: write`, `packages: write`,
   `security-events: write` and `attestations: write` until the job ends. A caller
   cannot narrow it to `packages: read`. Dependabot runs are no exception: their
   token starts read-only, and the caller's `permissions:` block raises it to the
