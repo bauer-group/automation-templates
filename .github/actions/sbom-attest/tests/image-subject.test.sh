@@ -198,8 +198,8 @@ lacks "no notice when attestation was not requested" "$LOG" "SBOM not attested"
 
 contains "attests only a pushed image" "$DB_ATTEST" "steps.build-info.outputs.pushed == 'true'"
 contains "passes the derived image name" "$DB_ATTEST" "subject-name: \${{ steps.sbom.outputs.image-name }}"
-contains "passes the push digest of either attempt" "$DB_ATTEST" \
-  "subject-digest: \${{ steps.build.outputs.digest || steps.build-retry.outputs.digest }}"
+contains "passes the push digest of either attempt or the single-build fast path" "$DB_ATTEST" \
+  "subject-digest: \${{ steps.build.outputs.digest || steps.build-retry.outputs.digest || steps.push-scanned.outputs.digest }}"
 
 echo
 if [ "$FAILED" -gt 0 ]; then

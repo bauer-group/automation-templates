@@ -319,7 +319,7 @@ The Docker build action provides:
 | `github-token-secret-id` | Pass the workflow's own `GITHUB_TOKEN` to the build as a BuildKit secret with this id (e.g. `npm_token`), alongside `DOCKER_BUILD_SECRETS`. Replaces a PAT for GitHub Packages dependencies. The token is write-scoped - see [Build Secrets](#build-secrets) before mounting it | `''` |
 | `platforms` | Target platforms to build and push (comma-separated). Listing more than one produces a multi-arch manifest list | `'linux/amd64'` |
 | `multi-platform` | **Deprecated** - ignored. `platforms` alone decides what is built | `false` |
-| `checkout-fetch-depth` | Git history depth for the build checkout. `0` = full history (required for Dockerfile-version write-back and semver derivation); set `1` for a faster shallow checkout when neither is used | `0` |
+| `checkout-fetch-depth` | Git history depth for the build checkout. Default `1` = shallow. **BREAKING:** was `0`; set `0` for full history when a build step needs it (Dockerfile-version write-back, git-describe versioning, changelog generation) | `1` |
 | `checkout-lfs` | Fetch Git LFS objects on the build checkout; set `false` to skip LFS blobs for a faster checkout | `true` |
 
 ### Push Configuration
@@ -338,10 +338,11 @@ The Docker build action provides:
 | `security-fail-on` | Fail on: `'CRITICAL'`, `'HIGH'`, `'MEDIUM'`, `'LOW'` | `'CRITICAL'` |
 | `security-ignore-unfixed` | Ignore unfixed vulnerabilities | `false` |
 | `sign-image` | Sign image with Cosign | `false` |
-| `generate-sbom` | Generate Software Bill of Materials | `false` |
+| `generate-sbom` | Generate Software Bill of Materials. **BREAKING:** was `false` | `true` |
 | `sbom-format` | SBOM format: `'cyclonedx'`, `'spdx'` | `'cyclonedx'` |
-| `attest-sbom` | Create a GitHub (Sigstore) SBOM attestation for the pushed image digest. Requires `generate-sbom: true`; skipped when nothing is pushed | `false` |
-| `provenance` | SLSA build provenance for the pushed image: `'false'`, `'true'`, or `'mode=max'`. Enabling it attaches an attestation manifest | `'false'` |
+| `attest-sbom` | Create a GitHub (Sigstore) SBOM attestation for the pushed image digest. Requires `generate-sbom: true` and the caller to grant `attestations: write` + `id-token: write`; skipped when nothing is pushed. **BREAKING:** was `false` | `true` |
+| `provenance` | SLSA build provenance for the pushed image: `'false'`, `'true'`, or `'mode=max'`. Attaches an attestation manifest, so the pushed image is an OCI index. **BREAKING:** was `'false'`; set `'false'` to keep the single-manifest form | `'mode=max'` |
+| `single-build-scan` | Push the exact scanned image with `docker push` instead of building a second time (closes the scan->push window). Single-platform only; refused together with `provenance` (see *Single-Build Scan* below) | `false` |
 | `generate-vex` | Generate an OpenVEX document from the Trivy scan report (requires `security-scan: true` with the `trivy` scanner) | `false` |
 
 ### Docker Hub README Sync
@@ -566,10 +567,10 @@ generate-sbom: true
 sbom-format: 'cyclonedx'  # or 'spdx'
 ```
 
-### SBOM Attestation & Build Provenance (opt-in)
+### SBOM Attestation & Build Provenance (on by default)
 
-Create a cryptographic, verifiable trail for the published image. Both default to
-today's behaviour (off) and require no changes for existing callers:
+A cryptographic, verifiable trail for the published image. **BREAKING:** all three are on
+by default; set them to `false` to opt out:
 
 ```yaml
 generate-sbom: true
@@ -591,8 +592,8 @@ gh attestation verify oci://<registry>/<image>:<tag> --repo <owner>/<repo>
 > the runner, i.e. the runner's platform, and attested for the pushed index digest.
 
 > **Note:** `provenance` attaches an attestation manifest, which changes the pushed
-> image from a single manifest to an image index. Leave it `'false'` (default) if you
-> depend on the exact single-manifest form.
+> image from a single manifest to an image index. Set it to `'false'` if you depend
+> on the exact single-manifest form.
 
 ### OpenVEX Document (opt-in)
 
@@ -618,6 +619,29 @@ categories and a security score in the **Security** tab. It is advisory only
 > **Note:** the container scan pulls the image without a registry login, so for **private
 > GHCR** images this advisory job may report a pull failure. The build, tags, digests,
 > outputs and deploy gate are unaffected.
+
+### Single-Build Scan — close the scan→push TOCTOU (opt-in)
+
+By default the action builds twice: once locally (`load`ed and scanned) and once more to
+push. That leaves a time-of-check-to-time-of-use gap between the *scanned* artifact and the
+*pushed* one. Enable `single-build-scan` to build **once**, scan it, then `docker push` the
+**exact** scanned image — no rebuild:
+
+```yaml
+single-build-scan: true
+multi-platform: false      # single-platform only (see below)
+```
+
+- **Scope:** applies to **single-platform** builds. With `multi-platform: true` it falls
+  back to the standard two-build flow (scanning every architecture of a pushed multi-arch
+  index still needs the design tracked in the breaking PR).
+- **Mutually exclusive with provenance.** The fast path uses `docker push`, which attaches
+  no SLSA build provenance, and the image it pushes came from a `load: true` build the docker
+  exporter cannot attach attestations to at all. Since `provenance` defaults to `mode=max`,
+  the combination is **refused before the build starts** rather than dropping provenance
+  silently. Pick the property the build needs: `provenance: 'false'` keeps the scan->push
+  window closed, `single-build-scan: false` keeps provenance and accepts the second build.
+  The SBOM attestation (`attest-sbom`) works either way.
 
 ## Outputs
 
