@@ -173,6 +173,13 @@ on:
   push:
     branches: [main]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  packages: read
+  issues: write
+  pull-requests: write
+
 jobs:
   validate-compose:
     uses: bauer-group/automation-templates/.github/workflows/modules-validate-compose.yml@main

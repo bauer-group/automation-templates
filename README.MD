@@ -279,6 +279,15 @@ name: 🐳 Docker Build
 
 on: [push]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+  actions: read
+
 jobs:
   docker:
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
@@ -311,6 +320,16 @@ Modern Python automation with semantic versioning, automated releases, and compr
 name: 🐍 Python Semantic Release
 
 on: [push, pull_request]
+
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+  checks: write
+  security-events: write
+  actions: read
 
 jobs:
   python-release:
@@ -622,6 +641,13 @@ on:
   pull_request_review_comment:
     types: [created]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  id-token: write
+
 jobs:
   claude:
     if: contains(github.event.comment.body, '@claude')
@@ -778,6 +804,15 @@ on:
   pull_request:
     branches: [main]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+  actions: read
+
 jobs:
   docker:
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
@@ -807,6 +842,16 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
+
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+  checks: write
+  security-events: write
+  actions: read
 
 jobs:
   build:

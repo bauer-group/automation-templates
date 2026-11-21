@@ -27,9 +27,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
   id-token: write
+  security-events: write
 
 jobs:
   # ===========================================================================

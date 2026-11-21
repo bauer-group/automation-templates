@@ -29,6 +29,15 @@ env:
   SERVICE_NAME: 'user-service'
   NAMESPACE: 'microservices'
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+  actions: read
+
 jobs:
   docker-build:
     name: Build & Deploy Microservice

@@ -28,6 +28,11 @@ jobs:
   security-analysis:
     name: Deep Security Analysis
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
+    # modules-security-scan.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     with:
       # Gitleaks is opt-in (default 'none'); enabled here on purpose. Drop it in
       # repositories that have GitHub secret scanning and push protection.
@@ -44,6 +49,10 @@ jobs:
   compliance-check:
     name: Compliance Analysis
     uses: bauer-group/automation-templates/.github/workflows/modules-license-compliance.yml@main
+    # modules-license-compliance.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: read
+      actions: read
     with:
       fail-on-forbidden: true  # Strict license compliance
       fail-on-unknown: true
@@ -59,6 +68,12 @@ jobs:
     name: Security Gate
     if: github.event_name == 'pull_request'
     uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@main
+    # modules-pr-validation.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+      checks: write
     with:
       enable-security-scan: true
       enable-license-check: true
@@ -89,6 +104,11 @@ jobs:
     if: needs.secure-release.outputs.release-created == 'true'
     needs: secure-release
     uses: bauer-group/automation-templates/.github/workflows/modules-artifact-generation.yml@main
+    # modules-artifact-generation.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: write
+      packages: write
+      actions: read
     with:
       artifact-types: 'all'  # Generate all artifact types
       tag-name: ${{ needs.secure-release.outputs.tag-name }}

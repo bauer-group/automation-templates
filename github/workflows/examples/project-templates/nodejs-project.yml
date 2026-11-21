@@ -52,6 +52,12 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: test
     uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@main
+    # modules-pr-validation.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+      checks: write
     with:
       enable-security-scan: true
       enable-license-check: true
@@ -69,6 +75,11 @@ jobs:
     name: Security & Dependencies
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
+    # modules-security-scan.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     with:
       scan-engine: 'none'  # Trivy only; 'gitleaks' to add the secret scan (see above)
       scan-type: 'all'
@@ -81,6 +92,10 @@ jobs:
     name: License Compliance
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: bauer-group/automation-templates/.github/workflows/modules-license-compliance.yml@main
+    # modules-license-compliance.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: read
+      actions: read
     with:
       fail-on-forbidden: false
       scan-dependencies: true
@@ -150,6 +165,11 @@ jobs:
     if: needs.release.outputs.release-created == 'true'
     needs: [release, build-and-publish]
     uses: bauer-group/automation-templates/.github/workflows/modules-artifact-generation.yml@main
+    # modules-artifact-generation.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: write
+      packages: write
+      actions: read
     with:
       artifact-types: 'source'
       tag-name: ${{ needs.release.outputs.tag-name }}

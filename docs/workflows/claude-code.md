@@ -31,6 +31,13 @@ on:
   pull_request_review:
     types: [submitted]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  id-token: write
+
 jobs:
   claude:
     if: |

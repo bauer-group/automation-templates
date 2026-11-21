@@ -27,6 +27,13 @@ on:
   pull_request:
     branches: [main]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  security-events: write
+
 jobs:
   build:
     uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
@@ -48,6 +55,7 @@ permissions:
   contents: write
   packages: write
   id-token: write  # Required for Trusted Publishing
+  security-events: write
 
 jobs:
   publish:
@@ -78,6 +86,9 @@ permissions:
   contents: write
   packages: write
   id-token: write
+  pull-requests: write
+  issues: write
+  security-events: write
 
 jobs:
   # Validation

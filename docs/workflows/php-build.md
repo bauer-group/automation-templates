@@ -38,6 +38,10 @@ on:
   pull_request:
     branches: [main]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  pull-requests: write
 jobs:
   test:
     uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
@@ -243,6 +247,10 @@ on:
   release:
     types: [published]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  pull-requests: write
 jobs:
   test:
     uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main

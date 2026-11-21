@@ -117,6 +117,12 @@ jobs:
     needs: [release, prepare-sources]
     if: needs.release.outputs.release-created == 'true'
     uses: bauer-group/automation-templates/.github/workflows/dotnet-publish-library.yml@main
+    # dotnet-publish-library.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      security-events: write
     with:
       project-path: 'src/MyApp.CLI/MyApp.CLI.csproj'
       release-version: ${{ needs.release.outputs.version }}

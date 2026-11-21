@@ -27,6 +27,16 @@ on:
         type: boolean
         default: false
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+  checks: write
+  security-events: write
+  actions: read
+
 jobs:
   python-release:
     name: 🐍 Python Semantic Release

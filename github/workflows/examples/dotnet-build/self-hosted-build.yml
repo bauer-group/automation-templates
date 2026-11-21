@@ -38,6 +38,11 @@ on:
         type: string
         default: 'self-hosted,linux,dotnet'
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   # ============================================================================
   # Example 1: Dynamic Runner Selection

@@ -25,6 +25,11 @@ base vs. head dependency graph, so a risky dependency is caught **before merge**
 name: Dependency Review
 on: pull_request
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   dependency-review:
     uses: bauer-group/automation-templates/.github/workflows/modules-dependency-review.yml@main
@@ -34,6 +39,11 @@ jobs:
 
 ```yaml
 on: pull_request
+
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   dependency-review:

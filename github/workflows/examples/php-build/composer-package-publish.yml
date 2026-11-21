@@ -10,6 +10,10 @@ on:
 jobs:
   validate:
     uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    # php-build.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: read
+      pull-requests: write
     with:
       php-version: '8.0'  # Minimum supported version
       dependency-versions: 'lowest'
@@ -27,6 +31,10 @@ jobs:
         php: ['8.0', '8.1', '8.2', '8.3']
         dependencies: ['lowest', 'locked', 'highest']
     uses: bauer-group/automation-templates/.github/workflows/php-build.yml@main
+    # php-build.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: read
+      pull-requests: write
     with:
       php-version: ${{ matrix.php }}
       dependency-versions: ${{ matrix.dependencies }}

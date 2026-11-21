@@ -23,6 +23,12 @@ A *verified* finding is a confirmed live exposure — not a maybe.
 name: Secret Scan
 on: [push, pull_request]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 jobs:
   trufflehog:
     uses: bauer-group/automation-templates/.github/workflows/modules-trufflehog-scan.yml@main
@@ -34,6 +40,12 @@ jobs:
 on:
   schedule:
     - cron: '0 3 * * 1'   # weekly deep scan
+
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  security-events: write
+  actions: read
 
 jobs:
   trufflehog:

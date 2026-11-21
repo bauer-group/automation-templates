@@ -41,7 +41,7 @@ jobs:
   msi:
     name: Package MSI
     permissions:
-      contents: read
+      contents: write
     uses: bauer-group/automation-templates/.github/workflows/dotnet-package-msi.yml@main
     with:
       source-artifact-name: 'app-win-x64'

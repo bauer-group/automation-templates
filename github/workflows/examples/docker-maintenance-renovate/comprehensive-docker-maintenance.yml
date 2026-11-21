@@ -40,6 +40,9 @@ permissions:
   packages: write
   pull-requests: write
   security-events: write
+  attestations: write
+  id-token: write
+  actions: read
 
 jobs:
   # ============================================

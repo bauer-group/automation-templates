@@ -27,6 +27,10 @@ on:
 permissions:
   packages: write
   security-events: write
+  contents: write
+  attestations: write
+  id-token: write
+  actions: read
 
 jobs:
   docker-build:

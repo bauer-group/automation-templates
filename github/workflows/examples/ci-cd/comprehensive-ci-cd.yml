@@ -32,6 +32,12 @@ jobs:
     name: PR Validation
     if: github.event_name == 'pull_request'
     uses: bauer-group/automation-templates/.github/workflows/modules-pr-validation.yml@main
+    # modules-pr-validation.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+      checks: write
     with:
       enable-security-scan: true
       enable-license-check: true
@@ -50,6 +56,11 @@ jobs:
     name: Security Scan
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: bauer-group/automation-templates/.github/workflows/modules-security-scan.yml@main
+    # modules-security-scan.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     with:
       scan-engine: ${{ inputs.security-scan-engine || 'none' }}  # Trivy always; Gitleaks opt-in
       scan-type: 'all'
@@ -62,6 +73,10 @@ jobs:
     name: License Compliance
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: bauer-group/automation-templates/.github/workflows/modules-license-compliance.yml@main
+    # modules-license-compliance.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: read
+      actions: read
     with:
       fail-on-forbidden: false  # Report but don't block
       fail-on-unknown: false
@@ -89,6 +104,11 @@ jobs:
     if: needs.release.outputs.release-created == 'true'
     needs: release
     uses: bauer-group/automation-templates/.github/workflows/modules-artifact-generation.yml@main
+    # modules-artifact-generation.yml requests these; a called workflow can never hold more than its caller grants
+    permissions:
+      contents: write
+      packages: write
+      actions: read
     with:
       artifact-types: ${{ inputs.artifact-types || 'source' }}
       tag-name: ${{ needs.release.outputs.tag-name }}

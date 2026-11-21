@@ -25,9 +25,10 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
   packages: write
   id-token: write
+  security-events: write
 
 jobs:
   publish:

@@ -12,6 +12,13 @@ on:
   issue_comment:
     types: [created]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  id-token: write
+
 jobs:
   review:
     # Only run on PRs when @claude review is mentioned

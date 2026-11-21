@@ -45,6 +45,7 @@ permissions:
   id-token: write   # for NuGet Trusted Publishing (tool path)
   issues: write
   pull-requests: write
+  security-events: write
 
 jobs:
   validate:

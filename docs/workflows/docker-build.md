@@ -24,6 +24,14 @@ on:
     branches: [main]
     tags: ['v*.*.*']
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+  actions: read
 jobs:
   docker-build:
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
@@ -42,6 +50,14 @@ on:
     branches: [main]
     tags: ['v*.*.*']
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+  actions: read
 jobs:
   docker-build:
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main
@@ -61,6 +77,14 @@ on:
     branches: [main]
     tags: ['v*.*.*']
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+  actions: read
 jobs:
   docker-build:
     uses: bauer-group/automation-templates/.github/workflows/docker-build.yml@main

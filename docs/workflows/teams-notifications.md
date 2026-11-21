@@ -144,6 +144,13 @@ on:
   release:
     types: [published]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  actions: read
+
 jobs:
   notifications:
     uses: bauer-group/automation-templates/.github/workflows/teams-notifications.yml@main

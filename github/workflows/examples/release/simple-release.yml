@@ -13,6 +13,12 @@ on:
         type: boolean
         default: false
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  packages: write
+  actions: read
+
 jobs:
   # Simple release workflow using the modular components
   release:

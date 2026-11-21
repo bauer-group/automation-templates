@@ -31,6 +31,12 @@ on:
   schedule:
     - cron: '0 4 * * 1'
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  packages: read
 jobs:
   codeql:
     uses: bauer-group/automation-templates/.github/workflows/modules-codeql.yml@main

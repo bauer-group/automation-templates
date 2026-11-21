@@ -45,6 +45,11 @@ on:
         type: string
         default: '8.2'
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   # ============================================================================
   # Example 1: Dynamic Runner Selection
