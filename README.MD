@@ -339,7 +339,6 @@ jobs:
       run-tests: true
       build-local-wheel: true
       update-documentation: true
-      run-tests: true
       collect-coverage: true
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

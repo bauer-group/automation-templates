@@ -276,6 +276,15 @@ name: 🐳 Docker Build
 
 on: [push]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+  actions: read
+
 jobs:
   docker:
     uses: {{REPO_FULL_NAME}}/.github/workflows/docker-build.yml@main
@@ -309,6 +318,16 @@ name: 🐍 Python Semantic Release
 
 on: [push, pull_request]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+  checks: write
+  security-events: write
+  actions: read
+
 jobs:
   python-release:
     uses: {{REPO_FULL_NAME}}/.github/workflows/python-semantic-release.yml@main
@@ -317,7 +336,6 @@ jobs:
       run-tests: true
       build-local-wheel: true
       update-documentation: true
-      run-tests: true
       collect-coverage: true
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -619,6 +637,13 @@ on:
   pull_request_review_comment:
     types: [created]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  id-token: write
+
 jobs:
   claude:
     if: contains(github.event.comment.body, '@claude')
@@ -775,6 +800,15 @@ on:
   pull_request:
     branches: [main]
 
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+  actions: read
+
 jobs:
   docker:
     uses: {{REPO_FULL_NAME}}/.github/workflows/docker-build.yml@main
@@ -804,6 +838,16 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
+
+# What the called workflows request; a called workflow can never hold more than its caller grants
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+  checks: write
+  security-events: write
+  actions: read
 
 jobs:
   build:
