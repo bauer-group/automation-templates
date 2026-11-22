@@ -1,5 +1,7 @@
 # Python Release Workflow Examples
 
+> **Obsolete:** `python-automatic-release.yml` was removed on 2025-09-01, so the examples on this page no longer start. They are kept for reference only. For Python releases use [`python-semantic-release.yml`](../../../../docs/workflows/python-semantic-release.md), which has a migration section.
+
 This directory contains examples for using the Python automatic release workflow.
 
 ## Overview
@@ -30,6 +32,7 @@ on:
 jobs:
   release:
     name: 📦 Python Package Pipeline
+    # OBSOLETE: python-automatic-release.yml was removed on 2025-09-01 - use python-semantic-release.yml
     uses: bauer-group/automation-templates/.github/workflows/python-automatic-release.yml@main
     with:
       python-version: '3.12'
@@ -90,6 +93,7 @@ your-python-project/
 ```yaml
 jobs:
   release:
+    # OBSOLETE: python-automatic-release.yml was removed on 2025-09-01 - use python-semantic-release.yml
     uses: bauer-group/automation-templates/.github/workflows/python-automatic-release.yml@main
     with:
       python-version: '3.12'
@@ -233,6 +237,7 @@ on:
 
 jobs:
   release:
+    # OBSOLETE: python-automatic-release.yml was removed on 2025-09-01 - use python-semantic-release.yml
     uses: bauer-group/automation-templates/.github/workflows/python-automatic-release.yml@main
     with:
       python-version: '3.12'
@@ -261,6 +266,7 @@ on:
 
 jobs:
   release:
+    # OBSOLETE: python-automatic-release.yml was removed on 2025-09-01 - use python-semantic-release.yml
     uses: bauer-group/automation-templates/.github/workflows/python-automatic-release.yml@main
     with:
       python-version: '3.12'

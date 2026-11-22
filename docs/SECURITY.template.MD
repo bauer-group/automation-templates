@@ -262,7 +262,7 @@ We track and report on:
 ### Internal Resources
 - [Secrets Naming Convention](github/workflows/SECRETS-NAMING-CONVENTION.MD)
 - [Contributing Guidelines](CONTRIBUTING.MD)
-- [Security-Focused Workflow Examples](github/workflows/examples/ci-cd/security-focused.yml)
+- [Security-Focused Workflow Examples](github/workflows/examples/ci-cd/security-focused.yml) (obsolete: its release job calls the removed `modules-release-management.yml`)
 
 ### External Resources
 - [GitHub Security Best Practices](https://docs.github.com/en/actions/security-guides)

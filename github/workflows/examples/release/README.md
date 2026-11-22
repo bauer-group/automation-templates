@@ -18,6 +18,8 @@ Uses conventional commits to determine version bumps:
 
 Basic release workflow for manual version management.
 
+> **Obsolete:** it calls `modules-release-management.yml`, which was removed on 2025-08-20 (switch from Release Please to semantic-release), so it no longer starts. Kept for reference only.
+
 ## Using the Module
 
 For most use cases, use the reusable workflow module:

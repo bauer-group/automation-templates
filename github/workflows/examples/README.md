@@ -19,8 +19,8 @@ github/workflows/examples/
 │   ├── offsite-s3-new-host.yml
 │   └── compose-variants-matrix.yml
 ├── ci-cd/                   # CI/CD pipeline examples
-│   ├── comprehensive-ci-cd.yml
-│   └── security-focused.yml
+│   ├── comprehensive-ci-cd.yml   # obsolete
+│   └── security-focused.yml      # obsolete
 ├── documentation/           # Documentation & automation examples
 │   ├── ai-issue-summary.yml
 │   ├── documentation.yml
@@ -47,17 +47,17 @@ github/workflows/examples/
 │   ├── react-app-deploy.yml
 │   ├── nextjs-docker-deploy.yml
 │   └── monorepo-turborepo.yml
-├── python-release/           # Python package release examples
+├── python-release/           # Python package release examples (obsolete)
 │   ├── nocodb-simpleclient-example.yml
 │   └── README.MD
 ├── release/                 # Release automation examples
 │   ├── semantic-release.yml
-│   └── simple-release.yml
+│   └── simple-release.yml    # obsolete
 ├── security/               # Security workflow examples
 │   ├── automatic-release.yml
 │   └── manual-release.yml
 ├── project-templates/      # Complete project workflow templates
-│   └── nodejs-project.yml
+│   └── nodejs-project.yml    # obsolete
 ├── docker/                 # Docker build examples
 │   ├── simple-docker-build.yml
 │   ├── dockerhub-with-readme-sync.yml
@@ -135,6 +135,8 @@ For building Node.js applications and packages
 ### Python Release (`python-automatic-release.yml`)
 For building and releasing Python packages with comprehensive CI/CD
 
+> **Obsolete:** `python-automatic-release.yml` was removed on 2025-09-01, so these examples no longer start. They are kept for reference only — use `python-semantic-release.yml` instead.
+
 **Examples:**
 - `python-release/nocodb-simpleclient-example.yml` - Complete Python package release
 - `python-release/README.MD` - Detailed documentation and GitHub Packages installation guide
@@ -202,8 +204,8 @@ Base image digests and dependency updates (npm, pip, .NET, Go) in one scheduled 
 Complete CI/CD pipeline configurations
 
 **Examples:**
-- `ci-cd/comprehensive-ci-cd.yml` - Full CI/CD pipeline with all checks
-- `ci-cd/security-focused.yml` - Security-first CI/CD pipeline
+- `ci-cd/comprehensive-ci-cd.yml` - Full CI/CD pipeline with all checks (**obsolete**: its release job calls the removed `modules-release-management.yml`)
+- `ci-cd/security-focused.yml` - Security-first CI/CD pipeline (**obsolete**: its release job calls the removed `modules-release-management.yml`)
 
 ### Documentation & Automation
 Various automation and documentation workflows
@@ -220,7 +222,7 @@ Release and versioning workflows
 
 **Examples:**
 - `release/semantic-release.yml` - Semantic versioning automation
-- `release/simple-release.yml` - Basic release workflow
+- `release/simple-release.yml` - Basic release workflow (**obsolete**: calls the removed `modules-release-management.yml`)
 
 ### Security Workflows
 Security scanning and compliance workflows
@@ -233,7 +235,7 @@ Security scanning and compliance workflows
 Complete workflow templates for specific project types
 
 **Examples:**
-- `project-templates/nodejs-project.yml` - Complete Node.js project setup
+- `project-templates/nodejs-project.yml` - Complete Node.js project setup (**obsolete**: its release job calls the removed `modules-release-management.yml`)
 
 ### Claude Code Assistant (`claude-code.yml`)
 

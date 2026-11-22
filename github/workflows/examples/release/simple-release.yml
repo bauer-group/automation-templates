@@ -1,3 +1,9 @@
+# OBSOLETE - this example no longer starts as-is.
+# Its release job calls modules-release-management.yml, which was removed on
+# 2025-08-20 (switch from Release Please to semantic-release). GitHub rejects
+# the whole run when a called workflow does not exist. Kept for reference
+# only - for releases use modules-semantic-release.yml.
+
 name: 🚀 Simple Release Example
 
 # This is a simple example showing how to use the modular release workflows
@@ -23,6 +29,7 @@ jobs:
   # Simple release workflow using the modular components
   release:
     name: Simple Release
+    # OBSOLETE: modules-release-management.yml was removed on 2025-08-20 - use modules-semantic-release.yml
     uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
     with:
       release-type: 'simple'

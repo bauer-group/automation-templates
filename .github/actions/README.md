@@ -260,6 +260,7 @@ jobs:
   
   release:
     needs: [security, compliance]
+    # OBSOLETE: modules-release-management.yml was removed on 2025-08-20 - use modules-semantic-release.yml
     uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
     with:
       release-type: simple
@@ -278,6 +279,7 @@ jobs:
   
   release:
     if: github.ref == 'refs/heads/main'
+    # OBSOLETE: modules-release-management.yml was removed on 2025-08-20 - use modules-semantic-release.yml
     uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
     with:
       release-type: simple

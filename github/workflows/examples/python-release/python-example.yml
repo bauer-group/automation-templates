@@ -1,3 +1,9 @@
+# OBSOLETE - this example no longer starts as-is.
+# It calls python-automatic-release.yml, which was removed on 2025-09-01.
+# GitHub rejects the whole run when a called workflow does not exist. Kept
+# for reference only - use python-semantic-release.yml instead
+# (docs/workflows/python-semantic-release.md has a migration section).
+
 # Example: Python Package CI/CD Pipeline
 # =====================================
 # Complete usage example for Python projects using the modernized automation templates
@@ -43,6 +49,7 @@ jobs:
   # Main Python CI/CD Pipeline using modular automation templates
   python-pipeline:
     name: 🐍 Python Release Pipeline
+    # OBSOLETE: python-automatic-release.yml was removed on 2025-09-01 - use python-semantic-release.yml
     uses: bauer-group/automation-templates/.github/workflows/python-automatic-release.yml@main
     with:
       # Python Configuration

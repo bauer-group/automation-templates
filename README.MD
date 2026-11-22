@@ -749,7 +749,7 @@ export default {
    # For Shopware 5 plugins
    cp github/workflows/examples/shopware5-build/simple-modern-plugin.yml .github/workflows/shopware.yml
 
-   # For general CI/CD
+   # For general CI/CD (obsolete example: its release job calls the removed modules-release-management.yml)
    cp .github/workflows/examples/ci-cd/comprehensive-ci-cd.yml .github/workflows/
    ```
 

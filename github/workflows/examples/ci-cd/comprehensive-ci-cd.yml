@@ -1,3 +1,9 @@
+# OBSOLETE - this example no longer starts as-is.
+# Its release job calls modules-release-management.yml, which was removed on
+# 2025-08-20 (switch from Release Please to semantic-release). GitHub rejects
+# the whole run when a called workflow does not exist. Kept for reference
+# only - for releases use modules-semantic-release.yml.
+
 name: 🔄 Comprehensive CI/CD Example
 
 # This example shows how to compose multiple modular workflows
@@ -90,6 +96,7 @@ jobs:
     name: Release Management
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [security-scan, license-compliance]
+    # OBSOLETE: modules-release-management.yml was removed on 2025-08-20 - use modules-semantic-release.yml
     uses: bauer-group/automation-templates/.github/workflows/modules-release-management.yml@main
     with:
       release-type: ${{ inputs.release-type || 'simple' }}
