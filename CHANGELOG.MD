@@ -4,6 +4,13 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.12.3](https://github.com/bauer-group/automation-templates/compare/v11.12.2...v11.12.3) (2026-11-23)
+
+### 🐛 Bug Fixes
+
+* **security-generate:** showed the version in one form in SECURITY.MD ([3e8f2ac](https://github.com/bauer-group/automation-templates/commit/3e8f2ac1cff6db4ba0192746a144d170e842e207))
+* **tools:** pointed the deploy profiles at existing Python templates ([9643dbd](https://github.com/bauer-group/automation-templates/commit/9643dbde99430192c6859dc66ab9990fa34e87e6))
+
 ## [11.12.2](https://github.com/bauer-group/automation-templates/compare/v11.12.1...v11.12.2) (2026-11-20)
 
 ### 🐛 Bug Fixes
