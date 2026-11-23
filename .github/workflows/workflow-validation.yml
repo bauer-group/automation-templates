@@ -16,6 +16,9 @@ on:
       - '.github/actionlint.yaml'
       - 'github/workflows/examples/**'
       - 'tools/workflow-audit/**'
+      - 'tools/deploy_automations.py'
+      - 'tools/deploy-config.yml'
+      - 'tools/tests/**'
   pull_request:
     branches: [main]
     paths:
@@ -24,6 +27,9 @@ on:
       - '.github/actionlint.yaml'
       - 'github/workflows/examples/**'
       - 'tools/workflow-audit/**'
+      - 'tools/deploy_automations.py'
+      - 'tools/deploy-config.yml'
+      - 'tools/tests/**'
   workflow_dispatch:
 
 permissions:
@@ -359,3 +365,10 @@ jobs:
       - name: "🔍 workflow-audit: workflows, actions and shipped examples"
         shell: bash
         run: python tools/workflow-audit/workflow_audit.py
+
+      # The deploy tool's registry points at templates of this repository. A
+      # template removed, renamed or given a new required input fails here,
+      # not in the repository that runs the generated caller.
+      - name: "🧪 deploy tool: generated callers"
+        shell: bash
+        run: python tools/tests/test_deploy_automations.py

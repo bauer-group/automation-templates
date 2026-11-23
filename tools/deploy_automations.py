@@ -7,6 +7,7 @@ Deploys reusable automations to target repositories while keeping logic centrali
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -19,7 +20,54 @@ import logging
 # Configuration
 TEMPLATE_REPO = "bauer-group/automation-templates"
 SCRIPT_DIR = Path(__file__).parent
+TEMPLATE_ROOT = SCRIPT_DIR.parent
 DEFAULT_CONFIG = SCRIPT_DIR / "deploy-config.yml"
+
+# GitHub token scopes, ordered by what they grant.
+PERMISSION_LEVEL = {"none": 0, "read": 1, "write": 2}
+PERMISSION_SCOPES = ("actions", "attestations", "checks", "contents", "deployments",
+                     "discussions", "id-token", "issues", "models", "packages", "pages",
+                     "pull-requests", "repository-projects", "security-events", "statuses")
+# A job's `uses:` that calls another workflow of this repository.
+NESTED_WORKFLOW = re.compile(
+    r"^(?:\./|" + re.escape(TEMPLATE_REPO) + r"/)\.github/workflows/([\w.-]+\.ya?ml)(?:@\S+)?$")
+
+
+def load_yaml(path: Path):
+    with open(path, 'r', encoding='utf-8') as f:
+        return yaml.safe_load(f)
+
+
+def workflow_triggers(doc) -> Dict:
+    """The `on:` block. YAML 1.1 reads a bare `on` key as boolean True."""
+    if not isinstance(doc, dict):
+        return {}
+    triggers = doc.get("on", doc.get(True))
+    return triggers if isinstance(triggers, dict) else {}
+
+
+def normalize_permissions(value) -> Optional[Dict[str, str]]:
+    """A `permissions:` value as {scope: level}; None when there is none."""
+    if value is None:
+        return None
+    if value == "read-all":
+        return {s: "read" for s in PERMISSION_SCOPES if s != "id-token"}
+    if value == "write-all":
+        return {s: "write" for s in PERMISSION_SCOPES}
+    if value in ({}, ""):
+        return {}
+    if isinstance(value, dict):
+        return {str(k): str(v) for k, v in value.items()}
+    raise ValueError(f"Unknown permissions value: {value!r}")
+
+
+def merge_permissions(a: Dict[str, str], b: Dict[str, str]) -> Dict[str, str]:
+    """Per scope the higher of the two levels."""
+    merged = dict(a)
+    for scope, level in b.items():
+        if PERMISSION_LEVEL.get(level, 0) > PERMISSION_LEVEL.get(merged.get(scope, "none"), 0):
+            merged[scope] = level
+    return merged
 
 # Logging setup
 logging.basicConfig(
@@ -77,11 +125,12 @@ class DeploymentConfig:
 class AutomationDeployer:
     """Main deployment class"""
     
-    def __init__(self, config: DeploymentConfig):
+    def __init__(self, config: DeploymentConfig, template_root: Path = TEMPLATE_ROOT):
         self.config = config
         self.template_repo = TEMPLATE_REPO
-        self.script_dir = SCRIPT_DIR
-    
+        self.template_root = Path(template_root)
+        self._permission_cache: Dict[str, Dict[str, str]] = {}
+
     def get_deployment_items(self, profile: str = "", workflows: str = "", 
                            actions: str = "") -> tuple[List[str], List[str]]:
         """Get workflows and actions based on profile or explicit selection"""
@@ -99,60 +148,149 @@ class AutomationDeployer:
         
         return workflow_list, action_list
     
+    def _workflow_doc(self, file: str):
+        path = self.template_root / ".github" / "workflows" / file
+        return load_yaml(path) if path.is_file() else None
+
+    def resolve_workflow(self, workflow_name: str) -> str:
+        """File name of the reusable template behind `workflow_name`.
+
+        Registry entries name their file; any other name must be a workflow
+        file of this repository. Only templates with a `workflow_call` trigger
+        can be called from another repository - GitHub rejects the run otherwise.
+        """
+        entry = self.config.config.get('workflows', {}).get(workflow_name) or {}
+        file = entry.get('file') or f"{workflow_name}.yml"
+        doc = self._workflow_doc(file)
+        if doc is None:
+            raise ValueError(f"Workflow '{workflow_name}': .github/workflows/{file} does not exist")
+        if 'workflow_call' not in workflow_triggers(doc):
+            raise ValueError(f"Workflow '{workflow_name}': {file} has no workflow_call trigger "
+                             "and cannot be called from another repository")
+        return file
+
+    def required_permissions(self, file: str, _stack: tuple = ()) -> Dict[str, str]:
+        """Every scope a template's jobs request, including the workflows it calls.
+
+        A caller must grant at least this: a called workflow can only narrow
+        the caller's permissions, and GitHub refuses to start the run
+        (startup_failure) when a job asks for more than it was given.
+        """
+        if file in self._permission_cache:
+            return self._permission_cache[file]
+        doc = self._workflow_doc(file)
+        if doc is None or file in _stack:
+            return {}
+        workflow_grant = normalize_permissions(doc.get('permissions'))
+        total: Dict[str, str] = {}
+        for job in (doc.get('jobs') or {}).values():
+            if not isinstance(job, dict):
+                continue
+            grant = normalize_permissions(job.get('permissions'))
+            if grant is None:
+                grant = workflow_grant
+            if grant is not None:
+                total = merge_permissions(total, grant)
+            nested = NESTED_WORKFLOW.match(str(job.get('uses') or ''))
+            if nested and grant is None:
+                # The nested call inherits what this job gets - from the caller.
+                total = merge_permissions(total, self.required_permissions(nested.group(1), _stack + (file,)))
+        self._permission_cache[file] = total
+        return total
+
     def generate_workflow(self, workflow_name: str) -> str:
         """Generate workflow file content for target repository"""
-        return f"""name: 🔄 {workflow_name} (via Automation Templates)
+        file = self.resolve_workflow(workflow_name)
+        call = workflow_triggers(self._workflow_doc(file)).get('workflow_call') or {}
 
-# This workflow uses centralized automation templates
-# Source: https://github.com/{self.template_repo}
-# Configuration: Customize via repository variables and secrets
+        # contents: read as the floor - checkout needs it, and jobs of the
+        # template without a permissions block of their own get exactly these.
+        permissions = merge_permissions({"contents": "read"}, self.required_permissions(file))
+        permission_lines = "\n".join(f"      {scope}: {level}" for scope, level in sorted(permissions.items()))
+
+        # Only inputs the template declares; a required one without a default
+        # gets a placeholder the deploying user has to fill in.
+        placeholders = {"boolean": "false", "number": "0"}
+        input_lines = []
+        for name, spec in (call.get('inputs') or {}).items():
+            if isinstance(spec, dict) and spec.get('required') is True and 'default' not in spec:
+                hint = str(spec.get('description') or '').strip().splitlines()
+                hint = f" - {hint[0]}" if hint else ""
+                value = placeholders.get(spec.get('type'), "''")
+                input_lines.append(f"      {name}: {value}  # TODO: required{hint}")
+        with_block = "    with:\n" + "\n".join(input_lines) + "\n" if input_lines else ""
+
+        return f"""# Generated by tools/deploy_automations.py from {self.template_repo}.
+# Runs on manual dispatch only: add the events it should react to under `on:`.
+# The template's documentation lists the ones it expects.
+name: 🔄 {workflow_name} (via Automation Templates)
 
 on:
-  workflow_call:
-    secrets:
-      TEAMS_WEBHOOK_URL:
-        required: false
-      DOCKER_PASSWORD:
-        required: false
-
-  # Enable manual triggers for testing
   workflow_dispatch:
+  workflow_call:
+
+permissions: {{}}
 
 jobs:
   delegate-to-automation-templates:
     name: 🚀 Execute via Automation Templates
-    uses: {self.template_repo}/.github/workflows/{workflow_name}.yml@main
+    # Everything the called template and the workflows it calls request.
+    # GitHub refuses to start the run when the caller grants less.
+    permissions:
+{permission_lines}
+    uses: {self.template_repo}/.github/workflows/{file}@main
     secrets: inherit
-    with:
-      # Pass any additional parameters here
-      repository-name: ${{{{ github.repository }}}}
-"""
-    
+{with_block}"""
+
+    def resolve_action(self, action_name: str) -> str:
+        """Repository path of the action behind `action_name`."""
+        entry = self.config.config.get('actions', {}).get(action_name) or {}
+        path = (entry.get('path') or f".github/actions/{action_name}").strip('/')
+        if not any((self.template_root / path / f).is_file() for f in ("action.yml", "action.yaml")):
+            raise ValueError(f"Action '{action_name}': {path}/action.yml does not exist")
+        return path
+
     def generate_action_reference(self, action_name: str) -> str:
-        """Generate action reference for target repository"""
-        return f"""name: '{action_name} (via Automation Templates)'
-description: 'Centralized {action_name} action from automation templates'
+        """Generate action reference for target repository
 
-# This action references the centralized automation templates
-# Source: https://github.com/{self.template_repo}/.github/actions/{action_name}
+        A composite pass-through that declares exactly the inputs and outputs
+        of the central action, so the wrapper is used the same way.
+        """
+        path = self.resolve_action(action_name)
+        meta_file = next(self.template_root / path / f for f in ("action.yml", "action.yaml")
+                         if (self.template_root / path / f).is_file())
+        meta = load_yaml(meta_file) or {}
 
-inputs:
-  # Add any required inputs here - these will be passed through
-  config-file:
-    description: 'Configuration file path'
-    required: false
-    default: '.github/config/automation-templates/config.yml'
+        # Deprecated inputs stay out: passing one through on every run would
+        # make the central action warn even when nobody set it.
+        inputs = {name: spec or {} for name, spec in (meta.get('inputs') or {}).items()
+                  if not (spec or {}).get('deprecationMessage')}
+        outputs = meta.get('outputs') or {}
 
-runs:
-  using: 'composite'
-  steps:
-    - name: 🚀 Execute Centralized Action
-      uses: {self.template_repo}/.github/actions/{action_name}@main
-      with:
-        # Pass through all inputs
-        config-file: ${{{{ inputs.config-file }}}}
-"""
-    
+        doc: Dict = {
+            "name": f"{action_name} (via Automation Templates)",
+            "description": f"Pass-through to {self.template_repo}/{path}@main",
+        }
+        if inputs:
+            doc["inputs"] = {
+                name: {"description": spec.get('description') or name,
+                       **{k: spec[k] for k in ("required", "default") if k in spec}}
+                for name, spec in inputs.items()
+            }
+        if outputs:
+            doc["outputs"] = {
+                name: {"description": (spec or {}).get('description') or name,
+                       "value": f"${{{{ steps.central.outputs.{name} }}}}"}
+                for name, spec in outputs.items()
+            }
+        step: Dict = {"id": "central", "uses": f"{self.template_repo}/{path}@main"}
+        if inputs:
+            step["with"] = {name: f"${{{{ inputs.{name} }}}}" for name in inputs}
+        doc["runs"] = {"using": "composite", "steps": [step]}
+
+        header = f"# Generated by tools/deploy_automations.py from {self.template_repo}.\n"
+        return header + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=1000)
+
     def copy_workflow_configs(self, target_dir: Path, workflows: List[str], project_type: str = ""):
         """Copy required configuration files for workflows"""
         config_base = target_dir / ".github" / "config"
@@ -161,7 +299,6 @@ runs:
         # Security policy config
         if any("security" in w for w in workflows):
             self._copy_directory_configs(config_base, "security-policy")
-            self._copy_directory_configs(config_base, "security")
         
         # Teams notification configs
         if any("teams" in w for w in workflows):
@@ -180,7 +317,7 @@ runs:
     
     def _copy_directory_configs(self, target_base: Path, config_dir: str):
         """Copy entire config directories"""
-        source_dir = self.script_dir.parent / ".github" / "config" / config_dir
+        source_dir = self.template_root / ".github" / "config" / config_dir
         target_dir = target_base / config_dir
         
         if source_dir.exists():
@@ -228,10 +365,7 @@ runs:
                         if config_dir not in copied_dirs:
                             self._copy_directory_configs(config_base, config_dir)
                             copied_dirs.add(config_dir)
-        
-        # Always copy license configs
-        self._copy_directory_configs(config_base, "license")
-    
+
     def create_config_template(self, target_dir: Path) -> str:
         """Create main configuration template for target repository"""
         config_dir = target_dir / ".github" / "config" / "automation-templates"

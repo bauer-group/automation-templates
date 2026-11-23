@@ -118,29 +118,50 @@ Zentrale Konfigurationsdatei für Deployment-Profile und Einstellungen.
 name: 🔄 documentation (via Automation Templates)
 
 on:
+  workflow_dispatch:
   workflow_call:
-    secrets:
-      TEAMS_WEBHOOK_URL:
-        required: false
+
+permissions: {}
 
 jobs:
   delegate-to-automation-templates:
     name: 🚀 Execute via Automation Templates
+    permissions:
+      contents: write
+      pull-requests: write
     uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
     secrets: inherit
 ```
 
+Das Tool liest dafür das aufgerufene Template selbst:
+
+- **`uses:`** zeigt auf die Datei aus `deploy-config.yml` (`file:`). Ein Workflow ohne `workflow_call`-Trigger wird abgelehnt, weil GitHub ihn aus einem anderen Repository nicht starten kann.
+- **`permissions:`** ist die Vereinigung aller Scopes, die das Template und die von ihm aufgerufenen Workflows anfordern, mindestens `contents: read`. Gewährt der Aufrufer weniger, startet der Run nicht (`startup_failure`).
+- **`with:`** enthält nur Pflicht-Inputs ohne Default, jeweils als Platzhalter mit `# TODO`-Kommentar. Andere Inputs übergibt das Tool nicht.
+- **Trigger:** Der Aufrufer läuft nur manuell (`workflow_dispatch`). Die Events, auf die er reagieren soll, unter `on:` ergänzen; welche das Template erwartet, steht in seiner Dokumentation.
+
 ### In Ziel-Repository: `.github/actions/`
 ```yaml
-name: 'teams-notification (via Automation Templates)'
-description: 'Centralized teams-notification action from automation templates'
-
+name: teams-notification (via Automation Templates)
+description: Pass-through to bauer-group/automation-templates/.github/actions/teams-notification@main
+inputs:
+  event-type:
+    description: Type of event (workflow_failure, workflow_success, issue_opened, ...)
+    required: true
+  # ... alle weiteren Inputs der zentralen Action
+outputs:
+  # ... alle Outputs der zentralen Action, aus steps.central.outputs
 runs:
-  using: 'composite'
+  using: composite
   steps:
-    - name: 🚀 Execute Centralized Action
-      uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+  - id: central
+    uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+    with:
+      event-type: ${{ inputs.event-type }}
+      # ...
 ```
+
+Der Wrapper deklariert genau die Inputs und Outputs der zentralen Action und reicht sie durch. Nur Inputs mit `deprecationMessage` fehlen.
 
 ### Konfigurationsdatei: `.github/config/automation-templates/config.yml`
 ```yaml

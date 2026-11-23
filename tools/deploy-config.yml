@@ -118,16 +118,15 @@ profiles:
 
 # Available Workflows
 workflows:
+  # The key stays for existing profiles; automatic-release.yml itself is this
+  # repository's own pipeline and has no workflow_call trigger.
   automatic-release:
-    name: "Automatic Release Pipeline"
-    description: "Main CI/CD pipeline with semantic release and modular components"
-    file: "automatic-release.yml"
-    secrets_used:
-      - "GITLEAKS_LICENSE"
+    name: "Semantic Release"
+    description: "Version, changelog and GitHub release from Conventional Commits"
+    file: "modules-semantic-release.yml"
+    secrets_used: []
     triggers:
-      - "push"
-      - "pull_request"
-      - "workflow_dispatch"
+      - "workflow_call"
 
   python-semantic-release:
     name: "Python Semantic Release"
@@ -203,11 +202,10 @@ workflows:
   repository-cleanup:
     name: "Repository Cleanup"
     description: "Automated repository maintenance and cleanup"
-    file: "repository-cleanup.yml"
+    file: "modules-repository-cleanup.yml"
     secrets_used: []
     triggers:
-      - "schedule"
-      - "workflow_dispatch"
+      - "workflow_call"
 
   pr-labeler:
     name: "PR Labeler"
@@ -221,11 +219,10 @@ workflows:
   issue-automation:
     name: "Issue Automation"
     description: "Automated issue management and triage"
-    file: "issue-automation.yml"
+    file: "modules-issue-automation.yml"
     secrets_used: []
     triggers:
-      - "issues"
-      - "workflow_dispatch"
+      - "workflow_call"
 
 # Available Actions
 actions:
@@ -395,7 +392,6 @@ secrets:
   GITLEAKS_LICENSE:
     description: "Gitleaks license key (free, optional) - only when Gitleaks is enabled (opt-in); also as a Dependabot secret"
     required_for:
-      - "automatic-release"
       - "python-semantic-release"
     setup_url: "https://gitleaks.io/"
 
