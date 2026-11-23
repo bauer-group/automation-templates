@@ -25,7 +25,7 @@ profiles:
     description: "All available automation workflows and actions"
     workflows:
       - "automatic-release"
-      - "python-automatic-release"
+      - "python-semantic-release"
       - "security-management"
       - "documentation"
       - "docker-build"
@@ -38,10 +38,6 @@ profiles:
       - "readme-generate"
       - "semantic-release"
       - "docker-build"
-      - "python-setup"
-      - "python-test"
-      - "python-quality"
-      - "python-package"
     secrets_required:
       - "TEAMS_WEBHOOK_URL"
       - "DOCKER_PASSWORD"
@@ -68,14 +64,10 @@ profiles:
   python:
     description: "Python project workflows with testing and PyPI publishing"
     workflows:
-      - "python-automatic-release"
+      - "python-semantic-release"
       - "security-management"
       - "documentation"
     actions:
-      - "python-setup"
-      - "python-test"
-      - "python-quality"
-      - "python-package"
       - "semantic-release"
       - "security-generate"
       - "readme-generate"
@@ -89,7 +81,7 @@ profiles:
     description: "Enterprise-grade workflows with full feature set"
     workflows:
       - "automatic-release"
-      - "python-automatic-release"
+      - "python-semantic-release"
       - "security-management"
       - "documentation"
       - "docker-build"
@@ -102,10 +94,6 @@ profiles:
       - "readme-generate"
       - "semantic-release"
       - "docker-build"
-      - "python-setup"
-      - "python-test"
-      - "python-quality"
-      - "python-package"
       - "labeler-triage"
       - "repository-cleanup"
     secrets_required:
@@ -141,10 +129,10 @@ workflows:
       - "pull_request"
       - "workflow_dispatch"
 
-  python-automatic-release:
-    name: "Python Automatic Release"
-    description: "Python package testing, building and PyPI publishing workflow"
-    file: "python-automatic-release.yml"
+  python-semantic-release:
+    name: "Python Semantic Release"
+    description: "Python package testing, building and PyPI publishing with semantic versioning"
+    file: "python-semantic-release.yml"
     type: "workflow_call"
     secrets_used:
       - "PYPI_API_TOKEN"
@@ -303,44 +291,6 @@ actions:
       - "build-args"
       - "security-scan"
 
-  python-setup:
-    name: "Python Setup"
-    description: "Setup Python environment with caching"
-    path: ".github/actions/python-setup"
-    inputs:
-      - "python-version"
-      - "cache-dependency-path"
-      - "install-dependencies"
-
-  python-test:
-    name: "Python Test"
-    description: "Run Python tests with coverage"
-    path: ".github/actions/python-test"
-    inputs:
-      - "test-command"
-      - "coverage-report"
-      - "minimum-coverage"
-
-  python-quality:
-    name: "Python Quality"
-    description: "Run Python code quality checks"
-    path: ".github/actions/python-quality"
-    inputs:
-      - "enable-flake8"
-      - "enable-black"
-      - "enable-isort"
-      - "enable-mypy"
-
-  python-package:
-    name: "Python Package"
-    description: "Build and publish Python packages"
-    path: ".github/actions/python-package"
-    inputs:
-      - "build-wheel"
-      - "build-sdist"
-      - "pypi-token"
-      - "test-pypi"
-
   security-scan:
     name: "Security Scan"
     description: "Comprehensive security scanning with multiple engines"
@@ -446,13 +396,13 @@ secrets:
     description: "Gitleaks license key (free, optional) - only when Gitleaks is enabled (opt-in); also as a Dependabot secret"
     required_for:
       - "automatic-release"
-      - "python-automatic-release"
+      - "python-semantic-release"
     setup_url: "https://gitleaks.io/"
 
   PYPI_API_TOKEN:
     description: "PyPI API token for package publishing"
     required_for:
-      - "python-automatic-release"
+      - "python-semantic-release"
     setup_url: "https://pypi.org/help/#apitoken"
 
 # Repository Variables Documentation

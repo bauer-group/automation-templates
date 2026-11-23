@@ -463,7 +463,7 @@ Examples:
   %(prog)s --profile basic owner/my-repo
 
   # Deploy specific workflows
-  %(prog)s --workflows "ci-cd,security-management" owner/my-repo
+  %(prog)s --workflows "documentation,security-management" owner/my-repo
 
   # Dry run to see what would be deployed
   %(prog)s --profile complete --dry-run owner/my-repo
