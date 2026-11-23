@@ -35,11 +35,8 @@ DEPRECATION_NOTICE = (
     "dispatch only."
 )
 
-# GitHub token scopes, ordered by what they grant.
+# GitHub token scope levels, ordered by what they grant.
 PERMISSION_LEVEL = {"none": 0, "read": 1, "write": 2}
-PERMISSION_SCOPES = ("actions", "attestations", "checks", "contents", "deployments",
-                     "discussions", "id-token", "issues", "models", "packages", "pages",
-                     "pull-requests", "repository-projects", "security-events", "statuses")
 # A job's `uses:` that calls another workflow of this repository.
 NESTED_WORKFLOW = re.compile(
     r"^(?:\./|" + re.escape(TEMPLATE_REPO) + r"/)\.github/workflows/([\w.-]+\.ya?ml)(?:@\S+)?$")
@@ -51,26 +48,37 @@ def load_yaml(path: Path):
 
 
 def workflow_triggers(doc) -> Dict:
-    """The `on:` block. YAML 1.1 reads a bare `on` key as boolean True."""
+    """The `on:` block as a mapping of event -> config.
+
+    YAML 1.1 reads a bare `on` key as boolean True. The short forms
+    `on: workflow_call` and `on: [workflow_call, push]` mean the same events
+    without configuration.
+    """
     if not isinstance(doc, dict):
         return {}
     triggers = doc.get("on", doc.get(True))
+    if isinstance(triggers, str):
+        return {triggers: None}
+    if isinstance(triggers, list):
+        return {str(event): None for event in triggers}
     return triggers if isinstance(triggers, dict) else {}
 
 
-def normalize_permissions(value) -> Optional[Dict[str, str]]:
+def normalize_permissions(value, where: str = "") -> Optional[Dict[str, str]]:
     """A `permissions:` value as {scope: level}; None when there is none."""
     if value is None:
         return None
-    if value == "read-all":
-        return {s: "read" for s in PERMISSION_SCOPES if s != "id-token"}
-    if value == "write-all":
-        return {s: "write" for s in PERMISSION_SCOPES}
     if value in ({}, ""):
         return {}
     if isinstance(value, dict):
         return {str(k): str(v) for k, v in value.items()}
-    raise ValueError(f"Unknown permissions value: {value!r}")
+    if value in ("read-all", "write-all"):
+        # The set of scopes behind these changes as GitHub adds and retires
+        # scopes; expanding it from a list here would go stale and grant less
+        # than the template requests.
+        raise ValueError(f"{where}: requests `permissions: {value}`, which this tool cannot "
+                         "turn into an explicit grant - write that caller by hand")
+    raise ValueError(f"{where}: unknown permissions value {value!r}")
 
 
 def merge_permissions(a: Dict[str, str], b: Dict[str, str]) -> Dict[str, str]:
@@ -193,12 +201,12 @@ class AutomationDeployer:
         doc = self._workflow_doc(file)
         if doc is None or file in _stack:
             return {}
-        workflow_grant = normalize_permissions(doc.get('permissions'))
+        workflow_grant = normalize_permissions(doc.get('permissions'), file)
         total: Dict[str, str] = {}
-        for job in (doc.get('jobs') or {}).values():
+        for job_id, job in (doc.get('jobs') or {}).items():
             if not isinstance(job, dict):
                 continue
-            grant = normalize_permissions(job.get('permissions'))
+            grant = normalize_permissions(job.get('permissions'), f"{file} job {job_id}")
             if grant is None:
                 grant = workflow_grant
             if grant is not None:
@@ -210,15 +218,55 @@ class AutomationDeployer:
         self._permission_cache[file] = total
         return total
 
+    def inheriting_jobs(self, file: str, _stack: tuple = ()) -> List[str]:
+        """Jobs that set no permissions anywhere and so run with the caller's grant.
+
+        What they need cannot be read from the template; the registry states
+        it as `caller_permissions`.
+        """
+        doc = self._workflow_doc(file)
+        if doc is None or file in _stack or doc.get('permissions') is not None:
+            return []
+        found: List[str] = []
+        for job_id, job in (doc.get('jobs') or {}).items():
+            if not isinstance(job, dict) or job.get('permissions') is not None:
+                continue
+            nested = NESTED_WORKFLOW.match(str(job.get('uses') or ''))
+            if nested:
+                found += self.inheriting_jobs(nested.group(1), _stack + (file,))
+            else:
+                found.append(f"{file}:{job_id}")
+        return found
+
     def generate_workflow(self, workflow_name: str) -> str:
         """Generate workflow file content for target repository"""
         file = self.resolve_workflow(workflow_name)
         call = workflow_triggers(self._workflow_doc(file)).get('workflow_call') or {}
+        entry = self.config.config.get('workflows', {}).get(workflow_name) or {}
 
-        # contents: read as the floor - checkout needs it, and jobs of the
-        # template without a permissions block of their own get exactly these.
+        # contents: read as the floor - checkout needs it. Jobs of the template
+        # without a permissions block run with exactly this grant; what they
+        # need comes from the registry (caller_permissions).
         permissions = merge_permissions({"contents": "read"}, self.required_permissions(file))
+        inheriting = self.inheriting_jobs(file)
+        if inheriting:
+            declared = entry.get('caller_permissions')
+            if declared is None:
+                log_warning(f"{workflow_name}: {', '.join(inheriting)} set no permissions and run with "
+                            "the caller's grant - check what they need and extend the generated block")
+            else:
+                permissions = merge_permissions(permissions, normalize_permissions(declared, workflow_name) or {})
         permission_lines = "\n".join(f"      {scope}: {level}" for scope, level in sorted(permissions.items()))
+
+        notes = ["    # What the called template and the workflows it calls request.",
+                 "    # GitHub refuses to start the run when the caller grants less."]
+        if inheriting:
+            notes.append("    # Jobs without a permissions block of their own run with exactly these.")
+        if inheriting and entry.get('caller_permissions') is None:
+            notes.append("    # TODO: they may need more - see the template's documentation.")
+        for line in str(entry.get('permissions_note') or '').strip().splitlines():
+            notes.append(f"    # {line}")
+        note_lines = "\n".join(notes)
 
         # Only inputs the template declares; a required one without a default
         # gets a placeholder the deploying user has to fill in.
@@ -246,8 +294,7 @@ permissions: {{}}
 jobs:
   delegate-to-automation-templates:
     name: 🚀 Execute via Automation Templates
-    # Everything the called template and the workflows it calls request.
-    # GitHub refuses to start the run when the caller grants less.
+{note_lines}
     permissions:
 {permission_lines}
     uses: {self.template_repo}/.github/workflows/{file}@main
@@ -262,46 +309,28 @@ jobs:
             raise ValueError(f"Action '{action_name}': {path}/action.yml does not exist")
         return path
 
-    def generate_action_reference(self, action_name: str) -> str:
-        """Generate action reference for target repository
+    def action_usage(self, action_name: str) -> str:
+        """The step that uses the central action, for the setup documentation.
 
-        A composite pass-through that declares exactly the inputs and outputs
-        of the central action, so the wrapper is used the same way.
+        No wrapper action is generated: a pass-through has to forward every
+        input, and forwarding one always sends a value - the wrapper's frozen
+        copy of the default, so a later default change in the central action
+        never arrives. Referencing the action directly has no such copy.
         """
         path = self.resolve_action(action_name)
         meta_file = next(self.template_root / path / f for f in ("action.yml", "action.yaml")
                          if (self.template_root / path / f).is_file())
         meta = load_yaml(meta_file) or {}
-
-        # Deprecated inputs stay out: passing one through on every run would
-        # make the central action warn even when nobody set it.
-        inputs = {name: spec or {} for name, spec in (meta.get('inputs') or {}).items()
-                  if not (spec or {}).get('deprecationMessage')}
-        outputs = meta.get('outputs') or {}
-
-        doc: Dict = {
-            "name": f"{action_name} (via Automation Templates)",
-            "description": f"Pass-through to {self.template_repo}/{path}@main",
-        }
-        if inputs:
-            doc["inputs"] = {
-                name: {"description": spec.get('description') or name,
-                       **{k: spec[k] for k in ("required", "default") if k in spec}}
-                for name, spec in inputs.items()
-            }
-        if outputs:
-            doc["outputs"] = {
-                name: {"description": (spec or {}).get('description') or name,
-                       "value": f"${{{{ steps.central.outputs.{name} }}}}"}
-                for name, spec in outputs.items()
-            }
-        step: Dict = {"id": "central", "uses": f"{self.template_repo}/{path}@main"}
-        if inputs:
-            step["with"] = {name: f"${{{{ inputs.{name} }}}}" for name in inputs}
-        doc["runs"] = {"using": "composite", "steps": [step]}
-
-        header = f"# Generated by tools/deploy_automations.py from {self.template_repo}.\n"
-        return header + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=1000)
+        lines = [f"- uses: {self.template_repo}/{path}@main"]
+        required = [(name, spec) for name, spec in (meta.get('inputs') or {}).items()
+                    if isinstance(spec, dict) and spec.get('required') is True and 'default' not in spec]
+        if required:
+            lines.append("  with:")
+            for name, spec in required:
+                hint = str(spec.get('description') or '').strip().splitlines()
+                hint = f" - {hint[0]}" if hint else ""
+                lines.append(f"    {name}: ''  # TODO: required{hint}")
+        return "\n".join(lines)
 
     def copy_workflow_configs(self, target_dir: Path, workflows: List[str], project_type: str = ""):
         """Copy required configuration files for workflows"""
@@ -433,8 +462,14 @@ custom:
     def create_setup_docs(self, target_dir: Path, workflows: List[str], actions: List[str]) -> str:
         """Create setup documentation"""
         workflows_md = '\n'.join(f"- {w}" for w in workflows)
-        actions_md = '\n'.join(f"- {a}" for a in actions)
-        
+        if actions:
+            snippets = '\n\n'.join(f"`{a}`:\n\n```yaml\n{self.action_usage(a)}\n```" for a in actions)
+            actions_md = ("Use these as steps in your own workflows. They point at the central\n"
+                          "actions directly, so a default changed there reaches you on the next run.\n\n"
+                          + snippets)
+        else:
+            actions_md = "- none"
+
         content = f"""# 🚀 Automation Templates Setup
 
 This repository uses centralized automation templates from [`{self.template_repo}`](https://github.com/{self.template_repo}).
@@ -512,11 +547,8 @@ All workflows automatically use the latest version from the main repository.
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             workflows_dir = temp_path / ".github" / "workflows"
-            actions_dir = temp_path / ".github" / "actions"
-            
             workflows_dir.mkdir(parents=True, exist_ok=True)
-            actions_dir.mkdir(parents=True, exist_ok=True)
-            
+
             created_files = []
             
             # Generate workflows
@@ -531,21 +563,10 @@ All workflows automatically use the latest version from the main repository.
                         f.write(workflow_content)
                     created_files.append(str(workflow_file.relative_to(temp_path)))
             
-            # Generate action references
+            # Actions are referenced directly; AUTOMATION-SETUP.md lists the steps
             if action_list:
-                log_info(f"Generating action references: {', '.join(action_list)}")
-                for action in action_list:
-                    log_info(f"  - {action}")
-                    action_dir = actions_dir / action
-                    action_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    action_content = self.generate_action_reference(action)
-                    action_file = action_dir / "action.yml"
-                    
-                    with open(action_file, 'w', encoding='utf-8') as f:
-                        f.write(action_content)
-                    created_files.append(str(action_file.relative_to(temp_path)))
-            
+                log_info(f"Listing action usage in AUTOMATION-SETUP.md: {', '.join(action_list)}")
+
             # Copy configuration files
             self.copy_workflow_configs(temp_path, workflow_list, project_type)
             

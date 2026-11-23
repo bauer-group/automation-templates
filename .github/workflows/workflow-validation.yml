@@ -367,8 +367,8 @@ jobs:
         run: python tools/workflow-audit/workflow_audit.py
 
       # The deploy tool's registry points at templates of this repository. A
-      # template removed, renamed or given a new required input fails here,
-      # not in the repository that runs the generated caller.
+      # template removed, renamed or no longer reusable fails here, as does one
+      # whose jobs run with the caller's grant without the registry stating it.
       - name: "🧪 deploy tool: generated callers"
         shell: bash
         run: python tools/tests/test_deploy_automations.py

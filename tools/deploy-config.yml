@@ -121,6 +121,10 @@ profiles:
     variables_recommended: []
 
 # Available Workflows
+#   file:               reusable template in .github/workflows (needs workflow_call)
+#   caller_permissions: grant for template jobs that set no permissions of their
+#                       own - required when the template has such jobs
+#   permissions_note:   written into the generated caller, for opt-in features
 workflows:
   # The key stays for existing profiles; automatic-release.yml itself is this
   # repository's own pipeline and has no workflow_call trigger.
@@ -180,6 +184,9 @@ workflows:
     name: "Python Build"
     description: "Python testing and quality checks"
     file: "python-build.yml"
+    # Its build job sets no permissions and runs with the caller's grant.
+    caller_permissions:
+      contents: read
     type: "workflow_call"
     secrets_used: []
     triggers:
@@ -189,6 +196,12 @@ workflows:
     name: "Node.js Build"
     description: "Node.js testing and building"
     file: "nodejs-build.yml"
+    # Its build job sets no permissions and runs with the caller's grant.
+    caller_permissions:
+      contents: read
+    permissions_note: |
+      Publishing (publish-package) also needs packages: write and id-token: write;
+      build-docker with an internal GHCR base image needs packages: read.
     type: "workflow_call"
     secrets_used: []
     triggers:
@@ -198,6 +211,9 @@ workflows:
     name: "Makefile Build"
     description: "C/C++ projects with Makefile support"
     file: "makefile-build.yml"
+    # Its jobs set no permissions and run with the caller's grant.
+    caller_permissions:
+      contents: read
     type: "workflow_call"
     secrets_used: []
     triggers:
@@ -207,6 +223,14 @@ workflows:
     name: "Repository Cleanup"
     description: "Automated repository maintenance and cleanup"
     file: "modules-repository-cleanup.yml"
+    # Its jobs set no permissions; the cleanup deletes refs, releases and runs
+    # and closes issues and pull requests with the caller's token - the grant
+    # the repository's own cleanup callers use.
+    caller_permissions:
+      actions: write
+      contents: write
+      issues: write
+      pull-requests: write
     secrets_used: []
     triggers:
       - "workflow_call"

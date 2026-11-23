@@ -3,9 +3,19 @@
 The deploy tool writes callers that point at templates of this repository.
 It rotted unnoticed: profiles named removed workflows and repository-internal
 ones without a workflow_call trigger, and every generated caller passed an
-input no template declares - GitHub rejected all of them. The registry cases
-below run against the real templates, so a template rename, removal or new
-required input fails here instead of in somebody else's repository.
+input no template declares - GitHub rejected all of them.
+
+The registry cases run against the real templates. They fail when a registry
+entry points at a template that is gone or lost its workflow_call trigger, at
+an action that is gone, or at a template whose jobs run with the caller's
+grant without the registry saying what that grant must be. They do not catch
+a template gaining a new required input: the generator fills that in with a
+placeholder, and callers generated earlier are static files elsewhere that no
+test here can see.
+
+The generator rules (permission union, inputs, trigger forms) are pinned by
+fixtures with known answers - the registry cases cannot check those, because
+their only oracle would be the generator's own functions.
 
 Run:  python tools/tests/test_deploy_automations.py   (no pytest required)
       pytest tools/tests/                            (also works)
@@ -25,6 +35,7 @@ sys.path.insert(0, str(TOOLS))
 import deploy_automations as da  # noqa: E402
 
 JOB = "delegate-to-automation-templates"
+PLAIN_JOB = 'x: {runs-on: ubuntu-latest, steps: [{run: "true"}]}'
 
 
 # --------------------------------------------------------------------------
@@ -53,47 +64,61 @@ def real_deployer() -> da.AutomationDeployer:
     return deployer(TOOLS.parent)
 
 
+def registry_names(dep: da.AutomationDeployer, kind: str) -> set:
+    cfg = dep.config
+    names = set(cfg.config.get(kind, {}))
+    for profile in cfg.list_profiles():
+        names |= set(cfg.get_profile(profile).get(kind, []))
+    return names
+
+
+def _raises(fn, needle: str):
+    try:
+        fn()
+    except ValueError as exc:
+        assert needle in str(exc), str(exc)
+    else:
+        raise AssertionError(f"no ValueError mentioning {needle!r}")
+
+
 # --------------------------------------------------------------------------
 # the real registry
 # --------------------------------------------------------------------------
-def case_every_registry_workflow_generates_a_valid_caller():
+def case_every_registry_workflow_generates_a_caller():
     dep = real_deployer()
-    cfg = dep.config
-    names = set(cfg.config.get("workflows", {}))
-    for profile in cfg.list_profiles():
-        names |= set(cfg.get_profile(profile).get("workflows", []))
+    names = registry_names(dep, "workflows")
     assert names, "registry lists no workflows"
     for name in sorted(names):
         file = dep.resolve_workflow(name)  # raises for missing / not reusable
-        call = da.workflow_triggers(dep._workflow_doc(file))["workflow_call"] or {}
-        declared = call.get("inputs") or {}
-        job = caller_job(dep.generate_workflow(name))
-        passed = set(job.get("with") or {})
+        declared = (da.workflow_triggers(dep._workflow_doc(file))["workflow_call"] or {}).get("inputs") or {}
+        passed = set(caller_job(dep.generate_workflow(name)).get("with") or {})
         unknown = passed - set(declared)
         assert not unknown, f"{name}: passes undeclared inputs {sorted(unknown)}"
-        required = {n for n, s in declared.items()
-                    if isinstance(s, dict) and s.get("required") is True and "default" not in s}
-        assert required <= passed, f"{name}: misses required inputs {sorted(required - passed)}"
-        for scope, level in dep.required_permissions(file).items():
-            granted = job["permissions"].get(scope, "none")
-            assert da.PERMISSION_LEVEL[granted] >= da.PERMISSION_LEVEL[level], \
-                f"{name}: grants {scope}: {granted}, template needs {level}"
+
+
+def case_registry_states_the_grant_for_inheriting_jobs():
+    # Jobs without a permissions block run with the caller's grant; what they
+    # need cannot be read from the template, so the registry has to say it.
+    dep = real_deployer()
+    workflows = dep.config.config.get("workflows", {})
+    missing = []
+    for name in sorted(registry_names(dep, "workflows")):
+        inheriting = dep.inheriting_jobs(dep.resolve_workflow(name))
+        if inheriting and (workflows.get(name) or {}).get("caller_permissions") is None:
+            missing.append(f"{name} ({', '.join(inheriting)})")
+    assert not missing, "set caller_permissions in tools/deploy-config.yml for: " + "; ".join(missing)
 
 
 def case_every_registry_action_exists():
     dep = real_deployer()
-    cfg = dep.config
-    names = set(cfg.config.get("actions", {}))
-    for profile in cfg.list_profiles():
-        names |= set(cfg.get_profile(profile).get("actions", []))
-    for name in sorted(names):
-        dep.generate_action_reference(name)  # raises when the action is gone
+    for name in sorted(registry_names(dep, "actions")):
+        dep.action_usage(name)  # raises when the action is gone
 
 
 # --------------------------------------------------------------------------
 # generator rules, on fixtures
 # --------------------------------------------------------------------------
-def case_permissions_include_nested_calls():
+def case_permissions_union_follows_every_level():
     root = repo_with({
         ".github/workflows/outer.yml": """
 on: {workflow_call: {}}
@@ -102,11 +127,13 @@ jobs:
     permissions: {contents: write}
     runs-on: ubuntu-latest
     steps: [{run: "true"}]
-  nested:
+  local-form:
     uses: ./.github/workflows/inner.yml
-  pinned:
+  full-form:
+    uses: bauer-group/automation-templates/.github/workflows/quality.yml@main
+  capped:
     permissions: {issues: write}
-    uses: bauer-group/automation-templates/.github/workflows/third.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/capped.yml@main
 """,
         ".github/workflows/inner.yml": """
 on: {workflow_call: {}}
@@ -116,9 +143,17 @@ jobs:
     runs-on: ubuntu-latest
     steps: [{run: "true"}]
 """,
+        # Workflow-level block only, reached through the full repository form -
+        # the shape python-build and nodejs-build use for modules-code-quality.
+        ".github/workflows/quality.yml": f"""
+on: {{workflow_call: {{}}}}
+permissions: {{contents: read, pull-requests: write}}
+jobs:
+  {PLAIN_JOB}
+""",
         # Called from a job with its own grant: that grant caps it, so its
         # requests do not reach the outer caller.
-        ".github/workflows/third.yml": """
+        ".github/workflows/capped.yml": """
 on: {workflow_call: {}}
 jobs:
   x:
@@ -128,39 +163,74 @@ jobs:
 """,
     })
     try:
+        expected = {"contents": "write", "id-token": "write", "packages": "read",
+                    "pull-requests": "write", "issues": "write"}
         got = deployer(root).required_permissions("outer.yml")
-        assert got == {"contents": "write", "id-token": "write", "packages": "read",
-                       "issues": "write"}, got
+        assert got == expected, got
         perms = caller_job(deployer(root).generate_workflow("outer"))["permissions"]
-        assert perms == got, perms
+        assert perms == expected, perms
     finally:
         shutil.rmtree(root)
 
 
-def case_contents_read_is_the_floor():
-    root = repo_with({".github/workflows/plain.yml": """
-on: {workflow_call: {}}
+def case_workflow_level_permissions_count():
+    root = repo_with({".github/workflows/top.yml": f"""
+on: {{workflow_call: {{}}}}
+permissions: {{contents: write, issues: write}}
 jobs:
-  x: {runs-on: ubuntu-latest, steps: [{run: "true"}]}
+  {PLAIN_JOB}
 """})
     try:
-        perms = caller_job(deployer(root).generate_workflow("plain"))["permissions"]
-        assert perms == {"contents": "read"}, perms
+        perms = caller_job(deployer(root).generate_workflow("top"))["permissions"]
+        assert perms == {"contents": "write", "issues": "write"}, perms
     finally:
         shutil.rmtree(root)
+
+
+def case_inheriting_jobs_get_the_registry_grant():
+    template = f"""
+on: {{workflow_call: {{}}}}
+jobs:
+  {PLAIN_JOB}
+"""
+    with_grant = repo_with({
+        "tools/deploy-config.yml": """
+profiles: {}
+workflows:
+  cleanup:
+    file: cleanup.yml
+    caller_permissions: {contents: write, actions: write}
+    permissions_note: Opt-in publishing also needs packages write.
+actions: {}
+""",
+        ".github/workflows/cleanup.yml": template,
+    })
+    without = repo_with({".github/workflows/plain.yml": template})
+    try:
+        text = deployer(with_grant).generate_workflow("cleanup")
+        assert caller_job(text)["permissions"] == {"contents": "write", "actions": "write"}, text
+        assert "# Opt-in publishing also needs packages write." in text, text
+        assert "TODO" not in text, text
+        # No registry grant: contents: read as the floor, and a TODO saying so.
+        text = deployer(without).generate_workflow("plain")
+        assert caller_job(text)["permissions"] == {"contents": "read"}, text
+        assert "# TODO: they may need more" in text, text
+    finally:
+        shutil.rmtree(with_grant)
+        shutil.rmtree(without)
 
 
 def case_only_declared_inputs_are_passed():
-    root = repo_with({".github/workflows/inputs.yml": """
+    root = repo_with({".github/workflows/inputs.yml": f"""
 on:
   workflow_call:
     inputs:
-      image-name: {type: string, required: true, description: "Image to build"}
-      push: {type: boolean, required: true}
-      platforms: {type: string, required: false}
-      tag: {type: string, required: true, default: latest}
+      image-name: {{type: string, required: true, description: "Image to build"}}
+      push: {{type: boolean, required: true}}
+      platforms: {{type: string, required: false}}
+      tag: {{type: string, required: true, default: latest}}
 jobs:
-  x: {runs-on: ubuntu-latest, steps: [{run: "true"}]}
+  {PLAIN_JOB}
 """})
     try:
         text = deployer(root).generate_workflow("inputs")
@@ -179,11 +249,7 @@ workflows:
   release: {file: "modules-release.yml"}
 actions: {}
 """,
-        ".github/workflows/modules-release.yml": """
-on: {workflow_call: {}}
-jobs:
-  x: {runs-on: ubuntu-latest, steps: [{run: "true"}]}
-""",
+        ".github/workflows/modules-release.yml": f"on: {{workflow_call: {{}}}}\njobs:\n  {PLAIN_JOB}\n",
     })
     try:
         uses = caller_job(deployer(root).generate_workflow("release"))["uses"]
@@ -192,72 +258,100 @@ jobs:
         shutil.rmtree(root)
 
 
-def _raises(fn, needle: str):
+def case_short_trigger_forms_are_reusable():
+    root = repo_with({
+        ".github/workflows/str.yml": f"on: workflow_call\njobs:\n  {PLAIN_JOB}\n",
+        ".github/workflows/lst.yml": f"on: [workflow_call, workflow_dispatch]\njobs:\n  {PLAIN_JOB}\n",
+    })
     try:
-        fn()
-    except ValueError as exc:
-        assert needle in str(exc), str(exc)
-    else:
-        raise AssertionError(f"no ValueError mentioning {needle!r}")
+        for name in ("str", "lst"):
+            assert caller_job(deployer(root).generate_workflow(name))["uses"].endswith(f"/{name}.yml@main")
+    finally:
+        shutil.rmtree(root)
 
 
 def case_non_reusable_and_missing_workflows_are_rejected():
-    root = repo_with({".github/workflows/internal.yml": """
-on: {push: {branches: [main]}}
-jobs:
-  x: {runs-on: ubuntu-latest, steps: [{run: "true"}]}
-"""})
+    root = repo_with({
+        ".github/workflows/internal.yml": f"on: {{push: {{branches: [main]}}}}\njobs:\n  {PLAIN_JOB}\n",
+        ".github/workflows/listed.yml": f"on: [push, pull_request]\njobs:\n  {PLAIN_JOB}\n",
+    })
     try:
         _raises(lambda: deployer(root).generate_workflow("internal"), "workflow_call")
+        _raises(lambda: deployer(root).generate_workflow("listed"), "workflow_call")
         _raises(lambda: deployer(root).generate_workflow("gone"), "does not exist")
     finally:
         shutil.rmtree(root)
 
 
-def case_action_wrapper_mirrors_inputs_and_outputs():
+def case_read_all_and_write_all_are_rejected():
+    # Their scope set changes as GitHub adds and retires scopes; any list
+    # here would go stale and grant less than the template requests.
+    root = repo_with({
+        ".github/workflows/ra.yml": f"on: workflow_call\npermissions: read-all\njobs:\n  {PLAIN_JOB}\n",
+        ".github/workflows/wa.yml": """
+on: workflow_call
+jobs:
+  x:
+    permissions: write-all
+    runs-on: ubuntu-latest
+    steps: [{run: "true"}]
+""",
+    })
+    try:
+        _raises(lambda: deployer(root).generate_workflow("ra"), "read-all")
+        _raises(lambda: deployer(root).generate_workflow("wa"), "write-all")
+    finally:
+        shutil.rmtree(root)
+
+
+def case_actions_are_referenced_directly():
     root = repo_with({".github/actions/notify/action.yml": """
 name: notify
 description: test
 inputs:
-  token: {description: Token, required: true}
+  token: {description: GitHub token, required: true}
   level: {description: Level, required: false, default: errors-only}
-  webhook: {description: Old, deprecationMessage: use token}
-outputs:
-  sent: {description: Sent, value: "${{ steps.s.outputs.sent }}"}
+  event: {description: Event, required: true, default: push}
 runs:
   using: composite
-  steps: [{id: s, shell: bash, run: "true"}]
+  steps: [{shell: bash, run: "true"}]
 """})
     try:
-        wrapper = yaml.safe_load(deployer(root).generate_action_reference("notify"))
-        assert set(wrapper["inputs"]) == {"token", "level"}, wrapper["inputs"]
-        assert wrapper["inputs"]["level"]["default"] == "errors-only"
-        assert wrapper["inputs"]["token"]["required"] is True
-        step = wrapper["runs"]["steps"][0]
+        step = yaml.safe_load(deployer(root).action_usage("notify"))[0]
         assert step["uses"] == f"{da.TEMPLATE_REPO}/.github/actions/notify@main", step
-        assert step["with"] == {"token": "${{ inputs.token }}", "level": "${{ inputs.level }}"}, step
-        assert wrapper["outputs"]["sent"]["value"] == "${{ steps.central.outputs.sent }}"
-        _raises(lambda: deployer(root).generate_action_reference("gone"), "does not exist")
+        # Only required inputs without a default - the rest keep the central
+        # action's own defaults, which a copied value would freeze.
+        assert step["with"] == {"token": ""}, step
+        _raises(lambda: deployer(root).action_usage("gone"), "does not exist")
+        assert not hasattr(da.AutomationDeployer, "generate_action_reference")
     finally:
         shutil.rmtree(root)
 
 
 CASES = [
-    ("every registry workflow resolves to a reusable template and gets a valid caller",
-     case_every_registry_workflow_generates_a_valid_caller),
+    ("every registry workflow resolves to a reusable template and gets a caller",
+     case_every_registry_workflow_generates_a_caller),
+    ("the registry states the grant for templates whose jobs inherit it",
+     case_registry_states_the_grant_for_inheriting_jobs),
     ("every registry action exists", case_every_registry_action_exists),
-    ("permissions include nested calls, capped where a job sets its own",
-     case_permissions_include_nested_calls),
-    ("contents: read is granted even when the template asks for nothing",
-     case_contents_read_is_the_floor),
+    ("permission union follows local and full-form nested calls, capped where a job sets its own",
+     case_permissions_union_follows_every_level),
+    ("a template's workflow-level permissions reach the caller",
+     case_workflow_level_permissions_count),
+    ("inheriting jobs get the registry grant, or a TODO without one",
+     case_inheriting_jobs_get_the_registry_grant),
     ("only declared inputs are passed, required ones as placeholders",
      case_only_declared_inputs_are_passed),
     ("the registry's file is called, not the registry key",
      case_registry_file_is_used),
+    ("on: workflow_call and on: [workflow_call, ...] count as reusable",
+     case_short_trigger_forms_are_reusable),
     ("non-reusable and missing workflows are rejected",
      case_non_reusable_and_missing_workflows_are_rejected),
-    ("action wrappers mirror inputs and outputs, without deprecated inputs",
-     case_action_wrapper_mirrors_inputs_and_outputs),
+    ("read-all and write-all templates are rejected, not guessed",
+     case_read_all_and_write_all_are_rejected),
+    ("actions are referenced directly, with only required inputs",
+     case_actions_are_referenced_directly),
 ]
 
 

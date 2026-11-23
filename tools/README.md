@@ -12,7 +12,7 @@ Dieses Verzeichnis enthält Tools zur einfachen Bereitstellung der wiederverwend
 ### Bereitstellungskonzept
 
 - **Zentrale Logik**: Alle Workflow-Logik bleibt in diesem Repository
-- **Referenz-Workflows**: Ziel-Repositories erhalten nur "Wrapper"-Workflows, die auf die zentralen Workflows verweisen
+- **Referenz-Workflows**: Ziel-Repositories erhalten nur Aufrufer-Workflows, die auf die zentralen Workflows verweisen; Actions werden direkt referenziert
 - **Konfigurationsbasiert**: Einfache Anpassung durch Konfigurationsdateien
 - **Automatische Updates**: Änderungen in diesem Repository werden automatisch in allen verwendenden Repositories aktiv
 
@@ -142,31 +142,21 @@ Das Tool liest dafür das aufgerufene Template selbst:
 
 - **`uses:`** zeigt auf die Datei aus `deploy-config.yml` (`file:`). Ein Workflow ohne `workflow_call`-Trigger wird abgelehnt, weil GitHub ihn aus einem anderen Repository nicht starten kann.
 - **`permissions:`** ist die Vereinigung aller Scopes, die das Template und die von ihm aufgerufenen Workflows anfordern, mindestens `contents: read`. Gewährt der Aufrufer weniger, startet der Run nicht (`startup_failure`).
+- **Jobs ohne eigenen Permissions-Block** laufen mit genau diesem Grant. Was sie brauchen, steht nicht im Template; `deploy-config.yml` gibt es pro Workflow als `caller_permissions` an (bei `repository-cleanup` etwa `write` auf `actions`, `contents`, `issues` und `pull-requests`). Fehlt die Angabe, warnt das Tool und schreibt ein `# TODO` in den Aufrufer.
+- **`permissions: read-all` / `write-all`** in einem Template lehnt das Tool ab, statt die Scopes zu raten - dieser Aufrufer muss von Hand entstehen.
 - **`with:`** enthält nur Pflicht-Inputs ohne Default, jeweils als Platzhalter mit `# TODO`-Kommentar. Andere Inputs übergibt das Tool nicht.
 - **Trigger:** Der Aufrufer läuft nur manuell (`workflow_dispatch`). Die Events, auf die er reagieren soll, unter `on:` ergänzen; welche das Template erwartet, steht in seiner Dokumentation.
 
-### In Ziel-Repository: `.github/actions/`
+### Actions: direkt referenziert, ohne Wrapper
+Für Actions erzeugt das Tool keine Dateien. `AUTOMATION-SETUP.md` listet für jede Action den Step, der sie direkt aufruft, mit ihren Pflicht-Inputs als Platzhalter:
+
 ```yaml
-name: teams-notification (via Automation Templates)
-description: Pass-through to bauer-group/automation-templates/.github/actions/teams-notification@main
-inputs:
-  event-type:
-    description: Type of event (workflow_failure, workflow_success, issue_opened, ...)
-    required: true
-  # ... alle weiteren Inputs der zentralen Action
-outputs:
-  # ... alle Outputs der zentralen Action, aus steps.central.outputs
-runs:
-  using: composite
-  steps:
-  - id: central
-    uses: bauer-group/automation-templates/.github/actions/teams-notification@main
-    with:
-      event-type: ${{ inputs.event-type }}
-      # ...
+- uses: bauer-group/automation-templates/.github/actions/teams-notification@main
+  with:
+    event-type: ''  # TODO: required - Type of event (workflow_failure, ...)
 ```
 
-Der Wrapper deklariert genau die Inputs und Outputs der zentralen Action und reicht sie durch. Nur Inputs mit `deprecationMessage` fehlen.
+Ein Wrapper müsste jeden Input durchreichen und schickt damit immer einen Wert mit, seine eingefrorene Kopie des Defaults. Ändert die zentrale Action später ihren Default, käme das nie an.
 
 ### Konfigurationsdatei: `.github/config/automation-templates/config.yml`
 ```yaml
