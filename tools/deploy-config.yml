@@ -1,5 +1,9 @@
 # 🚀 Automation Templates Deployment Configuration
 # Configure deployment profiles and settings for reusable automations
+#
+# DEPRECATED - kept because it is unknown who still uses it. For a new
+# repository copy the caller from the workflow's documentation (docs/workflows/)
+# or from github/workflows/examples/. See tools/README.md.
 
 # Deployment Profiles
 profiles:

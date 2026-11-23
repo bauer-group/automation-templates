@@ -2,6 +2,10 @@
 """
 🚀 Automation Templates Deployment Tool
 Deploys reusable automations to target repositories while keeping logic centralized
+
+DEPRECATED - kept because it is unknown who still uses it. For a new
+repository copy the caller from the workflow's documentation (docs/workflows/)
+or from github/workflows/examples/. See tools/README.md.
 """
 
 import argparse
@@ -22,6 +26,14 @@ TEMPLATE_REPO = "bauer-group/automation-templates"
 SCRIPT_DIR = Path(__file__).parent
 TEMPLATE_ROOT = SCRIPT_DIR.parent
 DEFAULT_CONFIG = SCRIPT_DIR / "deploy-config.yml"
+
+DEPRECATION_NOTICE = (
+    "deploy_automations.py is deprecated. For a new repository copy the caller "
+    "from the workflow's documentation (docs/workflows/) or from "
+    "github/workflows/examples/ - those carry the triggers, inputs and permissions "
+    "the template expects. The callers generated here start, but run on manual "
+    "dispatch only."
+)
 
 # GitHub token scopes, ordered by what they grant.
 PERMISSION_LEVEL = {"none": 0, "read": 1, "write": 2}
@@ -622,6 +634,7 @@ Examples:
                        help="List available deployment profiles")
     
     args = parser.parse_args()
+    log_warning(DEPRECATION_NOTICE)
     
     try:
         # Load configuration

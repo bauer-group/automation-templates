@@ -1,5 +1,9 @@
 # 🚀 Automation Templates Deployment Tool (PowerShell Wrapper)
 # This is a lightweight wrapper around the Python implementation
+#
+# DEPRECATED - kept because it is unknown who still uses it. For a new
+# repository copy the caller from the workflow's documentation (docs/workflows/)
+# or from github/workflows/examples/. See tools/README.md.
 
 param(
     [Parameter(ValueFromRemainingArguments=$true)]

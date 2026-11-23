@@ -1,5 +1,10 @@
 # 🚀 Automation Deployment Tools
 
+> ⚠️ **Veraltet (deprecated).** Das Tool wird nicht weiterentwickelt. Es bleibt, weil unklar ist, wer es noch nutzt,
+> und erzeugt startfähige Aufrufer (siehe „Was wird erstellt“), die allerdings nur manuell laufen.
+> Für ein neues Repository den Aufrufer direkt aus der Dokumentation des Workflows (`docs/workflows/`)
+> oder aus `github/workflows/examples/` übernehmen - dort stehen auch die passenden Trigger, Inputs und Permissions.
+
 Dieses Verzeichnis enthält Tools zur einfachen Bereitstellung der wiederverwendbaren Automationen in anderen Repositories, während die gesamte Logik zentral hier gepflegt wird.
 
 ## 📋 Übersicht
