@@ -171,6 +171,10 @@ runs:
           fi
         fi
 
+        # Tags carry a "v" prefix, the release pipeline passes the version
+        # without one. Strip it so SECURITY.MD shows the same form either way.
+        CURRENT_VERSION="${CURRENT_VERSION#v}"
+
         # This becomes a step output that later run: bodies interpolate, so a
         # metacharacter here would execute there. A version never contains one.
         if [[ ! "$CURRENT_VERSION" =~ ^[A-Za-z0-9._+-]+$ ]]; then
@@ -243,6 +247,7 @@ runs:
         # Previous versions (not supported)
         if [ -n "$ALL_TAGS" ]; then
           echo "$ALL_TAGS" | head -5 | tail -n +2 | while read -r tag; do
+            tag="${tag#v}"  # same form as the current version above
             if [ -n "$tag" ] && [ "$tag" != "$CURRENT_VERSION" ]; then
               echo "| $tag | ❌ End of Life | ❌ No |" >> version_table.md
             fi
