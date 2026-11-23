@@ -48,7 +48,7 @@ Zentrale Konfigurationsdatei für Deployment-Profile und Einstellungen.
 ### Spezifische Workflows
 ```bash
 # Auswahl bestimmter Workflows
-./deploy-automations.sh --workflows "ci-cd,teams-notifications" owner/my-repo
+./deploy-automations.sh --workflows "documentation,teams-notifications" owner/my-repo
 
 # Mit Projekt-Typ für spezifische Konfigurationen
 ./deploy-automations.sh --profile basic --project-type nodejs owner/my-repo
@@ -115,7 +115,7 @@ Zentrale Konfigurationsdatei für Deployment-Profile und Einstellungen.
 
 ### In Ziel-Repository: `.github/workflows/`
 ```yaml
-name: 🔄 ci-cd (via Automation Templates)
+name: 🔄 documentation (via Automation Templates)
 
 on:
   workflow_call:
@@ -126,7 +126,7 @@ on:
 jobs:
   delegate-to-automation-templates:
     name: 🚀 Execute via Automation Templates
-    uses: bauer-group/automation-templates/.github/workflows/ci-cd.yml@main
+    uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
     secrets: inherit
 ```
 
@@ -191,25 +191,27 @@ Optionale Konfiguration über Repository-Variablen:
 - `nodejs` - Node.js/React/Vue/Angular Projekte
 - `dotnet` - .NET/C# Projekte  
 - `python` - Python/Django/Flask Projekte
-- `docker` - Container-basierte Projekte
+- `php` - PHP-Projekte
+
+Docker-Konfigurationen kommen über den Workflow `docker-build`, nicht über einen Projekt-Typ.
 
 ### Was wird automatisch konfiguriert
 
-| Workflow | Benötigte Configs | Automatisch kopiert |
+| Workflow / Projekt-Typ | Benötigte Configs | Automatisch kopiert |
 |----------|------------------|-------------------|
 | `security-management` | `security-policy/config.yml` | ✅ Ja |
 | `teams-notifications` | `teams-notification/*.yml` | ✅ Ja |
-| `docker-hub` | `docker-build/default.yml` | ✅ Ja |
-| `ci-cd` (Node.js) | `nodejs-build/default.yml` | ✅ Ja |
-| `ci-cd` (.NET) | `dotnet-build/default.yml` | ✅ Ja |
-| `ci-cd` (Python) | `python-build/default.yml` | ✅ Ja |
+| `docker-build` | `docker-build/default.yml` | ✅ Ja |
+| `--project-type nodejs` | `nodejs-build/default.yml` | ✅ Ja |
+| `--project-type dotnet` | `dotnet-build/default.yml` | ✅ Ja |
+| `--project-type python` | `python-build/default.yml` | ✅ Ja |
 
 ## 🔄 Funktionsweise
 
 ### 1. Zentrale Ausführung
 Alle Workflow-Logik bleibt in `bauer-group/automation-templates`:
 ```yaml
-uses: bauer-group/automation-templates/.github/workflows/ci-cd.yml@main
+uses: bauer-group/automation-templates/.github/workflows/documentation.yml@main
 ```
 
 ### 2. Automatische Updates
@@ -250,7 +252,7 @@ profiles:
   my-custom-profile:
     description: "Mein angepasstes Profil"
     workflows:
-      - "ci-cd"
+      - "documentation"
       - "teams-notifications"
     actions:
       - "teams-notification"

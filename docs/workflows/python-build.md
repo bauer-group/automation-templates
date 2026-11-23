@@ -4,12 +4,10 @@ Diese Dokumentation beschreibt die verfügbaren Python Build Workflows und Konfi
 
 ## Übersicht
 
-Das Python Build System bietet mehrere vorgefertigte Workflows für unterschiedliche Python-Anwendungstypen:
+Das Python Build System besteht aus zwei wiederverwendbaren Workflows und fertigen Konfigurationen für verschiedene Projekttypen:
 
-- **Python Application** - Einfache Python-Anwendungen
-- **Python Package** - Pakete für PyPI
-- **Python Docker** - Containerisierte Anwendungen
-- **Python Publish** - Publishing zu PyPI/TestPyPI
+- **`python-build.yml`** - Build & Test: Installation, Tests mit Coverage, Lint, Format- und Type-Check, Security-Scan, Package-Build
+- **`python-semantic-release.yml`** - Release & PyPI-Publishing, beschrieben in [Python Semantic Release](python-semantic-release.md)
 
 ## Erforderliche Caller-Permissions
 
@@ -41,109 +39,26 @@ Die vollständige Obergrenzen-Regel — und dieselbe Falle für `packages: read`
 
 ## Verfügbare Workflows
 
-### 1. Python Application (`python-app.yml`)
+### Python Build & Test (`python-build.yml`)
 
-Grundlegender CI-Workflow für Python-Anwendungen.
+Wiederverwendbarer Workflow (`workflow_call`) für Anwendungen und Pakete. Die einzelnen Prüfungen werden über Inputs ein- und ausgeschaltet:
 
-**Features:**
-- Python 3.12 Setup
-- Virtual Environment
-- Dependency Installation
-- Security Checks (Safety, Bandit)
-- Linting (flake8)
-- Testing (pytest mit Coverage)
-- Codecov Integration
-- Test Results Upload
+| Bereich | Inputs |
+|---------|--------|
+| Python-Version | `python-version` (kommagetrennt für mehrere), `python-version-file`, `enable-matrix` |
+| Installation | `package-manager`, `requirements-files`, `install-command`, `use-venv`, `cache-dependencies` |
+| Tests | `run-tests`, `test-framework`, `test-command`, `collect-coverage`, `coverage-threshold` |
+| Code-Qualität | `run-lint`, `linter`, `run-format-check`, `formatter`, `run-isort-check`, `run-type-check`, `type-checker` |
+| Security | `run-security-scan`, `security-tools` |
+| Paket | `build-package`, `build-tools`, `package-check` |
 
-**Verwendung:**
-```yaml
-name: My Python App CI
+Den Aufruf mit den nötigen Permissions zeigt [Erforderliche Caller-Permissions](#erforderliche-caller-permissions). Alle Inputs mit ihren Defaults stehen im Kopf von [`python-build.yml`](../../.github/workflows/python-build.yml).
 
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
+### Release & PyPI-Publishing (`python-semantic-release.yml`)
 
-jobs:
-  build:
-    uses: ./.github/workflows/python-app.yml
-```
+Versionierung nach Conventional Commits, Build und Upload zu PyPI. Details in [Python Semantic Release](python-semantic-release.md).
 
-### 2. Python Package (`python-package.yml`)
-
-Multi-Platform CI für Python-Pakete mit verschiedenen Python-Versionen.
-
-**Features:**
-- Matrix Build (Python 3.9-3.12, Ubuntu/Windows/macOS)
-- Code Formatting (Black, isort)
-- Type Checking (mypy)
-- Package Building
-- Package Validation
-- Cross-Platform Testing
-
-**Verwendung:**
-```yaml
-name: Python Package CI
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-
-jobs:
-  build:
-    uses: ./.github/workflows/python-package.yml
-```
-
-### 3. Python Publishing (`python-publish.yml`)
-
-Automatisches Publishing zu PyPI/TestPyPI.
-
-**Features:**
-- Trusted Publishing (OIDC)
-- TestPyPI Support
-- Production PyPI Publishing
-- Pre-Publishing Tests
-- GitHub Release Creation
-
-**Verwendung:**
-```yaml
-name: Publish Python Package
-
-on:
-  release:
-    types: [published]
-
-jobs:
-  publish:
-    uses: ./.github/workflows/python-publish.yml
-```
-
-### 4. Python Docker (`python-docker.yml`)
-
-Docker Build und Deployment Pipeline.
-
-**Features:**
-- Multi-Platform Docker Builds
-- GitHub Container Registry
-- Security Scanning (Trivy)
-- Staging/Production Deployment
-- Image Caching
-
-**Verwendung:**
-```yaml
-name: Docker Build & Deploy
-
-on:
-  push:
-    branches: [ main ]
-    tags: [ 'v*' ]
-
-jobs:
-  docker:
-    uses: ./.github/workflows/python-docker.yml
-```
+> **Nicht mehr beschrieben:** Frühere Fassungen dieser Seite nannten `python-app.yml`, `python-package.yml`, `python-publish.yml` und `python-docker.yml`. Keiner dieser Workflows existiert in diesem Repository (`python-publish.yml` wurde am 2025-09-01 entfernt), und ein `uses:` darauf lässt den ganzen Run mit `startup_failure` scheitern. Fürs Publishing dient `python-semantic-release.yml`, für Container-Images von Python-Anwendungen [`docker-build.yml`](docker-build.md).
 
 ## Konfigurationsdateien
 
