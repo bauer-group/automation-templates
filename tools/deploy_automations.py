@@ -619,7 +619,8 @@ Examples:
         """
     )
     
-    parser.add_argument("target_repo", help="Target repository (owner/repo format)")
+    # Optional here so --list-profiles works on its own; required for a deployment below.
+    parser.add_argument("target_repo", nargs="?", help="Target repository (owner/repo format)")
     parser.add_argument("-p", "--profile", help="Use deployment profile")
     parser.add_argument("-w", "--workflows", help="Comma-separated list of workflows to deploy")
     parser.add_argument("-a", "--actions", help="Comma-separated list of actions to deploy")
@@ -634,6 +635,8 @@ Examples:
                        help="List available deployment profiles")
     
     args = parser.parse_args()
+    if not args.list_profiles and not args.target_repo:
+        parser.error("the following arguments are required: target_repo")
     log_warning(DEPRECATION_NOTICE)
     
     try:
