@@ -4,6 +4,17 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.12.4](https://github.com/bauer-group/automation-templates/compare/v11.12.3...v11.12.4) (2026-11-23)
+
+### 🐛 Bug Fixes
+
+* **tools:** allowed --list-profiles without a target repository ([fad24c4](https://github.com/bauer-group/automation-templates/commit/fad24c4cc156a06e1f1e8720ace0986546b23fc9))
+* **tools:** fixed the generated callers so GitHub starts them ([dd241c8](https://github.com/bauer-group/automation-templates/commit/dd241c8ffebbb87c46f481666778935a4e8af3f9))
+
+### 🔧 Maintenance
+
+* **tools:** marked the deploy tool as deprecated ([03307fe](https://github.com/bauer-group/automation-templates/commit/03307fe13119046b77c69b314b4f623a71a68cd3))
+
 ## [11.12.3](https://github.com/bauer-group/automation-templates/compare/v11.12.2...v11.12.3) (2026-11-23)
 
 ### 🐛 Bug Fixes
