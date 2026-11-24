@@ -258,19 +258,29 @@ jobs:
           REPORT=".trivy/${IMAGE_NAME}-report.json"
           SARIF=".trivy/${IMAGE_NAME}-report.sarif"
 
-          # Retry the WHOLE install: the installer script and the release tarball it
-          # fetches are two downloads, and one connection reset on either failed the
-          # scan (issue #101). Saved to a file first so a cut-off download never runs
-          # truncated. This step has no `set -e`, so a failed install must stop here -
-          # otherwise it surfaces below as a missing report blamed on the vuln DB.
-          # (Same logic as .github/actions/docker-build/install-tool.sh, inlined
-          # because a reusable workflow has no action path to run it from.)
+          # Retry the WHOLE install: it is several downloads, and one connection reset
+          # on any of them failed the scan (issue #101). Saved to files first so a
+          # cut-off download is never used. This step has no `set -e`, so a failed
+          # install must stop here - otherwise it surfaces below as a missing report
+          # blamed on the vuln DB.
+          # (Inlined because a reusable workflow has no action path to run a
+          # helper script from.)
+          # Installed from the GitHub release and checked against its checksums
+          # file, not through Trivy's install.sh, which fetches the tarball from
+          # get.trivy.dev (down on 2026-11-03, issue #136). Same logic as
+          # .github/actions/docker-build/install-trivy.sh, for Linux amd64 and arm64.
           if ! command -v trivy >/dev/null 2>&1; then
             echo "::group::Installing Trivy"
+            TRIVY_RELEASES=https://github.com/aquasecurity/trivy/releases
+            case "$(uname -m)" in aarch64 | arm64) TRIVY_ARCH=ARM64 ;; *) TRIVY_ARCH=64bit ;; esac
             for attempt in 1 2 3; do
-              curl -sSfL --connect-timeout 10 --max-time 60 -o "$RUNNER_TEMP/trivy-install.sh" \
-                https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-                && sh "$RUNNER_TEMP/trivy-install.sh" -b /usr/local/bin && break
+              TRIVY_TAG="$(curl -sSfL --connect-timeout 10 --max-time 30 -o /dev/null -w '%{url_effective}' "$TRIVY_RELEASES/latest")" \
+                && TRIVY_TAG="${TRIVY_TAG##*/}" && TRIVY_TGZ="trivy_${TRIVY_TAG#v}_Linux-${TRIVY_ARCH}.tar.gz" \
+                && curl -sSfL --connect-timeout 10 --max-time 180 -o "$RUNNER_TEMP/$TRIVY_TGZ" "$TRIVY_RELEASES/download/$TRIVY_TAG/$TRIVY_TGZ" \
+                && curl -sSfL --connect-timeout 10 --max-time 60 -o "$RUNNER_TEMP/trivy-checksums.txt" "$TRIVY_RELEASES/download/$TRIVY_TAG/trivy_${TRIVY_TAG#v}_checksums.txt" \
+                && (cd "$RUNNER_TEMP" && awk -v f="$TRIVY_TGZ" '$2 == f' trivy-checksums.txt | grep . | sha256sum --check --strict -) \
+                && tar -xzf "$RUNNER_TEMP/$TRIVY_TGZ" -C "$RUNNER_TEMP" trivy \
+                && install -m 0755 "$RUNNER_TEMP/trivy" /usr/local/bin/trivy && break
               if [ "$attempt" -lt 3 ]; then
                 echo "::warning::Installing Trivy failed (attempt $attempt of 3) - retrying in $((attempt * 10)) s."
                 sleep $((attempt * 10))
@@ -278,7 +288,7 @@ jobs:
             done
             echo "::endgroup::"
             if ! command -v trivy >/dev/null 2>&1; then
-              echo "::error::Installing Trivy failed after 3 attempts. This is a download failure between the runner and GitHub, not a problem with '${IMAGE_NAME}' - re-run the job."
+              echo "::error::Installing Trivy failed after 3 attempts. The curl or sha256sum output above names the cause; this is not a problem with '${IMAGE_NAME}'."
               echo "scan-passed=false" >> "$GITHUB_OUTPUT"
               exit 1
             fi

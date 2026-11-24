@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Installs a scanner (Trivy, Grype, Syft) through its vendor install script and
+# Installs a scanner (Grype, Syft) through its vendor install script and
 # retries the WHOLE install, not only the script download.
 #
 # A vendor installer is two downloads: the script from raw.githubusercontent.com,
@@ -17,6 +17,7 @@
 #
 # Usage: install-tool.sh <name> <installer-url> [installer args...]
 #   e.g. install-tool.sh Syft https://raw.githubusercontent.com/anchore/syft/main/install.sh -b /usr/local/bin
+# Trivy goes through install-trivy.sh instead (issue #136).
 # Env:   INSTALL_ATTEMPTS (default 3)
 #        INSTALL_BACKOFF  (seconds, default 10; attempt n waits n * INSTALL_BACKOFF)
 
@@ -47,5 +48,5 @@ for ((attempt = 1; attempt <= ATTEMPTS; attempt++)); do
   fi
 done
 
-echo "::error::Installing $NAME failed after $ATTEMPTS attempts. This is a download failure between the runner and GitHub, not a problem with the image - the curl or installer output above names the cause. Re-running the job usually clears it."
+echo "::error::Installing $NAME failed after $ATTEMPTS attempts. This is a download failure, not a problem with the image. The curl or installer output above names the cause; a vendor installer may download from its own host rather than GitHub, and logs a failed download only with -d. Re-running helps only for a transient error."
 exit 1

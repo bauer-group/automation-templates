@@ -29,7 +29,7 @@ jobs:
 
       - name: 🛡️ Vulnerability Scan
         id: scan
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           format: json

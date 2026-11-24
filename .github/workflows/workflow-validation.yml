@@ -123,6 +123,13 @@ jobs:
         shell: bash
         run: bash .github/actions/docker-build/tests/install-tool.test.sh
 
+      # get.trivy.dev stopped resolving and every image scan failed at the Trivy
+      # install (#136). Pins the install from the GitHub release: checksum
+      # verified, a mismatch never installed or retried, a transient failure retried.
+      - name: "🧪 docker-build: Trivy installs from the GitHub release"
+        shell: bash
+        run: bash .github/actions/docker-build/tests/install-trivy.test.sh
+
       # Same failure class as the security-scan tests: attest-sbom produced a green
       # attestation that named the SBOM file instead of the image, so verifying the
       # image found nothing (#104). Pins image vs file mode, the inputs that select

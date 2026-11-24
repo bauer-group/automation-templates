@@ -137,7 +137,20 @@ else
   pass "no unretried 'curl | sh' install left in docker-build or fork-docker-build"
 fi
 
-for tool in Trivy Grype Syft; do
+if grep -qE 'bash "\$GITHUB_ACTION_PATH/install-trivy.sh" /usr/local/bin' "$ACTION_FILE"; then
+  pass "docker-build installs Trivy through install-trivy.sh"
+else
+  fail "docker-build installs Trivy through install-trivy.sh"
+fi
+
+# Comments may name the host; no command line may use it (issue #136).
+if grep -hv '^[[:space:]]*#' "$ACTION_FILE" "$FORK_WORKFLOW" | grep -q 'get\.trivy\.dev\|trivy/main/contrib/install\.sh'; then
+  fail "neither docker-build nor fork-docker-build runs Trivy's install.sh"
+else
+  pass "neither docker-build nor fork-docker-build runs Trivy's install.sh"
+fi
+
+for tool in Grype Syft; do
   if grep -qE "bash \"\\\$GITHUB_ACTION_PATH/install-tool.sh\" $tool( |\\\\|\$)" "$ACTION_FILE"; then
     pass "docker-build installs $tool through install-tool.sh"
   else
@@ -147,7 +160,7 @@ done
 
 # The security step fails closed: an install that gave up must not leave
 # scan-passed unset, because downstream reads an unset output as an empty string.
-if [ "$(grep -A2 'install-tool.sh" \(Trivy\|Grype\)' "$ACTION_FILE" | grep -c 'scan-passed=false')" -eq 2 ]; then
+if [ "$(grep -A2 'install-trivy.sh" /usr/local/bin\|install-tool.sh" Grype' "$ACTION_FILE" | grep -c 'scan-passed=false')" -eq 2 ]; then
   pass "a failed scanner install sets scan-passed=false"
 else
   fail "a failed scanner install sets scan-passed=false"

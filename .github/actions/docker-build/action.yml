@@ -916,11 +916,13 @@ runs:
 
         case "$SCANNER" in
           trivy)
-            # Install Trivy if not available (retried as a whole, see install-tool.sh)
+            # Install Trivy if not available: from the GitHub release with its
+            # checksum, retried as a whole (install-trivy.sh). Trivy's install.sh
+            # fetches the tarball from get.trivy.dev, which stopped resolving on
+            # 2026-11-03 and failed every scan (issue #136).
             if ! command -v trivy >/dev/null 2>&1; then
               echo "Installing Trivy..."
-              bash "$GITHUB_ACTION_PATH/install-tool.sh" Trivy \
-                https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh -b /usr/local/bin \
+              bash "$GITHUB_ACTION_PATH/install-trivy.sh" /usr/local/bin \
                 || { echo "scan-passed=false" >> "$GITHUB_OUTPUT"; exit 1; }
             fi
 
