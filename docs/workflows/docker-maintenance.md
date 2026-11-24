@@ -188,8 +188,23 @@ Every weekly Dependabot schedule runs on **Sunday afternoon, from 13:30 UTC** - 
 | 17:20 | OT-CAN2IP-Clients |
 | 17:25 | OT-Shared-Industrial-NET |
 | 17:30 | covalida/SaaS-MailAdressValidator |
+| 17:35 | SEC-GoogleAuthenticatorExportDecoder |
+| 17:40 | COM-CorporateIdentity |
+| 17:45 | COM-Microsites |
+| 17:50 | COM-WiFiAccessCardGenerator |
+| 18:00 | EXT-n8n-httpThrottled |
+| 18:05 | IP-Chrome-HeaderAuth |
+| 18:10 | OT-CAN2IP-WebUI |
+| 18:15 | SEC-AIActCompliance |
+| 18:20 | SEC-CRACompliance |
+| 18:25 | SEC-DORACompliance |
+| 18:30 | SEC-NIS2Compliance |
+| 18:35 | SaaS-AccessibilityWidget |
+| 18:45 | XPD-RPIImage |
+| 18:50 | covalida/COM-CorporateIdentity |
+| 18:55 | karlspace/RDAP-DomainCheck |
 
-A new repository with auto-merge takes the next free step (17:35, then every 5 minutes) and enters it here in the same change.
+A new repository with auto-merge takes the next free step (19:00, then every 5 minutes) and enters it here in the same change. 17:55 and 18:40 are free.
 
 #### 2. Create Maintenance Workflow
 
