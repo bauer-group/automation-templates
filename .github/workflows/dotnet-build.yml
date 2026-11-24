@@ -635,8 +635,11 @@ jobs:
           # the outputs below must also be written when tests fail, otherwise
           # 📊 Test Report and 📤 Upload Test Results (if: always()) are skipped
           # exactly when there is something to report. The full output is kept
-          # in TestResults/dotnet-test.log so ✅ Validate Test Results can show
+          # in $RUNNER_TEMP/dotnet-test.log so ✅ Validate Test Results can show
           # the real error (this step is continue-on-error and shows green).
+          # Not in TestResults: that directory is uploaded as an artifact, and
+          # secret masking applies to the job log only, not to files - a test
+          # or MSBuild line echoing a credential would land unmasked in it.
           set +e
           dotnet test ${{ inputs.project-path }} \
             --configuration ${{ inputs.configuration }} \
@@ -647,7 +650,7 @@ jobs:
             ${{ inputs.test-filter && format('--filter "{0}"', inputs.test-filter) || '' }} \
             ${{ inputs.collect-coverage && format('--collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format={0}', inputs.coverage-type) || '' }} \
             ${{ inputs.coverage-exclude && format('-- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile={0}', inputs.coverage-exclude) || '' }} \
-            ${{ inputs.test-args }} 2>&1 | tee TestResults/dotnet-test.log
+            ${{ inputs.test-args }} 2>&1 | tee "$RUNNER_TEMP/dotnet-test.log"
           TEST_EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
@@ -870,8 +873,8 @@ jobs:
               # (restore/build/MSBuild-level error). The cause is only in the
               # 🧪 Run Tests output, so surface it here where the run turns red.
               echo "::error title=No test results::dotnet test failed before any test ran (no .trx produced). First errors from the 🧪 Run Tests step:"
-              grep -m 10 -E 'error [A-Z]+[0-9]+:|error :' TestResults/dotnet-test.log 2>/dev/null | sed 's/^/    /' || true
-              if grep -q 'no longer supported by Microsoft.Testing.Platform' TestResults/dotnet-test.log 2>/dev/null; then
+              grep -m 10 -E 'error [A-Z]+[0-9]+:|error :' "$RUNNER_TEMP/dotnet-test.log" 2>/dev/null | sed 's/^/    /' || true
+              if grep -q 'no longer supported by Microsoft.Testing.Platform' "$RUNNER_TEMP/dotnet-test.log" 2>/dev/null; then
                 echo "::error title=Microsoft.Testing.Platform v2 vs. VSTest dotnet test::A test project uses Microsoft.Testing.Platform v2 (e.g. xunit.v3 >= 4.0), which refuses the VSTest-mode 'dotnet test' this workflow runs (--logger trx, coverlet --collect). Reference the VSTest flavour instead, e.g. replace the 'xunit.v3' package with 'xunit.v3.mtp-off' (same version). See https://aka.ms/dotnet-test-mtp-error"
               fi
             fi

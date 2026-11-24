@@ -103,7 +103,8 @@ chmod +x "$WORK/bin/dotnet"
 run_case() {
   CASE="$WORK/case.$1"
   mkdir -p "$CASE"
-  export GITHUB_OUTPUT="$CASE/output" MODE="$1"
+  export GITHUB_OUTPUT="$CASE/output" MODE="$1" RUNNER_TEMP="$CASE/runner-temp"
+  mkdir -p "$RUNNER_TEMP"
   : > "$GITHUB_OUTPUT"
   (cd "$CASE" && PATH="$WORK/bin:$PATH" bash -eo pipefail "$WORK/run-tests.sh" > "$CASE/run.out" 2>&1)
   RUN_RC=$?
@@ -118,7 +119,8 @@ run_case restore-error
 check "test step keeps dotnet's exit code" "$RUN_RC" 1
 check "outputs are written: tests-found" "$OUT_TESTS_FOUND" false
 check "outputs are written: no results path" "$(grep -c '^results-path=$' "$GITHUB_OUTPUT")" 1
-check "the dotnet output is kept in TestResults/dotnet-test.log" "$(grep -c 'error NU1101' "$CASE/TestResults/dotnet-test.log")" 1
+check "the dotnet output is kept in \$RUNNER_TEMP/dotnet-test.log" "$(grep -c 'error NU1101' "$RUNNER_TEMP/dotnet-test.log")" 1
+check "the log is not in the uploaded TestResults directory" "$(find "$CASE/TestResults" -name dotnet-test.log | wc -l | tr -d ' ')" 0
 check "the dotnet output is still printed in the step" "$(grep -c 'error NU1101' "$CASE/run.out")" 1
 check "validation fails" "$VALIDATE_RC" 1
 check "validation names the missing results" "$(grep -c '^::error title=No test results::' "$CASE/validate.out")" 1
