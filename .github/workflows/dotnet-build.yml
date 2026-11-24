@@ -630,7 +630,14 @@ jobs:
 
           echo "tests-found=true" >> "$GITHUB_OUTPUT"
 
-          # Run tests - dotnet test will gracefully handle if no test projects exist
+          # Run tests - dotnet test will gracefully handle if no test projects exist.
+          # The exit code is captured instead of letting `bash -e` abort the step:
+          # the outputs below must also be written when tests fail, otherwise
+          # 📊 Test Report and 📤 Upload Test Results (if: always()) are skipped
+          # exactly when there is something to report. The full output is kept
+          # in TestResults/dotnet-test.log so ✅ Validate Test Results can show
+          # the real error (this step is continue-on-error and shows green).
+          set +e
           dotnet test ${{ inputs.project-path }} \
             --configuration ${{ inputs.configuration }} \
             --no-build \
@@ -640,7 +647,9 @@ jobs:
             ${{ inputs.test-filter && format('--filter "{0}"', inputs.test-filter) || '' }} \
             ${{ inputs.collect-coverage && format('--collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format={0}', inputs.coverage-type) || '' }} \
             ${{ inputs.coverage-exclude && format('-- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile={0}', inputs.coverage-exclude) || '' }} \
-            ${{ inputs.test-args }}
+            ${{ inputs.test-args }} 2>&1 | tee TestResults/dotnet-test.log
+          TEST_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
 
           # List what was created
           echo "Contents of TestResults:"
@@ -662,10 +671,15 @@ jobs:
             echo "tests-found=false" >> "$GITHUB_OUTPUT"
             echo "results-path=" >> "$GITHUB_OUTPUT"
           fi
-      
+
+          exit "$TEST_EXIT_CODE"
+
       - name: 📊 Process Coverage
         id: coverage
-        if: inputs.collect-coverage && steps.test.outputs.results-path != ''
+        # outcome == 'success' keeps the previous behaviour: results-path is now
+        # also set on failing runs, and a coverage-gate failure here would skip
+        # ✅ Validate Test Results and hide the actual test failure.
+        if: inputs.collect-coverage && steps.test.outcome == 'success' && steps.test.outputs.results-path != ''
         shell: bash
         working-directory: ${{ inputs.working-directory }}
         env:
@@ -841,10 +855,25 @@ jobs:
               echo ""
               echo "Failed test result files:"
               for f in $TRX_FILES; do
-                FAILED=$(grep -c 'outcome="Failed"' "$f" 2>/dev/null || echo "0")
-                PASSED=$(grep -c 'outcome="Passed"' "$f" 2>/dev/null || echo "0")
+                # Count per-test <UnitTestResult> entries only: a bare 'outcome="Failed"'
+                # also matches the run-level <ResultSummary outcome="Failed">, which
+                # over-reported every failing file by one. `grep -c ... || echo "0"`
+                # printed "0" twice when nothing matched (grep -c already prints 0).
+                # `|| true` inside the group: under `bash -e -o pipefail` a grep without a
+                # match (a file with 0 failures) would otherwise abort the whole listing.
+                FAILED=$({ grep -o '<UnitTestResult [^>]*outcome="Failed"' "$f" 2>/dev/null || true; } | wc -l | tr -d ' ')
+                PASSED=$({ grep -o '<UnitTestResult [^>]*outcome="Passed"' "$f" 2>/dev/null || true; } | wc -l | tr -d ' ')
                 echo "  📄 $f — Passed: $PASSED, Failed: $FAILED"
               done
+            else
+              # No .trx at all: dotnet test failed before a single test ran
+              # (restore/build/MSBuild-level error). The cause is only in the
+              # 🧪 Run Tests output, so surface it here where the run turns red.
+              echo "::error title=No test results::dotnet test failed before any test ran (no .trx produced). First errors from the 🧪 Run Tests step:"
+              grep -m 10 -E 'error [A-Z]+[0-9]+:|error :' TestResults/dotnet-test.log 2>/dev/null | sed 's/^/    /' || true
+              if grep -q 'no longer supported by Microsoft.Testing.Platform' TestResults/dotnet-test.log 2>/dev/null; then
+                echo "::error title=Microsoft.Testing.Platform v2 vs. VSTest dotnet test::A test project uses Microsoft.Testing.Platform v2 (e.g. xunit.v3 >= 4.0), which refuses the VSTest-mode 'dotnet test' this workflow runs (--logger trx, coverlet --collect). Reference the VSTest flavour instead, e.g. replace the 'xunit.v3' package with 'xunit.v3.mtp-off' (same version). See https://aka.ms/dotnet-test-mtp-error"
+              fi
             fi
 
             exit 1

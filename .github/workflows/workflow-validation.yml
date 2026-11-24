@@ -162,6 +162,13 @@ jobs:
         shell: bash
         run: bash .github/workflows/tests/dotnet-publish-library-artifact.test.sh
 
+      # A dotnet test that failed before any test ran left its error in a green,
+      # continue-on-error step and the red one said only "Tests failed!". Pins the
+      # kept exit code and log, the outputs on failure and the error excerpt.
+      - name: "🧪 dotnet-build: a failing dotnet test shows the real error"
+        shell: bash
+        run: bash .github/workflows/tests/dotnet-build-test-diagnostics.test.sh
+
       # The allowlist in /.gitleaks.toml is a hole in secret scanning, so it is held
       # shut from both sides: the documented placeholders stay quiet AND realistic
       # tokens are still caught. Version is pinned so a gitleaks release cannot change
