@@ -4,6 +4,21 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.12.6](https://github.com/bauer-group/automation-templates/compare/v11.12.5...v11.12.6) (2026-11-24)
+
+### 🐛 Bug Fixes
+
+* **ci:** skipped commitlint for conventional Dependabot commits ([41546a2](https://github.com/bauer-group/automation-templates/commit/41546a2c69919b92e2cd2c07dc7c833be55d0172)), references [#134](https://github.com/bauer-group/automation-templates/issues/134) [#143](https://github.com/bauer-group/automation-templates/issues/143) [#143](https://github.com/bauer-group/automation-templates/issues/143)
+* **docker:** installed Trivy from its GitHub release ([c35e4fe](https://github.com/bauer-group/automation-templates/commit/c35e4feafe337e7f950140b78ea7815b0cb3dd06)), references [#136](https://github.com/bauer-group/automation-templates/issues/136)
+* **dotnet:** fixed publish jobs taking the other call's nuget artifact ([81027cb](https://github.com/bauer-group/automation-templates/commit/81027cbc9baaa174e4ae339679bab74310a1c613))
+* **dotnet:** showed the real error when dotnet test fails ([d91c4ed](https://github.com/bauer-group/automation-templates/commit/d91c4ed3e51e56099f8f61abc898dc0d883b0345))
+* **maintenance:** retried a failed release on the next run ([d7f650b](https://github.com/bauer-group/automation-templates/commit/d7f650b2f6c1014ff37c15c43b57e134059717b1)), closes [#137](https://github.com/bauer-group/automation-templates/issues/137)
+* **sync:** named the missing workflows permission on a 422 ([bf295c0](https://github.com/bauer-group/automation-templates/commit/bf295c0c0dd64bf78aad5503072cef7577d67d3e))
+
+### 🔧 Maintenance
+
+* **ci:** bump google/osv-scanner-action from 2.7.0 to 2.7.1 ([e4c1ba9](https://github.com/bauer-group/automation-templates/commit/e4c1ba9c650d032be3701c4936db8779fdb8b6f8))
+
 ## [11.12.5](https://github.com/bauer-group/automation-templates/compare/v11.12.4...v11.12.5) (2026-11-23)
 
 ### 🐛 Bug Fixes
