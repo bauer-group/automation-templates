@@ -155,6 +155,13 @@ jobs:
         shell: bash
         run: bash .github/actions/dotnet-msi/tests/resolve-msi-version.test.sh
 
+      # Two calls in one run (validation pack, release pack) both uploaded
+      # "nuget-packages", and the release pushed the validation package
+      # (LIB-Shared-NET 4.0.3 published 4.0.2-pr.310). Pins the per-call name.
+      - name: "🧪 dotnet-publish-library: each call publishes its own packages"
+        shell: bash
+        run: bash .github/workflows/tests/dotnet-publish-library-artifact.test.sh
+
       # The allowlist in /.gitleaks.toml is a hole in secret scanning, so it is held
       # shut from both sides: the documented placeholders stay quiet AND realistic
       # tokens are still caught. Version is pinned so a gitleaks release cannot change

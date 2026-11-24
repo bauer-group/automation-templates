@@ -343,6 +343,7 @@ jobs:
 
     outputs:
       version: ${{ steps.dotnet-build.outputs.version }}
+      artifact-suffix: ${{ steps.artifact.outputs.suffix }}
       package-path: ${{ steps.dotnet-build.outputs.package-path }}
       symbols-path: ${{ steps.dotnet-build.outputs.symbols-path }}
       package-name: ${{ steps.dotnet-build.outputs.package-name }}
@@ -371,10 +372,35 @@ jobs:
           name: ${{ inputs.download-artifact-name }}
           path: ${{ inputs.working-directory }}/${{ inputs.download-artifact-path }}
 
+      # A caller may call this workflow twice in one run (a validation pack with a
+      # version suffix, then the release pack). With one fixed artifact name both calls
+      # upload a "nuget-packages" artifact, and download-artifact takes the one with the
+      # highest artifact ID - which is not always this call's: the release then pushed the
+      # validation packages (LIB-Shared-NET 4.0.3 pushed 4.0.2-pr.310). The suffix ties the
+      # artifact to this call. Built from every version input that is set, so two
+      # calls that differ only in version-suffix still get different names.
+      - name: 🏷️ Artifact Name
+        id: artifact
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.release-version }}
+          PACKAGE_VERSION: ${{ inputs.package-version }}
+          VERSION_SUFFIX: ${{ inputs.version-suffix }}
+        run: |
+          ARTIFACT_ID=""
+          for part in "$RELEASE_VERSION" "$PACKAGE_VERSION" "$VERSION_SUFFIX"; do
+            if [ -n "$part" ]; then ARTIFACT_ID="${ARTIFACT_ID:+$ARTIFACT_ID-}$part"; fi
+          done
+          ARTIFACT_ID="${ARTIFACT_ID:-build}"
+          SUFFIX="-${ARTIFACT_ID//[^A-Za-z0-9._-]/-}"
+          echo "suffix=$SUFFIX" >> "$GITHUB_OUTPUT"
+          echo "Artifact: nuget-packages$SUFFIX"
+
       - name: 🏗️ .NET Build & Pack
         id: dotnet-build
         uses: bauer-group/automation-templates/.github/actions/dotnet-nuget@main
         with:
+          artifact-suffix: ${{ steps.artifact.outputs.suffix }}
           working-directory: ${{ inputs.working-directory }}
           project-path: ${{ inputs.project-path }}
           configuration: ${{ inputs.configuration }}
@@ -489,7 +515,7 @@ jobs:
       - name: 📥 Download NuGet Packages
         uses: actions/download-artifact@v8
         with:
-          name: nuget-packages
+          name: nuget-packages${{ needs.build.outputs.artifact-suffix }}
           path: nupkg
 
       - name: 🔧 Setup .NET SDK
@@ -602,7 +628,7 @@ jobs:
       - name: 📥 Download NuGet Packages
         uses: actions/download-artifact@v8
         with:
-          name: nuget-packages
+          name: nuget-packages${{ needs.build.outputs.artifact-suffix }}
           path: nupkg
 
       - name: 🔧 Setup .NET SDK
