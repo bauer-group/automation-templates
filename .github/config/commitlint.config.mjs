@@ -2,8 +2,18 @@
 // outright - "'.js' extension is not allowed for the `configFile`, please use .mjs
 // instead" - and it throws BEFORE its existsSync fallback, so the whole commitlint
 // step errored on every run. See the rename in this commit.
+
+// Dependabot writes the commit body itself: a "Bumps [pkg](url) ..." line plus
+// release-note/compare links that pass 100 characters for any longer package
+// name and cannot be wrapped. Only the header prefix is ours (dependabot.yml
+// commit-message), so a Dependabot commit is skipped once its header has the
+// conventional shape; a Dependabot commit without a prefix is still linted.
+const DEPENDABOT_SIGNOFF = /^Signed-off-by: dependabot\[bot\] <support@github\.com>\s*$/m;
+const CONVENTIONAL_HEADER = /^[a-z]+(\([^)]+\))?!?: \S/;
+
 export default {
   extends: ['@commitlint/config-conventional'],
+  ignores: [(message) => DEPENDABOT_SIGNOFF.test(message) && CONVENTIONAL_HEADER.test(message)],
   rules: {
     'type-enum': [
       2,
