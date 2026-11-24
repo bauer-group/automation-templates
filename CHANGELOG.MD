@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This file is maintained
 automatically by [semantic-release](https://github.com/semantic-release/semantic-release)
 on every release to `main`.
 
+## [11.12.7](https://github.com/bauer-group/automation-templates/compare/v11.12.6...v11.12.7) (2026-11-24)
+
+### 🐛 Bug Fixes
+
+* **dotnet:** kept the dotnet test log out of the uploaded artifact ([dc8a188](https://github.com/bauer-group/automation-templates/commit/dc8a188c1451cf658ec31ec36c7c11f04909bc71))
+
 ## [11.12.6](https://github.com/bauer-group/automation-templates/compare/v11.12.5...v11.12.6) (2026-11-24)
 
 ### 🐛 Bug Fixes
