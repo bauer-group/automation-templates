@@ -28,6 +28,15 @@
 #     mirror-branch: 'main'
 #     integrate-into: 'workspace'
 #   secrets: inherit
+#
+# Callers outside the bauer-group organization/enterprise (user-owned forks,
+# e.g. karlspace/*): `secrets: inherit` passes NOTHING across owner
+# boundaries. Map the PAT explicitly instead:
+#   secrets:
+#     PAT_READWRITE_ORGANISATION: ${{ secrets.PAT_READWRITE_ORGANISATION }}
+# The PAT also needs workflow write access ('Workflows: Read and write' /
+# classic 'workflow'), or every upstream change under .github/workflows/
+# makes merge-upstream fail with 422.
 # =============================================================================
 
 name: "🔄 Sync Upstream"
@@ -182,6 +191,14 @@ jobs:
             echo "status=auth-error" >> "$GITHUB_OUTPUT"
             echo "merge-type=none" >> "$GITHUB_OUTPUT"
             echo "::error::Upstream sync for '${MIRROR_BRANCH}' was rejected with 401/403. The token (PAT_READWRITE_ORGANISATION, else GITHUB_TOKEN) needs write access to repository contents on '${REPO}' - fine-grained: 'Contents: Read and write', classic: 'repo'; SAML orgs additionally require the PAT to be SSO-authorised. NB: on a public repo the fork check above still passes with a read-only token, so this is the first call that actually exercises write access."
+            exit 1
+          elif printf '%s' "$RESPONSE" | grep -qiE 'without .?workflows?.? (permission|scope)'; then
+            # 422: upstream touched .github/workflows/*. A GITHUB_TOKEN can never
+            # be granted the `workflows` permission, so this needs a PAT that has
+            # it (App token: "...permission", PAT without it: "...scope").
+            echo "status=auth-error" >> "$GITHUB_OUTPUT"
+            echo "merge-type=none" >> "$GITHUB_OUTPUT"
+            echo "::error::Upstream changed files under .github/workflows/ and the token in use may not write workflow files (GITHUB_TOKEN never can). Provide PAT_READWRITE_ORGANISATION with workflow write access - fine-grained: 'Contents' + 'Workflows: Read and write', classic: 'repo' + 'workflow'. Callers outside the bauer-group organization/enterprise (e.g. user-owned forks) must pass it explicitly under 'secrets:' - 'secrets: inherit' passes nothing across owner boundaries."
             exit 1
           elif printf '%s' "$RESPONSE" | grep -qiE 'HTTP 409|merge conflict'; then
             echo "status=conflict" >> "$GITHUB_OUTPUT"
@@ -416,7 +433,7 @@ jobs:
               dry-run)    echo "🔍 Dry run" ;;
               conflict)   echo "⚠️ Conflict" ;;
               not-a-fork) echo "❌ Not a fork" ;;
-              auth-error) echo "🔐 Token rejected (401/403)" ;;
+              auth-error) echo "🔐 Token rejected or lacks permission" ;;
               *)          echo "❌ Error" ;;
             esac
           }

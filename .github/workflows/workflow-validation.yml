@@ -176,6 +176,13 @@ jobs:
         shell: bash
         run: bash .github/workflows/tests/dotnet-build-test-diagnostics.test.sh
 
+      # A 422 for a token without the workflows permission fell through to the
+      # generic "Upstream sync failed" and a fork stayed red for months without a
+      # cause. Pins the classification of each merge-upstream response.
+      - name: "🧪 sync-upstream: a missing workflows permission is named"
+        shell: bash
+        run: bash .github/workflows/tests/sync-upstream-responses.test.sh
+
       # The allowlist in /.gitleaks.toml is a hole in secret scanning, so it is held
       # shut from both sides: the documented placeholders stay quiet AND realistic
       # tokens are still caught. Version is pinned so a gitleaks release cannot change
