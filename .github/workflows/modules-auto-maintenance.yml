@@ -11,7 +11,8 @@
 # - Docker base image digest monitoring (floating tags like stable/latest);
 #   compares the linux/amd64 manifest of a multi-arch index; new digests are
 #   stored only after the commit was pushed and the release dispatched, so a
-#   failed run is retried next time
+#   failed run is retried next time. A dispatched release run that failed is
+#   dispatched again by the next run, even with nothing new to commit
 # - Multi-ecosystem dependency updates (Node.js, Python, .NET, Go)
 # - Build/Test/Typecheck validation with automatic rollback on failure
 # - Selective staging: only dependency manifests and lock files are
@@ -1096,11 +1097,58 @@ jobs:
           fi
 
       # =====================================================================
+      # Step 16a: Retry a failed release
+      # =====================================================================
+      # The digests are stored and the updated manifests committed right after
+      # the dispatch, without waiting for the release run. A release run that
+      # fails after that is never dispatched again: the next run finds nothing
+      # new to commit (#137). So, when there is nothing to commit, the last
+      # workflow_dispatch run of the trigger workflow on the target branch
+      # decides: failure, timed_out or startup_failure dispatches it once more
+      # (a fresh dispatch, not a re-run - a re-run keeps the outputs of the
+      # jobs that passed, e.g. a resolved base image digest). Queued, running,
+      # cancelled or successful runs are left alone. Only workflow_dispatch
+      # runs count, so a push run that released nothing cannot hide a failed
+      # release; a manual dispatch counts as well. A run list that cannot be
+      # read never retries and never fails the job.
+      - name: "🔁 Check the last release run"
+        id: release-state
+        if: steps.commit.outputs.committed != 'true' && steps.config.outputs.trigger-workflow != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
+          GH_REPO: ${{ github.repository }}
+          TRIGGER_WORKFLOW: ${{ steps.config.outputs.trigger-workflow }}
+          TRIGGER_REF: ${{ steps.config.outputs.target-branch }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          RETRY=false
+          URL=""
+          if LAST=$(gh run list --workflow "$TRIGGER_WORKFLOW" --branch "$TRIGGER_REF" --event workflow_dispatch \
+                --limit 1 --json status,conclusion,url \
+                --jq '(.[0] // {}) | [((.status // "") + "/" + (.conclusion // "")), (.url // "")] | @tsv' 2>&1); then
+            IFS=$'\t' read -r STATE URL <<< "$LAST"
+            case "$STATE" in
+              completed/failure|completed/timed_out|completed/startup_failure)
+                RETRY=true
+                echo "::warning title=Release retried::The last dispatched run of $TRIGGER_WORKFLOW on $TRIGGER_REF ended ${STATE#completed/} ($URL) - dispatching it again."
+                ;;
+              /) echo "ℹ️ No dispatched run of $TRIGGER_WORKFLOW on $TRIGGER_REF yet - nothing to retry" ;;
+              *) echo "ℹ️ Last dispatched run of $TRIGGER_WORKFLOW: $STATE - nothing to retry" ;;
+            esac
+          else
+            echo "::warning title=Release state unknown::The last run of $TRIGGER_WORKFLOW could not be read (${LAST%%$'\n'*}) - no retry."
+          fi
+          echo "retry=$RETRY" >> "$GITHUB_OUTPUT"
+          echo "failed-run-url=$URL" >> "$GITHUB_OUTPUT"
+
+      # =====================================================================
       # Step 16: Trigger release workflow
       # =====================================================================
       - name: "🚀 Trigger release workflow"
         id: dispatch
-        if: steps.commit.outputs.committed == 'true' && steps.config.outputs.trigger-workflow != '' && inputs.dry-run != true
+        if: (steps.commit.outputs.committed == 'true' || steps.release-state.outputs.retry == 'true') && steps.config.outputs.trigger-workflow != '' && inputs.dry-run != true
         env:
           GH_TOKEN: ${{ secrets.MAINTENANCE_TOKEN || secrets.PAT_READWRITE_ORGANISATION || github.token }}
           TRIGGER_WORKFLOW: ${{ steps.config.outputs.trigger-workflow }}
@@ -1203,6 +1251,8 @@ jobs:
           COMMIT_SHA: ${{ steps.commit.outputs.commit-sha }}
           DISPATCH_TRIGGERED: ${{ steps.dispatch.outputs.triggered }}
           TRIGGER_WORKFLOW: ${{ steps.config.outputs.trigger-workflow }}
+          RELEASE_RETRY: ${{ steps.release-state.outputs.retry }}
+          FAILED_RUN_URL: ${{ steps.release-state.outputs.failed-run-url }}
         shell: bash
         run: |
           {
@@ -1310,7 +1360,19 @@ jobs:
                 echo "| **Workflow** | \`$TRIGGER_WORKFLOW\` triggered |"
               fi
               echo ""
-            elif [ "$UPDATES_FOUND" = "true" ] && [ "$DRY_RUN" != "true" ]; then
+            fi
+            if [ "$RELEASE_RETRY" = "true" ]; then
+              echo "### 🔁 Release retried"
+              echo ""
+              echo "The last dispatched run of \`$TRIGGER_WORKFLOW\` failed: $FAILED_RUN_URL"
+              if [ "$DISPATCH_TRIGGERED" = "true" ]; then
+                echo "It was dispatched again."
+              else
+                echo "Not dispatched again (dry run, or the dispatch failed)."
+              fi
+              echo ""
+            fi
+            if [ "$COMMITTED" != "true" ] && [ "$UPDATES_FOUND" = "true" ] && [ "$DRY_RUN" != "true" ]; then
               if [ "$VALIDATION_PASSED" = "false" ]; then
                 echo "### ⚠️ No Release"
                 echo ""
@@ -1321,7 +1383,9 @@ jobs:
 
             # Overall status
             echo "---"
-            if [ "$UPDATES_FOUND" != "true" ]; then
+            if [ "$UPDATES_FOUND" != "true" ] && [ "$RELEASE_RETRY" = "true" ]; then
+              echo "🔁 **No new updates,** but the last dispatched release had failed - see Release retried above."
+            elif [ "$UPDATES_FOUND" != "true" ]; then
               echo "✅ **Everything is up to date.** No action needed."
             elif [ "$COMMITTED" = "true" ]; then
               echo "✅ **Maintenance completed successfully.**"

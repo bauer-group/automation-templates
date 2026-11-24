@@ -292,6 +292,13 @@ jobs:
         shell: bash
         run: bash .github/workflows/tests/auto-maintenance-base-images.test.sh
 
+      # A release dispatched by auto-maintenance that failed was never dispatched
+      # again once its digests were stored (#137). Pins the retry decision from the
+      # last workflow_dispatch run and the widened, still single dispatch.
+      - name: "🧪 auto-maintenance: a failed release is dispatched again"
+        shell: bash
+        run: bash .github/workflows/tests/auto-maintenance-release-retry.test.sh
+
       # Rework items from #105 that need no decision: label names match as whole
       # words only ("test" was found inside "attest"), Dependabot is skipped and
       # the job has a timeout.
